@@ -295,6 +295,41 @@
       "when": 1794264531043,
       "tag": "0041_model_reasoning_effort",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1794317415569,
+      "tag": "0042_device_approval_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1794359699498,
+      "tag": "0043_provider-connections",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1794410877777,
+      "tag": "0044_inference-usage-holds",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1794431147123,
+      "tag": "0045_recovery-continuity",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1794431147484,
+      "tag": "0046_passkey-continuity",
+      "breakpoints": true
     }
   ]
 }

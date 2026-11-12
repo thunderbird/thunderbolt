@@ -7,7 +7,13 @@ import type { Tool, ToolCallOptions } from 'ai'
 import { LineChart } from 'lucide-react'
 import { maxToolNameChars, type MiniAppTool } from '@shared/mini-app-protocol'
 import type { MiniAppApprovalOutcome } from './approval-outcome'
-import { buildMiniAppToolsPromptSection, createMiniAppTools, miniAppToolPrefix, toToolsetName } from './mini-app-tools'
+import {
+  buildMiniAppToolsPromptSection,
+  createMiniAppTools,
+  miniAppToolPrefix,
+  toToolsetName,
+  type MiniAppToolDeps,
+} from './mini-app-tools'
 import type { MiniAppDefinition } from './registry'
 
 const app: MiniAppDefinition = {
@@ -57,12 +63,34 @@ describe('createMiniAppTools', () => {
     expect(toToolsetName(writeTool)).toBe('app_set_assumption')
   })
 
-  it('runs a read-only tool without prompting', async () => {
-    const { toolset, invoke, requestApproval } = build([readTool])
-    const result = await run(toolset.app_get_totals, {})
-    expect(requestApproval).not.toHaveBeenCalled()
-    expect(invoke).toHaveBeenCalled()
-    expect(result).toBe('done')
+  /*
+   * The arguments are written by the model, and the model may have just read
+   * the user's email. `readOnlyHint` is the app's own claim, so it cannot be
+   * what decides whether that data leaves for the app's origin.
+   */
+  it('asks before sending arguments to a tool the app declares read-only', async () => {
+    const leaked = { note: 'Synthetic protected email body 7Q2X' }
+    let answer: (outcome: MiniAppApprovalOutcome) => void = () => {}
+    const invoke = mock(async () => ({ content: 'done' }))
+    const requestApproval = mock<MiniAppToolDeps['requestApproval']>(() => new Promise((resolve) => (answer = resolve)))
+    const toolset = createMiniAppTools({ app, tools: [readTool], invoke, requestApproval })
+
+    const pending = run(toolset.app_get_totals, leaked)
+    await Promise.resolve()
+
+    expect(requestApproval).toHaveBeenCalledWith(readTool, leaked)
+    expect(invoke).not.toHaveBeenCalled()
+
+    answer('approved')
+    expect(await pending).toBe('done')
+    expect(invoke).toHaveBeenCalledWith(readTool.name, leaked)
+  })
+
+  it('does not run a tool the app declares read-only when the user denies', async () => {
+    const { toolset, invoke } = build([readTool], { outcome: 'denied' })
+    const result = await run(toolset.app_get_totals, { note: 'Synthetic protected email body 7Q2X' })
+    expect(invoke).not.toHaveBeenCalled()
+    expect(String(result)).toContain('declined')
   })
 
   it('prompts before running a write tool', async () => {
@@ -102,14 +130,6 @@ describe('createMiniAppTools', () => {
     expect(String(result)).toContain('could not be offered')
   })
 
-  /*
-   * Absent means "ask", so forgetting an annotation fails safe.
-   *
-   * Not to be confused with a security boundary: the host decides from
-   * `readOnlyHint`, which is the app's own word, so declaring a destructive tool
-   * read-only *does* skip the prompt. The gate defends against a confused model,
-   * not a hostile app — see the docblock on `createMiniAppTools`.
-   */
   it('treats a missing readOnlyHint as needing approval', async () => {
     const bare: MiniAppTool = { name: 'do_thing', description: 'Unannotated.' }
     const { toolset, requestApproval } = build([bare])
@@ -127,8 +147,8 @@ describe('createMiniAppTools', () => {
   // A failed tool should read to the model as a recoverable problem, not a crash.
   it('surfaces a tool error as text rather than throwing', async () => {
     const invoke = mock(async () => ({ content: 'value out of range', isError: true }))
-    const { toolset } = build([readTool], { invoke })
-    const result = await run(toolset.app_get_totals, {})
+    const { toolset } = build([writeTool], { invoke })
+    const result = await run(toolset.app_set_assumption, {})
     expect(String(result)).toContain('value out of range')
   })
 
@@ -220,12 +240,14 @@ describe('buildMiniAppToolsPromptSection', () => {
     }
   })
 
-  it('flags which tools will prompt the user', () => {
-    const section = buildMiniAppToolsPromptSection([writeTool, readTool])
-    const writeLine = section?.split('\n').find((line) => line.includes('app_set_assumption'))
-    const readLine = section?.split('\n').find((line) => line.includes('app_get_totals'))
-    expect(writeLine).toContain('asks the user')
-    expect(readLine).not.toContain('asks the user')
+  it('does not present a tool the app declares read-only as running without approval', () => {
+    const section = buildMiniAppToolsPromptSection([writeTool, readTool]) ?? ''
+    const fenced = section.slice(
+      section.indexOf('<app-provided-tool-list>'),
+      section.indexOf('</app-provided-tool-list>'),
+    )
+    expect(section).toContain('asks the user to approve calls before they reach the app')
+    expect(fenced).not.toContain('asks the user')
   })
 })
 

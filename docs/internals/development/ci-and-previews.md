@@ -252,7 +252,13 @@ realm config or different PowerSync sync rules must fall back to a monolithic de
 They deploy through `pull_request_target` behind the `fork-preview-approval` environment,
 so a maintainer approves **every push**, not every PR; that is why a fork preview sits
 pending. Under that trigger the workflow file and the Pulumi program come from `main`, so
-a fork can change image contents but never the infrastructure code.
+a fork can change image contents but never the infrastructure code. The approval job's
+name shows the commit SHA the run will build.
+
+The approval job fails unless the environment has required reviewers. GitHub creates a
+missing environment with no rules, and an environment without reviewers would let the job
+start unapproved. Same-repo PRs skip this gate: only collaborators with write access can
+push a branch here, and their previews deploy automatically.
 
 ### Teardown: on close, hourly, and by hand
 

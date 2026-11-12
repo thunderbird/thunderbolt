@@ -104,6 +104,15 @@ const isForeignSsoRequest = (path: string, request: SsoRequest) => {
   return part === undefined || request[part]?.providerId !== configuredSsoProviderId
 }
 
+const samlAcsPath = '/sso/saml2/sp/acs/:providerId'
+
+/**
+ * Name each cookie with its RelayState so a browser can hold several pending logins.
+ * Over HTTPS, `__Host-` prevents another subdomain from setting the cookie.
+ */
+const samlLoginCookie = (relayState: string, isHttps: boolean) =>
+  `${isHttps ? '__Host-' : ''}thunderbolt_saml_login_${relayState}`
+
 type SsoUserResolution = Parameters<NonNullable<SSOOptions['resolveUser']>>[0]
 
 /** True when an OIDC provider states it never confirmed the address. SAML carries no such claim. */
@@ -271,6 +280,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
   }
 
   const ssoEnabled = settings.authMode === 'oidc' || settings.authMode === 'saml'
+  const isHttps = settings.betterAuthUrl.startsWith('https://')
 
   // This before-hook runs ahead of every plugin hook, bearer included, so
   // `getSessionFromCtx` can't see a bearer-only session here. Going through the
@@ -359,6 +369,24 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         if (ssoEnabled && isForeignSsoRequest(ctx.path, ctx)) {
           console.warn(`Refused ${ctx.path}: only the configured SSO provider is available`)
           throw ctx.error('FORBIDDEN', { message: 'Only the configured SSO provider is available' })
+        }
+
+        // Better Auth checks RelayState and InResponseTo against rows shared by all browsers. Require this
+        // browser's cookie when RelayState is present. With IdP-initiated login enabled, responses without
+        // RelayState remain unbound and retain that mode's documented login-CSRF risk.
+        if (settings.authMode === 'saml' && ctx.path === samlAcsPath && ctx.body?.SAMLResponse) {
+          const relayState = ctx.body.RelayState
+          const bound =
+            typeof relayState === 'string' &&
+            relayState !== '' &&
+            ctx.getCookie(samlLoginCookie(relayState, isHttps)) !== null
+          if (!bound && (relayState || !settings.samlAllowIdpInitiated)) {
+            console.warn('Refused a SAML response for a login this browser did not start')
+            // Use the plugin's existing landing for an unsolicited response.
+            const landing = new URL(settings.appUrl)
+            landing.searchParams.set('error', 'unsolicited_response')
+            throw ctx.redirect(landing.toString())
+          }
         }
 
         // Guard: prevent session fixation. A real (non-anonymous) user MUST NOT be
@@ -471,6 +499,22 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         // (after hook) or by expiry. This allows the 3-attempt limit to work correctly.
       }),
       after: createAuthMiddleware(async (ctx) => {
+        if (settings.authMode === 'saml' && ctx.path === '/sign-in/sso') {
+          const url = (ctx.context.returned as { url?: string } | undefined)?.url
+          const relayState = url && new URL(url).searchParams.get('RelayState')
+          if (relayState) {
+            // Set directly to keep it host-only; createAuthCookie can add Domain. Cross-site ACS POSTs
+            // need SameSite=None over HTTPS. Match the plugin's five-minute requestTTL.
+            ctx.setCookie(samlLoginCookie(relayState, isHttps), '1', {
+              path: '/',
+              httpOnly: true,
+              maxAge: 300,
+              ...(isHttps ? { secure: true, sameSite: 'none' } : { sameSite: 'lax' }),
+            })
+          }
+          return
+        }
+
         if (ctx.path === deviceTokenPath) {
           const sessionToken = ctx.context.newSession?.session.token
           if (!sessionToken) {

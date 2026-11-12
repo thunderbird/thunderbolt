@@ -2,7 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it, mock } from 'bun:test'
+import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { createModel } from '@/ai/fetch'
+import { getDb } from '@/db/database'
+import { resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import {
+  disconnectProviderConnection,
+  saveProviderConnection,
+  updateProviderConnection,
+} from '@/dal/provider-connections'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { APICallError } from 'ai'
 import { createDefaultProbe } from './use-model-connection-test'
@@ -25,7 +33,7 @@ describe('createDefaultProbe', () => {
   it('tests a BYOK Tinfoil model through one attested chat completion', async () => {
     const requests: Request[] = []
     const client = {
-      getBaseURL: () => 'https://enclave.example.com/v1',
+      baseURL: 'https://enclave.example.com/v1',
       async fetch(input: RequestInfo | URL, init?: RequestInit) {
         expect(this).toBe(client)
         requests.push(input instanceof Request ? input : new Request(input, init))
@@ -97,6 +105,122 @@ describe('createDefaultProbe', () => {
       tools: { get_current_time: expect.anything() },
     })
     expect(getTinfoilClient).toHaveBeenCalledTimes(0)
+  })
+})
+
+describe('createDefaultProbe provider connection binding', () => {
+  beforeEach(resetTestDatabase)
+  afterAll(teardownTestDatabase)
+
+  /** Deliberately stale model fields must never override the linked account. */
+  const linkedConfig = async (provider: 'openrouter' | 'tinfoil') => ({
+    providerConnectionId: await saveProviderConnection(getDb(), {
+      provider,
+      name: 'Work',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'current-key' },
+    }),
+    provider,
+    model: 'test-model',
+    url: null,
+    apiKey: 'stale-model-key',
+  })
+
+  it('keeps the connection ID through the shared factory and uses its current credential', async () => {
+    const config = await linkedConfig('openrouter')
+    const send = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer current-key')
+      return completionResponse()
+    })
+    const probe = createDefaultProbe()
+    expect(
+      await probe(config, () => Object.assign(send, { preconnect: async () => false }), new AbortController().signal),
+    ).toBe('supported')
+    expect(send).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not send a shared-factory probe after the connection is disabled during setup', async () => {
+    const config = await linkedConfig('openrouter')
+    const send = mock(async () => completionResponse())
+    const probe = createDefaultProbe({
+      createModel: async (model, getFetch) => {
+        const aiModel = await createModel(model, getFetch)
+        await updateProviderConnection(getDb(), config.providerConnectionId, { enabled: false })
+        return aiModel
+      },
+    })
+    await expect(
+      probe(config, () => Object.assign(send, { preconnect: async () => false }), new AbortController().signal),
+    ).rejects.toThrow('Connect this provider on this device')
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('uses the linked Tinfoil credential over the attested transport', async () => {
+    const config = await linkedConfig('tinfoil')
+    const send = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer current-key')
+      return completionResponse()
+    })
+    const probe = createDefaultProbe({
+      getTinfoilClient: async () => ({ baseURL: 'https://enclave.example.com/v1', fetch: send }) as never,
+    })
+    expect(await probe(config, () => proxyFetch, new AbortController().signal)).toBe('supported')
+    expect(send).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['disabled', 'disconnected', 'replaced'] as const)(
+    'does not send a Tinfoil probe when its connection is %s during attestation',
+    async (change) => {
+      const config = await linkedConfig('tinfoil')
+      const send = mock(async () => completionResponse())
+      const probe = createDefaultProbe({
+        getTinfoilClient: async () => {
+          if (change === 'disabled') {
+            await updateProviderConnection(getDb(), config.providerConnectionId, { enabled: false })
+          } else if (change === 'disconnected') {
+            await disconnectProviderConnection(getDb(), config.providerConnectionId)
+          } else {
+            await saveProviderConnection(getDb(), {
+              id: config.providerConnectionId,
+              provider: 'tinfoil',
+              name: 'Replacement',
+              authMethod: 'api_key',
+              credentials: { apiKey: 'replacement' },
+            })
+          }
+          return { baseURL: 'https://enclave.example.com/v1', fetch: send } as never
+        },
+      })
+      await expect(probe(config, () => proxyFetch, new AbortController().signal)).rejects.toThrow()
+      expect(send).not.toHaveBeenCalled()
+    },
+  )
+
+  it('rechecks Tinfoil before retrying a tool rejection without tools', async () => {
+    const config = await linkedConfig('tinfoil')
+    const send = mock(async () => {
+      await disconnectProviderConnection(getDb(), config.providerConnectionId)
+      return Response.json({ error: { message: 'Tools unsupported' } }, { status: 400 })
+    })
+    const probe = createDefaultProbe({
+      getTinfoilClient: async () => ({ baseURL: 'https://enclave.example.com/v1', fetch: send }) as never,
+    })
+    await expect(probe(config, () => proxyFetch, new AbortController().signal)).rejects.toThrow(
+      'Connect this provider on this device',
+    )
+    expect(send).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects a different provider identity before acquiring the Tinfoil client', async () => {
+    const config = await linkedConfig('openrouter')
+    const getTinfoilClient = mock(async () => {
+      throw new Error('Must not attest')
+    })
+    const probe = createDefaultProbe({ getTinfoilClient })
+    await expect(
+      probe({ ...config, provider: 'tinfoil' }, () => proxyFetch, new AbortController().signal),
+    ).rejects.toThrow('The model provider connection changed')
+    expect(getTinfoilClient).not.toHaveBeenCalled()
   })
 })
 

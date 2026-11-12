@@ -25,6 +25,7 @@ test('the model calls an MCP tool through the proxy and displays its result', as
   await loginViaOidc(page)
   await page.goto('/settings/connections')
   await page.getByRole('button', { name: 'New Connection' }).click()
+  await page.getByRole('button', { name: 'MCP server' }).click()
   await page.getByPlaceholder('Server name (used to prefix tools)').fill('Test Echo')
   await page.getByPlaceholder('http://localhost:8000/mcp/').fill(mcpUrl)
   await page.getByRole('button', { name: 'Test connection' }).click()
@@ -40,7 +41,7 @@ test('the model calls an MCP tool through the proxy and displays its result', as
   await page.getByRole('button', { name: 'New Chat', exact: true }).click()
   await expect(page.locator('textarea')).toBeVisible()
   await page.getByTestId('model-selector-trigger').click()
-  await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
+  await page.getByRole('button', { name: `${defaultModelOpus55.name} Thunderbolt`, exact: true }).click()
   await page.keyboard.press('Escape')
   const marker = `blue-heron-${crypto.randomUUID().slice(0, 8)}`
   await sendChatPrompt(page, `Use the Test Echo echo tool with message "${marker}". Quote its result exactly.`)

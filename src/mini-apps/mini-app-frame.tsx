@@ -37,8 +37,8 @@ type MiniAppFrameProps = {
  * That needs no permissions-policy grant. `allow="tools"` does something else:
  * it lets an agent in the *embedder* — the browser's, not ours — discover and
  * call tools across the frame boundary. Granting it would route a customer app's
- * tools around the host-side approval prompt that `readOnlyHint` gates, to a
- * caller Thunderbolt has no relationship with. So it stays denied, along with
+ * tools around the host-side approval prompt, to a caller Thunderbolt has no
+ * relationship with. So it stays denied, along with
  * everything else.
  */
 export const MiniAppFrame = ({ app, frameRef, status, onFrameLoad, onRetry }: MiniAppFrameProps) => (

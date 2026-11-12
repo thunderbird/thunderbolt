@@ -14,7 +14,7 @@ import { resourceUrlFromServerUrl } from '@modelcontextprotocol/sdk/shared/auth-
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { openUrl as tauriOpenUrl } from '@tauri-apps/plugin-opener'
 import { v4 as uuidv4 } from 'uuid'
-import { setMcpServerCredentials } from '@/dal/mcp-secrets'
+import { setMcpServerCredentials, type McpServerCredentials } from '@/dal/mcp-secrets'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { isMobile as isMobilePlatform, isTauri as isTauriPlatform } from '@/lib/platform'
 import type { McpAuthActionability } from './auth-decision'
@@ -22,6 +22,7 @@ import { cimdClientMetadataAvailable, createMcpOAuthClientProvider } from './oau
 import { i18n } from '@/i18n'
 import { validateMcpOAuthCallback } from './callback-validation'
 import { startMcpOAuthLoopback } from './mcp-oauth-loopback'
+import { currentOAuthReturnPath } from '@/lib/oauth-return-route'
 import { abandonedFlowMs, clearMcpOAuthState, getMcpOAuthState, setMcpOAuthState } from './mcp-oauth-state'
 
 /** Verified HTTPS App Link / Universal Link the mobile system browser returns to. */
@@ -187,7 +188,11 @@ const issParameterSupported = (metadata: AuthorizationServerMetadata): boolean =
   (metadata as { authorization_response_iss_parameter_supported?: boolean })
     .authorization_response_iss_parameter_supported === true
 
+type SaveCredentials = (credentials: Extract<McpServerCredentials, { type: 'oauth' }>) => Promise<void>
+
 type StartArgs = {
+  saveCredentials?: SaveCredentials
+  signal?: AbortSignal
   db: AnyDrizzleDatabase
   serverId: string
   serverUrl: string
@@ -200,7 +205,7 @@ type StartArgs = {
 export type StartMcpOAuthResult = { status: 'redirected' } | { status: 'completed' }
 
 /**
- * Refuses to start while a fresh flow for a *different* server is pending. The
+ * Refuses to start while a desktop flow or a fresh flow for a different server is pending. The
  * handshake lives in one shared slot, so a concurrent Authorize (another card or
  * tab) would clobber an in-flight flow and make both fail with a misleading CSRF
  * error on callback. A stale (abandoned) handshake is allowed to be replaced.
@@ -208,10 +213,11 @@ export type StartMcpOAuthResult = { status: 'redirected' } | { status: 'complete
 const assertNoConcurrentFlow = (serverId: string): void => {
   const pending = getMcpOAuthState()
   if (
-    pending.serverId &&
-    pending.serverId !== serverId &&
-    pending.startedAt !== null &&
-    Date.now() - pending.startedAt < abandonedFlowMs
+    desktopLoopbackInProgress ||
+    (pending.serverId &&
+      pending.serverId !== serverId &&
+      pending.startedAt !== null &&
+      Date.now() - pending.startedAt < abandonedFlowMs)
   ) {
     throw new Error('Another MCP authorization is already in progress — finish or cancel it first.')
   }
@@ -228,6 +234,7 @@ const prepareAuthorization = async (
   redirectUri: string,
   deps: WebOAuthDeps,
 ): Promise<{ authorizationUrl: URL }> => {
+  const returnTo = currentOAuthReturnPath()
   const register = deps.registerClient ?? registerClient
   const start = deps.startAuthorization ?? startAuthorization
 
@@ -265,6 +272,7 @@ const prepareAuthorization = async (
   // Pinning authorizationServerUrl + metadata here is what lets the callback skip
   // re-discovery and exchange the code against the AS we actually authorized with.
   setMcpOAuthState({
+    returnTo,
     serverId,
     serverUrl,
     stateNonce,
@@ -322,6 +330,7 @@ export const startMcpOAuthFlow = async (
     const origin = args.origin ?? window.location.origin
     const redirectUri = computeMcpOAuthRedirectUri(origin, { isTauri, isMobile })
     const { authorizationUrl } = await prepareAuthorization(args, redirectUri, deps)
+    args.signal?.throwIfAborted()
 
     if (isTauri() && isMobile()) {
       // Open the system browser, never navigate the webview. The deep-link listener
@@ -357,14 +366,13 @@ const startDesktopOAuthFlow = async (
   { openUrl, runLoopback }: { openUrl: typeof tauriOpenUrl; runLoopback: typeof startMcpOAuthLoopback },
 ): Promise<StartMcpOAuthResult> => {
   const { db, serverId, fetchFn } = args
-  if (desktopLoopbackInProgress) {
-    throw new Error('Another MCP authorization is already in progress — finish or cancel it first.')
-  }
   desktopLoopbackInProgress = true
   try {
     const callback = await runLoopback({
+      signal: args.signal,
       buildAuthorizationUrl: async (redirectUri) => {
         const { authorizationUrl } = await prepareAuthorization(args, redirectUri, deps)
+        args.signal?.throwIfAborted()
         return authorizationUrl
       },
       deps: { openUrl },
@@ -386,8 +394,17 @@ const startDesktopOAuthFlow = async (
       throw new Error('Authorization was cancelled.')
     }
 
+    args.signal?.throwIfAborted()
     await completeMcpOAuthFlow(
-      { db, serverId, code: callback.code, returnedState: callback.state, returnedIss: callback.iss, fetchFn },
+      {
+        db,
+        serverId,
+        code: callback.code,
+        returnedState: callback.state,
+        returnedIss: callback.iss,
+        fetchFn,
+        saveCredentials: args.saveCredentials,
+      },
       deps,
     )
     return { status: 'completed' }
@@ -397,6 +414,7 @@ const startDesktopOAuthFlow = async (
 }
 
 type CompleteArgs = {
+  saveCredentials?: SaveCredentials
   db: AnyDrizzleDatabase
   serverId: string
   code: string
@@ -417,7 +435,7 @@ type CompleteArgs = {
  * cleared, so a retry requires re-authorization.
  */
 export const completeMcpOAuthFlow = async (
-  { db, serverId, code, returnedState, returnedIss, fetchFn }: CompleteArgs,
+  { db, serverId, code, returnedState, returnedIss, fetchFn, saveCredentials }: CompleteArgs,
   deps: WebOAuthDeps = {},
 ): Promise<void> => {
   const handshake = getMcpOAuthState()
@@ -478,7 +496,8 @@ export const completeMcpOAuthFlow = async (
     fetchFn,
   })
 
-  await setMcpServerCredentials(db, serverId, {
+  const save = saveCredentials ?? ((credentials) => setMcpServerCredentials(db, serverId, credentials))
+  await save({
     type: 'oauth',
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token,
@@ -487,5 +506,6 @@ export const completeMcpOAuthFlow = async (
     issuer: metadata.issuer,
     tokenEndpoint: metadata.token_endpoint,
     scope: tokens.scope,
+    approvedUrl: handshake.serverUrl,
   })
 }

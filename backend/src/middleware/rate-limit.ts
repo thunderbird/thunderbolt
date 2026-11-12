@@ -18,6 +18,7 @@ type RateLimitTier =
   | 'inference'
   | 'pro'
   | 'auth'
+  | 'integration-oauth'
   | 'contact'
   | 'anonymous-sign-in'
   | 'anonymous-sign-in-global'
@@ -51,6 +52,7 @@ const tierConfigs = {
   inference: { max: 60, durationSecs: 60 },
   pro: { max: 100, durationSecs: 60 },
   auth: { max: 10, durationSecs: 60 },
+  'integration-oauth': { max: 30, durationSecs: 60 },
   contact: { max: 3, durationSecs: 60 * 60, enforceWhenDisabled: true },
   'debug-transcript': { max: 10, durationSecs: 60 * 60 },
   'debug-transcript-intake': { max: 600, durationSecs: 60 * 60 },

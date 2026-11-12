@@ -17,6 +17,7 @@ const citationSourceSchema = z.object({
   siteName: z.string().optional(),
   favicon: z.string().url('Invalid favicon').refine(isSafeUrl, 'Favicon must use http or https').optional(),
   isPrimary: z.boolean().optional(),
+  allowRemoteImages: z.boolean().optional(),
 })
 
 /**

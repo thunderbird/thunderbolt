@@ -2,11 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigCapability } from '@/hooks/use-config-capability'
 import { useLingui } from '@lingui/react/macro'
 import { useState } from 'react'
 
 import { testAcpConnection } from '@/acp'
-import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
+import { selectAllowCustomAgents } from '@/api/config-store'
 import { useChatStore } from '@/chats/chat-store'
 import { DetailPanelSurface } from '@/components/detail-panel'
 import { AgentDetail } from '@/components/settings/agents/agent-detail'
@@ -45,14 +46,14 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
   const authClient = useAuth()
   const { data: session } = authClient.useSession()
   const currentUserId = session?.user?.id ?? null
-  const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
+  const allowCustomAgents = useConfigCapability(selectAllowCustomAgents)
 
   // The add form, the CLI install card, and the agent rows all share the one
   // slide-in panel slot, so the selection is a single union — the panels are
   // mutually exclusive by construction (a string sentinel could collide with
   // a server-chosen agent id).
   const [activePanel, setActivePanel] = useState<
-    { kind: 'add' } | { kind: 'agent'; id: string } | { kind: 'cli' } | null
+    { kind: 'add' } | { kind: 'agent'; id: string; action?: 'edit' | 'remove' } | { kind: 'cli' } | null
   >(null)
   const cliOpen = activePanel?.kind === 'cli'
   const addOpen = activePanel?.kind === 'add'
@@ -74,8 +75,8 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
   // route into the page's existing handlers (THU-768). "Edit" opens the
   // agent's detail panel — the same read-only-or-editable surface a row click
   // opens — so built-in/system agents (and ids no longer present) degrade to a
-  // read-only view or no-op rather than forcing an edit. There is no inline
-  // remove: deletion stays behind the detail panel's ownership-gated ⋯ menu.
+  // read-only view or no-op rather than forcing an edit. Context-menu removal
+  // opens the same ownership-gated confirmation as the detail panel.
   useEntityActionIntent('agent', {
     onCreate: openAddPanel,
     onEdit: openAgentPanel,
@@ -89,7 +90,8 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
       return (
         <AgentDetail
           // Keyed by id so inline-edit drafts reset when switching agents.
-          key={activeAgent.id}
+          key={`${activeAgent.id}:${activePanel?.kind === 'agent' ? activePanel.action : ''}`}
+          initialAction={activePanel?.kind === 'agent' ? activePanel.action : undefined}
           agent={activeAgent}
           currentUserId={currentUserId}
           onClose={closePanel}
@@ -122,9 +124,7 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
             panel edge). */}
         <SettingsListPane className="gap-6">
           <PageHeader title={t`Agents`}>
-            {allowCustomAgents && (
-              <PageCreateAction label={t`New Agent`} onClick={openAddPanel} disabled={!currentUserId} />
-            )}
+            {allowCustomAgents && <PageCreateAction label={t`New Agent`} onClick={openAddPanel} />}
           </PageHeader>
 
           {/* Clicking the already-open row closes the panel — the rows carry
@@ -134,6 +134,9 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
           <SettingsListBody className={settingsListBodyRowsClass}>
             <AgentList
               agents={agents}
+              currentUserId={currentUserId}
+              onEditAgent={(id) => setActivePanel({ kind: 'agent', id, action: 'edit' })}
+              onRemoveAgent={(id) => setActivePanel({ kind: 'agent', id, action: 'remove' })}
               selectedId={activeAgent?.id ?? null}
               onOpenAgent={(agent) => toggleAgentPanel(agent.id)}
             />

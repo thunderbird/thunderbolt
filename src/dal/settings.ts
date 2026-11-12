@@ -301,6 +301,7 @@ const prepareSettingRow = (key: string, value: any, recomputeHash: boolean) => {
  * @param options - Optional configuration (applies to all settings)
  * @param options.recomputeHash - If true, updates the defaultHash to match the new value for all settings
  * @param options.updateHashOnly - If true, only updates the defaultHash without changing actual values
+ * @param options.signal - Cancels the transaction if its owning operation ends before the writes finish
  *
  * @example
  * ```ts
@@ -314,7 +315,7 @@ const prepareSettingRow = (key: string, value: any, recomputeHash: boolean) => {
 export const updateSettings = async (
   db: AnyDrizzleDatabase,
   settings: Record<string, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
-  options: { recomputeHash?: boolean; updateHashOnly?: boolean } = {},
+  options: { recomputeHash?: boolean; updateHashOnly?: boolean; signal?: AbortSignal } = {},
 ): Promise<void> => {
   const entries = Object.entries(settings)
   if (entries.length === 0) {
@@ -326,6 +327,7 @@ export const updateSettings = async (
   // so we use parallel updates within a transaction for atomicity
   if (options.updateHashOnly) {
     await db.transaction(async (tx) => {
+      options.signal?.throwIfAborted()
       await Promise.all(
         entries.map(([key, value]) => {
           const stringValue = serializeValue(value)
@@ -333,6 +335,7 @@ export const updateSettings = async (
           return tx.update(settingsTable).set({ defaultHash: newHash }).where(eq(settingsTable.key, key))
         }),
       )
+      options.signal?.throwIfAborted()
     })
     return
   }
@@ -343,6 +346,7 @@ export const updateSettings = async (
   // when multiple components call updateSettings simultaneously.
   // Wrapped in a transaction so all-or-nothing: if any row fails, none are committed.
   await db.transaction(async (tx) => {
+    options.signal?.throwIfAborted()
     for (const [key, value] of entries) {
       const row = prepareSettingRow(key, value, options.recomputeHash ?? false)
 
@@ -359,6 +363,7 @@ export const updateSettings = async (
         await tx.update(settingsTable).set(updateData).where(eq(settingsTable.key, key))
       }
     }
+    options.signal?.throwIfAborted()
   })
 }
 

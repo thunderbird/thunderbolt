@@ -35,8 +35,6 @@ Two channels carry fixes sooner, without a stability guarantee:
 - **Daily app releases.** The daily pipeline runs E2E at 04:00 UTC and, only if it passes, publishes a patch release (`vX.Y.Z`) marked Latest that also ships to the desktop auto-updater, TestFlight and the Play internal track. Releases carry a "may be unstable" warning.
 - **Container images.** `images-publish.yml` pushes to GHCR on every `main` push touching `deploy/**`, `backend/**`, `src/**`, `package.json` or the two `shared/` modules in its `paths` filter, and `nightly-images.yml` rebuilds daily at 05:00 UTC to pick up upstream base-image updates. A self-hosted deployment tracking `:latest` gets fixes without waiting for an app release.
 
-Thunderbolt is [undergoing a security audit and is not yet intended for production use](./docs/self-hosting/README.md). That caveat is about our own readiness; please still report what you find.
-
 ## Out of Scope
 
 - **Evaluation defaults in a self-hosted stack.** `deploy/docker-compose.yml` hardcodes a PowerSync JWT secret, an OIDC client secret and Postgres credentials so the stack comes up unattended — `BETTER_AUTH_SECRET` is the one value it refuses to default. Replacing them before exposing a deployment is the operator's job; see [self-hosting configuration](./docs/self-hosting/configuration.md). A report that these published values are published is not a finding.

@@ -17,7 +17,7 @@ import { dispatchMigrationRecoveryKey } from '@/hooks/use-migration-recovery-key
 import type { AnyDrizzleDatabase, InitialSyncOutcome } from '@/db/database-interface'
 import { getPowerSyncInstance } from '@/db/powersync/sync-state'
 import { createSearchIndex } from '@/search/fts-setup'
-import { getLocalSetting } from '@/stores/local-settings-store'
+import { getLocalSetting, isCurrentServer } from '@/stores/local-settings-store'
 import { createHandleError } from '@/lib/error-utils'
 import { createAppDir, resetAppDir, runAppStorageOperation } from '@/lib/fs'
 import { isSsoMode } from '@/lib/auth-mode'
@@ -29,6 +29,8 @@ import { initPosthog, trackError, trackEvent } from '@/lib/posthog'
 import { withTimeout } from '@/lib/timeout'
 import { normalizeBackendUrl } from '@/lib/url-utils'
 import { runDataMigrations } from '@/lib/data-migrations'
+import { openLocalData } from '@/lib/local-data-owner'
+import { applyDeferredOnboardedMark } from '@/lib/returning-user-onboarding'
 import { reconcileDefaults, versionMarkerKeys, type VersionMarkerKey } from '@/lib/reconcile-defaults'
 import { defaultSettingsVersion } from '@/defaults/settings'
 import { defaultSkillsVersion } from '@/defaults/skills'
@@ -91,7 +93,7 @@ const initializeDatabase = async (appDirPath: string): Promise<{ db: AnyDrizzleD
   }
 
   const databaseType = await getDatabaseType()
-  const dbPath = await getDatabasePath(appDirPath)
+  const dbPath = await getDatabasePath(appDirPath, await openLocalData())
 
   const database = existing ?? new Database()
   // Keep the owner registered even if opening fails, so Retry/Reset can retire partial resources.
@@ -201,7 +203,9 @@ const initializeTraySafely = async (): Promise<void> => {
 /** Step 8 wrapper: never throws — falls back to a null PostHog client on failure. */
 const initializePostHogSafely = async (httpClient: HttpClient): Promise<PostHog | null> => {
   try {
-    return await time('step8_initialize_posthog', () => initializePostHog(httpClient))
+    return await time('step8_initialize_posthog', () =>
+      initializePostHog(getLocalSetting('cloudUrl') ? httpClient : undefined),
+    )
   } catch (error) {
     console.warn('Unexpected error during PostHog initialization:', error)
     return null
@@ -249,7 +253,8 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     return { success: false, error: storageError }
   }
 
-  const cloudUrl = normalizeBackendUrl(getLocalSetting('cloudUrl'))
+  const selectedServer = getLocalSetting('cloudUrl')
+  const cloudUrl = normalizeBackendUrl(selectedServer)
   // Step 6: HTTP client initialization (use provided client or create one)
   let client: HttpClient
 
@@ -260,6 +265,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
       client = await time('step6_create_http_client', async () =>
         createAuthenticatedClient(cloudUrl, getAuthToken, {
           credentials: isSsoMode() ? 'include' : undefined,
+          isCurrent: () => isCurrentServer(selectedServer),
         }),
       )
     } catch (error) {
@@ -276,6 +282,9 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // Binding can run alongside local storage setup. Sync credentials require it,
   // so starting only after the initial-sync wait creates a startup dependency cycle.
   const sessionBinding = time('step6a_bind_session', async () => {
+    if (!cloudUrl) {
+      return
+    }
     try {
       await ensureSessionBound(client)
     } catch (error) {
@@ -363,11 +372,13 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // Complete binding before trust requests or the mounted session observer run.
   // If this attempt fails, that observer can retry after the local app mounts.
   await withTimeout(sessionBinding, sessionBindingTimeoutMs, 'bindSessionDuringBoot')
-  startKeyRequestResponder({
-    stageKeyring: () => stageKeyring(client),
-    refreshAK: () => refreshAK(client),
-    fetchMetadata: () => fetchEncryptionMetadata(client),
-  })
+  if (cloudUrl) {
+    startKeyRequestResponder({
+      stageKeyring: () => stageKeyring(client),
+      refreshAK: () => refreshAK(client),
+      fetchMetadata: () => fetchEncryptionMetadata(client),
+    })
+  }
 
   // Read the persisted `/config` cache once, up front. `pickModelsDefaults`
   // returns whichever of (bundled models, OTA models) declares the higher
@@ -421,7 +432,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   //
   // The outcome ('synced' / 'timed_out' / 'failed' / 'disabled' /
   // 'skipped_returning') is reported in the app_init_timing event below.
-  const canSkipSyncWait = bundleVersionsCurrent && getLocalSetting('syncEnabled')
+  const canSkipSyncWait = bundleVersionsCurrent && !!cloudUrl && getLocalSetting('syncEnabled')
   const { initialSyncOutcome, initialSyncCompleted } = await time('step3_wait_for_initial_sync', () =>
     resolveInitialSyncStep(database, canSkipSyncWait),
   )
@@ -448,6 +459,8 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // failures itself (logging each one), so it never throws and never blocks
   // initialization — each migration retries on the next launch.
   await time('step4b_run_data_migrations', () => runDataMigrations(db))
+  // After reconcile, which seeds the `false` this overwrites.
+  await applyDeferredOnboardedMark(db)
 
   // Include the sidebar preference so mounting the layout doesn't add another
   // database round trip before the chat can start hydrating.
@@ -461,9 +474,13 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
 
   // Run the migration/follower check after local data preparation. Session binding
   // and the key responder already started before the initial-sync gate.
-  runEncryptionInit(client).catch((error) => {
-    console.warn('[init] runEncryptionInit failed:', error)
-  })
+  if (cloudUrl) {
+    runEncryptionInit(client).catch((error) => {
+      console.warn('[init] runEncryptionInit failed:', error)
+    })
+  } else {
+    dispatchE2eeProvisioningSettled()
+  }
 
   // Snapshot blocking work before analytics attaches so its completion cannot
   // move the core-ready milestone.

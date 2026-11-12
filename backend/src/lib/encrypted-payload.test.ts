@@ -9,6 +9,17 @@ const ciphertext = '__enc:v2:0:aXYtYmFzZTY0:Y3QtYmFzZTY0'
 const legacyCiphertext = '__enc:aXYtYmFzZTY0:Y3QtYmFzZTY0'
 
 describe('findPlaintextViolation', () => {
+  it.each([
+    ['provider_connections', 'name'],
+    ['provider_connections', 'url'],
+    ['models', 'provider_connection_id'],
+  ])('requires ciphertext for %s.%s', (type, column) => {
+    expect(
+      findPlaintextViolation([{ op: 'PATCH', type, id: 'connection', data: { [column]: 'private routing data' } }]),
+    ).toEqual({ table: type, id: 'connection', column })
+    expect(findPlaintextViolation([{ op: 'PATCH', type, id: 'connection', data: { [column]: ciphertext } }])).toBeNull()
+  })
+
   it('rejects plaintext in an encrypted column', () => {
     const violation = findPlaintextViolation([{ op: 'PATCH', type: 'tasks', id: 'row-1', data: { item: 'buy milk' } }])
 

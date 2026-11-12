@@ -5,23 +5,28 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { ExternalLinkBehavior } from '@/lib/external-link-behavior'
+import { isTauri } from '@/lib/platform'
 import { isRecord } from '@shared/lib/is-record'
+import { z } from 'zod'
 
 /**
  * Voice engine selection (THU-718). `thunderbolt` uses the hosted enclave STT/TTS
  * (via the /tinfoil proxy); `openai-compatible` points at any OpenAI-shaped
  * `/v1/audio/*` endpoint — another provider or a self-hosted local server.
  * Device-local (not synced): holds a key and a machine-specific URL.
+ * A schema because the ownership record keeps a copy per account (see `local-data-owner.ts`).
  */
-export type VoiceProviderConfig = {
-  kind: 'thunderbolt' | 'openai-compatible'
+export const voiceProviderSchema = z.object({
+  kind: z.enum(['thunderbolt', 'openai-compatible']),
   /** Base URL including the version prefix, e.g. http://localhost:8000/v1. */
-  baseUrl: string
-  apiKey: string
-  sttModel: string
-  ttsModel: string
-  ttsVoice: string
-}
+  baseUrl: z.string(),
+  apiKey: z.string(),
+  sttModel: z.string(),
+  ttsModel: z.string(),
+  ttsVoice: z.string(),
+})
+
+export type VoiceProviderConfig = z.infer<typeof voiceProviderSchema>
 
 export const defaultVoiceProvider: VoiceProviderConfig = {
   kind: 'thunderbolt',
@@ -32,8 +37,24 @@ export const defaultVoiceProvider: VoiceProviderConfig = {
   ttsVoice: 'aiden',
 }
 
+/**
+ * The local settings that belong to the signed-in account rather than to the device. An account
+ * switch stashes them on the previous owner's slot (see `local-data-owner.ts`), so a new local
+ * setting that holds one account's secret or state belongs here.
+ */
+export const accountLocalSettingsSchema = z.object({
+  voiceProvider: voiceProviderSchema,
+  recoveryPhrasePending: z.boolean(),
+})
+
+export type AccountLocalSettings = z.infer<typeof accountLocalSettingsSchema>
+
 type LocalSettingsState = {
   cloudUrl: string
+  /** Keep local routes available after optionally connecting a server. Never grants server access. */
+  localMode: boolean
+  /** A successful session permanently binds this installation's data to its server. */
+  serverHasAuthenticated: boolean
   externalLinkBehavior: ExternalLinkBehavior
   debugPosthog: boolean
   isNativeFetchEnabled: boolean
@@ -43,6 +64,9 @@ type LocalSettingsState = {
    *  Survives reload/crash so the app can re-prompt — the phrase itself is
    *  unrecoverable (AK = PBKDF2(seed, salt)), so the prompt offers a rotation. */
   recoveryPhrasePending: boolean
+  /** The user whose recovery phrase was last seen needing a continuity update, so
+   *  the warning survives going offline. Set and cleared only by an online answer. */
+  recoveryContinuityUpdateRequiredFor: string | null
   /** Null until the user picks one; ThemeProvider then falls back to the operator default, then 'system'. */
   theme: 'light' | 'dark' | 'system' | null
   voiceProvider: VoiceProviderConfig
@@ -54,16 +78,38 @@ type LocalSettingsActions = {
 
 type LocalSettingsStore = LocalSettingsState & LocalSettingsActions
 
+const localSettingsKey = 'thunderbolt-local-settings'
+
+const initialCloudUrl =
+  isTauri() && import.meta.env.VITE_AUTH_MODE !== 'sso' ? '' : import.meta.env.VITE_THUNDERBOLT_CLOUD_URL || ''
+
 export const initialLocalSettings: LocalSettingsState = {
-  cloudUrl: import.meta.env.VITE_THUNDERBOLT_CLOUD_URL || 'http://localhost:8000/v1',
+  // A downloaded app starts locally; managed SSO builds keep their deployment.
+  // Persisted settings still win, so an upgrade preserves an existing server.
+  cloudUrl: initialCloudUrl,
+  localMode: !initialCloudUrl,
+  serverHasAuthenticated: !!initialCloudUrl,
   externalLinkBehavior: 'ask',
   debugPosthog: false,
   isNativeFetchEnabled: false,
   hapticsEnabled: true,
   syncEnabled: false,
   recoveryPhrasePending: false,
+  recoveryContinuityUpdateRequiredFor: null,
   theme: null,
   voiceProvider: defaultVoiceProvider,
+}
+
+/** Legacy server installations stay account-bound; new local installs can correct an unused server. */
+export const mergeLocalSettings = (persistedState: unknown, currentState: LocalSettingsStore): LocalSettingsStore => {
+  const persisted = (persistedState ?? {}) as Partial<LocalSettingsState>
+  const cloudUrl = persisted.cloudUrl ?? currentState.cloudUrl
+  return {
+    ...currentState,
+    ...persisted,
+    localMode: persisted.localMode ?? !cloudUrl,
+    serverHasAuthenticated: persisted.serverHasAuthenticated ?? !!cloudUrl,
+  }
 }
 
 /**
@@ -87,7 +133,8 @@ export const useLocalSettingsStore = create<LocalSettingsStore>()(
       setLocalSetting: (key, value) => set({ [key]: value }),
     }),
     {
-      name: 'thunderbolt-local-settings',
+      name: localSettingsKey,
+      merge: mergeLocalSettings,
       // See migrateLocalSettings; index.html reads this version too.
       version: 1,
       // zustand types this as the whole store, but merges it over the initial
@@ -98,12 +145,15 @@ export const useLocalSettingsStore = create<LocalSettingsStore>()(
       // future store action can silently leak into localStorage.
       partialize: (s): LocalSettingsState => ({
         cloudUrl: s.cloudUrl,
+        localMode: s.localMode,
+        serverHasAuthenticated: s.serverHasAuthenticated,
         externalLinkBehavior: s.externalLinkBehavior,
         debugPosthog: s.debugPosthog,
         isNativeFetchEnabled: s.isNativeFetchEnabled,
         hapticsEnabled: s.hapticsEnabled,
         syncEnabled: s.syncEnabled,
         recoveryPhrasePending: s.recoveryPhrasePending,
+        recoveryContinuityUpdateRequiredFor: s.recoveryContinuityUpdateRequiredFor,
         theme: s.theme,
         voiceProvider: s.voiceProvider,
       }),
@@ -117,3 +167,47 @@ export const useLocalSettingsStore = create<LocalSettingsStore>()(
  */
 export const getLocalSetting = <K extends keyof LocalSettingsState>(key: K): LocalSettingsState[K] =>
   useLocalSettingsStore.getState()[key]
+
+/** Check shared storage too: another window can select a server before its storage event reaches this one. */
+export const isCurrentServer = (cloudUrl: string): boolean => {
+  if (getLocalSetting('cloudUrl') !== cloudUrl) {
+    return false
+  }
+  try {
+    const raw = localStorage.getItem(localSettingsKey)
+    if (!raw) {
+      return cloudUrl === initialLocalSettings.cloudUrl
+    }
+    const persisted: unknown = JSON.parse(raw)
+    return (
+      isRecord(persisted) &&
+      isRecord(persisted.state) &&
+      (persisted.state.cloudUrl ?? initialLocalSettings.cloudUrl) === cloudUrl
+    )
+  } catch {
+    return false
+  }
+}
+
+/** Reload consumers after a different window changes the server shared by this installation. */
+export const onServerChangedInOtherTab = (listener: () => void): (() => void) => {
+  const onStorage = (event: StorageEvent) => {
+    if (
+      event.storageArea === localStorage &&
+      (event.key === localSettingsKey || event.key === null) &&
+      !isCurrentServer(getLocalSetting('cloudUrl'))
+    ) {
+      listener()
+    }
+  }
+  window.addEventListener('storage', onStorage)
+  return () => window.removeEventListener('storage', onStorage)
+}
+
+/** Keep a selected server bound after the first credential, including after that credential expires. */
+export const markServerAuthenticated = (): void => {
+  const settings = useLocalSettingsStore.getState()
+  if (settings.cloudUrl && !settings.serverHasAuthenticated) {
+    useLocalSettingsStore.setState({ serverHasAuthenticated: true })
+  }
+}

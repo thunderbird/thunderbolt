@@ -37,6 +37,10 @@ describe('ErrorMessage', () => {
         kind: 'tools-unsupported',
         message: "This model doesn't support tools.",
       },
+      {
+        kind: 'agent-unavailable',
+        message: 'This agent was disabled or deleted. Choose another agent to continue.',
+      },
     ] as const
 
     for (const { kind, message } of cases) {

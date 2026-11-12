@@ -6,7 +6,9 @@ import { useEffect } from 'react'
 
 import { useAuth } from '@/contexts/auth-context'
 import { useHttpClient } from '@/contexts/http-client-context'
-import { ensureSessionBound } from '@/services/encryption'
+import { ensureSessionBound, stageKeyring, refreshAK } from '@/services/encryption'
+import { startKeyRequestResponder } from '@/db/encryption'
+import { fetchEncryptionMetadata } from '@/api/encryption'
 
 /**
  * Keep this device's server-side session binding current (THU-873).
@@ -40,5 +42,11 @@ export const useDeviceSessionBinding = (): void => {
       // closed in the meantime, which is the point.
       console.warn('[device-binding] failed to bind this session to the device:', error)
     })
+    const responder = startKeyRequestResponder({
+      stageKeyring: () => stageKeyring(httpClient),
+      refreshAK: () => refreshAK(httpClient),
+      fetchMetadata: () => fetchEncryptionMetadata(httpClient),
+    })
+    return responder.stop
   }, [sessionId, httpClient])
 }

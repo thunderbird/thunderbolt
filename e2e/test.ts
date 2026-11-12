@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { isTinfoilAttestationRequest } from './tinfoil-isolation'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -144,13 +145,18 @@ persistentWebkit.afterEach(async ({}, testInfo) => {
 
 const browserTest = process.env.E2E_EXTENDED_WEBKIT_PERSISTENT === 'true' ? persistentWebkit : base
 
-/** Isolate background attestation on every page, except in real-provider projects. */
+/**
+ * Isolate background analytics config and attestation on every page, except attestation in real-provider
+ * projects. A standalone install has no app server, so it asks the production one for its analytics key.
+ */
 export const isolateProviderRequests = async (context: BrowserContext, projectName: string) => {
+  // WebKit reports the production server's CORS refusal as a pageerror even though the app catches it.
+  await context.route('https://api.thunderbolt.io/v1/posthog/config', (route) => route.fulfill({ json: {} }))
   if (projectName.startsWith('extended-real-')) {
     return
   }
   // WebKit reports native CORS failures as pageerrors even when prewarm catches them.
-  await context.route('https://atc.tinfoil.sh/attestation', (route) =>
+  await context.route(isTinfoilAttestationRequest, (route) =>
     route.fulfill({ status: 503, json: { error: 'Attestation is disabled in this test project' } }),
   )
 }

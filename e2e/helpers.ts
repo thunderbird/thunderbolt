@@ -137,17 +137,39 @@ const isBrowserNoise = (message: string) =>
   message.startsWith('ResizeObserver loop') || message.endsWith('due to access control checks.')
 
 /**
+ * WebKit rejects the outgoing document's in-flight `import()`s when a navigation replaces it, and an unguarded
+ * `React.lazy` reports that as uncaught. Only ignored mid-navigation, so a chunk that really fails still counts.
+ */
+const isNavigationAbortedImport = (message: string, isNavigating: boolean) =>
+  isNavigating && message === 'Importing a module script failed.'
+
+/**
  * Collect uncaught JS errors, filtering Tauri-specific and browser-raised noise.
  */
 export const collectPageErrors = (page: Page): string[] => {
   const errors: string[] = []
+  let isNavigating = false
+  page.on('request', (request) => {
+    if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
+      isNavigating = true
+    }
+  })
+  page.on('requestfailed', (request) => {
+    if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
+      isNavigating = false
+    }
+  })
+  page.on('domcontentloaded', () => {
+    isNavigating = false
+  })
   page.on('pageerror', (error) => {
     if (
       !error.message.includes('__TAURI__') &&
       !error.message.includes('tauri') &&
       !error.message.includes('window.__TAURI_INTERNALS__') &&
       !error.message.includes('convertFileSrc') &&
-      !isBrowserNoise(error.message)
+      !isBrowserNoise(error.message) &&
+      !isNavigationAbortedImport(error.message, isNavigating)
     ) {
       errors.push(error.message)
     }

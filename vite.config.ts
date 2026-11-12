@@ -13,7 +13,15 @@ import path from 'path'
 import { type Connect, defineConfig } from 'vite'
 import { analyzer } from 'vite-bundle-analyzer'
 import pkg from './package.json' with { type: 'json' }
+import { exaRelayPlugin, exaRelayProxies } from './scripts/exa-relay'
+import { tinfoilSearchRelayPlugin, tinfoilSearchProxy } from './scripts/tinfoil-search-relay'
 import { copyPowerSyncAssets } from './scripts/copy-powersync-assets'
+import {
+  addWebKitCompatToAsset,
+  webkitCompatAssetFileNames,
+  webkitCompatPlugin,
+  webkitCompatScript,
+} from './scripts/webkit-compat'
 const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url))
 
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
@@ -59,6 +67,10 @@ export default defineConfig({
   build: {
     sourcemap,
     rolldownOptions: {
+      input: {
+        app: path.resolve(dirname, 'index.html'),
+        recovery: path.resolve(dirname, 'webview-recovery.html'),
+      },
       external: ['bun:sqlite'],
       treeshake: {
         moduleSideEffects: [
@@ -74,13 +86,17 @@ export default defineConfig({
         ],
       },
       output: {
+        assetFileNames: webkitCompatAssetFileNames,
         // Distinct prefix for the entry chunk so size-limit can track the
         // FCP-blocking bytes separately from on-demand route chunks.
-        entryFileNames: 'assets/entry-[hash].js',
+        entryFileNames: (chunk) => (chunk.name === 'recovery' ? 'assets/recovery-[hash].js' : 'assets/entry-[hash].js'),
       },
     },
   },
   plugins: [
+    webkitCompatPlugin(),
+    tinfoilSearchRelayPlugin(),
+    exaRelayPlugin(),
     {
       name: 'copy-powersync-assets',
       // `vite preview` serves the built dist/, so it has no reason to touch public/.
@@ -91,6 +107,7 @@ export default defineConfig({
           path.resolve(__dirname, 'node_modules/@powersync/web/dist/worker'),
           path.join(publicDir, '@powersync'),
           cacheDir,
+          addWebKitCompatToAsset,
         )
       },
     },
@@ -212,7 +229,9 @@ export default defineConfig({
   // 1. prevent vite from obscuring rust errors
   clearScreen: false,
   // 2. tauri expects a fixed port, fail if that port is not available
+  preview: { proxy: { ...exaRelayProxies, '^/_tinfoil/search(?:\\?|$)': tinfoilSearchProxy } },
   server: {
+    proxy: { ...exaRelayProxies, '^/_tinfoil/search(?:\\?|$)': tinfoilSearchProxy },
     port: 1420,
     strictPort: true,
     // The public CI diagnostic uploads only fixed labels from its Playwright case.
@@ -248,6 +267,7 @@ export default defineConfig({
         path.resolve(__dirname, '.storybook'),
         // Vite's HTML middleware checks checkLoadingAccess() for index.html
         path.resolve(__dirname, 'index.html'),
+        path.resolve(__dirname, 'webview-recovery.html'),
       ],
     },
   },
@@ -256,6 +276,8 @@ export default defineConfig({
   },
   worker: {
     format: 'es',
+    // Workers have their own intrinsics; a page polyfill does not protect them.
+    rolldownOptions: { output: { banner: webkitCompatScript } },
   },
   test: {
     projects: [

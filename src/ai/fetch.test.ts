@@ -3,13 +3,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createWebToolBudget } from '@/ai/web-tool-budget'
-import { createModel as insertModel } from '@/dal/models'
+import { createModel as insertModel, updateModel } from '@/dal/models'
 import { updateSettings } from '@/dal/settings'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { createClient } from '@/lib/http'
 
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { getClock } from '@/testing-library'
 import { assembleBuiltInModelInput, createPrompt } from '@/ai/prompt'
 import { defaultSkillResearch, defaultSkillWeather } from '@/defaults/skills'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
@@ -194,7 +197,7 @@ describe('selectPromptSkillDefinitions', () => {
         currency: 'USD',
       },
       integrationStatus: 'READY',
-      hasWebTools: false,
+      availableToolNames: [],
       skills: selectPromptSkillDefinitions(storedSkills, supportsTools),
       supportsTools,
     })
@@ -366,7 +369,7 @@ describe('mergeMcpTools', () => {
     new TypeError('Failed to fetch'),
     new TypeError('Load failed'),
     new TypeError('NetworkError when attempting to fetch resource.'),
-  ])('skips discovery failure %p, preserves other tools, and recovers for the next send', async (error) => {
+  ])('recovers from discovery failure %p within the same send by reconnecting and retrying once', async (error) => {
     const dropped = named('render', async () => {
       throw error
     })
@@ -377,15 +380,182 @@ describe('mergeMcpTools', () => {
 
     const result = await mergeMcpTools({ app: builtIn }, [dropped, healthy], reconnect)
 
-    expect(result.toolset).toEqual({ app: builtIn, github_beta: tool('b') })
-    expect(result.summary).toBe('- github (1 tool)')
-    expect(Object.keys(result.mcpTools!)).toEqual(['github_beta'])
+    expect(result.toolset).toEqual({ app: builtIn, render_alpha: tool('fresh'), github_beta: tool('b') })
+    expect(result.summary).toBe('- render (1 tool)\n- github (1 tool)')
+    expect(Object.keys(result.mcpTools!)).toEqual(['render_alpha', 'github_beta'])
+    expect(result.mcpTools!.render_alpha).toEqual({
+      name: 'render',
+      url: 'https://render.example.com',
+      toolName: 'alpha',
+    })
     expect(reconnect).toHaveBeenCalledTimes(1)
     expect(reconnect).toHaveBeenCalledWith(dropped.client, error)
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('render'), error)
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('reconnecting and retrying once'), error)
+  })
 
-    const next = await mergeMcpTools({}, [fresh, healthy], reconnect)
-    expect(next.toolset).toEqual({ render_alpha: tool('fresh'), github_beta: tool('b') })
+  it('skips the server when discovery fails again on the fresh client', async () => {
+    const first = closedError()
+    const second = new StreamableHTTPError(503, 'Error POSTing to endpoint: still down')
+    const dropped = named('render', async () => {
+      throw first
+    })
+    const stillDown = named('render', async () => {
+      throw second
+    })
+    const healthy = named('github', async () => ({ beta: tool('b') }))
+    const reconnect = mock(async () => stillDown.client)
+
+    const result = await mergeMcpTools({ app: tool('app') }, [dropped, healthy], reconnect)
+
+    expect(result.toolset).toEqual({ app: tool('app'), github_beta: tool('b') })
+    expect(result.summary).toBe('- github (1 tool)')
+    expect(reconnect).toHaveBeenCalledTimes(1)
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('skipping its tools for this send'), second)
+  })
+
+  it('propagates a programming error thrown by the retried discovery', async () => {
+    const boom = new Error('boom — capability missing')
+    const dropped = named('render', async () => {
+      throw closedError()
+    })
+    const broken = named('render', async () => {
+      throw boom
+    })
+    const reconnect = mock(async () => broken.client)
+
+    await expect(mergeMcpTools({}, [dropped], reconnect)).rejects.toBe(boom)
+  })
+
+  it('skips the server when the reconnect exceeds the bound, leaving it to finish for the next send', async () => {
+    const error = closedError()
+    const dropped = named('render', async () => {
+      throw error
+    })
+    const healthy = named('github', async () => ({ beta: tool('b') }))
+    const slow = Promise.withResolvers<MCPClient | null>()
+    const reconnect = mock(() => slow.promise)
+
+    const merging = mergeMcpTools({}, [dropped, healthy], reconnect, { reconnectTimeoutMs: 20 })
+    await getClock().tickAsync(20)
+    const result = await merging
+
+    expect(result.toolset).toEqual({ github_beta: tool('b') })
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('"MCP connect and discovery for render" timed out after 20ms'),
+    )
+    // The reconnect is still running, so only the timeout is reported.
+    expect(console.warn).not.toHaveBeenCalledWith(expect.stringContaining('did not connect'))
+    slow.resolve(null)
+  })
+
+  it('waits on a server already mid-reconnect and merges the fresh client tools', async () => {
+    const fresh = named('render', async () => ({ alpha: tool('fresh') })).client
+    const reconnecting: NamedMCPClient = {
+      ...named('render', async () => ({})),
+      client: null,
+      connecting: Promise.resolve(fresh),
+    }
+    const reconnect = mock(async () => null)
+
+    const result = await mergeMcpTools({}, [reconnecting], reconnect)
+
+    expect(result.toolset).toEqual({ render_alpha: tool('fresh') })
+    expect(result.summary).toBe('- render (1 tool)')
+    expect(reconnect).not.toHaveBeenCalled()
+  })
+
+  it('skips a mid-reconnect server whose reconnect fails', async () => {
+    const reconnecting: NamedMCPClient = {
+      ...named('render', async () => ({})),
+      client: null,
+      connecting: Promise.resolve(null),
+    }
+    const healthy = named('github', async () => ({ beta: tool('b') }))
+
+    const result = await mergeMcpTools(
+      {},
+      [reconnecting, healthy],
+      mock(async () => null),
+    )
+
+    expect(result.toolset).toEqual({ github_beta: tool('b') })
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('render" did not connect'))
+    expect(console.warn).not.toHaveBeenCalledWith(expect.stringContaining('timed out'))
+  })
+
+  it('skips a mid-reconnect server whose reconnect outlasts the bound', async () => {
+    const slow = Promise.withResolvers<MCPClient | null>()
+    const reconnecting: NamedMCPClient = {
+      ...named('render', async () => ({})),
+      client: null,
+      connecting: slow.promise,
+    }
+
+    const merging = mergeMcpTools(
+      {},
+      [reconnecting],
+      mock(async () => null),
+      { reconnectTimeoutMs: 20 },
+    )
+    await getClock().tickAsync(20)
+
+    expect((await merging).toolset).toEqual({})
+    slow.resolve(null)
+  })
+
+  it('bounds the retried discovery together with the reconnect, skipping a server that never answers', async () => {
+    const dropped = named('render', async () => {
+      throw closedError()
+    })
+    const hung = named('render', () => new Promise<Record<string, Tool>>(() => {})).client
+    const healthy = named('github', async () => ({ beta: tool('b') }))
+
+    const merging = mergeMcpTools(
+      {},
+      [dropped, healthy],
+      mock(async () => hung),
+      { reconnectTimeoutMs: 20 },
+    )
+    await getClock().tickAsync(20)
+
+    expect(await Promise.race([merging, Promise.resolve('pending')])).toMatchObject({
+      toolset: { github_beta: tool('b') },
+    })
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('"MCP connect and discovery for render" timed out after 20ms'),
+    )
+  })
+
+  it('discovers servers in parallel, so the send waits for the slowest rather than the sum', async () => {
+    const slowTools = (tag: string) => () =>
+      new Promise<Record<string, Tool>>((resolve) => setTimeout(() => resolve({ alpha: tool(tag) }), 20))
+    const merging = mergeMcpTools(
+      {},
+      [named('render', slowTools('r')), named('github', slowTools('g'))],
+      mock(async () => null),
+    )
+
+    await getClock().tickAsync(20)
+
+    expect(await Promise.race([merging, Promise.resolve('pending')])).toMatchObject({
+      toolset: { render_alpha: tool('r'), github_alpha: tool('g') },
+    })
+  })
+
+  it('merges in server order even when a later server answers first', async () => {
+    const after = (ms: number, tag: string) => () =>
+      new Promise<Record<string, Tool>>((resolve) => setTimeout(() => resolve({ alpha: tool(tag) }), ms))
+    const merging = mergeMcpTools(
+      {},
+      [named('render', after(20, 'r')), named('github', after(5, 'g'))],
+      mock(async () => null),
+    )
+
+    await getClock().tickAsync(20)
+    const result = await merging
+
+    expect(result.summary).toBe('- render (1 tool)\n- github (1 tool)')
+    expect(Object.keys(result.mcpTools!)).toEqual(['render_alpha', 'github_alpha'])
   })
 
   it.each([
@@ -455,7 +625,7 @@ describe('mergeMcpTools', () => {
     const reconnect = mock(() => settledRecovery)
     try {
       await accepted.promise
-      const result = await mergeMcpTools(
+      const merging = mergeMcpTools(
         { app: tool('app') },
         [
           named('render', async () => {
@@ -464,7 +634,10 @@ describe('mergeMcpTools', () => {
           named('github', async () => ({ beta: tool('b') })),
         ],
         reconnect,
+        { reconnectTimeoutMs: 20 },
       )
+      await getClock().tickAsync(20)
+      const result = await merging
       expect(result.toolset).toEqual({ app: tool('app'), github_beta: tool('b') })
       expect(reconnect).toHaveBeenCalledTimes(1)
     } finally {
@@ -640,9 +813,11 @@ describe('resolveOpenAiCompatConnection (custom)', () => {
     'http://host.docker.internal:1234',
     'http://mymac.local:1234',
     'http://10.evil.com/v1', // attacker-crafted hostname that starts with a private range
-  ])('dispatches non-loopback URL %s through the proxy fetch', (url) => {
-    const conn = resolveOpenAiCompatConnection(customModel(url), () => stubProxyFetch)
-    expect(conn?.fetch).toBe(stubProxyFetch)
+  ])('dispatches non-loopback URL %s through the proxy fetch', async (url) => {
+    const proxy = capturingFetch()
+    const conn = resolveOpenAiCompatConnection(customModel(url), () => proxy.fn)
+    await conn!.fetch(url)
+    expect(proxy.received()?.input).toBe(url)
   })
 
   it('forwards the apiKey as-is (empty string when missing)', () => {
@@ -653,6 +828,95 @@ describe('resolveOpenAiCompatConnection (custom)', () => {
       resolveOpenAiCompatConnection(customModel('http://localhost:1234', 'sk-abc'), () => stubProxyFetch)?.apiKey,
     ).toBe('sk-abc')
   })
+})
+
+describe('resolveOpenAiCompatConnection (Otari)', () => {
+  afterEach(() => mock.restore())
+
+  it.each(['http://localhost:8099/api/v1', 'https://otari.example/api/v1'])(
+    'keeps %s direct and omits cookies, redirects, and Thunderbolt proxy credentials',
+    async (url) => {
+      const native = spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok'))
+      const proxy = mock(() => stubProxyFetch)
+      const connection = resolveOpenAiCompatConnection({ provider: 'otari', url, apiKey: 'delegated-key' }, proxy)!
+      expect(connection.baseURL).toBe(url)
+      expect(connection.apiKey).toBe('delegated-key')
+      await connection.fetch(`${url}/chat/completions`, {
+        headers: { Authorization: `Bearer ${connection.apiKey}` },
+        credentials: 'include',
+        redirect: 'follow',
+      })
+      expect(proxy).not.toHaveBeenCalled()
+      const request = new Request(...native.mock.calls[0])
+      expect(request.url).toBe(`${url}/chat/completions`)
+      expect(request.headers.get('Authorization')).toBe('Bearer delegated-key')
+      expect(request.credentials).toBe('omit')
+      expect(request.redirect).toBe('error')
+    },
+  )
+
+  it.each([
+    { url: null, apiKey: 'key' },
+    { url: 'https://otari.example/api/v1', apiKey: null },
+  ])('requires a server and delegated credential (%j)', (config) => {
+    expect(resolveOpenAiCompatConnection({ provider: 'otari', ...config }, () => stubProxyFetch)).toBeNull()
+  })
+})
+
+describe('provider connection transport', () => {
+  let originalSettings: ReturnType<typeof useLocalSettingsStore.getState>
+  beforeEach(() => {
+    originalSettings = useLocalSettingsStore.getState()
+    useLocalSettingsStore.setState({ cloudUrl: '', localMode: false })
+  })
+  afterEach(() => useLocalSettingsStore.setState(originalSettings))
+  it.each(['openai', 'openrouter', 'custom'] as const)(
+    'keeps a retained %s connection on the current server without forwarding new credentials to an old server',
+    async (provider) => {
+      const calls: Request[] = []
+      const fetchImpl = Object.assign(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          calls.push(new Request(input, init))
+          return new Response('ok')
+        },
+        { preconnect: fetch.preconnect },
+      )
+      const connectionState = { cloudUrl: '', token: '' }
+      const makeTransport = () =>
+        createProxyFetch({
+          cloudUrl: connectionState.cloudUrl,
+          getProxyAuthToken: () => connectionState.token,
+          isStandalone: () => false,
+          fetchImpl,
+        })
+      const transport = { current: makeTransport() }
+      const connection = resolveOpenAiCompatConnection(
+        { provider, apiKey: 'provider-key', url: 'https://custom.example/v1' },
+        () => transport.current,
+      )!
+      const target = `${connection.baseURL}/chat/completions`
+      const options = { method: 'POST', headers: { Authorization: 'Bearer provider-key' }, body: '{}' }
+      await connection.fetch(target, options)
+      for (const server of ['a', 'b']) {
+        connectionState.cloudUrl = `https://server-${server}.example/v1`
+        connectionState.token = `server-${server}-token`
+        useLocalSettingsStore.setState({ cloudUrl: connectionState.cloudUrl })
+        transport.current = makeTransport()
+        await connection.fetch(target, options)
+      }
+      expect(calls.map((request) => request.url)).toEqual([
+        target,
+        'https://server-a.example/v1/proxy',
+        'https://server-b.example/v1/proxy',
+      ])
+      expect(calls.map((request) => request.headers.get('authorization'))).toEqual([
+        'Bearer provider-key',
+        'Bearer server-a-token',
+        'Bearer server-b-token',
+      ])
+      expect(calls[2].headers.get('x-proxy-passthrough-authorization')).toBe('Bearer provider-key')
+    },
+  )
 })
 
 describe('createModel', () => {
@@ -807,9 +1071,122 @@ describe('withAppVersionHeader', () => {
   })
 })
 
+describe('prepareAiRequestConfig — web search availability', () => {
+  const modelId = 'search-availability-model'
+  const httpClient = createClient({
+    prefixUrl: 'https://backend.test',
+    fetch: async () => {
+      throw new Error('Request preparation must not execute a tool')
+    },
+  })
+  const unavailableSearch = 'Built-in web search is unavailable for this request.'
+  const availableSearch = 'Web lookups use the `search` and `fetch_content` tools'
+
+  beforeEach(async () => {
+    await setupTestDatabase()
+    setAuthToken('search-availability-session')
+    useSearchProviderStore.getState().clearSearchProvider()
+    await insertModel(getDb(), { id: modelId, provider: 'openai', model: 'gpt-test', name: 'Test', toolUsage: 1 })
+    await updateSettings(getDb(), { integrations_pro_is_enabled: false })
+  })
+
+  afterEach(async () => {
+    clearAuthToken()
+    useSearchProviderStore.getState().clearSearchProvider()
+    await teardownTestDatabase()
+  })
+
+  it('refreshes the prompt from exposed tools when search is enabled and disabled between sends', async () => {
+    const disabled = await prepareAiRequestConfig({ modelId, httpClient })
+    expect(disabled.toolset.search).toBeUndefined()
+    expect(disabled.toolset.fetch_content).toBeUndefined()
+    expect(disabled.stableSystemPrompt).toContain(unavailableSearch)
+    expect(disabled.stableSystemPrompt).not.toContain(availableSearch)
+
+    await updateSettings(getDb(), { integrations_pro_is_enabled: true })
+    const enabled = await prepareAiRequestConfig({ modelId, httpClient })
+    expect(enabled.toolset.search).toBeDefined()
+    expect(enabled.toolset.fetch_content).toBeDefined()
+    expect(enabled.stableSystemPrompt).toContain(availableSearch)
+    expect(enabled.stableSystemPrompt).not.toContain(unavailableSearch)
+    expect(enabled.stableSystemPrompt).not.toBe(disabled.stableSystemPrompt)
+
+    await updateSettings(getDb(), { integrations_pro_is_enabled: false })
+    const disabledAgain = await prepareAiRequestConfig({ modelId, httpClient })
+    expect(disabledAgain.toolset.search).toBeUndefined()
+    expect(disabledAgain.stableSystemPrompt).toBe(disabled.stableSystemPrompt)
+  })
+
+  it('reports unavailable search when model tool use is off despite enabled providers', async () => {
+    await updateSettings(getDb(), { integrations_pro_is_enabled: true })
+    await updateModel(getDb(), modelId, { toolUsage: 0 })
+    const discover = mock(async () => ({ web_search: tool('external-search') }))
+    const config = await prepareAiRequestConfig({ modelId, httpClient, mcpClients: [named('web', discover)] })
+
+    expect(config.supportsTools).toBe(false)
+    expect(config.toolset).toEqual({})
+    expect(discover).not.toHaveBeenCalled()
+    expect(config.stableSystemPrompt).toContain(unavailableSearch)
+    expect(config.stableSystemPrompt).not.toContain(availableSearch)
+  })
+
+  it.each([
+    ['web_search', 'Search the public web for current news and other information.'],
+    ['search', 'Search private project documents by title.'],
+  ])(
+    'preserves MCP %s and lets its advertised capability govern whether it can supply live information',
+    async (name, description) => {
+      const externalTool = { ...tool(name), description }
+      const config = await prepareAiRequestConfig({
+        modelId,
+        httpClient,
+        mcpClients: [named('external', async () => ({ [name]: externalTool }))],
+      })
+
+      expect(config.toolset[`external_${name}`]).toBe(externalTool)
+      expect(config.mcpToolsMetadata?.[`external_${name}`]?.toolName).toBe(name)
+      expect(config.stableSystemPrompt).toContain(unavailableSearch)
+      expect(config.stableSystemPrompt).toContain(
+        'only if its description explicitly supports public web search or retrieving the current information requested',
+      )
+      expect(config.stableSystemPrompt).toContain('If no available tool supports that lookup')
+      expect(config.stableSystemPrompt).not.toContain(availableSearch)
+    },
+  )
+
+  it('drops unavailable MCP tools from the next request and restores them after discovery recovers', async () => {
+    const externalTool = { ...tool('web-search'), description: 'Search the public web for current news.' }
+    const discover = mock(async () => ({ web_search: externalTool }))
+    const mcpClients = [named('external', discover)]
+    const reconnectClient = mock(async () => null)
+    /** Rebuild the effective capabilities for each send in the same conversation. */
+    const prepare = () => prepareAiRequestConfig({ modelId, httpClient, mcpClients, reconnectClient })
+    const connected = await prepare()
+    const error = closedError()
+    discover.mockRejectedValueOnce(error)
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const disconnected = await prepare()
+      expect(disconnected.toolset.external_web_search).toBeUndefined()
+      expect(disconnected.mcpToolsMetadata).toBeUndefined()
+      expect(disconnected.stableSystemPrompt).toContain(unavailableSearch)
+      expect(disconnected.stableSystemPrompt).not.toContain('## Connected MCP Servers')
+      expect(disconnected.stableSystemPrompt).not.toBe(connected.stableSystemPrompt)
+      expect(reconnectClient).toHaveBeenCalledWith(mcpClients[0]!.client, error)
+
+      const recovered = await prepare()
+      expect(recovered.toolset.external_web_search).toBe(externalTool)
+      expect(recovered.stableSystemPrompt).toBe(connected.stableSystemPrompt)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+})
+
 describe('logical-turn citation registry', () => {
   it('keeps cached source labels and metadata across rebuilt toolsets and starts fresh for a new turn', async () => {
     await setupTestDatabase()
+    setAuthToken('test-session')
     try {
       await insertModel(getDb(), {
         id: 'source-model',
@@ -866,6 +1243,7 @@ describe('logical-turn citation registry', () => {
       expect(freshResult).toMatchObject([{ sourceIndex: 1 }])
       expect(requests).toEqual(['one', 'two', 'one'])
     } finally {
+      clearAuthToken()
       await teardownTestDatabase()
     }
   })

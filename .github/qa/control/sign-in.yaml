@@ -1,8 +1,31 @@
 # Run by `verify.ts` before a native repro flow that waits for the first screen after sign-in without typing the
-# code (the model's iOS flows can skip typing it). verify.ts adds that wait: "Welcome to Thunderbolt!" on the
-# onboarding build, "Ask me anything…" on the plain one. Same steps as control/stack.yaml and the block in
-# drivers/maestro.md.
+# code. Native builds begin locally: onboarding accepts privacy before choosing Cloud; plain builds use Sign in
+# from the sidebar. The latter dismisses optional sync setup. Same commands as control/stack.yaml and maestro.md.
 - launchApp
+- extendedWaitUntil:
+    visible: Connect your AI|Welcome to Thunderbolt!
+    timeout: 120000
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      visible: I agree to the Privacy Policy.*
+    commands:
+      - tapOn: I agree to the Privacy Policy.*
+      - tapOn: Continue
+      - extendedWaitUntil:
+          visible: Choose your setup
+          timeout: 120000
+- runFlow:
+    when:
+      visible: Connect your AI
+    commands:
+      - tapOn: Toggle Sidebar
+      - tapOn: Sign in
+- extendedWaitUntil:
+    visible: Cloud \(Waitlist\)
+    timeout: 120000
+- tapOn: Cloud \(Waitlist\)
+- tapOn: Continue
 - extendedWaitUntil:
     visible: Want early access?
     timeout: 120000
@@ -22,3 +45,13 @@
     visible: Check your email
     timeout: 120000
 - inputText: '12345678'
+- extendedWaitUntil:
+    visible: Set up sync|Connect Google
+    timeout: 120000
+- runFlow:
+    when:
+      visible: Set up sync
+    commands:
+      - tapOn: Close
+      - tapOn:
+          point: 95%,50%

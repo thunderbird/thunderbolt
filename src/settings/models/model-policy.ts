@@ -3,6 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Model } from '@/types'
+import { getLocalSetting } from '@/stores/local-settings-store'
+import { usesLocalProviders } from '@/lib/provider-mode'
 
 export type ApiKeyEdit = { kind: 'keep' } | { kind: 'replace'; value: string } | { kind: 'clear' }
 
@@ -38,6 +40,10 @@ export const hasModelConnectionChanges = (model: Pick<Model, 'model' | 'url'>, d
  *  are server-authenticated and preconfigured, so there is nothing to verify. */
 export const providerRequiresConnectionTest = (provider: Model['provider']): boolean => provider !== 'thunderbolt'
 
+/** Providers that connect through a user-selected OpenAI-compatible endpoint. */
+export const providerRequiresUrl = (provider: Model['provider']): boolean =>
+  provider === 'custom' || provider === 'otari'
+
 /** Whether chatting through the provider needs a user-supplied API key.
  *  Thunderbolt is server-authenticated; custom (OpenAI-compatible) endpoints
  *  treat the key as optional. */
@@ -49,15 +55,37 @@ export const providerRequiresApiKey = (provider: Model['provider']): boolean =>
  * System Tinfoil rows are server-authenticated (the key is injected by the
  * backend proxy), so they never flag as missing.
  */
-export const needsApiKey = (model: Pick<Model, 'provider' | 'isSystem' | 'apiKey'>): boolean => {
+export const needsApiKey = (model: Pick<Model, 'provider' | 'isSystem' | 'apiKey' | 'oauthProvider'>): boolean => {
   if (!providerRequiresApiKey(model.provider)) {
     return false
   }
-  if (model.provider === 'tinfoil' && model.isSystem === 1) {
+  if (model.provider === 'tinfoil' && (model.isSystem === 1 || model.oauthProvider === 'tinfoil')) {
     return false
   }
   return !model.apiKey
 }
+
+/** Managed models rely on the connected server for routing and provider credentials. */
+export const modelRequiresServer = (model: Pick<Model, 'provider' | 'isSystem'>): boolean =>
+  model.provider === 'thunderbolt' || (model.provider === 'tinfoil' && model.isSystem === 1)
+
+/** Whether this device can run a configured model with its current server connection. */
+export const isModelAvailable = (
+  model: Pick<Model, 'provider' | 'isSystem'>,
+  cloudUrl = getLocalSetting('cloudUrl'),
+): boolean => !modelRequiresServer(model) || !usesLocalProviders(cloudUrl)
+
+/** Whether a model has the local configuration needed to run on this device. */
+export const isModelReady = (model: Model, cloudUrl = getLocalSetting('cloudUrl')): boolean =>
+  (!model.providerConnectionId || model.connectionReady === true) &&
+  model.enabled === 1 &&
+  !model.deletedAt &&
+  isModelAvailable(model, cloudUrl) &&
+  !needsApiKey(model) &&
+  (!providerRequiresUrl(model.provider) || Boolean(model.url?.trim()))
+
+/** A model that can finish standalone onboarding without relying on server credentials. */
+export const isStandaloneModelReady = (model: Model): boolean => isModelReady(model, '')
 
 /**
  * Whether a model may run in a thread. A thread is locked to models whose
@@ -77,7 +105,7 @@ export const matchesThreadConfidentiality = (
  * catalog loads without one.
  */
 export const catalogRequiresApiKey = (provider: Model['provider']): boolean =>
-  provider === 'openai' || provider === 'openrouter' || provider === 'anthropic'
+  provider === 'openai' || provider === 'openrouter' || provider === 'anthropic' || provider === 'otari'
 
 /** Providers whose catalog loads without credentials, so forms fetch it eagerly. */
 export const providerAutoFetchesCatalog = (provider: Model['provider']): boolean =>

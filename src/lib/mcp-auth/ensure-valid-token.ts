@@ -7,11 +7,15 @@ import { OAuthError } from '@modelcontextprotocol/sdk/server/auth/errors.js'
 import type { AuthorizationServerMetadata } from '@modelcontextprotocol/sdk/shared/auth.js'
 import { resourceUrlFromServerUrl } from '@modelcontextprotocol/sdk/shared/auth-utils.js'
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
-import { eq } from 'drizzle-orm'
-import { getMcpServerCredentials, setMcpServerCredentials } from '@/dal/mcp-secrets'
+import {
+  getMcpServerCredentialSnapshotFor,
+  updateMcpServerCredentialsIfCurrent,
+  type McpServerCredentials,
+} from '@/dal/mcp-secrets'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
-import { mcpServersTable } from '@/db/tables'
 import { isTokenFresh } from '@/integrations/oauth-credentials'
+import { credentialDestination } from '@/lib/credential-destination'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
 
 /**
  * Thrown when an MCP OAuth token can no longer be refreshed (refresh token
@@ -51,12 +55,17 @@ const buildMetadata = (issuer: string, tokenEndpoint: string): AuthorizationServ
 type RefreshFn = typeof sdkRefreshAuthorization
 
 /**
- * In-flight refreshes keyed by serverId so concurrent callers coalesce onto a
- * single refresh instead of each presenting the same rotating refresh token.
- * In-process only (one entry per tab); `mcp_secrets` is local-only, so a
- * cross-tab race at worst writes the same fresh token twice — harmless.
+ * In-flight refreshes keyed by server id and destination, so concurrent callers
+ * for one credential coalesce onto a single refresh instead of each presenting
+ * the same rotating refresh token, and a caller for another URL never receives
+ * a token refreshed for the old one. Entries belong to one database and identity;
+ * the credential compare-and-swap below also rejects results superseded by
+ * another authorization.
  */
-const tokenRefreshInFlight = new Map<string, Promise<string>>()
+const tokenRefreshInFlight = new Map<
+  string,
+  { db: AnyDrizzleDatabase; signal: AbortSignal; promise: Promise<string> }
+>()
 
 /**
  * Returns a valid MCP OAuth access token for the server, refreshing proactively
@@ -72,38 +81,51 @@ const tokenRefreshInFlight = new Map<string, Promise<string>>()
  * trigger a refresh on every subsequent connect). The RFC 8707 `resource` (the
  * canonical MCP server URL) is sent on the refresh request. A rejected refresh
  * token or client (`credentialRejectedCodes`) surfaces as `McpOAuthNeedsReauthError`
- * so the UI can prompt a clean re-authorization. `refreshAuthorization` is injectable
+ * so the UI can prompt a clean re-authorization. Only a credential saved for `url`
+ * is used, and `url` is the RFC 8707 resource. `refreshAuthorization` is injectable
  * for tests.
  */
 export const ensureValidMcpOAuthToken = (
   db: AnyDrizzleDatabase,
   serverId: string,
+  url: string,
   fetchFn: FetchLike,
   refreshAuthorization: RefreshFn = sdkRefreshAuthorization,
 ): Promise<string> => {
-  const inFlight = tokenRefreshInFlight.get(serverId)
-  if (inFlight) {
-    return inFlight
+  const signal = getIdentitySignal()
+  const key = `${serverId} ${credentialDestination(url) ?? url}`
+  const inFlight = tokenRefreshInFlight.get(key)
+  if (inFlight?.signal === signal && inFlight.db === db) {
+    return inFlight.promise
   }
   // Evict on settle so the next call re-reads credentials and a failed refresh
   // is retried rather than replaying a poisoned promise.
-  const promise = resolveValidMcpOAuthToken(db, serverId, fetchFn, refreshAuthorization).finally(() => {
-    if (tokenRefreshInFlight.get(serverId) === promise) {
-      tokenRefreshInFlight.delete(serverId)
-    }
-  })
-  tokenRefreshInFlight.set(serverId, promise)
+  const promise = navigator.locks
+    .request(`mcp-oauth:${serverId}`, { signal }, () =>
+      resolveValidMcpOAuthToken(db, serverId, url, fetchFn, refreshAuthorization, signal),
+    )
+    .finally(() => {
+      if (tokenRefreshInFlight.get(key)?.promise === promise) {
+        tokenRefreshInFlight.delete(key)
+      }
+    })
+  tokenRefreshInFlight.set(key, { db, signal, promise })
   return promise
 }
 
 const resolveValidMcpOAuthToken = async (
   db: AnyDrizzleDatabase,
   serverId: string,
+  url: string,
   fetchFn: FetchLike,
   refreshAuthorization: RefreshFn,
+  signal: AbortSignal,
 ): Promise<string> => {
-  const cred = await getMcpServerCredentials(db, serverId)
-  if (cred?.type !== 'oauth') {
+  signal.throwIfAborted()
+  const snapshot = await getMcpServerCredentialSnapshotFor(db, serverId, url)
+  signal.throwIfAborted()
+  const cred = snapshot?.credentials
+  if (!snapshot || cred?.type !== 'oauth') {
     throw new Error(`MCP server ${serverId} has no OAuth credentials`)
   }
 
@@ -117,8 +139,7 @@ const resolveValidMcpOAuthToken = async (
     throw new McpOAuthNeedsReauthError(serverId)
   }
 
-  const server = await db.select().from(mcpServersTable).where(eq(mcpServersTable.id, serverId)).get()
-  const resource = server?.url ? resourceUrlFromServerUrl(server.url) : undefined
+  const resource = resourceUrlFromServerUrl(url)
 
   const tokens = await (async () => {
     try {
@@ -127,9 +148,17 @@ const resolveValidMcpOAuthToken = async (
         clientInformation: { client_id: clientId },
         refreshToken,
         resource,
-        fetchFn,
+        fetchFn: (input, init) => {
+          signal.throwIfAborted()
+          const requestSignal = init?.signal ?? (input instanceof Request ? input.signal : undefined)
+          return fetchFn(input, {
+            ...init,
+            signal: AbortSignal.any([signal, ...(requestSignal ? [requestSignal] : [])]),
+          })
+        },
       })
     } catch (err) {
+      signal.throwIfAborted()
       if (err instanceof OAuthError && credentialRejectedCodes.has(err.errorCode)) {
         throw new McpOAuthNeedsReauthError(serverId, err)
       }
@@ -137,13 +166,21 @@ const resolveValidMcpOAuthToken = async (
     }
   })()
 
-  await setMcpServerCredentials(db, serverId, {
+  const credentials: McpServerCredentials = {
     ...cred,
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token ?? cred.refresh_token,
     expires_at: tokens.expires_in !== undefined ? Date.now() + tokens.expires_in * 1000 : undefined,
     scope: tokens.scope ?? cred.scope,
+  }
+  // Only the credential that was refreshed, on the URL it was refreshed for, is replaced: a
+  // re-authorization that landed meanwhile (maybe for another URL) must not be overwritten.
+  await updateMcpServerCredentialsIfCurrent(db, serverId, credentials, {
+    expectedCredentials: snapshot.serialized,
+    expectedUrl: url,
+    signal,
   })
 
+  signal.throwIfAborted()
   return tokens.access_token
 }

@@ -45,7 +45,13 @@ describe('usePasskeySectionState', () => {
 
   it('offers Add when the account has none', () => {
     const { result } = renderSection({})
-    expect(result.current.row).toEqual({ kind: 'add' })
+    expect(result.current.row).toEqual({ kind: 'add', blocked: false })
+  })
+
+  it('blocks Add on a device whose account key is unverified', () => {
+    spyOn(e2eeReadyModule, 'useDeviceKeyTrust').mockReturnValue({ ready: true, unverified: true })
+    const { result } = renderSection({})
+    expect(result.current.row).toEqual({ kind: 'add', blocked: true })
   })
 
   it('shows nothing while unavailable, loading, or after a failed lookup', () => {

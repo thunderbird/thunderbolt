@@ -127,13 +127,13 @@ describe('catalog errors and automatic fetching', () => {
         first = result.current.fetchCatalog(request)
       })
       await act(() => result.current.fetchCatalog(request))
-      expect(result.current.error).toContain('current failure')
+      expect(result.current.error).toBe('Failed to load models')
       expect(result.current.isLoading).toBe(false)
       await act(async () => {
         old.reject(new Error('stale failure'))
         await first
       })
-      expect(result.current.error).toContain('current failure')
+      expect(result.current.error).toBe('Failed to load models')
       expect(log).toHaveBeenCalledTimes(1)
       await act(() => result.current.fetchCatalog(request))
       expect(result.current.error).toBeNull()

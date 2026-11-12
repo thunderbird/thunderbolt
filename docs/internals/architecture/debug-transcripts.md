@@ -117,10 +117,10 @@ a reload, another device, before the config flag hydrated).
 tree before upload, and the free-text note separately
 ([`api.ts`](../../../src/debug-transcript/api.ts)).
 
-| Axis                     | Matches                                                                                                                                                                                                           |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Object key**           | Keys that normalize (case-folded, `-_ ` stripped) to something ending in `token`, or containing `apikey`, `authorization`, `cookie`, `secret`, `password`, `passphrase`, `privatekey`, `credential`, `pwd`        |
-| **Pattern in free text** | JWTs, `Bearer` headers, `sk-`/`sk-ant-`/`sk-proj-` keys, `ghp_`/`github_pat_`, `glpat-`, `xoxb-`, `AKIA`, `AIza`, `hf_`, `pplx-`, `npm_`, credential-bearing URL query parameters, `scheme://user:pass@` userinfo |
+| Axis                     | Matches                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Object key**           | Keys that normalize (case-folded, `-_ ` stripped) to something ending in `token`, or containing `apikey`, `authorization`, `cookie`, `secret`, `password`, `passphrase`, `privatekey`, `credential`, `pwd`                                                                                                                                                                                                |
+| **Pattern in free text** | JWTs, `Bearer` headers, `sk-`/`sk-ant-`/`sk-proj-` keys, `ghp_`/`github_pat_`, `glpat-`, `xoxb-`, `AKIA`, `AIza`, `hf_`, `pplx-`, `npm_`, credential-bearing URL query parameters, `scheme://user:pass@` userinfo, PEM private-key blocks (including an unterminated block through the end of the string), labeled AWS secret-access-key and OAuth client-secret assignments in text or JSON-like strings |
 
 Pagination cursors also end in "token"; redacting them is the deliberate trade.
 
@@ -237,6 +237,11 @@ and sends the header like any `HttpClient` call. See "App version gate" in
   `chat-instance.ts` imports it directly to stamp correlation metadata.
 - **Consent.** The dialog names who can read the transcript, what it contains and
   that the team retains it; an explicit consent checkbox gates submit.
+- **Preview.** Opening the dialog captures a sanitized, size-trimmed snapshot.
+  The read-only preview shows the request body, including the sanitized note as
+  it is edited. Send and retry use that snapshot; closing discards it. Users
+  should review the content because format-based redaction can miss sensitive
+  information.
 - **State.** `useShareDebugTranscriptState` owns the flow in one reducer plus a
   `useTransition`, aborting any in-flight upload when the dialog closes. Upload
   timeout 30 s.

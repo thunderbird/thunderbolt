@@ -49,7 +49,7 @@ Rows are whatever Drizzle's `select()` returns: no renaming, no nesting. JSON-mo
 
 ## Scoping (why there's no per-user filter)
 
-The local SQLite file is already single-user: PowerSync syncs down only rows the JWT allows, anonymous and standalone DBs never see anyone else's data, and sign-out wipes the file. The exporter selects rows verbatim, with no `userId` predicate and no joins. The envelope's `user` field is informational.
+The local SQLite file is already single-user: PowerSync syncs down only rows the JWT allows, anonymous and standalone DBs never see anyone else's data, and sign-out wipes the file. The exporter selects user rows without a `userId` predicate. Provider credentials are filtered to API-key connections with a matching local binding; OAuth tokens are never exported. The envelope's `user` field is informational.
 
 ## How the included table list is derived
 
@@ -59,7 +59,7 @@ The exporter walks the same name → Drizzle table map PowerSync uses (`syncedTa
 
 **Synced (PowerSync) tables.** Soft-deleted rows are included; the importer decides how to restore them.
 
-- `settings`, `chat_threads`, `chat_messages`, `tasks`, `models`, `model_profiles`, `prompts`, `skills`, `triggers`, `agents`, `projects`.
+- `settings`, `chat_threads`, `chat_messages`, `tasks`, `models`, `model_profiles`, `prompts`, `skills`, `triggers`, `agents`, `projects`, `provider_connections`.
 
 **Local-only tables.** User-typed credentials and config that don't sync.
 
@@ -87,6 +87,7 @@ Encrypted synced columns arrive in local SQLite **already decrypted** by the syn
 - **Cross-device propagation (synced tables only).** Rows are queued in PowerSync's CRUD log and fanned out to every other signed-in device, so restoring an old backup overwrites newer rows everywhere they share an ID. **Local-only tables stay local**: `models_secrets`, `mcp_secrets`, and `agents_secrets` never upload, so a different device gets the configs that need keys but not the keys. The confirm dialog states the overwrite and the fan-out.
 - **`userId` re-stamped from the session.** On synced tables the row's `userId` is overwritten with the signed-in user's id; the file's value is never trusted. Local-only secret tables have no `user_id` column. The backend's upload route enforces the same invariant from the JWT (`backend/src/dal/powersync.ts`).
 - **Soft-deleted rows preserved.** `deletedAt` rides through verbatim.
+- **Credentials keep their destination.** Each model key and MCP credential is bound to the endpoint it was saved for (`models_secrets.provider`/`url`, `approvedUrl` in the `mcp_secrets` blob), and reads return it only while the parent row still points there. A file that gives an existing model or server a new URL but omits its secret therefore leaves the local credential unused. A secret row in the file replaces the local row outright rather than merging into it, so a partial row can't keep a local key under a destination the file picked. Secret rows from an older backup are bound to the URL their parent has after the restore, and a file that only re-spells a URL keeps the local key.
 - **Atomic.** One `db.transaction`; any row-level failure rolls back every preceding write.
 - **Forward-compatible at the table level only.** Unrecognized table keys land in `ignoredTableNames` and are skipped. Columns are **not**: Drizzle builds the SQL column list from each row's keys, so an unknown column raises `no column named …` and rolls back. Future schemaVersions adding columns must bump the version (v1 then rejects the file outright) or strip unknown keys.
 - **No cross-table consistency check.** The synced schema has no real FK constraints (per `multi-device-sync.md`), so there is no insertion order: a `chat_messages` row referencing a missing `chat_threads.id` is inserted as an orphan.
@@ -109,3 +110,7 @@ Once every user-content table carries a `workspaceId`, workspace handling stays 
 - **In-memory payload.** The whole export is built in memory before download; heavy users (~tens of thousands of messages) see slower exports. A streaming variant is a follow-up if files cross ~100 MB in practice.
 - **Plaintext at rest.** No encryption-at-rest on the file; users should treat it like their account password.
 - **No backup of E2E key material.** The Content Key lives in the device's keyring (see [`e2e-encryption.md`](e2e-encryption.md)). Importing on a different device requires the standard device-approval flow.
+
+### Provider connections
+
+`provider_connections` includes metadata for every connection. `provider_connection_secrets` exports only the user-entered `apiKey` and its routing binding for API-key connections. OAuth access/refresh tokens and authorization generations are excluded. Import restores provider metadata before validating API-key bindings, generates a fresh local credential generation, and ignores OAuth secret rows even when a file supplies them. OAuth connections must be signed in again on the importing device.

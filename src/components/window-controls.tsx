@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useLingui } from '@lingui/react/macro'
 import { isFramelessControlsPlatform } from '@/lib/platform'
 import { Maximize2, Minus, X } from 'lucide-react'
@@ -33,17 +34,14 @@ export const WindowControls = () => {
   }
 
   const handleMinimize = async () => {
-    const { getCurrentWindow } = await import('@tauri-apps/api/window')
     await getCurrentWindow().minimize()
   }
 
   const handleMaximize = async () => {
-    const { getCurrentWindow } = await import('@tauri-apps/api/window')
     await getCurrentWindow().toggleMaximize()
   }
 
   const handleClose = async () => {
-    const { getCurrentWindow } = await import('@tauri-apps/api/window')
     await getCurrentWindow().close()
   }
 

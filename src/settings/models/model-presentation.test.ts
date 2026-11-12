@@ -11,6 +11,9 @@ describe('provider labels', () => {
     expect(getProviderLabel(i18n, 'thunderbolt', 'Acme AI')).toBe('Acme AI')
     expect(getProviderLabel(i18n, 'custom', 'Acme AI')).toBe('Custom')
     expect(getProviderLabel(i18n, 'openai', 'Acme AI')).toBe('OpenAI')
+    expect(getProviderLabel(i18n, 'otari', 'Acme AI')).toBe('Otari')
+    expect(getProviderDisplay(i18n, { provider: 'otari', isSystem: 0 }, 'Acme AI')).toBe('Otari')
+    expect(getProviderDisplay(i18n, { provider: 'openrouter', isSystem: 0 }, 'Acme AI')).toBe('OpenRouter')
   })
 
   it('treats system Tinfoil as a managed model, and user Tinfoil as Tinfoil', () => {
@@ -19,6 +22,24 @@ describe('provider labels', () => {
   })
 
   it('lists every provider in picker order, managed first', () => {
-    expect(providerPickerOrder).toEqual(['thunderbolt', 'tinfoil', 'openai', 'openrouter', 'anthropic', 'custom'])
+    expect(providerPickerOrder).toEqual([
+      'thunderbolt',
+      'tinfoil',
+      'otari',
+      'openai',
+      'openrouter',
+      'anthropic',
+      'custom',
+    ])
+  })
+
+  it('includes the named account without repeating an identical provider name', () => {
+    expect(getProviderDisplay(i18n, { provider: 'openai', isSystem: 0, connectionName: 'Work' }, 'App')).toBe(
+      'OpenAI · Work',
+    )
+    expect(getProviderDisplay(i18n, { provider: 'otari', isSystem: 0, connectionName: 'Otari' }, 'App')).toBe('Otari')
+    expect(
+      getProviderDisplay(i18n, { provider: 'tinfoil', isSystem: 1, connectionName: 'Hidden transport' }, 'App'),
+    ).toBe('App')
   })
 })

@@ -7,6 +7,8 @@ import { automationsToSkills } from './automations-to-skills'
 import { reencryptAgents } from './reencrypt-agents'
 import { restampSkillDefaultHashes } from './restamp-skill-default-hashes'
 import { restampWidgetSkillDefaultHashes } from './restamp-widget-skill-default-hashes'
+import { migrateProviderConnections } from './provider-connections'
+import { migrateSearchProviderConnections } from './search-provider-connections'
 
 /**
  * Runtime data migrations.
@@ -45,6 +47,8 @@ const migrations: readonly DataMigration[] = [
   restampSkillDefaultHashes,
   restampWidgetSkillDefaultHashes,
   reencryptAgents,
+  { id: 'provider-connections', run: migrateProviderConnections },
+  { id: 'search-provider-connections', run: migrateSearchProviderConnections },
 ] as const
 
 /**
@@ -56,8 +60,9 @@ export const runDataMigrations = async (db: AnyDrizzleDatabase): Promise<void> =
   for (const migration of migrations) {
     try {
       await migration.run(db)
-    } catch (error) {
-      console.error(`Data migration "${migration.id}" failed:`, error)
+    } catch {
+      // Database errors can contain bound user content or credentials.
+      console.error(`Data migration "${migration.id}" failed and will retry on the next launch.`)
     }
   }
 }

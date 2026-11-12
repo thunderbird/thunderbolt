@@ -47,13 +47,13 @@ const requestWithIp = (ip: string) => new Request('http://localhost/v1/test', { 
 describe('Rate Limiting', () => {
   let database: typeof DbType
 
-  // RateLimiterDrizzle issues its own `client.transaction()` calls, which open a
-  // nested raw BEGIN on the connection. On the shared `createTestDb` singleton
-  // (which is mid-BEGIN/ROLLBACK and serializes every test file through one WASM
-  // mutex) that breaks transaction isolation and, under CI CPU starvation, stalls
-  // the setup hook on the shared lock. Reuse the suite-wide isolated connection:
-  // creating a fresh PGlite for every `--rerun-each` pass accumulates WASM runtimes
-  // until initialization stalls. Each test still clears the table in beforeEach.
+  // RateLimiterDrizzle opens its own transactions. On the shared `createTestDb`
+  // singleton they would run as savepoints of the test's transaction, behind the
+  // one WASM mutex that every test file shares. This suite therefore uses the
+  // suite-wide isolated connection. It does not open a connection of its own,
+  // because a fresh PGlite for every `--rerun-each` pass accumulates WASM
+  // runtimes until initialization stalls. Each test still clears the table in
+  // beforeEach.
   beforeAll(async () => {
     const isolatedDb = await getSharedIsolatedTestDb()
     database = isolatedDb.db
@@ -64,6 +64,19 @@ describe('Rate Limiting', () => {
   })
 
   const enabledSettings: RateLimitSettings = { enabled: true }
+
+  it('limits public integration OAuth to 30 requests per minute, independently of app sessions', async () => {
+    const app = new Elysia()
+      .use(createIpTierRateLimit(database, { enabled: true, trustedProxy: 'cloudflare' }, 'integration-oauth'))
+      .get('/v1/test', () => ({ ok: true }))
+    for (let count = 0; count < 30; count++) {
+      expect((await app.handle(requestWithIp('203.0.113.10'))).status).toBe(200)
+    }
+    const limited = await app.handle(requestWithIp('203.0.113.10'))
+    expect(limited.status).toBe(429)
+    expect(limited.headers.get('Retry-After')).toBeTruthy()
+    expect((await app.handle(requestWithIp('203.0.113.11'))).status).toBe(200)
+  })
 
   it('keeps the contact limit on its nested route without limiting sibling endpoints', async () => {
     const send = mock(async (_params: SendEmailParams) => ({ id: 'accepted' }))

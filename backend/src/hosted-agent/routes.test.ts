@@ -7,9 +7,11 @@ import type { Settings } from '@/config/settings'
 import { user } from '@/db/auth-schema'
 import { inferencePrices, inferenceUsage } from '@/db/inference-usage-schema'
 import {
+  calculateMaxInferenceCost,
   recordInferenceUsage,
   type checkManagedInferenceAdmission,
-  type InferenceDatabase,
+  type releaseInferenceHold,
+  type InferenceLedgerDatabase,
   type InferencePrice,
 } from '@/inference/usage-ledger'
 import { createTestDb } from '@/test-utils/db'
@@ -26,7 +28,8 @@ import { afterEach, beforeEach, describe, expect, it, mock, setSystemTime } from
 import { eq, sql } from 'drizzle-orm'
 import { Elysia } from 'elysia'
 import { maxAgentInstructionsLength } from './history'
-import type { AgentMcpClients, AgentMcpToolsResult } from './mcp'
+import { maxToolCallsPerReply } from './limits'
+import { maxToolResultChars, type AgentMcpClients, type AgentMcpToolsResult } from './mcp'
 import {
   agentMaxOutputTokens,
   agentUpstreamTimeoutMs,
@@ -47,7 +50,7 @@ const price: InferencePrice = {
   outputNanoUsdPerToken: 2n,
 }
 const allowed: CheckAdmission = async () => ({ outcome: 'allowed', price })
-const fakeDatabase = {} as InferenceDatabase
+const fakeDatabase = {} as InferenceLedgerDatabase
 const defaultUsage = {
   inputTokens: { total: 12, noCache: 12, cacheRead: 0, cacheWrite: 0 },
   outputTokens: { total: 3, text: 3, reasoning: undefined },
@@ -232,6 +235,7 @@ describe('createHostedAgentRoutes', () => {
   let model: MockLanguageModelV3
   let checkAdmission: ReturnType<typeof mock<CheckAdmission>>
   let recordUsage: ReturnType<typeof mock<typeof recordInferenceUsage>>
+  let releaseHold: ReturnType<typeof mock<typeof releaseInferenceHold>>
   let logger: { error: ReturnType<typeof mock>; info: ReturnType<typeof mock> }
 
   const createMockedApp = ({
@@ -239,12 +243,13 @@ describe('createHostedAgentRoutes', () => {
     settings = {},
     ...overrides
   }: { auth?: Auth; settings?: Partial<Settings>; model?: MockLanguageModelV3; mcpClients?: AgentMcpClients } = {}) =>
-    createApp({ auth, settings, model, checkAdmission, recordUsage, logger, ...overrides })
+    createApp({ auth, settings, model, checkAdmission, recordUsage, releaseHold, logger, ...overrides })
 
   beforeEach(() => {
     model = createModel()
     checkAdmission = mock(allowed)
     recordUsage = mock(async () => 'inserted' as const)
+    releaseHold = mock(async () => {})
     logger = { error: mock(), info: mock() }
   })
 
@@ -537,6 +542,15 @@ describe('createHostedAgentRoutes', () => {
     expect(model.doStreamCalls).toHaveLength(0)
   })
 
+  it('answers a run that does not fit beside one still running as a run in progress, which the app waits out', async () => {
+    checkAdmission.mockImplementation(async () => ({ outcome: 'request-in-progress' }))
+    const app = createMockedApp()
+    const response = await postChat(app)
+    expect(response.status).toBe(429)
+    expect(await response.json()).toEqual({ error: { code: 'AGENT_RUN_IN_PROGRESS' } })
+    expect(model.doStreamCalls).toHaveLength(0)
+  })
+
   it('returns 503 when the model has no price', async () => {
     checkAdmission.mockImplementation(async () => ({ outcome: 'price-unavailable' }))
     const app = createMockedApp()
@@ -592,6 +606,22 @@ describe('createHostedAgentRoutes', () => {
       expect.objectContaining({ event: 'agent_usage_estimated' }),
       expect.anything(),
     )
+  })
+
+  it('holds the most a run can cost under the event ID its usage settles', async () => {
+    await (await postChat(createMockedApp())).text()
+    await settleRun()
+
+    const hold = checkAdmission.mock.calls[0][4]
+    expect(recordUsage.mock.calls[0][1].id).toBe(hold.id)
+    const steps = createTestSettings().agentMaxSteps
+    const toolAndOutputCost = calculateMaxInferenceCost(
+      price,
+      steps * (maxToolCallsPerReply * maxToolResultChars + steps * agentMaxOutputTokens),
+      steps * agentMaxOutputTokens,
+    )
+    expect(hold.maxCostNanoUsd(price)).toBeGreaterThan(toolAndOutputCost)
+    expect(releaseHold).not.toHaveBeenCalled()
   })
 
   describe('service tier pricing', () => {
@@ -848,6 +878,8 @@ describe('createHostedAgentRoutes', () => {
       expect(recordUsage.mock.calls[0][1]).toEqual(
         expect.objectContaining({ counts: expect.objectContaining({ promptTokens: 12, completionTokens: 3 }) }),
       )
+      // A step finished, so the provider ran part of the run. Its usage settles the hold, and release is never called.
+      expect(releaseHold).not.toHaveBeenCalled()
     })
 
     it('loads the tools after admission, so a refused request never reaches a server', async () => {
@@ -898,6 +930,7 @@ describe('createHostedAgentRoutes', () => {
       expect((await response).status).toBe(499)
       expect(model.doStreamCalls).toHaveLength(0)
       expect(recordUsage).not.toHaveBeenCalled()
+      expect(releaseHold.mock.calls.map(([, id]) => id)).toEqual([checkAdmission.mock.calls[0][4].id])
       expect((await postChat(app)).status).toBe(200)
     })
 
@@ -914,6 +947,8 @@ describe('createHostedAgentRoutes', () => {
       }
       const app = createMockedApp({ mcpClients })
       expect((await postChat(app)).status).toBe(500)
+      // Nothing reached the provider, so the failed request's hold is released.
+      expect(releaseHold.mock.calls.map(([, id]) => id)).toEqual([checkAdmission.mock.calls[0][4].id])
       const retry = await postChat(app)
       expect(retry.status).toBe(200)
       await retry.text()
@@ -934,8 +969,42 @@ describe('createHostedAgentRoutes', () => {
       expect(second.status).toBe(429)
       expect(await second.json()).toEqual({ error: { code: 'AGENT_RUN_IN_PROGRESS' } })
       expect(loadTools).toHaveBeenCalledTimes(1)
+      // The second request was refused before admission, so it never took a hold.
+      expect(checkAdmission).toHaveBeenCalledTimes(1)
       loadGate.resolve()
       expect((await first).status).toBe(200)
+      await settleRun()
+    })
+
+    it('releases the hold of a second request admitted alongside the first, then refuses it', async () => {
+      const admissionGate = Promise.withResolvers<void>()
+      const bothAdmitting = Promise.withResolvers<void>()
+      const loadGate = Promise.withResolvers<void>()
+      checkAdmission.mockImplementation(async (...args) => {
+        if (checkAdmission.mock.calls.length === 2) {
+          bothAdmitting.resolve()
+        }
+        await admissionGate.promise
+        return allowed(...args)
+      })
+      const loadTools = mock(async () => {
+        await loadGate.promise
+        return toolsResult()
+      })
+      const app = createMockedApp({ mcpClients: { loadTools } })
+
+      const first = postChat(app)
+      const second = postChat(app)
+      await bothAdmitting.promise
+      admissionGate.resolve()
+
+      const refused = await second
+      expect(refused.status).toBe(429)
+      expect(await refused.json()).toEqual({ error: { code: 'AGENT_RUN_IN_PROGRESS' } })
+      expect(releaseHold).toHaveBeenCalledTimes(1)
+      expect(releaseHold.mock.calls[0][1]).toBe(checkAdmission.mock.calls[1][4].id)
+      loadGate.resolve()
+      await (await first).text()
       await settleRun()
     })
 
@@ -1078,6 +1147,26 @@ describe('createHostedAgentRoutes', () => {
     )
     expect(JSON.stringify(context)).not.toContain('echoes the conversation')
     expect(recordUsage).not.toHaveBeenCalled()
+    await settleRun()
+    // The provider refused every attempt, so the run's hold is released.
+    expect(releaseHold).toHaveBeenCalledTimes(1)
+    expect(releaseHold.mock.calls[0][1]).toBe(checkAdmission.mock.calls[0][4].id)
+  })
+
+  it('keeps the hold of a run whose retries include an attempt that got no answer', async () => {
+    model = new MockLanguageModelV3({
+      doStream: async () => {
+        throw new RetryError({
+          message: 'sentinel-retry',
+          reason: 'maxRetriesExceeded',
+          errors: [new TypeError('fetch failed'), createOverloadedError()],
+        })
+      },
+    })
+    await (await postChat(createMockedApp())).text()
+    await settleRun()
+    // The attempt that never answered may have run, so the run's hold stays charged.
+    expect(releaseHold).not.toHaveBeenCalled()
   })
 
   describe('upstream failures in the stream', () => {
@@ -1122,7 +1211,7 @@ describe('createHostedAgentRoutes', () => {
     })
   })
 
-  it('skips the ledger and logs when the provider reports no usage', async () => {
+  it('writes no usage and logs when the provider reports none', async () => {
     const noUsage = {
       inputTokens: { total: undefined, noCache: undefined, cacheRead: undefined, cacheWrite: undefined },
       outputTokens: { total: undefined, text: undefined, reasoning: undefined },
@@ -1552,7 +1641,42 @@ describe('createHostedAgentRoutes with the usage ledger', () => {
     )
   })
 
-  it('logs a Fireworks usage chunk with null counts as missing usage instead of writing a zero-cost row', async () => {
+  it('leaves no row for a run the provider refuses', async () => {
+    const model = new MockLanguageModelV3({
+      doStream: async () => {
+        throw createOverloadedError()
+      },
+    })
+    await (await postChat(createApp({ database, model }))).text()
+    await settleRun()
+
+    expect(await database.select().from(inferenceUsage)).toEqual([])
+  })
+
+  it('keeps the charge of the finished steps when a later step is refused', async () => {
+    const model = new MockLanguageModelV3({
+      doStream: async ({ prompt }) => {
+        if (prompt.at(-1)?.role === 'tool') {
+          throw new APICallError({
+            message: 'prompt is too long',
+            url: 'https://api.anthropic.com/v1/messages',
+            requestBodyValues: {},
+            statusCode: 400,
+            isRetryable: false,
+          })
+        }
+        return { stream: simulateReadableStream({ chunks: toolCallChunks() }) }
+      },
+    })
+    await (await postChat(createApp({ database, model, mcpClients: createStubMcpClients() }))).text()
+    await settleRun()
+
+    expect(await database.select().from(inferenceUsage)).toEqual([
+      expect.objectContaining({ settled: true, promptTokens: 12, completionTokens: 3 }),
+    ])
+  })
+
+  it('logs a Fireworks usage chunk with null counts as missing usage, and the hold stays charged', async () => {
     const logger = { error: mock(), info: mock() }
     const fetchFn = mock(async () => createFireworksStream({ prompt_tokens: null, completion_tokens: null }))
     const app = createApp({
@@ -1569,10 +1693,12 @@ describe('createHostedAgentRoutes with the usage ledger', () => {
       expect.objectContaining({ event: 'agent_usage_missing', provider: 'fireworks' }),
       'Agent usage missing',
     )
-    expect(await database.select().from(inferenceUsage)).toHaveLength(0)
+    expect(await database.select().from(inferenceUsage)).toEqual([
+      expect.objectContaining({ settled: true, totalTokens: 0 }),
+    ])
   })
 
-  it('logs a provider stream that dies mid-reply and writes no zero-cost row', async () => {
+  it('logs a provider stream that dies mid-reply, and the hold stays charged', async () => {
     const logger = { error: mock(), info: mock() }
     const model = new MockLanguageModelV3({
       doStream: async () => ({
@@ -1598,6 +1724,9 @@ describe('createHostedAgentRoutes with the usage ledger', () => {
       'Agent stream failed',
     )
     expect(JSON.stringify(logger.error.mock.calls)).not.toContain('echoes the conversation')
-    expect(await database.select().from(inferenceUsage)).toHaveLength(0)
+    // The provider ran part of the reply without reporting it, so the run's hold stays charged.
+    expect(await database.select().from(inferenceUsage)).toEqual([
+      expect.objectContaining({ settled: true, totalTokens: 0 }),
+    ])
   })
 })

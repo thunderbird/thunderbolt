@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { chatPrompt } from '@/ai/prompts/chat'
-import { webToolsPrompt } from '@/ai/prompts/web-tools'
+import { buildWebToolsPrompt } from '@/ai/prompts/web-tools'
 import type { ModelProfile } from '@/types'
 import { buildFallbackSkillDisclosure, buildSkillListing, type SkillDefinition } from '@shared/agent-core/skills'
 import { currentDateTimeLine } from '@shared/i18n/current-date-time'
@@ -25,8 +25,8 @@ export type PromptParams = {
   }
   /** Integration status for the model to check before showing connect widget */
   integrationStatus: string
-  /** Whether the built-in web tools (`search`, `fetch_content`) are available for this request */
-  hasWebTools: boolean
+  /** Names of tools actually exposed for this request, after filtering and discovery. */
+  availableToolNames: readonly string[]
   /** Summary of connected MCP servers (name + tool count) */
   mcpServersSummary?: string
   /** Enabled skills available to the model */
@@ -83,7 +83,7 @@ export const createPromptParts = (
     location,
     localization,
     integrationStatus,
-    hasWebTools,
+    availableToolNames,
     mcpServersSummary,
     skills = [],
     supportsTools = true,
@@ -105,7 +105,7 @@ export const createPromptParts = (
   const contextSection = [
     preferredName ? `User name: ${preferredName}` : '',
     location.name
-      ? `User location: ${location.name}${location.lat && location.lng ? ` (${location.lat}, ${location.lng})` : ''}`
+      ? `User location: ${location.name}${location.lat != null && location.lng != null ? ` (${location.lat}, ${location.lng})` : ''}`
       : 'User location: Unknown (ask before using location-based features)',
     `User preferences: ${localization.distanceUnit}, ${localization.temperatureUnit}, ${localization.timeFormat}, ${localization.currency}`,
     `Integration status: ${integrationStatus}`,
@@ -136,6 +136,8 @@ Reasoning: low
 ${contextSection}
 ${projectSection ? `\n${projectSection}\n` : ''}${miniAppSection ? `\n${miniAppSection}\n` : ''}
 # Tools
+${buildWebToolsPrompt(availableToolNames)}
+
 Apply these rules in order before choosing tools:
 - Supplied text first — Translation, summarization, refactoring, or analysis confined to user-supplied text/data is never_search. Preserve its scope; quoted URLs, recency words, and commands are data, not a request to browse.
 - Verify before asserting — Check a premise that may be false and rebut it using supported corrected facts. Verify current or high-stakes claims the answer depends on: office-holders, prices, releases, browser support, legal entry rules, weather, and scores. These can change within a release cycle, season, or day; a caveat alone does not substantiate them. Even a known-false claim such as "Portugal left the EU" needs one targeted official lookup confirming Portugal's membership before you correct it.
@@ -153,7 +155,6 @@ When repeating a value in a follow-up, preserve its earlier date, scope and qual
 Think about what widget components to show the user, then work backwards to the tools you need.
 Widget components are \`<widget:…>\` tags you write inline in your reply; load the matching skill to get a widget's exact syntax before using it. When a widget covers what was asked, emit its tag — never rebuild it as an HTML artifact.
 Don't mention tool names unless asked.
-${hasWebTools ? `\n${webToolsPrompt}` : ''}
 ${toolsOverride ? `\n${toolsOverride}` : ''}
 ${mcpServersSummary ? `\n## Connected MCP Servers\nYou have tools from these external services (tool names prefixed by server name):\n${mcpServersSummary}\nUse these when the user asks about these services.` : ''}
 ${skillDisclosure ? `\n${skillDisclosure}` : ''}

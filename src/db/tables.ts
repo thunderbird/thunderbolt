@@ -122,8 +122,9 @@ export const modelsTable = sqliteTable(
   'models',
   {
     id: text('id').primaryKey(),
+    providerConnectionId: text('provider_connection_id'),
     provider: text('provider', {
-      enum: ['openai', 'custom', 'openrouter', 'thunderbolt', 'anthropic', 'tinfoil'],
+      enum: ['openai', 'custom', 'openrouter', 'thunderbolt', 'anthropic', 'tinfoil', 'otari'],
     }),
     name: text('name'),
     model: text('model'),
@@ -149,15 +150,44 @@ export const modelsTable = sqliteTable(
   ],
 )
 
-/** Local-only table for model API keys. Never synced via PowerSync. */
+/** Local-only table for model API keys and OAuth connection references. Never synced via PowerSync. */
 export const modelsSecretsTable = sqliteTable('models_secrets', {
   modelId: text('id').primaryKey(),
   apiKey: text('api_key'),
+  /** The model's provider and URL when the key was saved. The key is read only while the
+   *  model still has them, so a changed endpoint (edit, sync or import) never receives it. */
+  provider: text('provider'),
+  url: text('url'),
+  oauthProvider: text('oauth_provider', { enum: ['tinfoil'] }),
+  providerDefault: integer('provider_default'),
 })
 
-/** Local-only table for integration credentials (Google, Microsoft OAuth tokens). Never synced via PowerSync. */
+/** Synced connection metadata. Authentication is always specific to this device. */
+export const providerConnectionsTable = sqliteTable('provider_connections', {
+  id: text('id').primaryKey(),
+  provider: text('provider', {
+    enum: ['openai', 'anthropic', 'custom', 'openrouter', 'tinfoil', 'otari', 'exa', 'brave', 'tavily'],
+  }),
+  name: text('name'),
+  url: text('url'),
+  authMethod: text('auth_method', { enum: ['oauth', 'api_key'] }),
+  enabled: integer('enabled').default(1),
+  createdAt: text('created_at'),
+  updatedAt: text('updated_at'),
+  deletedAt: text('deleted_at'),
+  userId: text('user_id'),
+})
+
+/** The binding prevents synced endpoint changes from redirecting a device's credentials. */
+export const providerConnectionSecretsTable = sqliteTable('provider_connection_secrets', {
+  id: text('id').primaryKey(),
+  credentials: text('credentials'),
+  binding: text('binding'),
+})
+
+/** Local-only table for integration credentials (Google, Microsoft, Tinfoil OAuth tokens). Never synced via PowerSync. */
 export const integrationsSecretsTable = sqliteTable('integrations_secrets', {
-  provider: text('id').primaryKey(), // 'google' | 'microsoft'
+  provider: text('id').primaryKey(), // 'google' | 'microsoft' | 'tinfoil'
   credentials: text('credentials'), // JSON blob (OAuth tokens)
   enabled: integer('enabled').default(0),
 })
@@ -165,7 +195,7 @@ export const integrationsSecretsTable = sqliteTable('integrations_secrets', {
 /** Local-only table for MCP server credentials (bearer tokens / API keys). Never synced via PowerSync. */
 export const mcpSecretsTable = sqliteTable('mcp_secrets', {
   id: text('id').primaryKey(), // = mcp_servers.id
-  credentials: text('credentials'), // JSON blob (e.g. { type: 'bearer', token })
+  credentials: text('credentials'), // JSON blob (e.g. { type: 'bearer', token, approvedUrl })
 })
 
 export const mcpServersTable = sqliteTable(
@@ -331,7 +361,7 @@ export const agentsTable = sqliteTable(
     icon: text('icon'),
     enabled: integer('enabled').default(1).notNull(),
     deletedAt: text('deleted_at'),
-    userId: text('user_id').notNull(),
+    userId: text('user_id'),
   },
   (table) => [
     index('idx_agents_active')

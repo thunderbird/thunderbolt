@@ -18,6 +18,34 @@ import {
 } from './settings'
 
 describe('Config Settings', () => {
+  describe('monitoring token', () => {
+    let savedEnv: string | undefined
+
+    beforeEach(() => {
+      savedEnv = process.env.MONITORING_TOKEN
+      clearSettingsCache()
+    })
+
+    afterEach(() => {
+      if (savedEnv === undefined) {
+        delete process.env.MONITORING_TOKEN
+      } else {
+        process.env.MONITORING_TOKEN = savedEnv
+      }
+      clearSettingsCache()
+    })
+
+    it.each(['', 'x'.repeat(32)])('accepts disabled monitoring or a 32-character token (%j)', (token) => {
+      process.env.MONITORING_TOKEN = token
+      expect(getSettings().monitoringToken).toBe(token)
+    })
+
+    it('rejects a nonempty 31-character monitoring token', () => {
+      process.env.MONITORING_TOKEN = 'x'.repeat(31)
+      expect(() => getSettings()).toThrow('MONITORING_TOKEN must be at least 32 characters when set')
+    })
+  })
+
   describe('contact inbox', () => {
     let saved: string | undefined
     beforeEach(() => {
@@ -529,6 +557,7 @@ describe('Config Settings', () => {
       'ALTCHA_DIFFICULTY',
       'ALTCHA_TTL_SECS',
       'AUTH_ALLOW_ANONYMOUS',
+      'INTEGRATION_OAUTH_ALLOW_PUBLIC',
       'ANONYMOUS_USER_IDLE_DAYS',
     ] as const
 
@@ -611,6 +640,18 @@ describe('Config Settings', () => {
       process.env.TRUSTED_PROXY = 'nginx'
       expect(() => getSettings()).toThrow()
     })
+
+    it.each([undefined, '', 'false', 'true'])(
+      'only enables public integration OAuth with an explicit true: %s',
+      (value) => {
+        if (value === undefined) {
+          delete process.env.INTEGRATION_OAUTH_ALLOW_PUBLIC
+        } else {
+          process.env.INTEGRATION_OAUTH_ALLOW_PUBLIC = value
+        }
+        expect(getSettings().integrationOAuthAllowPublic).toBe(value === 'true')
+      },
+    )
 
     it('should default the anonymous sign-in limit to 10 per 60 seconds and the captcha to none', () => {
       delete process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX

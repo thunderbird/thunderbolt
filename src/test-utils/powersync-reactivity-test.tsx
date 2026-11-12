@@ -5,6 +5,7 @@
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { act, render, type RenderOptions, type RenderResult } from '@testing-library/react'
 import type { ReactElement, ReactNode } from 'react'
+import { setTimeout as delay } from 'node:timers/promises'
 import { getClock } from '@/testing-library'
 import { ProxyFetchProvider } from '@/lib/proxy-fetch-context'
 import { PowerSyncReactivityTestProvider } from './powersync-mock'
@@ -27,7 +28,10 @@ export const waitForElement = async (getElement: () => HTMLElement | null, timeo
       // not found yet
     }
     await act(async () => {
-      await clock.tickAsync(50)
+      // Native work (e.g. Web Crypto) needs real time; fake timers alone can exhaust
+      // the deadline before it finishes. Keep virtual time close to elapsed time.
+      await delay(10)
+      await clock.tickAsync(10)
     })
   }
   return getElement()!

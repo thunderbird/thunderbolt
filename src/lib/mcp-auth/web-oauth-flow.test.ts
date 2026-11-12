@@ -502,6 +502,28 @@ describe('completeMcpOAuthFlow', () => {
     expect(handshake.serverId).toBeNull()
   })
 
+  it('can save provider credentials without creating an MCP credential row', async () => {
+    const db = getDb()
+    seedHandshake()
+    const saved: unknown[] = []
+    await completeMcpOAuthFlow(
+      {
+        db,
+        serverId,
+        code: 'code',
+        returnedState: 'nonce-1',
+        returnedIss: authServerUrl,
+        fetchFn: noFetch,
+        saveCredentials: async (credentials) => {
+          saved.push(credentials)
+        },
+      },
+      { exchangeAuthorization: async () => ({ access_token: 'access', token_type: 'Bearer' }) },
+    )
+    expect(saved).toMatchObject([{ type: 'oauth', access_token: 'access', clientId: 'dcr-client' }])
+    expect(await getMcpServerCredentials(db, serverId)).toBeNull()
+  })
+
   it('clears the handshake before the token exchange (single-use, no replay)', async () => {
     const db = getDb()
     seedHandshake()
@@ -769,6 +791,41 @@ describe('startMcpOAuthFlow — desktop loopback', () => {
       await buildAuthorizationUrl(`http://localhost:${loopbackPort}`)
       return craftCallback(getMcpOAuthState().stateNonce)
     },
+  })
+
+  it('rejects a second desktop attempt without clearing the first pending handshake', async () => {
+    const ready = Promise.withResolvers<void>()
+    const callback = Promise.withResolvers<LoopbackCallbackParams>()
+    const args = { db: getDb(), serverId, serverUrl, fetchFn: noFetch, origin, isBackendConnected: () => false }
+    const deps: WebOAuthDeps = {
+      ...happyDiscovery(metadata()),
+      registerClient: async () => ({ client_id: 'client', redirect_uris: [] }) as OAuthClientInformationFull,
+      startAuthorization: async () => ({
+        authorizationUrl: new URL(`${authServerUrl}/authorize`),
+        codeVerifier: 'verifier',
+      }),
+      exchangeAuthorization: async () => ({ access_token: 'access', token_type: 'Bearer' }),
+    }
+    const platform: PlatformDeps = {
+      isTauri: () => true,
+      isMobile: () => false,
+      startMcpOAuthLoopback: async ({ buildAuthorizationUrl }) => {
+        await buildAuthorizationUrl(`http://localhost:${loopbackPort}`)
+        ready.resolve()
+        return callback.promise
+      },
+    }
+    const first = startMcpOAuthFlow(args, deps, platform)
+    await ready.promise
+    const handshake = getMcpOAuthState()
+    try {
+      await expect(startMcpOAuthFlow(args, deps, platform)).rejects.toThrow('already in progress')
+      expect(getMcpOAuthState()).toEqual(handshake)
+    } finally {
+      callback.resolve({ code: 'code', state: handshake.stateNonce, iss: authServerUrl, error: null })
+      await first
+    }
+    expect(await getMcpServerCredentials(getDb(), serverId)).toMatchObject({ access_token: 'access' })
   })
 
   it('registers DCR against the loopback URI, persists the pinned handshake, completes inline, and returns completed', async () => {

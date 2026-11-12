@@ -16,6 +16,7 @@ import pkg from './package.json' with { type: 'json' }
 import { exaRelayPlugin, exaRelayProxies } from './scripts/exa-relay'
 import { tinfoilSearchRelayPlugin, tinfoilSearchProxy } from './scripts/tinfoil-search-relay'
 import { copyPowerSyncAssets } from './scripts/copy-powersync-assets'
+import { officeSandboxScriptPlugin } from './scripts/office-sandbox-script'
 import {
   addWebKitCompatToAsset,
   webkitCompatAssetFileNames,
@@ -95,6 +96,8 @@ export default defineConfig({
   },
   plugins: [
     webkitCompatPlugin(),
+    // The dev server runs the app's plugins on Worker modules too; a build uses `worker.plugins` below.
+    officeSandboxScriptPlugin(),
     tinfoilSearchRelayPlugin(),
     exaRelayPlugin(),
     {
@@ -288,6 +291,7 @@ export default defineConfig({
   },
   worker: {
     format: 'es',
+    plugins: () => [officeSandboxScriptPlugin()],
     // Workers have their own intrinsics; a page polyfill does not protect them.
     rolldownOptions: { output: { banner: webkitCompatScript } },
   },

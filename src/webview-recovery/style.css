@@ -2,39 +2,71 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-:root {
-  color-scheme: light dark;
-  font-family: system-ui, sans-serif;
-  background: Canvas;
-  color: CanvasText;
+@reference '../index.css';
+
+html.recovery-page {
+  color-scheme: light;
+  background-color: var(--color-background);
+  overflow: auto;
 }
 
-body {
-  margin: 0;
-  min-height: 100svh;
-  display: grid;
-  place-items: center;
+html.recovery-page.dark {
+  color-scheme: dark;
+}
+
+/* Override the app shell's fixed, non-scrolling viewport: translated copy and
+   zoomed text must remain reachable even in a short recovery window. */
+:root.recovery-page body {
+  @apply flex min-h-svh items-center justify-center;
+  height: auto;
+  overflow: visible;
+  padding: max(2rem, env(safe-area-inset-top)) max(1.5rem, env(safe-area-inset-right))
+    max(2rem, env(safe-area-inset-bottom)) max(1.5rem, env(safe-area-inset-left));
 }
 
 main {
-  max-width: 32rem;
-  padding: max(2rem, env(safe-area-inset-top)) 2rem max(2rem, env(safe-area-inset-bottom));
+  @apply w-full max-w-md rounded-2xl border bg-card p-8 text-center shadow-lg;
+}
+
+img {
+  @apply mx-auto mb-6;
 }
 
 h1 {
-  font-size: 1.5rem;
+  @apply font-heading text-2xl leading-tight;
 }
 
 p {
-  line-height: 1.6;
+  @apply mt-4 text-[length:var(--font-size-body)] leading-relaxed text-muted-foreground;
 }
 
 button {
-  font: inherit;
-  padding: 0.6em 1.2em;
-  cursor: pointer;
+  @apply mt-6 inline-flex min-h-[var(--touch-height-default)] items-center justify-center rounded-lg border border-transparent bg-brand bg-origin-border px-6 py-2 text-[length:var(--font-size-body)] font-medium text-brand-foreground shadow-xs outline-none cursor-pointer;
+  background-image: var(--gradient-brand);
+}
+
+button:hover:enabled {
+  filter: brightness(1.06);
+}
+
+button:active:enabled {
+  filter: brightness(0.95);
+}
+
+button:focus-visible {
+  @apply ring-[3px] ring-ring/50;
 }
 
 button:disabled {
+  @apply bg-secondary text-muted-foreground shadow-none;
+  background-image: none;
   cursor: wait;
+}
+
+#error:not(:empty) {
+  @apply rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-foreground;
+}
+
+#error:empty {
+  display: none;
 }

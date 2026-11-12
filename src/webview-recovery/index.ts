@@ -5,6 +5,9 @@
 import { msg } from '@lingui/core/macro'
 import { invoke } from '@tauri-apps/api/core'
 import { activateLocale, getActiveLocale, i18n } from '@/i18n'
+import { isTauriDesktop } from '@/lib/platform'
+import { isRecord } from '@shared/lib/is-record'
+import '@/index.css'
 import './style.css'
 
 // Keep this entry independent of React, the database, and the app's initialization graph.
@@ -13,6 +16,31 @@ const explanation = document.querySelector<HTMLParagraphElement>('#explanation')
 const suggestion = document.querySelector<HTMLParagraphElement>('#suggestion')!
 const retry = document.querySelector<HTMLButtonElement>('#retry')!
 const error = document.querySelector<HTMLParagraphElement>('#error')!
+
+/** Read only appearance preferences; a damaged settings record must not block recovery. */
+const readState = (key: string): Record<string, unknown> => {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(key) ?? 'null')
+    return isRecord(stored) && isRecord(stored.state) ? stored.state : {}
+  } catch {
+    return {}
+  }
+}
+
+const chosenTheme = readState('thunderbolt-local-settings').theme
+const systemTheme = window.matchMedia('(prefers-color-scheme: dark)')
+
+/** Match the app's explicit appearance, or follow native/system appearance when unset. */
+const applyTheme = () => {
+  document.documentElement.classList.toggle(
+    'dark',
+    chosenTheme === 'dark' || (chosenTheme !== 'light' && systemTheme.matches),
+  )
+}
+
+document.documentElement.classList.toggle('force-desktop', isTauriDesktop())
+applyTheme()
+systemTheme.addEventListener('change', applyTheme)
 
 /** Render from the active catalog, including the synchronous English fallback. */
 const render = () => {

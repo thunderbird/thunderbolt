@@ -130,6 +130,22 @@ own context.
   saves becomes a new entry in the attachment store, and the tool result lists them. The transcript builds
   one chip per listed file (`src/components/chat/created-file-card.tsx`), and a device without the bytes
   says so. The harness environment block names this tool as the way to deliver a file.
+- A script can also read files, which is how it edits one. The call lists them in `inputs`, and the script
+  reads each with `readFile(name)`. The host loads them before the run (`src/office/script-inputs.ts`). It
+  looks first in the thread's stored files: the user's attachments and the files this tool made earlier in
+  the thread (`src/office/thread-files.ts`). On the harness only, it then looks in the agent's workspace.
+  A name gets the newest stored file under it, and an id gets that exact file. A script cannot reach
+  another chat's files. Saving under an input's name marks the new file as edited, and its chip says so.
+  The original entry is never changed, so each chip opens the file as it was when the chip was made.
+- The VM also has `fflate` and `@xmldom/xmldom`, for edits `docx` and `pptxgenjs` cannot make. xmldom ships
+  only CommonJS files, so `?sandbox-script` (`scripts/office-sandbox-script.ts`) bundles
+  `src/office/ooxml-globals.ts` into one script at build time. Before a run returns, a second QuickJS VM
+  checks the output (`src/office/check-output.ts`). It starts after the script's VM is gone, opens every
+  saved file, and parses each XML part on its own with errors and warnings set to throw. The bytes come
+  from the model, so the check has its own memory limit (four times the script's), stops at the script's
+  deadline, and never parses on the Worker's heap. By default the parser lets an undefined entity or an
+  unquoted attribute through; Word and PowerPoint refuse both. If any file fails, the run saves nothing,
+  and the error names the part or says the XML is too large to check.
 - `hasProAccess` resolves a hardcoded `isProUser = true`
   (`src/integrations/thunderbolt-pro/utils.ts:8`), so the settings flag is the only real gate on the
   web tools.

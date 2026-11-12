@@ -8,8 +8,10 @@
  */
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { useReducer } from 'react'
+import { useReducer, type ReactNode } from 'react'
 import { useAsyncAttempt } from '@/hooks/use-async-attempt'
+import type { AgentExecution } from '@/agent-execution/store'
+import { AgentAccessField } from '@/components/agent-execution-controls'
 
 import { Button } from '@/components/ui/button'
 import { FormFooter } from '@/components/ui/form-footer'
@@ -24,6 +26,8 @@ export type ProjectFormValues = {
   name: string
   description: string
   instructions: string
+  /** Present only when the user changed permissions, tied to the target they saw. */
+  execution?: AgentExecution
 }
 
 type ProjectFormState = ProjectFormValues & { isPending: boolean; submitError: string | null }
@@ -31,6 +35,7 @@ type ProjectFormState = ProjectFormValues & { isPending: boolean; submitError: s
 type ProjectFormAction =
   | { type: 'FIELD_CHANGED'; field: 'name' | 'description' | 'instructions'; value: string }
   | { type: 'ICON_CHANGED'; icon: string | null }
+  | { type: 'EXECUTION_CHANGED'; execution: AgentExecution }
   | { type: 'SUBMIT_STARTED' }
   | { type: 'SUBMIT_FAILED'; message: string }
 
@@ -42,6 +47,8 @@ const projectFormReducer = (state: ProjectFormState, action: ProjectFormAction):
       return { ...state, [action.field]: action.value, submitError: null }
     case 'ICON_CHANGED':
       return { ...state, icon: action.icon, submitError: null }
+    case 'EXECUTION_CHANGED':
+      return { ...state, execution: action.execution, submitError: null }
     case 'SUBMIT_STARTED':
       return { ...state, isPending: true, submitError: null }
     case 'SUBMIT_FAILED':
@@ -51,6 +58,8 @@ const projectFormReducer = (state: ProjectFormState, action: ProjectFormAction):
 
 type ProjectFormProps = {
   initialValues: ProjectFormValues
+  environment?: ReactNode
+  execution?: AgentExecution | null
   onCancel: () => void
   /** May reject; the form catches and shows the message rather than letting the
    *  rejection escape a handler React does not await. */
@@ -58,13 +67,21 @@ type ProjectFormProps = {
   onSuccess?: () => void
 }
 
-export const ProjectForm = ({ initialValues, onCancel, onSubmit, onSuccess }: ProjectFormProps) => {
+export const ProjectForm = ({
+  initialValues,
+  environment,
+  execution,
+  onCancel,
+  onSubmit,
+  onSuccess,
+}: ProjectFormProps) => {
   const { t } = useLingui()
-  const [{ icon, name, description, instructions, isPending, submitError }, dispatch] = useReducer(projectFormReducer, {
-    ...initialValues,
-    isPending: false,
-    submitError: null,
-  })
+  const [{ icon, name, description, instructions, execution: draftExecution, isPending, submitError }, dispatch] =
+    useReducer(projectFormReducer, {
+      ...initialValues,
+      isPending: false,
+      submitError: null,
+    })
 
   const submission = useAsyncAttempt()
   const canSave = name.trim().length > 0 && !isPending
@@ -79,7 +96,7 @@ export const ProjectForm = ({ initialValues, onCancel, onSubmit, onSuccess }: Pr
     }
     dispatch({ type: 'SUBMIT_STARTED' })
     try {
-      await onSubmit({ icon, name, description, instructions })
+      await onSubmit({ icon, name, description, instructions, execution: draftExecution })
       if (attempt.isCurrent()) {
         onSuccess?.()
       }
@@ -116,6 +133,17 @@ export const ProjectForm = ({ initialValues, onCancel, onSubmit, onSuccess }: Pr
           />
         </EmojiPicker>
       </div>
+
+      {environment}
+      <AgentAccessField
+        access={draftExecution?.access ?? execution?.access ?? 'ask'}
+        disabled={isPending || !execution}
+        onChange={(access) => {
+          if (execution) {
+            dispatch({ type: 'EXECUTION_CHANGED', execution: { ...execution, access } })
+          }
+        }}
+      />
 
       <div className="flex flex-col gap-2">
         <label className="text-[length:var(--font-size-sm)] font-medium" htmlFor={fieldId('description')}>

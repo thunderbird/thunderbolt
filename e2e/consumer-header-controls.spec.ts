@@ -20,3 +20,36 @@ test('the project icon matches the agent selector hover background in both theme
     await expect.poll(() => project.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe(background)
   }
 })
+
+test('the floating header keeps an opaque app surface and a gradient without backdrop blur', async ({ page }) => {
+  await loginViaEmailCode(page)
+  // Exercise the transparent-root styling used by macOS's native glass sidebar.
+  await page.evaluate(() => document.documentElement.classList.add('mac-vibrancy'))
+  const scrim = page.locator('[data-slot="app-header-scrim"]')
+  for (const route of ['chat', 'settings']) {
+    if (route === 'settings') {
+      await page.getByRole('button', { name: 'Settings', exact: true }).click()
+      await page.getByRole('button', { name: 'Models', exact: true }).click()
+      await expect(page.getByRole('heading', { name: 'Models', exact: true })).toBeVisible()
+    }
+    for (const dark of [false, true]) {
+      await page.evaluate((dark) => document.documentElement.classList.toggle('dark', dark), dark)
+      await expect(scrim).toHaveCSS('backdrop-filter', 'none')
+      await expect(scrim).toHaveCSS('background-image', /linear-gradient/)
+      await expect(scrim).toHaveCSS('mask-image', /linear-gradient/)
+      const surface = page.locator('main').filter({ has: scrim })
+      await expect(surface).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+      const coversHeader = await scrim.evaluate((element) => {
+        const header = element.getBoundingClientRect()
+        const pane = element.closest('main')!.getBoundingClientRect()
+        return (
+          pane.top <= header.top &&
+          pane.bottom >= header.bottom &&
+          pane.left <= header.left &&
+          pane.right >= header.right
+        )
+      })
+      expect(coversHeader).toBe(true)
+    }
+  }
+})

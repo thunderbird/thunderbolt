@@ -166,7 +166,7 @@ const PageSessionHost = ({ session, active }: { session: PageSession; active: bo
     height: placement.height,
     clipPath: placement.clip,
     visibility: placement.visible ? 'visible' : 'hidden',
-    pointerEvents: placement.visible ? 'auto' : 'none',
+    pointerEvents: placement.interactive ? 'auto' : 'none',
     zIndex: session.presentation === 'inline' ? 10 : 30,
   }
   const nativePage = session.page.source.kind !== 'html'
@@ -174,7 +174,7 @@ const PageSessionHost = ({ session, active }: { session: PageSession; active: bo
     return null
   }
   return (
-    <div data-page-host={session.id} aria-hidden={!placement.visible} inert={!placement.visible} style={style}>
+    <div data-page-host={session.id} aria-hidden={!placement.interactive} inert={!placement.interactive} style={style}>
       {session.page.source.kind === 'html' ? (
         <HtmlPageHost session={session} />
       ) : isTauriDesktop() ? (

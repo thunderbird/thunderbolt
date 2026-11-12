@@ -36,9 +36,18 @@ describe('publishedPageOutput', () => {
 
   it('only lifts successful publishing operations, leaving status/list/failures in the tool group', () => {
     const local: PageDefinition = { id: 'local-app:123', title: 'App', source: { kind: 'local-app', appId: '123' } }
-    for (const action of ['create', 'start', 'restart']) {
+    for (const action of ['create', 'attach', 'start', 'restart', 'update']) {
       expect(publishedPageOutput(part('local_app', { page: local, status: 'ready' }, { action }))?.page).toEqual(local)
     }
+    expect(
+      publishedPageOutput(
+        part(
+          'local_app',
+          { page: local, sessionId: 'session-1', status: 'ready', updated: true },
+          { action: 'update' },
+        ),
+      ),
+    ).toEqual({ page: local, sessionId: 'session-1', updated: true })
     for (const action of ['list', 'status', 'stop']) {
       expect(publishedPageOutput(part('local_app', { page: local, status: 'ready' }, { action }))).toBeNull()
     }
@@ -86,11 +95,33 @@ describe('publishedPageOutput', () => {
     expect(publishedPageOutput(part('page_open', { content: [{ type: 'text', text: '{bad JSON' }] }))).toBeNull()
   })
 
-  it('lifts a completed dynamic page result between reasoning groups', () => {
+  it('keeps a completed sidebar page result in its ordinary tool group', () => {
     const published = part('page_open', { ok: true, page })
     const ordinary = part('page_snapshot', { text: 'Example' })
     const grouped = groupMessageParts([ordinary, published, ordinary])
-    expect(grouped.map((item) => item.type)).toEqual(['reasoning_group', 'dynamic-tool', 'reasoning_group'])
-    expect(grouped[1]).toBe(published)
+    expect(grouped).toEqual([
+      {
+        type: 'reasoning_group',
+        items: [ordinary, published, ordinary].map((content) => ({ type: 'tool', content, id: content.toolCallId })),
+      },
+    ])
   })
+})
+
+it('retains explicit publication placement and revision markers', () => {
+  const result = publishedPageOutput({
+    type: 'dynamic-tool',
+    toolName: 'page_show_file',
+    toolCallId: 'publish',
+    state: 'output-available',
+    input: {},
+    output: {
+      ok: true,
+      page: { id: 'p', title: 'Page', source: { kind: 'html', html: '<p>App</p>' } },
+      presentation: 'sidebar',
+      updated: true,
+      sessionId: 's',
+    },
+  })
+  expect(result).toMatchObject({ presentation: 'sidebar', updated: true, sessionId: 's' })
 })

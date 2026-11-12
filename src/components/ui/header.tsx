@@ -26,6 +26,7 @@ import { useResolvedTheme } from '@/lib/theme-provider'
 import { cn } from '@/lib/utils'
 import { PanelLeftRounded } from '@/components/icons/panel-left-rounded'
 import { PanelRightRounded } from '@/components/icons/panel-right-rounded'
+import { RecoveryContinuityNavDot } from '@/components/recovery-continuity'
 import { useChatStore } from '@/chats/chat-store'
 import type { ChatSession } from '@/chats/chat-store'
 import { exposesPrivateThread } from '@/chats/private-thread'
@@ -77,7 +78,10 @@ const HeaderAgentSelector = ({
   mobile,
   projectControl,
 }: HeaderAgentSelectorProps) => {
-  const { status } = useChat({ chat: chatInstance, experimental_throttle: statusOnlyThrottleMs })
+  const { status } = useChat({
+    chat: chatInstance,
+    experimental_throttle: statusOnlyThrottleMs,
+  })
   const isReplying = status === 'streaming' || status === 'submitted'
   // `status` flips to `submitted` synchronously on send, so the transition starts
   // the moment the user submits — before the thread row lands in the store.
@@ -189,7 +193,8 @@ export const Header = () => {
   const needsTrafficLightClearance = isMacDesktop() && !isMobile && sidebarState === 'collapsed'
   const { openCreateItem } = useCreateItem()
   const location = useLocation()
-  const allAgents = useAllAgents()
+  // Settings still lists a disabled agent so it can be turned back on; the chat picker leaves it out.
+  const allAgents = useAllAgents().filter((agent) => agent.enabled === 1)
   const allowCustomAgents = useConfigCapability(selectAllowCustomAgents)
   const minimalMode = useConfigCapability(selectMinimalMode)
   const configSettled = useConfigStore(selectConfigSettled)
@@ -224,7 +229,11 @@ export const Header = () => {
   // user to confirm it. Guarded in this handler rather than in `setSelectedAgent`
   // so the store action stays a plain write. The agent outlives `open` so the
   // dialog keeps its name through the close animation.
-  const [privateSwitch, setPrivateSwitch] = useState<{ agent: Agent; threadId: string; open: boolean } | null>(null)
+  const [privateSwitch, setPrivateSwitch] = useState<{
+    agent: Agent
+    threadId: string
+    open: boolean
+  } | null>(null)
   const agentName = privateSwitch?.agent.name ?? ''
   // The header outlives chat navigation, so a prompt raised in one chat closes
   // when the user moves to another: its confirm must never land on the chat now
@@ -339,13 +348,14 @@ export const Header = () => {
           <Button
             variant="ghost"
             size="icon"
-            className={cn(mutedIconButtonClass, mobileHeaderControlFillClass)}
+            className={cn(mutedIconButtonClass, mobileHeaderControlFillClass, 'relative')}
             onClick={toggleSidebar}
           >
             <PanelLeftRounded className="size-[var(--icon-size-default)]" />
             <span className="sr-only">
               <Trans>Toggle Sidebar</Trans>
             </span>
+            <RecoveryContinuityNavDot placement="corner" />
           </Button>
         </div>
 
@@ -385,7 +395,7 @@ export const Header = () => {
         if (preview.isPreviewOpen) {
           preview.closePreview()
         } else {
-          preview.showPreview('about:blank')
+          preview.showBrowser()
         }
       }}
     >

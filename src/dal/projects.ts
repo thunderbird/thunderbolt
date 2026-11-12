@@ -18,7 +18,11 @@ import { useChatStore } from '@/chats/chat-store'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { chatThreadsTable, projectsTable, settingsTable } from '../db/tables'
 import { defaultAgentExecution, useAgentExecutionStore, type AgentExecution } from '@/agent-execution/store'
-import { projectExecutionKey, validateProjectExecution } from '@/agent-execution/project-execution'
+import {
+  projectExecutionDeclaration,
+  projectExecutionKey,
+  validateProjectExecution,
+} from '@/agent-execution/project-execution'
 import { nowIso } from '../lib/utils'
 import type { Project } from '../types'
 import { getChatActivityQuery, getChatLastActivityId } from './chat-activity-query'
@@ -121,7 +125,7 @@ const insertProject = async (db: AnyDrizzleDatabase, input: CreateProjectInput):
       await tx.insert(projectsTable).values(row)
       await tx.insert(settingsTable).values({
         key: projectExecutionKey(row.id),
-        value: JSON.stringify({ version: 1, location: execution.location }),
+        value: JSON.stringify({ version: 1, ...projectExecutionDeclaration(execution) }),
       })
     })
   } catch (error) {

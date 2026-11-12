@@ -2,19 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { artifactPageId } from '@/pages/artifact-page-id'
+import { useMemo } from 'react'
+import { useLingui } from '@lingui/react/macro'
+import type { PageDefinition } from '@shared/page-protocol'
 import { renderHtmlInput, renderHtmlOutput, type RenderHtmlPart } from '@/artifacts/render-html-tool'
-import { Button } from '@/components/ui/button'
 import { useChatStore } from '@/chats/chat-store'
-import { useContentView } from '@/content-view/context'
 import { useThrottle } from '@/hooks/use-throttle'
 import type { ToolOrDynamicToolUIPart } from '@/lib/assistant-message'
-import { Trans, useLingui } from '@lingui/react/macro'
-import { PanelRight } from 'lucide-react'
-import { InlineArtifactCard } from './inline-artifact-card'
-import { useMemo } from 'react'
+import { artifactPageId } from '@/pages/artifact-page-id'
+import { pageController } from '@/pages/page-controller'
 import { usePageStore } from '@/pages/page-store'
-import type { PageDefinition } from '@shared/page-protocol'
+import { usePagePublication } from '@/pages/page-publications-context'
+import { InlineArtifactCard } from './inline-artifact-card'
 
 /** How often the live streaming preview refreshes, so rapid token updates don't thrash the iframe. */
 const artifactPreviewThrottleMs = 120
@@ -23,87 +22,52 @@ type ArtifactMessagePartProps = {
   part: ToolOrDynamicToolUIPart
 }
 
-/**
- * Renders a `render_html` tool call as a first-class artifact in the transcript.
- * From the moment the call starts it shows an inline card that streams into place
- * (scripts off) and then becomes the interactive artifact once verified. It lives
- * in exactly one place at a time: inline, OR the side panel — while it's open in
- * the panel the transcript shows a slim placeholder instead. A finished-but-failed
- * call renders nothing here (it stays an ordinary tool call in the group).
- */
+/** Only inline artifacts render in chat; sidebar publication is owned by the tool and page controller. */
 export const ArtifactMessagePart = ({ part }: ArtifactMessagePartProps) => {
   const { t } = useLingui()
   const artifactId = part.toolCallId
   const input = renderHtmlInput(part as RenderHtmlPart)
+  const output = renderHtmlOutput(part as RenderHtmlPart)
+  const published = output?.ok ? output : undefined
   const title = input.title?.trim() || t`Artifact`
-
   const streaming = part.state === 'input-streaming' || part.state === 'input-available'
-  const verified = part.state === 'output-available' && renderHtmlOutput(part as RenderHtmlPart)?.ok === true
-
-  // Throttle the streaming HTML into the preview iframe; render the exact HTML once verified.
+  const verified = part.state === 'output-available' && !!published
   const throttledHtml = useThrottle(input.html ?? '', artifactPreviewThrottleMs)
   const html = streaming ? throttledHtml : (input.html ?? '')
-
-  const { showArtifact } = useContentView()
+  const pageId = published?.pageId ?? input.pageId ?? artifactPageId(artifactId)
+  const latest = usePagePublication(pageId)
   const chatThreadId = useChatStore((state) => state.currentSessionId)
-  const page = useMemo<PageDefinition>(
-    () => ({
-      id: artifactPageId(artifactId),
-      title,
-      source: { kind: 'html', html, artifact: { toolCallId: artifactId, chatThreadId } },
-    }),
-    [artifactId, title, html, chatThreadId],
-  )
+  const page = useMemo<PageDefinition>(() => {
+    const source = latest?.page.source
+    return latest && source?.kind === 'html'
+      ? {
+          ...latest.page,
+          source: { ...source, artifact: { toolCallId: artifactId, ...source.artifact, chatThreadId } },
+        }
+      : { id: pageId, title, source: { kind: 'html', html, artifact: { toolCallId: artifactId, chatThreadId } } }
+  }, [latest, pageId, artifactId, title, html, chatThreadId])
   const session = usePageStore((state) => state.sessions.find((session) => session.page.id === page.id))
-  const shownInPanel = session && session.presentation !== 'inline'
-
-  // Live inline card from the moment the call starts (even before any HTML arrives).
-  if (streaming) {
-    return <InlineArtifactCard html={html} title={title} streaming />
+  // The original card follows updates, but mounting an old result must never overwrite a live document.
+  const currentPage = session?.page ?? page
+  const currentTitle = currentPage.title.trim() || title
+  const currentHtml = currentPage.source.kind === 'html' ? currentPage.source.html : html
+  const open = () => {
+    usePageStore.getState().ensure(currentPage, { chatThreadId })
+    pageController.open(currentPage)
   }
-  // Finished but not verified — it stays an ordinary tool call in the group.
-  if (!verified) {
+
+  if (streaming) {
+    return input.presentation === 'inline' && !input.pageId ? (
+      <InlineArtifactCard html={html} title={title} streaming />
+    ) : null
+  }
+  if (!verified || (latest && latest.firstToolCallId !== artifactId)) {
     return null
   }
-  // Verified: exactly one of inline or the side panel — never both.
-  if (shownInPanel) {
-    return (
-      <ArtifactPanelBar
-        title={title}
-        onShowInline={() => session && usePageStore.getState().present(session.id, 'inline')}
-      />
-    )
+  // Older saved HTML results have no hint and retain their original inline presentation.
+  const placement = session?.presentation ?? latest?.presentation ?? published?.presentation ?? 'inline'
+  if (placement !== 'inline') {
+    return null
   }
-  return (
-    <InlineArtifactCard
-      html={html}
-      title={title}
-      page={page}
-      /* The session rendering this transcript is the one that produced the
-         artifact, so it owns any passage picked out of it. Read at click time
-         rather than subscribed to: this is an event handler, and re-rendering
-         every artifact card on a session change would buy nothing. */
-      onOpenInPanel={() =>
-        showArtifact({ html, title, artifactId, chatThreadId: useChatStore.getState().currentSessionId })
-      }
-    />
-  )
+  return <InlineArtifactCard html={currentHtml} title={currentTitle} page={currentPage} onOpenInPanel={open} />
 }
-
-type ArtifactPanelBarProps = {
-  title: string
-  onShowInline: () => void
-}
-
-/** Slim placeholder shown in the transcript while the artifact is open in the side panel. */
-const ArtifactPanelBar = ({ title, onShowInline }: ArtifactPanelBarProps) => (
-  <div className="my-2 flex items-center gap-2 rounded-xl border border-dashed border-border bg-card/50 px-3 py-2">
-    <PanelRight className="size-4 shrink-0 text-muted-foreground" />
-    <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-      <Trans>{title} — shown in side panel</Trans>
-    </span>
-    <Button variant="ghost" size="sm" className="h-7 shrink-0" onClick={onShowInline}>
-      <Trans>Show inline</Trans>
-    </Button>
-  </div>
-)

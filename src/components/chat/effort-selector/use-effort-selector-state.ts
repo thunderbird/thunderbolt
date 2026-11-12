@@ -10,7 +10,7 @@ import { useLingui } from '@lingui/react/macro'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useSettings } from '@/hooks/use-settings'
 import { useDatabase } from '@/contexts/database-context'
-import { getModelQuery, updateModel } from '@/dal/models'
+import { getModelReasoningEffortQuery, updateModel } from '@/dal/models'
 import { getModelProviderOptionsQuery } from '@/dal/model-profiles'
 import { resolveProfileReasoningEffort } from '@/ai/profile-thinking-level'
 import { loadReasoningCapabilities, queueReasoningEffortWrite } from '@/ai/reasoning-effort'
@@ -27,8 +27,8 @@ export const useEffortSelectorState = () => {
   const legacyKey = reasoningEffortSettingKey(id, selectedModel.id)
   const legacySetting = useSettings({ [legacyKey]: String }, { camelCase: false })[legacyKey]
   const modelQuery = usePowerSyncQuery({
-    queryKey: ['models', selectedModel.id],
-    query: toCompilableQuery(getModelQuery(db, selectedModel.id)),
+    queryKey: ['models', selectedModel.id, 'reasoning-effort'],
+    query: toCompilableQuery(getModelReasoningEffortQuery(db, selectedModel.id)),
     enabled: builtIn,
   })
   const profileQuery = usePowerSyncQuery({

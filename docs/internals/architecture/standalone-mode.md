@@ -72,56 +72,48 @@ SSO and MCP desktop flows also isolate callbacks by listener origin and path. Th
 native listener rejects unrelated methods, paths and Host/Origin headers, keeps
 waiting for a valid callback, and checks cancellation while reading partial requests.
 Its completion page clears callback credentials from browser history. Web authorization
-returns to `/oauth/openrouter/:flowId` and relays through a nonce-scoped
-`BroadcastChannel`, because the app's COOP headers sever a cross-origin popup's
-opener. The PKCE verifier remains in memory, callback query parameters are cleared,
-and analytics strip the callback nonce from URL properties.
+navigates the same tab and returns to `/oauth/openrouter/:flowId`. Tab-scoped
+session storage retains the PKCE verifier, nonce, and initiating surface during
+the redirect. The callback consumes that handoff, clears query parameters, and
+resumes setup; analytics strip the callback nonce from URL properties.
 
 Tinfoil uses OAuth 2.1 PKCE with the public Thunderbolt client ID (override with
-`VITE_TINFOIL_CLIENT_ID`). Authorization and paid subscription checkout run at
-`https://dash.tinfoil.sh/oauth/authorize`; token exchange, refresh and revocation
+`VITE_TINFOIL_CLIENT_ID`). Authorization and subscription checkout run at
+`https://dash.tinfoil.sh/oauth/authorize`; token exchange, refresh, and revocation
 call `https://api.tinfoil.sh/oauth/{token,revoke}` directly. No backend or client
-secret is required. The registered redirects must include desktop loopbacks
-`http://localhost:17421/`, `:17422/`, `:17423/` and each web deployment's
-`/oauth/tinfoil` URL. Web callbacks use the random state to address the same-origin
-BroadcastChannel. Native mobile currently uses BYOK; the public-client mobile
-redirect registration and deep-link flow still need to be confirmed with Tinfoil.
+secret is required. Register desktop loopbacks `http://localhost:17421/`, `:17422/`,
+and `:17423/`, each web deployment's `/oauth/tinfoil` URL, and the native mobile app
+link `https://app.thunderbolt.io/oauth/callback`. Mobile PKCE state survives an app
+restart; callbacks validate the exact origin/path, unique state and code, and a
+ten-minute lifetime. API keys remain an alternative.
 
-Provider setup captures a local connection revision before authorization or model
-verification and checks it again inside the model-save transaction. Disconnecting,
-toggling, or replacing a connection advances that revision, so an older attempt in
-another window cannot restore access. Revisions remain in `integrations_secrets`;
-OpenRouter's row contains only this lifecycle metadata, while its API keys stay in
-`models_secrets`. Tinfoil token refresh preserves the revision. Cancellation also
-aborts pending network work and rolls back saves that have not committed.
+Provider setup captures a connection revision before authorization and checks it
+again when saving. Disconnecting, toggling, or replacing a connection advances
+that revision, so an older attempt cannot restore access. Reusable connection
+metadata syncs; credentials and lifecycle state stay in
+`provider_connection_secrets`. Models reference the connection by ID. Refresh,
+replacement, enable/disable, and disconnect share a Web Lock and re-read the
+current credentials inside it. Rotated tokens are saved before releasing the lock.
 
-OAuth sessions live in the existing local-only `integrations_secrets` table;
-`models_secrets.oauth_provider` links a user model to that session. Neither tokens
-nor the link sync to other devices. Refresh, reconnect persistence, enable/disable and disconnect
-share a Web Lock; refresh re-reads credentials inside the lock and persists rotated
-refresh tokens before releasing it. A rejected grant requires reconnecting; it
-never falls back to Mozilla billing. Each encrypted inference request resolves a
-fresh token, including requests within long agent turns. BYOK and backend-managed
-models retain their existing paths. Settings → Connections offers enable/disable
-and reconnect/disconnect controls. Billing remains on Tinfoil's dashboard. Disconnecting access does
-not cancel the subscription. Disabling or disconnecting the subscription does not
-change individual model toggles: availability is derived from both the model
-preference and current connection access. A failed remote revocation keeps the
-local connection intact so disconnect can be retried.
+Reconnecting revokes the previous Tinfoil grant before saving its replacement.
+Failed revocation leaves the previous session available for retry. Cancellation
+after revocation marks it for reauthorization. Once token exchange has started,
+it completes within its thirty-second deadline independently of caller or identity
+cancellation, so cleanup can still revoke an issued
+grant. Leaving setup discards unused grants on a best-effort basis. A stable local
+`authorizationId` survives refresh and toggles, preventing delayed cleanup from
+revoking a grant another window now owns. Cleanup failures emit a fixed warning
+without credentials; users can also revoke access from the provider dashboard.
+Revocation has its own thirty-second deadline and survives identity teardown;
+ordinary refresh remains identity-bound. Local grant ownership follows the
+device-approved OAuth binding even if synced connection metadata is changed or removed.
 
-Open chats watch model and connection changes from the database, including other
-windows. Every new send independently checks availability again. These checks do
-not recall requests already sent: an already-running BYOK agent turn can finish
-using its prepared provider, while subsequent turns use the updated selection.
-
-Automatic provider setup marks its model in the local-only
-`models_secrets.provider_default` column. Reconnecting reuses that provider/model
-and credential-kind row, restoring credentials without changing individual model
-preferences or overwriting manually added models. Clearing credentials preserves
-the marker. Existing Tinfoil OAuth rows also qualify for reuse; older OpenRouter
-and BYOK rows cannot be distinguished from manual entries, so their first
-reconnection after this change can create one new marked default. Local-only
-schema changes are applied by PowerSync and require no server migration.
+Each inference request resolves current credentials, including requests within
+long agent turns. A rejected grant requires reconnecting and never falls back to
+Thunderbolt billing. Disabling or disconnecting a connection preserves model
+preferences; availability depends on both the model and its connection. These
+checks do not recall a request already sent. Billing and subscription cancellation
+remain on Tinfoil's dashboard.
 
 Protocol references: [draft integration](https://github.com/tanyav2/thunderbolt/pull/1)
 and [authorization server metadata](https://api.tinfoil.sh/.well-known/oauth-authorization-server).
@@ -174,7 +166,7 @@ only after its gateway advertises direct search. Unavailable Otari search shows 
 explanation and keeps the optional search step. Existing named search connections
 can be reused without re-entering credentials. Each Tinfoil search or page
 retrieval opens and closes a short-lived MCP transport using the existing OAuth
-session or API key. Tinfoil SDK 1.4's injected `fetch` sends encrypted envelopes
+session or API key. Tinfoil SDK 2's injected `fetch` sends encrypted envelopes
 through Thunderbolt's HTTP client. The SDK owns attestation, encryption, response
 decryption, and re-verification on key rotation; Thunderbolt does not implement
 EHBP. Desktop and mobile use native HTTP. The optional GET event stream is
@@ -257,6 +249,9 @@ registration or register another account; account identities are never mixed eve
 when their email addresses match. Switching validates the selected identity and
 revokes the previous renewable session before replacing the active token set.
 Disconnect clears device tokens while retaining registration metadata.
+Started code exchanges and unused-grant revocation finish under independent
+thirty-second deadlines after cancellation or identity teardown. Ordinary discovery,
+identity verification, and refresh remain bound to the initiating identity.
 
 The active account's model catalog supplies display names. Requests use the public
 Responses API with streaming enabled and storage disabled, through native HTTP
@@ -296,7 +291,7 @@ After workspace approval, the user chooses a searchable catalog model and
 Thunderbolt verifies its tool support before saving it. The model keeps the
 first-class `otari` provider identity and the catalog's display name, with a
 generic readable fallback when the server supplies only an identifier. The
-opaque delegated key stays in the existing device-local model secret store.
+opaque delegated key stays in the device-local provider connection secret store.
 Reconnecting the same model on the same server preserves its identity and user
 preferences; manually configured models and other servers stay separate.
 Connections controls only the models created by this connection flow.

@@ -28,11 +28,13 @@ import {
   generateMlKemKeyPair,
   storeKeyPair,
   clearAllKeys,
+  markAKUnverified,
   exportPublicKey,
   exportMlKemPublicKey,
 } from '@/crypto'
 import { createDeviceApprovalFingerprint } from '@/crypto/device-approval-fingerprint'
 import { setCachedSession, clearCachedSession } from '@/lib/session-cache'
+import { approvalCodeAttemptsKey } from '@/components/approve-device/approval-code-attempts'
 
 const currentDeviceId = uuidv7()
 const pendingDeviceId1 = uuidv7()
@@ -76,6 +78,8 @@ describe('PendingDeviceModal', () => {
   })
 
   afterEach(async () => {
+    // Opening the approval dialog records a code attempt on this device.
+    localStorage.removeItem(approvalCodeAttemptsKey)
     await clearAllKeys()
     clearCachedSession()
     localStorage.removeItem(deviceIdKey)
@@ -184,8 +188,78 @@ describe('PendingDeviceModal', () => {
     expect(screen.getByText('Waiting for approval')).toBeInTheDocument()
   })
 
-  it('opens confirmation dialog on Approve click', async () => {
+  it('refuses approval from an unverified device, and keeps Deny', async () => {
+    await markAKUnverified()
+    await getDb()
+      .insert(devicesTable)
+      .values([
+        { id: currentDeviceId, userId: 'user-1', name: 'Current', trusted: 1 },
+        {
+          id: pendingDeviceId1,
+          userId: 'user-1',
+          name: 'My Phone',
+          trusted: 0,
+          approvalPending: 1,
+          publicKey: 'pk-1',
+          mlkemPublicKey: 'mlkem-pk-1',
+        },
+      ])
+
+    renderWithReactivity(<PendingDeviceModal />, { tables: ['devices'], wrapper: HttpClientWrapper })
+
+    await waitForElement(() =>
+      screen.queryByText(
+        "This device can't approve other devices because its encryption keys couldn't be verified. Approve from a device that was trusted before.",
+      ),
+    )
+    const approve = screen.getByRole('button', { name: 'Approve' })
+    expect(approve).toBeDisabled()
+    expect(approve).toHaveAccessibleDescription(
+      "This device can't approve other devices because its encryption keys couldn't be verified. Approve from a device that was trusted before.",
+    )
+    expect(screen.getByRole('button', { name: 'Deny' })).toBeEnabled()
+  })
+
+  // It can't approve, so it must not be held hostage until it denies.
+  it('lets an unverified device close the prompt for that pending device', async () => {
+    await markAKUnverified()
+    await getDb()
+      .insert(devicesTable)
+      .values([
+        { id: currentDeviceId, userId: 'user-1', name: 'Current', trusted: 1 },
+        { id: pendingDeviceId1, userId: 'user-1', name: 'My Phone', trusted: 0, approvalPending: 1, publicKey: 'pk-1' },
+      ])
+
+    renderWithReactivity(<PendingDeviceModal />, { tables: ['devices'], wrapper: HttpClientWrapper })
+
+    await waitForElement(() => screen.queryByText('New device waiting'))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    })
+    expect(screen.queryByText('New device waiting')).toBeNull()
+  })
+
+  it('goes straight to the codes on Approve, and "Deny device" after a mismatch opens the deny confirmation', async () => {
     const db = getDb()
+    setCachedSession({ user: { id: 'user-1' } })
+    const ecdh = await generateKeyPair()
+    const mlkem = generateMlKemKeyPair()
+    // A reveal that does not open the commitment: the codes cannot match, as under a key substitution.
+    const httpClient = createClient({
+      prefixUrl: 'http://test-api.local',
+      fetch: async (request) =>
+        request instanceof Request && request.method === 'POST'
+          ? new Response(null, { status: 204 })
+          : Response.json({
+              sessionId: '0'.repeat(32),
+              commitment: 'c'.repeat(64),
+              reveal: 'b'.repeat(64),
+              expired: false,
+            }),
+    })
+    const Wrapper = ({ children }: { children: ReactNode }) => (
+      <HttpClientProvider httpClient={httpClient}>{children}</HttpClientProvider>
+    )
 
     await db.insert(devicesTable).values([
       { id: currentDeviceId, userId: 'user-1', name: 'Current', trusted: 1 },
@@ -195,30 +269,30 @@ describe('PendingDeviceModal', () => {
         name: 'My Phone',
         trusted: 0,
         approvalPending: 1,
-        publicKey: 'pk-1',
-        mlkemPublicKey: 'mlkem-pk-1',
+        publicKey: await exportPublicKey(ecdh.publicKey),
+        mlkemPublicKey: exportMlKemPublicKey(mlkem.publicKey),
       },
     ])
 
-    renderWithReactivity(<PendingDeviceModal />, {
-      tables: ['devices'],
-      wrapper: HttpClientWrapper,
-    })
+    renderWithReactivity(<PendingDeviceModal />, { tables: ['devices'], wrapper: Wrapper })
 
     await waitForElement(() => screen.queryByText('New device waiting'))
 
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    expect(screen.getByText('Which code is on the new device?')).toBeInTheDocument()
 
+    await act(async () => {
+      await getClock().tickAsync(1500)
+    })
+    await waitForElement(() => screen.queryByText("The codes didn't match"))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Deny device' }))
     await act(async () => {
       await getClock().runAllAsync()
     })
 
-    expect(screen.getByText('Approve this device?')).toBeInTheDocument()
-    expect(
-      screen.getByText(
-        'This will share your encryption key with the device, allowing it to decrypt and sync your data.',
-      ),
-    ).toBeInTheDocument()
+    expect(screen.queryByText("The codes didn't match")).not.toBeInTheDocument()
+    expect(screen.getByText('Deny this device?')).toBeInTheDocument()
   })
 
   it('keeps the opened recipient snapshot when its keys and the pending-device order change', async () => {
@@ -283,6 +357,7 @@ describe('PendingDeviceModal', () => {
       })
       await getClock().runAllAsync()
     })
+    fireEvent.click(screen.getByRole('button', { name: 'Use fingerprint instead' }))
     fireEvent.change(screen.getByLabelText('Device fingerprint'), { target: { value: fingerprint } })
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Approve' })))
     await act(async () => {

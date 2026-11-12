@@ -12,11 +12,12 @@ describe('SandboxedHtmlFrame', () => {
     const { container } = render(<SandboxedHtmlFrame html="<h1>Chart</h1>" title="My chart" />)
     const iframe = container.querySelector('iframe')
     expect(iframe).not.toBeNull()
-    expect(iframe?.getAttribute('sandbox')).toBe('allow-scripts')
+    expect(iframe?.getAttribute('sandbox')).toBe('allow-scripts allow-forms')
     expect(iframe?.getAttribute('title')).toBe('My chart')
     const srcdoc = iframe?.getAttribute('srcdoc') ?? ''
     expect(srcdoc).toContain('<h1>Chart</h1>')
     expect(srcdoc).toContain('postMessage')
+    expect(srcdoc).toContain("form-action 'none'")
   })
 
   it('never grants same-origin access to the sandboxed content', () => {
@@ -142,5 +143,49 @@ describe('SandboxedHtmlFrame', () => {
       )
     })
     expect(onReady).not.toHaveBeenCalled()
+  })
+
+  it('rejects operation failures without reporting a broken page, while retaining real runtime errors', async () => {
+    type Request = (method: string, params: unknown) => Promise<unknown>
+    const requests: (Request | null)[] = []
+    const onError = mock(() => {})
+    const { container } = render(
+      <SandboxedHtmlFrame
+        html="<button disabled>Cell</button>"
+        title="Game"
+        onRequestReady={(request) => requests.push(request)}
+        onError={onError}
+      />,
+    )
+    const iframe = container.querySelector('iframe')!
+    Object.defineProperty(iframe, 'contentWindow', { value: {} as Window })
+    const nonce = /var NONCE = "([^"]+)"/.exec(iframe.getAttribute('srcdoc') ?? '')?.[1]
+    const ports = new MessageChannel()
+    const receive = (data: Record<string, unknown>) =>
+      ports.port1.onmessage?.(new MessageEvent('message', { data: { artifactNonce: nonce, ...data } }))
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          source: iframe.contentWindow,
+          data: { artifactNonce: nonce, type: 'artifact-connect' },
+          ports: [ports.port1],
+        }),
+      )
+      receive({ type: 'artifact-ready' })
+    })
+    const request = requests[0]!
+    const failed = request('page/action', { type: 'click', ref: 'disabled-cell' })
+    act(() => receive({ type: 'artifact-reply', id: 1, result: null, error: 'Element is disabled.' }))
+    await expect(failed).rejects.toThrow('Element is disabled.')
+    expect(onError).not.toHaveBeenCalled()
+
+    const successful = request('page/action', { type: 'click', ref: 'other-cell', button: 'right' })
+    act(() => receive({ type: 'artifact-reply', id: 2, result: true }))
+    expect(await successful).toBe(true)
+    expect(onError).not.toHaveBeenCalled()
+
+    act(() => receive({ type: 'artifact-error', reason: 'exception', detail: 'Broken game script' }))
+    expect(onError).toHaveBeenCalledWith('Uncaught error: Broken game script')
+    ports.port2.close()
   })
 })

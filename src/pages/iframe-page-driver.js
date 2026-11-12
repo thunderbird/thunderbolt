@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* global window, document, HTMLInputElement, HTMLTextAreaElement, InputEvent, KeyboardEvent, Event, Element */
+/* global window, document, HTMLInputElement, HTMLTextAreaElement, InputEvent, KeyboardEvent, PointerEvent, Event, Element */
 ;(() => {
   const driver = window.__thunderboltBrowserDriver
   const handlers = window.__artifactHandlers
@@ -29,7 +29,6 @@
       return true
     }
     if (action.type === 'click') {
-      if (action.button === 'right') throw new Error('Context-menu input requires a native browser.')
       let element = document.elementFromPoint(point.x, point.y)
       while (element?.shadowRoot?.elementFromPoint) {
         const inner = element.shadowRoot.elementFromPoint(point.x, point.y)
@@ -40,6 +39,22 @@
       if (element.matches(':disabled') || element.getAttribute('aria-disabled') === 'true')
         throw new Error('Element is disabled.')
       focus(element)
+      if (action.button === 'right') {
+        element.dispatchEvent(
+          new PointerEvent('contextmenu', {
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+            clientX: point.x,
+            clientY: point.y,
+            button: 2,
+            buttons: 2,
+            pointerType: 'mouse',
+            isPrimary: true,
+          }),
+        )
+        return true
+      }
       element.click()
       return true
     }
@@ -65,6 +80,10 @@
       return true
     }
     if (action.type === 'key') {
+      if (action.key.length > 1 && action.key.includes('+'))
+        throw new Error(
+          'Modifier chords require a native browser. Use the type action with clear to replace field text.',
+        )
       element.dispatchEvent(new KeyboardEvent('keydown', { key: action.key, bubbles: true }))
       element.dispatchEvent(new KeyboardEvent('keyup', { key: action.key, bubbles: true }))
       return true

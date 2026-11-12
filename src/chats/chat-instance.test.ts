@@ -14,6 +14,7 @@ import { createTurnTelemetry, type TurnTelemetryPayload } from '@/ai/turn-teleme
 import { browserController } from '@/browser/browser-controller'
 import { setDebugTranscriptCaptureEnabled } from '@/debug-transcript/recorder'
 import { builtInAgent } from '@/defaults/agents'
+import { createAgentUnavailableError } from '@/lib/error-utils'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import {
@@ -61,6 +62,7 @@ const testModels = [
   createMockModel({ id: 'm2', model: 'gpt-5', provider: 'openai' }),
 ]
 const httpClient: HttpClient = {} as HttpClient
+const isAgentActive = async () => true
 const getProxyFetch = (): FetchFn => Object.assign(async () => new Response('ok'), { preconnect: async () => false })
 
 const makeAdapter = (agent: Agent): AgentAdapter => ({
@@ -447,6 +449,7 @@ describe('createAgentRoutingFetch — connection status', () => {
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
       getOrConnectAdapter: async () => ({ ...makeAdapter(remote), fetch: fetchModel }),
+      isAgentActive,
     })
     await fetch('https://backend.test', { body: '{}' })
     expect(fetchModel).toHaveBeenCalledTimes(1)
@@ -454,7 +457,11 @@ describe('createAgentRoutingFetch — connection status', () => {
 
   it.each(['prompt', 'compact'] as const)('resolves the saved effort before routing %s', async (operation) => {
     const effort = Promise.withResolvers<'high'>()
-    const getChatReasoningEffort = mock(() => effort.promise)
+    const effortRequested = Promise.withResolvers<void>()
+    const getChatReasoningEffort = mock(() => {
+      effortRequested.resolve()
+      return effort.promise
+    })
     const seen: AgentAdapterContext[] = []
     const adapter: AgentAdapter = {
       ...makeAdapter(builtInAgent),
@@ -469,6 +476,7 @@ describe('createAgentRoutingFetch — connection status', () => {
     }
     const route = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      isAgentActive,
       getChatReasoningEffort,
       getOrConnectAdapter: async () => adapter,
     })
@@ -476,7 +484,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       operation === 'prompt'
         ? route('https://backend.test', { body: JSON.stringify({ messages: [] }) })
         : route.compact([], undefined, new AbortController().signal)
-    await Promise.resolve()
+    await effortRequested.promise
     expect(getChatReasoningEffort).toHaveBeenCalledWith(sessionId, expect.objectContaining({ id: 'm1' }))
     expect(seen).toHaveLength(0)
     effort.resolve('high')
@@ -492,6 +500,7 @@ describe('createAgentRoutingFetch — connection status', () => {
     const resolveEffort = mock(() => write.promise)
     const save = mock(async () => {})
     const route = createAgentRoutingFetch(sessionId, save, httpClient, getProxyFetch, {
+      isAgentActive,
       getChatReasoningEffort: resolveEffort,
       getOrConnectAdapter: connect,
     })
@@ -521,6 +530,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       },
     }
     const route = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      isAgentActive,
       getChatReasoningEffort: resolveEffort,
       getOrConnectAdapter: async () => adapter,
     })
@@ -552,6 +562,7 @@ describe('createAgentRoutingFetch — connection status', () => {
     }
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      isAgentActive,
       getChatReasoningEffort: async () => undefined,
       getOrConnectAdapter: async () => adapter,
     })
@@ -590,6 +601,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       }
       const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
         getAvailableModels: async () => useChatStore.getState().models,
+        isAgentActive,
         getChatReasoningEffort: async () => undefined,
         getOrConnectAdapter: async () => adapter,
         getAllSkills: (async () => [{ name: 'weather', instruction: 'WEATHER_BODY', enabled: 1 }]) as never,
@@ -613,6 +625,7 @@ describe('createAgentRoutingFetch — connection status', () => {
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      isAgentActive,
       getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
@@ -633,6 +646,7 @@ describe('createAgentRoutingFetch — connection status', () => {
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      isAgentActive,
       getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
@@ -651,6 +665,7 @@ describe('createAgentRoutingFetch — connection status', () => {
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      isAgentActive,
       getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
@@ -670,6 +685,7 @@ describe('createAgentRoutingFetch — connection status', () => {
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      isAgentActive,
       getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
@@ -698,6 +714,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       getProxyFetch,
       {
         getAvailableModels: async () => useChatStore.getState().models,
+        isAgentActive,
         getChatReasoningEffort: async () => undefined,
         connectToAgent: connectToAgent as never,
         updateChatThread: (async () => {}) as never,
@@ -739,6 +756,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       getProxyFetch,
       {
         getAvailableModels: async () => useChatStore.getState().models,
+        isAgentActive,
         getChatReasoningEffort: async () => undefined,
         getOrConnectAdapter: (async () => adapter) as never,
         updateChatThread: (async () => {}) as never,
@@ -808,6 +826,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       getProxyFetch,
       {
         getAvailableModels: async () => useChatStore.getState().models,
+        isAgentActive,
         getChatReasoningEffort: async () => undefined,
         getOrConnectAdapter: (async () => adapter) as never,
         updateChatThread: (async () => {}) as never,
@@ -1028,6 +1047,62 @@ describe('createChatInstance — retry policy', () => {
     const autoRetry = trackEvent.mock.calls.find(([event]) => event === 'chat_auto_retry')?.[1]
     expect(autoRetry?.reason).toBe('empty-response')
     expect(autoRetry?.attempt).toBe(1)
+  })
+
+  it.each([
+    { state: 'input-streaming', input: undefined },
+    { state: 'input-available', input: { path: 'index.html' } },
+    { state: 'output-available', input: { path: 'index.html' }, output: 'File written' },
+    { state: 'output-error', input: { path: 'index.html' }, errorText: 'Connection lost after writing' },
+  ] as const)('keeps a failed turn with a $state tool for explicit Retry', async (toolState) => {
+    const saved: ThunderboltUIMessage[] = []
+    const { instance, finishWithError, regenerate, trackEvent } = createRetryHarness(async ({ messages }) => {
+      saved.push(...messages)
+    })
+    const partial: ThunderboltUIMessage = {
+      id: 'partial-assistant',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'Creating the page' },
+        { type: 'dynamic-tool', toolName: 'write', toolCallId: 'write-1', ...toolState },
+      ],
+    }
+    instance.messages = [{ id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Create a page' }] }, partial]
+
+    await finishWithError(new Error('503: temporarily unavailable'), partial)
+    await getClock().tickAsync(60_000)
+
+    expect(regenerate).not.toHaveBeenCalled()
+    expect(saved.at(-1)?.parts).toEqual(partial.parts)
+    expect(instance.messages.at(-1)?.parts).toEqual(partial.parts)
+    expect(useChatStore.getState().sessions.get(sessionId)).toMatchObject({ retryCount: 0, retriesExhausted: true })
+    expect(trackEvent.mock.calls.find(([event]) => event === 'chat_retries_exhausted')?.[1]?.reason).toBe(
+      'tool_execution_started',
+    )
+
+    await instance.regenerate()
+    expect(regenerate).toHaveBeenCalledTimes(1)
+    expect(useChatStore.getState().sessions.get(sessionId)?.retriesExhausted).toBe(false)
+  })
+
+  it('still retries a plain response when only a previous turn used tools', async () => {
+    const { instance, finishWithError, regenerate } = createRetryHarness()
+    instance.messages = [
+      { id: 'old-user', role: 'user', parts: [{ type: 'text', text: 'Create a page' }] },
+      {
+        id: 'old-assistant',
+        role: 'assistant',
+        parts: [{ type: 'tool-write', toolCallId: 'write-1', state: 'output-available', input: {}, output: 'Written' }],
+      },
+      { id: 'new-user', role: 'user', parts: [{ type: 'text', text: 'Explain the design' }] },
+    ]
+    await finishWithError(new Error('503: temporarily unavailable'), {
+      id: 'new-assistant',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'The design uses' }],
+    })
+    await getClock().tickAsync(3_000)
+    expect(regenerate).toHaveBeenCalledTimes(1)
   })
 
   it('drops the empty shell of an aborted loader turn without re-sending it', async () => {
@@ -1372,6 +1447,37 @@ describe('createChatInstance — retry policy', () => {
   })
 
   it.each([
+    ['saves the flag when the chat has a thread', createMockChatThread({ id: sessionId }), true],
+    ['saves nothing when the chat has no thread yet', null, false],
+  ] as const)(
+    'flags a prompt refused because its agent was disabled or deleted, and %s',
+    async (_label, chatThread, persisted) => {
+      const errorLog = spyOn(console, 'error').mockImplementation(() => {})
+      const saved: ThunderboltUIMessage[] = []
+      const { instance, finishWithError, regenerate } = createRetryHarness(async ({ messages }) => {
+        saved.push(...messages)
+      })
+      useChatStore.getState().updateSession(sessionId, { chatThread })
+      instance.messages = [{ id: 'u1', role: 'user', parts: [{ type: 'text', text: 'Hello' }] }]
+
+      try {
+        await finishWithError(createAgentUnavailableError('agent-1'))
+        await getClock().runAllAsync()
+
+        // A reload's auto-run skips a stopped prompt, so it never reaches a fallback agent.
+        expect(instance.messages[0]!.metadata?.stoppedByUser).toBe(true)
+        expect(saved.map((message) => [message.id, message.metadata?.stoppedByUser])).toEqual(
+          persisted ? [['u1', true]] : [],
+        )
+        expect(useChatStore.getState().sessions.get(sessionId)!.retriesExhausted).toBe(true)
+        expect(regenerate).not.toHaveBeenCalled()
+      } finally {
+        errorLog.mockRestore()
+      }
+    },
+  )
+
+  it.each([
     ['an Ollama 400', '400: {"error":{"message":"registry.ollama.ai/library/gemma3:4b does not support tools"}}'],
     ['a llama.cpp 500', '500: tools param requires --jinja flag'],
   ])('never auto-regenerates %s that rejects tools', async (_label, message) => {
@@ -1570,6 +1676,38 @@ describe('createChatInstance — retry policy', () => {
     const sendProperties = trackEvent.mock.calls.find(([event]) => event === 'chat_send_prompt')?.[1]
     expect(sendProperties).toEqual(expect.objectContaining({ length: prompt.length }))
   })
+
+  it.each(['completed', 'error', 'stopped'] as const)(
+    'persists the %s terminal outcome while preserving existing metadata',
+    async (outcome) => {
+      const saved: ThunderboltUIMessage[] = []
+      const { instance, finishSuccessfully, finishWithError, finishAborted } = createRetryHarness(
+        async ({ messages }) => {
+          saved.push(...messages)
+        },
+      )
+      const partial: ThunderboltUIMessage = {
+        id: outcome === 'stopped' ? 'aborted-assistant' : 'partial',
+        role: 'assistant',
+        parts: [{ type: 'reasoning', text: 'Preserved thoughts', state: 'streaming' }],
+        metadata: { modelId: 'selected-model', reasoningTime: { 'reasoning-0': 15 } },
+      }
+      instance.messages = [partial]
+      if (outcome === 'completed') {
+        await finishSuccessfully(partial)
+      } else if (outcome === 'error') {
+        await finishWithError(new Error(JSON.stringify({ kind: 'connection-lost', error: 'Connection lost' })), partial)
+      } else {
+        await finishAborted()
+      }
+      expect(saved.at(-1)?.metadata).toMatchObject({
+        turnOutcome: outcome,
+        modelId: 'selected-model',
+        reasoningTime: { 'reasoning-0': 15 },
+      })
+      expect(instance.messages.at(-1)?.metadata?.turnOutcome).toBe(outcome)
+    },
+  )
 
   it('omits transcript correlation from persisted user and assistant messages when capture is disabled', async () => {
     const saveMessages = mock(async (_input: Parameters<SaveMessagesFunction>[0]) => {})
@@ -2145,6 +2283,94 @@ const createWebRetryChat = (webCalls: number, errorText = '503: temporarily unav
 describe('logical-turn web retry state through the SDK', () => {
   beforeEach(() => resetStore())
   afterEach(() => resetStore())
+
+  it.each(['input-available', 'output-available'] as const)(
+    'does not replay a streamed coding call after a provider failure (%s)',
+    async (state) => {
+      const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+      const saved: ThunderboltUIMessage[] = []
+      const requests: string[] = []
+      const adapter: AgentAdapter = {
+        ...makeAdapter(builtInAgent),
+        fetch: async (init) => {
+          requests.push(String(init.body))
+          const firstAttempt = requests.length === 1
+          const chunks = [
+            { type: 'start', messageId: `attempt-${requests.length}` },
+            { type: 'text-start', id: 'text' },
+            { type: 'text-delta', id: 'text', delta: firstAttempt ? 'Creating the page' : 'Completed' },
+            { type: 'text-end', id: 'text' },
+            ...(firstAttempt
+              ? [
+                  { type: 'tool-input-start', toolCallId: 'write-1', toolName: 'write' },
+                  {
+                    type: 'tool-input-available',
+                    toolCallId: 'write-1',
+                    toolName: 'write',
+                    input: { path: 'index.html', content: '<h1>Hello</h1>' },
+                  },
+                  ...(state === 'output-available'
+                    ? [{ type: 'tool-output-available', toolCallId: 'write-1', output: 'File written' }]
+                    : []),
+                  { type: 'error', errorText: '503: temporarily unavailable' },
+                ]
+              : []),
+            { type: 'finish' },
+          ]
+          return new Response(
+            chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join('') + 'data: [DONE]\n\n',
+            {
+              headers: { 'Content-Type': 'text/event-stream' },
+            },
+          )
+        },
+      }
+      const instance = createChatInstance(
+        sessionId,
+        [],
+        async ({ messages }) => {
+          saved.push(...messages)
+        },
+        httpClient,
+        getProxyFetch,
+        {
+          getAvailableModels: async () => useChatStore.getState().models,
+          getChatReasoningEffort: async () => undefined,
+          getOrConnectAdapter: async () => adapter,
+          trackEvent: () => {},
+        },
+      )
+      hydrateStore({
+        chatInstance: instance,
+        chatThread: null,
+        id: sessionId,
+        models: testModels,
+        selectedModel: testModels[0],
+        triggerData: null,
+      })
+      try {
+        await instance.sendMessage({ text: 'Create a page' })
+        await getClock().tickAsync(60_000)
+
+        expect(requests).toHaveLength(1)
+        expect(instance.messages.at(-1)?.parts).toContainEqual(
+          expect.objectContaining({ type: 'tool-write', toolCallId: 'write-1', state }),
+        )
+        expect(saved.at(-1)?.parts).toEqual(instance.messages.at(-1)?.parts)
+        expect(useChatStore.getState().sessions.get(sessionId)).toMatchObject({
+          retryCount: 0,
+          retriesExhausted: true,
+        })
+
+        await instance.regenerate()
+        expect(requests).toHaveLength(2)
+        expect(instance.messages.at(-1)?.parts).toContainEqual(expect.objectContaining({ text: 'Completed' }))
+      } finally {
+        await instance.stop()
+        consoleError.mockRestore()
+      }
+    },
+  )
 
   it.each([
     ['manual', 'removed'],

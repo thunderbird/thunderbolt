@@ -25,6 +25,7 @@ import { browserController } from '@/browser/browser-controller'
 import { resolveWebToolIntent, webBudgetExhaustedMessage } from '@/ai/turn-web-budget'
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getAllSkills as defaultGetAllSkills, getAvailableModels as defaultGetAvailableModels } from '@/dal'
+import { isAgentActive as defaultIsAgentActive } from '@/dal/agents'
 import { isBuiltInAgent, isHostedAgent } from '@/defaults/agents'
 import { isModelReady, matchesThreadConfidentiality } from '@/settings/models/model-policy'
 import { loadProjectContextForThread as defaultLoadProjectContext } from '@/projects/load-project-context'
@@ -45,6 +46,7 @@ import type {
   DebugTranscriptTurnOutcome,
 } from '@/debug-transcript/types'
 import {
+  createAgentUnavailableError,
   getChatErrorKind,
   getErrorName,
   getErrorRetryable,
@@ -264,6 +266,7 @@ export type CreateChatInstanceDeps = {
   connectToAgent?: typeof defaultConnectToAgent
   updateChatThread?: typeof defaultUpdateChatThread
   getDb?: typeof defaultGetDb
+  isAgentActive?: (agent: Agent) => Promise<boolean>
   getAllSkills?: typeof defaultGetAllSkills
   getAvailableModels?: () => Promise<Model[]>
   loadProjectContext?: typeof defaultLoadProjectContext
@@ -316,6 +319,7 @@ export const createAgentRoutingFetch = (
   const getOrConnectAdapter = deps.getOrConnectAdapter ?? defaultGetOrConnectAdapter
   const updateChatThread = deps.updateChatThread ?? defaultUpdateChatThread
   const getDb = deps.getDb ?? defaultGetDb
+  const isAgentActive = deps.isAgentActive ?? ((agent: Agent) => defaultIsAgentActive(getDb(), agent))
   const getAllSkills = deps.getAllSkills ?? defaultGetAllSkills
   const getAvailableModels = deps.getAvailableModels ?? (async () => defaultGetAvailableModels(getDb()))
   const loadProjectContext = deps.loadProjectContext ?? defaultLoadProjectContext
@@ -327,6 +331,14 @@ export const createAgentRoutingFetch = (
     })()
 
   let routedAgentId: string | null = null
+
+  /** The session holds the agent object it picked, which disabling or deleting
+   *  the agent never updates, so every send rereads the agent's row. */
+  const assertAgentActive = async (agent: Agent): Promise<void> => {
+    if (!isBuiltInAgent(agent) && !(await isAgentActive(agent))) {
+      throw createAgentUnavailableError(agent.id)
+    }
+  }
 
   const getWebToolBudget = (messages: ThunderboltUIMessage[]): WebToolBudget | undefined => {
     const lastUserMessage = messages.findLast((message) => message.role === 'user')
@@ -406,6 +418,8 @@ export const createAgentRoutingFetch = (
       operation === 'prompt' && isBuiltInAgent(selectedAgent)
         ? (routingState.getTurnModel?.() ?? session.selectedModel)
         : session.selectedModel
+    // Refuse inactive agents before saving a prompt or opening a connection.
+    await assertAgentActive(selectedAgent)
     requireRunnableModel(selectedAgent, selectedModel)
     const reasoningEffort = isBuiltInAgent(selectedAgent)
       ? await (deps.getChatReasoningEffort ?? defaultGetChatReasoningEffort)(id, selectedModel)
@@ -502,6 +516,11 @@ export const createAgentRoutingFetch = (
       isBuiltInAgent(selectedAgent) || !session.projectId ? undefined : await resolveAcpProjectSection(id)
     const requestPermission = (request: RequestPermissionRequest, signal?: AbortSignal) =>
       requestPermissionViaStore(id, selectedAgent.id, request, signal ?? init.signal, !isBuiltInAgent(selectedAgent))
+
+    // Again after the awaits above, since the agent may have been disabled or deleted while it
+    // connected. The hosted agent posts as soon as `adapter.fetch` runs; the ACP
+    // adapter checks once more right before `session/prompt`.
+    await assertAgentActive(selectedAgent)
 
     const turnBudget = getTurnBudget().consumer
     if (operation === 'prompt' && !turnBudget.tryConsumeRequest()) {
@@ -1086,9 +1105,17 @@ export const createChatInstance = (
       }
       /** Persist the terminal snapshot independently of mounted UI subscribers. */
       const saveFinalMessage = async (completedMessage: ThunderboltUIMessage) => {
+        const terminalMessage: ThunderboltUIMessage = {
+          ...completedMessage,
+          metadata: {
+            ...completedMessage.metadata,
+            turnOutcome: isAbort ? 'stopped' : isError ? 'error' : 'completed',
+          },
+        }
+        instance.messages = instance.messages.map((item) => (item.id === terminalMessage.id ? terminalMessage : item))
         finishedTurn.telemetry?.startPhase('final_save')
         try {
-          await saveMessages({ id, messages: [completedMessage] })
+          await saveMessages({ id, messages: [terminalMessage] })
         } catch (error) {
           releaseBrowserControl(finishedTurn)
           throw error
@@ -1197,10 +1224,29 @@ export const createChatInstance = (
         return
       }
 
+      // The agent was disabled or deleted, possibly after the prompt was saved. Flag
+      // it like a stopped prompt so a reload never auto-runs it on a fallback agent.
+      if (getChatErrorKind(lastError) === 'agent-unavailable') {
+        const refusedPrompt = setPromptStopped(true)
+        if (refusedPrompt && useChatStore.getState().sessions.get(id)?.chatThread) {
+          await saveMessages({ id, messages: [refusedPrompt] })
+        }
+        markRetriesExhausted(finishedTurn)
+        return
+      }
+
       // A transport loss may have interrupted the turn after the agent performed
       // side effects. Only the user may choose to submit it again.
       if (getChatErrorKind(lastError) === 'connection-lost') {
         markRetriesExhausted(finishedTurn)
+        return
+      }
+
+      // Regeneration discards this attempt's tool history, but cannot undo its
+      // effects. Even an unfinished or failed tool may already have changed
+      // files or external state. Preserve the partial reply for explicit Retry.
+      if (message?.parts.some((part) => 'toolCallId' in part)) {
+        markRetriesExhausted(finishedTurn, 'tool_execution_started')
         return
       }
 

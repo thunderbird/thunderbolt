@@ -42,7 +42,9 @@ const makeCommandSink = mock(() => commandSink) as unknown as WarmAcpCommandsDep
 const fakeDb = {} as ReturnType<NonNullable<WarmAcpCommandsDeps['getDb']>>
 const getDb = (() => fakeDb) as NonNullable<WarmAcpCommandsDeps['getDb']>
 
-const deps: WarmAcpCommandsDeps = { getOrConnectAdapter, updateChatThread, makeCommandSink, getDb }
+const isAgentActive = mock<NonNullable<WarmAcpCommandsDeps['isAgentActive']>>(() => Promise.resolve(true))
+
+const deps: WarmAcpCommandsDeps = { getOrConnectAdapter, updateChatThread, makeCommandSink, getDb, isAgentActive }
 
 const makeAdapter = (agent: Agent): AgentAdapter => ({
   agent,
@@ -106,6 +108,8 @@ beforeEach(() => {
   updateChatThread.mockReset()
   updateChatThread.mockImplementation(() => Promise.resolve())
   commandSink.mockReset()
+  isAgentActive.mockReset()
+  isAgentActive.mockImplementation(() => Promise.resolve(true))
 })
 
 describe('useWarmAcpCommands', () => {
@@ -204,6 +208,16 @@ describe('useWarmAcpCommands', () => {
 
     expect(getOrConnectAdapter).toHaveBeenCalledTimes(2)
     expect(getOrConnectAdapter.mock.calls[1]?.[0]).toBe(other)
+  })
+
+  it('opens no session on a cached connection whose agent was disabled or deleted', async () => {
+    getOrConnectAdapter.mockResolvedValue(makeAdapter(remote))
+    isAgentActive.mockImplementation(() => Promise.resolve(false))
+    renderWarm({ id: 'thread-1', selectedAgent: remote, chatThread: thread })
+
+    await flush()
+    expect(isAgentActive).toHaveBeenCalledWith(fakeDb, remote)
+    expect(ensureSession).not.toHaveBeenCalled()
   })
 
   it('wires the per-agent command sink into the connect call', async () => {

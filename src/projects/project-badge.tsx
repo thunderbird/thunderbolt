@@ -3,14 +3,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { lazy, Suspense, useRef } from 'react'
-import { Trans, useLingui } from '@lingui/react/macro'
+import { useLingui } from '@lingui/react/macro'
 import { ChevronDown, FolderMinus, Settings } from 'lucide-react'
-import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
 import { SearchableMenu, searchableMenuRowClass } from '@/components/ui/searchable-menu'
 import { cn } from '@/lib/utils'
 import { ProjectIcon } from './project-icon'
+import { ProjectSshStatus } from './project-ssh-status'
 import { ProjectMoveErrorDialog } from './project-move-error-dialog'
+import { ProjectMoveConfirmationDialog } from './project-move-confirmation-dialog'
 import { useProjectBadgeState } from './use-project-badge-state'
 
 // Project configuration stays off the chat's critical loading path.
@@ -49,7 +50,10 @@ const ProjectBadgeContent = ({ chatThreadId, iconOnly = false, className }: Proj
     closeDialog,
     isPending,
     selectProject,
-    requestProjectChange,
+    confirmation,
+    isConfirming,
+    confirmMove,
+    cancelMove,
   } = useProjectBadgeState(chatThreadId)
   if (!isVisible) {
     return null
@@ -74,7 +78,7 @@ const ProjectBadgeContent = ({ chatThreadId, iconOnly = false, className }: Proj
       <SearchableMenu
         items={items}
         value={project?.id}
-        onValueChange={requestProjectChange}
+        onValueChange={selectProject}
         searchable={projects.length > 10}
         searchPlaceholder={t`Search projects`}
         emptyMessage={t`No matching projects.`}
@@ -99,14 +103,17 @@ const ProjectBadgeContent = ({ chatThreadId, iconOnly = false, className }: Proj
         renderItem={(item) => (
           <div className={cn(searchableMenuRowClass, isPending && 'cursor-wait opacity-60')}>
             {item.icon}
-            <span className="min-w-0 flex-1 truncate font-medium">{item.label}</span>
+            <span className="flex min-w-0 flex-1 items-center gap-1.5">
+              <span className="min-w-0 truncate font-medium">{item.label}</span>
+              <ProjectSshStatus projectId={item.id} />
+            </span>
           </div>
         )}
         trigger={(_selected, open) => (
           <div
             title={label}
             className={cn(
-              'flex shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors',
+              'relative flex shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors',
               compact
                 ? cn(
                     'size-[var(--touch-height-sm)] max-md:size-[var(--touch-height-lg)] hover:bg-accent md:dark:hover:bg-secondary/50 active:bg-muted-foreground/20',
@@ -122,10 +129,18 @@ const ProjectBadgeContent = ({ chatThreadId, iconOnly = false, className }: Proj
               className={iconOnly ? 'size-[var(--icon-size-default)] text-[1.05rem]' : 'size-4 text-[0.9rem]'}
             />
             {compact ? (
-              <span className="sr-only">{label}</span>
+              <>
+                <span className="sr-only">{label}</span>
+                {project && (
+                  <span className="absolute right-1 bottom-1 flex">
+                    <ProjectSshStatus projectId={project.id} />
+                  </span>
+                )}
+              </>
             ) : (
               <>
                 <span className="truncate">{project?.name}</span>
+                {project && <ProjectSshStatus projectId={project.id} />}
                 <ChevronDown className={cn('size-3.5 shrink-0 transition-transform', open && 'rotate-180')} />
               </>
             )}
@@ -133,25 +148,13 @@ const ProjectBadgeContent = ({ chatThreadId, iconOnly = false, className }: Proj
         )}
       />
       <ProjectMoveErrorDialog error={moveError} onClose={clearMoveError} />
-      {dialog?.type === 'move' && (
-        <ConfirmActionDialog
-          open
-          title={t`Move session?`}
-          description={
-            <Trans>
-              This will move the session to <strong>{dialog.project.name}</strong>.
-            </Trans>
-          }
-          confirmLabel={t`Move`}
-          confirmVariant="default"
-          onCancel={closeDialog}
-          onConfirm={() => {
-            selectProject(dialog.project.id)
-            closeDialog()
-          }}
-        />
-      )}
-      {dialog && dialog.type !== 'move' && (
+      <ProjectMoveConfirmationDialog
+        open={confirmation !== null}
+        isPending={isConfirming}
+        onConfirm={confirmMove}
+        onCancel={cancelMove}
+      />
+      {dialog && (
         <Suspense fallback={null}>
           {dialog.type === 'edit' ? (
             <ProjectEditorDialog project={dialog.project} onClose={closeDialog} />

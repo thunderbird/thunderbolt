@@ -221,11 +221,14 @@ export const createHarnessCompaction = (
         }
         throw new Error('Nothing to compact')
       }
-      // Pi includes the message that crosses the retention budget. A single
-      // large old message can therefore retain the whole history; try its
-      // smallest safe tail before falling back to summarizing the whole turn.
+      // Pi includes the message that crosses the retention budget. A large old
+      // turn can leave no room for the prompt, tools and summary even when some
+      // earlier history was selected. Try Pi's smallest safe tail in either case.
+      const retainedTokens = prepared.value.retainedTail.reduce((total, message) => total + estimateTokens(message), 0)
+      const tailExceedsBudget = retainedTokens + state.overheadTokens >= model.contextWindow - settings.reserveTokens
       const cut =
-        !manual && !prepared.value.messagesToSummarize.length && !prepared.value.turnPrefixMessages.length
+        !manual &&
+        (tailExceedsBudget || (!prepared.value.messagesToSummarize.length && !prepared.value.turnPrefixMessages.length))
           ? prepareCompaction(branch, { ...settings, keepRecentTokens: 0 })
           : prepared
       if (!cut.ok) {

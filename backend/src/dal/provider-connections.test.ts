@@ -58,6 +58,58 @@ describe('provider connection sync', () => {
     }
   })
 
+  it('accepts partial metadata and hydrates it without blocking later uploads', async () => {
+    expect(
+      await applyOperation(db, { op: 'PUT', type: 'provider_connections', id: connectionId, data: {} }, 'owner'),
+    ).toBe(true)
+    const [partial] = await db.select().from(providerConnectionsTable)
+    expect(partial).toMatchObject({ provider: null, name: null, authMethod: null, enabled: 1 })
+
+    expect(
+      await applyOperation(
+        db,
+        { op: 'PATCH', type: 'provider_connections', id: connectionId, data: metadata },
+        'owner',
+      ),
+    ).toBe(true)
+    const [hydrated] = await db.select().from(providerConnectionsTable)
+    expect(hydrated).toMatchObject({ provider: 'otari', name: 'Work Otari', authMethod: 'oauth' })
+  })
+
+  it.each(['PUT', 'PATCH'] as const)('accepts explicit null metadata in %s operations', async (op) => {
+    await applyOperation(db, { op: 'PUT', type: 'provider_connections', id: connectionId, data: metadata }, 'owner')
+    expect(
+      await applyOperation(
+        db,
+        {
+          op,
+          type: 'provider_connections',
+          id: connectionId,
+          data: {
+            provider: null,
+            name: null,
+            url: null,
+            auth_method: null,
+            enabled: null,
+            created_at: null,
+            updated_at: null,
+          },
+        },
+        'owner',
+      ),
+    ).toBe(true)
+    const [saved] = await db.select().from(providerConnectionsTable)
+    expect(saved).toMatchObject({
+      provider: null,
+      name: null,
+      url: null,
+      authMethod: null,
+      enabled: null,
+      createdAt: null,
+      updatedAt: null,
+    })
+  })
+
   it('scopes updates, soft deletion, and deletes to the owning account', async () => {
     for (const userId of ['owner', 'other']) {
       await applyOperation(db, { op: 'PUT', type: 'provider_connections', id: connectionId, data: metadata }, userId)
@@ -122,21 +174,162 @@ describe('provider connection sync', () => {
     expect(rows.find((row) => row.id === 'connected')?.providerConnectionId).toBe(connectionId)
   })
 
-  it('preserves existing metadata when an offline migration uses create-only upload', async () => {
-    await applyOperation(db, { op: 'PUT', type: 'provider_connections', id: connectionId, data: metadata }, 'owner')
-    await applyOperation(
-      db,
-      {
-        op: 'PUT',
-        type: 'provider_connections',
-        id: connectionId,
-        data: { ...metadata, name: 'Old name' },
-        ifAbsent: true,
-      },
-      'owner',
-    )
+  it.each([null, '2026-11-10T12:00:00.000Z'])(
+    'preserves remote edits and deletion (%s) when an offline migration retries',
+    async (deletedAt) => {
+      await applyOperation(
+        db,
+        {
+          op: 'PUT',
+          type: 'provider_connections',
+          id: connectionId,
+          data: { ...metadata, url: 'https://new.example/api/v1', enabled: 0, deleted_at: deletedAt },
+        },
+        'owner',
+      )
+      const before = await db.select().from(providerConnectionsTable)
+      for (const _attempt of [1, 2]) {
+        expect(
+          await applyOperation(
+            db,
+            {
+              op: 'PUT',
+              type: 'provider_connections',
+              id: connectionId,
+              data: { ...metadata, name: 'Old name', url: 'https://old.example/api/v1', enabled: 1, deleted_at: null },
+              ifAbsent: true,
+            },
+            'owner',
+          ),
+        ).toBe(true)
+      }
+      expect(await db.select().from(providerConnectionsTable)).toEqual(before)
+    },
+  )
+
+  it('creates a missing connection when an offline migration uses create-only upload', async () => {
+    expect(
+      await applyOperation(
+        db,
+        {
+          op: 'PUT',
+          type: 'provider_connections',
+          id: connectionId,
+          data: metadata,
+          ifAbsent: true,
+        },
+        'owner',
+      ),
+    ).toBe(true)
     const [saved] = await db.select().from(providerConnectionsTable)
-    expect(saved.name).toBe(metadata.name)
+    expect(saved).toMatchObject({ id: connectionId, name: metadata.name, userId: 'owner', deletedAt: null })
+  })
+
+  it.each([
+    { provider: 'tinfoil', expected: 'tinfoil', isSystem: 0, previous: null, deleted: false, applied: true },
+    { provider: 'tinfoil', expected: 'tinfoil', isSystem: null, previous: null, deleted: false, applied: true },
+    { provider: 'tinfoil', expected: 'tinfoil', isSystem: 0, previous: 'newer-link', deleted: false, applied: false },
+    { provider: 'tinfoil', expected: 'tinfoil', isSystem: 0, previous: null, deleted: true, applied: false },
+    { provider: 'openai', expected: 'tinfoil', isSystem: 0, previous: null, deleted: false, applied: false },
+    { provider: 'tinfoil', expected: 'tinfoil', isSystem: 1, previous: null, deleted: false, applied: false },
+    { provider: 'openai', expected: 'openai', isSystem: 1, previous: null, deleted: false, applied: true },
+    { provider: 'custom', expected: 'custom', isSystem: 1, previous: null, deleted: false, applied: true },
+  ] as const)(
+    'conditionally links an offline migrated model without replacing remote state: %j',
+    async ({ provider, expected, isSystem, previous, deleted, applied }) => {
+      await db.insert(modelsTable).values({
+        id: 'offline-model',
+        userId: 'owner',
+        provider,
+        name: 'Remote model',
+        isSystem,
+        providerConnectionId: previous,
+        deletedAt: deleted ? new Date('2026-11-10T12:00:00Z') : null,
+      })
+      const [before] = await db.select().from(modelsTable)
+      for (const target of ['migration-link', 'later-migration-link']) {
+        expect(
+          await applyOperation(
+            db,
+            {
+              op: 'PATCH',
+              type: 'models',
+              id: 'offline-model',
+              data: { provider_connection_id: target },
+              ifProviderConnectionUnset: { provider: expected },
+            },
+            'owner',
+          ),
+        ).toBe(true)
+      }
+      expect(await db.select().from(modelsTable)).toEqual([
+        { ...before, providerConnectionId: applied ? 'migration-link' : previous },
+      ])
+    },
+  )
+
+  it('scopes migration links to their account and accepts missing models without creating them', async () => {
+    for (const userId of ['owner', 'other']) {
+      await db.insert(modelsTable).values({ id: 'same-model', userId, provider: 'custom' })
+    }
+    for (const id of ['same-model', 'missing-model']) {
+      expect(
+        await applyOperation(
+          db,
+          {
+            op: 'PATCH',
+            type: 'models',
+            id,
+            data: { provider_connection_id: 'local-link' },
+            ifProviderConnectionUnset: { provider: 'custom' },
+          },
+          'owner',
+        ),
+      ).toBe(true)
+    }
+    const rows = await db.select().from(modelsTable).orderBy(modelsTable.userId)
+    expect(rows.map(({ userId, providerConnectionId }) => ({ userId, providerConnectionId }))).toEqual([
+      { userId: 'other', providerConnectionId: null },
+      { userId: 'owner', providerConnectionId: 'local-link' },
+    ])
+  })
+
+  it.each([
+    { op: 'PUT', type: 'models', data: { provider_connection_id: 'link' }, provider: 'custom' },
+    { op: 'DELETE', type: 'models', data: { provider_connection_id: 'link' }, provider: 'custom' },
+    { op: 'PATCH', type: 'provider_connections', data: { provider_connection_id: 'link' }, provider: 'custom' },
+    { op: 'PATCH', type: 'models', data: { provider_connection_id: 'link', name: 'overwrite' }, provider: 'custom' },
+    { op: 'PATCH', type: 'models', data: { provider_connection_id: 'link', user_id: 'other' }, provider: 'custom' },
+    { op: 'PATCH', type: 'models', data: { provider_connection_id: null }, provider: 'custom' },
+    { op: 'PATCH', type: 'models', data: { provider_connection_id: ' ' }, provider: 'custom' },
+    { op: 'PATCH', type: 'models', data: {}, provider: 'custom' },
+    { op: 'PATCH', type: 'models', data: undefined, provider: 'custom' },
+    { op: 'PATCH', type: 'models', data: { provider_connection_id: 'link' }, provider: 'thunderbolt' },
+    { op: 'PATCH', type: 'models', data: { provider_connection_id: 'link' }, provider: 'unknown' },
+  ] as const)(
+    'rejects a migration-link condition outside its narrow payload: %j',
+    async ({ provider, ...operation }) => {
+      await db.insert(modelsTable).values({ id: 'model', userId: 'owner', provider: 'custom', name: 'Original' })
+      const before = await db.select().from(modelsTable)
+      expect(
+        await applyOperation(db, { ...operation, id: 'model', ifProviderConnectionUnset: { provider } }, 'owner'),
+      ).toBe(false)
+      expect(await db.select().from(modelsTable)).toEqual(before)
+    },
+  )
+
+  it('keeps deliberate model connection edits unconditional after migration', async () => {
+    await db
+      .insert(modelsTable)
+      .values({ id: 'model', userId: 'owner', provider: 'custom', providerConnectionId: 'migration-link' })
+    expect(
+      await applyOperation(
+        db,
+        { op: 'PATCH', type: 'models', id: 'model', data: { provider_connection_id: 'chosen-link' } },
+        'owner',
+      ),
+    ).toBe(true)
+    expect((await db.select().from(modelsTable))[0].providerConnectionId).toBe('chosen-link')
   })
 
   it('removes metadata on account deletion without touching another account', async () => {

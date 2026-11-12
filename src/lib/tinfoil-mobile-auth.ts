@@ -157,12 +157,7 @@ export const captureTinfoilMobileReturn = (
         if (invalid) {
           throw new TinfoilConnectionError()
         }
-        const credentials = await deps.exchange(
-          { code: code!, verifier: flow.data.verifier, redirectUri: mobileOAuthRedirectUri },
-          signal,
-        )
-        signal.throwIfAborted()
-        return credentials
+        return deps.exchange({ code: code!, verifier: flow.data.verifier, redirectUri: mobileOAuthRedirectUri }, signal)
       })()
       return completion
     },

@@ -52,6 +52,7 @@ import { browserController } from '@/browser/browser-controller'
 import * as tauriCore from '@tauri-apps/api/core'
 import * as tauriOs from '@tauri-apps/plugin-os'
 import { useChatStore } from '@/chats/chat-store'
+import { useSshEnvironmentsStore } from '@/agent-execution/ssh-environments'
 import {
   createBuiltInAdapter,
   composeAppHarnessSystemPrompt,
@@ -64,7 +65,7 @@ import { isPiModelCandidate } from './built-in-model-support'
 import type { AppHarness } from '@shared/agent-core'
 import { prepareBuiltInConversation, type BuiltInConversationDeps } from './built-in-conversation'
 import type { BuildAppHarnessOptions, PiModelDescriptor } from '@shared/agent-core'
-import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
+import { appHarnessDevelopmentPrompt, appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
 import { createPromptParts, type PromptParams } from '@/ai/prompt'
 import {
   FileError,
@@ -207,13 +208,82 @@ describe('composeAppHarnessSystemPrompt', () => {
     for (const text of ['# Environment', '`bash`', '`read`', '`write`', '`edit`', '`render_html`']) {
       expect(composed.includes(text)).toBe(supportsTools)
     }
+    expect(composed.includes(appHarnessDevelopmentPrompt)).toBe(supportsTools)
     expect(composed.startsWith('Stable instructions\n\n')).toBe(true)
     expect(composed).toContain('Client environment:')
     expect(composed.endsWith('\n\nCurrent date/time: 2026-09-04')).toBe(true)
   })
+
+  it.each([
+    { location: 'computer', cwd: '/workspace', access: 'ask' },
+    { location: 'ssh', environmentId: 'remote', cwd: '~/workspace', access: 'ask' },
+  ] as const)('includes development verification for $location execution', (execution) => {
+    const composed = composeAppHarnessSystemPrompt(
+      { stableSystemPrompt: 'Stable instructions', volatileSystemPrompt: 'Now', supportsTools: true },
+      execution,
+    )
+    expect(composed).toContain(appHarnessDevelopmentPrompt)
+    expect(composed).toContain('AGENTS.md')
+    expect(composed).toContain('Never claim tests passed without running them')
+    expect(composed).not.toContain('simulated shell')
+  })
+
+  it.each([true, false])(
+    'scopes SSH preview and process-lifetime guidance to tool-capable SSH turns (%s)',
+    (supportsTools) => {
+      const config = { stableSystemPrompt: 'Stable instructions', volatileSystemPrompt: 'Now', supportsTools }
+      const ssh = composeAppHarnessSystemPrompt(config, {
+        location: 'ssh',
+        environmentId: 'remote',
+        cwd: '/workspace',
+        access: 'full',
+      })
+      for (const text of [
+        'terminates its process group, including ordinary background children',
+        'Do not evade this cleanup with setsid, disown, or daemonization',
+        'reuse their resolved paths',
+        'Use local_app create to launch a persistent remote server',
+        'Use local_app attach with the remote port',
+        "Run the project's existing browser/E2E tests when appropriate",
+        'Do not install a headless browser merely to substitute',
+      ]) {
+        expect(ssh.includes(text)).toBe(supportsTools)
+        expect(
+          composeAppHarnessSystemPrompt(config, { location: 'computer', cwd: '/workspace', access: 'full' }),
+        ).not.toContain(text)
+        expect(composeAppHarnessSystemPrompt(config)).not.toContain(text)
+      }
+    },
+  )
 })
 
 describe('harnessSignature', () => {
+  it('rebuilds when a saved SSH destination changes and rejects a deleted destination', () => {
+    const environment = {
+      id: crypto.randomUUID(),
+      name: 'Test SSH',
+      host: 'vm-one',
+      authentication: 'agent' as const,
+      cwd: '/remote',
+      deletedAt: null,
+    }
+    const execution = {
+      location: 'ssh' as const,
+      environmentId: environment.id,
+      cwd: '/remote',
+      access: 'ask' as const,
+    }
+    try {
+      useSshEnvironmentsStore.getState().saveEnvironment(environment)
+      const first = harnessSignature(anthropic(), 'sys', 0, undefined, execution)
+      useSshEnvironmentsStore.getState().saveEnvironment({ ...environment, host: 'vm-two' })
+      expect(harnessSignature(anthropic(), 'sys', 0, undefined, execution)).not.toBe(first)
+      useSshEnvironmentsStore.getState().deleteEnvironment(environment.id)
+      expect(() => harnessSignature(anthropic(), 'sys', 0, undefined, execution)).toThrow('unavailable')
+    } finally {
+      useSshEnvironmentsStore.setState({ environments: {} })
+    }
+  })
   it('rebuilds a cached chat when it moves between project workspaces', () => {
     expect(harnessSignature(anthropic(), 'sys', 0, undefined, undefined, 'project-one')).not.toBe(
       harnessSignature(anthropic(), 'sys', 0, undefined, undefined, 'project-two'),
@@ -863,7 +933,7 @@ describe('createBuiltInAdapter persistent harness', () => {
           env: { remove: async () => {} },
         } as never
       },
-      workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
+      workspaceDirFor: realAgentCore.workspaceDirFor,
       writeAgentWorkspaceFiles: async () => [],
       toPiAgentTools: async () => [],
       piHarnessToUiMessageStream: (_harness: AgentHarness, runPrompt: () => Promise<void>) =>
@@ -920,7 +990,7 @@ describe('createBuiltInAdapter persistent harness', () => {
     const agentCore = {
       ...tinfoilAgentCore,
       buildAppHarness: async () => harness as never,
-      workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
+      workspaceDirFor: realAgentCore.workspaceDirFor,
       writeAgentWorkspaceFiles: async () => [],
       toPiAgentTools: async () => [{ name: 'weather' } as AgentTool],
       piHarnessToUiMessageStream: (_harness: AgentHarness, runPrompt: () => Promise<void>) =>
@@ -1035,7 +1105,7 @@ describe('createBuiltInAdapter persistent harness', () => {
     const agentCore: Awaited<ReturnType<NonNullable<BuiltInAdapterOptions['loadAgentCore']>>> = {
       isKnownAnthropicModel: () => true,
       buildAppHarness: buildHarness,
-      workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
+      workspaceDirFor: realAgentCore.workspaceDirFor,
       writeAgentWorkspaceFiles: async () => [],
       toPiAgentTools: async (toolset: PreparedAiRequestConfig['toolset']) => {
         toPiCalls.push(toolset)
@@ -1106,7 +1176,7 @@ describe('createBuiltInAdapter persistent harness', () => {
     const firstSystemPrompt = buildCalls[0]?.systemPrompt as () => string
     const secondSystemPrompt = buildCalls[1]?.systemPrompt as () => string
     const expectedPrompt = (timestamp: string): string =>
-      `stable prompt\n\nClient environment: web\n\n${appHarnessEnvironmentPrompt}\nFile changes, shell commands, and external actions require user approval. Reads run automatically. If denied, respect the decision; do not retry through another tool.\n\n${timestamp}`
+      `stable prompt\n\nClient environment: web\n\n${appHarnessEnvironmentPrompt}\nFile changes, shell commands, and external actions require user approval. Reads run automatically. If denied, respect the decision; do not retry through another tool.\n\n${appHarnessDevelopmentPrompt}\n\n${timestamp}`
     expect(seededSystemPrompts).toEqual([expectedPrompt('timestamp 1'), expectedPrompt('timestamp 3')])
     expect(firstSystemPrompt()).toBe(expectedPrompt('timestamp 2'))
     expect(secondSystemPrompt()).toBe(expectedPrompt('timestamp 3'))
@@ -1164,6 +1234,7 @@ const createBudgetAdapter = (
   prepareConfig?: BuiltInAdapterOptions['prepareConfig'],
   onHarness?: (harness: AgentHarness) => void,
   extraConfig?: Partial<PreparedAiRequestConfig>,
+  sshReply?: (request: Record<string, unknown>) => unknown,
 ) => {
   const budget = createWebToolBudget('auto')
   const requests: ProviderRequest[] = []
@@ -1175,6 +1246,18 @@ const createBudgetAdapter = (
     command: string,
     args: Record<string, unknown>,
   ): Promise<T> => {
+    if (sshReply) {
+      nativeCalls.push({ command, args })
+      if (command === 'agent_ssh_request') {
+        const request = args.request as Record<string, unknown>
+        if (request.operation === 'cleanup') {
+          nativeCleanup.pending.resolve()
+          nativeCleanup.pending = Promise.withResolvers<void>()
+        }
+        return (await sshReply(request)) as T
+      }
+      return undefined as T
+    }
     if (command !== 'agent_cleanup_output_files') {
       throw new Error(`Unexpected native command: ${command}`)
     }
@@ -1242,6 +1325,16 @@ const createBudgetAdapter = (
           owner?: string,
         ) {
           super(cwd, invokeNative, owner)
+        }
+      },
+      SshExecutionEnv: class extends realAgentCore.SshExecutionEnv {
+        constructor(
+          cwd: string,
+          connection: ConstructorParameters<typeof realAgentCore.SshExecutionEnv>[1],
+          _invoke: ConstructorParameters<typeof realAgentCore.SshExecutionEnv>[2],
+          owner?: string,
+        ) {
+          super(cwd, connection, invokeNative, owner)
         }
       },
       removeAgentWorkspace: async (threadId) => {
@@ -1316,6 +1409,100 @@ const budgetSearchCalls = Array.from({ length: webToolCaps.auto }, (_, index) =>
 }))
 
 describe('real Pi approvals', () => {
+  it('binds SSH coding tools and keeps full access on later turns without rebuilding the harness', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'isTauri')
+    const isTauri = spyOn(tauriCore, 'isTauri').mockReturnValue(true)
+    const platform = spyOn(tauriOs, 'platform').mockReturnValue('macos')
+    const environment = {
+      id: crypto.randomUUID(),
+      name: 'VM',
+      host: 'orb',
+      authentication: 'agent' as const,
+      cwd: '/remote/project',
+      deletedAt: null,
+    }
+    const files = new Map<string, number[]>()
+    const harnesses: AgentHarness[] = []
+    const run = createBudgetAdapter(
+      [
+        [{ name: 'write', args: { path: 'ssh.txt', content: 'remote only' } }],
+        'Saved remotely.',
+        [{ name: 'write', args: { path: 'full.txt', content: 'full access' } }],
+        'Saved with full access.',
+        [{ name: 'write', args: { path: 'later.txt', content: 'still full access' } }],
+        'Saved again.',
+      ],
+      undefined,
+      (harness) => harnesses.push(harness),
+      undefined,
+      (request) => {
+        if (request.operation === 'resolve') {
+          return `/remote/project/${request.path}`
+        }
+        if (request.operation === 'write') {
+          files.set(request.path as string, request.content as number[])
+          return
+        }
+        if (request.operation === 'cleanup') {
+          return
+        }
+        throw new Error(`Unexpected SSH request: ${request.operation}`)
+      },
+    )
+    try {
+      Object.defineProperty(window, 'isTauri', { configurable: true, value: true })
+      useSshEnvironmentsStore.getState().saveEnvironment(environment)
+      run.context.execution = { location: 'ssh', environmentId: environment.id, cwd: environment.cwd, access: 'ask' }
+      run.context.requestPermission = mock(async () => ({
+        outcome: { outcome: 'selected' as const, optionId: 'allow' },
+      }))
+      expect(await run.send()).not.toContain('"type":"error"')
+      expect(run.context.requestPermission).toHaveBeenCalledTimes(1)
+      expect([...files.values()].map((bytes) => new TextDecoder().decode(new Uint8Array(bytes)))).toEqual([
+        'remote only',
+      ])
+      expect(JSON.stringify(run.requests[0].messages)).toContain("user's SSH environment")
+      expect(JSON.stringify(run.requests[0].tools)).toContain('local_app')
+      run.context.execution = { ...run.context.execution, access: 'full' }
+      const history: ThunderboltUIMessage[] = [
+        { id: 'budget-user', role: 'user', parts: [{ type: 'text', text: 'Save a remote file.' }] },
+        { id: 'ssh-reply', role: 'assistant', parts: [{ type: 'text', text: 'Saved remotely.' }] },
+        { id: 'ssh-next', role: 'user', parts: [{ type: 'text', text: 'Save another file.' }] },
+      ]
+      expect(await run.send(history)).not.toContain('"type":"error"')
+      expect(
+        await run.send([
+          ...history,
+          { id: 'ssh-next-reply', role: 'assistant', parts: [{ type: 'text', text: 'Saved with full access.' }] },
+          { id: 'ssh-later', role: 'user', parts: [{ type: 'text', text: 'Save one more file.' }] },
+        ]),
+      ).not.toContain('"type":"error"')
+      expect(run.context.requestPermission).toHaveBeenCalledTimes(1)
+      expect(harnesses).toHaveLength(1)
+      expect([...files.values()].map((bytes) => new TextDecoder().decode(new Uint8Array(bytes)))).toEqual([
+        'remote only',
+        'full access',
+        'still full access',
+      ])
+      expect(JSON.stringify(run.requests[2].messages)).toContain('The user enabled full access.')
+      expect(JSON.stringify(run.requests[4].messages)).toContain('The user enabled full access.')
+      expect(run.nativeCalls.some(({ command }) => command === 'agent_fs' || command === 'agent_exec')).toBe(false)
+      const cleanup = run.nativeCleanup
+      run.adapter.disconnect()
+      await cleanup
+    } finally {
+      run.adapter.disconnect()
+      useSshEnvironmentsStore.setState({ environments: {} })
+      isTauri.mockRestore()
+      platform.mockRestore()
+      if (descriptor) {
+        Object.defineProperty(window, 'isTauri', descriptor)
+      } else {
+        Reflect.deleteProperty(window, 'isTauri')
+      }
+    }
+  })
+
   it('removes the retained sandbox after switching to this computer', async () => {
     const descriptor = Object.getOwnPropertyDescriptor(window, 'isTauri')
     const isTauri = spyOn(tauriCore, 'isTauri').mockReturnValue(true)
@@ -1633,7 +1820,7 @@ describe('real Pi approvals', () => {
         model: 'unknown-model',
       }
       await expect(run.send()).rejects.toThrow(
-        'This model cannot run on this computer. Choose a tool-capable supported model.',
+        'This model cannot run in this environment. Choose a tool-capable supported model.',
       )
       expect(run.requests).toHaveLength(0)
     } finally {
@@ -1654,7 +1841,7 @@ describe('real Pi approvals', () => {
     const translate = spyOn(i18n, '_').mockImplementation(() => 'Translated display message')
     try {
       run.context.execution = { location: 'computer', access: 'full', cwd: '/real' }
-      await expect(run.send()).rejects.toThrow('Computer execution requires the desktop app')
+      await expect(run.send()).rejects.toThrow('Computer and SSH execution require the desktop app')
       run.context.execution = { location: 'cloud', access: 'ask' }
       await expect(run.send()).rejects.toThrow('Cloud execution is not available yet')
       expect(run.requests).toHaveLength(0)
@@ -1996,7 +2183,7 @@ describe('createBuiltInAdapter stop', () => {
     const agentCore = {
       isKnownAnthropicModel: () => true,
       buildAppHarness: async () => harness,
-      workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
+      workspaceDirFor: realAgentCore.workspaceDirFor,
       writeAgentWorkspaceFiles: async () => [],
       toPiAgentTools: async () => [],
       piHarnessToUiMessageStream: (
@@ -2236,6 +2423,7 @@ describe('attachments in the harness workspace', () => {
     const agentCore = {
       ...tinfoilAgentCore,
       buildAppHarness: async () => harness as never,
+      workspaceDirFor: realAgentCore.workspaceDirFor,
       writeAgentWorkspaceFiles: async (_threadId: string, files: realAgentCore.WorkspaceFile[]) => {
         events.push('write')
         written.push(files)
@@ -2388,6 +2576,7 @@ describe('built-in adapter lifetime ownership', () => {
       buildAppHarness: build,
       removeAgentWorkspace: remove,
       toPiAgentTools: async () => [],
+      workspaceDirFor: realAgentCore.workspaceDirFor,
       writeAgentWorkspaceFiles: writeWorkspaceFiles,
       piHarnessToUiMessageStream: realAgentCore.piHarnessToUiMessageStream,
     } as unknown as Awaited<ReturnType<NonNullable<BuiltInAdapterOptions['loadAgentCore']>>>

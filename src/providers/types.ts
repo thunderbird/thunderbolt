@@ -21,6 +21,8 @@ export type ChatGPTRegistration = { clientId: string; subject?: string; email?: 
 export type ProviderCredentials = {
   apiKey?: string
   access_token?: string
+  /** Stable local grant identity, retained across refresh-token rotation. */
+  authorizationId?: string
   refresh_token?: string
   expires_at?: number
   reauth_required?: boolean
@@ -44,9 +46,9 @@ export type ProviderConnection = {
   name: string
   url: string | null
   authMethod: ProviderAuthMethod
-  enabled: number
-  createdAt: string
-  updatedAt: string
+  enabled: number | null
+  createdAt: string | null
+  updatedAt: string | null
   deletedAt: string | null
   userId: string | null
   connected: boolean

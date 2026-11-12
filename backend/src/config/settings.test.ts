@@ -18,6 +18,34 @@ import {
 } from './settings'
 
 describe('Config Settings', () => {
+  describe('monitoring token', () => {
+    let savedEnv: string | undefined
+
+    beforeEach(() => {
+      savedEnv = process.env.MONITORING_TOKEN
+      clearSettingsCache()
+    })
+
+    afterEach(() => {
+      if (savedEnv === undefined) {
+        delete process.env.MONITORING_TOKEN
+      } else {
+        process.env.MONITORING_TOKEN = savedEnv
+      }
+      clearSettingsCache()
+    })
+
+    it.each(['', 'x'.repeat(32)])('accepts disabled monitoring or a 32-character token (%j)', (token) => {
+      process.env.MONITORING_TOKEN = token
+      expect(getSettings().monitoringToken).toBe(token)
+    })
+
+    it('rejects a nonempty 31-character monitoring token', () => {
+      process.env.MONITORING_TOKEN = 'x'.repeat(31)
+      expect(() => getSettings()).toThrow('MONITORING_TOKEN must be at least 32 characters when set')
+    })
+  })
+
   describe('Anthropic base URL', () => {
     let savedEnv: string | undefined
 

@@ -59,12 +59,20 @@ jobs:
             --sarif-output semgrep.sarif \
             --json-output semgrep.json
 
+      # GitHub does not honor Semgrep's in-source SARIF suppressions. Keep the
+      # original scan and upload only findings that were not accepted as suppressed.
+      - name: Prepare SARIF upload
+        if: always() && hashFiles('semgrep.sarif') != ''
+        run: |
+          python3 .github/scripts/filter-semgrep-sarif.test.py
+          python3 .github/scripts/filter-semgrep-sarif.py semgrep.sarif semgrep-upload.sarif
+
       - name: Upload SARIF
         uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
-        if: always() && hashFiles('semgrep.sarif') != ''
+        if: always() && hashFiles('semgrep-upload.sarif') != ''
         continue-on-error: true
         with:
-          sarif_file: semgrep.sarif
+          sarif_file: semgrep-upload.sarif
 
       # Post findings as a PR comment using curl + jq (no Node.js needed in Alpine).
       # Security: semgrep output is read from files and escaped by jq — never

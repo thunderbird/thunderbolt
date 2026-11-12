@@ -4,7 +4,7 @@
 
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
 import * as chatDal from '@/dal'
-import { getCurrentSession, resetStore } from '@/test-utils/chat-store-mocks'
+import { createMockChatInstance, getCurrentSession, resetStore } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
@@ -192,6 +192,44 @@ describe('useHydrateChatStore', () => {
     resetStore()
     await resetTestDatabase()
   })
+
+  it.each(['streaming', 'done'] as const)(
+    'restores a %s reasoning-only reply without running it again',
+    async (state) => {
+      const threadId = await createTestThread(await createTestModel())
+      const prompt = createTestMessage()
+      const partial = createTestMessage({
+        role: 'assistant',
+        parts: [{ type: 'reasoning', text: 'Long unfinished reasoning', state }],
+      })
+      await saveMessagesWithContextUpdate(getDb(), threadId, [prompt, partial])
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), { wrapper: TestWrapper })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      expect(getCurrentSession()?.interruptedReplyId).toBe(state === 'streaming' ? partial.id : undefined)
+      expect(getCurrentSession()?.chatInstance.status).toBe('ready')
+      expect(getCurrentSession()?.chatInstance.messages.at(-1)?.parts).toEqual(partial.parts)
+    },
+  )
+
+  it.each(['error', 'completed', 'stopped', undefined] as const)(
+    'restores framing-only outcome %s without silently losing failures or restarting it',
+    async (turnOutcome) => {
+      const threadId = await createTestThread(await createTestModel())
+      const prompt = createTestMessage()
+      const reply = createTestMessage({ role: 'assistant', parts: [{ type: 'step-start' }], metadata: { turnOutcome } })
+      await saveMessagesWithContextUpdate(getDb(), threadId, [prompt, reply])
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), { wrapper: TestWrapper })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      expect(getCurrentSession()?.retriesExhausted).toBe(turnOutcome === 'error' || turnOutcome === undefined)
+      expect(getCurrentSession()?.interruptedReplyId).toBeUndefined()
+      expect(getCurrentSession()?.chatInstance.status).toBe('ready')
+      expect(getCurrentSession()?.chatInstance.messages.at(-1)?.metadata?.turnOutcome).toBe(turnOutcome)
+    },
+  )
 
   describe('isReady state', () => {
     it('should start with isReady as false', async () => {
@@ -715,19 +753,22 @@ describe('useHydrateChatStore', () => {
       expect(messageIds()).toEqual([opened.id, ...synced.map((message) => message.id)])
     })
 
-    it('shows a synced failed turn as failed, like a chat opened after it landed', async () => {
-      const threadId = await createTestThread(await createTestModel())
-      const finishDownload = await openDuringDownload(threadId)
+    it.each([{ parts: [] }, { parts: [{ type: 'step-start' }] }] satisfies { parts: ThunderboltUIMessage['parts'] }[])(
+      'shows a synced failed turn with parts %j as failed',
+      async ({ parts }) => {
+        const threadId = await createTestThread(await createTestModel())
+        const finishDownload = await openDuringDownload(threadId)
 
-      await saveMessagesWithContextUpdate(getDb(), threadId, [
-        createTestMessage(),
-        createTestMessage({ role: 'assistant', parts: [] }),
-      ])
-      await finishDownload()
+        await saveMessagesWithContextUpdate(getDb(), threadId, [
+          createTestMessage(),
+          createTestMessage({ role: 'assistant', parts, metadata: { turnOutcome: 'error' } }),
+        ])
+        await finishDownload()
 
-      expect(messageIds()).toHaveLength(2)
-      expect(getCurrentSession()?.retriesExhausted).toBe(true)
-    })
+        expect(messageIds()).toHaveLength(2)
+        expect(getCurrentSession()?.retriesExhausted).toBe(true)
+      },
+    )
 
     it('leaves a chat alone once it no longer matches the start of the saved messages', async () => {
       const threadId = await createTestThread(await createTestModel())
@@ -957,6 +998,93 @@ describe('useHydrateChatStore', () => {
       })
 
       expect(getCurrentSession()?.projectId).toBeNull()
+    })
+  })
+
+  describe('partial/final save ordering', () => {
+    it('keeps an already-started partial write ahead of the authoritative final save', async () => {
+      const modelId = await createSystemModel()
+      const threadId = await createTestThread(modelId)
+      const prompt = createTestMessage()
+      const partial = createTestMessage({
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Part', state: 'streaming' }],
+      })
+      const completed: ThunderboltUIMessage = {
+        ...partial,
+        parts: [{ type: 'text', text: 'Complete answer', state: 'done' }],
+        metadata: { turnOutcome: 'completed' },
+      }
+      await saveMessagesWithContextUpdate(getDb(), threadId, [prompt])
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), { wrapper: TestWrapper })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      useChatStore
+        .getState()
+        .updateSession(threadId, { chatInstance: createMockChatInstance([prompt, partial], 'streaming') })
+      const started = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const persistPartial = chatDal.saveStreamingAssistantMessage
+      const partialSpy = spyOn(chatDal, 'saveStreamingAssistantMessage').mockImplementation(async (...args) => {
+        started.resolve()
+        await release.promise
+        return persistPartial(...args)
+      })
+      const finalSpy = spyOn(chatDal, 'saveMessagesWithContextUpdate')
+      try {
+        const partialSave = result.current.saveStreamingMessage({ threadId, message: partial, parentId: prompt.id })
+        await started.promise
+        useChatStore.getState().updateSession(threadId, { chatInstance: createMockChatInstance([prompt, completed]) })
+        const finalSave = result.current.saveMessages({ id: threadId, messages: [completed] })
+        await getClock().tickAsync(50)
+        expect(finalSpy).not.toHaveBeenCalled()
+        release.resolve()
+        await act(async () => {
+          await Promise.all([partialSave, finalSave])
+        })
+        const saved = (await chatDal.getChatMessages(getDb(), threadId)).find((message) => message.id === partial.id)
+        expect(saved?.parts).toEqual(completed.parts)
+        expect(saved?.metadata).toMatchObject({ turnOutcome: 'completed' })
+      } finally {
+        release.resolve()
+        partialSpy.mockRestore()
+        finalSpy.mockRestore()
+      }
+    })
+
+    it.each(['finished', 'next reply'] as const)('drops a queued partial after the turn is %s', async (boundary) => {
+      const modelId = await createSystemModel()
+      const threadId = await createTestThread(modelId)
+      const prompt = createTestMessage()
+      const completed = createTestMessage({
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Complete answer', state: 'done' }],
+        metadata: { turnOutcome: 'completed' },
+      })
+      await saveMessagesWithContextUpdate(getDb(), threadId, [prompt, completed])
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), { wrapper: TestWrapper })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      useChatStore.getState().updateSession(threadId, {
+        chatInstance:
+          boundary === 'finished'
+            ? createMockChatInstance([prompt, completed])
+            : createMockChatInstance([prompt, completed, createTestMessage({ role: 'assistant' })], 'streaming'),
+      })
+      await result.current.saveStreamingMessage({
+        threadId,
+        message: {
+          ...completed,
+          metadata: undefined,
+          parts: [{ type: 'text', text: 'Old partial', state: 'streaming' }],
+        },
+        parentId: prompt.id,
+      })
+      const saved = (await chatDal.getChatMessages(getDb(), threadId)).find((message) => message.id === completed.id)
+      expect(saved?.parts).toEqual(completed.parts)
+      expect(saved?.metadata).toMatchObject({ turnOutcome: 'completed' })
     })
   })
 

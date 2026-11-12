@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { formatHarnessError, wrapArtifactHtml } from './harness'
+import { artifactSandbox, formatHarnessError, wrapArtifactHtml } from './harness'
 import { bindArtifactChannel } from './channel'
 import { type StaticIssue, staticCheckHtml } from './static-check'
 import { i18n } from '@lingui/core'
@@ -48,7 +48,7 @@ export const runIframeVerification: RuntimeVerifier = (html, opts) =>
     const nonce = crypto.randomUUID()
 
     const iframe = document.createElement('iframe')
-    iframe.setAttribute('sandbox', 'allow-scripts') // never combine with allow-same-origin
+    iframe.setAttribute('sandbox', artifactSandbox)
     iframe.setAttribute('aria-hidden', 'true')
     iframe.style.cssText = 'position:fixed;left:-99999px;top:0;width:1024px;height:768px;border:0;visibility:hidden;'
 

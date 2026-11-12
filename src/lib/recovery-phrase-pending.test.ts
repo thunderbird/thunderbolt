@@ -6,8 +6,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import {
   clearRecoveryPhrasePending,
+  dispatchRecoveryPhraseChanged,
   isRecoveryPhrasePending,
   markRecoveryPhrasePending,
+  recoveryPhraseChangedEvent,
 } from './recovery-phrase-pending'
 
 const storageKey = 'thunderbolt-local-settings'
@@ -67,5 +69,18 @@ describe('recovery-phrase pending flag', () => {
     await useLocalSettingsStore.persist.rehydrate()
 
     expect(isRecoveryPhrasePending()).toBe(true)
+  })
+})
+
+describe('recovery phrase changed event', () => {
+  it('announces a committed phrase change once', () => {
+    let heard = 0
+    const listener = () => {
+      heard += 1
+    }
+    window.addEventListener(recoveryPhraseChangedEvent, listener)
+    dispatchRecoveryPhraseChanged()
+    window.removeEventListener(recoveryPhraseChangedEvent, listener)
+    expect(heard).toBe(1)
   })
 })

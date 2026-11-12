@@ -6,7 +6,8 @@ import { clearSettingsCache } from '@/config/settings'
 import { user } from '@/db/auth-schema'
 import { inferencePrices, inferenceUsage } from '@/db/inference-usage-schema'
 import type { InferenceLogger } from '@/inference/client'
-import type { InferenceDatabase } from '@/inference/usage-ledger'
+import { confidentialContextWindow } from '@/inference/managed-models'
+import type { InferenceDatabase, InferenceLedgerDatabase } from '@/inference/usage-ledger'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createTestDb } from '@/test-utils/db'
@@ -93,12 +94,15 @@ const createAbortableFetch = (response?: Response) => {
 /** An upstream response whose usage report arrives as a trailer, as the real transport exposes it. */
 const withTrailers = (response: Response, trailers: Promise<Headers | null>) => Object.assign(response, { trailers })
 
-/** Read a user's ledger rows, polling for up to two seconds because the route writes them after the response. */
+/**
+ * Read a user's ledger rows once `expectedRows` of them are settled. The route settles a hold after it returns the
+ * response headers, and a client that stops reading does not wait for that, so this polls for up to two seconds.
+ */
 const readLedger = async (database: TestDatabase, userId: string, expectedRows = 1) => {
   const deadline = Date.now() + 2_000
   const read = () => database.select().from(inferenceUsage).where(eq(inferenceUsage.userId, userId))
   for (let rows = await read(); ; rows = await read()) {
-    if (rows.length >= expectedRows || Date.now() > deadline) {
+    if (rows.filter(({ settled }) => settled).length >= expectedRows || Date.now() > deadline) {
       return rows
     }
     await Bun.sleep(5)
@@ -134,6 +138,8 @@ describe('createTinfoilRoutes', () => {
     const testDb = await createTestDb()
     database = testDb.db
     cleanup = testDb.cleanup
+    // Admission writes a hold for the session user, whose row it references.
+    await insertUser(database, 'test-user', false)
     mockFetch.mockReset()
     mockFetch.mockImplementation(() => Promise.resolve(makeOkResponse()))
     consoleSpies.error.mockClear()
@@ -151,7 +157,7 @@ describe('createTinfoilRoutes', () => {
       fetchFn?: TinfoilFetch
       logger?: TinfoilProxyLogger
       usageLogger?: InferenceLogger
-      database?: InferenceDatabase
+      database?: InferenceLedgerDatabase
       nowFn?: () => number
       upstreamHeadersTimeoutMs?: number
       upstreamIdleTimeoutMs?: number
@@ -181,8 +187,11 @@ describe('createTinfoilRoutes', () => {
   /** The test database, counting reads so a test can pin that admission never ran. */
   const createCountingDatabase = () => {
     const policySelects = { count: 0 }
-    const countingDatabase: InferenceDatabase = {
+    const countingDatabase: InferenceLedgerDatabase = {
+      delete: database.delete,
+      transaction: database.transaction,
       insert: database.insert,
+      update: database.update,
       select: ((fields) => {
         policySelects.count += 1
         return database.select(fields)
@@ -598,6 +607,31 @@ describe('createTinfoilRoutes', () => {
       ])
     })
 
+    it('settles the hold before the client sees the end of the response', async () => {
+      const userId = 'settled-before-end'
+      await insertUser(database, userId, false)
+      const trailers = Promise.withResolvers<Headers | null>()
+      const body = new ReadableStream<Uint8Array>({
+        pull: (controller) => {
+          controller.enqueue(new TextEncoder().encode('sealed'))
+          controller.close()
+          // The usage trailer arrives after the body, as it does from the enclave.
+          setTimeout(() => trailers.resolve(new Headers({ [tinfoilUsageMetricsHeader]: usageReport })), 20)
+        },
+      })
+      mockFetch.mockResolvedValueOnce(withTrailers(new Response(body), trailers.promise))
+
+      const response = await buildApp({ auth: createMockAuth(userId, false) }).handle(
+        new Request('http://localhost/tinfoil/v1/chat/completions', { method: 'POST', body: 'opaque-bytes' }),
+      )
+      await response.arrayBuffer()
+
+      // Read once, without polling: a next request sent as soon as this one ends must find it settled.
+      expect(await database.select().from(inferenceUsage).where(eq(inferenceUsage.userId, userId))).toEqual([
+        expect.objectContaining({ settled: true, ...usageCounts }),
+      ])
+    })
+
     it('keeps reading to the trailer after the client stops, without aborting the enclave request', async () => {
       const userId = 'stopped-chat'
       await insertUser(database, userId, false)
@@ -642,7 +676,7 @@ describe('createTinfoilRoutes', () => {
       ['no report', makeOkResponse('ok')],
       ['a malformed report', makeOkResponse('ok', { [tinfoilUsageMetricsHeader]: 'prompt=1,completion=x' })],
       ['a body that never completes', withTrailers(makeOkResponse('ok'), Promise.resolve(null))],
-    ])('logs a usage gap and charges nothing for a successful chat with %s', async (_, upstreamResponse) => {
+    ])('logs a usage gap for a successful chat with %s, and the hold stays charged', async (_, upstreamResponse) => {
       const userId = `usage-gap-${_.replaceAll(' ', '-')}`
       await insertUser(database, userId, false)
       mockFetch.mockResolvedValueOnce(upstreamResponse)
@@ -663,7 +697,13 @@ describe('createTinfoilRoutes', () => {
         },
         'Inference usage missing',
       )
-      expect(await readLedger(database, userId, 0)).toEqual([])
+      // The enclave ran the request, so its hold stays charged: the whole window at the higher output rate.
+      expect(await readLedger(database, userId, 0)).toEqual([
+        expect.objectContaining({
+          settled: true,
+          costNanoUsd: BigInt(confidentialContextWindow('glm-5-3')) * 5_750n,
+        }),
+      ])
     })
 
     it('overrides client-supplied usage-metrics and model headers with the server values', async () => {

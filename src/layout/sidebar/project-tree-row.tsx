@@ -10,6 +10,7 @@ import { projectDropId } from '@/projects/chat-drop'
 import type { ProjectActionHandlers } from '@/projects/project-action-menu-items'
 import { ProjectActions } from '@/projects/project-actions'
 import { ProjectIcon } from '@/projects/project-icon'
+import { ProjectSshStatus } from '@/projects/project-ssh-status'
 import type { Project } from '@/types'
 import { ChatListItem } from './chat-list-item'
 import { useSidebarPreviewState } from './use-sidebar-preview-state'
@@ -64,7 +65,10 @@ export const ProjectTreeRow = ({ project, chats, expanded, active, onToggle, ...
               className="min-w-0 cursor-pointer gap-2 md:pr-9 group-hover/project:bg-sidebar-accent group-hover/project:text-sidebar-accent-foreground group-data-[state=open]/project:bg-sidebar-accent group-data-[state=open]/project:text-sidebar-accent-foreground group-has-data-[state=open]/project:bg-sidebar-accent group-has-data-[state=open]/project:text-sidebar-accent-foreground"
             >
               <ProjectIcon icon={project.icon} className="size-[var(--icon-size-default)] shrink-0" />
-              <span className="truncate">{project.name}</span>
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="min-w-0 truncate">{project.name}</span>
+                <ProjectSshStatus projectId={project.id} />
+              </span>
             </SidebarMenuButton>
             {menu && (
               <div className="absolute right-0 top-1/2 -translate-y-1/2 transition-opacity md:opacity-0 md:group-hover/project:opacity-100 md:group-focus-within/project:opacity-100 md:group-data-[state=open]/project:opacity-100 md:group-has-data-[state=open]/project:opacity-100">

@@ -32,6 +32,7 @@ export const useLocalAppUrl = (
         )
         onError(null)
       } else if (status.status === 'failed') {
+        setPreview((current) => ({ ...current, url: null }))
         onError(status.error ?? 'The local app stopped')
       }
       previous.current = status

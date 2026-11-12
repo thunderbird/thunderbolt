@@ -18,6 +18,7 @@ pub struct BrowserRegistry {
     entries: Mutex<HashMap<String, Arc<Mutex<BrowserMetadata>>>>,
     creation: tokio::sync::Mutex<()>,
     document_generation: AtomicU64,
+    profile_cleanup: crate::browser_profile::PendingCleanup,
 }
 
 #[derive(Default)]
@@ -236,11 +237,15 @@ pub async fn browser_create(
     if !bounds.is_valid() {
         return Err("Browser bounds must be finite with a positive size".into());
     }
-    // Concurrent first tabs must share the first completed tab's private session.
+    // Concurrent first tabs must share the first completed tab's browser profile.
     let generation = registry.document_generation.load(Ordering::SeqCst);
     let _creation = registry.creation.lock().await;
     if registry.document_generation.load(Ordering::SeqCst) != generation {
         return Err("The main page navigated before the tab could open".into());
+    }
+    let cleanup_marker = crate::browser_profile::cleanup_marker(&webview)?;
+    if registry.profile_cleanup.required(&cleanup_marker)? {
+        clear_profile(&webview, &registry, &cleanup_marker).await?;
     }
     let metadata = Arc::new(Mutex::new(BrowserMetadata {
         document_generation: generation,
@@ -261,7 +266,6 @@ pub async fn browser_create(
     let popup_label = label.clone();
     let builder = WebviewBuilder::new(&label, WebviewUrl::External(url))
         .disable_native_api()
-        .incognito(true)
         .focused(false)
         .on_navigation(allowed_navigation)
         .on_permission_request(|_, _| PermissionResponse::Default)
@@ -343,22 +347,14 @@ pub async fn browser_create(
     }
 }
 
-/// Shares one browser-only private session while keeping every tab's page and history independent.
+/// Shares the isolated browser profile while keeping every tab's page and history independent.
 async fn create_browser(
     caller: &Webview,
     builder: WebviewBuilder<tauri::Wry>,
     existing: Option<Webview>,
     bounds: BrowserBounds,
 ) -> Result<Webview, String> {
-    #[cfg(target_os = "windows")]
-    let builder = builder.data_directory(
-        caller
-            .app_handle()
-            .path()
-            .app_local_data_dir()
-            .map_err(|error| error.to_string())?
-            .join("browser"),
-    );
+    let builder = crate::browser_profile::configure(caller, builder)?;
     let builder = match existing {
         Some(existing) => {
             with_native(&existing, move |native| shared_session(builder, native)).await?
@@ -577,6 +573,91 @@ pub async fn browser_close(
         .map_err(|error| error.to_string())?
         .remove(&label);
     Ok(())
+}
+
+/// Remove website credentials at an identity boundary, including when no tab is open.
+#[tauri::command]
+pub async fn browser_clear_profile(
+    webview: Webview,
+    registry: State<'_, BrowserRegistry>,
+) -> Result<(), String> {
+    authorize(&webview, "sidebar-webview-profile-cleanup")?;
+    // Reject tab creation already queued by the identity that is leaving.
+    registry.document_generation.fetch_add(1, Ordering::SeqCst);
+    let _creation = registry.creation.lock().await;
+    let marker = crate::browser_profile::cleanup_marker(&webview)?;
+    clear_profile(&webview, &registry, &marker).await
+}
+
+/// Called with the creation lock held so no website can repopulate a cleared profile.
+async fn clear_profile(
+    caller: &Webview,
+    registry: &BrowserRegistry,
+    marker: &std::path::Path,
+) -> Result<(), String> {
+    registry.profile_cleanup.begin(marker)?;
+    let labels: Vec<_> = registry
+        .entries
+        .lock()
+        .map_err(|error| error.to_string())?
+        .keys()
+        .cloned()
+        .collect();
+    let existing = labels.iter().find_map(|label| caller.get_webview(label));
+    static NEXT_CLEANUP_ID: AtomicU64 = AtomicU64::new(0);
+    let label = format!(
+        "sidebar-webview-profile-cleanup-{}",
+        NEXT_CLEANUP_ID.fetch_add(1, Ordering::Relaxed)
+    );
+    let builder = WebviewBuilder::new(
+        &label,
+        WebviewUrl::External(Url::parse("about:blank").unwrap()),
+    )
+    .disable_native_api()
+    .focused(false)
+    .on_navigation(|url| url.as_str() == "about:blank")
+    .on_new_window(|_, _| NewWindowResponse::Deny);
+    // Keep ownership of the exact profile while all documents are closed. This
+    // also preserves the shared private profile on macOS versions before 14.
+    let maintenance = create_browser(
+        caller,
+        builder,
+        existing,
+        BrowserBounds {
+            x: -10.0,
+            y: -10.0,
+            width: 1.0,
+            height: 1.0,
+        },
+    )
+    .await?;
+    let cleared = async {
+        maintenance.hide().map_err(|error| error.to_string())?;
+        for label in labels {
+            operations(registry, &label)?.cancel_all();
+            if let Some(tab) = caller.get_webview(&label) {
+                #[cfg(target_os = "macos")]
+                crate::browser_presentation::before_close(&tab).await?;
+                tab.close().map_err(|error| error.to_string())?;
+            }
+            registry
+                .entries
+                .lock()
+                .map_err(|error| error.to_string())?
+                .remove(&label);
+        }
+        let (completed, completion) = tokio::sync::oneshot::channel();
+        with_native(&maintenance, move |native| {
+            crate::browser_profile_clear::clear(native, completed)
+        })
+        .await?;
+        completion.await.map_err(|error| error.to_string())?
+    }
+    .await;
+    let closed = maintenance.close().map_err(|error| error.to_string());
+    cleared?;
+    closed?;
+    registry.profile_cleanup.finish(marker)
 }
 
 #[cfg(target_os = "macos")]

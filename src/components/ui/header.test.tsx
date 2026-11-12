@@ -2,6 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import {
+  RecoveryContinuityContext,
+  type RecoveryContinuityContextValue,
+} from '@/components/recovery-continuity/recovery-continuity-provider'
 import { useConfigStore } from '@/api/config-store'
 import { useChatStore } from '@/chats/chat-store'
 import { createAgent } from '@/dal'
@@ -31,6 +35,7 @@ import * as embed from '@/lib/embed'
 import * as platform from '@/lib/platform'
 import { ThemeProvider } from '@/lib/theme-provider'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { usePageStore } from '@/pages/page-store'
 import { Header } from './header'
 
 /** A custom (synced) agent the thread is pinned to. */
@@ -101,7 +106,11 @@ const setupWithAgent = (
     withThread = true,
     isEncrypted = 0,
     projectId = null,
-  }: { withThread?: boolean; isEncrypted?: 0 | 1; projectId?: string | null } = {},
+  }: {
+    withThread?: boolean
+    isEncrypted?: 0 | 1
+    projectId?: string | null
+  } = {},
 ) => {
   const chatInstance = new HeaderTestChat({ id: 'thread-1' })
   hydrateStore({
@@ -123,7 +132,11 @@ const setupWithAgent = (
       return state
     }
     const nextSessions = new Map(state.sessions)
-    nextSessions.set('thread-1', { ...session, selectedAgent: agent, projectId })
+    nextSessions.set('thread-1', {
+      ...session,
+      selectedAgent: agent,
+      projectId,
+    })
     return { sessions: nextSessions }
   })
   return chatInstance
@@ -135,6 +148,18 @@ const flushAgentsQuery = async () => {
   await act(async () => {
     await getClock().runAllAsync()
   })
+}
+
+const attentionContext: RecoveryContinuityContextValue = {
+  status: 'warning',
+  phraseUpdateRequired: true,
+  passkey: 'none',
+  notice: 'none',
+  deviceTrusted: true,
+  passkeyMigration: { busy: false, errorMessage: null },
+  start: async () => {},
+  startPasskeyMigration: async () => {},
+  dismissNotice: () => {},
 }
 
 describe('Header', () => {
@@ -216,6 +241,17 @@ describe('Header', () => {
     expect(useChatStore.getState().sessions.get('thread-1')?.selectedAgent.id).toBe(customAgent.id)
   })
 
+  it('marks the mobile sidebar toggle while continuity needs attention', () => {
+    setupWithAgent(builtInAgent)
+    render(
+      <RecoveryContinuityContext.Provider value={attentionContext}>
+        <Header />
+      </RecoveryContinuityContext.Provider>,
+      { wrapper: TestWrapper },
+    )
+    expect(screen.getByRole('button', { name: 'Toggle Sidebar Action needed' })).toBeInTheDocument()
+  })
+
   it('falls back to the built-in agent when the session has no agent', () => {
     setupWithAgent(builtInAgent)
 
@@ -248,12 +284,17 @@ describe('Header', () => {
 
   it('docks the agent left of the project on first submit without remounting either', async () => {
     const project = await createProject(getDb(), { name: 'Launch' })
-    const chat = setupWithAgent(customAgent, { withThread: false, projectId: project.id })
+    const chat = setupWithAgent(customAgent, {
+      withThread: false,
+      projectId: project.id,
+    })
     render(<Header />, { wrapper: TestWrapper })
     await flushAgentsQuery()
 
     const trigger = screen.getByTestId('agent-selector-trigger')
-    const projectControl = screen.getByRole('button', { name: 'In project: Launch' })
+    const projectControl = screen.getByRole('button', {
+      name: 'In project: Launch',
+    })
     expect(projectControl).toBeVisible()
     expect(projectControl.closest('.absolute')).toHaveClass('right-2')
 
@@ -281,7 +322,10 @@ describe('Header', () => {
   })
 
   it('hides the agent selector in minimal mode', () => {
-    useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
+    useConfigStore.setState({
+      config: { minimalMode: true },
+      configLoaded: true,
+    })
     setupWithAgent(builtInAgent)
 
     render(<Header />, { wrapper: TestWrapper })
@@ -310,6 +354,34 @@ describe('Header', () => {
     expect(screen.getByTestId('agent-selector-trigger')).toBeInTheDocument()
   })
 
+  it('leaves a disabled custom agent out of the picker', async () => {
+    const custom = {
+      type: 'remote-acp',
+      transport: 'websocket',
+      url: 'wss://example.com',
+      userId: 'user-1',
+    } as const
+    await createAgent(getDb(), {
+      ...custom,
+      id: 'on-agent',
+      name: 'Enabled Agent',
+    })
+    await createAgent(getDb(), {
+      ...custom,
+      id: 'off-agent',
+      name: 'Disabled Agent',
+      enabled: 0,
+    })
+    setupWithAgent(builtInAgent)
+    render(<Header />, { wrapper: TestWrapper })
+    await flushAgentsQuery()
+
+    fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+
+    expect(await screen.findByText('Enabled Agent')).toBeInTheDocument()
+    expect(screen.queryByText('Disabled Agent')).toBeNull()
+  })
+
   it('opens agent creation over the current chat route', async () => {
     setupWithAgent(builtInAgent)
     render(<Header />, { wrapper: TestWrapper })
@@ -320,7 +392,8 @@ describe('Header', () => {
     expect(screen.getByTestId('create-request')).toHaveTextContent('/chats/thread-1|agent')
   })
 
-  it.each([true, false])('opens and closes the browser from the shared header (native: %s)', (native) => {
+  it.each([true, false])('opens and closes the browser, reusing the last selected tab (native: %s)', (native) => {
+    usePageStore.setState({ sessions: [], activeId: null })
     const desktop = spyOn(platform, 'isTauriDesktop').mockReturnValue(native)
     restoreViewport()
     setupWithAgent(builtInAgent)
@@ -363,8 +436,32 @@ describe('Header', () => {
       expect(screen.getByTestId('preview-url')).toBeEmptyDOMElement()
       expect(screen.getByRole('button', { name: 'Open browser' })).toHaveAttribute('aria-pressed', 'false')
       expect(screen.getByRole('button', { name: 'Open browser' })).toHaveFocus()
+
+      const store = usePageStore.getState()
+      act(() => {
+        const recent = store.ensure({
+          id: 'recent-page',
+          title: 'Recent page',
+          source: { kind: 'url', url: 'https://example.com/recent' },
+        })
+        store.ensure({
+          id: 'newer-page',
+          title: 'Newer page',
+          source: { kind: 'url', url: 'https://example.com/newer' },
+        })
+        store.present(recent, 'sidebar')
+      })
+      const recent = usePageStore.getState().activeId
+      fireEvent.click(screen.getByRole('button', { name: 'Open browser' }))
+      expect(usePageStore.getState().activeId).toBe(recent)
+      expect(usePageStore.getState().sessions).toHaveLength(3)
+      fireEvent.click(screen.getByRole('button', { name: 'Close browser' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Open browser' }))
+      expect(usePageStore.getState().activeId).toBe(recent)
+      expect(usePageStore.getState().sessions).toHaveLength(3)
     } finally {
       desktop.mockRestore()
+      usePageStore.setState({ sessions: [], activeId: null })
     }
   })
 

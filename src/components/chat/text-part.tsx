@@ -5,6 +5,7 @@
 import { type ContentPart, type ContentPartsState, parseContentPartsIncremental } from '@/ai/widget-parser'
 import { useSmoothText } from '@/hooks/use-smooth-text'
 import { sourceToCitation } from '@/lib/source-utils'
+import { cn } from '@/lib/utils'
 import {
   buildDocumentSideviewId,
   type CitationMap,
@@ -33,6 +34,8 @@ type TextPartProps = {
   isStreaming?: boolean
   sources?: SourceMetadata[]
   haystackReferences?: HaystackReferenceMeta[]
+  followsActivity?: boolean
+  precedesActivity?: boolean
 }
 
 /**
@@ -166,7 +169,15 @@ export const buildDocumentCitationPlaceholders = (
 
 // Streaming updates clone unchanged SDK parts; compare the inputs this renderer actually reads.
 export const TextPart = memo(
-  ({ part, messageId, isStreaming = false, sources, haystackReferences }: TextPartProps) => {
+  ({
+    part,
+    messageId,
+    isStreaming = false,
+    sources,
+    haystackReferences,
+    followsActivity = false,
+    precedesActivity = false,
+  }: TextPartProps) => {
     const isPartStreaming = isStreaming && part.state === 'streaming'
     const revealedText = useSmoothText(part.text, isPartStreaming)
     // The parser strips complete native citations; withhold their unfinished suffix to avoid syntax flashes.
@@ -247,7 +258,16 @@ export const TextPart = memo(
             {dedupedParts.map((part, index) => {
               if (part.type === 'text') {
                 return (
-                  <div key={`text-${index}`} className="p-4 my-2">
+                  <div
+                    key={`text-${index}`}
+                    className={cn(
+                      'p-4 my-2',
+                      followsActivity && index === 0 && 'mt-0 pt-2 [&_.prose>div:first-child>:first-child]:mt-0',
+                      precedesActivity &&
+                        index === dedupedParts.length - 1 &&
+                        'mb-0 pb-0 [&_.prose>div:last-child>:last-child]:mb-0',
+                    )}
+                  >
                     <MemoizedMarkdown
                       key={`${messageId}-text-${index}`}
                       id={`${messageId}-${index}`}
@@ -291,7 +311,16 @@ export const TextPart = memo(
         {dedupedParts.map((contentPart, index) => {
           if (contentPart.type === 'text') {
             return (
-              <div key={`text-${index}`} className="p-4 my-2">
+              <div
+                key={`text-${index}`}
+                className={cn(
+                  'p-4 my-2',
+                  followsActivity && index === 0 && 'mt-0 pt-2 [&_.prose>div:first-child>:first-child]:mt-0',
+                  precedesActivity &&
+                    index === dedupedParts.length - 1 &&
+                    'mb-0 pb-0 [&_.prose>div:last-child>:last-child]:mb-0',
+                )}
+              >
                 <MemoizedMarkdown
                   key={`${messageId}-text`}
                   id={messageId}
@@ -321,6 +350,8 @@ export const TextPart = memo(
     previous.part.text === next.part.text &&
     previous.part.state === next.part.state &&
     previous.messageId === next.messageId &&
+    previous.followsActivity === next.followsActivity &&
+    previous.precedesActivity === next.precedesActivity &&
     (Boolean(previous.isStreaming) && previous.part.state === 'streaming') ===
       (Boolean(next.isStreaming) && next.part.state === 'streaming') &&
     previous.sources === next.sources &&

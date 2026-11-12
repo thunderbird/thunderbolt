@@ -171,6 +171,26 @@ describe('usage report', () => {
     ])
   })
 
+  it('leaves out the hold of a request still running', async () => {
+    await insertTurn(database, 'anon-1', '2026-10-27T10:05:00Z')
+    await database.insert(inferenceUsage).values({
+      id: crypto.randomUUID(),
+      userId: 'anon-2',
+      provider: 'fireworks',
+      model: 'accounts/fireworks/models/glm-5p3',
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      costNanoUsd: 500_000_000n,
+      settled: false,
+      createdAt: new Date('2026-10-27T10:06:00Z'),
+    })
+
+    const report = await getUsageReport(database, festival)
+
+    expect(report.all).toEqual({ users: 1, turns: 1, promptTokens: 100, completionTokens: 50, costNanoUsd: 1_000_000n })
+  })
+
   it('reports an empty window as zeros', async () => {
     const report = await getUsageReport(database, festival)
 

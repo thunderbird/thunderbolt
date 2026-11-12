@@ -43,6 +43,7 @@ import { useNavigate } from 'react-router'
 import { type ChatSession, useChatStore } from './chat-store'
 import { withChatThreadWrite } from './chat-thread-write'
 import { createChatInstance } from './chat-instance'
+import { getInterruptedReplyId } from './interrupted-reply'
 import { resolveSessionAgent } from './resolve-session-agent'
 import { resolveSessionModel } from './resolve-session-model'
 import { prewarmTinfoilModel } from '@/ai/prewarm-tinfoil-model'
@@ -70,13 +71,14 @@ const trackChatReadyOnce = () => {
   }
 }
 
-/**
- * A saved empty reply is a turn that already failed. The session marks its retries
- * exhausted so it shows as failed rather than as a recovery still in progress.
- */
-const endsWithEmptyReply = (messages: ThunderboltUIMessage[]): boolean => {
+/** A restored failure needs an explicit Retry, never an automatic recovery spinner. */
+const endsWithFailedReply = (messages: ThunderboltUIMessage[]): boolean => {
   const last = messages.at(-1)
-  return last?.role === 'assistant' && !last.parts?.length
+  return (
+    last?.role === 'assistant' &&
+    (last.metadata?.turnOutcome === 'error' ||
+      (!last.metadata?.turnOutcome && !last.parts.some((part) => part.type !== 'step-start')))
+  )
 }
 
 /**
@@ -166,11 +168,10 @@ export const useHydrateChatStore = ({
         // are never private chats, whatever the (unused) selected model is.
         isEncrypted: isHostedAgent(session.selectedAgent) ? 0 : undefined,
       })
+      // Keep final saves behind already-started partial writes for this thread.
+      await saveMessagesWithContextUpdate(db, id, messages, { updateContext })
       return { session, thread }
     })
-
-    // Save messages and update context size using DAL
-    await saveMessagesWithContextUpdate(db, id, messages, { updateContext })
 
     // Generate title in background if needed
     if (thread?.title === defaultChatTitle) {
@@ -195,7 +196,14 @@ export const useHydrateChatStore = ({
    */
   const saveStreamingMessage: SaveStreamingMessageFunction = useCallback(
     async ({ threadId, message, parentId }) => {
-      await saveStreamingAssistantMessage(db, threadId, message, parentId)
+      await withChatThreadWrite(threadId, async () => {
+        const chat = useChatStore.getState().sessions.get(threadId)?.chatInstance
+        // A throttled save can outlive its turn before React cancels the callback.
+        if (chat?.status !== 'streaming' || chat.messages.at(-1)?.id !== message.id) {
+          return
+        }
+        await saveStreamingAssistantMessage(db, threadId, message, parentId)
+      })
     },
     [db],
   )
@@ -218,7 +226,9 @@ export const useHydrateChatStore = ({
     }
     useChatStore.getState().updateSession(id, {
       awaitingSyncedMessages: false,
-      retriesExhausted: session.retriesExhausted || (synced !== null && endsWithEmptyReply(synced)),
+      retriesExhausted: session.retriesExhausted || (synced !== null && endsWithFailedReply(synced)),
+      interruptedReplyId:
+        synced !== null ? getInterruptedReplyId(session.chatInstance.messages) : session.interruptedReplyId,
     })
   }
 
@@ -347,7 +357,7 @@ export const useHydrateChatStore = ({
     const initialUiMessages = initialMessages.map(convertDbChatMessageToUIMessage) as ThunderboltUIMessage[]
     const chatInstance = createChatInstance(id, initialUiMessages, saveMessages, httpClient, getProxyFetch)
 
-    const hydratedTrailingEmptyTurn = endsWithEmptyReply(initialUiMessages)
+    const hydratedFailedTurn = endsWithFailedReply(initialUiMessages)
 
     createSession({
       chatInstance,
@@ -358,7 +368,8 @@ export const useHydrateChatStore = ({
       pendingPermission: null,
       miniAppApprovalQueue: [],
       retryCount: 0,
-      retriesExhausted: hydratedTrailingEmptyTurn,
+      retriesExhausted: hydratedFailedTurn,
+      interruptedReplyId: getInterruptedReplyId(initialUiMessages),
       // A saved thread always has messages, so none here means they are still downloading.
       awaitingSyncedMessages: syncCatchUp !== null && initialMessages.length === 0,
       stopping: false,

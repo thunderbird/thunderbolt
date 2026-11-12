@@ -13,6 +13,7 @@ import { Expandable } from '../ui/expandable'
 import { ReasoningDisplay } from './reasoning-display'
 import { ReasoningGroupTitle } from './reasoning-group-title'
 import { ReasoningItem } from './reasoning-item'
+import { PagePublicationAction } from '@/pages/page-publication-action'
 
 type ReasoningGroupProps = {
   parts: ReasoningGroupItem[]
@@ -22,6 +23,7 @@ type ReasoningGroupProps = {
   reasoningTime: Record<string, number>
   reasoningStartTimes?: Record<string, number>
   mcpTools?: UIMessageMetadata['mcpTools']
+  continuesMessage?: boolean
 }
 
 export const ReasoningGroup = ({
@@ -32,6 +34,7 @@ export const ReasoningGroup = ({
   reasoningTime,
   reasoningStartTimes,
   mcpTools,
+  continuesMessage = false,
 }: ReasoningGroupProps) => {
   const { openObjectSidebar } = useObjectView()
 
@@ -41,7 +44,7 @@ export const ReasoningGroup = ({
     .filter((part) => part.type === 'reasoning')
     .pop() as ReasoningGroupItem<ReasoningUIPart> | null
 
-  const isGroupReasoning = isLastPartInMessage && (isStreaming || currentReasoningPart?.content.state === 'streaming')
+  const isGroupReasoning = isLastPartInMessage && isStreaming
 
   const reasoningInstanceKey = currentReasoningPart?.id ?? ''
 
@@ -70,7 +73,7 @@ export const ReasoningGroup = ({
   })
 
   return (
-    <div className="mt-6">
+    <div className={continuesMessage ? 'mt-2' : 'mt-6'}>
       <Expandable
         className="shadow-none tool-invocation-card rounded-xl overflow-hidden transition-colors"
         icon={
@@ -93,14 +96,16 @@ export const ReasoningGroup = ({
         <div className="max-h-[200px] overflow-y-auto" ref={scrollContainerRef}>
           {parts.map((part, index) => {
             return (
-              <ReasoningItem
-                key={index}
-                part={part}
-                onClick={() => openObjectSidebar(part.content as ToolOrDynamicToolUIPart | ReasoningUIPart, mcpTools)}
-                reasoningTime={reasoningTime?.[part.id]}
-                isGroupReasoning={isGroupReasoning}
-                mcpTools={mcpTools}
-              />
+              <div key={index}>
+                <ReasoningItem
+                  part={part}
+                  onClick={() => openObjectSidebar(part.content as ToolOrDynamicToolUIPart | ReasoningUIPart, mcpTools)}
+                  reasoningTime={reasoningTime?.[part.id]}
+                  isGroupReasoning={isGroupReasoning}
+                  mcpTools={mcpTools}
+                />
+                {part.type === 'tool' && <PagePublicationAction part={part.content as ToolOrDynamicToolUIPart} />}
+              </div>
             )
           })}
           <div ref={scrollTargetRef} />

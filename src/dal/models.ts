@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { deletePromptsForModel } from './model-prompt-deletion'
+
 import { and, desc, eq, getTableColumns, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import {
@@ -31,9 +33,12 @@ const providerVisibilityCondition = sql`(${modelsTable.provider} != 'otari' OR E
     AND provider_settings.value = 'true'
 ))`
 
+/** A model can use only the enabled, locally approved connection for its own provider. */
+const modelConnectionReady = sql`${connections.provider} = ${modelsTable.provider} AND ${connections.enabled} = 1 AND ${providerCredentialConnected}`
+
 /** OAuth access is connection state, independent of the user's per-model toggle. */
 const providerConnectionCondition = sql`CASE WHEN ${modelsTable.providerConnectionId} IS NOT NULL
-  THEN ${connections.provider} = ${modelsTable.provider} AND ${connections.enabled} = 1 AND ${providerCredentialConnected}
+  THEN ${modelConnectionReady}
   ELSE (${modelsSecretsTable.oauthProvider} IS NULL OR EXISTS (
   SELECT 1 FROM ${integrationsSecretsTable}
   WHERE ${integrationsSecretsTable.provider} = ${modelsSecretsTable.oauthProvider}
@@ -52,12 +57,12 @@ const modelWithSecretColumns = {
   >`CASE WHEN ${modelsTable.providerConnectionId} IS NOT NULL THEN ${connections.url} ELSE ${modelsTable.url} END`,
   connectionName: sql<string | null>`${connections.name}`.as('connection_name'),
   connectionReady:
-    sql<boolean>`CASE WHEN ${modelsTable.providerConnectionId} IS NOT NULL THEN COALESCE(${connections.provider} = ${modelsTable.provider} AND ${connections.enabled} = 1 AND ${providerCredentialConnected}, 0) ELSE 1 END`.mapWith(
+    sql<boolean>`CASE WHEN ${modelsTable.providerConnectionId} IS NOT NULL THEN COALESCE(${modelConnectionReady}, 0) ELSE 1 END`.mapWith(
       Boolean,
     ),
   apiKey: sql<
     string | null
-  >`CASE WHEN ${modelsTable.providerConnectionId} IS NOT NULL THEN CASE WHEN ${connections.enabled} = 1 AND ${providerCredentialConnected} THEN COALESCE(json_extract(${secrets.credentials}, '$.apiKey'), json_extract(${secrets.credentials}, '$.access_token')) END ELSE ${modelsSecretsTable.apiKey} END`,
+  >`CASE WHEN ${modelsTable.providerConnectionId} IS NOT NULL THEN CASE WHEN ${modelConnectionReady} THEN COALESCE(json_extract(${secrets.credentials}, '$.apiKey'), json_extract(${secrets.credentials}, '$.access_token')) END ELSE ${modelsSecretsTable.apiKey} END`,
   oauthProvider: sql<
     'tinfoil' | null
   >`CASE WHEN ${modelsTable.providerConnectionId} IS NOT NULL THEN CASE WHEN ${connections.provider} = 'tinfoil' AND ${connections.authMethod} = 'oauth' THEN 'tinfoil' END ELSE ${modelsSecretsTable.oauthProvider} END`,
@@ -111,6 +116,13 @@ export const getModelQuery = (db: AnyDrizzleDatabase, id: string) => {
 
   return query as typeof query & DrizzleQueryWithPromise<Model>
 }
+
+/** Read the live reasoning preference without resolving provider credentials or model availability. */
+export const getModelReasoningEffortQuery = (db: AnyDrizzleDatabase, id: string) =>
+  db
+    .select({ reasoningEffort: modelsTable.reasoningEffort })
+    .from(modelsTable)
+    .where(and(eq(modelsTable.id, id), isNull(modelsTable.deletedAt)))
 
 /**
  * Returns a Drizzle query for the currently selected model, falling back to system model.
@@ -275,8 +287,6 @@ export const resetModelToDefault = async (
  * Only updates records that haven't been deleted yet to preserve original deletion datetimes
  */
 export const deleteModel = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
-  // Dynamic import to avoid circular dependency: models -> prompts -> models (via getModel)
-  const { deletePromptsForModel } = await import('./prompts')
   await db.transaction(async (tx) => {
     await deleteModelProfileForModel(tx, id)
     await deletePromptsForModel(tx, id)

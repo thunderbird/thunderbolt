@@ -10,6 +10,7 @@ import { getDb } from '@/db/database'
 import { projectsTable, settingsTable } from '@/db/tables'
 import * as platform from '@/lib/platform'
 import { useAgentExecutionStore } from './store'
+import { useSshEnvironmentsStore } from './ssh-environments'
 import {
   getProjectExecution,
   getProjectExecutionQuery,
@@ -25,6 +26,63 @@ beforeEach(async () => {
   await getDb().delete(projectsTable)
   await getDb().delete(settingsTable)
   useAgentExecutionStore.setState({ byProject: {}, byThread: {} })
+  useSshEnvironmentsStore.setState({ environments: {} })
+})
+
+it('fixes the SSH identity at project creation and syncs neither connection details nor grants', async () => {
+  spyOn(platform, 'isTauriDesktop').mockReturnValue(true)
+  const environmentId = crypto.randomUUID()
+  useSshEnvironmentsStore.getState().saveEnvironment({
+    id: environmentId,
+    name: 'VM',
+    host: 'private-vm',
+    username: 'private-user',
+    port: 2222,
+    authentication: 'key',
+    identityFile: '/private/key',
+    cwd: '/remote/project',
+    deletedAt: null,
+  })
+  const execution = { location: 'ssh', environmentId, cwd: '/remote/project', access: 'full' } as const
+  const project = await createProject(getDb(), { name: 'SSH project', execution })
+  const rows = await getProjectExecutionQuery(getDb(), project.id)
+  expect(JSON.parse(rows[0].value!)).toEqual({ version: 1, location: 'ssh', environmentId })
+  expect(rows[0].value).not.toContain('private')
+  expect(await getProjectExecution(getDb(), project.id)).toEqual(execution)
+  useAgentExecutionStore.getState().setExecution('chat', { location: 'sandbox', access: 'full' })
+  await updateProject(getDb(), project.id, { name: 'Renamed SSH project' })
+  expect(await getProjectExecution(getDb(), project.id)).toEqual(execution)
+
+  // An unrelated saved grant cannot redirect the immutable project or grant full access.
+  useAgentExecutionStore
+    .getState()
+    .setProjectExecution(project.id, { location: 'computer', cwd: '/local', access: 'full' })
+  expect(await getProjectExecution(getDb(), project.id)).toEqual({ ...execution, access: 'ask' })
+  useSshEnvironmentsStore.getState().deleteEnvironment(environmentId)
+  await expect(getProjectExecution(getDb(), project.id)).rejects.toThrow('SSH environment that is unavailable')
+  expect(JSON.parse((await getProjectExecutionQuery(getDb(), project.id))[0].value!)).toEqual({
+    version: 1,
+    location: 'ssh',
+    environmentId,
+  })
+})
+
+it('refuses SSH projects in web/mobile and rejects a declaration without its environment identity', () => {
+  expect(() =>
+    resolveProjectExecution({ location: 'ssh', environmentId: crypto.randomUUID() }, undefined, false),
+  ).toThrow('desktop app')
+  expect(() => parseProjectExecutionLocation('{"version":1,"location":"ssh"}')).toThrow(
+    'project environment is invalid',
+  )
+})
+
+it.each(['sandbox', 'cloud'] as const)('does not reuse another environment’s grant for %s', (location) => {
+  expect(resolveProjectExecution({ location }, { location: 'computer', cwd: '/other', access: 'full' })).toEqual({
+    location,
+    access: 'ask',
+  })
+  expect(resolveProjectExecution({ location }, { location, access: 'full' })).toEqual({ location, access: 'full' })
+  expect(resolveProjectExecution({ location }, undefined)).toEqual({ location, access: 'ask' })
 })
 
 it('creates immutable project environment atomically and stores paths/access only on this device', async () => {
@@ -57,7 +115,7 @@ it('refuses a computer project on another device until its local folder is bound
     access: 'ask',
   })
   expect(() =>
-    resolveProjectExecution('computer', useAgentExecutionStore.getState().byProject[project.id], false),
+    resolveProjectExecution({ location: 'computer' }, useAgentExecutionStore.getState().byProject[project.id], false),
   ).toThrow('desktop app')
 })
 

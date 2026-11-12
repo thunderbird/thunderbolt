@@ -5,7 +5,7 @@
 import { expect, test } from './test'
 import { installArtifactChannel } from './artifact-channel-fixture'
 import { readFileSync } from 'node:fs'
-import { wrapArtifactHtml as wrapWithDrivers } from '../src/artifacts/harness-protocol'
+import { artifactSandbox, wrapArtifactHtml as wrapWithDrivers } from '../src/artifacts/harness-protocol'
 
 // Use the exact same fixed driver bytes that Vite supplies through ?raw in the app.
 const driverSource = [
@@ -21,7 +21,7 @@ const wrapArtifactHtml = (html: string, nonce: string) => wrapWithDrivers(html, 
  * cannot exercise: actual script execution inside a sandboxed iframe, the
  * ready/error/height postMessage protocol, and the offline CSP truly enforcing
  * in-engine. We drive exactly what the app renders (`wrapArtifactHtml` output in
- * a `sandbox="allow-scripts"` iframe, never `allow-same-origin`) and collect the
+ * the production sandbox tokens, never `allow-same-origin`) and collect the
  * harness messages the parent would receive.
  */
 type HarnessMessage = {
@@ -32,6 +32,7 @@ type HarnessMessage = {
   detail?: string
   id?: number
   result?: unknown
+  error?: string
 }
 
 const collectHarnessMessages = (
@@ -41,11 +42,11 @@ const collectHarnessMessages = (
   settleMs = 700,
 ): Promise<HarnessMessage[]> =>
   page.evaluate(
-    ({ srcdoc, nonce, settleMs }) =>
+    ({ srcdoc, nonce, settleMs, sandbox }) =>
       new Promise<HarnessMessage[]>((resolve) => {
         const messages: HarnessMessage[] = []
         const iframe = document.createElement('iframe')
-        iframe.setAttribute('sandbox', 'allow-scripts') // must never include allow-same-origin
+        iframe.setAttribute('sandbox', sandbox)
         const { bindArtifactChannel } = Reflect.get(
           window,
           'artifactChannel',
@@ -63,7 +64,7 @@ const collectHarnessMessages = (
           resolve(messages)
         }, settleMs)
       }),
-    { srcdoc, nonce, settleMs },
+    { srcdoc, nonce, settleMs, sandbox: artifactSandbox },
   )
 
 /** Exercise the same generic request bridge used by native and sandboxed page tools. */
@@ -75,11 +76,11 @@ const requestHarness = (
   params: unknown = {},
 ): Promise<HarnessMessage[]> =>
   page.evaluate(
-    ({ srcdoc, nonce, method, params }) =>
+    ({ srcdoc, nonce, method, params, sandbox }) =>
       new Promise<HarnessMessage[]>((resolve, reject) => {
         const messages: HarnessMessage[] = []
         const iframe = document.createElement('iframe')
-        iframe.setAttribute('sandbox', 'allow-scripts')
+        iframe.setAttribute('sandbox', sandbox)
         iframe.style.cssText = 'width:400px;height:400px;border:0'
         const timer = setTimeout(() => reject(new Error('The page did not answer its request')), 2000)
         const { bindArtifactChannel } = Reflect.get(
@@ -93,7 +94,9 @@ const requestHarness = (
             messages.push(data)
             if (data.type === 'artifact-ready') {
               iframe.getBoundingClientRect()
-              channel.send({ artifactNonce: nonce, type: 'artifact-request', id: 1, method, params })
+              requestAnimationFrame(() => {
+                channel.send({ artifactNonce: nonce, type: 'artifact-request', id: 1, method, params })
+              })
             }
             if (data.type === 'artifact-reply' && data.id === 1) {
               clearTimeout(timer)
@@ -105,7 +108,7 @@ const requestHarness = (
         iframe.srcdoc = srcdoc
         document.body.appendChild(iframe)
       }),
-    { srcdoc, nonce, method, params },
+    { srcdoc, nonce, method, params, sandbox: artifactSandbox },
   )
 
 test.describe('artifact harness (real browser)', () => {
@@ -199,6 +202,45 @@ test.describe('artifact harness (real browser)', () => {
     expect(messages.some((message) => message.type === 'artifact-error')).toBe(false)
   })
 
+  test('runs form handlers while CSP blocks outbound POSTs and the frame keeps its opaque origin', async ({ page }) => {
+    const nonce = 'nonce-local-form'
+    const target = 'https://artifact-submission.test/collect'
+    const requests: string[] = []
+    await page.route(target, (route) => {
+      requests.push(route.request().method())
+      return route.abort()
+    })
+    const messages = await requestHarness(
+      page,
+      wrapArtifactHtml(
+        `<form id="form" method="post" action="${target}"><input name="value" value="private-input"></form>
+<script>
+window.__artifactHandlers['test/form'] = () => new Promise(resolve => {
+  let submissions = 0;
+  let opaqueOrigin = false;
+  try { parent.document.body; } catch { opaqueOrigin = true; }
+  const form = document.getElementById('form');
+  form.addEventListener('submit', () => { submissions++; });
+  document.addEventListener('securitypolicyviolation', event => {
+    resolve({ directive: event.effectiveDirective, submissions, opaqueOrigin });
+  }, { once: true });
+  form.requestSubmit();
+});
+</script>`,
+        nonce,
+      ),
+      nonce,
+      'test/form',
+    )
+    expect(messages.find((message) => message.type === 'artifact-reply')?.result).toEqual({
+      directive: 'form-action',
+      submissions: 1,
+      opaqueOrigin: true,
+    })
+    expect(requests).toEqual([])
+    expect(messages.some((message) => message.type === 'artifact-error')).toBe(false)
+  })
+
   test('answers unknown methods instead of leaving the host request pending', async ({ page }) => {
     const nonce = 'nonce-unknown'
     const messages = await requestHarness(page, wrapArtifactHtml('<p>Page</p>', nonce), nonce, 'page/unknown')
@@ -242,7 +284,7 @@ test.describe('artifact harness (real browser)', () => {
     )
     try {
       const result = await page.evaluate(
-        ({ srcdoc, nonce }) =>
+        ({ srcdoc, nonce, sandbox }) =>
           new Promise<{
             received: unknown[]
             loaded: boolean
@@ -255,7 +297,7 @@ test.describe('artifact harness (real browser)', () => {
               'artifactChannel',
             ) as typeof import('../src/artifacts/channel')
             const frame = document.createElement('iframe')
-            frame.sandbox.add('allow-scripts')
+            frame.setAttribute('sandbox', sandbox)
             let closed = 0
             let refused = false
             let forged = false
@@ -322,7 +364,7 @@ test.describe('artifact harness (real browser)', () => {
             frame.srcdoc = srcdoc
             document.body.append(frame)
           }),
-        { srcdoc, nonce },
+        { srcdoc, nonce, sandbox: artifactSandbox },
       )
       expect(result.received).toEqual([])
       expect(result.loaded).toBe(false)
@@ -338,10 +380,10 @@ test.describe('artifact harness (real browser)', () => {
     const nonce = 'delayed-port-start'
     const srcdoc = wrapArtifactHtml('<script>throw new Error("early failure")</script>', nonce)
     const types = await page.evaluate(
-      ({ srcdoc, nonce }) =>
+      ({ srcdoc, nonce, sandbox }) =>
         new Promise<string[]>((resolve, reject) => {
           const iframe = document.createElement('iframe')
-          iframe.sandbox.add('allow-scripts')
+          iframe.setAttribute('sandbox', sandbox)
           const timer = setTimeout(() => reject(new Error('The queued messages were lost')), 3000)
           const receive = (event: MessageEvent) => {
             if (
@@ -369,14 +411,14 @@ test.describe('artifact harness (real browser)', () => {
           iframe.srcdoc = srcdoc
           document.body.append(iframe)
         }),
-      { srcdoc, nonce },
+      { srcdoc, nonce, sandbox: artifactSandbox },
     )
     expect(types).toContain('artifact-ready')
     expect(types).toContain('artifact-error')
   })
 
   for (const failure of ['throw new Error("handler failed")', 'return Promise.reject(new Error("handler failed"))']) {
-    test(`reports handler failures and settles its request: ${failure}`, async ({ page }) => {
+    test(`reports handler failures only to their request: ${failure}`, async ({ page }) => {
       const nonce = 'nonce-handler-failure'
       const messages = await requestHarness(
         page,
@@ -384,11 +426,12 @@ test.describe('artifact harness (real browser)', () => {
         nonce,
         'test/fail',
       )
-      expect(messages.find((message) => message.type === 'artifact-error')).toMatchObject({
-        reason: 'handler',
-        detail: 'handler failed',
+      expect(messages.some((message) => message.type === 'artifact-error')).toBe(false)
+      expect(messages.find((message) => message.type === 'artifact-reply')).toMatchObject({
+        id: 1,
+        result: null,
+        error: 'handler failed',
       })
-      expect(messages.find((message) => message.type === 'artifact-reply')).toMatchObject({ id: 1, result: null })
     })
   }
 

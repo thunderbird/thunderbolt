@@ -8,6 +8,9 @@
 
 pub(crate) mod process_tree;
 mod shell;
+pub mod ssh;
+pub mod ssh_credentials;
+pub mod ssh_discovery;
 
 use crate::agent_output_files::OutputFiles;
 use serde::Serialize;

@@ -12,13 +12,24 @@ const scrollDelta = z.number().finite().min(-100_000).max(100_000)
 export const actionSchema = z.object({
   tabId,
   type: z.enum(['click', 'move', 'type', 'key', 'scroll']),
-  ref: elementRef.optional().describe('An element ref from a fresh snapshot of this same tab and document.'),
+  ref: elementRef
+    .optional()
+    .describe(
+      'An element ref from a fresh snapshot of this same tab and document. Used by click, move, and type only.',
+    ),
   x: coordinate.optional().describe('Horizontal CSS-pixel position inside the page viewport.'),
   y: coordinate.optional().describe('Vertical CSS-pixel position inside the page viewport.'),
   button: z.enum(['left', 'right']).optional(),
   text: z.string().max(20_000).optional().describe('Literal text to enter; never interpreted as code.'),
   clear: z.boolean().optional().describe('Clear the targeted field before typing.'),
-  key: z.string().min(1).max(100).optional().describe('A key or chord such as Enter, Tab, Escape, or Control+a.'),
+  key: z
+    .string()
+    .min(1)
+    .max(100)
+    .optional()
+    .describe(
+      'A key sent to the currently focused element; ref does not retarget key actions. Click or type first to focus. Native pages support chords such as Control+a; synthetic HTML pages support single-key events only.',
+    ),
   deltaX: scrollDelta.optional(),
   deltaY: scrollDelta.optional().describe('Vertical scroll distance in CSS pixels; positive scrolls down.'),
 })

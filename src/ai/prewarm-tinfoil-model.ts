@@ -18,6 +18,7 @@ type TinfoilClients = {
  */
 export const prewarmTinfoilModel = async (
   model: Pick<Model, 'provider' | 'isSystem'> | null | undefined,
+  // Break the client → analytics/DAL → chat store → prewarm cycle; this does not create a separate chunk.
   loadClients: () => Promise<TinfoilClients> = () => import('./tinfoil-client'),
 ) => {
   if (!model || model.provider !== 'tinfoil' || (model.isSystem === 1 && usesLocalProviders())) {

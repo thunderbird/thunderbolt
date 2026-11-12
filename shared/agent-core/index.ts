@@ -53,3 +53,4 @@ export { BrowserExecutionEnv, mountAgentFs, mountInMemoryFs, type MountedBackend
 
 export type { CodingEnvironment } from './execution-environment.ts'
 export { NativeExecutionEnv } from './native-execution-env.ts'
+export { SshExecutionEnv } from './ssh-execution-env.ts'

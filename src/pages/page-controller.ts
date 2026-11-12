@@ -66,6 +66,16 @@ const assertCurrent = (id: string, adapter: PageAdapter, signal?: AbortSignal) =
   }
 }
 
+/** Synthetic input reaches page listeners without invoking the browser's privileged default UI. */
+const syntheticInputWarning = (action: PageAction): string | undefined => {
+  if (action.type === 'key') {
+    return 'Synthetic key events were dispatched to the focused element. Browser default behavior (form submission, focus movement, and text editing) is not simulated. Click the submit control to submit a form, or use the type action to change field text.'
+  }
+  if (action.type === 'click' && action.button === 'right') {
+    return 'A synthetic contextmenu event was dispatched to the targeted element. Native browser context menus are not opened.'
+  }
+}
+
 /** Called inside the operation queue; public snapshots join the queue instead. */
 const readSnapshot = async (id: string, screenshot: boolean, signal?: AbortSignal): Promise<PageSnapshot> => {
   const session = requireSession(id)
@@ -121,6 +131,32 @@ export const pageController = {
       presentation: session.presentation,
       capabilities: adapters.get(session.id)?.capabilities ?? null,
     })),
+  /** Replace a generated document only on explicit publication; ordinary ensure/open keeps the current revision. */
+  publishHtml: (page: PageDefinition, options: { presentation?: 'inline' | 'sidebar'; chatThreadId?: string } = {}) => {
+    const existing = usePageStore.getState().sessions.find((session) => session.page.id === page.id)
+    if (page.source.kind !== 'html' || (existing && existing.page.source.kind !== 'html')) {
+      throw new Error('Generated pages can only replace an HTML page.')
+    }
+    if (existing) {
+      // The frame only renews its channel when HTML changes; metadata-only edits keep its adapter.
+      if (existing.page.source.kind === 'html' && existing.page.source.html !== page.source.html) {
+        adapters.delete(existing.id)
+      }
+      usePageStore.getState().replacePage(existing.id, page)
+      if (existing.presentation !== 'inline') {
+        pageController.select(existing.id)
+      }
+      return existing.id
+    }
+    const id = usePageStore.getState().ensure(page, {
+      presentation: options.presentation ?? 'sidebar',
+      chatThreadId: options.chatThreadId,
+    })
+    if (options.presentation !== 'inline') {
+      pageController.select(id)
+    }
+    return id
+  },
   open: (page: PageDefinition) => {
     const id = usePageStore.getState().ensure(page)
     pageController.select(id)
@@ -134,7 +170,11 @@ export const pageController = {
     }
     showSidebar(id)
   },
-  restoreToSidebar: showSidebar,
+  restoreToSidebar: (id: string) => {
+    showSidebar(id)
+    // Navigation commits asynchronously; tools must stop targeting the old route immediately.
+    presentExpanded = undefined
+  },
   close: (id: string) => {
     requireSession(id)
     const active = usePageStore.getState().activeId === id
@@ -207,11 +247,24 @@ export const pageController = {
       if (input === 'none' || !adapter.act) {
         throw new Error('This page does not support that interaction.')
       }
+      if (action.type === 'key' && input === 'synthetic' && action.key.length > 1 && action.key.includes('+')) {
+        throw new Error(
+          'Modifier chords require a native browser. Use the type action with clear to replace field text.',
+        )
+      }
       pageController.activate(id)
       await adapter.present?.(signal)
       assertCurrent(id, adapter, signal)
       await adapter.act(action, signal)
       assertCurrent(id, adapter, signal)
-      return readSnapshot(id, false, signal)
+      const snapshot = await readSnapshot(id, false, signal)
+      const warning = input === 'synthetic' ? syntheticInputWarning(action) : undefined
+      if (!warning) {
+        return snapshot
+      }
+      return {
+        ...snapshot,
+        warnings: [...(snapshot.warnings ?? []), warning],
+      }
     }, options),
 }

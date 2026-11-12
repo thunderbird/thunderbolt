@@ -4,13 +4,13 @@
 
 CREATE TABLE "powersync"."provider_connections" (
 	"id" text NOT NULL,
-	"provider" text NOT NULL,
-	"name" text NOT NULL,
+	"provider" text,
+	"name" text,
 	"url" text,
-	"auth_method" text NOT NULL,
-	"enabled" integer DEFAULT 1 NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"auth_method" text,
+	"enabled" integer DEFAULT 1,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now(),
 	"deleted_at" timestamp,
 	"user_id" text NOT NULL,
 	CONSTRAINT "provider_connections_id_user_id_pk" PRIMARY KEY("id","user_id")

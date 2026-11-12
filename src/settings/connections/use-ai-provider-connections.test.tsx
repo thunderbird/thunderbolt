@@ -166,7 +166,7 @@ describe('AI provider connection disabling', () => {
       await gate.promise
       await write(...args)
     })
-    const observed: number[] = []
+    const observed: (number | null)[] = []
     const { result } = renderHook(
       () => {
         const state = useAiProviderConnections()

@@ -3,6 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Session } from '@/contexts/auth-context'
+import { isSsoMode } from '@/lib/auth-mode'
+import { getAuthToken, isCurrentSessionToken } from '@/lib/auth-token'
 
 /**
  * Cache of the last successful Better Auth session response in localStorage.
@@ -100,4 +102,17 @@ export const isCachedSessionValid = (cached: CachedSessionData): boolean => {
   }
   const expiresAt = new Date(cached.session.expiresAt).getTime()
   return Number.isFinite(expiresAt) && expiresAt > Date.now()
+}
+
+/** Cookie-only SSO is revalidated online; bearer payloads must identify the current signed token. */
+export const isCurrentSession = (token: string | undefined): boolean =>
+  isCurrentSessionToken(token) || (!getAuthToken() && isSsoMode() && Boolean(token))
+
+/**
+ * The cached session, when it may stand in for `/get-session` until the server answers: unexpired,
+ * and for the stored bearer token (or, in SSO mode, the cookie).
+ */
+export const getUsableCachedSession = (): CachedSessionData | null => {
+  const cached = getAuthToken() || isSsoMode() ? getCachedSession() : null
+  return cached && isCachedSessionValid(cached) && isCurrentSession(cached.session?.token) ? cached : null
 }

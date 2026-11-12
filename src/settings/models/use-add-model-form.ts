@@ -3,9 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createModelInTransaction } from '@/dal/models'
-import { withTinfoilSessionLock } from '@/lib/tinfoil-session'
+import { revokeReplacedTinfoilAuthorization, withTinfoilSessionLock } from '@/lib/tinfoil-session'
 import { type ProviderAuthorization } from '@/lib/provider-connection-attempt'
-import { saveProviderConnectionInTransaction } from '@/dal/provider-connections'
+import {
+  prepareProviderConnectionSave,
+  saveProviderConnectionInTransaction,
+  getProviderConnectionRevision,
+  type SaveProviderConnection,
+} from '@/dal/provider-connections'
 import { getProviderDefinition } from '@/providers/registry'
 import type { I18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
@@ -166,23 +171,24 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
         > & { providerAuthorization?: ProviderAuthorization; signal?: AbortSignal },
     ) => {
       const { providerAuthorization, signal, supportsTools = true, ...modelValues } = values
-      const save = () =>
+      const providerInput: SaveProviderConnection | null =
+        values.provider === 'thunderbolt'
+          ? null
+          : {
+              provider: values.provider,
+              name: getProviderDefinition(values.provider).name,
+              url: values.url,
+              authMethod: providerAuthorization ? 'oauth' : 'api_key',
+              credentials:
+                providerAuthorization?.tinfoilCredentials ??
+                (providerAuthorization ? { access_token: values.apiKey } : { apiKey: values.apiKey ?? '' }),
+              attempt: providerAuthorization?.attempt,
+              signal,
+            }
+      const save = (input = providerInput) =>
         db.transaction(async (tx) => {
-          // Authorization can be cancelled while this save waits for the session lock or database.
           signal?.throwIfAborted()
-          const providerConnectionId =
-            values.provider === 'thunderbolt'
-              ? null
-              : await saveProviderConnectionInTransaction(tx, {
-                  provider: values.provider,
-                  name: getProviderDefinition(values.provider).name,
-                  url: values.url,
-                  authMethod: providerAuthorization ? 'oauth' : 'api_key',
-                  credentials:
-                    providerAuthorization?.tinfoilCredentials ??
-                    (providerAuthorization ? { access_token: values.apiKey } : { apiKey: values.apiKey ?? '' }),
-                  attempt: providerAuthorization?.attempt,
-                })
+          const providerConnectionId = input ? await saveProviderConnectionInTransaction(tx, input) : null
           const previous = providerConnectionId
             ? (await getAllModels(tx)).find(
                 (model) => model.providerConnectionId === providerConnectionId && model.model === values.model,
@@ -206,7 +212,17 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
           return { id, created: !previous }
         })
       const { id, created } =
-        providerAuthorization?.attempt.provider === 'tinfoil' ? await withTinfoilSessionLock(save) : await save()
+        providerInput?.provider === 'tinfoil' && providerInput.authMethod === 'oauth'
+          ? await withTinfoilSessionLock(async () => {
+              const guarded = {
+                ...providerInput,
+                expectedRevision: await getProviderConnectionRevision(db, 'oauth:tinfoil'),
+              }
+              await prepareProviderConnectionSave(db, guarded)
+              await revokeReplacedTinfoilAuthorization(db, providerInput.credentials, signal)
+              return save(guarded)
+            })
+          : await save()
       if (isStandalone && created) {
         await updateSettings(db, { selected_model: id })
       }

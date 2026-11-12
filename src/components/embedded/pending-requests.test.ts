@@ -35,6 +35,20 @@ describe('createPendingRequests', () => {
     expect(await second).toBe('second')
   })
 
+  it('rejects only the failed request, clears its timer, and ignores late replies', async () => {
+    const pending = createPendingRequests()
+    const ids: number[] = []
+    const first = pending.issue((id) => ids.push(id), 50)
+    const second = pending.issue((id) => ids.push(id), 50)
+    expect(pending.settle(ids[0], null, new Error('Element is disabled'))).toBe(true)
+    await expect(first).rejects.toThrow('Element is disabled')
+    expect(pending.settle(ids[0], 'Late success')).toBe(false)
+    expect(pending.settle(ids[1], 'Still healthy')).toBe(true)
+    expect(await second).toBe('Still healthy')
+    await getClock().runAllAsync()
+    expect(pending.settle(ids[0], null, new Error('Late error'))).toBe(false)
+  })
+
   /** The property every caller depends on: a silent guest never hangs a turn. */
   it('resolves null when nothing answers before the timeout', async () => {
     const pending = createPendingRequests()

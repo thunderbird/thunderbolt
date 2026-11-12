@@ -16,6 +16,7 @@ import { createAgentRoutingFetch } from './chat-instance'
 
 const sessionId = 'sess-p1'
 const httpClient: HttpClient = {} as HttpClient
+const isAgentActive = async () => true
 const getProxyFetch: () => FetchFn = () => (async () => new Response('ok')) as unknown as FetchFn
 const remoteAgent: Agent = {
   id: 'remote-agent',
@@ -64,6 +65,7 @@ const getRemoteRequestPermission = async (): Promise<NonNullable<AgentAdapterCon
   useChatStore.getState().updateSession(sessionId, { selectedAgent: remoteAgent })
 
   const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+    isAgentActive,
     connectToAgent: mock(async () => adapter) as never,
     updateChatThread: (async () => {}) as never,
     getDb: (() => ({})) as never,
@@ -123,6 +125,7 @@ describe('requestPermission bridge', () => {
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      isAgentActive,
       getChatReasoningEffort: async () => undefined,
       connectToAgent: mock(async () => adapter) as never,
       updateChatThread: (async () => {}) as never,

@@ -7,9 +7,16 @@ import { persist } from 'zustand/middleware'
 
 export type AgentExecution = { access: 'ask' | 'full' } & (
   | { location: 'computer'; cwd: string }
+  | { location: 'ssh'; environmentId: string; cwd: string }
   | { location: 'sandbox' | 'cloud'; cwd?: string }
 )
 export const defaultAgentExecution: AgentExecution = { location: 'sandbox', access: 'ask' }
+
+/** A permission grant is valid only for the exact environment and working folder it names. */
+export const matchesExecutionTarget = (left: AgentExecution, right: AgentExecution): boolean =>
+  left.location === right.location &&
+  left.cwd === right.cwd &&
+  (left.location !== 'ssh' || (right.location === 'ssh' && left.environmentId === right.environmentId))
 
 type ExecutionStore = {
   byThread: Record<string, AgentExecution>

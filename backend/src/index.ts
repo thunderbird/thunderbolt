@@ -15,6 +15,7 @@ import { createStandaloneLogger } from '@/config/logger'
 import { createCorsMiddleware } from '@/config/cors'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { runMigrations } from '@/db/client'
+import { releaseOpenHolds } from '@/inference/managed-request'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createAppVersionMiddleware } from '@/middleware/app-version'
 import { deleteExpiredCaptchaChallenges, deleteExpiredOrConsumedNonces } from '@/dal'
@@ -46,6 +47,7 @@ import { createConfigRoutes } from '@/api/config'
 import { createBrandingAssets, noBrandingAssets } from '@/branding/assets'
 import { createSafeFetch } from '@/utils/url-validation'
 import { createEncryptionRoutes } from '@/api/encryption'
+import { createDeviceApprovalSessionRoutes } from '@/api/device-approval-sessions'
 import { createMiniAppRoutes } from '@/api/mini-apps'
 import { createPowerSyncRoutes } from '@/api/powersync'
 import { createDebugTranscriptsIntakeRoutes, ensureSelfDebugTranscriptClient } from '@/api/debug-transcripts-intake'
@@ -231,6 +233,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createPowerSyncRoutes(auth, settings, database))
       .use(createMiniAppRoutes(auth, settings))
       .use(createEncryptionRoutes(auth, database, settings))
+      .use(createDeviceApprovalSessionRoutes(auth, database))
       .use(createAccountRoutes(auth, settings, database))
       .use(createAgentsRoutes(auth))
       .use(createHaystackRoutes(settings, auth, { fetchFn }))
@@ -343,19 +346,20 @@ const startServer = async () => {
     )
 
     // Graceful shutdown
-    process.on('SIGINT', async () => {
+    const shutDown = async (signal: 'SIGINT' | 'SIGTERM') => {
       tinfoilKeepWarm.stop()
       clearInterval(sweepTimer)
-      log.info('Received SIGINT, shutting down gracefully...')
+      log.info(`Received ${signal}, shutting down gracefully...`)
+      // The managed requests still running die with the process before their usage arrives.
+      try {
+        await releaseOpenHolds(sweepDb)
+      } catch (err) {
+        log.error({ err }, 'Failed to release open inference holds')
+      }
       process.exit(0)
-    })
-
-    process.on('SIGTERM', async () => {
-      tinfoilKeepWarm.stop()
-      clearInterval(sweepTimer)
-      log.info('Received SIGTERM, shutting down gracefully...')
-      process.exit(0)
-    })
+    }
+    process.on('SIGINT', () => shutDown('SIGINT'))
+    process.on('SIGTERM', () => shutDown('SIGTERM'))
   } catch (error) {
     log.error({ err: error }, 'Failed to start server')
     process.exit(1)

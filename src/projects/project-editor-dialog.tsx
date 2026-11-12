@@ -6,10 +6,10 @@ import { useLingui } from '@lingui/react/macro'
 import { DetailPanel } from '@/components/detail-panel'
 import { Dialog, DialogTitle } from '@/components/ui/dialog'
 import { ResponsiveModalContentComposable } from '@/components/ui/responsive-modal'
-import { useDatabase } from '@/contexts'
-import { updateProject } from '@/dal/projects'
 import type { Project } from '@/types'
 import { ProjectForm } from './project-form'
+import { ProjectExecutionSummary } from './project-execution-summary'
+import { useProjectEditorState } from './use-project-editor-state'
 
 type ProjectEditorDialogProps = {
   project: Project
@@ -19,7 +19,7 @@ type ProjectEditorDialogProps = {
 /** Edit a project's details without leaving the current chat. */
 export const ProjectEditorDialog = ({ project, onClose }: ProjectEditorDialogProps) => {
   const { t } = useLingui()
-  const db = useDatabase()
+  const state = useProjectEditorState(project.id)
   const title = t`Project settings`
 
   return (
@@ -33,6 +33,8 @@ export const ProjectEditorDialog = ({ project, onClose }: ProjectEditorDialogPro
         <DetailPanel title={title} onClose={onClose} showCloseButton={false}>
           <ProjectForm
             key={project.id}
+            environment={<ProjectExecutionSummary projectId={project.id} />}
+            execution={state.execution}
             initialValues={{
               name: project.name,
               icon: project.icon,
@@ -41,15 +43,7 @@ export const ProjectEditorDialog = ({ project, onClose }: ProjectEditorDialogPro
             }}
             onCancel={onClose}
             onSuccess={onClose}
-            onSubmit={async ({ name, icon, description, instructions }) => {
-              const values = {
-                name,
-                icon,
-                description: description.trim() || null,
-                instructions: instructions.trim() || null,
-              }
-              await updateProject(db, project.id, values)
-            }}
+            onSubmit={state.submit}
           />
         </DetailPanel>
       </ResponsiveModalContentComposable>

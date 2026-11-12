@@ -10,7 +10,7 @@ import { performanceStreamEnd, performanceStreamPrompt, performanceStreamSection
 import { prepare } from '../scripts/performance/scenarios'
 import { openLongChat } from '../scripts/performance/journeys'
 
-type Snapshot = { text: string; at: number }
+type Snapshot = { text: string; at: number; hasActivity: boolean }
 
 /** Observe partial replies before the response finishes downloading. */
 test('a sent message gets a reply that streams in', async ({ page }) => {
@@ -29,7 +29,11 @@ test('a sent message gets a reply that streams in', async ({ page }) => {
     const observer = new MutationObserver(() => {
       const text = document.querySelector('[data-quotable-message-id] .prose')?.textContent?.trim()
       if (text && snapshots.at(-1)?.text !== text) {
-        snapshots.push({ text, at: Date.now() })
+        snapshots.push({
+          text,
+          at: Date.now(),
+          hasActivity: !!document.querySelector('[data-testid="loading-status"]'),
+        })
       }
     })
     observer.observe(document.body, { childList: true, characterData: true, subtree: true })
@@ -49,6 +53,7 @@ test('a sent message gets a reply that streams in', async ({ page }) => {
   await expect(reply).toHaveText(fakeProviderReply, { timeout: 30_000 })
   const response = await completion
   await response.finished()
+  await expect(page.getByTestId('loading-status')).toHaveCount(0)
   const { startTime, responseEnd } = response.request().timing()
   const finishedAt = startTime + responseEnd
   const snapshots = await page.evaluate(
@@ -64,6 +69,10 @@ test('a sent message gets a reply that streams in', async ({ page }) => {
     `The first partial (${partials[0]?.at}) must render before the response finishes (${finishedAt})`,
   ).toBe(true)
   expect(new Set(partials.map(({ text }) => text)).size).toBeGreaterThanOrEqual(2)
+  expect(
+    partials.every(({ hasActivity }) => hasActivity),
+    'Partial replies must retain a visible activity row',
+  ).toBe(true)
 
   // Established chats retain caret-driven skill completion after the empty-chat skill bar unmounts.
   await composer.pressSequentially('/sea')
@@ -114,12 +123,14 @@ test('a high-rate markdown stream preserves a focused draft and persists the com
   await page.getByRole('button', { name: 'Send message' }).click()
   await expect(page.getByRole('heading', { name: 'Streaming section 1', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Stop generating', exact: true })).toBeVisible()
+  await expect(page.getByTestId('loading-status')).toBeVisible()
   const draft = 'Keep this unsent draft while the answer streams.\nAnd keep its second line.'
   await composer.fill(draft)
   await composer.pressSequentially(' Still focused.', { delay: 20 })
   const reply = page.locator('[data-quotable-message-id]').last()
   await expect(reply).toContainText(performanceStreamEnd, { timeout: 30_000 })
   await expect(page.getByRole('button', { name: 'Stop generating', exact: true })).toHaveCount(0)
+  await expect(page.getByTestId('loading-status')).toHaveCount(0)
   await expect(composer).toHaveValue(`${draft} Still focused.`)
   await expect(composer).toBeFocused()
   await expect(reply.locator('h2')).toHaveCount(performanceStreamSections)

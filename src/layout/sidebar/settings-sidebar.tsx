@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { RecoveryContinuityNavDot, useRecoveryContinuityAttention } from '@/components/recovery-continuity'
 import { SidebarFooter } from '@/components/sidebar-footer'
 import {
   SidebarContent,
@@ -18,7 +19,18 @@ import { cn } from '@/lib/utils'
 import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
-import { AudioLines, Bot, Cpu, Globe, Plug, SlidersHorizontal, Smartphone, Zap, type LucideIcon } from 'lucide-react'
+import {
+  AudioLines,
+  Bot,
+  Cpu,
+  Globe,
+  Plug,
+  Server,
+  SlidersHorizontal,
+  Smartphone,
+  Zap,
+  type LucideIcon,
+} from 'lucide-react'
 import { Fragment } from 'react'
 import { useLocation } from 'react-router'
 import { SidebarNavToggle } from './nav-toggle'
@@ -37,6 +49,8 @@ type NavItem = {
 
 /** `id` carries the React key, since the label is now a descriptor rather than
  *  a string the reconciler can compare. */
+const preferencesPath = '/settings/preferences'
+
 const navGroups: { id: string; label: MessageDescriptor; items: NavItem[] }[] = [
   {
     id: 'agents',
@@ -49,7 +63,17 @@ const navGroups: { id: string; label: MessageDescriptor; items: NavItem[] }[] = 
     items: [
       { path: '/settings/skills', label: msg`Skills`, icon: Zap },
       { path: '/settings/connections', label: msg`Connections`, icon: Plug },
-      { path: '/settings/models', label: msg`Models`, icon: Cpu, matchPrefix: true },
+      {
+        path: '/settings/environments',
+        label: msg`Environments`,
+        icon: Server,
+      },
+      {
+        path: '/settings/models',
+        label: msg`Models`,
+        icon: Cpu,
+        matchPrefix: true,
+      },
       { path: '/settings/search', label: msg`Search`, icon: Globe },
       { path: '/settings/voice', label: msg`Voice`, icon: AudioLines },
     ],
@@ -58,7 +82,11 @@ const navGroups: { id: string; label: MessageDescriptor; items: NavItem[] }[] = 
     id: 'settings',
     label: msg`Settings`,
     items: [
-      { path: '/settings/preferences', label: msg`Preferences`, icon: SlidersHorizontal },
+      {
+        path: preferencesPath,
+        label: msg`Preferences`,
+        icon: SlidersHorizontal,
+      },
       { path: '/settings/devices', label: msg`Devices`, icon: Smartphone },
     ],
   },
@@ -80,7 +108,10 @@ export const SettingsSidebarContent = ({
   const { i18n } = useLingui()
   const { isMobile, toggleSidebar } = useSidebar()
   const location = useLocation()
-  const { experimentalFeatureVoice } = useSettings({ experimental_feature_voice: false })
+  const { experimentalFeatureVoice } = useSettings({
+    experimental_feature_voice: false,
+  })
+  const attention = useRecoveryContinuityAttention()
 
   const isItemActive = ({ path, matchPrefix }: NavItem) =>
     matchPrefix ? location.pathname.startsWith(path) : location.pathname === path
@@ -89,7 +120,10 @@ export const SettingsSidebarContent = ({
   // which is gated behind the experimental flag — hide the nav item otherwise.
   const groups = experimentalFeatureVoice.value
     ? navGroups
-    : navGroups.map((group) => ({ ...group, items: group.items.filter((item) => item.path !== '/settings/voice') }))
+    : navGroups.map((group) => ({
+        ...group,
+        items: group.items.filter((item) => item.path !== '/settings/voice'),
+      }))
 
   const headerControls = (
     <SidebarHeaderActions onSearchClick={onSearchClick}>
@@ -136,13 +170,20 @@ export const SettingsSidebarContent = ({
                 {group.items.map((item) => (
                   <SidebarMenuItem key={item.path}>
                     <SidebarMenuButton
-                      onClick={() => onSettingsNavigate(item.path)}
+                      onClick={() =>
+                        onSettingsNavigate(
+                          attention && item.path === preferencesPath
+                            ? `${preferencesPath}#recovery-phrase-status`
+                            : item.path,
+                        )
+                      }
                       tooltip={i18n._(item.label)}
                       className="cursor-pointer"
                       isActive={isItemActive(item)}
                     >
                       <item.icon className="size-4" />
                       <span>{i18n._(item.label)}</span>
+                      {item.path === preferencesPath && <RecoveryContinuityNavDot placement="trailing" />}
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { LocalAppStatus } from '@shared/local-app-protocol'
 import { createLocalAppController } from './local-app-controller'
 import { listLocalApps, useLocalAppStore } from './local-app-store'
@@ -33,6 +33,7 @@ const fixture = () => {
 }
 
 beforeEach(() => useLocalAppStore.setState({ apps: {} }))
+afterEach(() => useLocalAppStore.setState({ apps: {} }))
 
 describe('local app lifecycle', () => {
   it('stores project and standalone recipes locally without ephemeral URLs', () => {
@@ -42,7 +43,7 @@ describe('local app lifecycle', () => {
     expect(listLocalApps(project)).toEqual([app])
     expect(app.title).toBe('My app')
     expect(app).not.toHaveProperty('url')
-    expect(app.launch.args).toContain('{port}')
+    expect(app.launch).toMatchObject({ args: expect.arrayContaining(['{port}']) })
   })
 
   it('reuses a running app and restarts only when explicitly requested', async () => {
@@ -57,6 +58,75 @@ describe('local app lifecycle', () => {
     expect(calls.find((call) => call.command === 'agent_preview_start')?.args).toEqual({
       request: { id: app.id, cwd: input.cwd, ...input.launch },
     })
+  })
+
+  it('repairs a launch recipe while preserving its app, owner, folder and page identity', async () => {
+    const { controller, calls } = fixture()
+    const app = controller.create({ ...input, launch: { ...input.launch, port: 4100 } })
+    await controller.start(app.id)
+    await controller.update(app.id, { args: ['server.cjs'], port: null })
+    const updated = controller.get(app.id)!
+    expect(updated).toEqual({
+      ...app,
+      launch: { executable: input.launch.executable, args: ['server.cjs'], port: undefined },
+    })
+    expect(controller.list(project)).toHaveLength(1)
+    expect(calls.filter((call) => call.command === 'agent_preview_start').at(-1)?.args).toEqual({
+      request: { id: app.id, cwd: app.cwd, ...updated.launch },
+    })
+    expect(calls.filter((call) => call.command === 'agent_preview_stop')).toHaveLength(1)
+  })
+
+  it('serializes concurrent edits and starts without losing changed fields or launching a stale recipe', async () => {
+    const { controller, calls } = fixture()
+    const app = controller.create(input)
+    const results = await Promise.allSettled([
+      controller.update(app.id, { executable: 'node' }),
+      controller.update(app.id, { args: ['server.cjs'] }),
+      controller.start(app.id),
+    ])
+    expect(results.at(-1)?.status).toBe('fulfilled')
+    expect(controller.get(app.id)?.launch).toMatchObject({ executable: 'node', args: ['server.cjs'] })
+    expect(calls.filter((call) => call.command === 'agent_preview_start').at(-1)?.args).toMatchObject({
+      request: { executable: 'node', args: ['server.cjs'] },
+    })
+  })
+
+  it('rejects invalid or cancelled edits before stopping a working app and keeps deleted recipes deleted', async () => {
+    const { controller, calls } = fixture()
+    const app = controller.create(input)
+    await controller.start(app.id)
+    for (const changes of [{ executable: ' ' }, { port: 0 }, {}]) {
+      await expect(controller.update(app.id, changes)).rejects.toThrow()
+    }
+    await expect(controller.update(app.id, { args: ['other.js'] }, AbortSignal.abort())).rejects.toThrow()
+    expect(controller.get(app.id)).toEqual(app)
+    expect(calls.some((call) => call.command === 'agent_preview_stop')).toBe(false)
+    await controller.remove(app.id)
+    await expect(controller.update(app.id, { args: ['other.js'] })).rejects.toThrow('not available')
+    expect(useLocalAppStore.getState().apps[app.id].deletedAt).toBeDefined()
+  })
+
+  it('allows Stop to cancel HTTP readiness instead of blocking behind startup', async () => {
+    const entered = Promise.withResolvers<void>()
+    const state: { value: LocalAppStatus | null } = { value: null }
+    const native = async <T>(command: string, args: Record<string, unknown>): Promise<T> => {
+      const id = String(args.id ?? (args.request as { id: string } | undefined)?.id)
+      if (command === 'agent_preview_start') {
+        state.value = { id, status: 'starting', url: null, error: null, logs: '' }
+        entered.resolve()
+      }
+      if (command === 'agent_preview_stop') {
+        state.value = { id, status: 'stopped', url: null, error: null, logs: '' }
+      }
+      return state.value as T
+    }
+    const controller = createLocalAppController(native, () => true)
+    const app = controller.create(input)
+    const started = controller.start(app.id).catch((error: unknown) => error)
+    await entered.promise
+    expect((await controller.stop(app.id)).status).toBe('stopped')
+    expect(await started).toBeInstanceOf(Error)
   })
 
   it('does not execute a start that was already cancelled', async () => {
@@ -80,7 +150,8 @@ describe('local app lifecycle', () => {
     const controller = createLocalAppController(native, () => true)
     const app = controller.create(input)
     await expect(controller.start(app.id, abort.signal)).rejects.toThrow()
-    expect(calls).toEqual(['agent_preview_status', 'agent_preview_start', 'agent_preview_stop'])
+    // Cancel immediately, then clean up again after the in-flight start resolves.
+    expect(calls).toEqual(['agent_preview_status', 'agent_preview_start', 'agent_preview_stop', 'agent_preview_stop'])
   })
 
   it('shares startup across callers and one cancelled waiter cannot stop the other', async () => {

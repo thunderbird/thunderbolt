@@ -41,6 +41,67 @@ describe('getTurnActivity', () => {
     expect(activity.hasError).toBe(false)
   })
 
+  it.each([
+    { parts: [] },
+    { parts: [{ type: 'step-start' }] },
+    { parts: [{ type: 'text', text: 'Partial answer', state: 'done' }] },
+  ] satisfies { parts: ThunderboltUIMessage['parts'] }[])(
+    'keeps a restored terminal error visible with parts %j',
+    ({ parts }) => {
+      const activity = getTurnActivity({
+        ...base,
+        status: 'ready',
+        lastMessage: {
+          ...emptyAssistant,
+          parts,
+          metadata: { turnOutcome: 'error' },
+        },
+      })
+      expect(activity.hasError).toBe(true)
+      expect(activity.isActive).toBe(false)
+      expect(activity.pendingEmptyTurnRecovery).toBe(false)
+    },
+  )
+
+  it.each(['completed', 'stopped'] as const)('keeps an explicitly %s empty reply idle', (turnOutcome) => {
+    const activity = getTurnActivity({
+      ...base,
+      status: 'ready',
+      lastMessage: {
+        ...emptyAssistant,
+        parts: [{ type: 'step-start' }],
+        metadata: { turnOutcome },
+      },
+    })
+    expect(activity.hasError).toBe(false)
+    expect(activity.isActive).toBe(false)
+    expect(activity.pendingEmptyTurnRecovery).toBe(false)
+  })
+
+  it.each(['submitted', 'streaming'] as const)('hides the saved error while a new request is %s', (status) => {
+    const activity = getTurnActivity({
+      ...base,
+      status,
+      lastMessage: {
+        ...emptyAssistant,
+        metadata: { turnOutcome: 'error' },
+      },
+    })
+    expect(activity.hasError).toBe(false)
+    expect(activity.isGenerating).toBe(true)
+  })
+
+  it('recognizes legacy stream framing as an empty failed reply after hydration', () => {
+    const activity = getTurnActivity({
+      ...base,
+      status: 'ready',
+      retriesExhausted: true,
+      lastMessage: { ...emptyAssistant, parts: [{ type: 'step-start' }] },
+    })
+    expect(activity.hasError).toBe(true)
+    expect(activity.isActive).toBe(false)
+  })
+
   it('is active during an auto-retry backoff (retryCount > 0)', () => {
     const activity = getTurnActivity({ ...base, status: 'ready', lastMessage: userMessage, retryCount: 1 })
     expect(activity.isActive).toBe(true)
@@ -73,9 +134,9 @@ describe('getTurnActivity', () => {
     expect(activity.hasError).toBe(false)
   })
 
-  it('does not show submitted-loading when an assistant message already hosts it', () => {
+  it('shows submitted-loading while awaiting a continuation after assistant text', () => {
     const activity = getTurnActivity({ ...base, status: 'submitted', lastMessage: filledAssistant })
-    expect(activity.showSubmittedLoading).toBe(false)
+    expect(activity.showSubmittedLoading).toBe(true)
     expect(activity.isActive).toBe(true)
   })
 })

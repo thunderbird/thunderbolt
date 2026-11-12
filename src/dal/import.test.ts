@@ -294,6 +294,22 @@ describe('Import DAL', () => {
   })
 
   describe('userId re-stamping', () => {
+    it.each(['insert', 'replace'])('keeps signed-out %s imports unowned', async (operation) => {
+      const db = getDb()
+      if (operation === 'replace') {
+        await db.insert(chatThreadsTable).values({ id: 'thread-1', title: 'Old', userId: 'previous-owner' })
+      }
+      await importUserData(
+        db,
+        envelope({ chat_threads: [{ id: 'thread-1', title: 'Restored', userId: 'exported-owner' }] }),
+        { id: null },
+      )
+
+      const row = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 'thread-1')).get()
+      expect(row?.title).toBe('Restored')
+      expect(row?.userId).toBeNull()
+    })
+
     it('overwrites the file-provided userId with the current session user on synced tables', async () => {
       const db = getDb()
       await importUserData(

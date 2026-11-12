@@ -6,5 +6,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
+    if let Some(status) = thunderbolt_lib::run_ssh_askpass() {
+        std::process::exit(status);
+    }
     thunderbolt_lib::run()
 }

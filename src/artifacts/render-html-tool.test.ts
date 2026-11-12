@@ -2,18 +2,27 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, mock } from 'bun:test'
+import { createTool } from '@/lib/tools'
 import {
   type RenderHtmlOutput,
   type RenderHtmlPart,
   renderHtmlInput,
   renderHtmlOutput,
   renderHtmlTool,
+  createRenderHtmlTool,
 } from './render-html-tool'
 
 const exec = (input: { html: string; title: string }) => renderHtmlTool.execute(input) as Promise<RenderHtmlOutput>
 
 describe('renderHtmlTool', () => {
+  it('discloses unavailable browser storage before the model creates an artifact', () => {
+    expect(renderHtmlTool.description).toContain('localStorage, sessionStorage, IndexedDB, and cookies are unavailable')
+    expect(renderHtmlTool.description).toContain('preserve HTML source, not runtime state or user-entered data')
+    expect(renderHtmlTool.description).toContain('JSON copy/paste export/import')
+    expect(renderHtmlTool.description).not.toContain('local_app')
+  })
+
   it('exposes a stable name and a schema requiring html + title', () => {
     expect(renderHtmlTool.name).toBe('render_html')
     expect(() => renderHtmlTool.parameters.parse({ html: '<p>x</p>', title: 'X' })).not.toThrow()
@@ -120,4 +129,52 @@ describe('renderHtmlInput', () => {
   it('degrades to empty for an input that is not an object at all', () => {
     expect(renderHtmlInput(part('<p>x</p>'))).toEqual({})
   })
+})
+
+it('publishes verified render_html once and explicitly revises its returned page identity', async () => {
+  const opened: string[] = []
+  const onOpen = mock(async (page: { id: string }, options: { presentation?: 'sidebar' | 'inline' }) => {
+    opened.push(page.id)
+    return {
+      sessionId: 'live-page',
+      updated: opened.length > 1,
+      presentation: options.presentation ?? ('sidebar' as const),
+    }
+  })
+  const config = createRenderHtmlTool({ chatThreadId: 'chat', onOpen }, async () => ({ ok: true, errors: [] }))
+  const tool = createTool(config)
+  const first = (await tool.execute!(
+    { html: '<p>Version 1</p>', title: 'App' },
+    { toolCallId: 'create', messages: [] },
+  )) as RenderHtmlOutput
+  expect(first).toMatchObject({ ok: true, presentation: 'sidebar', updated: false })
+  if (!first.ok) {
+    throw new Error('Expected publication')
+  }
+  const second = (await tool.execute!(
+    { html: '<p>Version 2</p>', title: 'App', pageId: first.pageId, presentation: 'inline' },
+    { toolCallId: 'update', messages: [] },
+  )) as RenderHtmlOutput
+  expect(second).toMatchObject({ ok: true, pageId: first.pageId, updated: true })
+  expect(opened).toEqual([first.pageId!, first.pageId!])
+  expect(onOpen.mock.calls[1]?.[0]).toMatchObject({
+    source: { artifact: { toolCallId: 'update', chatThreadId: 'chat' } },
+  })
+})
+
+it('never publishes a cancelled or invalid render_html revision', async () => {
+  const onOpen = mock(async () => ({ sessionId: 's', updated: false, presentation: 'sidebar' as const }))
+  const abort = new AbortController()
+  const config = createRenderHtmlTool({ onOpen }, async () => {
+    abort.abort()
+    return { ok: true, errors: [] }
+  })
+  const tool = createTool(config)
+  await expect(
+    tool.execute!(
+      { html: '<p>App</p>', title: 'App' },
+      { toolCallId: 'cancel', messages: [], abortSignal: abort.signal },
+    ),
+  ).rejects.toThrow()
+  expect(onOpen).not.toHaveBeenCalled()
 })

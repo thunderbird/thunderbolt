@@ -31,7 +31,7 @@ const createArtifactPart = (id: string, output: { ok: boolean; errors?: string[]
     type: 'tool-render_html',
     toolCallId: id,
     state: 'output-available',
-    input: { html: '<h1>x</h1>', title: 'A' },
+    input: { html: '<h1>x</h1>', title: 'A', presentation: 'inline' },
     output,
   }) as unknown as ToolUIPart
 
@@ -40,7 +40,7 @@ const createExecutingArtifactPart = (id: string): ToolUIPart =>
     type: 'tool-render_html',
     toolCallId: id,
     state: 'input-available',
-    input: { html: '<h1>x</h1>', title: 'A' },
+    input: { html: '<h1>x</h1>', title: 'A', presentation: 'inline' },
   }) as unknown as ToolUIPart
 
 const createPendingArtifactPart = (id: string): ToolUIPart =>
@@ -48,7 +48,7 @@ const createPendingArtifactPart = (id: string): ToolUIPart =>
     type: 'tool-render_html',
     toolCallId: id,
     state: 'input-streaming',
-    input: { title: 'A' },
+    input: { title: 'A', presentation: 'inline' },
   }) as unknown as ToolUIPart
 
 describe('assistant-message utilities', () => {
@@ -134,6 +134,19 @@ describe('assistant-message utilities', () => {
   })
 
   describe('groupMessageParts — render_html artifacts', () => {
+    it('keeps sidebar generation and verified publication in the tool group', () => {
+      for (const original of [createPendingArtifactPart('pending'), createArtifactPart('published', { ok: true })]) {
+        const part = {
+          ...original,
+          input: { html: '<h1>App</h1>', presentation: 'sidebar' },
+          ...(original.state === 'output-available' ? { output: { ok: true, presentation: 'sidebar' } } : {}),
+        } as ToolUIPart
+        expect(groupMessageParts([part])).toEqual([
+          { type: 'reasoning_group', items: [{ type: 'tool', content: part, id: part.toolCallId }] },
+        ])
+      }
+    })
+
     it('lifts a verified artifact out of the tool group as a standalone part', () => {
       const grep = createToolPart('grep')
       const artifact = createArtifactPart('a1', { ok: true, target: 'inline' })

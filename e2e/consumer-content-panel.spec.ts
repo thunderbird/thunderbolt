@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { v7 as uuidv7 } from 'uuid'
 import { importBackup } from './import-backup'
 import { expect, test } from './test'
 import { collectPageErrors, loginViaEmailCode, openSidebarOnMobile } from './helpers'
@@ -188,4 +189,103 @@ test('returning chat skips the closed onboarding passkey lookup while preference
   await expect.poll(() => passkeyRequests.length).toBeGreaterThan(0)
   await expect(page.getByText('Sign in with your fingerprint, face, or device PIN.', { exact: true })).toBeVisible()
   expect(errors).toEqual([])
+})
+
+test('tool activity and adjacent text stay close in both directions without tightening separate turns', async ({
+  page,
+}) => {
+  const email = await loginViaEmailCode(page)
+  const chatId = crypto.randomUUID()
+  const assistantId = uuidv7()
+  const userId = uuidv7()
+  const answerId = uuidv7()
+  const startedAt = Date.now()
+  const tool = (path: string) => ({
+    type: 'dynamic-tool',
+    toolName: 'read',
+    toolCallId: crypto.randomUUID(),
+    state: 'output-available',
+    input: { path },
+    output: { content: [{ type: 'text', text: 'File contents' }] },
+  })
+  await importBackup(page, {
+    format: 'thunderbolt-export',
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    user: { id: 'activity-spacing-fixture', email },
+    tables: {
+      chat_threads: [{ id: chatId, title: 'Tool activity spacing' }],
+      chat_messages: [
+        {
+          id: assistantId,
+          createdAt: new Date(startedAt).toISOString(),
+          chatThreadId: chatId,
+          parentId: null,
+          role: 'assistant',
+          content: '',
+          modelId: defaultModelOpus55.id,
+          parts: [
+            tool('index.html'),
+            { type: 'text', text: 'Now writing the new game.' },
+            tool('styles.css'),
+            { type: 'text', text: 'The game is ready.' },
+          ],
+        },
+        {
+          id: userId,
+          createdAt: new Date(startedAt + 1000).toISOString(),
+          chatThreadId: chatId,
+          parentId: assistantId,
+          role: 'user',
+          content: 'A separate user turn.',
+          parts: [{ type: 'text', text: 'A separate user turn.' }],
+        },
+        {
+          id: answerId,
+          createdAt: new Date(startedAt + 2000).toISOString(),
+          chatThreadId: chatId,
+          parentId: userId,
+          role: 'assistant',
+          content: 'Independent answer.',
+          modelId: defaultModelOpus55.id,
+          parts: [{ type: 'text', text: 'Independent answer.' }],
+        },
+      ],
+    },
+  })
+  await page.goto(`/chats/${chatId}`)
+  const message = page.locator(`[data-message-id="${assistantId}"]`)
+  const activity = message.locator('.tool-invocation-card')
+  await expect(activity).toHaveCount(2)
+  const text = message.getByText('Now writing the new game.', { exact: true })
+  await expect(text).toBeVisible()
+  // Read both rectangles together and wait for the message's entrance animation to settle.
+  await expect
+    .poll(() =>
+      message.evaluate((element) => {
+        const card = element.querySelector('.tool-invocation-card')!.getBoundingClientRect()
+        const paragraph = [...element.querySelectorAll('.prose p')]
+          .find((node) => node.textContent === 'Now writing the new game.')!
+          .getBoundingClientRect()
+        return Math.round(paragraph.top - card.bottom)
+      }),
+    )
+    .toBe(8)
+  await expect
+    .poll(() =>
+      message.evaluate((element) => {
+        const card = element.querySelectorAll('.tool-invocation-card')[1].getBoundingClientRect()
+        const paragraph = [...element.querySelectorAll('.prose p')]
+          .find((node) => node.textContent === 'Now writing the new game.')!
+          .getBoundingClientRect()
+        return Math.round(card.top - paragraph.bottom)
+      }),
+    )
+    .toBe(8)
+  await expect(activity.nth(1).locator('..')).toHaveCSS('margin-top', '8px')
+  const independentText = page.locator(`[data-message-id="${answerId}"] .prose`).locator('..')
+  await expect(independentText).toHaveCSS('padding-top', '16px')
+  await expect(independentText).toHaveCSS('margin-top', '8px')
+  await expect(independentText).toHaveCSS('padding-bottom', '16px')
+  await expect(independentText).toHaveCSS('margin-bottom', '8px')
 })

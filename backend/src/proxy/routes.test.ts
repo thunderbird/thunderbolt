@@ -887,6 +887,46 @@ describe('createUniversalProxyRoutes', () => {
       expect(events[0].bytes_out).toBe(2) // 'ok'
     })
 
+    it('keeps first-hop DNS details out of rejection responses', async () => {
+      const { app: a, events } = buildApp()
+      const cases = [
+        { target: 'https://private.synthetic.test/x', addresses: [{ address: '192.168.80.2', family: 4 }] },
+        {
+          target: 'http://user:pass@PRIVATE.synthetic.test:8081/x?q=1',
+          addresses: [{ address: 'fd00::2', family: 6 }],
+        },
+        {
+          target: 'https://private.synthetic.test./x',
+          addresses: [
+            { address: '1.1.1.1', family: 4 },
+            { address: '10.0.0.2', family: 4 },
+          ],
+        },
+        { target: 'https://private.synthetic.test/x', addresses: [] },
+        { target: 'https://private.synthetic.test/x', error: 'getaddrinfo EAI_AGAIN resolver 192.168.80.53' },
+        { target: 'https://private.synthetic.test/x', error: 'DNS_TIMEOUT' },
+      ]
+      for (const entry of cases) {
+        mockDnsLookup.mockImplementationOnce(() =>
+          entry.error ? Promise.reject(new Error(entry.error)) : Promise.resolve(entry.addresses ?? []),
+        )
+        const res = await a.handle(proxyRequest(entry.target))
+        expect(res.status).toBe(400)
+        expect(await res.text()).toBe('Blocked: target could not be validated')
+        expect(events.at(-1)?.error_type).toBe(entry.error === 'DNS_TIMEOUT' ? 'dns_timeout' : 'ssrf')
+        expect(mockFetch).not.toHaveBeenCalled()
+      }
+
+      const res = await a.handle(proxyRequest('https://public.synthetic.test/ok'))
+      expect(res.status).toBe(200)
+      expect(await res.text()).toBe('ok')
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+      const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('https://1.1.1.1/ok')
+      expect(new Headers(init.headers).get('host')).toBe('public.synthetic.test')
+      expect(events.at(-1)?.error_type).toBeUndefined()
+    })
+
     it('tags error_type="ssrf" when target resolves to a private address', async () => {
       mockDnsLookup.mockImplementationOnce(() => Promise.resolve([{ address: '192.168.1.1', family: 4 }]))
       const { app: a, events } = buildApp()

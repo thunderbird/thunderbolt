@@ -2,7 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { artifactRequest, formatHarnessError, wrapArtifactHtml, wrapArtifactPreviewHtml } from '@/artifacts/harness'
+import {
+  artifactRequest,
+  artifactSandbox,
+  formatHarnessError,
+  wrapArtifactHtml,
+  wrapArtifactPreviewHtml,
+} from '@/artifacts/harness'
 import { bindArtifactChannel } from '@/artifacts/channel'
 import { createPendingRequests } from '@/components/embedded'
 
@@ -42,7 +48,7 @@ export type SandboxedHtmlFrameProps = {
 }
 
 /**
- * Renders agent-authored HTML inside a sandboxed iframe (`allow-scripts`, and
+ * Renders agent-authored HTML inside a sandboxed iframe (scripts and local form handlers, and
  * deliberately no `allow-same-origin`, so it cannot reach the parent's DOM,
  * cookies, or storage). The HTML is wrapped with the same harness used for
  * verification, so a page that throws during use is surfaced via `onError` —
@@ -122,7 +128,7 @@ export const SandboxedHtmlFrame = ({
           onErrorRef.current?.(formatHarnessError(data))
         }
         if (data.type === 'artifact-reply') {
-          pending.settle(data.id, data.result)
+          pending.settle(data.id, data.result, data.error === undefined ? undefined : new Error(data.error))
         }
         if (data.type === 'artifact-height' && Number.isFinite(data.height)) {
           const next = Math.min(maxAutoHeightPx, Math.max(minAutoHeightPx, Math.round(data.height)))
@@ -144,7 +150,7 @@ export const SandboxedHtmlFrame = ({
     <iframe
       ref={iframeRef}
       title={title}
-      sandbox={allowScripts ? 'allow-scripts' : ''}
+      sandbox={allowScripts ? artifactSandbox : ''}
       srcDoc={srcDoc}
       style={autoHeight ? { height: contentHeight ?? defaultAutoHeightPx } : undefined}
       // White like a browser page: the HTML assumes it, whatever the app theme.

@@ -28,4 +28,13 @@ describe('Scrim', () => {
     expect(scrim.style.height).toBe('5rem')
     expect(scrim.style.maskImage).toBe('linear-gradient(to top, black 20%, transparent 100%)')
   })
+
+  it('can keep the app header gradient without a masked backdrop filter', () => {
+    render(<Scrim data-testid="scrim" height="6rem" className="backdrop-blur-none" />)
+
+    const scrim = screen.getByTestId('scrim')
+    expect(scrim).toHaveClass('bg-gradient-to-b', 'from-background', 'to-transparent', 'backdrop-blur-none')
+    expect(scrim).not.toHaveClass('backdrop-blur-[4px]')
+    expect(scrim.style.maskImage).toBe('linear-gradient(to bottom, black 20%, transparent 100%)')
+  })
 })

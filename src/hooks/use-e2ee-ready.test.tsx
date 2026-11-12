@@ -7,7 +7,7 @@ import { clearAllKeys, generateAK, storeAK, storeDEK } from '@/crypto'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { getClock } from '@/testing-library'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { dispatchE2eeProvisioningSettled, useE2eeReady } from './use-e2ee-ready'
+import { dispatchE2eeProvisioningSettled, useDeviceKeyTrust, useE2eeReady } from './use-e2ee-ready'
 
 /**
  * Drive the hook's async read to completion, then assert.
@@ -35,7 +35,7 @@ const settle = async (reads: () => boolean): Promise<void> => {
 
 /** What the seamless migration writes: an AK plus the initial wrapped DEK. */
 const provision = async () => {
-  await storeAK(await generateAK())
+  await storeAK(await generateAK(), { keyVersion: null, primaryKeyId: '0' })
   await storeDEK('0', 'd3JhcHBlZA==')
 }
 
@@ -92,4 +92,20 @@ it('ignores a pre-provisioning read that finishes after the post-provisioning re
     initial.resolve(false)
   })
   expect(result.current).toBe(true)
+})
+
+describe('useDeviceKeyTrust', () => {
+  afterEach(cleanup)
+
+  it('re-reads the key trust when provisioning settles', async () => {
+    let trust = { ready: true, unverified: false }
+    const read = async () => trust
+    const { result } = renderHook(() => useDeviceKeyTrust(read))
+    await settle(() => result.current.ready)
+
+    trust = { ready: true, unverified: true }
+    act(() => dispatchE2eeProvisioningSettled())
+    await settle(() => result.current.unverified)
+    expect(result.current).toEqual({ ready: true, unverified: true })
+  })
 })

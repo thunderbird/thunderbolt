@@ -41,6 +41,7 @@ import { SavedPageMenuItems } from '@/pages/saved-page-menu-items'
 import { resolveChatDrop, type ChatDragData } from '@/projects/chat-drop'
 import { MoveChatToProjectDialog } from '@/projects/move-chat-to-project-dialog'
 import { ProjectMoveErrorDialog } from '@/projects/project-move-error-dialog'
+import { ProjectMoveConfirmationDialog } from '@/projects/project-move-confirmation-dialog'
 import { useProjectMoveFeedback } from '@/projects/use-project-move-feedback'
 import { ChatList } from './chat-list'
 import { SidebarNavToggle } from './nav-toggle'
@@ -119,7 +120,15 @@ export const ChatSidebarContent = ({
   const { i18n, t } = useLingui()
   const { toggleSidebar } = useSidebar()
   const location = useLocation()
-  const { moveChat, error: moveError, clearError: clearMoveError } = useProjectMoveFeedback()
+  const {
+    moveChat,
+    error: moveError,
+    clearError: clearMoveError,
+    confirmation,
+    isConfirming,
+    confirmMove,
+    cancelMove,
+  } = useProjectMoveFeedback()
   const minimalMode = useConfigCapability(selectMinimalMode)
   const configLoaded = useConfigStore(selectConfigSettled)
   // Projects wait for `/config` like the section toggle, so they never paint and vanish.
@@ -292,6 +301,12 @@ export const ChatSidebarContent = ({
       </DragOverlay>
 
       <ProjectMoveErrorDialog error={moveError} onClose={clearMoveError} />
+      <ProjectMoveConfirmationDialog
+        open={confirmation !== null}
+        isPending={isConfirming}
+        onConfirm={confirmMove}
+        onCancel={cancelMove}
+      />
       {moveTarget && !minimalMode && (
         <MoveChatToProjectDialog
           open

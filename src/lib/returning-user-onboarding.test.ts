@@ -7,7 +7,18 @@ import { getDb } from '@/db/database'
 import { settingsTable } from '@/db/tables'
 import { reconcileDefaults } from '@/lib/reconcile-defaults'
 import { eq } from 'drizzle-orm'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn, test } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn, test } from 'bun:test'
+import * as adapterCache from '@/acp/adapter-cache'
+import * as encryption from '@/services/encryption'
+import { closeTestLocalData, localDataKey, openTestLocalData } from '@/test-utils/local-data'
+import {
+  bindLocalData,
+  getLocalDataStatus,
+  isLocalDataOwnedBy,
+  openLocalData,
+  resetLocalDataOwnerForTests,
+} from './local-data-owner'
+import * as platform from './platform'
 import { isNewAuthUser, markOnboardedForReturningUser } from './returning-user-onboarding'
 
 describe('isNewAuthUser', () => {
@@ -59,7 +70,11 @@ describe('markOnboardedForReturningUser', () => {
     // Seeds `user_has_completed_onboarding = 'false'`, exactly as a fresh
     // device does at boot before it has ever seen the account.
     await reconcileDefaults(getDb())
+    // The sign-in bound its account to the open slot before marking it.
+    await openTestLocalData('u1')
   })
+
+  afterEach(closeTestLocalData)
 
   it('marks onboarding complete when the account already existed', async () => {
     await markOnboardedForReturningUser({ id: 'u1', isNew: false }, getDb)
@@ -80,6 +95,40 @@ describe('markOnboardedForReturningUser', () => {
     await markOnboardedForReturningUser({ id: 'u1' }, getDb)
 
     expect(await readOnboarding()).toBe('true')
+  })
+
+  it('only asks who owns the open database, and never starts a switch itself (THU-963)', async () => {
+    await markOnboardedForReturningUser({ id: 'user-b', isNew: false }, getDb)
+
+    expect(await readOnboarding()).toBe('false')
+    expect(getLocalDataStatus()).toBe('ready')
+    expect(isLocalDataOwnedBy('u1')).toBe(true)
+  })
+
+  it('never writes another account’s sign-in into the open database (THU-963)', async () => {
+    localStorage.clear()
+    spyOn(platform, 'isOpfsAvailable').mockResolvedValue(false)
+    spyOn(platform, 'hasIndexedDbDatabase').mockResolvedValue(false)
+    spyOn(adapterCache, 'disposeAllAdapters').mockResolvedValue()
+    spyOn(encryption, 'handleFullWipe').mockResolvedValue()
+    const reloaded = Promise.withResolvers<void>()
+    spyOn(window.location, 'reload').mockImplementation(() => reloaded.resolve())
+    try {
+      await openLocalData()
+      bindLocalData('user-a')
+
+      // The sign-in binds user-b, which starts the switch to user-b's own slot.
+      bindLocalData('user-b')
+      await markOnboardedForReturningUser({ id: 'user-b', isNew: false }, getDb)
+
+      expect(await readOnboarding()).toBe('false')
+      await reloaded.promise
+      expect(localStorage.getItem(localDataKey)).toContain('"deferredOnboardedMark":true')
+    } finally {
+      resetLocalDataOwnerForTests()
+      mock.restore()
+      localStorage.clear()
+    }
   })
 
   it('does not throw when the write fails', async () => {

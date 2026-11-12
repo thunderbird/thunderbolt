@@ -362,6 +362,63 @@ describe('connectAcpAdapter — handshake failure modes', () => {
     await expect(adapter.ensureSession(threadCtx('dead-session'))).rejects.toThrow('connection-lost')
   })
 
+  it('sends no prompt when the agent is deactivated while its session is set up', async () => {
+    const { transport } = buildFakeTransport()
+    const agentState = { active: true }
+    const { FakeConnection, calls } = buildFakeConnection({
+      beforeSessionResponse: async () => {
+        agentState.active = false
+      },
+    })
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+      isAgentActive: async () => agentState.active,
+    })
+
+    await expect(adapter.fetch(promptInit('hi'), threadCtx('t-inactive'))).rejects.toThrow('"kind":"agent-unavailable"')
+    expect(calls.newSession).toHaveLength(1)
+    expect(calls.prompt).toHaveLength(0)
+  })
+
+  it('restores no stored session once the agent is deactivated', async () => {
+    const { transport } = buildFakeTransport()
+    const agentState = { active: true }
+    const { FakeConnection, calls } = buildFakeConnection({ resume: true, loadSession: true })
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+      isAgentActive: async () => agentState.active,
+    })
+    agentState.active = false
+
+    await expect(adapter.ensureSession(threadCtx('t-stored', { acpSessionId: 'stored-1' }))).rejects.toThrow(
+      '"kind":"agent-unavailable"',
+    )
+    expect(calls.resumeSession).toHaveLength(0)
+    expect(calls.loadSession).toHaveLength(0)
+    expect(calls.newSession).toHaveLength(0)
+  })
+
+  it('closes the transport before the handshake when the agent is deactivated while it opens', async () => {
+    const { transport, closeCalls } = buildFakeTransport()
+    const agentState = { active: true }
+    const { FakeConnection, calls } = buildFakeConnection()
+
+    await expect(
+      connectAcpAdapter(remoteAgent, baseCtx(), {
+        openTransport: async () => {
+          agentState.active = false
+          return transport
+        },
+        ClientSideConnection: FakeConnection as never,
+        isAgentActive: async () => agentState.active,
+      }),
+    ).rejects.toThrow('"kind":"agent-unavailable"')
+    expect(calls.initialize).toHaveLength(0)
+    expect(closeCalls()).toBe(1)
+  })
+
   it('serializes connection-lost when an in-flight prompt rejects after termination', async () => {
     const { transport, rejectClosed } = buildFakeTransport()
     const { FakeConnection, releasePrompts } = buildFakeConnection({ rejectPrompt: true })

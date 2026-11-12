@@ -40,7 +40,7 @@ it('locks the project environment while changing access for every chat in that p
     ctrlKey: false,
     pointerType: 'mouse',
   })
-  expect(screen.getByText('Set when this project was created')).toBeInTheDocument()
+  expect(screen.queryByText('Set when this project was created')).toBeNull()
   expect(screen.getByText('Local sandbox').closest('[role="menuitem"]')).toHaveAttribute('aria-disabled', 'true')
   expect(screen.queryByText('Cloud')).toBeNull()
   fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })

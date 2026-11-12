@@ -13,7 +13,7 @@ import type { AutomationRun, ChatThread, Model, ThunderboltUIMessage } from '@/t
 import { create } from 'zustand'
 import type { Chat } from '@ai-sdk/react'
 import type { PermissionOption, RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
-import type { MiniAppApprovalOutcome } from '@/mini-apps/approval-outcome'
+import type { MiniAppApprovalChoice, MiniAppApprovalOutcome } from '@/mini-apps/approval-outcome'
 import type { MiniAppTool } from '@shared/mini-app-protocol'
 import { useShallow } from 'zustand/react/shallow'
 import { resolveSessionAgent, type AgentPreference } from './resolve-session-agent'
@@ -62,7 +62,7 @@ export type PendingMiniAppApproval = {
   tool: MiniAppTool
   args: unknown
   /** Resolves the blocked `execute`. Safe to call more than once. */
-  decide: (outcome: MiniAppApprovalOutcome) => void
+  decide: (decision: MiniAppApprovalOutcome | MiniAppApprovalChoice) => void
 }
 
 /** Keys a remembered allowance for this agent on the ACP tool kind. */
@@ -75,6 +75,14 @@ export const findAllowOption = (options: PermissionOption[]): PermissionOption |
 /** Builds the stored key for an agent-specific tool allowance. */
 const getToolAllowanceKey = (agentId: string, toolKey: string): string => `${agentId}::${toolKey}`
 
+/**
+ * Keys a Mini App allowance on the app and the whole tool descriptor. A changed
+ * description, schema or title is a different tool: otherwise an app could earn
+ * "always" with an innocent description and then swap in one that asks the
+ * model for the user's email.
+ */
+const getMiniAppToolAllowanceKey = (appId: string, tool: MiniAppTool): string => JSON.stringify([appId, tool])
+
 /** Connection state for the per-agent ACP adapter. `idle` covers built-in
  *  agents (no handshake) and the initial state before the first send. */
 export type ConnectionStatus = 'idle' | 'connecting' | 'ready' | 'error'
@@ -86,6 +94,8 @@ export type ChatSession = {
     onAcpSessionEvent?: AgentAdapterContext['onAcpSessionEvent']
   }
   compactionStatus?: CompactionStatus
+  /** A restored partial reply, shown as interrupted until the user explicitly continues or retries. */
+  interruptedReplyId?: string
   /** Opened with no messages while the device was still syncing; the chat shows a loader, not the empty state. */
   awaitingSyncedMessages?: boolean
   chatThread: ChatThread | null
@@ -130,6 +140,7 @@ export type ChatSession = {
 type ChatStoreState = {
   alwaysAllowedAgentIds: Set<string>
   alwaysAllowedAgentToolKeys: Set<string>
+  alwaysApprovedMiniAppToolKeys: Set<string>
   currentSessionId: string | null
   getMcpClients: () => NamedMCPClient[]
   reconnectClient: ReconnectClient
@@ -155,6 +166,9 @@ type AgentDiscovery = { status: 'pending' } | { status: 'done'; defaultAgent: Ag
 type ChatStoreActions = {
   allowAlwaysForAgent(agentId: string): void
   allowAlwaysForTool(agentId: string, toolKey: string): void
+  /** Remembered in memory only, so it ends when Thunderbolt reloads. */
+  approveMiniAppToolAlways(appId: string, tool: MiniAppTool): void
+  isMiniAppToolAlwaysApproved(appId: string, tool: MiniAppTool): boolean
   createSession(session: ChatSession): void
   /** Keep open and cached chats standalone after their project deletion commits. */
   orphanProjectSessions(projectIds: ReadonlySet<string>): Promise<void>
@@ -197,6 +211,7 @@ type ChatStore = ChatStoreState & ChatStoreActions
 const initialState: ChatStoreState = {
   alwaysAllowedAgentIds: new Set(),
   alwaysAllowedAgentToolKeys: new Set(),
+  alwaysApprovedMiniAppToolKeys: new Set(),
   currentSessionId: null,
   // Read fresh per send (not snapshotted) so that after a provider reconnect
   // swaps a server's client, the next send sees the new client instead of a
@@ -223,6 +238,17 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
       alwaysAllowedAgentToolKeys: new Set(state.alwaysAllowedAgentToolKeys).add(getToolAllowanceKey(agentId, toolKey)),
     }))
   },
+
+  approveMiniAppToolAlways: (appId, tool) => {
+    set((state) => ({
+      alwaysApprovedMiniAppToolKeys: new Set(state.alwaysApprovedMiniAppToolKeys).add(
+        getMiniAppToolAllowanceKey(appId, tool),
+      ),
+    }))
+  },
+
+  isMiniAppToolAlwaysApproved: (appId, tool) =>
+    get().alwaysApprovedMiniAppToolKeys.has(getMiniAppToolAllowanceKey(appId, tool)),
 
   createSession: (session) => {
     const { sessions } = get()

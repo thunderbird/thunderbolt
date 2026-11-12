@@ -18,14 +18,18 @@ export const useProjectExecutionControlsState = (projectId: string) => {
   const [pending, startTransition] = useTransition()
   const execution: AgentExecution =
     project.execution ??
-    (project.location === 'computer'
-      ? { location: 'computer', cwd: '', access: 'ask' }
-      : { location: project.location ?? 'sandbox', access: 'ask' })
+    (project.declaration?.location === 'ssh'
+      ? { location: 'ssh', environmentId: project.declaration.environmentId, cwd: '', access: 'ask' }
+      : project.location === 'computer'
+        ? { location: 'computer', cwd: '', access: 'ask' }
+        : { location: project.location === 'cloud' ? 'cloud' : 'sandbox', access: 'ask' })
   const unavailable =
     project.error instanceof ProjectExecutionUnavailableError
       ? project.error.reason === 'desktop-required'
         ? t`Open this project in the desktop app to run its agent.`
-        : t`Choose this project's working folder on this computer before running its agent.`
+        : project.error.reason === 'folder-required'
+          ? t`Choose this project's working folder on this computer before running its agent.`
+          : null
       : project.error
         ? t`Could not load the project environment.`
         : null

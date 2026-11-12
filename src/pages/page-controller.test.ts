@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { createBrowserController } from '@/browser/browser-controller'
 import { pageController, type PageAdapter } from './page-controller'
 import { usePageStore, type PageSession } from './page-store'
-import { createPageTools, pageSnapshotModelOutput } from './page-tools'
+import { createPageTools } from './page-tools'
+import { pageSnapshotModelOutput } from './page-model-output'
 
 const observation = {
   documentId: 'doc1',
@@ -75,7 +76,7 @@ describe('unified page lifecycle and capabilities', () => {
     expect(reveal).not.toHaveBeenCalled()
   })
 
-  it('restores explicitly to the sidebar and releases expanded routing when its owner unmounts', () => {
+  it('releases expanded routing on restore before the route owner finishes unmounting', async () => {
     const { id } = setup()
     const oldPresenter = pageController.registerExpanded(mock(() => {}))
     const current = mock(() => usePageStore.getState().present(id, 'expanded'))
@@ -91,10 +92,12 @@ describe('unified page lifecycle and capabilities', () => {
     expect(usePageStore.getState().sessions[0].presentation).toBe('sidebar')
     expect(current).toHaveBeenCalledTimes(1)
     expect(reveal).toHaveBeenCalledTimes(1)
-    unregister()
-    pageController.select(id)
+    // The URL changes before React commits the old route's unmount.
+    await pageController.selectForAgent(id)
     expect(current).toHaveBeenCalledTimes(1)
+    expect(usePageStore.getState().sessions[0].presentation).toBe('sidebar')
     expect(reveal).toHaveBeenCalledTimes(2)
+    unregister()
   })
 
   it('leaves an inactive close alone, selects a remaining expanded tab, and exits when the last closes', async () => {
@@ -167,6 +170,59 @@ describe('unified page lifecycle and capabilities', () => {
     expect(act).not.toHaveBeenCalled()
     expect(createPageTools({ allowInput: false }).page_action).toBeUndefined()
   })
+  it.each(['Control+a', 'Meta+a', 'Shift+Tab'])(
+    'rejects synthetic chord %s before presenting or contacting the page',
+    async (key) => {
+      const present = mock(async () => {})
+      const { id, act } = setup({ present })
+      await expect(pageController.act(id, { type: 'key', key })).rejects.toThrow(
+        'Modifier chords require a native browser',
+      )
+      expect(present).not.toHaveBeenCalled()
+      expect(act).not.toHaveBeenCalled()
+    },
+  )
+  it('permits native modifier chords and the literal synthetic plus key', async () => {
+    const native = setup({ capabilities: { ...capabilities, keyboardInput: 'native' } })
+    await pageController.act(native.id, { type: 'key', key: 'Control+a' })
+    expect(native.act).toHaveBeenCalledWith({ type: 'key', key: 'Control+a' }, undefined)
+    const synthetic = setup()
+    await pageController.act(synthetic.id, { type: 'key', key: '+' })
+    expect(synthetic.act).toHaveBeenCalledWith({ type: 'key', key: '+' }, undefined)
+  })
+  it('tells the model synthetic keys do not simulate browser default behavior', async () => {
+    const { id, act } = setup({ snapshot: async () => ({ ...observation, warnings: ['Existing page warning'] }) })
+    const result = await pageController.act(id, { type: 'key', key: 'Enter' })
+    expect(act).toHaveBeenCalledWith({ type: 'key', key: 'Enter' }, undefined)
+    expect(result.warnings).toHaveLength(2)
+    expect(result.warnings?.[0]).toBe('Existing page warning')
+    const output = pageSnapshotModelOutput({ output: result })
+    expect(output.value[0]).toMatchObject({ type: 'text' })
+    expect(JSON.stringify(output.value[0])).toContain('Browser default behavior')
+    expect(JSON.stringify(output.value[0])).toContain('Click the submit control')
+  })
+  it.each(['native', 'synthetic'] as const)('does not add synthetic key warnings to %s clicks', async (input) => {
+    const { id } = setup({ capabilities: { ...capabilities, pointerInput: input, keyboardInput: input } })
+    expect((await pageController.act(id, { type: 'click', x: 10, y: 20 })).warnings).toBeUndefined()
+    if (input === 'native') {
+      expect((await pageController.act(id, { type: 'key', key: 'Enter' })).warnings).toBeUndefined()
+    }
+  })
+  it.each(['native', 'synthetic'] as const)(
+    'routes %s right-clicks and describes synthetic context-menu limits',
+    async (input) => {
+      const { id, act } = setup({ capabilities: { ...capabilities, pointerInput: input } })
+      const result = await pageController.act(id, { type: 'click', ref: 'mine-cell', button: 'right' })
+      expect(act).toHaveBeenCalledWith({ type: 'click', ref: 'mine-cell', button: 'right' }, undefined)
+      if (input === 'native') {
+        expect(result.warnings).toBeUndefined()
+      } else {
+        expect(JSON.stringify(pageSnapshotModelOutput({ output: result }))).toContain(
+          'Native browser context menus are not opened',
+        )
+      }
+    },
+  )
   it('waits for native presentation before dispatching a snapshot or action', async () => {
     const ready = Promise.withResolvers<void>()
     const entered = Promise.withResolvers<void>()
@@ -476,4 +532,36 @@ describe('unified page lifecycle and capabilities', () => {
       expect(snapshot).not.toHaveBeenCalled()
     },
   )
+})
+
+it('publishes a new HTML revision in the same tab while preserving placement and resisting old transcript mounts', () => {
+  const initial = { id: 'published-app', title: 'App', source: { kind: 'html' as const, html: '<p>v1</p>' } }
+  const id = pageController.publishHtml(initial)
+  const updated = { ...initial, title: 'App v2', source: { kind: 'html' as const, html: '<p>v2</p>' } }
+  usePageStore.getState().present(id, 'inline')
+  expect(pageController.publishHtml(updated, { presentation: 'sidebar' })).toBe(id)
+  expect(usePageStore.getState().sessions).toHaveLength(1)
+  expect(usePageStore.getState().sessions[0]).toMatchObject({ page: updated, presentation: 'inline' })
+  usePageStore.getState().ensure(initial, { presentation: 'sidebar' })
+  expect(usePageStore.getState().sessions[0].page).toEqual(updated)
+})
+
+it('does not allow an HTML publication to overwrite a website or local app', () => {
+  usePageStore.getState().ensure({ id: 'website', title: 'Site', source: { kind: 'url', url: 'https://example.com' } })
+  expect(() =>
+    pageController.publishHtml({ id: 'website', title: 'HTML', source: { kind: 'html', html: '<p>No</p>' } }),
+  ).toThrow('only replace an HTML page')
+  expect(usePageStore.getState().sessions[0].page.source.kind).toBe('url')
+})
+
+it('keeps the live adapter and runtime state when republishing identical HTML', () => {
+  const { id } = setup()
+  const original = usePageStore.getState().sessions.find((session) => session.id === id)!.page
+  usePageStore.getState().update(id, { error: 'Existing runtime error' })
+  expect(pageController.publishHtml({ ...original, title: 'Renamed' })).toBe(id)
+  expect(pageController.list()[0].capabilities).toEqual(capabilities)
+  expect(usePageStore.getState().sessions[0].error).toBe('Existing runtime error')
+  pageController.publishHtml({ ...original, source: { kind: 'html', html: '<p>Changed document</p>' } })
+  expect(pageController.list()[0].capabilities).toBeNull()
+  expect(usePageStore.getState().sessions[0].error).toBeNull()
 })

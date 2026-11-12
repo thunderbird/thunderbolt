@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { indexPagePublications } from '@/pages/page-publications'
+import { PagePublicationsContext } from '@/pages/page-publications-context'
 import { AssistantMessage } from './assistant-message'
 import { PrivateSourcesContext } from './private-sources-context'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
@@ -60,6 +62,7 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
     selectedAgent,
     selectedModel,
     compactionStatus,
+    interruptedReplyId,
   } = useCurrentChatSession()
   const showCompactionSummary = useShowCompactionSummary()
   const compacting = compactionStatus === 'compacting'
@@ -78,6 +81,7 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
   const { triggerNotification } = useHaptics()
 
   const visibleMessages = useMemo(() => messages.filter((message) => message.metadata?.oauthRetry !== true), [messages])
+  const pagePublications = useMemo(() => indexPagePublications(visibleMessages), [visibleMessages])
   const privateSourceMessageIds = useMemo(() => {
     const start = messages.findIndex((message) =>
       message.metadata?.sources?.some((source) => source.allowRemoteImages === false),
@@ -104,9 +108,8 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
     [chatInstance, chatThread, debugTranscriptsEnabled, status, visibleMessages.length],
   )
 
-  // `showSubmittedLoading`: `submitted` with no assistant message yet to host the
-  // loading indicator, so render it inline here. Shared with the composer's Stop
-  // button via getTurnActivity so the two never disagree (THU-791).
+  // Submitted continuations need an indicator too: an existing assistant message
+  // only hosts its own activity while streaming.
   const { isStreaming, showSubmittedLoading, pendingEmptyTurnRecovery, hasError } = getTurnActivity({
     status,
     lastMessage,
@@ -170,69 +173,78 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
   )
 
   const compactionInLastMessage = compacting && isStreaming && lastMessage?.role === 'assistant'
+  const hasInterruptedReply =
+    status === 'ready' &&
+    !compacting &&
+    interruptedReplyId !== undefined &&
+    lastMessage?.id === interruptedReplyId &&
+    !lastMessage.metadata?.turnOutcome
   // Turning tools off targets the model the failed prompt was sent with. Once the user
   // picks another model, Retry is the way forward instead.
   const canTurnOffTools = builtInModel !== undefined && builtInModel.id === lastUserMessage?.metadata?.modelId
 
   return (
-    <div>
-      {visibleMessages.map((message) => {
-        const isLast = message.id === lastMessage?.id
-        const checkpoint = message.metadata?.contextCompaction
-        const hideAssistant = (hasError || pendingEmptyTurnRecovery) && !message.parts?.length
+    <PagePublicationsContext value={pagePublications}>
+      <div>
+        {visibleMessages.map((message) => {
+          const isLast = message.id === lastMessage?.id
+          const checkpoint = message.metadata?.contextCompaction
+          const hideAssistant = (hasError || pendingEmptyTurnRecovery) && !message.parts?.length
 
-        return (
-          <Fragment key={message.id}>
-            {message.role === 'assistant' && !hideAssistant && (
-              <PrivateSourcesContext value={privateSourceMessageIds.has(message.id)}>
-                <AssistantMessage
+          return (
+            <Fragment key={message.id}>
+              {message.role === 'assistant' && !hideAssistant && (
+                <PrivateSourcesContext value={privateSourceMessageIds.has(message.id)}>
+                  <AssistantMessage
+                    message={message}
+                    isStreaming={isStreaming && isLast}
+                    isLastMessage={isLast && shouldUseViewportPositioning(visibleMessages.length)}
+                    isLastAssistantMessage={message.id === lastAssistantMessage?.id}
+                    lastAssistantAction={message.id === shareActionHostId ? shareDebugTranscriptAction : undefined}
+                    activity={isLast && compactionInLastMessage ? <CompactionNotice status="compacting" /> : undefined}
+                  />
+                </PrivateSourcesContext>
+              )}
+              {message.role === 'user' && (
+                <UserMessage
                   message={message}
-                  isStreaming={isStreaming && isLast}
-                  isLastMessage={isLast && shouldUseViewportPositioning(visibleMessages.length)}
-                  isLastAssistantMessage={message.id === lastAssistantMessage?.id}
-                  lastAssistantAction={message.id === shareActionHostId ? shareDebugTranscriptAction : undefined}
-                  activity={isLast && compactionInLastMessage ? <CompactionNotice status="compacting" /> : undefined}
+                  lastMessageAction={message.id === shareActionHostId ? shareDebugTranscriptAction : undefined}
+                  onResendAttachment={message.id === lastUserMessageId ? resendAttachment : undefined}
                 />
-              </PrivateSourcesContext>
-            )}
-            {message.role === 'user' && (
-              <UserMessage
-                message={message}
-                lastMessageAction={message.id === shareActionHostId ? shareDebugTranscriptAction : undefined}
-                onResendAttachment={message.id === lastUserMessageId ? resendAttachment : undefined}
-              />
-            )}
-            {checkpoint?.version === 1 && (
-              <CompactionNotice status="compacted" onViewSummary={() => showCompactionSummary(checkpoint)} />
-            )}
-          </Fragment>
-        )
-      })}
+              )}
+              {checkpoint?.version === 1 && (
+                <CompactionNotice status="compacted" onViewSummary={() => showCompactionSummary(checkpoint)} />
+              )}
+            </Fragment>
+          )
+        })}
 
-      {compacting && !compactionInLastMessage && <CompactionNotice status="compacting" />}
+        {compacting && !compactionInLastMessage && <CompactionNotice status="compacting" />}
 
-      {/* Keep a loading indicator up while remediation re-delivers + retries, so
+        {/* Keep a loading indicator up while remediation re-delivers + retries, so
           the suppressed error doesn't leave a blank gap. */}
-      {!compacting && (showSubmittedLoading || suppressError || pendingEmptyTurnRecovery) && (
-        <SyntheticLoadingPart isStreaming />
-      )}
+        {!compacting && !isStreaming && (showSubmittedLoading || suppressError || pendingEmptyTurnRecovery) && (
+          <SyntheticLoadingPart isStreaming />
+        )}
 
-      {/* Show error message if there's an error and remediation isn't taking over */}
-      {hasError && !suppressError && (
-        <ErrorMessage
-          retryCount={retryCount}
-          retriesExhausted={retriesExhausted}
-          error={chatError}
-          onRetry={() => regenerate()}
-          deliveryExhausted={deliveryExhausted}
-          onTurnOffTools={canTurnOffTools ? () => turnOffTools(sessionId) : undefined}
-          isTurningOffTools={isTurningOffTools}
-        />
-      )}
+        {/* Show error message if there's an error and remediation isn't taking over */}
+        {(hasError || hasInterruptedReply) && !suppressError && (
+          <ErrorMessage
+            interrupted={hasInterruptedReply && !hasError}
+            retryCount={retryCount}
+            retriesExhausted={retriesExhausted}
+            error={chatError}
+            onRetry={() => regenerate()}
+            deliveryExhausted={deliveryExhausted}
+            onTurnOffTools={canTurnOffTools ? () => turnOffTools(sessionId) : undefined}
+            isTurningOffTools={isTurningOffTools}
+          />
+        )}
 
-      {/* Floating "Reply" button over any text selection within a response. */}
-      <QuoteReplyButton />
-    </div>
+        {/* Floating "Reply" button over any text selection within a response. */}
+        <QuoteReplyButton />
+      </div>
+    </PagePublicationsContext>
   )
 })
 

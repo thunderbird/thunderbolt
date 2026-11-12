@@ -158,6 +158,25 @@ describe('Pi context compaction', () => {
     expect(f.requests).toHaveLength(1)
   })
 
+  it('summarizes an oversized older turn instead of retaining it beyond the available context', async () => {
+    const f = await fixture()
+    await f.harness.appendMessage({ role: 'user', content: 'Remember the earlier decision.', timestamp: 1 })
+    await f.harness.appendMessage(fauxAssistantMessage('Preserve the project protocol.'))
+    await f.harness.appendMessage({ role: 'user', content: 'Older history detail. '.repeat(1_200), timestamp: 2 })
+    await f.harness.appendMessage(fauxAssistantMessage('Noted.'))
+    await f.harness.appendMessage({ role: 'user', content: 'Continue the current task.', timestamp: 3 })
+
+    const messages = (await f.session.buildContext()).messages
+    const compacted = await f.compaction.prepareRequest(messages, { overheadTokens: 4_000 })
+
+    expect(f.requests).toHaveLength(1)
+    expect(f.requests[0]).toContain('Preserve the project protocol.')
+    expect(f.requests[0]).toContain('Older history detail.')
+    expect(JSON.stringify(compacted)).toContain('Continue the current task.')
+    expect(JSON.stringify(compacted)).not.toContain('Older history detail.')
+    expect((await f.compaction.checkpoint())?.contextTokens).toBeLessThan(8_000)
+  })
+
   it('includes the previous summary when deciding whether compactable history is small', async () => {
     const f = await fixture()
     const checkpoint: CompactionCheckpoint = {

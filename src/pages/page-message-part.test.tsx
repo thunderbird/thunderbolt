@@ -14,16 +14,21 @@ import * as verification from '@/artifacts/verify-html'
 import * as platform from '@/lib/platform'
 import { useLocalAppStore } from '@/local-apps/local-app-store'
 import { PageMessagePart } from './page-message-part'
+import { indexPagePublications } from './page-publications'
+import { PagePublicationsContext } from './page-publications-context'
 import { usePageStore } from './page-store'
 
-const published = (page: PageDefinition): ToolOrDynamicToolUIPart => ({
+const published = (
+  page: PageDefinition,
+  options: { presentation?: 'sidebar' | 'inline'; updated?: boolean; toolCallId?: string } = {},
+): ToolOrDynamicToolUIPart => ({
   type: 'dynamic-tool',
   toolName:
     page.source.kind === 'html' ? 'page_show_file' : page.source.kind === 'local-app' ? 'local_app' : 'page_open',
-  toolCallId: 'published-1',
+  toolCallId: options.toolCallId ?? 'published-1',
   state: 'output-available',
   input: { action: 'create' },
-  output: { ok: true, page, status: 'ready' },
+  output: { ok: true, page, status: 'ready', presentation: options.presentation, updated: options.updated },
 })
 const htmlPage: PageDefinition = {
   id: 'html-1',
@@ -69,12 +74,11 @@ describe('PageMessagePart', () => {
 
   it('moves a live page between transcript and browser without replacing its session', () => {
     const id = usePageStore.getState().ensure(htmlPage, { presentation: 'sidebar' })
-    const { getByRole, getByTitle, container } = render(
-      <PageMessagePart part={published(htmlPage)} messageId="message-1" />,
-    )
+    const { getByTitle, container } = render(<PageMessagePart part={published(htmlPage)} messageId="message-1" />)
+    expect(container.textContent).toBe('')
     expect(container.querySelector('[data-page-slot]')).toBeNull()
     act(() => {
-      fireEvent.click(getByRole('button', { name: 'Show inline' }))
+      usePageStore.getState().present(id, 'inline')
     })
     expect(container.querySelector('[data-page-slot]')?.getAttribute('data-page-slot')).toBe(id)
     act(() => {
@@ -110,7 +114,7 @@ describe('PageMessagePart', () => {
       createdAt: new Date().toISOString(),
     })
     try {
-      const { getByRole, queryByText, container } = render(
+      const { container } = render(
         <PageMessagePart
           part={published({
             id: 'local-app:one',
@@ -125,10 +129,7 @@ describe('PageMessagePart', () => {
       })
       expect(usePageStore.getState().sessions).toHaveLength(0)
       expect(container.querySelector('[data-page-slot]')).toBeNull()
-      fireEvent.click(getByRole('button', { name: 'Open local app' }))
-      expect(usePageStore.getState().sessions).toHaveLength(1)
-      expect(usePageStore.getState().sessions[0].presentation).toBe('sidebar')
-      expect(queryByText('Shown in browser')).toBeTruthy()
+      expect(container.textContent).toBe('')
     } finally {
       native.mockRestore()
       useLocalAppStore.setState({ apps: previous })
@@ -148,6 +149,76 @@ describe('PageMessagePart', () => {
       expect(usePageStore.getState().sessions[0]?.page.id).toBe(htmlPage.id)
     } finally {
       verify.mockRestore()
+    }
+  })
+
+  it('does not render or verify a restored sidebar app in chat', async () => {
+    const verify = spyOn(verification, 'verifyArtifactHtml').mockResolvedValue({ ok: true, errors: [] })
+    try {
+      const { container } = render(
+        <PageMessagePart part={published(htmlPage, { presentation: 'sidebar' })} messageId="message" />,
+      )
+      await act(async () => {
+        await getClock().tickAsync(1001)
+      })
+      expect(usePageStore.getState().sessions).toHaveLength(0)
+      expect(container.querySelector('[data-page-slot]')).toBeNull()
+      expect(container.textContent).toBe('')
+      expect(verify).not.toHaveBeenCalled()
+    } finally {
+      verify.mockRestore()
+    }
+  })
+
+  it('preserves a user-selected inline presentation even when the tool preferred the sidebar', () => {
+    usePageStore.getState().ensure(htmlPage, { presentation: 'inline' })
+    const { container } = render(
+      <PageMessagePart part={published(htmlPage, { presentation: 'sidebar' })} messageId="message" />,
+    )
+    expect(container.querySelector('[data-page-slot]')).not.toBeNull()
+    expect(usePageStore.getState().sessions[0].presentation).toBe('inline')
+  })
+
+  it('renders the latest inline snapshot once and hides every occurrence when moved to the sidebar', async () => {
+    const verify = spyOn(verification, 'verifyArtifactHtml').mockResolvedValue({ ok: true, errors: [] })
+    try {
+      const original = published(htmlPage, { presentation: 'inline', toolCallId: 'first' })
+      const update = published(
+        { ...htmlPage, source: { kind: 'html', html: '<h1>Latest revision</h1>' } },
+        { presentation: 'inline', updated: false, toolCallId: 'second' },
+      )
+      const publications = indexPagePublications([{ id: 'message', role: 'assistant', parts: [original, update] }])
+      const { container, getByTitle } = render(
+        <PagePublicationsContext value={publications}>
+          <PageMessagePart part={original} messageId="message" />
+          <PageMessagePart part={update} messageId="message" />
+        </PagePublicationsContext>,
+      )
+      await act(async () => {
+        await getClock().tickAsync(1001)
+      })
+      expect(container.querySelectorAll('[data-page-slot]')).toHaveLength(1)
+      expect(container.querySelectorAll('[data-page-update]')).toHaveLength(0)
+      expect(usePageStore.getState().sessions).toHaveLength(1)
+      expect(usePageStore.getState().sessions[0].page.source).toMatchObject({ html: '<h1>Latest revision</h1>' })
+      fireEvent.click(getByTitle('Open in side panel'))
+      expect(container.textContent).toBe('')
+      expect(container.querySelectorAll('[data-page-slot]')).toHaveLength(0)
+    } finally {
+      verify.mockRestore()
+    }
+  })
+
+  it.each(['sidebar', 'expanded'] as const)('hides a live native website shown %s', (presentation) => {
+    const native = spyOn(platform, 'isTauri').mockReturnValue(true)
+    const page = { id: 'native-page', title: 'Website', source: { kind: 'url' as const, url: 'https://example.com' } }
+    usePageStore.getState().ensure(page, { presentation })
+    try {
+      const { container } = render(<PageMessagePart part={published(page)} messageId="message" />)
+      expect(container.textContent).toBe('')
+      expect(container.querySelector('[data-page-slot]')).toBeNull()
+    } finally {
+      native.mockRestore()
     }
   })
 

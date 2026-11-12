@@ -85,3 +85,20 @@ export const removeSavedPage = async (db: AnyDrizzleDatabase, id: string): Promi
     await updateSettings(db, { [savedPageKey(id)]: JSON.stringify(deleted) })
   }
 }
+
+/** Refresh an existing HTML pin without renaming it, changing its chrome, or reviving an unpinned page. */
+export const updatePinnedPageSource = async (db: AnyDrizzleDatabase, page: PageDefinition): Promise<void> => {
+  if (page.source.kind !== 'html') {
+    return
+  }
+  await db.transaction(async (tx) => {
+    const previous = parseSavedPage((await getSavedPagesQuery(tx, page.id))[0]?.value)
+    if (!previous || previous.deletedAt !== null || previous.source.kind !== 'html') {
+      return
+    }
+    await tx
+      .update(settingsTable)
+      .set({ value: JSON.stringify({ ...previous, source: page.source, updatedAt: new Date().toISOString() }) })
+      .where(eq(settingsTable.key, savedPageKey(page.id)))
+  })
+}

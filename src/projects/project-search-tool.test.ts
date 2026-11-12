@@ -14,10 +14,8 @@ const hit = (chatTitle: string, excerpt: string): ProjectChatHit => ({
   excerpt,
 })
 
-// Runs against a real SQLite database through the same drizzle `sqlite-proxy`
-// driver the app uses, because the row shape is the whole risk here: raw
-// `db.all()` results come back positional, so reading them by column name
-// compiles, type-checks, and silently returns nothing.
+// Exercise sqlite-proxy's positional row mapping here; consumer-project-search
+// exercises the same selection against the real PowerSync browser driver.
 describe('searchProjectChats', () => {
   let database: BunSQLiteDatabase
 

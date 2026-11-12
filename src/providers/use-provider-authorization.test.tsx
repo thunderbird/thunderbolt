@@ -20,7 +20,7 @@ import * as tinfoilMobile from '@/lib/tinfoil-mobile-auth'
 import * as tinfoilSession from '@/lib/tinfoil-session'
 import * as capabilities from '@/integrations/otari-search/capabilities'
 import * as providerConnections from '@/dal/provider-connections'
-import { tinfoilAuth } from '@/lib/tinfoil-auth'
+import { createTinfoilAuth, tinfoilAuth } from '@/lib/tinfoil-auth'
 import { getProviderConnectionAttempt } from '@/lib/provider-connection-attempt'
 import {
   disconnectProviderConnection,
@@ -55,6 +55,7 @@ const setup = () => {
 describe('provider authorization without a model', () => {
   beforeEach(async () => {
     await resetTestDatabase()
+    useSearchProviderStore.getState().clearSearchProvider()
     rejectNestedTransactions(getDb())
     sessionStorage.removeItem('thunderbolt-provider-authorization-draft')
     localStorage.removeItem('thunderbolt-provider-authorization-draft')
@@ -62,7 +63,9 @@ describe('provider authorization without a model', () => {
     spyOn(platform, 'isMobile').mockReturnValue(false)
     spyOn(otariBrowser, 'getOtariBrowserReturn').mockReturnValue(null)
     spyOn(otari, 'revokeOtariToken').mockResolvedValue()
+    spyOn(tinfoilAuth, 'revoke').mockResolvedValue()
     spyOn(tinfoilMobile, 'getTinfoilMobileReturn').mockReturnValue(null)
+    spyOn(tinfoilAuth, 'revoke').mockResolvedValue()
     spyOn(capabilities, 'loadOtariSearchStatus').mockResolvedValue('available')
     spyOn(tinfoilSession, 'withTinfoilSessionLock').mockImplementation(async (operation) => operation())
   })
@@ -249,6 +252,9 @@ describe('provider authorization without a model', () => {
       expect(await getProviderConnections(getDb())).toEqual([])
       expect(onConnected).not.toHaveBeenCalled()
       expect(useSearchProviderStore.getState().connectionStatus).toBeNull()
+      if (provider === 'tinfoil') {
+        expect(tinfoilAuth.revoke).toHaveBeenCalledWith('retired-token')
+      }
       if (provider === 'otari') {
         expect(otari.revokeOtariToken).toHaveBeenCalledWith('https://otari.ai', 'retired-token')
       }
@@ -345,25 +351,212 @@ describe('provider authorization without a model', () => {
     },
   )
 
-  it('records Tinfoil search capability and retains refresh credentials without changing search selection', async () => {
+  it.each(['cancel', 'unmount', 'identity'] as const)('releases a late Tinfoil grant after %s', async (action) => {
+    const grant = Promise.withResolvers<Awaited<ReturnType<typeof tinfoilAuth.startConnection>>>()
+    const started = Promise.withResolvers<void>()
+    spyOn(tinfoilAuth, 'startConnection').mockImplementation(() => {
+      started.resolve()
+      return grant.promise
+    })
+    const { result, unmount, onConnected } = setup()
+    const connecting = result.current.authorize({ provider: 'tinfoil', name: 'Tinfoil' })
+    await started.promise
+    act(() => {
+      if (action === 'cancel') {
+        result.current.cancel()
+      } else if (action === 'unmount') {
+        unmount()
+      } else {
+        invalidateIdentityLifetime()
+      }
+    })
+    await act(async () => {
+      grant.resolve({ access_token: 'unused', refresh_token: 'unused-refresh', expires_at: Date.now() + 900_000 })
+      await connecting
+    })
+    expect(tinfoilAuth.revoke).toHaveBeenCalledWith('unused-refresh')
+    expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toBeNull()
+    expect(onConnected).not.toHaveBeenCalled()
+  })
+
+  it.each(
+    (['headers', 'body'] as const).flatMap((phase) =>
+      (['cancel', 'identity'] as const).map((action) => ({ phase, action })),
+    ),
+  )('cleans up an issued Tinfoil grant after token-response interruption: %j', async ({ phase, action }) => {
+    const requested = Promise.withResolvers<Request>()
+    const headers = Promise.withResolvers<Response>()
+    const body = Promise.withResolvers<ReadableStreamDefaultController<Uint8Array>>()
+    const response = new Response(new ReadableStream<Uint8Array>({ start: (controller) => body.resolve(controller) }))
+    const requests: Request[] = []
+    const auth = createTinfoilAuth('client', {
+      fetch: async (input) => {
+        const request = input as Request
+        requests.push(request)
+        if (request.url.endsWith('/revoke')) {
+          return new Response(null, { status: 204 })
+        }
+        requested.resolve(request)
+        return headers.promise
+      },
+    })
+    spyOn(tinfoilAuth, 'startConnection').mockImplementation((options = {}) =>
+      auth.exchangeCode(
+        {
+          code: 'code',
+          verifier: 'verifier',
+          redirectUri: 'https://app.example/oauth/tinfoil',
+        },
+        options.signal,
+      ),
+    )
+    spyOn(tinfoilAuth, 'revoke').mockImplementation(auth.revoke)
+    const { result, onConnected } = setup()
+    const connecting = result.current.authorize({ provider: 'tinfoil', name: 'Tinfoil' })
+    const request = await requested.promise
+    if (phase === 'body') {
+      await act(async () => headers.resolve(response))
+    }
+    act(() => {
+      if (action === 'cancel') {
+        result.current.cancel()
+      } else {
+        invalidateIdentityLifetime()
+      }
+    })
+    if (action === 'cancel') {
+      expect(result.current.isPending).toBe(false)
+    }
+    expect(request.signal.aborted).toBe(false)
+    await act(async () => {
+      headers.resolve(response)
+      const stream = await body.promise
+      stream.enqueue(
+        new TextEncoder().encode(
+          JSON.stringify({
+            access_token: 'unused',
+            refresh_token: 'unused-refresh',
+            expires_in: 900,
+            token_type: 'Bearer',
+          }),
+        ),
+      )
+      stream.close()
+      await connecting
+    })
+    expect(requests).toHaveLength(2)
+    expect(requests[1].url).toBe('https://api.tinfoil.sh/oauth/revoke')
+    expect(new URLSearchParams(await requests[1].text()).get('token')).toBe('unused-refresh')
+    expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toBeNull()
+    expect(onConnected).not.toHaveBeenCalled()
+  })
+
+  it('releases an unused Tinfoil grant when saving fails without disconnecting the current account', async () => {
+    await saveProviderConnection(getDb(), {
+      provider: 'tinfoil',
+      name: 'Existing',
+      authMethod: 'oauth',
+      credentials: { access_token: 'saved', refresh_token: 'saved-refresh' },
+    })
     spyOn(tinfoilAuth, 'startConnection').mockResolvedValue({
-      access_token: 'tinfoil-token',
-      refresh_token: 'refresh',
+      access_token: 'unused',
+      refresh_token: 'unused-refresh',
       expires_at: Date.now() + 900_000,
     })
+    spyOn(providerConnections, 'saveProviderConnectionWithRevision').mockRejectedValue(new Error('stale'))
     const { result } = setup()
     await act(async () => result.current.authorize({ provider: 'tinfoil', name: 'Tinfoil' }))
-    expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toMatchObject({
-      access_token: 'tinfoil-token',
-      refresh_token: 'refresh',
-    })
-    expect(useSearchProviderStore.getState()).toMatchObject({
-      selection: 'auto',
-      connectionId: null,
-      connectionStatus: { connectionId: 'oauth:tinfoil', status: 'available' },
-    })
-    expect(await getAllModels(getDb())).toEqual([])
+    expect(tinfoilAuth.revoke).toHaveBeenCalledTimes(1)
+    expect(tinfoilAuth.revoke).toHaveBeenCalledWith('unused-refresh')
+    expect((await getProviderCredentials(getDb(), 'oauth:tinfoil'))?.access_token).toBe('saved')
   })
+
+  it('does not revoke the Tinfoil grant transferred to a StrictMode replacement effect', async () => {
+    const grant = Promise.withResolvers<Awaited<ReturnType<typeof tinfoilAuth.startConnection>>>()
+    spyOn(tinfoilMobile, 'getTinfoilMobileReturn').mockReturnValue({
+      id: 'shared-return',
+      context: 'connections',
+      returnTo: '/chats/new',
+      attempt: await getProviderConnectionAttempt(getDb(), 'tinfoil'),
+      complete: () => grant.promise,
+      cancel: () => {},
+    })
+    const connected = Promise.withResolvers<void>()
+    const onConnected = mock(() => connected.resolve())
+    renderHook(() => useProviderAuthorization({ onConnected }), {
+      wrapper: createTestProvider(),
+      reactStrictMode: true,
+    })
+    await act(async () => {
+      grant.resolve({ access_token: 'saved', refresh_token: 'saved-refresh', expires_at: Date.now() + 900_000 })
+      await connected.promise
+    })
+    expect(onConnected).toHaveBeenCalledTimes(1)
+    expect(tinfoilAuth.revoke).not.toHaveBeenCalled()
+    expect((await getProviderCredentials(getDb(), 'oauth:tinfoil'))?.access_token).toBe('saved')
+  })
+
+  it('cleans up a cancelled Tinfoil mobile return when a different native authorization takes over', async () => {
+    const old = Promise.withResolvers<Awaited<ReturnType<typeof tinfoilAuth.startConnection>>>()
+    const oldStarted = Promise.withResolvers<void>()
+    spyOn(tinfoilMobile, 'getTinfoilMobileReturn').mockReturnValue({
+      id: 'old-return',
+      context: 'connections',
+      returnTo: '/chats/new',
+      attempt: await getProviderConnectionAttempt(getDb(), 'tinfoil'),
+      complete: () => {
+        oldStarted.resolve()
+        return old.promise
+      },
+      cancel: () => {},
+    })
+    const { result } = setup()
+    await oldStarted.promise
+    act(() => result.current.cancel())
+    const next = Promise.withResolvers<Awaited<ReturnType<typeof tinfoilAuth.startConnection>>>()
+    const nextStarted = Promise.withResolvers<void>()
+    spyOn(tinfoilAuth, 'startConnection').mockImplementation(() => {
+      nextStarted.resolve()
+      return next.promise
+    })
+    const connecting = result.current.authorize({ provider: 'tinfoil', name: 'New account' })
+    await nextStarted.promise
+    await act(async () => {
+      old.resolve({ access_token: 'old-unused', refresh_token: 'old-unused-refresh', expires_at: Date.now() + 900_000 })
+      await getClock().tickAsync(0)
+    })
+    expect(tinfoilAuth.revoke).toHaveBeenCalledWith('old-unused-refresh')
+    await act(async () => {
+      next.resolve({ access_token: 'new', refresh_token: 'new-refresh', expires_at: Date.now() + 900_000 })
+      await connecting
+    })
+    expect((await getProviderCredentials(getDb(), 'oauth:tinfoil'))?.access_token).toBe('new')
+    expect(tinfoilAuth.revoke).not.toHaveBeenCalledWith('new-refresh')
+  })
+
+  it.each(['auto', 'none'] as const)(
+    'records Tinfoil search capability and retains refresh credentials without changing search selection (%s)',
+    async (selection) => {
+      useSearchProviderStore.getState().selectSearchProvider(selection)
+      spyOn(tinfoilAuth, 'startConnection').mockResolvedValue({
+        access_token: 'tinfoil-token',
+        refresh_token: 'refresh',
+        expires_at: Date.now() + 900_000,
+      })
+      const { result } = setup()
+      await act(async () => result.current.authorize({ provider: 'tinfoil', name: 'Tinfoil' }))
+      expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toMatchObject({
+        access_token: 'tinfoil-token',
+        refresh_token: 'refresh',
+      })
+      expect(useSearchProviderStore.getState()).toMatchObject({
+        selection,
+        connectionId: null,
+        connectionStatus: { connectionId: 'oauth:tinfoil', status: 'available' },
+      })
+      expect(await getAllModels(getDb())).toEqual([])
+    },
+  )
 
   it('uses desktop loopback with the Otari origin and records an unavailable search capability', async () => {
     spyOn(platform, 'isTauri').mockReturnValue(true)
@@ -565,6 +758,30 @@ describe('provider authorization without a model', () => {
     }
     expect(start.mock.calls[0][0]?.signal?.aborted).toBe(true)
     await act(async () => grant.resolve('must-not-save'))
+    expect(await getProviderConnections(getDb())).toEqual([])
+    expect(onConnected).not.toHaveBeenCalled()
+  })
+
+  it.each(['cancel', 'unmount'] as const)('revokes a Tinfoil grant issued after %s', async (action) => {
+    const grant = Promise.withResolvers<{ access_token: string; refresh_token: string; expires_at: number }>()
+    spyOn(tinfoilAuth, 'startConnection').mockImplementation(() => grant.promise)
+    const { result, onConnected, unmount } = setup()
+    const authorization = result.current.authorize({ provider: 'tinfoil', name: 'Tinfoil' })
+    await act(async () => {})
+    if (action === 'cancel') {
+      act(() => result.current.cancel())
+    } else {
+      unmount()
+    }
+    await act(async () => {
+      grant.resolve({
+        access_token: 'unused-access',
+        refresh_token: 'unused-refresh',
+        expires_at: Date.now() + 900_000,
+      })
+      await authorization
+    })
+    expect(tinfoilAuth.revoke).toHaveBeenCalledWith('unused-refresh')
     expect(await getProviderConnections(getDb())).toEqual([])
     expect(onConnected).not.toHaveBeenCalled()
   })

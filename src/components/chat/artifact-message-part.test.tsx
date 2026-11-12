@@ -11,6 +11,9 @@ import type { ToolOrDynamicToolUIPart } from '@/lib/assistant-message'
 import { mockIntersectionObserver } from '@/test-utils/mock-intersection-observer'
 import { act, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { artifactSandbox } from '@/artifacts/harness-protocol'
+import { indexPagePublications } from '@/pages/page-publications'
+import { PagePublicationsContext } from '@/pages/page-publications-context'
 import { ArtifactMessagePart } from './artifact-message-part'
 
 type PartOverrides = {
@@ -19,6 +22,8 @@ type PartOverrides = {
   output?: unknown
   html?: string
   title?: string
+  presentation?: 'inline' | 'sidebar'
+  pageId?: string
 }
 
 const toolPart = (overrides: PartOverrides): ToolOrDynamicToolUIPart =>
@@ -26,7 +31,12 @@ const toolPart = (overrides: PartOverrides): ToolOrDynamicToolUIPart =>
     type: 'tool-render_html',
     toolCallId: overrides.toolCallId,
     state: overrides.state,
-    input: { html: overrides.html ?? '<h1>Hi</h1>', title: overrides.title ?? 'My Artifact' },
+    input: {
+      html: overrides.html ?? '<h1>Hi</h1>',
+      title: overrides.title ?? 'My Artifact',
+      presentation: overrides.presentation,
+      pageId: overrides.pageId,
+    },
     ...(overrides.output !== undefined ? { output: overrides.output } : {}),
   }) as unknown as ToolOrDynamicToolUIPart
 
@@ -50,14 +60,21 @@ describe('ArtifactMessagePart', () => {
   })
 
   it('shows a shimmering "Generating" card while streaming, with no blank frame before there is body content', () => {
-    const { container } = renderPart(toolPart({ toolCallId: 'a1', state: 'input-streaming', html: '' }))
+    const { container } = renderPart(
+      toolPart({ toolCallId: 'a1', state: 'input-streaming', html: '', presentation: 'inline' }),
+    )
     expect(container.textContent).toContain('Generating')
     expect(container.querySelector('iframe')).toBeNull()
   })
 
   it('reveals the live preview once the streaming HTML has body content', () => {
     const { container } = renderPart(
-      toolPart({ toolCallId: 'a1b', state: 'input-streaming', html: '<body><h1>Hi</h1></body>' }),
+      toolPart({
+        toolCallId: 'a1b',
+        state: 'input-streaming',
+        html: '<body><h1>Hi</h1></body>',
+        presentation: 'inline',
+      }),
     )
     const iframe = container.querySelector('iframe')
     expect(iframe).not.toBeNull()
@@ -70,12 +87,12 @@ describe('ArtifactMessagePart', () => {
     await act(async () => {
       await getClock().tickAsync(1000)
     })
-    expect(container.querySelector('iframe')?.getAttribute('sandbox')).toBe('allow-scripts')
+    expect(container.querySelector('iframe')?.getAttribute('sandbox')).toBe(artifactSandbox)
     expect(container.textContent).toContain('My Artifact')
   })
 
   it('moves the display slot without replacing the running iframe between inline and sidebar', async () => {
-    const { container, getByTitle, getByText } = renderPart(
+    const { container, getByTitle } = renderPart(
       toolPart({ toolCallId: 'a3', state: 'output-available', output: { ok: true } }),
     )
     await act(async () => {
@@ -89,10 +106,10 @@ describe('ArtifactMessagePart', () => {
     })
     expect(container.querySelectorAll('[data-page-host] iframe')).toHaveLength(1)
     expect(container.querySelector('[data-page-host] iframe')).toBe(frame)
-    expect(container.textContent).toContain('shown in side panel')
+    expect(container.textContent).toBe('')
     expect(usePageStore.getState().sessions[0].presentation).toBe('sidebar')
     act(() => {
-      fireEvent.click(getByText('Show inline'))
+      usePageStore.getState().present(sessionId, 'inline')
     })
     expect(container.querySelector('[data-page-host] iframe')).toBe(frame)
     expect(usePageStore.getState().sessions[0].id).toBe(sessionId)
@@ -111,7 +128,12 @@ describe('ArtifactMessagePart', () => {
 
   it('leaves the header inert while generating (no collapse affordance)', () => {
     const { container } = renderPart(
-      toolPart({ toolCallId: 'a6', state: 'input-streaming', html: '<body><h1>Hi</h1></body>' }),
+      toolPart({
+        toolCallId: 'a6',
+        state: 'input-streaming',
+        html: '<body><h1>Hi</h1></body>',
+        presentation: 'inline',
+      }),
     )
     expect(container.querySelector('[aria-expanded]')).toBeNull()
     expect(container.querySelector('[role="button"]')).toBeNull()
@@ -127,6 +149,83 @@ describe('ArtifactMessagePart', () => {
     const done = renderPart(toolPart({ toolCallId: 'a7b', state: 'output-available', output: { ok: true } }))
     expect(done.getByTitle('Copy HTML')).not.toBeNull()
     expect(done.getByTitle('Download HTML')).not.toBeNull()
+  })
+
+  it('renders no chat widget while generating a sidebar app', () => {
+    const { container } = renderPart(
+      toolPart({ toolCallId: 'app-stream', state: 'input-streaming', html: '<h1>App</h1>' }),
+    )
+    expect(container.textContent).toBe('')
+    expect(container.querySelector('iframe')).toBeNull()
+  })
+
+  it('renders no chat widget or session for a restored sidebar publication', async () => {
+    const { container } = renderPart(
+      toolPart({
+        toolCallId: 'app',
+        state: 'output-available',
+        output: { ok: true, pageId: 'app-page', presentation: 'sidebar' },
+      }),
+    )
+    await act(async () => {
+      await getClock().tickAsync(1000)
+    })
+    expect(usePageStore.getState().sessions).toHaveLength(0)
+    expect(container.textContent).toBe('')
+    expect(container.querySelector('[data-page-slot]')).toBeNull()
+  })
+
+  it('renders one inline preview with the latest snapshot and no repeated update widgets', async () => {
+    const original = toolPart({
+      toolCallId: 'original',
+      state: 'output-available',
+      html: '<h1>Old</h1>',
+      output: { ok: true, pageId: 'shared-page', presentation: 'inline' },
+    })
+    const update = toolPart({
+      toolCallId: 'update',
+      state: 'output-available',
+      html: '<h1>Latest</h1>',
+      output: { ok: true, pageId: 'shared-page', presentation: 'inline', updated: false },
+    })
+    const publications = indexPagePublications([{ id: 'message', role: 'assistant', parts: [original, update] }])
+    const { container, getByTitle } = render(
+      <ContentViewProvider>
+        <PagePublicationsContext value={publications}>
+          <ArtifactMessagePart part={original} />
+          <ArtifactMessagePart part={update} />
+        </PagePublicationsContext>
+      </ContentViewProvider>,
+    )
+    await act(async () => {
+      await getClock().tickAsync(1000)
+    })
+    expect(container.querySelectorAll('[data-page-slot]')).toHaveLength(1)
+    expect(container.querySelectorAll('[data-page-update]')).toHaveLength(0)
+    expect(usePageStore.getState().sessions).toHaveLength(1)
+    expect(usePageStore.getState().sessions[0].page.source).toMatchObject({ html: '<h1>Latest</h1>' })
+    fireEvent.click(getByTitle('Open in side panel'))
+    expect(container.textContent).toBe('')
+    expect(container.querySelectorAll('[data-page-slot]')).toHaveLength(0)
+  })
+
+  it('respects the live inline placement and latest source instead of the publication hint', () => {
+    const page = {
+      id: 'updated-inline',
+      title: 'Latest title',
+      source: { kind: 'html' as const, html: '<h1>Latest</h1>' },
+    }
+    usePageStore.getState().ensure(page, { presentation: 'inline' })
+    const { container } = renderPart(
+      toolPart({
+        toolCallId: 'inline-update',
+        state: 'output-available',
+        output: { ok: true, pageId: page.id, updated: true, presentation: 'sidebar' },
+      }),
+    )
+    expect(container.textContent).toContain('Latest title')
+    expect(container.querySelector('[data-page-slot]')).not.toBeNull()
+    expect(usePageStore.getState().sessions[0].presentation).toBe('inline')
   })
 
   it('renders nothing for a failed verification (it stays an ordinary tool call elsewhere)', () => {

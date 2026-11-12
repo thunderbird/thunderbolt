@@ -5,6 +5,7 @@
 // These modules are used by Tauri's command system through macros
 // The compiler can't see the usage, so we allow dead_code warnings
 pub mod agent_execution;
+pub use agent_execution::ssh_credentials::run_ssh_askpass;
 mod agent_output_files;
 #[cfg(desktop)]
 mod browser;
@@ -18,6 +19,10 @@ mod browser_menu;
 mod browser_operation;
 #[cfg(desktop)]
 mod browser_presentation;
+#[cfg(desktop)]
+mod browser_profile;
+#[cfg(desktop)]
+mod browser_profile_clear;
 #[cfg(desktop)]
 mod browser_resize;
 pub mod cli_installer;
@@ -63,6 +68,7 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
     // Core plugins that are always enabled
     builder = builder
         .manage(page_preview::PreviewSessions::default())
+        .manage(agent_execution::ssh::SshOutputFiles::default())
         .manage(agent_execution::Commands::default())
         .manage(agent_output_files::OutputFiles::default())
         .plugin(tauri_plugin_http::init())
@@ -100,6 +106,8 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
                 #[cfg(desktop)]
                 browser::browser_close,
                 #[cfg(desktop)]
+                browser::browser_clear_profile,
+                #[cfg(desktop)]
                 browser_control::browser_agent_snapshot,
                 #[cfg(desktop)]
                 browser_control::browser_agent_action,
@@ -129,6 +137,9 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
                 agent_execution::agent_cancel_command,
                 agent_execution::agent_forget_command,
                 agent_execution::agent_exec,
+                agent_execution::ssh::agent_ssh_request,
+                agent_execution::ssh_discovery::agent_ssh_discover,
+                agent_execution::ssh_credentials::agent_ssh_set_secret,
                 commands::show_main_window,
                 commands::hide_main_window,
                 #[cfg(desktop)]

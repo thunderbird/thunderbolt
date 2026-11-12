@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import type { PageDefinition } from '@shared/page-protocol'
 import { encryptedColumnsMap } from '@shared/e2ee-types'
@@ -12,7 +12,14 @@ import { getDb } from '@/db/database'
 import { chatMessagesTable, chatThreadsTable, settingsTable } from '@/db/tables'
 import { localSavedPagesStore } from './local-saved-pages'
 import { createSavedPage, maxSavedPageHtmlBytes, parseSavedPage, savedPageKey } from './saved-page'
-import { getSavedPagesQuery, removeSavedPage, renameSavedPage, savedPagesFromRows, savePage } from './saved-pages'
+import {
+  getSavedPagesQuery,
+  removeSavedPage,
+  renameSavedPage,
+  savedPagesFromRows,
+  savePage,
+  updatePinnedPageSource,
+} from './saved-pages'
 
 const website: PageDefinition = {
   id: 'page-one',
@@ -164,3 +171,60 @@ describe('saved page validation', () => {
     expect(parseSavedPage({ ...valid, source: { kind: 'html', html: null } })).toBeNull()
   })
 })
+
+it('updates a pinned HTML snapshot without replacing custom title/chrome or reviving a tombstone', async () => {
+  const db = getDb()
+  const before = await savePage(db, { ...html, title: 'My custom name' }, 'app')
+  const revision = {
+    ...html,
+    title: 'New generated name',
+    source: { kind: 'html' as const, html: '<p>Latest version</p>' },
+  }
+  await updatePinnedPageSource(db, revision)
+  expect(savedPagesFromRows(await getSavedPagesQuery(db))[0]).toMatchObject({
+    id: html.id,
+    title: 'My custom name',
+    chrome: 'app',
+    createdAt: before.createdAt,
+    source: revision.source,
+  })
+  await removeSavedPage(db, html.id)
+  const tombstone = (await getSavedPagesQuery(db, html.id))[0]
+  await updatePinnedPageSource(db, { ...revision, source: { kind: 'html', html: '<p>Do not repin</p>' } })
+  expect((await getSavedPagesQuery(db, html.id))[0]).toEqual(tombstone)
+  await updatePinnedPageSource(db, { ...revision, id: 'never-pinned' })
+  expect(await getSavedPagesQuery(db, 'never-pinned')).toEqual([])
+})
+
+it.each(['rename', 'unpin'] as const)(
+  'preserves a %s committed while the source update waits for its transaction',
+  async (change) => {
+    const db = getDb()
+    await savePage(db, html, 'app')
+    const transaction = db.transaction.bind(db)
+    const pending = spyOn(db, 'transaction').mockImplementationOnce(async (callback) => {
+      if (change === 'rename') {
+        await renameSavedPage(db, html.id, 'Renamed while publishing')
+      } else {
+        await removeSavedPage(db, html.id)
+      }
+      return transaction(callback)
+    })
+    try {
+      await updatePinnedPageSource(db, { ...html, source: { kind: 'html', html: '<p>Revision</p>' } })
+      const saved = parseSavedPage((await getSavedPagesQuery(db, html.id))[0]?.value)
+      if (change === 'rename') {
+        expect(saved).toMatchObject({
+          title: 'Renamed while publishing',
+          chrome: 'app',
+          source: { html: '<p>Revision</p>' },
+        })
+      } else {
+        expect(saved?.deletedAt).not.toBeNull()
+        expect(saved?.source).toEqual(html.source)
+      }
+    } finally {
+      pending.mockRestore()
+    }
+  },
+)

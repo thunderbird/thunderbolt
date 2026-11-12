@@ -48,12 +48,10 @@ describe('mountMessageParts', () => {
   const testReasoningTime: Record<string, number> = {}
 
   describe('empty parts', () => {
-    it('renders synthetic loading part when no parts exist', () => {
+    it('leaves empty-message activity to the message container', () => {
       const result = mountMessageParts([], true, testMessageId, testReasoningTime)
 
-      expect(result).toHaveLength(1)
-      // Check that it's the synthetic loading component by checking the result structure
-      expect(result[0]).toBeDefined()
+      expect(result).toHaveLength(0)
     })
   })
 
@@ -254,6 +252,99 @@ describe('mountMessageParts', () => {
 
       expect(result).toHaveLength(1)
     })
+  })
+})
+
+describe('AssistantMessage activity', () => {
+  it('keeps activity visible after commentary and removes it when the turn settles', () => {
+    const message: ThunderboltUIMessage = {
+      id: 'working',
+      role: 'assistant',
+      parts: [
+        { type: 'tool-bash', toolCallId: 'inspect', state: 'output-available', input: {}, output: 'Done' },
+        { type: 'text', text: 'Now writing the new game.', state: 'done' },
+      ],
+    }
+    const { rerender } = render(<AssistantMessage message={message} isStreaming />, { wrapper: ContentViewProvider })
+    expect(screen.getByText('Now writing the new game.')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Working…')
+    expect(screen.getAllByTestId('loading-status')).toHaveLength(1)
+
+    rerender(<AssistantMessage message={message} isStreaming={false} />)
+    expect(screen.queryByTestId('loading-status')).toBeNull()
+    cleanup()
+  })
+
+  it('shows activity while a sidebar artifact is being generated without adding an inline widget', () => {
+    const message: ThunderboltUIMessage = {
+      id: 'generating-page',
+      role: 'assistant',
+      parts: [
+        { type: 'tool-render_html', toolCallId: 'page', state: 'input-streaming', input: { presentation: 'sidebar' } },
+      ],
+    }
+    render(<AssistantMessage message={message} isStreaming />, { wrapper: ContentViewProvider })
+    expect(screen.getByTestId('tool-status')).toHaveTextContent(/\S/)
+    expect(screen.queryByTestId('loading-status')).toBeNull()
+    expect(screen.queryByText('Show inline')).toBeNull()
+    cleanup()
+  })
+
+  it('uses the active tool group instead of showing a second spinner', () => {
+    const message: ThunderboltUIMessage = {
+      id: 'tools',
+      role: 'assistant',
+      parts: [{ type: 'tool-bash', toolCallId: 'run', state: 'input-available', input: {} }],
+    }
+    const { container } = render(<AssistantMessage message={message} isStreaming />, { wrapper: ContentViewProvider })
+    expect(screen.queryByTestId('loading-status')).toBeNull()
+    expect(container.querySelectorAll('.animate-spin')).toHaveLength(1)
+    cleanup()
+  })
+
+  it('shows one status for an empty stream and yields to compaction activity', () => {
+    const message: ThunderboltUIMessage = { id: 'empty', role: 'assistant', parts: [] }
+    const { rerender } = render(<AssistantMessage message={message} isStreaming />)
+    expect(screen.getAllByTestId('loading-status')).toHaveLength(1)
+    rerender(<AssistantMessage message={message} isStreaming activity={<div role="status">Compacting…</div>} />)
+    expect(screen.queryByTestId('loading-status')).toBeNull()
+    expect(screen.getByRole('status')).toHaveTextContent('Compacting…')
+    cleanup()
+  })
+
+  it('pauses reasoning activity during compaction and clears stale streaming parts after stopping', () => {
+    const message: ThunderboltUIMessage = {
+      id: 'thinking',
+      role: 'assistant',
+      parts: [{ type: 'reasoning', text: 'Planning the game.', state: 'streaming' }],
+    }
+    const { container, rerender } = render(<AssistantMessage message={message} isStreaming />, {
+      wrapper: ContentViewProvider,
+    })
+    expect(container.querySelectorAll('.animate-spin')).toHaveLength(1)
+    rerender(<AssistantMessage message={message} isStreaming activity={<div role="status">Compacting…</div>} />)
+    expect(container.querySelectorAll('.animate-spin')).toHaveLength(0)
+    expect(screen.getByRole('status')).toHaveTextContent('Compacting…')
+    rerender(<AssistantMessage message={message} isStreaming />)
+    expect(container.querySelectorAll('.animate-spin')).toHaveLength(1)
+    rerender(<AssistantMessage message={message} isStreaming={false} />)
+    expect(container.querySelectorAll('.animate-spin')).toHaveLength(0)
+    cleanup()
+  })
+
+  it.each(['in_progress', 'completed'] as const)('resumes activity after remote compaction (%s)', (status) => {
+    const message: ThunderboltUIMessage = {
+      id: 'compacting',
+      role: 'assistant',
+      parts: [{ type: 'data-acp-compaction', data: { agentId: 'agent', sessionId: 's', compactionId: 'c', status } }],
+    }
+    render(
+      <ContentViewProvider>
+        <AssistantMessage message={message} isStreaming />
+      </ContentViewProvider>,
+    )
+    expect(screen.queryByTestId('loading-status') !== null).toBe(status === 'completed')
+    cleanup()
   })
 })
 

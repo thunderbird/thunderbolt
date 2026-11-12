@@ -119,7 +119,12 @@ test('the same artifact keeps DOM state through inline, sidebar and expanded pre
   await expect(page.locator('[data-page-panel]')).toBeVisible()
   await expect(iframe).toHaveAttribute('data-retained-frame', marker)
   await expect(frame.getByRole('textbox', { name: 'Keep my text' })).toHaveValue('Preserve this unsaved text')
-  await page.getByRole('button', { name: 'Show inline', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Show inline', exact: true })).toHaveCount(0)
+  await page.evaluate(async (sessionId) => {
+    const modulePath = '/src/pages/page-store.ts'
+    const { usePageStore } = (await import(modulePath)) as typeof import('../src/pages/page-store')
+    usePageStore.getState().present(sessionId, 'inline')
+  }, observation.sessionId)
   await expect(page.locator('[data-page-panel]')).toHaveCount(0)
   await expect.poll(async () => (await page.locator('#content-view').boundingBox())?.width).toBeLessThan(1)
   await expect(iframe).toHaveAttribute('data-retained-frame', marker)
@@ -190,6 +195,15 @@ test('the same artifact keeps DOM state through inline, sidebar and expanded pre
   await expect(iframe).toBeVisible()
   await expect(frame.locator('#count')).toHaveText('3')
 
+  await page.getByRole('tab', { name: 'Stateful counter', exact: true }).click({ button: 'right' })
+  await expect(page.getByRole('menuitem', { name: 'Pin as app', exact: true })).toBeVisible()
+  await expect(iframe).toBeVisible()
+  await expect(iframe.locator('..')).toHaveAttribute('inert', '')
+  await expect(iframe).toHaveAttribute('data-retained-frame', marker)
+  await expect(frame.locator('#count')).toHaveText('3')
+  await page.keyboard.press('Escape')
+  await expect(iframe.locator('..')).not.toHaveAttribute('inert', '')
+  await expect(frame.getByRole('textbox', { name: 'Keep my text' })).toHaveValue('Preserve this unsaved text')
   await page.getByRole('tab', { name: 'Stateful counter', exact: true }).click({ button: 'right' })
   await page.getByRole('menuitem', { name: 'Pin as app', exact: true }).click()
   await expect(page.locator('[data-sidebar="menu-button"]').filter({ hasText: 'Stateful counter' })).toBeVisible()
@@ -463,13 +477,12 @@ test('project creation fixes its environment while standalone chats keep the env
   await dialog.getByRole('button', { name: 'Create', exact: true }).click()
   await expect(page).toHaveURL(/\/chats\/new\?projectId=/)
   await page.getByRole('button', { name: 'Agent location', exact: true }).click()
-  await expect(page.getByText('Set when this project was created', { exact: true })).toBeVisible()
   await expect(page.getByRole('menuitem').filter({ hasText: 'Local sandbox' })).toHaveAttribute('aria-disabled', 'true')
   await expect(page.getByText('Cloud', { exact: true })).toHaveCount(0)
   await page.keyboard.press('Escape')
   await page.reload()
   await page.getByRole('button', { name: 'Agent location', exact: true }).click()
-  await expect(page.getByText('Set when this project was created', { exact: true })).toBeVisible()
+  await expect(page.getByRole('menuitem').filter({ hasText: 'Local sandbox' })).toHaveAttribute('aria-disabled', 'true')
   await page.keyboard.press('Escape')
   // A reply/compaction owns its environment until it finishes; the picker explains a rejected move.
   await page.evaluate(async () => {
@@ -491,7 +504,10 @@ test('project creation fixes its environment while standalone chats keep the env
   })
   await page.getByRole('button', { name: 'New Chat', exact: true }).click()
   await page.getByRole('button', { name: 'Agent location', exact: true }).click()
-  await expect(page.getByText('Set when this project was created', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('menuitem').filter({ hasText: 'Local sandbox' })).not.toHaveAttribute(
+    'aria-disabled',
+    'true',
+  )
   await expect(page.getByText('Cloud', { exact: true })).toBeVisible()
 })
 
@@ -517,7 +533,7 @@ test('deleting a project frees open and cached chats to use standalone environme
   await chatRow(names[1]).click()
   await expect(page).toHaveURL(`/chats/${chatIds[1]}`)
   await page.getByRole('button', { name: 'Agent location', exact: true }).click()
-  await expect(page.getByText('Set when this project was created', { exact: true })).toBeVisible()
+  await expect(page.getByRole('menuitem').filter({ hasText: 'Local sandbox' })).toHaveAttribute('aria-disabled', 'true')
   await page.keyboard.press('Escape')
   await page
     .locator('#sidebar-projects')
@@ -535,7 +551,10 @@ test('deleting a project frees open and cached chats to use standalone environme
     await chatRow(name).click()
     await expect(page).toHaveURL(`/chats/${chatIds[index]}`)
     await page.getByRole('button', { name: 'Agent location', exact: true }).click()
-    await expect(page.getByText('Set when this project was created', { exact: true })).toHaveCount(0)
+    await expect(page.getByRole('menuitem').filter({ hasText: 'Local sandbox' })).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
     await expect(page.getByText('Cloud', { exact: true })).toBeVisible()
     await page.keyboard.press('Escape')
   }

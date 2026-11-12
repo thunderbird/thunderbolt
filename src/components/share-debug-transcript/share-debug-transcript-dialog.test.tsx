@@ -10,6 +10,7 @@ import { ShareDebugTranscriptDialog } from './share-debug-transcript-dialog'
 
 const defaultProps = {
   open: true,
+  preview: '{"payload":{}}',
   userNote: '',
   consentAccepted: false,
   errorMessage: null,
@@ -128,4 +129,14 @@ describe('ShareDebugTranscriptDialog', () => {
     expect(onSubmit).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Sending…' })).toBeDisabled()
   })
+})
+
+it('exposes the outgoing content as a labeled read-only preview before consent', () => {
+  const preview = JSON.stringify({ payload: { text: '<script>diagnostic</script>' }, userNote: '[redacted]' })
+  render(<ShareDebugTranscriptDialog {...defaultProps} preview={preview} />)
+  const field = screen.getByRole('textbox', { name: 'Content to send' })
+  expect(field).toHaveValue(preview)
+  expect(field).toHaveAttribute('readonly')
+  expect(screen.getByRole('button', { name: 'Send to the Thunderbolt team' })).toBeDisabled()
+  cleanup()
 })

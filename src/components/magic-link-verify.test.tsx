@@ -10,6 +10,7 @@ import { eq } from 'drizzle-orm'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createMockAuthClient } from '@/test-utils/auth-client'
+import { closeTestLocalData, openTestLocalData } from '@/test-utils/local-data'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
@@ -337,7 +338,10 @@ describe('MagicLinkVerify', () => {
       // Seeds `user_has_completed_onboarding = 'false'`, exactly as a fresh
       // device does at boot before it has ever seen the account.
       await reconcileDefaults(getDb())
+      await openTestLocalData()
     })
+
+    afterEach(closeTestLocalData)
 
     it('marks onboarding complete when the link signs in to an account that already existed', async () => {
       mockSignInEmailOtp = mock(() => Promise.resolve({ error: null, data: { user: { id: 'u1', isNew: false } } }))

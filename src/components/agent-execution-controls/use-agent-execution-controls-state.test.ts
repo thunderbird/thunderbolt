@@ -54,3 +54,14 @@ describe('native workspace selection', () => {
     expect(report).toHaveBeenCalledTimes(1)
   })
 })
+
+it('does not send a remote SSH folder to the local folder picker or retain its remote identity', async () => {
+  useAgentExecutionStore
+    .getState()
+    .setExecution('picker', { location: 'ssh', environmentId: 'remote-id', cwd: '~/remote', access: 'ask' })
+  const invoke = spyOn(tauriCore, 'invoke').mockResolvedValue('/Users/test/local')
+  const { result } = renderHook(() => useAgentExecutionControlsState('picker'))
+  await act(async () => result.current.openFolder())
+  expect(invoke).toHaveBeenCalledWith('agent_pick_workspace', { path: null, title: 'Work on this computer' })
+  expect(getAgentExecution('picker')).toEqual({ location: 'computer', cwd: '/Users/test/local', access: 'ask' })
+})

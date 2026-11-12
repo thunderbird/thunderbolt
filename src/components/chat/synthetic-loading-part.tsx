@@ -3,37 +3,25 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Loader2 } from 'lucide-react'
-import { Expandable } from '../ui/expandable'
+import { Trans } from '@lingui/react/macro'
 
 type SyntheticLoadingPartProps = {
-  message?: string
   isStreaming?: boolean
 }
 
-export const SyntheticLoadingPart = ({ message = '', isStreaming }: SyntheticLoadingPartProps) => {
+export const SyntheticLoadingPart = ({ isStreaming }: SyntheticLoadingPartProps) => {
   if (!isStreaming) {
     return null
   }
 
-  const displayMessage = message && message.trim().length > 0 ? message : '\u00A0'
-
-  const titleNode = (
-    <span data-testid="loading-status" className="text-sm text-secondary-foreground">
-      {displayMessage}
-    </span>
-  )
-
   return (
-    // There is nothing to expand yet, so keep the placeholder away from clicks, focus and screen readers.
-    <div inert>
-      <Expandable
-        title={titleNode}
-        defaultOpen={false}
-        icon={<Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-        className="shadow-none mt-6"
-      >
-        {null}
-      </Expandable>
+    <div
+      role="status"
+      data-testid="loading-status"
+      className="mt-2 flex items-center gap-2 px-4 py-2 text-sm text-muted-foreground"
+    >
+      <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+      <Trans>Working…</Trans>
     </div>
   )
 }

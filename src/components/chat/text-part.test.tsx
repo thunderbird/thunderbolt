@@ -85,6 +85,7 @@ describe('streaming widgets', () => {
     const { container, rerender } = render(
       <TextPart
         messageId="widget"
+        precedesActivity
         part={{ type: 'text', text, state: 'streaming' }}
         isStreaming
         sources={[{ index: 1, url, title: 'Widget title', toolName: 'search' }]}
@@ -109,6 +110,8 @@ describe('streaming widgets', () => {
     expect(observed.widgetAt).toBeGreaterThan(900)
     expect(observed.widgetAt).toBeLessThan(1100)
     expect(container.textContent).toBe('IntroWidget titleTail')
+    expect(container.firstElementChild).not.toHaveClass('pb-0', 'mb-0')
+    expect(container.lastElementChild).toHaveClass('pb-0', 'mb-0')
     rerender(<TextPart messageId="widget" part={{ type: 'text', text: 'Replacement answer', state: 'done' }} />)
     expect(container.textContent).toBe('Replacement answer')
   })
@@ -258,3 +261,41 @@ it('updates late document references and removes citations when their metadata d
   expect(container.querySelector('button')).toBeNull()
   expect(container.textContent).toBe('Evidence [1].')
 })
+
+it.each([false, true])(
+  'compacts text after activity while preserving normal message spacing (citations: %s)',
+  (cited) => {
+    const props = {
+      part: { type: 'text', text: cited ? 'Now writing the game [1].' : 'Now writing the game.' } as TextUIPart,
+      messageId: 'spacing',
+      sources: cited ? [{ index: 1, url: 'https://example.com', title: 'Example', toolName: 'search' }] : undefined,
+    }
+    const { container, rerender } = render(<TextPart {...props} />)
+    expect(container.firstElementChild).toHaveClass('p-4', 'my-2')
+    expect(container.firstElementChild).not.toHaveClass('pt-2')
+    rerender(<TextPart {...props} followsActivity />)
+    expect(container.firstElementChild).toHaveClass('pt-2', 'mt-0')
+    rerender(<TextPart {...props} followsActivity={false} />)
+    expect(container.firstElementChild).not.toHaveClass('pt-2', 'mt-0')
+  },
+)
+
+it.each([false, true])(
+  'compacts only trailing text before activity and updates memoized spacing (citations: %s)',
+  (cited) => {
+    const props = {
+      part: { type: 'text', text: cited ? 'Now writing the game [1].' : 'Now writing the game.' } as TextUIPart,
+      messageId: 'trailing-spacing',
+      sources: cited ? [{ index: 1, url: 'https://example.com', title: 'Example', toolName: 'search' }] : undefined,
+    }
+    const { container, rerender } = render(<TextPart {...props} />)
+    expect(container.firstElementChild).not.toHaveClass('pb-0', 'mb-0')
+    rerender(<TextPart {...props} precedesActivity />)
+    expect(container.firstElementChild).toHaveClass('pb-0', 'mb-0', '[&_.prose>div:last-child>:last-child]:mb-0')
+    expect(container.firstElementChild).not.toHaveClass('pt-2', 'mt-0')
+    rerender(<TextPart {...props} followsActivity precedesActivity />)
+    expect(container.firstElementChild).toHaveClass('pt-2', 'mt-0', 'pb-0', 'mb-0')
+    rerender(<TextPart {...props} precedesActivity={false} />)
+    expect(container.firstElementChild).not.toHaveClass('pb-0', 'mb-0')
+  },
+)

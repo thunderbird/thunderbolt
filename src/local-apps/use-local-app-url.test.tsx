@@ -4,11 +4,13 @@
 
 import { StrictMode } from 'react'
 import { act, renderHook } from '@testing-library/react'
-import { expect, it, mock } from 'bun:test'
+import { afterEach, expect, it, mock } from 'bun:test'
 import type { LocalAppStatus } from '@shared/local-app-protocol'
 import { createLocalAppController } from './local-app-controller'
 import { useLocalAppStore } from './local-app-store'
 import { useLocalAppUrl } from './use-local-app-url'
+
+afterEach(() => useLocalAppStore.setState({ apps: {} }))
 
 it.each([false, true])(
   'updates the mounted page after restart (fixed port: %s) without duplicate StrictMode launches',
@@ -59,3 +61,34 @@ it.each([false, true])(
     expect(onError).toHaveBeenLastCalledWith(null)
   },
 )
+
+it('clears the visible forwarded URL when its managed preview becomes unavailable', async () => {
+  const listeners = new Set<(status: LocalAppStatus) => void>()
+  const ready: LocalAppStatus = {
+    id: 'remote-app',
+    status: 'ready',
+    url: 'http://127.0.0.1:41234/',
+    error: null,
+    logs: '',
+  }
+  const controller = {
+    start: async () => ready,
+    subscribe: (listener: (status: LocalAppStatus) => void) => {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+  }
+  const onError = mock(() => {})
+  const { result } = renderHook(() => useLocalAppUrl(ready.id, onError, controller))
+  await act(async () => {})
+  expect(result.current.url).toBe(ready.url)
+  act(() => {
+    for (const listener of listeners) {
+      listener({ ...ready, status: 'failed', url: null, error: 'SSH environment was removed' })
+    }
+  })
+  expect(result.current.url).toBeNull()
+  expect(onError).toHaveBeenLastCalledWith('SSH environment was removed')
+})

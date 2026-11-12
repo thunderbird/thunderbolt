@@ -55,7 +55,7 @@ import { webToolNames } from '@/lib/tools'
 import { tinfoilSession } from '@/lib/tinfoil-session'
 import { createLiveProxyFetch } from '@/lib/proxy-fetch'
 import { isSsoMode } from '@/lib/auth-mode'
-import { getAuthToken } from '@/lib/auth-token'
+import { getAuthToken, getDeviceId } from '@/lib/auth-token'
 import { appVersionHeader } from '@/lib/app-version'
 import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { handleSessionRejected } from '@/lib/session-rejected'
@@ -66,9 +66,14 @@ import { getPlatform, isTauriDesktop } from '@/lib/platform'
 import { invoke } from '@tauri-apps/api/core'
 import { createLocalAppTools } from '@/local-apps/local-app-tools'
 import { createShowFileTool, showFileToolName } from '@/pages/show-file-tool'
+import { createRenderHtmlTool } from '@/artifacts/render-html-tool'
+import { createTool } from '@/lib/tools'
+import { publishGeneratedPage, type PublishPageOptions } from '@/pages/publish-generated-page'
 import { pageController } from '@/pages/page-controller'
 import { browserController } from '@/browser/browser-controller'
 import { defaultAgentExecution, type AgentExecution } from '@/agent-execution/store'
+import { getSshEnvironment, sshConnection } from '@/agent-execution/ssh-environments'
+import { createSshInvoke } from '@/agent-execution/ssh-invoke'
 import { createToolAuthorizer } from '@/agent-execution/approval'
 import type {
   AppHarness,
@@ -78,7 +83,7 @@ import type {
   SeedTurn,
 } from '@shared/agent-core'
 import { buildClientIdentityBlock } from '@shared/agent-core/client-identity'
-import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
+import { appHarnessDevelopmentPrompt, appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
 import { inferenceModelHeader } from '@shared/inference-usage'
 import type { AgentHarness, AgentHarnessTool, ThinkingLevel } from '@earendil-works/pi-agent-core'
 import { z } from 'zod'
@@ -136,7 +141,7 @@ type HarnessCache = Map<string, CachedHarness>
 type NativeOutputScope = {
   readonly owner: string
   closed: boolean
-  cleanup?: () => Promise<void>
+  readonly cleanups: Map<string, () => Promise<void>>
 }
 
 /** Stable and volatile prompt parts needed by the Pi harness. */
@@ -479,7 +484,12 @@ export const harnessSignature = (
     stableSystemPrompt,
     regenerationRevision,
     compaction,
-    [execution.location, execution.cwd, workspaceId],
+    [
+      execution.location,
+      execution.cwd,
+      workspaceId,
+      execution.location === 'ssh' ? sshConnection(getSshEnvironment(execution.environmentId)) : undefined,
+    ],
   ])
 }
 
@@ -499,12 +509,21 @@ export const composeAppHarnessSystemPrompt = (
   const executionPrompt =
     execution.location === 'computer'
       ? `You are running on the user's computer with real filesystem access and a native bash shell. Your working directory is ${JSON.stringify(execution.cwd)}. Files are visible to the user and persist after this chat. The working directory is not a sandbox boundary. Do not claim files live in a virtual workspace.`
-      : appHarnessEnvironmentPrompt
+      : execution.location === 'ssh'
+        ? `Your filesystem and bash tools run on the user's SSH environment, not on this computer or in the browser sandbox. Your remote working directory is ${JSON.stringify(execution.cwd)}. Files persist remotely. The working directory is not a sandbox boundary.
+SSH bash commands are foreground jobs: when a command finishes, is stopped, or loses its channel, its supervisor terminates its process group, including ordinary background children. Backgrounding with & or nohup does not create a persistent app. Do not evade this cleanup with setsid, disown, or daemonization.
+Discover the runtime executables needed for the task once, and reuse their resolved paths. Non-interactive shells may have a different PATH; if a runtime is installed outside it, use its absolute path instead of repeatedly trying the missing command.
+The page tools control the user's desktop browser. Use local_app create to launch a persistent remote server and open its page: Thunderbolt manages the SSH process and forwards its remote loopback port to this computer. Use local_app attach with the remote port to open an already-running service without taking ownership of it. Use the returned sessionId for page_snapshot; do not open the remote localhost URL directly. Managed previews survive agent turns. Use page_show_file for self-contained remote HTML artifacts.
+Run the project's existing browser/E2E tests when appropriate. Do not install a headless browser merely to substitute for opening a preview in the user's browser; headless verification does not make that preview visible.
+If the connection fails, report the error; do not retry a command whose outcome is unknown or switch environments.`
+        : appHarnessEnvironmentPrompt
   const accessPrompt =
     execution.access === 'ask'
       ? 'File changes, shell commands, and external actions require user approval. Reads run automatically. If denied, respect the decision; do not retry through another tool.'
       : 'The user enabled full access. Tools execute without an approval prompt.'
-  const environmentBlock = config.supportsTools ? `\n\n${executionPrompt}\n${accessPrompt}` : ''
+  const environmentBlock = config.supportsTools
+    ? `\n\n${executionPrompt}\n${accessPrompt}\n\n${appHarnessDevelopmentPrompt}`
+    : ''
   return `${config.stableSystemPrompt}\n\n${clientIdentity}${environmentBlock}\n\n${config.volatileSystemPrompt}`
 }
 
@@ -527,12 +546,24 @@ const buildHarnessRecord = async (
     throw new Error('Agent disconnected')
   }
   const execution = context.execution ?? defaultAgentExecution
+  const connection =
+    execution.location === 'ssh' ? sshConnection(getSshEnvironment(execution.environmentId)) : undefined
   const native =
     execution.location === 'computer'
       ? { env: new agentCore.NativeExecutionEnv(execution.cwd, invoke, nativeOutput.owner), cwd: execution.cwd }
-      : undefined
+      : connection && execution.cwd
+        ? {
+            env: new agentCore.SshExecutionEnv(
+              execution.cwd,
+              connection,
+              createSshInvoke(connection, invoke),
+              nativeOutput.owner,
+            ),
+            cwd: execution.cwd,
+          }
+        : undefined
   if (native) {
-    nativeOutput.cleanup = () => native.env.cleanup()
+    nativeOutput.cleanups.set(connection ? JSON.stringify(connection) : 'computer', () => native.env.cleanup())
   }
   const systemPrompt = { current: composeAppHarnessSystemPrompt(config, execution) }
   const harness = await agentCore.buildAppHarness({
@@ -567,18 +598,39 @@ const prepareHarnessForSend = async (
     activity?.claimPage(id)
     return id
   }
+  const onPublish = async (page: Parameters<typeof pageController.open>[0], options: PublishPageOptions) => {
+    activity?.assertControl(options.signal)
+    const publication = await publishGeneratedPage(page, { ...options, chatThreadId: context.threadId })
+    activity?.claimPage(publication.sessionId, options.signal)
+    return publication
+  }
+  const execution = context.execution ?? defaultAgentExecution
   const pageTools = {
+    ...(config.toolset.render_html
+      ? { render_html: createTool(createRenderHtmlTool({ chatThreadId: context.threadId, onOpen: onPublish })) }
+      : {}),
     [showFileToolName]: createShowFileTool({
+      chatThreadId: context.threadId,
+      scope: JSON.stringify([
+        context.workspaceId ?? context.threadId,
+        execution.location,
+        execution.location === 'ssh' ? execution.environmentId : getDeviceId(),
+      ]),
+      cwd: record.execution?.cwd ?? agentCore.workspaceDirFor(context.workspaceId ?? context.threadId),
+      localAppsAvailable: execution.location === 'computer' || execution.location === 'ssh',
       readFile: (path, signal) =>
         agentCore.readAgentWorkspaceFile(context.workspaceId ?? context.threadId, path, record.execution, signal),
-      onOpen,
+      onOpen: onPublish,
     }),
-    ...(context.execution?.location === 'computer'
+    ...(execution.location === 'computer' || execution.location === 'ssh'
       ? createLocalAppTools({
           owner: context.projectId
             ? { kind: 'project', id: context.projectId }
             : { kind: 'chat', id: context.threadId },
-          cwd: context.execution.cwd,
+          cwd: execution.cwd,
+          ...(execution.location === 'ssh'
+            ? { connection: sshConnection(getSshEnvironment(execution.environmentId)) }
+            : {}),
           onOpen,
         })
       : {}),
@@ -766,9 +818,15 @@ const disposeAllHarnesses = (
     await Promise.allSettled(preparation)
     await disposeHarness(entry)
   })
-  void Promise.allSettled([...pendingOperations.keys(), ...disposals])
-    .then(() => nativeOutput.cleanup?.())
-    .catch(console.error)
+  void (async () => {
+    await Promise.allSettled([...pendingOperations.keys(), ...disposals])
+    const results = await Promise.allSettled([...nativeOutput.cleanups.values()].map((cleanup) => cleanup()))
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        console.error(result.reason)
+      }
+    }
+  })()
 }
 
 /** Run the built-in request on the thread's persistent in-browser Pi harness and
@@ -816,8 +874,8 @@ const fetchViaHarness = async (
   const resolved = await resolvePiModel(agentCore, context, config.profile, tinfoilOptions)
   init.signal?.throwIfAborted()
   if (!resolved) {
-    if (context.execution?.location === 'computer') {
-      throw new Error('This model cannot run on this computer. Choose a tool-capable supported model.')
+    if (context.execution?.location === 'computer' || context.execution?.location === 'ssh') {
+      throw new Error('This model cannot run in this environment. Choose a tool-capable supported model.')
     }
     context.telemetry?.setDimensions({ engine: 'legacy' })
     return fallback()
@@ -992,7 +1050,9 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
   // itself cached per-agent (`adapter-cache.ts`), so a thread's harness survives
   // across all of that thread's turns; `disconnect` disposes them all.
   const harnessCache: HarnessCache = new Map()
-  const nativeOutput: { current: NativeOutputScope } = { current: { owner: crypto.randomUUID(), closed: false } }
+  const nativeOutput: { current: NativeOutputScope } = {
+    current: { owner: crypto.randomUUID(), closed: false, cleanups: new Map() },
+  }
   const lifetime = new AbortController()
   const pendingOperations = new Map<Promise<unknown>, string>()
 
@@ -1023,15 +1083,18 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
     if (execution.location === 'cloud') {
       throw new Error('Cloud execution is not available yet')
     }
-    if (execution.location === 'computer') {
+    if (execution.location === 'computer' || execution.location === 'ssh') {
       if (!isTauriDesktop()) {
-        throw new Error('Computer execution requires the desktop app')
+        throw new Error('Computer and SSH execution require the desktop app')
       }
       if (!execution.cwd) {
         throw new Error('Choose a working folder before using this computer')
       }
       if (context.selectedModel.toolUsage === 0 || !isPiModelCandidate(context.selectedModel)) {
         throw new Error('Choose a tool-capable model to use this computer')
+      }
+      if (execution.location === 'ssh') {
+        getSshEnvironment(execution.environmentId)
       }
     }
     if (isPiModelCandidate(context.selectedModel)) {

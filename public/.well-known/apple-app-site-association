@@ -5,11 +5,18 @@
       {
         "appID": "BUMSKVQ3D9.net.thunderbird.thunderbolt",
         "paths": ["/oauth/callback", "/mcp/oauth/callback", "/auth/verify"]
+      },
+      {
+        "appID": "BUMSKVQ3D9.net.thunderbird.thunderbolt.native",
+        "paths": ["/oauth/callback", "/mcp/oauth/callback"]
       }
     ]
   },
   "webcredentials": {
-    "apps": ["BUMSKVQ3D9.net.thunderbird.thunderbolt"]
+    "apps": [
+      "BUMSKVQ3D9.net.thunderbird.thunderbolt",
+      "BUMSKVQ3D9.net.thunderbird.thunderbolt.native"
+    ]
   }
 }
 

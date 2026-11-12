@@ -11,6 +11,7 @@ import { createGoogleAuthRoutes } from '@/auth/google'
 import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
 import { createOidcConfigRoutes } from '@/auth/oidc'
 import { createSsoDesktopCallbackRoutes } from '@/auth/sso-desktop-callback'
+import { createSsoNativeCallbackRoutes } from '@/auth/sso-native-callback'
 import { createStandaloneLogger } from '@/config/logger'
 import { createCorsMiddleware } from '@/config/cors'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
@@ -153,6 +154,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createMicrosoftAuthRoutes(auth, fetchFn, integrationOAuthRateLimit))
       .use(createOidcConfigRoutes())
       .use(createSsoDesktopCallbackRoutes(settings, fetchFn))
+      .use(createSsoNativeCallbackRoutes(settings, database, fetchFn))
       .use(createProToolsRoutes(auth, proRateLimit))
       .use(
         createUniversalProxyRoutes({

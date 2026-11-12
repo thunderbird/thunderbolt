@@ -3,6 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { StoredFile } from '@/lib/file-blob-storage'
+import { docxMime, isPlainTextMime, xlsxMime, type TransformTarget } from './mime'
+
+export { defaultDeliveryMode, docxMime, isPlainTextMime, xlsxMime } from './mime'
+export type { TransformTarget } from './mime'
 
 /**
  * Client-side transformer registry: turns a stored attachment into a form a
@@ -23,25 +27,7 @@ export type TransformOutput = { text: string } | { images: TransformImage[] }
 
 export type Transformer = (file: StoredFile) => Promise<TransformOutput>
 
-/** Conversion target. */
-export type TransformTarget = 'text' | 'images'
-
 export type TransformerKey = `${string}->${TransformTarget}`
-
-/** MIME type for `.docx` (OOXML Word documents). */
-export const docxMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-
-/** MIME type for `.xlsx` (OOXML spreadsheets). */
-export const xlsxMime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-
-/**
- * True for files that are already text (CSV, plain text, Markdown, JSON, logs…).
- * These get a passthrough text transformer (so any `text/*` type works without
- * enumerating it) and are delivered as text by default — see
- * {@link defaultDeliveryMode}. Excludes rich binary formats like PDF/docx, which
- * have their own extractors and a richer native representation.
- */
-export const isPlainTextMime = (mime: string): boolean => mime.startsWith('text/') || mime === 'application/json'
 
 /**
  * Extensions the OS reports with an empty or actively wrong MIME type, but which
@@ -91,17 +77,6 @@ export const resolveTextMimeType = (filename: string, declaredType: string): str
   }
   return officeExtensionMimes.get(extension) ?? declaredType
 }
-
-/**
- * Default delivery mode for an attachment given its MIME type, when no explicit
- * {@link import('@/types').AttachmentData.deliverAs} override is set. Plain-text
- * files go out as text (lossless and universally accepted), and so do
- * spreadsheets: no provider accepts xlsx as a native file part, so native-first
- * would only buy a guaranteed rejection and a retry. Everything else defaults to
- * native bytes (`undefined`).
- */
-export const defaultDeliveryMode = (mime: string): TransformTarget | undefined =>
-  isPlainTextMime(mime) || mime === xlsxMime ? 'text' : undefined
 
 /**
  * Lazy loaders keyed by `"<source-mime>-><target>"`. Adding a transformer is a

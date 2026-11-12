@@ -1,0 +1,206 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A10000000000000000000011 /* Thunderbolt app proxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A10000000000000000000010 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A10000000000000000000001;
+			remoteInfo = Thunderbolt;
+		};
+		A10000000000000000000012 /* Thunderbolt app proxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A10000000000000000000010 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A10000000000000000000001;
+			remoteInfo = Thunderbolt;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		A10000000000000000000021 /* Thunderbolt */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = ();
+			explicitFileTypes = {};
+			explicitFolders = ();
+			path = Thunderbolt;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000022 /* ThunderboltTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = ();
+			explicitFileTypes = {};
+			explicitFolders = ();
+			path = ThunderboltTests;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000023 /* ThunderboltUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = ();
+			explicitFileTypes = {};
+			explicitFolders = ();
+			path = ThunderboltUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A10000000000000000000031 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		A10000000000000000000032 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		A10000000000000000000033 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A10000000000000000000041 = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000021 /* Thunderbolt */,
+				A10000000000000000000022 /* ThunderboltTests */,
+				A10000000000000000000023 /* ThunderboltUITests */,
+				A10000000000000000000042 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A10000000000000000000042 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000043 /* Thunderbolt.app */,
+				A10000000000000000000044 /* ThunderboltTests.xctest */,
+				A10000000000000000000045 /* ThunderboltUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000043 /* Thunderbolt.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Thunderbolt.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000000000044 /* ThunderboltTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ThunderboltTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000000000045 /* ThunderboltUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ThunderboltUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A10000000000000000000001 /* Thunderbolt */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000000000000000000061 /* Build configuration list for PBXNativeTarget "Thunderbolt" */;
+			buildPhases = (A10000000000000000000051 /* Sources */, A10000000000000000000031 /* Frameworks */, A10000000000000000000054 /* Resources */, );
+			buildRules = ();
+			dependencies = ();
+			packageProductDependencies = (
+				A10000000000000000000091 /* PowerSync */,
+				A10000000000000000000094 /* Tinfoil */,
+				A10000000000000000000097 /* OpenAI */,
+				A10000000000000101 /* SwiftMath */,
+			);
+			fileSystemSynchronizedGroups = (A10000000000000000000021 /* Thunderbolt */, );
+			name = Thunderbolt;
+			productName = Thunderbolt;
+			productReference = A10000000000000000000043 /* Thunderbolt.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A10000000000000000000002 /* ThunderboltTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000000000000000000062 /* Build configuration list for PBXNativeTarget "ThunderboltTests" */;
+			buildPhases = (A10000000000000000000052 /* Sources */, A10000000000000000000032 /* Frameworks */, A10000000000000000000055 /* Resources */, );
+			buildRules = ();
+			dependencies = (A10000000000000000000071 /* PBXTargetDependency */, );
+			packageProductDependencies = (
+				A10000000000000000000092 /* PowerSync */,
+				A10000000000000000000095 /* Tinfoil */,
+				A10000000000000000000098 /* OpenAI */,
+			);
+			fileSystemSynchronizedGroups = (A10000000000000000000022 /* ThunderboltTests */, );
+			name = ThunderboltTests;
+			productName = ThunderboltTests;
+			productReference = A10000000000000000000044 /* ThunderboltTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		A10000000000000000000003 /* ThunderboltUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000000000000000000063 /* Build configuration list for PBXNativeTarget "ThunderboltUITests" */;
+			buildPhases = (A10000000000000000000053 /* Sources */, A10000000000000000000033 /* Frameworks */, A10000000000000000000056 /* Resources */, );
+			buildRules = ();
+			dependencies = (A10000000000000000000072 /* PBXTargetDependency */, );
+			fileSystemSynchronizedGroups = (A10000000000000000000023 /* ThunderboltUITests */, );
+			name = ThunderboltUITests;
+			productName = ThunderboltUITests;
+			productReference = A10000000000000000000045 /* ThunderboltUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A10000000000000000000010 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {BuildIndependentTargetsInParallel = YES; LastUpgradeCheck = 2660; TargetAttributes = {A10000000000000000000001 = {CreatedOnToolsVersion = 26.0; }; A10000000000000000000002 = {CreatedOnToolsVersion = 26.0; TestTargetID = A10000000000000000000001; }; A10000000000000000000003 = {CreatedOnToolsVersion = 26.0; TestTargetID = A10000000000000000000001; }; }; };
+			buildConfigurationList = A10000000000000000000060 /* Build configuration list for PBXProject "Thunderbolt" */;
+			compatibilityVersion = "Xcode 16.0";
+			developmentRegion = en;
+			knownRegions = (en, Base, de, es, fr, ja, "pt-BR", );
+			mainGroup = A10000000000000000000041;
+			productRefGroup = A10000000000000000000042 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (A10000000000000000000001 /* Thunderbolt */, A10000000000000000000002 /* ThunderboltTests */, A10000000000000000000003 /* ThunderboltUITests */, );
+			packageReferences = (
+				A10000000000000000000090 /* XCRemoteSwiftPackageReference "powersync-swift" */,
+				A10000000000000000000093 /* XCRemoteSwiftPackageReference "tinfoil-swift" */,
+				A10000000000000000000096 /* XCRemoteSwiftPackageReference "openai-swift-fork" */,
+				A10000000000000100 /* XCRemoteSwiftPackageReference "SwiftMath" */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A10000000000000000000054 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		A10000000000000000000055 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		A10000000000000000000056 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A10000000000000000000051 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		A10000000000000000000052 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		A10000000000000000000053 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A10000000000000000000071 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A10000000000000000000001 /* Thunderbolt */; targetProxy = A10000000000000000000011 /* Thunderbolt app proxy */; };
+		A10000000000000000000072 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A10000000000000000000001 /* Thunderbolt */; targetProxy = A10000000000000000000012 /* Thunderbolt app proxy */; };
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A10000000000000000000081 /* Debug project */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; CLANG_WARN_DOCUMENTATION_COMMENTS = YES; CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES; CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE; ENABLE_TESTABILITY = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0; ONLY_ACTIVE_ARCH = YES; SDKROOT = iphoneos; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG"; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_VERSION = 6.0; }; name = Debug; };
+		A10000000000000000000082 /* Release project */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; CLANG_WARN_DOCUMENTATION_COMMENTS = YES; CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES; CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE; IPHONEOS_DEPLOYMENT_TARGET = 18.0; SDKROOT = iphoneos; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)"; SWIFT_OPTIMIZATION_LEVEL = "-O"; SWIFT_VERSION = 6.0; }; name = Release; };
+		A10000000000000000000083 /* Debug Thunderbolt */ = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor; CODE_SIGN_ENTITLEMENTS = Thunderbolt/Thunderbolt.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = Thunderbolt-Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 18.0; MARKETING_VERSION = 0.1.164; PRODUCT_BUNDLE_IDENTIFIER = net.thunderbird.thunderbolt.native; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
+		A10000000000000000000084 /* Release Thunderbolt */ = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor; CODE_SIGN_ENTITLEMENTS = Thunderbolt/Thunderbolt.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = Thunderbolt-Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 18.0; MARKETING_VERSION = 0.1.164; PRODUCT_BUNDLE_IDENTIFIER = net.thunderbird.thunderbolt.native; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Release; };
+		A10000000000000000000085 /* Debug ThunderboltTests */ = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0; PRODUCT_BUNDLE_IDENTIFIER = net.thunderbird.thunderbolt.native.tests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = "1,2"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Thunderbolt.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Thunderbolt"; }; name = Debug; };
+		A10000000000000000000086 /* Release ThunderboltTests */ = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0; PRODUCT_BUNDLE_IDENTIFIER = net.thunderbird.thunderbolt.native.tests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = "1,2"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Thunderbolt.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Thunderbolt"; }; name = Release; };
+		A10000000000000000000087 /* Debug ThunderboltUITests */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0; PRODUCT_BUNDLE_IDENTIFIER = net.thunderbird.thunderbolt.native.uitests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = "1,2"; TEST_TARGET_NAME = Thunderbolt; }; name = Debug; };
+		A10000000000000000000088 /* Release ThunderboltUITests */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0; PRODUCT_BUNDLE_IDENTIFIER = net.thunderbird.thunderbolt.native.uitests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = "1,2"; TEST_TARGET_NAME = Thunderbolt; }; name = Release; };
+		A10000000000000000000090 /* XCRemoteSwiftPackageReference "powersync-swift" */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/powersync-ja/powersync-swift"; requirement = {kind = exactVersion; version = 1.17.0; }; };
+		A10000000000000000000091 /* PowerSync */ = {isa = XCSwiftPackageProductDependency; package = A10000000000000000000090 /* XCRemoteSwiftPackageReference "powersync-swift" */; productName = PowerSync; };
+		A10000000000000000000092 /* PowerSync */ = {isa = XCSwiftPackageProductDependency; package = A10000000000000000000090 /* XCRemoteSwiftPackageReference "powersync-swift" */; productName = PowerSync; };
+		A10000000000000000000093 /* XCRemoteSwiftPackageReference "tinfoil-swift" */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/tinfoilsh/tinfoil-swift"; requirement = {kind = exactVersion; version = "0.9.0-rc.4"; }; };
+		A10000000000000000000094 /* Tinfoil */ = {isa = XCSwiftPackageProductDependency; package = A10000000000000000000093 /* XCRemoteSwiftPackageReference "tinfoil-swift" */; productName = Tinfoil; };
+		A10000000000000000000095 /* Tinfoil */ = {isa = XCSwiftPackageProductDependency; package = A10000000000000000000093 /* XCRemoteSwiftPackageReference "tinfoil-swift" */; productName = Tinfoil; };
+		A10000000000000000000096 /* XCRemoteSwiftPackageReference "openai-swift-fork" */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/tinfoilsh/openai-swift-fork.git"; requirement = {kind = exactVersion; version = "0.0.15"; }; };
+		A10000000000000000000097 /* OpenAI */ = {isa = XCSwiftPackageProductDependency; package = A10000000000000000000096 /* XCRemoteSwiftPackageReference "openai-swift-fork" */; productName = OpenAI; };
+		A10000000000000000000098 /* OpenAI */ = {isa = XCSwiftPackageProductDependency; package = A10000000000000000000096 /* XCRemoteSwiftPackageReference "openai-swift-fork" */; productName = OpenAI; };
+		A10000000000000100 /* XCRemoteSwiftPackageReference "SwiftMath" */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/mgriebling/SwiftMath.git"; requirement = {kind = exactVersion; version = 1.7.3; }; };
+		A10000000000000101 /* SwiftMath */ = {isa = XCSwiftPackageProductDependency; package = A10000000000000100 /* XCRemoteSwiftPackageReference "SwiftMath" */; productName = SwiftMath; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A10000000000000000000060 /* Build configuration list for PBXProject "Thunderbolt" */ = {isa = XCConfigurationList; buildConfigurations = (A10000000000000000000081 /* Debug project */, A10000000000000000000082 /* Release project */, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A10000000000000000000061 /* Build configuration list for PBXNativeTarget "Thunderbolt" */ = {isa = XCConfigurationList; buildConfigurations = (A10000000000000000000083 /* Debug Thunderbolt */, A10000000000000000000084 /* Release Thunderbolt */, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A10000000000000000000062 /* Build configuration list for PBXNativeTarget "ThunderboltTests" */ = {isa = XCConfigurationList; buildConfigurations = (A10000000000000000000085 /* Debug ThunderboltTests */, A10000000000000000000086 /* Release ThunderboltTests */, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A10000000000000000000063 /* Build configuration list for PBXNativeTarget "ThunderboltUITests" */ = {isa = XCConfigurationList; buildConfigurations = (A10000000000000000000087 /* Debug ThunderboltUITests */, A10000000000000000000088 /* Release ThunderboltUITests */, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+	};
+	rootObject = A10000000000000000000010 /* Project object */;
+}

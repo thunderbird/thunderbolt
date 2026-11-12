@@ -698,10 +698,10 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
 
   resolveSession = (headers) => auth.api.getSession({ headers, query: { disableRefresh: true } })
 
-  return {
-    ...auth,
-    handler: (request: Request) => auth.handler(withTrustedClientIp(request, settings.trustedProxy)),
-  }
+  // Better Auth exposes its request handler under two names. Both get the resolved client IP,
+  // so no caller can reach it with a client-supplied one.
+  const handler = (request: Request) => auth.handler(withTrustedClientIp(request, settings.trustedProxy))
+  return { ...auth, handler, fetch: handler }
 }
 
 export type Auth = ReturnType<typeof createAuth>

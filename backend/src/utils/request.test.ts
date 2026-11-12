@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { extractClientIp, getTrustedIpHeaders, withTrustedClientIp } from './request'
+import { extractClientIp, getTrustedIpHeaders, withTrustedClientIp, type TrustedProxy } from './request'
 
 describe('Utils - Request', () => {
   describe('extractClientIp', () => {
@@ -89,7 +89,7 @@ describe('fixed trusted proxy chains', () => {
     expect(extractClientIp(headers, 'socket')).toBe('socket')
   })
 
-  it.each(['', '203.0.113.5,', '203.0.113.5, not-an-ip', '203.0.113.5, 999.1.2.3', 'fe80::1%eth0'])(
+  it.each(['', '203.0.113.5,', '203.0.113.5, not-an-ip', '203.0.113.5, 999.1.2.3', '203.0.113.5:54321'])(
     'fails closed for a missing or malformed trusted hop: %s',
     (value) => expect(extractClientIp(new Headers({ 'x-forwarded-for': value }), 'socket', 1)).toBe('socket'),
   )
@@ -99,38 +99,56 @@ describe('fixed trusted proxy chains', () => {
     expect(extractClientIp(new Headers({ 'x-forwarded-for': '192.0.2.9, , 10.0.0.4' }), 'socket', 2)).toBe('socket')
   })
 
-  it('canonicalizes IPv6 and trims whitespace', () => {
-    expect(extractClientIp(new Headers({ 'x-forwarded-for': ' 2001:0DB8:0:0:0:0:0:1 ' }), 'socket', 1)).toBe(
-      '2001:db8::1',
-    )
+  // The embedded-IPv4 and zone-scoped forms are valid addresses that `new URL` cannot parse.
+  it.each(['2001:0DB8:0:0:0:0:0:1', '2001:db8:1:2::192.0.2.33', '::ffff:203.0.113.5', 'fe80::1%eth0'])(
+    'returns a valid trusted hop as the proxy wrote it, trimmed: %s',
+    (address) => {
+      expect(extractClientIp(new Headers({ 'x-forwarded-for': ` ${address} ` }), 'socket', 1)).toBe(address)
+    },
+  )
+})
+
+describe('trusted client IP for Better Auth', () => {
+  const internalHeader = 'x-thunderbolt-client-ip'
+
+  const headersByProxy: [TrustedProxy, string[] | undefined][] = [
+    [1, [internalHeader]],
+    ['cloudflare', ['cf-connecting-ip']],
+    ['akamai', ['true-client-ip']],
+    ['', undefined],
+  ]
+  it.each(headersByProxy)('reads the client from the header that matches TRUSTED_PROXY=%j', (trustedProxy, headers) => {
+    expect(getTrustedIpHeaders(trustedProxy)).toEqual(headers)
   })
 
-  it('gives Better Auth the selected IP without trusting an incoming internal header', async () => {
+  it('replaces a forged internal header with the selected hop and keeps the rest of the request', async () => {
     const request = new Request('https://api.example.com/v1/api/auth/test', {
       method: 'POST',
       headers: {
         'x-forwarded-for': '192.0.2.99, 203.0.113.5, 10.0.0.4',
-        'x-thunderbolt-client-ip': '192.0.2.66',
+        [internalHeader]: '192.0.2.66',
       },
       body: 'original body',
     })
     const normalized = withTrustedClientIp(request, 2)
-    const [header] = getTrustedIpHeaders(2)!
-    expect(normalized.headers.get(header)).toBe('203.0.113.5')
+    expect(normalized.headers.get(internalHeader)).toBe('203.0.113.5')
     expect(normalized.headers.get('x-forwarded-for')).toBe(request.headers.get('x-forwarded-for'))
     expect(normalized.method).toBe('POST')
     expect(normalized.url).toBe(request.url)
     expect(await normalized.text()).toBe('original body')
-    expect(request.headers.get(header)).toBe('192.0.2.66')
+    expect(request.headers.get(internalHeader)).toBe('192.0.2.66')
   })
 
-  it('overwrites a forged internal header even when XFF is missing', () => {
-    const request = new Request('https://api.example.com', { headers: { 'x-thunderbolt-client-ip': '192.0.2.66' } })
-    expect(withTrustedClientIp(request, 1).headers.get(getTrustedIpHeaders(1)![0])).toBe('unknown')
-    expect(withTrustedClientIp(request, '')).toBe(request)
-    expect(withTrustedClientIp(request, 'cloudflare')).toBe(request)
-    expect(getTrustedIpHeaders('cloudflare')).toEqual(['cf-connecting-ip'])
-    expect(getTrustedIpHeaders('akamai')).toEqual(['true-client-ip'])
-    expect(getTrustedIpHeaders('')).toBeUndefined()
+  it('replaces a forged internal header with "unknown" when no forwarded chain arrived', () => {
+    const request = new Request('https://api.example.com', { headers: { [internalHeader]: '192.0.2.66' } })
+    expect(withTrustedClientIp(request, 1).headers.get(internalHeader)).toBe('unknown')
   })
+
+  it.each(['', 'cloudflare', 'akamai'] as const)(
+    'leaves the request untouched for TRUSTED_PROXY=%j',
+    (trustedProxy) => {
+      const request = new Request('https://api.example.com', { headers: { [internalHeader]: '192.0.2.66' } })
+      expect(withTrustedClientIp(request, trustedProxy)).toBe(request)
+    },
+  )
 })

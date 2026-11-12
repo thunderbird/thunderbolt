@@ -21,10 +21,20 @@ env:
       - assertVisible: Sign in
 - tapOn: Sign in
 - tapOn: Cloud \(Waitlist\)
-- tapOn: Continue
-- extendedWaitUntil:
-    visible: Want early access?
-    timeout: 300000
+# The app stops waiting for the server after 5 s and shows "Couldn't reach Thunderbolt Cloud", with
+# Continue as the way to try again. A slow first request on a loaded runner can hit that, and the
+# old single wait then sat on the error for five minutes. Tap again only while the form is missing.
+- retry:
+    maxRetries: 3
+    commands:
+      - runFlow:
+          when:
+            notVisible: Want early access?
+          commands:
+            - tapOn: Continue
+      - extendedWaitUntil:
+          visible: Want early access?
+          timeout: 30000
 - waitForAnimationToEnd
 # Each retry block re-checks its own outcome. The simulator can drop a focus tap, and inputText
 # types anyway; eraseText stops a partial try doubling up. Maestro aims a tap with the

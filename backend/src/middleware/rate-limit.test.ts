@@ -2,12 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { createContactRoutes } from '@/contact/routes'
-import type { SendEmailParams } from '@/lib/resend'
 import { getSharedIsolatedTestDb } from '@/test-utils/db'
 import type { db as DbType } from '@/db/client'
 import { rateLimits } from '@/db/rate-limit-schema'
-import { beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
 import {
   createAuthIpRateLimit,
@@ -78,69 +76,32 @@ describe('Rate Limiting', () => {
     expect((await app.handle(requestWithIp('203.0.113.11'))).status).toBe(200)
   })
 
-  it('keeps the contact limit on its nested route without limiting sibling endpoints', async () => {
-    const send = mock(async (_params: SendEmailParams) => ({ id: 'accepted' }))
-    const app = new Elysia({ prefix: '/v1' })
-      .get('/before-contact', () => 'ok')
-      .use(
-        createContactRoutes({
-          settings: { contactEmailTo: 'team@example.org' },
-          ipRateLimit: createIpTierRateLimit(database, { enabled: false, trustedProxy: 'cloudflare' }, 'contact'),
-          emailService: { isConfigured: () => true, send },
-        }),
-      )
-      .get('/after-contact', () => 'ok')
-    const request = (ip: string) =>
-      new Request('http://localhost/v1/contact', {
-        method: 'POST',
-        headers: { 'cf-connecting-ip': ip, 'content-type': 'application/json' },
-        body: JSON.stringify({ email: 'visitor@example.org' }),
-      })
+  it('limits the website contact form to 3 requests per hour per address', async () => {
+    const app = new Elysia()
+      .use(createIpTierRateLimit(database, { enabled: true, trustedProxy: 'cloudflare' }, 'contact'))
+      .get('/v1/test', () => ({ ok: true }))
     for (let count = 0; count < 3; count++) {
-      const response = await app.handle(request('192.0.2.1'))
+      const response = await app.handle(requestWithIp('192.0.2.1'))
       expect(response.status).toBe(200)
       expect(response.headers.get('ratelimit-limit')).toBe('3')
     }
-    const rejected = await app.handle(request('192.0.2.1'))
-    expect(rejected.status).toBe(429)
-    expect(Number(rejected.headers.get('retry-after'))).toBeGreaterThan(3500)
-    expect(send).toHaveBeenCalledTimes(3)
-    for (const path of ['before-contact', 'after-contact']) {
-      const response = await app.handle(
-        new Request(`http://localhost/v1/${path}`, {
-          headers: { 'cf-connecting-ip': '192.0.2.1' },
-        }),
-      )
-      expect(response.status).toBe(200)
-      expect(response.headers.get('ratelimit-limit')).toBeNull()
-    }
-    expect((await app.handle(request('192.0.2.2'))).status).toBe(200)
-    expect(send).toHaveBeenCalledTimes(4)
+    const limited = await app.handle(requestWithIp('192.0.2.1'))
+    expect(limited.status).toBe(429)
+    expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(3500)
+    expect((await app.handle(requestWithIp('192.0.2.2'))).status).toBe(200)
   })
 
-  it('keeps contact allowances separate behind nginx/ALB and ignores forged XFF prefixes', async () => {
-    const send = mock(async (_params: SendEmailParams) => ({ id: 'accepted' }))
-    const app = new Elysia({ prefix: '/v1' }).use(
-      createContactRoutes({
-        settings: { contactEmailTo: 'team@example.org' },
-        ipRateLimit: createIpTierRateLimit(database, { enabled: false, trustedProxy: 1 }, 'contact'),
-        emailService: { isConfigured: () => true, send },
-      }),
-    )
-    const submit = (forwarded: string) =>
-      app.handle(
-        new Request('http://localhost/v1/contact', {
-          method: 'POST',
-          headers: { 'x-forwarded-for': forwarded, 'content-type': 'application/json' },
-          body: JSON.stringify({ email: 'visitor@example.org' }),
-        }),
-      )
+  it('keys on the trusted hop of a fixed proxy chain and ignores forged leading hops', async () => {
+    const app = new Elysia()
+      .use(createIpTierRateLimit(database, { enabled: true, trustedProxy: 1 }, 'contact'))
+      .get('/v1/test', () => ({ ok: true }))
+    const requestThroughProxy = (forwarded: string) =>
+      app.handle(new Request('http://localhost/v1/test', { headers: { 'x-forwarded-for': forwarded } }))
     for (let count = 0; count < 3; count++) {
-      expect((await submit(`192.0.2.${count}, 203.0.113.1`)).status).toBe(200)
+      expect((await requestThroughProxy(`192.0.2.${count}, 203.0.113.1`)).status).toBe(200)
     }
-    expect((await submit('192.0.2.99, 203.0.113.1')).status).toBe(429)
-    expect((await submit('192.0.2.99, 203.0.113.2')).status).toBe(200)
-    expect(send).toHaveBeenCalledTimes(4)
+    expect((await requestThroughProxy('192.0.2.99, 203.0.113.1')).status).toBe(429)
+    expect((await requestThroughProxy('192.0.2.99, 203.0.113.2')).status).toBe(200)
   })
 
   describe('user-based rate limiting', () => {

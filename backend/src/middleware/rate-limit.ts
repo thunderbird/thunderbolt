@@ -20,6 +20,7 @@ type RateLimitTier =
   | 'auth'
   | 'integration-oauth'
   | 'contact'
+  | 'contact-global'
   | 'anonymous-sign-in'
   | 'anonymous-sign-in-global'
   | 'captcha-challenge'
@@ -27,12 +28,11 @@ type RateLimitTier =
   | 'debug-transcript-intake'
 /** Tiers with a hardcoded limit; the anonymous sign-in and captcha challenge tiers are configured by the operator. */
 type FixedRateLimitTier = Exclude<RateLimitTier, 'anonymous-sign-in' | 'anonymous-sign-in-global' | 'captcha-challenge'>
-export type UserRateLimitTier = Exclude<FixedRateLimitTier, 'auth' | 'contact'>
+export type UserRateLimitTier = Exclude<FixedRateLimitTier, 'auth'>
 
 type RateLimitTierConfig = {
   max: number
   durationSecs: number
-  enforceWhenDisabled?: boolean
 }
 
 export type RateLimitSettings = {
@@ -53,7 +53,9 @@ const tierConfigs = {
   pro: { max: 100, durationSecs: 60 },
   auth: { max: 10, durationSecs: 60 },
   'integration-oauth': { max: 30, durationSecs: 60 },
-  contact: { max: 3, durationSecs: 60 * 60, enforceWhenDisabled: true },
+  contact: { max: 3, durationSecs: 60 * 60 },
+  // Every visitor shares this one: a sender who rotates addresses never reaches the per-address limit.
+  'contact-global': { max: 30, durationSecs: 60 * 60 },
   'debug-transcript': { max: 10, durationSecs: 60 * 60 },
   'debug-transcript-intake': { max: 600, durationSecs: 60 * 60 },
 } satisfies Record<FixedRateLimitTier, RateLimitTierConfig>
@@ -187,9 +189,7 @@ const createTierLimiter = (database: typeof DbType, ...args: TierArgs) =>
 
 /** IP-keyed middleware for one tier; fails closed like createAuthIpRateLimit. */
 export const createIpTierRateLimit = (database: typeof DbType, settings: IpRateLimitSettings, ...args: TierArgs) => {
-  // Public email intake always needs an abuse limit, even when app limits are disabled.
-  const config: RateLimitTierConfig = args.length === 1 ? tierConfigs[args[0]] : args[1]
-  if (!settings.enabled && !config.enforceWhenDisabled) {
+  if (!settings.enabled) {
     return new Elysia()
   }
   const limiter = createTierLimiter(database, ...args)
@@ -240,7 +240,7 @@ export type RateLimitConsumer = (key: string, set: RateLimitSet) => Promise<{ er
 
 /**
  * Rate limiting whose key is neither the session user nor the IP (an intake client, or the
- * single key of the deployment-wide anonymous sign-in budget).
+ * single key of a deployment-wide budget: anonymous sign-in, website contact email).
  */
 export const createRateLimitConsumer = (
   database: typeof DbType,

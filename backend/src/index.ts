@@ -98,12 +98,10 @@ export const createApp = async (deps?: AppDeps) => {
 
   const rateLimitSettings = { enabled: settings.rateLimitEnabled }
   const ipRateLimitSettings = { ...rateLimitSettings, trustedProxy: settings.trustedProxy }
-  // Public token relays always enforce their IP budget, even when optional API limits are disabled.
-  const integrationOAuthRateLimit = createIpTierRateLimit(
-    database,
-    { ...ipRateLimitSettings, enabled: true },
-    'integration-oauth',
-  )
+  // Public token relays and the public contact form always enforce their limits, even when
+  // optional API limits are disabled.
+  const alwaysOnIpRateLimitSettings = { ...ipRateLimitSettings, enabled: true }
+  const integrationOAuthRateLimit = createIpTierRateLimit(database, alwaysOnIpRateLimitSettings, 'integration-oauth')
   const proRateLimit = createUserTierRateLimit(database, rateLimitSettings, 'pro')
   const inferenceRateLimit = createUserTierRateLimit(database, rateLimitSettings, 'inference')
   // Sizes both the anonymous sign-in bucket and the captcha challenge bucket: every anonymous
@@ -225,7 +223,9 @@ export const createApp = async (deps?: AppDeps) => {
       .use(
         createContactRoutes({
           settings,
-          ipRateLimit: createIpTierRateLimit(database, ipRateLimitSettings, 'contact'),
+          ipRateLimit: createIpTierRateLimit(database, alwaysOnIpRateLimitSettings, 'contact'),
+          emailBudget: createRateLimitConsumer(database, { enabled: true }, 'contact-global'),
+          emailService: deps?.contactEmailService,
         }),
       )
       .use(

@@ -5,6 +5,7 @@
 import type { BrandingAssets } from '@/branding/assets'
 import type { SearchExaClient } from '@/api/search'
 import type { Auth } from '@/auth/auth'
+import type { ContactEmailService } from '@/contact/routes'
 import type { db } from '@/db/client'
 import type { ObservabilityRecorder } from '@/proxy/observability'
 import type { DnsLookup } from '@/utils/url-validation'
@@ -19,6 +20,8 @@ export type AppDeps = {
   database?: typeof db
   auth?: Auth
   waitlistEmailService?: WaitlistEmailService
+  /** Email sender for the website contact form. Tests inject one so no request reaches Resend. */
+  contactEmailService?: ContactEmailService
   /** OTP request cooldown in milliseconds. Default: 15000 (15s). Set to 0 to disable in tests. */
   otpCooldownMs?: number
   /** WebSocket constructor used by the universal proxy WS relay to open upstream

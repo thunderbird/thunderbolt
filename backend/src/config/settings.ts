@@ -101,7 +101,7 @@ const settingsSchema = z
     anthropicApiKey: z.string().default(''),
     anthropicBaseUrl: z.string().default('https://api.anthropic.com'),
     resendMonitoringApiKey: z.string().default(''),
-    contactEmailTo: z.email().max(254).optional(),
+    contactEmailTo: z.email().optional(),
     exaApiKey: z.string().default(''),
     tinfoilApiKey: z.string().default(''),
     // Include the `/v1` API prefix — Tinfoil's OpenAI-compatible endpoints live

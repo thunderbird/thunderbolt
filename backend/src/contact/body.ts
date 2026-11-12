@@ -4,14 +4,23 @@
 
 import { z } from 'zod'
 
+const optionalText = (maxLength: number) => z.string().trim().max(maxLength).optional()
+
+/** The website contact form. Unknown keys are rejected, so a visitor cannot supply a recipient. */
 export const contactBodySchema = z.strictObject({
-  email: z.string().trim().max(254).pipe(z.email()),
-  firstName: z.string().trim().max(150).optional(),
-  lastName: z.string().trim().max(150).optional(),
-  title: z.string().trim().max(150).optional(),
-  org: z.string().trim().max(200).optional(),
-  help: z.string().trim().max(5000).optional(),
-  companySize: z.enum(['', '1 to 50', '51 to 200', '201 to 1,000', '1,001+']).optional(),
+  // The browser's own `type="email"` rule, so an address the form accepts is not refused here.
+  email: z
+    .string()
+    .trim()
+    .max(254)
+    .pipe(z.email({ pattern: z.regexes.html5Email })),
+  firstName: optionalText(150),
+  lastName: optionalText(150),
+  title: optionalText(150),
+  org: optionalText(200),
+  help: optionalText(5000),
+  companySize: optionalText(50),
+  // Honeypot: the form hides this field from people, so only a bot fills it in.
   website: z.literal('').optional(),
 })
 

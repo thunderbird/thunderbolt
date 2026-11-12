@@ -19,8 +19,7 @@ export const OnboardingSearchStep = (props: OnboardingSearchStepProps) => {
   const { t } = useLingui()
   const { onBack, onSkip } = props
   const state = useOnboardingSearchState(props)
-  const { stored, choices, connected, connectionControls, otariEnabled, provider, authorization, choose, back, saved } =
-    state
+  const { stored, choices, connected, connectionControls, provider, authorization, choose, back, saved } = state
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col">
       <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto px-6 py-4">
@@ -32,7 +31,7 @@ export const OnboardingSearchStep = (props: OnboardingSearchStepProps) => {
           />
           {state.view === 'choices' && (
             <>
-              {otariEnabled && stored.connectionStatus && stored.connectionStatus.status !== 'available' && (
+              {stored.connectionStatus && stored.connectionStatus.status !== 'available' && (
                 <p role="status" className="text-center text-sm text-muted-foreground">
                   <Trans>Otari web search isn’t available. Choose a search provider below, or skip for now.</Trans>
                 </p>

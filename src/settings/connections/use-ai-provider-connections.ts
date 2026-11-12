@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useProviderVisibility } from '@/providers/use-provider-visibility'
 import { useLingui } from '@lingui/react/macro'
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -26,13 +25,11 @@ type ConnectionChange = { kind: 'update'; id: string; enabled: boolean } | { kin
 export const useAiProviderConnections = () => {
   const { t } = useLingui()
   const db = useDatabase()
-  const { isProviderVisible } = useProviderVisibility()
   const queryClient = useQueryClient()
-  const { data: allProviders = [], isSuccess: providersReady } = useQuery({
+  const { data: providers = [], isSuccess: providersReady } = useQuery({
     queryKey: ['provider-connections'],
     query: toCompilableQuery(getProviderConnections(db)),
   })
-  const providers = allProviders.filter((connection) => isProviderVisible(connection.provider))
   const { data: modelConnections = [], isSuccess: modelsReady } = useQuery({
     queryKey: ['model-provider-connections'],
     query: toCompilableQuery(getModelProviderConnectionIds(db)),

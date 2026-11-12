@@ -4201,7 +4201,6 @@ msgid "Organize chats with projects."
 msgstr ""
 
 #: src/components/onboarding/onboarding-model-step.tsx
-#: src/settings/preferences.tsx
 msgid "Otari"
 msgstr ""
 

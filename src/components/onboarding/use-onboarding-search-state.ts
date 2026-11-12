@@ -26,7 +26,7 @@ type State = { selection: string | null; view: 'choices' | 'connect' | 'ready' }
 export const useOnboardingSearchState = ({ onContinue }: OnboardingSearchStepProps) => {
   const stored = useSearchProviderStore()
   const connectionControls = useAiProviderConnections()
-  const { connections, configuredConnections, otariEnabled } = useSearchProviderAvailability()
+  const { connections, configuredConnections } = useSearchProviderAvailability()
   const available = connections.filter(canSupplySearch)
   const [state, update] = useReducer((state: State, patch: Partial<State>): State => ({ ...state, ...patch }), {
     selection: stored.selection === 'connection' ? stored.connectionId : null,
@@ -114,7 +114,6 @@ export const useOnboardingSearchState = ({ onContinue }: OnboardingSearchStepPro
   return {
     ...state,
     stored,
-    otariEnabled,
     choices,
     connected,
     connectionControls,

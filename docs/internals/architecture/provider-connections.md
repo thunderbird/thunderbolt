@@ -22,8 +22,6 @@ Onboarding connects a provider and chooses an initial/default model. Otari/Tinfo
 
 Search onboarding uses one choice per provider, reusing an available connection after authorization rather than adding a duplicate choice. Exa and Tavily offer OAuth or an API key; Brave uses an API key. Browser and native OAuth returns resume the originating wizard or aside.
 
-Otari is an opt-in preview under **Settings → Preferences → Preview Features**. The `experimental_feature_otari` setting defaults to false and controls its visibility in onboarding, connections, model selection and search. Switching it off preserves saved connections and models.
-
 ## Migration, backup and rollout
 
 Runtime migrations preserve model IDs, profiles, enabled settings and history. See [standalone mode](standalone-mode.md) for the cross-device legacy credential migration and search-selection behavior. Legacy tables remain readable while older devices and backups can still supply their rows; new authoring flows write connection-owned credentials.

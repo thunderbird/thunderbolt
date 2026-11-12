@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useProviderVisibility } from '@/providers/use-provider-visibility'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Loader2, X } from 'lucide-react'
 import type { UseFormReturn } from 'react-hook-form'
@@ -74,7 +73,6 @@ export const AddModelForm = ({
   showProvider = true,
   showApiKey = true,
 }: AddModelFormProps) => {
-  const { isProviderVisible } = useProviderVisibility()
   const { i18n, t } = useLingui()
   const appName = useAppName()
   const provider = form.watch('provider')
@@ -116,7 +114,6 @@ export const AddModelForm = ({
                   </FormControl>
                   <SelectContent>
                     {providerPickerOrder
-                      .filter(isProviderVisible)
                       .filter((provider) => allowServerModels || provider !== 'thunderbolt')
                       .map((provider) => (
                         <SelectItem key={provider} value={provider}>

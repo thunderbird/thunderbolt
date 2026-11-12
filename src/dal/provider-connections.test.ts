@@ -29,7 +29,6 @@ import {
 import { getProviderConnectionAttempt } from '@/lib/provider-connection-attempt'
 import { addProviderModels } from '@/providers/models'
 import { getModel, getAvailableModels } from './models'
-import { updateSettings } from './settings'
 import { isModelReady } from '@/settings/models/model-policy'
 import { migrateProviderConnections } from '@/lib/data-migrations/provider-connections'
 
@@ -221,7 +220,6 @@ describe('provider connections', () => {
     expect(await getProviderConnections(getDb())).toHaveLength(1)
   })
   it('shares credentials across models without copying them and preserves model toggles', async () => {
-    await updateSettings(getDb(), { experimental_feature_otari: true })
     const id = await connect()
     const ids = await addProviderModels(getDb(), id, [{ id: 'one' }, { id: 'two' }, { id: 'one' }])
     expect(ids).toHaveLength(2)

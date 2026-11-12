@@ -33,6 +33,10 @@ it.each([
     { type: 'key', key: 'Control+a' },
   ],
   [
+    { type: 'key', key: 'Enter', ref: 'doc:1' },
+    { type: 'key', key: 'Enter' },
+  ],
+  [
     { type: 'scroll', deltaY: 0, deltaX: -100 },
     { type: 'scroll', deltaY: 0, deltaX: -100 },
   ],
@@ -43,6 +47,9 @@ it.each([
 ])('constructs the requested action without passing unrelated tool fields (%j)', (input, expected) => {
   expect(parse({ tabId: 'tab', ...input })).toMatchObject(expected)
   expect(parse({ tabId: 'tab', ...input })).not.toHaveProperty('tabId')
+  if (input.type === 'key') {
+    expect(parse({ tabId: 'tab', ...input })).not.toHaveProperty('ref')
+  }
 })
 
 it.each([

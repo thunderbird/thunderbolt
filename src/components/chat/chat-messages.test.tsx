@@ -336,7 +336,7 @@ describe('ChatMessages', () => {
       expect(screen.queryByTestId('loading-status')).toBeNull()
       act(() => useChatStore.getState().updateSession('thread-1', { compactionStatus: 'idle' }))
       expect(wrapper).toHaveStyle({ minHeight: '72dvh' })
-      expect(screen.queryByTestId('loading-status') !== null).toBe(!hasContent)
+      expect(screen.getByTestId('loading-status')).toBeInTheDocument()
     })
 
     const savedMessage = (id: string, summary: string, role: 'user' | 'assistant' = 'assistant') =>
@@ -905,6 +905,66 @@ describe('ChatMessages', () => {
     })
   })
 
+  it('shows an interrupted restored reply with explicit Retry and hides it during a new request', async () => {
+    const message = createTestMessage({
+      id: 'unfinished',
+      role: 'assistant',
+      parts: [{ type: 'reasoning', text: 'Unfinished reasoning', state: 'streaming' }],
+    })
+    const chatInstance = createMockChatInstance([message])
+    hydrateStore({
+      chatInstance,
+      chatThread: createMockChatThread(),
+      id: 'thread-1',
+      selectedModel: null,
+      triggerData: null,
+    })
+    useChatStore.getState().updateSession('thread-1', { interruptedReplyId: message.id })
+    const { rerender } = render(<ChatMessages useChat={createMockUseChat(chatInstance)} />, {
+      wrapper: createTestWrapper(),
+    })
+    expect(screen.getByText(/This reply was interrupted/)).toBeInTheDocument()
+    expect(chatInstance.regenerate).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(chatInstance.regenerate).toHaveBeenCalledTimes(1)
+    const submitted = createMockChatInstance([message], 'submitted')
+    rerender(<ChatMessages useChat={createMockUseChat(submitted)} />)
+    expect(screen.queryByText(/This reply was interrupted/)).toBeNull()
+    expect(screen.getByTestId('loading-status')).toBeInTheDocument()
+    const completed = createMockChatInstance([{ ...message, metadata: { turnOutcome: 'completed' } }])
+    rerender(<ChatMessages useChat={createMockUseChat(completed)} />)
+    expect(screen.queryByText(/This reply was interrupted/)).toBeNull()
+  })
+
+  it('offers manual Retry for a restored framing-only terminal error without displaying private error details', () => {
+    const message = createTestMessage({
+      id: 'failed',
+      role: 'assistant',
+      parts: [{ type: 'step-start' }],
+      metadata: { turnOutcome: 'error' },
+    })
+    const chatInstance = createMockChatInstance([message])
+    hydrateStore({
+      chatInstance,
+      chatThread: createMockChatThread(),
+      id: 'thread-1',
+      selectedModel: null,
+      triggerData: null,
+    })
+    useChatStore.getState().updateSession('thread-1', { retriesExhausted: true })
+    const { rerender } = render(<ChatMessages useChat={createMockUseChat(chatInstance)} />, {
+      wrapper: createTestWrapper(),
+    })
+    expect(screen.getByText('Something went wrong. Please try again.')).toBeInTheDocument()
+    expect(screen.queryByTestId('loading-status')).toBeNull()
+    expect(chatInstance.regenerate).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(chatInstance.regenerate).toHaveBeenCalledTimes(1)
+    rerender(<ChatMessages useChat={createMockUseChat(createMockChatInstance([message], 'submitted'))} />)
+    expect(screen.queryByText('Something went wrong. Please try again.')).toBeNull()
+    expect(screen.getByTestId('loading-status')).toBeInTheDocument()
+  })
+
   describe('submitted loading indicator', () => {
     const setup = (status: 'submitted' | 'ready' | 'streaming', messages: ThunderboltUIMessage[]) => {
       const mockChatInstance = createMockChatInstance(messages, status)
@@ -939,13 +999,14 @@ describe('ChatMessages', () => {
       expect(container.querySelector('.animate-spin')).toBeNull()
     })
 
-    it('does not render the indicator when an assistant message already exists', () => {
+    it('keeps the indicator visible while awaiting a continuation after assistant text', () => {
       const messages: ThunderboltUIMessage[] = [
         createTestMessage({ role: 'user', parts: [{ type: 'text', text: 'Hi' }] }),
         createTestMessage({ id: 'msg-2', role: 'assistant', parts: [{ type: 'text', text: 'reply' }] }),
       ]
       const { container } = setup('submitted', messages)
-      expect(container.querySelector('.animate-spin')).toBeNull()
+      expect(container.querySelectorAll('.animate-spin')).toHaveLength(1)
+      expect(screen.getByTestId('loading-status')).toHaveTextContent('Working…')
     })
   })
 })

@@ -147,3 +147,72 @@ describe('moveChatToProject', () => {
     expect(deps.updateOpenSession).toHaveBeenCalledWith('chat-1', 'p2')
   })
 })
+
+describe('environment confirmation at the serialized write boundary', () => {
+  it('requests confirmation without writing and releases the chat queue while the user decides', async () => {
+    const guarded = makeDeps({ getEnvironmentChange: async () => 'sandbox-chat-to-project' })
+    await expect(moveChatToProject({ chatThreadId: 'chat-1', projectId: 'p1' }, guarded)).rejects.toMatchObject({
+      name: 'ProjectMoveConfirmationRequired',
+      environmentChange: 'sandbox-chat-to-project',
+    })
+    expect(guarded.setProject).not.toHaveBeenCalled()
+    expect(await withChatThreadWrite('chat-1', async () => 'queue available')).toBe('queue available')
+    await moveChatToProject({ chatThreadId: 'chat-1', projectId: 'p1' }, guarded, 'sandbox-chat-to-project')
+    expect(guarded.setProject).toHaveBeenCalledTimes(1)
+  })
+
+  it('moves immediately when the effective workspace does not change', async () => {
+    const guarded = makeDeps({ getEnvironmentChange: async () => null })
+    await moveChatToProject({ chatThreadId: 'chat-1', projectId: 'p1' }, guarded)
+    expect(guarded.setProject).toHaveBeenCalledTimes(1)
+  })
+
+  it('requires new consent when an environment changes while confirmation is open', async () => {
+    const guarded = makeDeps({ getEnvironmentChange: async () => 'new-folder' })
+    await expect(
+      moveChatToProject({ chatThreadId: 'chat-1', projectId: 'p1' }, guarded, 'previous-folder'),
+    ).rejects.toMatchObject({
+      name: 'ProjectMoveConfirmationRequired',
+      environmentChange: 'new-folder',
+    })
+    expect(guarded.setProject).not.toHaveBeenCalled()
+  })
+
+  it('rejects confirmation if a new agent turn started while the modal was open', async () => {
+    const guarded = makeDeps({
+      getEnvironmentChange: async () => 'approved-change',
+      getOpenSession: () => ({
+        projectId: null,
+        stopping: false,
+        retryCount: 0,
+        retriesExhausted: false,
+        chatInstance: { status: 'streaming' },
+      }),
+    })
+    await expect(
+      moveChatToProject({ chatThreadId: 'chat-1', projectId: 'p1' }, guarded, 'approved-change'),
+    ).rejects.toThrow('Stop the current reply')
+    expect(guarded.setProject).not.toHaveBeenCalled()
+  })
+})
+
+it('rechecks active execution after reading the environment declarations', async () => {
+  let status: 'ready' | 'streaming' = 'ready'
+  const guarded = makeDeps({
+    getEnvironmentChange: async () => {
+      status = 'streaming'
+      return 'approved-change'
+    },
+    getOpenSession: () => ({
+      projectId: null,
+      stopping: false,
+      retryCount: 0,
+      retriesExhausted: false,
+      chatInstance: { status },
+    }),
+  })
+  await expect(
+    moveChatToProject({ chatThreadId: 'chat-1', projectId: 'p1' }, guarded, 'approved-change'),
+  ).rejects.toThrow('Stop the current reply')
+  expect(guarded.setProject).not.toHaveBeenCalled()
+})

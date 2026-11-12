@@ -21,7 +21,7 @@ export const useSshEnvironmentStatus = (id?: string) => {
   const desktop = isTauriDesktop()
   const available = desktop && Boolean(environment && !environment.deletedAt)
   const query = useQuery({
-    queryKey: ['ssh-environment-status', connectionKey, environment?.cwd],
+    queryKey: ['ssh-environment-status', connectionKey],
     enabled: available,
     initialData: cached,
     initialDataUpdatedAt: cached?.checkedAt,
@@ -29,17 +29,18 @@ export const useSshEnvironmentStatus = (id?: string) => {
       if (!environment || environment.deletedAt || !connection || !desktop) {
         throw new Error('SSH environment is unavailable')
       }
+      const observedStatus = useSshEnvironmentsStore.getState().connectionStatuses[environment.id]
       try {
         await invokeSshRequest<{ cwd: string; platform: string }>(
           createSshInvoke(connection, invoke),
           connection,
-          { operation: 'probe', cwd: environment.cwd, owner: environment.id },
+          { operation: 'probe', cwd: '~', owner: environment.id },
           signal,
         )
         return { connectionKey: connectionKey!, checkedAt: Date.now(), status: 'connected' as const }
       } catch (error) {
         if (!signal.aborted) {
-          useSshEnvironmentsStore.getState().recordConnectionStatus(connection, 'disconnected')
+          useSshEnvironmentsStore.getState().recordConnectionStatus(connection, 'disconnected', observedStatus)
         }
         throw error
       }
@@ -50,7 +51,7 @@ export const useSshEnvironmentStatus = (id?: string) => {
     retry: false,
   })
   const status = !available
-    ? 'disconnected'
+    ? 'unavailable'
     : cached?.status === 'connected'
       ? 'connected'
       : query.isFetching

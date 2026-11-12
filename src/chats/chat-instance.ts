@@ -1086,9 +1086,17 @@ export const createChatInstance = (
       }
       /** Persist the terminal snapshot independently of mounted UI subscribers. */
       const saveFinalMessage = async (completedMessage: ThunderboltUIMessage) => {
+        const terminalMessage: ThunderboltUIMessage = {
+          ...completedMessage,
+          metadata: {
+            ...completedMessage.metadata,
+            turnOutcome: isAbort ? 'stopped' : isError ? 'error' : 'completed',
+          },
+        }
+        instance.messages = instance.messages.map((item) => (item.id === terminalMessage.id ? terminalMessage : item))
         finishedTurn.telemetry?.startPhase('final_save')
         try {
-          await saveMessages({ id, messages: [completedMessage] })
+          await saveMessages({ id, messages: [terminalMessage] })
         } catch (error) {
           releaseBrowserControl(finishedTurn)
           throw error
@@ -1201,6 +1209,14 @@ export const createChatInstance = (
       // side effects. Only the user may choose to submit it again.
       if (getChatErrorKind(lastError) === 'connection-lost') {
         markRetriesExhausted(finishedTurn)
+        return
+      }
+
+      // Regeneration discards this attempt's tool history, but cannot undo its
+      // effects. Even an unfinished or failed tool may already have changed
+      // files or external state. Preserve the partial reply for explicit Retry.
+      if (message?.parts.some((part) => 'toolCallId' in part)) {
+        markRetriesExhausted(finishedTurn, 'tool_execution_started')
         return
       }
 

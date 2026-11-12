@@ -179,3 +179,16 @@ it('resets previous connection health after replacing only a saved password', as
     queryKey: ['ssh-environment-status', JSON.stringify(sshConnection(environment))],
   })
 })
+
+it('keeps connection health when only the default workspace changes', async () => {
+  const reset = spyOn(queryClient, 'resetQueries').mockResolvedValue(undefined)
+  const store = useSshEnvironmentsStore.getState()
+  store.saveEnvironment(environment)
+  store.recordConnectionStatus(sshConnection(environment), 'connected')
+  const { result } = renderHook(() => useSshEnvironmentFormState(environment, mock()))
+  act(() => result.current.dispatch({ field: 'cwd', value: '~/another-project' }))
+  await act(async () => result.current.submit())
+  expect(useSshEnvironmentsStore.getState().environments[environment.id].cwd).toBe('~/another-project')
+  expect(useSshEnvironmentsStore.getState().connectionStatuses[environment.id].status).toBe('connected')
+  expect(reset).not.toHaveBeenCalled()
+})

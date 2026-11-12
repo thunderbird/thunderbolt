@@ -5,7 +5,7 @@
 import { useProjectExecution } from '@/agent-execution/use-project-execution'
 import { SshEnvironmentStatus } from '@/components/ssh-environments'
 
-/** Use the synced SSH identity so unavailable environments still show as disconnected. */
+/** Use the synced identity so unavailable profiles remain distinct from failed connections. */
 export const ProjectSshStatus = ({ projectId }: { projectId: string }) => {
   const { declaration } = useProjectExecution(projectId)
   return declaration?.location === 'ssh' ? <SshEnvironmentStatus environmentId={declaration.environmentId} /> : null

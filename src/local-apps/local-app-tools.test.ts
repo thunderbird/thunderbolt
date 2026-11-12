@@ -27,8 +27,9 @@ const fixture = (record = app) => {
     status: mock(async () => ready),
     stop: mock(async () => ({ ...ready, status: 'stopped' as const })),
     restart: mock(async () => ready),
+    update: mock(async () => ready),
   } satisfies LocalAppToolController
-  const open = mock(() => {})
+  const open = mock(() => 'session-one')
   return { controller, open, tools: createLocalAppTools({ owner: app.owner, cwd: app.cwd, onOpen: open }, controller) }
 }
 
@@ -47,7 +48,7 @@ describe('local app tools', () => {
       title: app.title,
       source: { kind: 'local-app', appId: app.id, projectId: app.owner.id },
     })
-    expect(result).toMatchObject({ appId: app.id, status: 'ready' })
+    expect(result).toMatchObject({ appId: app.id, sessionId: 'session-one', status: 'ready' })
     expect(JSON.stringify(result)).not.toContain(app.cwd)
     expect(JSON.stringify(result)).not.toContain(ready.url!)
     expect(result).not.toHaveProperty('launch')
@@ -59,13 +60,56 @@ describe('local app tools', () => {
       { ...app, cwd: '/different' },
     ]) {
       const { tools, controller } = fixture(record)
-      for (const action of ['start', 'status', 'stop', 'restart']) {
+      for (const action of ['start', 'status', 'stop', 'restart', 'update']) {
         await expect(run(tools.local_app, { action, appId: app.id })).rejects.toThrow('current environment')
       }
+      expect(controller.update).not.toHaveBeenCalled()
       expect(controller.start).not.toHaveBeenCalled()
       expect(controller.status).not.toHaveBeenCalled()
       expect(await run(tools.local_app, { action: 'list' })).toEqual({ apps: [] })
     }
+  })
+
+  it.each(['start', 'restart', 'update'] as const)(
+    'returns the live session id after %s and retains the page identity',
+    async (action) => {
+      const { tools, controller, open } = fixture()
+      const result = await run(tools.local_app, { action, appId: app.id, args: ['server.cjs'], port: null })
+      expect(result).toMatchObject({
+        appId: app.id,
+        page: { id: 'local-app:app-one' },
+        sessionId: 'session-one',
+        status: 'ready',
+      })
+      expect(open).toHaveBeenCalledTimes(1)
+      expect(controller.create).not.toHaveBeenCalled()
+      if (action === 'update') {
+        expect(controller.update).toHaveBeenCalledWith(
+          app.id,
+          { args: ['server.cjs'], executable: undefined, port: null },
+          undefined,
+        )
+        expect(controller.start).not.toHaveBeenCalled()
+        expect(result).toHaveProperty('updated', true)
+      }
+    },
+  )
+
+  it('does not reopen a failed or cancelled update', async () => {
+    const { tools, controller, open } = fixture()
+    controller.update.mockRejectedValue(new Error('Invalid entrypoint'))
+    await expect(run(tools.local_app, { action: 'update', appId: app.id, args: ['missing.cjs'] })).rejects.toThrow(
+      'Invalid entrypoint',
+    )
+    expect(open).not.toHaveBeenCalled()
+    expect(controller.create).not.toHaveBeenCalled()
+    await expect(
+      tools.local_app.execute!(
+        { action: 'update', appId: app.id, args: ['server.cjs'] },
+        { toolCallId: 'aborted', messages: [], abortSignal: AbortSignal.abort() },
+      ),
+    ).rejects.toThrow()
+    expect(controller.update).toHaveBeenCalledTimes(1)
   })
 
   it('rejects malformed creation before persisting or launching anything', async () => {

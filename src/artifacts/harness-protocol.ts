@@ -18,11 +18,11 @@ export type HarnessMessage =
   | {
       artifactNonce: string
       type: 'artifact-error'
-      reason: 'exception' | 'unhandled-rejection' | 'handler'
+      reason: 'exception' | 'unhandled-rejection'
       detail: string
     }
   /** Reply to a {@link HarnessRequest}, correlated by `id`. */
-  | { artifactNonce: string; type: 'artifact-reply'; id: number; result: unknown }
+  | { artifactNonce: string; type: 'artifact-reply'; id: number; result: unknown; error?: string }
 
 export type HarnessRequest = {
   artifactNonce: string
@@ -49,6 +49,9 @@ export type HarnessRequest = {
 export const artifactCsp =
   "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; font-src data: blob:; media-src data: blob:; worker-src blob:; base-uri 'none'; form-action 'none'"
 
+/** Enable local submit handlers while CSP blocks outbound forms; retain an opaque origin. */
+export const artifactSandbox = 'allow-scripts allow-forms'
+
 const cspMetaTag = (): string => `<meta http-equiv="Content-Security-Policy" content="${artifactCsp}">`
 
 /** Turn a harness error message into a single human-readable line. */
@@ -66,9 +69,6 @@ export const formatHarnessError = (message: Extract<HarnessMessage, { type: 'art
 const harnessErrorLabels: Record<Extract<HarnessMessage, { type: 'artifact-error' }>['reason'], string> = {
   exception: 'Uncaught error',
   'unhandled-rejection': 'Unhandled promise rejection',
-  // A host request the page answered by throwing. The host still gets its
-  // `null`, so the gesture fails quietly; this is what makes the *cause* visible.
-  handler: 'Error answering a host request',
 }
 
 /** Page scripts can overwrite their harness, so the host bounds all reported diagnostic text. */
@@ -79,7 +79,7 @@ const harnessMessageSchema = z.discriminatedUnion('type', [
   z.object({
     artifactNonce: z.string(),
     type: z.literal('artifact-error'),
-    reason: z.enum(['exception', 'unhandled-rejection', 'handler']),
+    reason: z.enum(['exception', 'unhandled-rejection']),
     detail: clampedString(2_000),
   }),
   z.object({
@@ -87,6 +87,7 @@ const harnessMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('artifact-reply'),
     id: z.number().int(),
     result: z.unknown(),
+    error: clampedString(2_000).optional(),
   }),
 ])
 
@@ -162,13 +163,9 @@ const harnessScript = (nonce: string): string => `<script>
     var handlers = window.__artifactHandlers || {};
     var handler = handlers[d.method];
     var reply = function (result) { send({ type: 'artifact-reply', id: d.id, result: result }); };
-    // A thrown handler and "nothing here" both answer null — the host cannot act
-    // on the difference, and inventing an error channel for it would widen the
-    // protocol for one case. But it reports the throw to the host as a runtime
-    // error, so a broken artifact is visible rather than looking empty.
+    // Request failures belong to that operation, not the page's runtime health.
     var replyFailed = function (err) {
-      send({ type: 'artifact-error', reason: 'handler', detail: String((err && err.message) || err).slice(0, MAX_DETAIL) });
-      reply(null);
+      send({ type: 'artifact-reply', id: d.id, result: null, error: String((err && err.message) || err).slice(0, MAX_DETAIL) });
     };
     if (!handler) { reply(null); return; }
     try {

@@ -45,6 +45,8 @@ describe('runIframeVerification', () => {
   it('fails with a timeout error and removes its iframe when the page never signals ready', async () => {
     const before = document.querySelectorAll('iframe').length
     const promise = runIframeVerification(validHtml, { timeoutMs: 100 })
+    expect(document.querySelector('iframe')?.getAttribute('sandbox')).toBe('allow-scripts allow-forms')
+    expect(document.querySelector('iframe')?.srcdoc).toContain("form-action 'none'")
     // Grace window (250ms) exceeds the timeout, so the hard timeout wins even if
     // the environment happens to post a ready message.
     await getClock().tickAsync(120)

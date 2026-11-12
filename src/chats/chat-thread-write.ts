@@ -4,7 +4,7 @@
 
 const pendingWrites = new Map<string, Promise<void>>()
 
-/** Serialize initial thread creation and project moves, including their live session updates. */
+/** Serialize thread creation, message persistence, and project moves with their live session updates. */
 export const withChatThreadWrite = async <T>(chatThreadId: string, write: () => Promise<T>): Promise<T> => {
   const previous = pendingWrites.get(chatThreadId)
   const { promise, resolve } = Promise.withResolvers<void>()

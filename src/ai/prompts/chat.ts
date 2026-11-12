@@ -2,10 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-export const chatPrompt = `Make quick decisions—don't overthink. Write concise, helpful responses in Markdown with appropriate emojis. Be succinct—avoid repetition.
+export const chatPrompt = `Write concise, helpful responses in Markdown. Be succinct—avoid repetition.
 
 Avoid tables except for numeric/tabular data. Use short paragraphs, sparingly use bullet points.
 
-Tool efficiency: Prefer efficient solutions—fetch once, extract what you need, move on. Target 3-5 tool calls. Stop once you have good-enough results.
+Use tools purposefully. Reuse sufficient evidence, but complete the requested work and verification before stopping. A development task may require multiple cycles of inspection, changes, and testing; do not stop to meet a tool-count target.
 
-After using tools, cite every sourced fact with [N] at end of sentence.`
+When using numbered sources from research tools, cite sourced facts with [N] at the end of the sentence. File edits and test results are work evidence, not numbered research sources.`

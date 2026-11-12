@@ -11,12 +11,19 @@ import { pageDefinitionSchema, pageReferenceSchema } from './page-schema'
 // JSON can escape every source character as six bytes. Bound parsing before allocating it.
 const maxResultCharacters = 16 * 1024 * 1024
 
-export type PublishedPageOutput = { page: PageDefinition; sessionId?: string }
+export type PublishedPageOutput = {
+  page: PageDefinition
+  sessionId?: string
+  updated?: boolean
+  presentation?: 'sidebar' | 'inline'
+}
 const outputSchema = z.object({
   ok: z.boolean().optional(),
   page: pageDefinitionSchema,
   sessionId: pageReferenceSchema.optional(),
   status: z.string().optional(),
+  updated: z.boolean().optional(),
+  presentation: z.enum(['sidebar', 'inline']).optional(),
 })
 const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -32,7 +39,7 @@ export const publishedPageOutput = (part: UIMessage['parts'][number]): Published
   }
   if (
     name === 'local_app' &&
-    (!record(part.input) || !['create', 'start', 'restart'].includes(String(part.input.action)))
+    (!record(part.input) || !['create', 'start', 'restart', 'update'].includes(String(part.input.action)))
   ) {
     return null
   }
@@ -50,7 +57,12 @@ export const publishedPageOutput = (part: UIMessage['parts'][number]): Published
     } else if (result.data.ok !== true || page.source.kind !== (name === 'page_show_file' ? 'html' : 'url')) {
       return null
     }
-    return { page, ...(sessionId ? { sessionId } : {}) }
+    return {
+      page,
+      ...(sessionId ? { sessionId } : {}),
+      ...(result.data.updated !== undefined ? { updated: result.data.updated } : {}),
+      ...(result.data.presentation ? { presentation: result.data.presentation } : {}),
+    }
   }
   if (!record(part.output)) {
     return null

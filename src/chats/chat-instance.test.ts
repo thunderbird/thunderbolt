@@ -1030,6 +1030,62 @@ describe('createChatInstance — retry policy', () => {
     expect(autoRetry?.attempt).toBe(1)
   })
 
+  it.each([
+    { state: 'input-streaming', input: undefined },
+    { state: 'input-available', input: { path: 'index.html' } },
+    { state: 'output-available', input: { path: 'index.html' }, output: 'File written' },
+    { state: 'output-error', input: { path: 'index.html' }, errorText: 'Connection lost after writing' },
+  ] as const)('keeps a failed turn with a $state tool for explicit Retry', async (toolState) => {
+    const saved: ThunderboltUIMessage[] = []
+    const { instance, finishWithError, regenerate, trackEvent } = createRetryHarness(async ({ messages }) => {
+      saved.push(...messages)
+    })
+    const partial: ThunderboltUIMessage = {
+      id: 'partial-assistant',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'Creating the page' },
+        { type: 'dynamic-tool', toolName: 'write', toolCallId: 'write-1', ...toolState },
+      ],
+    }
+    instance.messages = [{ id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Create a page' }] }, partial]
+
+    await finishWithError(new Error('503: temporarily unavailable'), partial)
+    await getClock().tickAsync(60_000)
+
+    expect(regenerate).not.toHaveBeenCalled()
+    expect(saved.at(-1)?.parts).toEqual(partial.parts)
+    expect(instance.messages.at(-1)?.parts).toEqual(partial.parts)
+    expect(useChatStore.getState().sessions.get(sessionId)).toMatchObject({ retryCount: 0, retriesExhausted: true })
+    expect(trackEvent.mock.calls.find(([event]) => event === 'chat_retries_exhausted')?.[1]?.reason).toBe(
+      'tool_execution_started',
+    )
+
+    await instance.regenerate()
+    expect(regenerate).toHaveBeenCalledTimes(1)
+    expect(useChatStore.getState().sessions.get(sessionId)?.retriesExhausted).toBe(false)
+  })
+
+  it('still retries a plain response when only a previous turn used tools', async () => {
+    const { instance, finishWithError, regenerate } = createRetryHarness()
+    instance.messages = [
+      { id: 'old-user', role: 'user', parts: [{ type: 'text', text: 'Create a page' }] },
+      {
+        id: 'old-assistant',
+        role: 'assistant',
+        parts: [{ type: 'tool-write', toolCallId: 'write-1', state: 'output-available', input: {}, output: 'Written' }],
+      },
+      { id: 'new-user', role: 'user', parts: [{ type: 'text', text: 'Explain the design' }] },
+    ]
+    await finishWithError(new Error('503: temporarily unavailable'), {
+      id: 'new-assistant',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'The design uses' }],
+    })
+    await getClock().tickAsync(3_000)
+    expect(regenerate).toHaveBeenCalledTimes(1)
+  })
+
   it('drops the empty shell of an aborted loader turn without re-sending it', async () => {
     const { instance, finishAbortedEmpty, wouldAutoSend } = createRetryHarness()
     ;(instance as unknown as { status: string }).status = 'submitted'
@@ -1570,6 +1626,38 @@ describe('createChatInstance — retry policy', () => {
     const sendProperties = trackEvent.mock.calls.find(([event]) => event === 'chat_send_prompt')?.[1]
     expect(sendProperties).toEqual(expect.objectContaining({ length: prompt.length }))
   })
+
+  it.each(['completed', 'error', 'stopped'] as const)(
+    'persists the %s terminal outcome while preserving existing metadata',
+    async (outcome) => {
+      const saved: ThunderboltUIMessage[] = []
+      const { instance, finishSuccessfully, finishWithError, finishAborted } = createRetryHarness(
+        async ({ messages }) => {
+          saved.push(...messages)
+        },
+      )
+      const partial: ThunderboltUIMessage = {
+        id: outcome === 'stopped' ? 'aborted-assistant' : 'partial',
+        role: 'assistant',
+        parts: [{ type: 'reasoning', text: 'Preserved thoughts', state: 'streaming' }],
+        metadata: { modelId: 'selected-model', reasoningTime: { 'reasoning-0': 15 } },
+      }
+      instance.messages = [partial]
+      if (outcome === 'completed') {
+        await finishSuccessfully(partial)
+      } else if (outcome === 'error') {
+        await finishWithError(new Error(JSON.stringify({ kind: 'connection-lost', error: 'Connection lost' })), partial)
+      } else {
+        await finishAborted()
+      }
+      expect(saved.at(-1)?.metadata).toMatchObject({
+        turnOutcome: outcome,
+        modelId: 'selected-model',
+        reasoningTime: { 'reasoning-0': 15 },
+      })
+      expect(instance.messages.at(-1)?.metadata?.turnOutcome).toBe(outcome)
+    },
+  )
 
   it('omits transcript correlation from persisted user and assistant messages when capture is disabled', async () => {
     const saveMessages = mock(async (_input: Parameters<SaveMessagesFunction>[0]) => {})
@@ -2145,6 +2233,94 @@ const createWebRetryChat = (webCalls: number, errorText = '503: temporarily unav
 describe('logical-turn web retry state through the SDK', () => {
   beforeEach(() => resetStore())
   afterEach(() => resetStore())
+
+  it.each(['input-available', 'output-available'] as const)(
+    'does not replay a streamed coding call after a provider failure (%s)',
+    async (state) => {
+      const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+      const saved: ThunderboltUIMessage[] = []
+      const requests: string[] = []
+      const adapter: AgentAdapter = {
+        ...makeAdapter(builtInAgent),
+        fetch: async (init) => {
+          requests.push(String(init.body))
+          const firstAttempt = requests.length === 1
+          const chunks = [
+            { type: 'start', messageId: `attempt-${requests.length}` },
+            { type: 'text-start', id: 'text' },
+            { type: 'text-delta', id: 'text', delta: firstAttempt ? 'Creating the page' : 'Completed' },
+            { type: 'text-end', id: 'text' },
+            ...(firstAttempt
+              ? [
+                  { type: 'tool-input-start', toolCallId: 'write-1', toolName: 'write' },
+                  {
+                    type: 'tool-input-available',
+                    toolCallId: 'write-1',
+                    toolName: 'write',
+                    input: { path: 'index.html', content: '<h1>Hello</h1>' },
+                  },
+                  ...(state === 'output-available'
+                    ? [{ type: 'tool-output-available', toolCallId: 'write-1', output: 'File written' }]
+                    : []),
+                  { type: 'error', errorText: '503: temporarily unavailable' },
+                ]
+              : []),
+            { type: 'finish' },
+          ]
+          return new Response(
+            chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join('') + 'data: [DONE]\n\n',
+            {
+              headers: { 'Content-Type': 'text/event-stream' },
+            },
+          )
+        },
+      }
+      const instance = createChatInstance(
+        sessionId,
+        [],
+        async ({ messages }) => {
+          saved.push(...messages)
+        },
+        httpClient,
+        getProxyFetch,
+        {
+          getAvailableModels: async () => useChatStore.getState().models,
+          getChatReasoningEffort: async () => undefined,
+          getOrConnectAdapter: async () => adapter,
+          trackEvent: () => {},
+        },
+      )
+      hydrateStore({
+        chatInstance: instance,
+        chatThread: null,
+        id: sessionId,
+        models: testModels,
+        selectedModel: testModels[0],
+        triggerData: null,
+      })
+      try {
+        await instance.sendMessage({ text: 'Create a page' })
+        await getClock().tickAsync(60_000)
+
+        expect(requests).toHaveLength(1)
+        expect(instance.messages.at(-1)?.parts).toContainEqual(
+          expect.objectContaining({ type: 'tool-write', toolCallId: 'write-1', state }),
+        )
+        expect(saved.at(-1)?.parts).toEqual(instance.messages.at(-1)?.parts)
+        expect(useChatStore.getState().sessions.get(sessionId)).toMatchObject({
+          retryCount: 0,
+          retriesExhausted: true,
+        })
+
+        await instance.regenerate()
+        expect(requests).toHaveLength(2)
+        expect(instance.messages.at(-1)?.parts).toContainEqual(expect.objectContaining({ text: 'Completed' }))
+      } finally {
+        await instance.stop()
+        consoleError.mockRestore()
+      }
+    },
+  )
 
   it.each([
     ['manual', 'removed'],

@@ -4,12 +4,13 @@
 
 import { tool, type Tool } from 'ai'
 import { z } from 'zod'
-import type { PageDefinition, PageSnapshot } from '@shared/page-protocol'
+import type { PageDefinition } from '@shared/page-protocol'
 import { actionSchema, actionFromInput } from '@/browser/action-schema'
 import { browserController } from '@/browser/browser-controller'
 import { isMobile } from '@/lib/platform'
 import { pageController, type PageOperationOptions } from './page-controller'
 import { pageUrlSchema } from './page-schema'
+import { pageSnapshotModelOutput } from './page-model-output'
 
 const sessionId = z.string().min(1).max(200)
 const observationInput = z.object({ sessionId, screenshot: z.boolean().optional() })
@@ -19,23 +20,6 @@ const navigationInput = z.object({
   url: pageUrlSchema.optional(),
 })
 const interactionInput = actionSchema.omit({ tabId: true }).extend({ sessionId })
-
-export const pageSnapshotModelOutput = ({ output }: { output: PageSnapshot }) => {
-  const { screenshot, ...page } = output
-  return {
-    type: 'content' as const,
-    value: [
-      {
-        type: 'text' as const,
-        text: JSON.stringify({
-          ...page,
-          ...(screenshot ? { screenshotSize: { width: screenshot.width, height: screenshot.height } } : {}),
-        }),
-      },
-      ...(screenshot ? [{ type: 'image-data' as const, data: screenshot.data, mediaType: screenshot.mediaType }] : []),
-    ],
-  }
-}
 
 type PageToolOptions = {
   controller?: typeof pageController

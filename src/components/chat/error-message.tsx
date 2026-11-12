@@ -22,6 +22,7 @@ import { Loader2 } from 'lucide-react'
 import { memo } from 'react'
 
 const defaultChatErrorMessage = msg`Something went wrong. Please try again.`
+const interruptedReplyMessage = msg`This reply was interrupted before it finished. Retrying may repeat actions the agent already performed.`
 const causeSpecificErrorMessages: Partial<Record<ChatErrorKind, MessageDescriptor>> = {
   attestation: msg`Couldn't verify the secure AI connection. This is usually temporary — try again in a moment.`,
   timeout: msg`The AI provider took too long to respond. Try again.`,
@@ -72,6 +73,7 @@ const getFinalChatErrorMessage = (error?: Error | null): MessageDescriptor => {
 type ErrorMessageProps = {
   retryCount: number
   retriesExhausted: boolean
+  interrupted?: boolean
   error?: Error | null
   onRetry?: () => void
   /** True when the turn failed on an unreadable attachment with no delivery mode
@@ -88,6 +90,7 @@ export const ErrorMessage = memo(
   ({
     retryCount,
     retriesExhausted,
+    interrupted = false,
     error,
     onRetry,
     deliveryExhausted,
@@ -170,7 +173,7 @@ export const ErrorMessage = memo(
             {deliveryExhausted ? (
               <Trans>This model couldn&apos;t read the attached file. Try a different model.</Trans>
             ) : (
-              i18n._(getFinalChatErrorMessage(error))
+              i18n._(interrupted ? interruptedReplyMessage : getFinalChatErrorMessage(error))
             )}
           </p>
           <div className="flex shrink-0 items-center gap-2">

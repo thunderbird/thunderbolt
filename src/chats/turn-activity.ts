@@ -20,7 +20,7 @@ export type TurnActivity = {
   isStreaming: boolean
   /** A live request: the model is thinking (`submitted`) or emitting (`streaming`). */
   isGenerating: boolean
-  /** `submitted` with no assistant message yet to host the loading indicator. */
+  /** Waiting for a response, including a continuation after an assistant message. */
   showSubmittedLoading: boolean
   emptyAssistantTurn: boolean
   /** The model returned an empty turn and the app is (or should be) recovering
@@ -57,10 +57,16 @@ export const getTurnActivity = ({
 }: TurnActivityInput): TurnActivity => {
   const isStreaming = status === 'streaming'
   const isGenerating = status === 'submitted' || isStreaming
-  const showSubmittedLoading = status === 'submitted' && lastMessage?.role !== 'assistant'
-  const emptyAssistantTurn = lastMessage?.role === 'assistant' && !lastMessage.parts?.length && !isStreaming
+  const showSubmittedLoading = status === 'submitted'
+  const emptyAssistantTurn =
+    lastMessage?.role === 'assistant' &&
+    !lastMessage.metadata?.turnOutcome &&
+    !lastMessage.parts.some((part) => part.type !== 'step-start') &&
+    !isStreaming
+  const savedFailure =
+    lastMessage?.role === 'assistant' && lastMessage.metadata?.turnOutcome === 'error' && !isGenerating
   const pendingEmptyTurnRecovery = emptyAssistantTurn && !hasChatError && !retriesExhausted
-  const hasError = hasChatError || (emptyAssistantTurn && retriesExhausted)
+  const hasError = hasChatError || savedFailure || (emptyAssistantTurn && retriesExhausted)
   const isActive = isGenerating || pendingEmptyTurnRecovery || (retryCount > 0 && !retriesExhausted)
   return {
     isStreaming,

@@ -65,7 +65,6 @@ describe('formatHarnessError', () => {
   it.each([
     ['exception', 'Uncaught error'],
     ['unhandled-rejection', 'Unhandled promise rejection'],
-    ['handler', 'Error answering a host request'],
   ] as const)('labels %s', (reason, label) => {
     const line = formatHarnessError({
       artifactNonce: 'n',
@@ -119,6 +118,21 @@ describe('parseHarnessMessage', () => {
       result: { documentId: 'document', elements: [] },
     }
     expect(parseHarnessMessage(data, nonce)).toEqual(data)
+  })
+
+  it('bounds correlated request errors without turning them into page runtime errors', () => {
+    const parsed = parseHarnessMessage(
+      { artifactNonce: nonce, type: 'artifact-reply', id: 4, result: null, error: 'x'.repeat(2_001) },
+      nonce,
+    )
+    expect(parsed?.type).toBe('artifact-reply')
+    expect(parsed?.type === 'artifact-reply' && parsed.error).toHaveLength(2_000)
+    expect(
+      parseHarnessMessage(
+        { artifactNonce: nonce, type: 'artifact-error', reason: 'handler', detail: 'Stale operation error' },
+        nonce,
+      ),
+    ).toBeNull()
   })
 
   it('rejects an unknown message type rather than passing it through', () => {

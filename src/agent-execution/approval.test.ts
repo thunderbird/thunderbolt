@@ -34,6 +34,27 @@ describe('built-in tool approval', () => {
     expect(requestPermission).toHaveBeenCalledTimes(1)
   })
 
+  it('asks before changing a local app launch recipe and does not execute denied updates', async () => {
+    const execute = mock(async () => 'restarted')
+    const requestPermission = mock(
+      async (): Promise<RequestPermissionResponse> => ({ outcome: { outcome: 'selected', optionId: 'deny' } }),
+    )
+    const authorize = createToolAuthorizer(
+      { location: 'computer', cwd: '/workspace', access: 'ask' },
+      { threadId: 'chat', requestPermission },
+    )
+    const tools = withToolApproval(
+      { local_app: tool({ inputSchema: z.object({ action: z.literal('update'), appId: z.string() }), execute }) },
+      authorize,
+      undefined,
+    )
+    await expect(
+      tools.local_app.execute!({ action: 'update', appId: 'existing' }, { toolCallId: 'update-app', messages: [] }),
+    ).rejects.toThrow('denied')
+    expect(requestPermission).toHaveBeenCalledTimes(1)
+    expect(execute).not.toHaveBeenCalled()
+  })
+
   it('continues the approval queue after a denied action', async () => {
     const replies = ['deny', 'allow']
     const authorize = createToolAuthorizer(

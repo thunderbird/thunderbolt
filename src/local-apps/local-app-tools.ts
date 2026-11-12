@@ -11,16 +11,16 @@ import { localAppController } from './local-app-controller'
 export type LocalAppToolOptions = {
   owner: LocalAppOwner
   cwd: string
-  onOpen: (page: PageDefinition) => unknown | Promise<unknown>
+  onOpen: (page: PageDefinition) => string | Promise<string>
 }
 
 export type LocalAppToolController = Pick<
   typeof localAppController,
-  'create' | 'list' | 'get' | 'start' | 'status' | 'stop' | 'restart'
+  'create' | 'list' | 'get' | 'start' | 'status' | 'stop' | 'restart' | 'update'
 >
 
 const localAppSchema = z.object({
-  action: z.enum(['list', 'create', 'start', 'status', 'stop', 'restart']),
+  action: z.enum(['list', 'create', 'start', 'status', 'stop', 'restart', 'update']),
   appId: z.string().min(1).max(128).optional().describe('Existing local app id; required except for list/create.'),
   title: z.string().trim().min(1).max(200).optional().describe('Human-readable title, required for create.'),
   executable: z
@@ -29,23 +29,24 @@ const localAppSchema = z.object({
     .max(8192)
     .optional()
     .describe(
-      'Executable such as bun, node, or python3. Prefer an absolute path obtained with the coding shell (command -v) because a desktop app may have a different PATH. Required for create; no shell expansion.',
+      'Executable such as bun, node, or python3. Prefer an absolute path obtained with the coding shell (command -v) because a desktop app may have a different PATH. Required for create; optional replacement for update. No shell expansion.',
     ),
   args: z
     .array(z.string().max(32768))
     .max(100)
     .optional()
     .describe(
-      'Executable arguments. Use {port} for the allocated loopback port, and explicitly bind the server to 127.0.0.1.',
+      'Executable arguments; replaces the full argument list on update. Use {port} for the allocated loopback port, and explicitly bind the server to 127.0.0.1.',
     ),
   port: z
     .number()
     .int()
     .min(1)
     .max(65535)
+    .nullable()
     .optional()
     .describe(
-      'Only for programs requiring a fixed port. Otherwise use {port} in args or read PORT from the environment.',
+      'Only for programs requiring a fixed port. Otherwise use {port} in args or read PORT from the environment. Omit to keep the current port on update, or pass null to return to an allocated port.',
     ),
 })
 
@@ -76,7 +77,7 @@ export const createLocalAppTools = (
   return {
     local_app: tool({
       description:
-        'Create, start, inspect, restart, or stop a persistent app running on this computer. First create its files with the coding tools in the current working directory. Create saves a device-local launch recipe, starts the server, waits for HTTP readiness, and opens its page in the browser. Start/restart also open the page. Processes survive agent turns and stop on app exit or explicit stop. Use this instead of backgrounding a server with bash. Files and launch recipes do not sync. The working directory is fixed to the current project or standalone chat environment.',
+        'Create, update, start, inspect, restart, or stop a persistent app running on this computer. First create its files with the coding tools in the current working directory. Create saves a device-local launch recipe, starts the server, waits for HTTP readiness, and opens its page in the browser. Start/restart also open the page. To fix a launch command, use update with the existing appId and the changed executable/args/port; it restarts and opens the same app, preserving tabs and pins. Unspecified launch fields stay unchanged. Use the returned sessionId, not page.id, for page_snapshot and other page interaction tools. Processes survive agent turns and stop on app exit or explicit stop. Use this instead of backgrounding a server with bash. Files and launch recipes do not sync. The working directory is fixed to the current project or standalone chat environment.',
       inputSchema: localAppSchema,
       execute: async (raw, { abortSignal }) => {
         const input = localAppSchema.parse(raw)
@@ -100,14 +101,14 @@ export const createLocalAppTools = (
             launch: {
               executable: input.executable,
               args: input.args ?? [],
-              ...(input.port === undefined ? {} : { port: input.port }),
+              ...(input.port == null ? {} : { port: input.port }),
             },
           })
           try {
             const status = await controller.start(app.id, abortSignal)
             const page = localAppPage(app)
-            await options.onOpen(page)
-            return { appId: app.id, page, status: status.status }
+            const sessionId = await options.onOpen(page)
+            return { appId: app.id, page, sessionId, status: status.status }
           } catch (error) {
             throw new Error(
               `Local app ${app.id} could not open: ${error instanceof Error ? error.message : String(error)}. Inspect it with local_app status before retrying.`,
@@ -122,12 +123,20 @@ export const createLocalAppTools = (
         if (input.action === 'stop') {
           return { appId: app.id, status: await controller.stop(app.id) }
         }
-        const status = await (input.action === 'restart'
-          ? controller.restart(app.id, abortSignal)
-          : controller.start(app.id, abortSignal))
+        const status = await (input.action === 'update'
+          ? controller.update(app.id, { executable: input.executable, args: input.args, port: input.port }, abortSignal)
+          : input.action === 'restart'
+            ? controller.restart(app.id, abortSignal)
+            : controller.start(app.id, abortSignal))
         const page = localAppPage(app)
-        await options.onOpen(page)
-        return { appId: app.id, page, status: status.status }
+        const sessionId = await options.onOpen(page)
+        return {
+          appId: app.id,
+          page,
+          sessionId,
+          status: status.status,
+          ...(input.action === 'update' ? { updated: true } : {}),
+        }
       },
     }),
   }

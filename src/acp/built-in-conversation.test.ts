@@ -558,3 +558,215 @@ describe('prepareBuiltInConversation', () => {
     })
   })
 })
+
+describe('saved tool history', () => {
+  it('preserves app IDs, failed commands and ordering from a tool-only assistant turn', async () => {
+    const prepared = await prepareBuiltInConversation(
+      [
+        message('user', [{ type: 'text', text: 'Build the app' }]),
+        message('assistant', [
+          { type: 'text', text: 'Starting it.' },
+          {
+            type: 'dynamic-tool',
+            toolName: 'local_app',
+            toolCallId: 'create-1',
+            state: 'output-available',
+            input: { action: 'create' },
+            output: {
+              content: [{ type: 'text', text: '{"appId":"saved-app","status":"ready"}' }],
+              details: { secretUiOnly: 'not model context' },
+            },
+          },
+          { type: 'text', text: 'Testing it.' },
+        ]),
+        message('assistant', [
+          {
+            type: 'dynamic-tool',
+            toolName: 'bash',
+            toolCallId: 'test-2',
+            state: 'output-error',
+            input: { command: 'bun test' },
+            errorText: 'Expected count 3, received 2',
+          },
+        ]),
+        message('user', [{ type: 'text', text: 'Fix the failing test' }]),
+      ],
+      undefined,
+      inline,
+    )
+    expect(prepared.history).toEqual([
+      { role: 'user', text: 'Build the app' },
+      { role: 'assistant', text: 'Starting it.' },
+      {
+        role: 'assistant',
+        text: '',
+        toolCall: {
+          id: 'create-1',
+          name: 'local_app',
+          input: { action: 'create' },
+          output: '{"appId":"saved-app","status":"ready"}',
+          isError: false,
+        },
+      },
+      { role: 'assistant', text: 'Testing it.' },
+      {
+        role: 'assistant',
+        text: '',
+        toolCall: {
+          id: 'test-2',
+          name: 'bash',
+          input: { command: 'bun test' },
+          output: 'Expected count 3, received 2',
+          isError: true,
+        },
+      },
+    ])
+    expect(prepared.prompt.text).toBe('Fix the failing test')
+    expect(JSON.stringify(prepared)).not.toContain('secretUiOnly')
+  })
+
+  it('distinguishes a denied action from an interrupted action with an unknown outcome', async () => {
+    const prepared = await prepareBuiltInHistory(
+      [
+        message('assistant', [
+          {
+            type: 'tool-write',
+            toolCallId: 'pending',
+            state: 'input-available',
+            input: { path: 'app.ts', content: 'code' },
+          },
+          {
+            type: 'tool-write',
+            toolCallId: 'denied',
+            state: 'output-denied',
+            input: { path: 'other.ts', content: 'code' },
+            approval: { id: 'approval', approved: false },
+          },
+          { type: 'tool-write', toolCallId: 'streaming', state: 'input-streaming', input: { path: 'unfinished.ts' } },
+        ]),
+      ],
+      inline,
+    )
+    expect(prepared.history.map((turn) => turn.toolCall?.isError)).toEqual([true, true, true])
+    expect(prepared.history[0].toolCall?.output).toContain('may have changed external state')
+    expect(prepared.history[1].toolCall?.output).toBe('Tool execution was denied.')
+    expect(prepared.history[2].toolCall?.output).toBe(prepared.history[0].toolCall?.output)
+    expect(prepared.history[2].toolCall?.output).toContain('Verify the current state before repeating this action')
+  })
+
+  it('bounds old output, retains its trailing failure, and omits image bytes', async () => {
+    const prepared = await prepareBuiltInHistory(
+      [
+        message('assistant', [
+          {
+            type: 'dynamic-tool',
+            toolName: 'inspect',
+            toolCallId: 'image',
+            state: 'output-available',
+            input: {},
+            output: {
+              content: [
+                { type: 'image', mimeType: 'image/png', data: 'not-model-text' },
+                { type: 'text', text: 'Visible result' },
+              ],
+            },
+          },
+          {
+            type: 'dynamic-tool',
+            toolName: 'bash',
+            toolCallId: 'large',
+            state: 'output-available',
+            input: {},
+            output: { content: [{ type: 'text', text: `start ${'x'.repeat(30_000)} final error` }] },
+          },
+          {
+            type: 'dynamic-tool',
+            toolName: 'legacy',
+            toolCallId: 'json',
+            state: 'output-available',
+            input: {},
+            output: { appId: 'legacy-app' },
+          },
+        ]),
+      ],
+      inline,
+    )
+    expect(prepared.history[0].toolCall?.output).toBe('[Image omitted from saved tool result]\nVisible result')
+    expect(JSON.stringify(prepared)).not.toContain('not-model-text')
+    const large = prepared.history[1].toolCall?.output ?? ''
+    expect(large.length).toBeLessThan(24_100)
+    expect(large).toStartWith('start ')
+    expect(large).toContain('characters omitted')
+    expect(large).toEndWith(' final error')
+    expect(prepared.history[2].toolCall?.output).toBe('{"appId":"legacy-app"}')
+  })
+})
+
+it('projects raw page results from legacy turns without repeating HTML or screenshot bytes', async () => {
+  const snapshot = {
+    pageId: 'page-1',
+    sessionId: 'session-1',
+    documentId: 'document-1',
+    title: 'Task board',
+    text: 'Add a task',
+    elements: [{ ref: 'button-1', name: 'Add' }],
+    screenshot: { data: 'PRIVATE_IMAGE_BYTES', mediaType: 'image/png', width: 800, height: 600 },
+  }
+  const prepared = await prepareBuiltInHistory(
+    [
+      message('assistant', [
+        {
+          type: 'dynamic-tool',
+          toolName: 'page_show_file',
+          toolCallId: 'show',
+          state: 'output-available',
+          input: { path: 'board.html' },
+          output: {
+            ok: true,
+            page: {
+              id: 'page-1',
+              title: 'Task board',
+              source: { kind: 'html', html: '<html>DO_NOT_DUPLICATE_SOURCE</html>' },
+            },
+          },
+        },
+        ...['page_snapshot', 'page_action', 'page_navigate'].map((toolName) => ({
+          type: 'dynamic-tool' as const,
+          toolName,
+          toolCallId: toolName,
+          state: 'output-available' as const,
+          input: { sessionId: 'session-1' },
+          output: snapshot,
+        })),
+        {
+          type: 'dynamic-tool',
+          toolName: 'render_html',
+          toolCallId: 'render',
+          state: 'output-available',
+          input: { html: '<p>Needed once as original input</p>', title: 'Example' },
+          output: { ok: true },
+        },
+      ]),
+    ],
+    inline,
+  )
+  expect(prepared.history[0].toolCall?.output).toBe('{"ok":true,"pageId":"page-1","title":"Task board"}')
+  for (const turn of prepared.history.slice(1, 4)) {
+    expect(JSON.parse(turn.toolCall?.output ?? '')).toEqual({
+      pageId: 'page-1',
+      sessionId: 'session-1',
+      documentId: 'document-1',
+      title: 'Task board',
+      text: 'Add a task',
+      elements: [{ ref: 'button-1', name: 'Add' }],
+      screenshotSize: { width: 800, height: 600 },
+    })
+  }
+  expect(JSON.stringify(prepared.history)).not.toContain('PRIVATE_IMAGE_BYTES')
+  expect(JSON.stringify(prepared.history)).not.toContain('DO_NOT_DUPLICATE_SOURCE')
+  expect(prepared.history[4].toolCall?.input).toEqual({
+    html: '<p>Needed once as original input</p>',
+    title: 'Example',
+  })
+  expect(prepared.history[4].toolCall?.output).toBe('{"ok":true}')
+})

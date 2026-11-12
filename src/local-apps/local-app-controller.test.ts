@@ -59,6 +59,75 @@ describe('local app lifecycle', () => {
     })
   })
 
+  it('repairs a launch recipe while preserving its app, owner, folder and page identity', async () => {
+    const { controller, calls } = fixture()
+    const app = controller.create({ ...input, launch: { ...input.launch, port: 4100 } })
+    await controller.start(app.id)
+    await controller.update(app.id, { args: ['server.cjs'], port: null })
+    const updated = controller.get(app.id)!
+    expect(updated).toEqual({
+      ...app,
+      launch: { executable: app.launch.executable, args: ['server.cjs'], port: undefined },
+    })
+    expect(controller.list(project)).toHaveLength(1)
+    expect(calls.filter((call) => call.command === 'agent_preview_start').at(-1)?.args).toEqual({
+      request: { id: app.id, cwd: app.cwd, ...updated.launch },
+    })
+    expect(calls.filter((call) => call.command === 'agent_preview_stop')).toHaveLength(1)
+  })
+
+  it('serializes concurrent edits and starts without losing changed fields or launching a stale recipe', async () => {
+    const { controller, calls } = fixture()
+    const app = controller.create(input)
+    const results = await Promise.allSettled([
+      controller.update(app.id, { executable: 'node' }),
+      controller.update(app.id, { args: ['server.cjs'] }),
+      controller.start(app.id),
+    ])
+    expect(results.at(-1)?.status).toBe('fulfilled')
+    expect(controller.get(app.id)?.launch).toMatchObject({ executable: 'node', args: ['server.cjs'] })
+    expect(calls.filter((call) => call.command === 'agent_preview_start').at(-1)?.args).toMatchObject({
+      request: { executable: 'node', args: ['server.cjs'] },
+    })
+  })
+
+  it('rejects invalid or cancelled edits before stopping a working app and keeps deleted recipes deleted', async () => {
+    const { controller, calls } = fixture()
+    const app = controller.create(input)
+    await controller.start(app.id)
+    for (const changes of [{ executable: ' ' }, { port: 0 }, {}]) {
+      await expect(controller.update(app.id, changes)).rejects.toThrow()
+    }
+    await expect(controller.update(app.id, { args: ['other.js'] }, AbortSignal.abort())).rejects.toThrow()
+    expect(controller.get(app.id)).toEqual(app)
+    expect(calls.some((call) => call.command === 'agent_preview_stop')).toBe(false)
+    await controller.remove(app.id)
+    await expect(controller.update(app.id, { args: ['other.js'] })).rejects.toThrow('not available')
+    expect(useLocalAppStore.getState().apps[app.id].deletedAt).toBeDefined()
+  })
+
+  it('allows Stop to cancel HTTP readiness instead of blocking behind startup', async () => {
+    const entered = Promise.withResolvers<void>()
+    const state: { value: LocalAppStatus | null } = { value: null }
+    const native = async <T>(command: string, args: Record<string, unknown>): Promise<T> => {
+      const id = String(args.id ?? (args.request as { id: string } | undefined)?.id)
+      if (command === 'agent_preview_start') {
+        state.value = { id, status: 'starting', url: null, error: null, logs: '' }
+        entered.resolve()
+      }
+      if (command === 'agent_preview_stop') {
+        state.value = { id, status: 'stopped', url: null, error: null, logs: '' }
+      }
+      return state.value as T
+    }
+    const controller = createLocalAppController(native, () => true)
+    const app = controller.create(input)
+    const started = controller.start(app.id).catch((error: unknown) => error)
+    await entered.promise
+    expect((await controller.stop(app.id)).status).toBe('stopped')
+    expect(await started).toBeInstanceOf(Error)
+  })
+
   it('does not execute a start that was already cancelled', async () => {
     const { controller, calls } = fixture()
     const app = controller.create(input)

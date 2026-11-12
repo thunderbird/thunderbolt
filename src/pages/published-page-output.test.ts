@@ -36,9 +36,18 @@ describe('publishedPageOutput', () => {
 
   it('only lifts successful publishing operations, leaving status/list/failures in the tool group', () => {
     const local: PageDefinition = { id: 'local-app:123', title: 'App', source: { kind: 'local-app', appId: '123' } }
-    for (const action of ['create', 'start', 'restart']) {
+    for (const action of ['create', 'start', 'restart', 'update']) {
       expect(publishedPageOutput(part('local_app', { page: local, status: 'ready' }, { action }))?.page).toEqual(local)
     }
+    expect(
+      publishedPageOutput(
+        part(
+          'local_app',
+          { page: local, sessionId: 'session-1', status: 'ready', updated: true },
+          { action: 'update' },
+        ),
+      ),
+    ).toEqual({ page: local, sessionId: 'session-1', updated: true })
     for (const action of ['list', 'status', 'stop']) {
       expect(publishedPageOutput(part('local_app', { page: local, status: 'ready' }, { action }))).toBeNull()
     }
@@ -93,4 +102,22 @@ describe('publishedPageOutput', () => {
     expect(grouped.map((item) => item.type)).toEqual(['reasoning_group', 'dynamic-tool', 'reasoning_group'])
     expect(grouped[1]).toBe(published)
   })
+})
+
+it('retains explicit publication placement and revision markers', () => {
+  const result = publishedPageOutput({
+    type: 'dynamic-tool',
+    toolName: 'page_show_file',
+    toolCallId: 'publish',
+    state: 'output-available',
+    input: {},
+    output: {
+      ok: true,
+      page: { id: 'p', title: 'Page', source: { kind: 'html', html: '<p>App</p>' } },
+      presentation: 'sidebar',
+      updated: true,
+      sessionId: 's',
+    },
+  })
+  expect(result).toMatchObject({ presentation: 'sidebar', updated: true, sessionId: 's' })
 })

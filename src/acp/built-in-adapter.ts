@@ -55,7 +55,7 @@ import { webToolNames } from '@/lib/tools'
 import { tinfoilSession } from '@/lib/tinfoil-session'
 import { createLiveProxyFetch } from '@/lib/proxy-fetch'
 import { isSsoMode } from '@/lib/auth-mode'
-import { getAuthToken } from '@/lib/auth-token'
+import { getAuthToken, getDeviceId } from '@/lib/auth-token'
 import { appVersionHeader } from '@/lib/app-version'
 import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { handleSessionRejected } from '@/lib/session-rejected'
@@ -66,6 +66,9 @@ import { getPlatform, isTauriDesktop } from '@/lib/platform'
 import { invoke } from '@tauri-apps/api/core'
 import { createLocalAppTools } from '@/local-apps/local-app-tools'
 import { createShowFileTool, showFileToolName } from '@/pages/show-file-tool'
+import { createRenderHtmlTool } from '@/artifacts/render-html-tool'
+import { createTool } from '@/lib/tools'
+import { publishGeneratedPage, type PublishPageOptions } from '@/pages/publish-generated-page'
 import { pageController } from '@/pages/page-controller'
 import { browserController } from '@/browser/browser-controller'
 import { defaultAgentExecution, type AgentExecution } from '@/agent-execution/store'
@@ -80,7 +83,7 @@ import type {
   SeedTurn,
 } from '@shared/agent-core'
 import { buildClientIdentityBlock } from '@shared/agent-core/client-identity'
-import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
+import { appHarnessDevelopmentPrompt, appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
 import { inferenceModelHeader } from '@shared/inference-usage'
 import type { AgentHarness, AgentHarnessTool, ThinkingLevel } from '@earendil-works/pi-agent-core'
 import { z } from 'zod'
@@ -513,7 +516,9 @@ export const composeAppHarnessSystemPrompt = (
     execution.access === 'ask'
       ? 'File changes, shell commands, and external actions require user approval. Reads run automatically. If denied, respect the decision; do not retry through another tool.'
       : 'The user enabled full access. Tools execute without an approval prompt.'
-  const environmentBlock = config.supportsTools ? `\n\n${executionPrompt}\n${accessPrompt}` : ''
+  const environmentBlock = config.supportsTools
+    ? `\n\n${executionPrompt}\n${accessPrompt}\n\n${appHarnessDevelopmentPrompt}`
+    : ''
   return `${config.stableSystemPrompt}\n\n${clientIdentity}${environmentBlock}\n\n${config.volatileSystemPrompt}`
 }
 
@@ -588,12 +593,29 @@ const prepareHarnessForSend = async (
     activity?.claimPage(id)
     return id
   }
+  const onPublish = async (page: Parameters<typeof pageController.open>[0], options: PublishPageOptions) => {
+    activity?.assertControl(options.signal)
+    const publication = await publishGeneratedPage(page, { ...options, chatThreadId: context.threadId })
+    activity?.claimPage(publication.sessionId, options.signal)
+    return publication
+  }
+  const execution = context.execution ?? defaultAgentExecution
   const pageTools = {
+    ...(config.toolset.render_html
+      ? { render_html: createTool(createRenderHtmlTool({ chatThreadId: context.threadId, onOpen: onPublish })) }
+      : {}),
     [showFileToolName]: createShowFileTool({
+      chatThreadId: context.threadId,
+      scope: JSON.stringify([
+        context.workspaceId ?? context.threadId,
+        execution.location,
+        execution.location === 'ssh' ? execution.environmentId : getDeviceId(),
+      ]),
+      cwd: record.execution?.cwd ?? agentCore.workspaceDirFor(context.workspaceId ?? context.threadId),
       localAppsAvailable: context.execution?.location === 'computer',
       readFile: (path, signal) =>
         agentCore.readAgentWorkspaceFile(context.workspaceId ?? context.threadId, path, record.execution, signal),
-      onOpen,
+      onOpen: onPublish,
     }),
     ...(context.execution?.location === 'computer'
       ? createLocalAppTools({

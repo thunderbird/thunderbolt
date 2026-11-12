@@ -64,11 +64,6 @@ export const mountMessageParts = (
 ) => {
   const partElements: ReactNode[] = []
 
-  if (groupedParts.length === 0 && isStreaming) {
-    // isStreaming should always be true because the next part will *replace* this one
-    partElements.push(<SyntheticLoadingPart isStreaming />)
-  }
-
   // Whether the message has a "body" that serves as the answer — a text part, or a
   // lifted-out artifact (a standalone `tool` part). When it does, the reasoning group
   // suppresses its ephemeral reasoning display (and that display's 200px reserve),
@@ -94,6 +89,7 @@ export const mountMessageParts = (
             parts={reasoningGroupPart.items}
             isStreaming={isStreaming}
             isLastPartInMessage={isLastPart}
+            continuesMessage={index > 0}
             hasTextPart={hasResponseBody}
             reasoningTime={reasoningTime}
             reasoningStartTimes={reasoningStartTimes}
@@ -107,6 +103,8 @@ export const mountMessageParts = (
           <TextPart
             part={part as TextUIPart}
             isStreaming={isStreaming}
+            followsActivity={groupedParts[index - 1]?.type === 'reasoning_group'}
+            precedesActivity={groupedParts[index + 1]?.type === 'reasoning_group'}
             messageId={messageId}
             sources={sources}
             haystackReferences={haystackReferences}
@@ -154,13 +152,14 @@ export const AssistantMessage = memo(
     const sources = metadata?.sources
     const haystackReferences = metadata?.haystackReferences
     const mcpTools = metadata?.mcpTools
+    const isGeneratingContent = isStreaming && !activity
 
     // Memoize part element creation to prevent recreating React nodes unnecessarily
     const partElements: ReactNode[] = useMemo(
       () =>
         mountMessageParts(
           groupedParts,
-          isStreaming,
+          isGeneratingContent,
           message.id,
           reasoningTime,
           reasoningStartTimes,
@@ -170,7 +169,7 @@ export const AssistantMessage = memo(
         ),
       [
         groupedParts,
-        isStreaming,
+        isGeneratingContent,
         message.id,
         reasoningTime,
         reasoningStartTimes,
@@ -213,6 +212,10 @@ export const AssistantMessage = memo(
     }, [groupedParts])
 
     const showCopyOnHover = !isLastAssistantMessage
+    const lastPart = groupedParts.at(-1)
+    const hasActivePart =
+      lastPart?.type === 'reasoning_group' ||
+      (lastPart?.type === 'data-acp-compaction' && lastPart.data.status === 'in_progress')
 
     return (
       <div
@@ -221,14 +224,12 @@ export const AssistantMessage = memo(
         className={showCopyOnHover ? 'group/assistant-message' : undefined}
         style={isLastMessage && isStreaming && !hasArtifact ? { minHeight: lastMessageMinHeight } : undefined}
       >
-        {(groupedParts.length > 0 || !activity) &&
-          partElements.map((partElement, index) => (
-            // Skip the animation on the *second* (index === 1) partElement so that it replaces the loading part *in-place* without an animation
-            // This causes it to appear as if the loading part magically *becomes* the new part without any visual disruption
-            <div key={index} className={index === 1 ? '' : animationClasses}>
-              {partElement}
-            </div>
-          ))}
+        {partElements.map((partElement, index) => (
+          <div key={index} className={index === 1 ? '' : animationClasses}>
+            {partElement}
+          </div>
+        ))}
+        <SyntheticLoadingPart isStreaming={isStreaming && !activity && !hasActivePart} />
         {activity}
         {!isStreaming && (copyText || lastAssistantAction) && (
           <div

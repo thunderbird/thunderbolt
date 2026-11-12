@@ -14,7 +14,7 @@ export const BrowserAgentStatus = ({ tabId }: { tabId: string }) => {
   }
   return (
     <div
-      className="flex shrink-0 items-center justify-between gap-2 border-b bg-muted/40 px-3 py-1.5 text-xs"
+      className="flex shrink-0 items-center justify-between gap-2 border-b border-brand/20 bg-linear-to-r from-brand-2/15 to-brand/15 px-3 py-1.5 text-xs text-foreground dark:from-brand-2/20 dark:to-brand/20"
       role="status"
     >
       <span>{state.paused ? <Trans>Browser control paused</Trans> : <Trans>Agent is using this tab</Trans>}</span>

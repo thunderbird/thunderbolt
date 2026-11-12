@@ -99,6 +99,10 @@ describe('ProjectBadge', async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Q3 Planning' }))
       await getClock().runAllAsync()
     })
+    await act(async () => {
+      fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Move chat' })))
+      await getClock().runAllAsync()
+    })
     expect(useChatStore.getState().sessions.get('chat-1')?.projectId).toBe('p1')
   })
 
@@ -164,7 +168,9 @@ it.each([false, true])('can cancel or confirm moving to another project (mobile:
   const triggerName = mobile ? 'In project: Q3 Planning' : 'Q3 Planning'
   fireEvent.click(screen.getByRole('button', { name: triggerName }))
   fireEvent.click(screen.getByRole('button', { name: 'Research' }))
-  const confirmation = screen.getByRole('alertdialog', { name: 'Move session?' })
+  const confirmation = await waitForElement(() =>
+    screen.queryByRole('alertdialog', { name: 'Move chat to a different environment?' }),
+  )
   expect(useChatStore.getState().sessions.get('chat-1')?.projectId).toBe('p1')
   await act(async () => {
     fireEvent.click(within(confirmation).getByRole('button', { name: 'Cancel' }))
@@ -174,30 +180,36 @@ it.each([false, true])('can cancel or confirm moving to another project (mobile:
   expect(screen.queryByRole('alertdialog')).toBeNull()
 
   fireEvent.click(screen.getByRole('button', { name: triggerName }))
-  fireEvent.click(screen.getByRole('button', { name: 'Research' }))
   await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: 'Move' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Research' }))
+    await getClock().runAllAsync()
+  })
+  await act(async () => {
+    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Move chat' })))
     await getClock().runAllAsync()
   })
   expect(useChatStore.getState().sessions.get('chat-1')?.projectId).toBe('p2')
 })
 
-it('closes a pending move when a synced deletion reaches the project list', async () => {
+it('rejects a pending move when a synced deletion reaches the project list', async () => {
   await getDb().insert(projectsTable).values({ id: 'p2', name: 'Research' })
   const { result } = renderHook(() => ({ badge: useProjectBadgeState('chat-1'), queries: useQueryClient() }), {
     wrapper: createTestProvider(),
   })
   await act(async () => {
     await getClock().runAllAsync()
+    result.current.badge.selectProject('p2')
+    await getClock().runAllAsync()
   })
-  act(() => result.current.badge.requestProjectChange('p2'))
-  expect(result.current.badge.dialog?.type).toBe('move')
+  expect(result.current.badge.confirmation?.drop.projectId).toBe('p2')
   await act(async () => {
     await getDb().update(projectsTable).set({ deletedAt: '2026-11-02T12:00:00Z' }).where(eq(projectsTable.id, 'p2'))
     await result.current.queries.invalidateQueries({ queryKey: ['projects'] })
     await getClock().runAllAsync()
+    result.current.badge.confirmMove()
+    await getClock().runAllAsync()
   })
-  expect(result.current.badge.dialog).toBeNull()
+  expect(result.current.badge.confirmation).toBeNull()
   expect(useChatStore.getState().sessions.get('chat-1')?.projectId).toBe('p1')
 })
 
@@ -211,7 +223,7 @@ it.each([false, true])(
     await renderBadge()
     fireEvent.click(screen.getByRole('button', { name: 'Q3 Planning' }))
     fireEvent.click(screen.getByRole('button', { name: 'Research' }))
-    const confirm = screen.getByRole('button', { name: 'Move' })
+    const confirm = await waitForElement(() => screen.queryByRole('button', { name: 'Move chat' }))
     // Simulate an incoming sync write without refreshing the projects query yet.
     await getDb().update(projectsTable).set({ deletedAt: '2026-11-02T12:00:00Z' }).where(eq(projectsTable.id, 'p2'))
     await act(async () => {
@@ -248,16 +260,18 @@ it.each([
       )
       await getClock().runAllAsync()
     })
-    if (targetProjectId) {
-      expect(useChatStore.getState().sessions.get('chat-1')?.projectId).toBe('p1')
-      const confirmation = screen.getByRole('alertdialog', { name: 'Move session?' })
-      expect(confirmation).toHaveTextContent('This will move the session to Research.')
-      expect(within(confirmation).getByText('Research', { selector: 'strong' })).toBeInTheDocument()
-      await act(async () => {
-        fireEvent.click(within(confirmation).getByRole('button', { name: 'Move' }))
-        await getClock().runAllAsync()
-      })
-    }
+    expect(useChatStore.getState().sessions.get('chat-1')?.projectId).toBe('p1')
+    const confirmation = await waitForElement(() =>
+      screen.queryByRole('alertdialog', { name: 'Move chat to a different environment?' }),
+    )
+    expect(confirmation).toHaveTextContent('Only the chat context will move.')
+    expect(confirmation).toHaveTextContent(
+      'Files, running apps, and other environment state will stay in the original environment.',
+    )
+    await act(async () => {
+      fireEvent.click(within(confirmation).getByRole('button', { name: 'Move chat' }))
+      await getClock().runAllAsync()
+    })
     const session = useChatStore.getState().sessions.get('chat-1')
     expect(session?.projectId).toBe(targetProjectId)
     expect(session?.chatInstance).toBe(chatInstance)
@@ -300,6 +314,10 @@ it.each([false, true])(
     })
     const created = (await getAllProjects(getDb())).find((project) => project.name === 'New research')
     expect(created).toBeDefined()
+    await act(async () => {
+      fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Move chat' })))
+      await getClock().runAllAsync()
+    })
     expect(useChatStore.getState().sessions.get('chat-1')?.projectId).toBe(created?.id)
     expect(useChatStore.getState().sessions.get('chat-1')?.chatInstance).toBe(chatInstance)
     const [chat] = await getDb().select().from(chatThreadsTable)
@@ -338,12 +356,10 @@ it.each(['p2', null])('keeps draft sidebar selection in sync when choosing %s', 
     fireEvent.click(screen.getByRole('button', { name: targetProjectId ? 'Research' : 'Remove from project' }))
     await getClock().runAllAsync()
   })
-  if (targetProjectId) {
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Move' }))
-      await getClock().runAllAsync()
-    })
-  }
+  await act(async () => {
+    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Move chat' })))
+    await getClock().runAllAsync()
+  })
   expect(screen.getByLabelText('Active project')).toHaveTextContent(targetProjectId ?? 'none')
   if (targetProjectId) {
     expect(screen.getByLabelText('Active project')).toHaveAttribute('data-expanded', 'true')

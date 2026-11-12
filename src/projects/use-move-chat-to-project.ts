@@ -23,6 +23,7 @@ import { useDatabase } from '@/contexts'
 import { setChatThreadProject } from '@/dal/projects'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import type { ChatDrop } from '@/projects/chat-drop'
+import { getProjectMoveEnvironmentChange } from './project-move-environment'
 
 export const activeChatProjectMoveMessage = 'Stop the current reply before moving this chat to another project.'
 export class ActiveChatProjectMoveError extends Error {
@@ -31,6 +32,13 @@ export class ActiveChatProjectMoveError extends Error {
     this.name = 'ActiveChatProjectMoveError'
   }
 }
+export class ProjectMoveConfirmationRequired extends Error {
+  constructor(public readonly environmentChange: string) {
+    super('Moving this chat changes its environment.')
+    this.name = 'ProjectMoveConfirmationRequired'
+  }
+}
+
 type MovingChat = Pick<
   ChatSession,
   'projectId' | 'stopping' | 'compactionStatus' | 'retryCount' | 'retriesExhausted'
@@ -42,26 +50,42 @@ export type MoveChatDeps = {
   getOpenSession?: (chatThreadId: string) => MovingChat | undefined
   db: AnyDrizzleDatabase
   setProject: typeof setChatThreadProject
+  getEnvironmentChange?: (drop: ChatDrop) => Promise<string | null>
   /** Update the live session's badge; skipped when the chat isn't open. */
   updateOpenSession: (chatThreadId: string, projectId: string | null) => void
   /** Re-read the sidebar's chat rows. */
   refreshChatList: () => Promise<void>
 }
 
-export const moveChatToProject = async ({ chatThreadId, projectId }: ChatDrop, deps: MoveChatDeps): Promise<void> => {
+/** Active turns keep ownership of their workspace until they have stopped. */
+const assertChatCanMove = (session: MovingChat | undefined) => {
+  if (
+    session &&
+    (session.chatInstance.status === 'submitted' ||
+      session.chatInstance.status === 'streaming' ||
+      (!session.stopping && session.retryCount > 0 && !session.retriesExhausted) ||
+      session.compactionStatus === 'compacting')
+  ) {
+    throw new ActiveChatProjectMoveError()
+  }
+}
+
+export const moveChatToProject = async (
+  { chatThreadId, projectId }: ChatDrop,
+  deps: MoveChatDeps,
+  confirmedEnvironmentChange?: string,
+): Promise<void> => {
+  const getSession = deps.getOpenSession ?? ((id: string) => useChatStore.getState().sessions.get(id))
   await withChatThreadWrite(chatThreadId, async () => {
-    const session = (deps.getOpenSession ?? ((id) => useChatStore.getState().sessions.get(id)))(chatThreadId)
+    const session = getSession(chatThreadId)
     if (session?.projectId === projectId) {
       return
     }
-    if (
-      session &&
-      (session.chatInstance.status === 'submitted' ||
-        session.chatInstance.status === 'streaming' ||
-        (!session.stopping && session.retryCount > 0 && !session.retriesExhausted) ||
-        session.compactionStatus === 'compacting')
-    ) {
-      throw new ActiveChatProjectMoveError()
+    assertChatCanMove(session)
+    const environmentChange = await deps.getEnvironmentChange?.({ chatThreadId, projectId })
+    assertChatCanMove(getSession(chatThreadId))
+    if (environmentChange && environmentChange !== confirmedEnvironmentChange) {
+      throw new ProjectMoveConfirmationRequired(environmentChange)
     }
     const assigned = await deps.setProject(deps.db, chatThreadId, projectId)
     if (assigned) {
@@ -77,18 +101,23 @@ export const useMoveChatToProject = () => {
   const db = useDatabase()
   const queryClient = useQueryClient()
 
-  return (drop: ChatDrop): Promise<void> =>
-    moveChatToProject(drop, {
-      db,
-      setProject: setChatThreadProject,
-      // Guarded because a session exists only for a chat opened this run, and
-      // `updateSession` throws on an unknown id.
-      updateOpenSession: (chatThreadId, projectId) => {
-        const store = useChatStore.getState()
-        if (store.sessions.has(chatThreadId)) {
-          store.updateSession(chatThreadId, { projectId })
-        }
+  return (drop: ChatDrop, confirmedEnvironmentChange?: string): Promise<void> =>
+    moveChatToProject(
+      drop,
+      {
+        db,
+        setProject: setChatThreadProject,
+        getEnvironmentChange: (drop) => getProjectMoveEnvironmentChange(db, drop),
+        // Guarded because a session exists only for a chat opened this run, and
+        // `updateSession` throws on an unknown id.
+        updateOpenSession: (chatThreadId, projectId) => {
+          const store = useChatStore.getState()
+          if (store.sessions.has(chatThreadId)) {
+            store.updateSession(chatThreadId, { projectId })
+          }
+        },
+        refreshChatList: () => queryClient.invalidateQueries({ queryKey: ['chatThreads'] }),
       },
-      refreshChatList: () => queryClient.invalidateQueries({ queryKey: ['chatThreads'] }),
-    })
+      confirmedEnvironmentChange,
+    )
 }

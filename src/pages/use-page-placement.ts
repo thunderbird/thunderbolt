@@ -6,18 +6,27 @@ import { useLayoutEffect, useState } from 'react'
 import { pageSlots } from './page-slot'
 import type { PageSession } from './page-store'
 
-type Placement = { x: number; y: number; width: number; height: number; clip: string; visible: boolean }
-const hidden: Placement = { x: 0, y: 0, width: 1, height: 1, clip: 'inset(0)', visible: false }
+type Placement = {
+  x: number
+  y: number
+  width: number
+  height: number
+  clip: string
+  visible: boolean
+  interactive: boolean
+}
+const hidden: Placement = { x: 0, y: 0, width: 1, height: 1, clip: 'inset(0)', visible: false, interactive: false }
 /** Mirror the chosen DOM slot's geometry and scroll clipping without moving the renderer. */
 export const usePagePlacement = (session: PageSession, active: boolean) => {
   const [placement, setPlacement] = useState(hidden)
+  const nativePage = session.page.source.kind !== 'html'
   useLayoutEffect(() => {
     let frame = 0
     const measure = () => {
       frame = 0
       const slot = pageSlots.get(session.id, session.presentation)?.element
       if (!active || !slot || !slot.isConnected || !slot.getClientRects().length) {
-        setPlacement((previous) => (previous.visible ? { ...previous, visible: false } : previous))
+        setPlacement((previous) => (previous.visible ? { ...previous, visible: false, interactive: false } : previous))
         return
       }
       const rect = slot.getBoundingClientRect()
@@ -25,12 +34,14 @@ export const usePagePlacement = (session: PageSession, active: boolean) => {
         top = Math.max(0, rect.top)
       let right = Math.min(innerWidth, rect.right),
         bottom = Math.min(innerHeight, rect.bottom)
+      let blocked = false
       for (let parent = slot.parentElement; parent; parent = parent.parentElement) {
         const style = getComputedStyle(parent)
-        if (style.visibility === 'hidden' || parent.inert || parent.getAttribute('aria-hidden') === 'true') {
+        if (style.visibility === 'hidden') {
           right = left
           break
         }
+        blocked ||= parent.inert || parent.getAttribute('aria-hidden') === 'true'
         const bounds = parent.getBoundingClientRect()
         if (/(hidden|auto|scroll|clip)/.test(style.overflowX)) {
           left = Math.max(left, bounds.left)
@@ -41,7 +52,8 @@ export const usePagePlacement = (session: PageSession, active: boolean) => {
           bottom = Math.min(bottom, bounds.bottom)
         }
       }
-      // Native children cannot be covered by DOM dialogs. Hide a page when a modal crosses its viewport.
+      // Native children cannot be covered by DOM overlays. HTML frames can stay
+      // painted beneath them; only their interaction/accessibility is suspended.
       const covered = [
         ...document.querySelectorAll<HTMLElement>(
           '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="menu"][data-state="open"], [data-slot="popover-content"][data-state="open"]',
@@ -53,13 +65,16 @@ export const usePagePlacement = (session: PageSession, active: boolean) => {
         const r = dialog.getBoundingClientRect()
         return r.width > 0 && r.height > 0 && r.left < right && r.right > left && r.top < bottom && r.bottom > top
       })
+      blocked ||= covered
+      const visible = right > left && bottom > top && !(nativePage && blocked)
       const next = {
         x: rect.x,
         y: rect.y,
         width: rect.width,
         height: rect.height,
         clip: `inset(${Math.max(0, top - rect.top)}px ${Math.max(0, rect.right - right)}px ${Math.max(0, rect.bottom - bottom)}px ${Math.max(0, left - rect.left)}px)`,
-        visible: !covered && right > left && bottom > top,
+        visible,
+        interactive: visible && !blocked,
       }
       setPlacement((previous) => (JSON.stringify(previous) === JSON.stringify(next) ? previous : next))
     }
@@ -104,6 +119,6 @@ export const usePagePlacement = (session: PageSession, active: boolean) => {
       window.removeEventListener('resize', schedule)
       window.visualViewport?.removeEventListener('resize', schedule)
     }
-  }, [session.id, session.presentation, active])
+  }, [session.id, session.presentation, active, nativePage])
   return placement
 }

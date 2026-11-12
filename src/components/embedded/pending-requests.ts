@@ -11,8 +11,8 @@ export type PendingRequests = {
    * `send` receives the id rather than the envelope being built here: callers attach their own nonce and method envelope.
    */
   issue: (send: (id: number) => void, timeoutMs: number) => Promise<unknown>
-  /** Deliver a reply. Returns false when no request was waiting for that id. */
-  settle: (id: number, result: unknown) => boolean
+  /** Deliver a reply or reject its request. Returns false when no request was waiting for that id. */
+  settle: (id: number, result: unknown, error?: Error) => boolean
   /**
    * Resolve everything outstanding with `null`.
    *
@@ -33,14 +33,14 @@ export type PendingRequests = {
  * `waiting[id]()` there is no prototype for a crafted id to reach — but a
  * permanently red scanner is how real findings get ignored. Keep the field.
  */
-type PendingEntry = { resolve: (result: unknown) => void }
+type PendingEntry = { settle: (result: unknown, error?: Error) => void }
 
 /** Create document-scoped request IDs and settle each reply at most once. */
 export const createPendingRequests = (): PendingRequests => {
   const waiting = new Map<number, PendingEntry>()
   let nextId = 1
 
-  const settle = (id: number, result: unknown): boolean => {
+  const settle = (id: number, result: unknown, error?: Error): boolean => {
     const entry = waiting.get(id)
     if (!entry) {
       return false
@@ -48,19 +48,23 @@ export const createPendingRequests = (): PendingRequests => {
     // Deleted before resolving, so a resolver that synchronously issues another
     // request can't observe its own entry still in the map.
     waiting.delete(id)
-    entry.resolve(result)
+    entry.settle(result, error)
     return true
   }
 
   return {
     issue: (send, timeoutMs) =>
-      new Promise((resolve) => {
+      new Promise((resolve, reject) => {
         const id = nextId++
         const timer = setTimeout(() => settle(id, null), timeoutMs)
         waiting.set(id, {
-          resolve: (result) => {
+          settle: (result, error) => {
             clearTimeout(timer)
-            resolve(result)
+            if (error) {
+              reject(error)
+            } else {
+              resolve(result)
+            }
           },
         })
         send(id)

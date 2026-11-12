@@ -174,7 +174,7 @@ describe('createPrompt', () => {
   test('always includes the Conversation Style section with the chat instructions', () => {
     const result = createPrompt(baseParams)
     expect(result).toContain('# Conversation Style')
-    expect(result).toContain('Make quick decisions')
+    expect(result).toContain('Write concise, helpful responses in Markdown')
   })
 
   test('includes web tool rules in the stable prompt when the web tools are available', () => {
@@ -245,9 +245,19 @@ describe('createPrompt', () => {
     expect(result).toContain(
       'This does not apply to acknowledgments, summaries, translations, repeated data, narrow checks, or deeper explanations needing no external sources',
     )
-    expect(result).toContain(
-      "Except for the research skill reload required above, don't repeat a tool call you already made this conversation with the same inputs—reuse sufficient earlier results",
-    )
+    expect(result).toContain('Reuse sufficient earlier web results')
+    expect(result).toContain('reloading the research skill as required above')
+  })
+
+  test('does not constrain development to lookup budgets or frozen evidence', () => {
+    const result = createPrompt(baseParams)
+    expect(result).not.toContain('Reasoning: low')
+    expect(result).not.toContain('Target 3-5 tool calls')
+    expect(result).not.toContain('good-enough results')
+    expect(result).toContain('complete the requested work and verification')
+    expect(result).toContain('re-reading changed files')
+    expect(result).toContain('rerunning a test after a change')
+    expect(result).toContain('File operations and test output do not supply numbered sources')
   })
 
   test('keeps the time-sensitive re-search carve-out', () => {

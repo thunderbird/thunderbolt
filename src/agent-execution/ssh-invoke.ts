@@ -24,6 +24,7 @@ export const createSshInvoke = (connection: SshConnection, invoke: NativeInvoke)
     if (!isCurrent()) {
       throw new Error('The SSH environment changed or was removed. Stop this turn before using its updated connection.')
     }
+    const observedStatus = useSshEnvironmentsStore.getState().connectionStatuses[connection.environmentId]
     const state = { changed: false }
     const unsubscribe = useSshEnvironmentsStore.subscribe(() => {
       if (!state.changed && !isCurrent()) {
@@ -48,7 +49,7 @@ export const createSshInvoke = (connection: SshConnection, invoke: NativeInvoke)
       return result
     } catch (error) {
       if (String(error).includes('SSH connection failed:') || String(error).includes('Could not start SSH.')) {
-        useSshEnvironmentsStore.getState().recordConnectionStatus(connection, 'disconnected')
+        useSshEnvironmentsStore.getState().recordConnectionStatus(connection, 'disconnected', observedStatus)
       }
       throw error
     } finally {

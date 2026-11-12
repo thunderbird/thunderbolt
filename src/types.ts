@@ -182,6 +182,8 @@ export type AutomationRun = {
 }
 
 export type UIMessageMetadata = {
+  /** Authoritative end of a locally saved turn; partial crash-recovery writes omit this. */
+  turnOutcome?: 'completed' | 'stopped' | 'error'
   /** Pi context checkpoint; the visible transcript remains intact. */
   contextCompaction?: CompactionCheckpoint
   /** Current model context, separate from billable generation usage. */

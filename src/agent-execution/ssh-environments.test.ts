@@ -44,7 +44,7 @@ it('soft deletes a profile without rebinding projects to another profile with th
   expect(getSshEnvironment(second.id)).toEqual(second)
 })
 
-it('persists verified status, keeps it on rename, and clears it when the working folder changes', () => {
+it('persists verified connection status independently of display names and working folders', () => {
   const profile = environment()
   const store = useSshEnvironmentsStore.getState()
   store.saveEnvironment(profile)
@@ -54,7 +54,27 @@ it('persists verified status, keeps it on rename, and clears it when the working
   store.saveEnvironment({ ...profile, name: 'Renamed' })
   expect(useSshEnvironmentsStore.getState().connectionStatuses[profile.id].status).toBe('connected')
   store.saveEnvironment({ ...profile, cwd: '/another-folder' })
-  expect(useSshEnvironmentsStore.getState().connectionStatuses[profile.id]).toBeUndefined()
+  expect(useSshEnvironmentsStore.getState().connectionStatuses[profile.id].status).toBe('connected')
+})
+
+it('does not let an older failure overwrite newer successful connection evidence', () => {
+  const profile = environment()
+  const connection = sshConnection(profile)
+  const store = useSshEnvironmentsStore.getState()
+  store.saveEnvironment(profile)
+  const unchecked = useSshEnvironmentsStore.getState().connectionStatuses[profile.id]
+  store.recordConnectionStatus(connection, 'connected')
+  const connected = useSshEnvironmentsStore.getState().connectionStatuses[profile.id]
+  store.recordConnectionStatus(connection, 'disconnected', unchecked)
+  expect(useSshEnvironmentsStore.getState().connectionStatuses[profile.id]).toBe(connected)
+
+  store.recordConnectionStatus(connection, 'connected')
+  store.recordConnectionStatus(connection, 'disconnected', connected)
+  expect(useSshEnvironmentsStore.getState().connectionStatuses[profile.id].status).toBe('connected')
+
+  const current = useSshEnvironmentsStore.getState().connectionStatuses[profile.id]
+  store.recordConnectionStatus(connection, 'disconnected', current)
+  expect(useSshEnvironmentsStore.getState().connectionStatuses[profile.id].status).toBe('disconnected')
 })
 
 it('rejects health updates from a removed or retargeted connection', () => {

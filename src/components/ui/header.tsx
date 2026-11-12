@@ -385,7 +385,7 @@ export const Header = () => {
         if (preview.isPreviewOpen) {
           preview.closePreview()
         } else {
-          preview.showPreview('about:blank')
+          preview.showBrowser()
         }
       }}
     >

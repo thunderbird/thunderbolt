@@ -29,7 +29,7 @@ export const useProjectExecutionControlsState = (projectId: string) => {
         ? t`Open this project in the desktop app to run its agent.`
         : project.error.reason === 'folder-required'
           ? t`Choose this project's working folder on this computer before running its agent.`
-          : t`This project's SSH environment is unavailable on this computer.`
+          : null
       : project.error
         ? t`Could not load the project environment.`
         : null

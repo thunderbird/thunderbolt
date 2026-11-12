@@ -65,7 +65,7 @@ import { isPiModelCandidate } from './built-in-model-support'
 import type { AppHarness } from '@shared/agent-core'
 import { prepareBuiltInConversation, type BuiltInConversationDeps } from './built-in-conversation'
 import type { BuildAppHarnessOptions, PiModelDescriptor } from '@shared/agent-core'
-import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
+import { appHarnessDevelopmentPrompt, appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
 import { createPromptParts, type PromptParams } from '@/ai/prompt'
 import {
   FileError,
@@ -208,9 +208,24 @@ describe('composeAppHarnessSystemPrompt', () => {
     for (const text of ['# Environment', '`bash`', '`read`', '`write`', '`edit`', '`render_html`']) {
       expect(composed.includes(text)).toBe(supportsTools)
     }
+    expect(composed.includes(appHarnessDevelopmentPrompt)).toBe(supportsTools)
     expect(composed.startsWith('Stable instructions\n\n')).toBe(true)
     expect(composed).toContain('Client environment:')
     expect(composed.endsWith('\n\nCurrent date/time: 2026-09-04')).toBe(true)
+  })
+
+  it.each([
+    { location: 'computer', cwd: '/workspace', access: 'ask' },
+    { location: 'ssh', environmentId: 'remote', cwd: '~/workspace', access: 'ask' },
+  ] as const)('includes development verification for $location execution', (execution) => {
+    const composed = composeAppHarnessSystemPrompt(
+      { stableSystemPrompt: 'Stable instructions', volatileSystemPrompt: 'Now', supportsTools: true },
+      execution,
+    )
+    expect(composed).toContain(appHarnessDevelopmentPrompt)
+    expect(composed).toContain('AGENTS.md')
+    expect(composed).toContain('Never claim tests passed without running them')
+    expect(composed).not.toContain('simulated shell')
   })
 })
 
@@ -890,7 +905,7 @@ describe('createBuiltInAdapter persistent harness', () => {
           env: { remove: async () => {} },
         } as never
       },
-      workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
+      workspaceDirFor: realAgentCore.workspaceDirFor,
       writeAgentWorkspaceFiles: async () => [],
       toPiAgentTools: async () => [],
       piHarnessToUiMessageStream: (_harness: AgentHarness, runPrompt: () => Promise<void>) =>
@@ -947,7 +962,7 @@ describe('createBuiltInAdapter persistent harness', () => {
     const agentCore = {
       ...tinfoilAgentCore,
       buildAppHarness: async () => harness as never,
-      workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
+      workspaceDirFor: realAgentCore.workspaceDirFor,
       writeAgentWorkspaceFiles: async () => [],
       toPiAgentTools: async () => [{ name: 'weather' } as AgentTool],
       piHarnessToUiMessageStream: (_harness: AgentHarness, runPrompt: () => Promise<void>) =>
@@ -1062,7 +1077,7 @@ describe('createBuiltInAdapter persistent harness', () => {
     const agentCore: Awaited<ReturnType<NonNullable<BuiltInAdapterOptions['loadAgentCore']>>> = {
       isKnownAnthropicModel: () => true,
       buildAppHarness: buildHarness,
-      workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
+      workspaceDirFor: realAgentCore.workspaceDirFor,
       writeAgentWorkspaceFiles: async () => [],
       toPiAgentTools: async (toolset: PreparedAiRequestConfig['toolset']) => {
         toPiCalls.push(toolset)
@@ -1133,7 +1148,7 @@ describe('createBuiltInAdapter persistent harness', () => {
     const firstSystemPrompt = buildCalls[0]?.systemPrompt as () => string
     const secondSystemPrompt = buildCalls[1]?.systemPrompt as () => string
     const expectedPrompt = (timestamp: string): string =>
-      `stable prompt\n\nClient environment: web\n\n${appHarnessEnvironmentPrompt}\nFile changes, shell commands, and external actions require user approval. Reads run automatically. If denied, respect the decision; do not retry through another tool.\n\n${timestamp}`
+      `stable prompt\n\nClient environment: web\n\n${appHarnessEnvironmentPrompt}\nFile changes, shell commands, and external actions require user approval. Reads run automatically. If denied, respect the decision; do not retry through another tool.\n\n${appHarnessDevelopmentPrompt}\n\n${timestamp}`
     expect(seededSystemPrompts).toEqual([expectedPrompt('timestamp 1'), expectedPrompt('timestamp 3')])
     expect(firstSystemPrompt()).toBe(expectedPrompt('timestamp 2'))
     expect(secondSystemPrompt()).toBe(expectedPrompt('timestamp 3'))
@@ -2140,7 +2155,7 @@ describe('createBuiltInAdapter stop', () => {
     const agentCore = {
       isKnownAnthropicModel: () => true,
       buildAppHarness: async () => harness,
-      workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
+      workspaceDirFor: realAgentCore.workspaceDirFor,
       writeAgentWorkspaceFiles: async () => [],
       toPiAgentTools: async () => [],
       piHarnessToUiMessageStream: (
@@ -2380,6 +2395,7 @@ describe('attachments in the harness workspace', () => {
     const agentCore = {
       ...tinfoilAgentCore,
       buildAppHarness: async () => harness as never,
+      workspaceDirFor: realAgentCore.workspaceDirFor,
       writeAgentWorkspaceFiles: async (_threadId: string, files: realAgentCore.WorkspaceFile[]) => {
         events.push('write')
         written.push(files)
@@ -2532,6 +2548,7 @@ describe('built-in adapter lifetime ownership', () => {
       buildAppHarness: build,
       removeAgentWorkspace: remove,
       toPiAgentTools: async () => [],
+      workspaceDirFor: realAgentCore.workspaceDirFor,
       writeAgentWorkspaceFiles: writeWorkspaceFiles,
       piHarnessToUiMessageStream: realAgentCore.piHarnessToUiMessageStream,
     } as unknown as Awaited<ReturnType<NonNullable<BuiltInAdapterOptions['loadAgentCore']>>>

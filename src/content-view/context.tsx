@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { artifactPageId } from '@/pages/artifact-page-id'
 import { msg } from '@lingui/core/macro'
 import { pageController } from '@/pages/page-controller'
 import { usePageStore, openUrlPage } from '@/pages/page-store'
@@ -31,16 +30,6 @@ export type SideviewData = {
   sideviewId: string
 }
 
-/** A verified HTML artifact shown in the side panel. */
-export type ArtifactViewData = {
-  html: string
-  title: string
-  /** The render_html tool-call id; also the key for the render-target toggle. */
-  artifactId: string
-  /** The conversation that owns selected passages. */
-  chatThreadId: string | null
-}
-
 type ContentViewState =
   | { type: null; data: null }
   | { type: 'object-view'; data: ObjectViewData }
@@ -52,10 +41,10 @@ type ContentViewContextType = {
   state: ContentViewState
   showObjectView: (content: ObjectViewContent, mcpTools?: UIMessageMetadata['mcpTools']) => void
   showPreview: (url: string) => void
+  /** Reveal the last selected browser tab, creating a blank tab only when none remain. */
+  showBrowser: () => void
   /** Open a typed sideview (e.g. `'document'`). Passing `null` clears the view. */
   showSideview: (sideviewType: string | null, sideviewId: string | null) => void
-  /** Open a verified HTML artifact in the side panel. */
-  showArtifact: (data: ArtifactViewData) => void
   /** Inspect a local or agent-provided summary without changing the conversation. */
   showCompactionSummary: (checkpoint: CompactionSummary) => void
   close: () => void
@@ -138,6 +127,18 @@ export const ContentViewProvider = ({
     [trackEvent],
   )
 
+  const showBrowser = useCallback(() => {
+    const { sessions, activeId } = usePageStore.getState()
+    const recent =
+      sessions.find((session) => session.id === activeId && session.presentation !== 'inline') ??
+      sessions.findLast((session) => session.presentation !== 'inline')
+    if (recent) {
+      pageController.select(recent.id)
+      return
+    }
+    showPreview('about:blank')
+  }, [showPreview])
+
   const showSideview = useCallback(
     (sideviewType: string | null, sideviewId: string | null) => {
       if (sideviewType === null || sideviewId === null) {
@@ -161,27 +162,6 @@ export const ContentViewProvider = ({
     }
   }, [showPreview])
 
-  const showArtifact = useCallback(
-    (data: ArtifactViewData) => {
-      trackEvent('content_view_open', { view_type: 'artifact' })
-      const id = usePageStore.getState().ensure(
-        {
-          id: artifactPageId(data.artifactId),
-          title: data.title,
-          source: {
-            kind: 'html',
-            html: data.html,
-            artifact: { toolCallId: data.artifactId, chatThreadId: data.chatThreadId },
-          },
-        },
-        { chatThreadId: data.chatThreadId },
-      )
-      usePageStore.getState().present(id, 'sidebar')
-      setState({ type: 'preview', data: { url: 'about:blank' } })
-    },
-    [trackEvent],
-  )
-
   const close = useCallback(() => {
     if (state.type !== null) {
       trackEvent('content_view_close', { view_type: state.type })
@@ -203,8 +183,8 @@ export const ContentViewProvider = ({
         state: visibleState,
         showObjectView,
         showPreview,
+        showBrowser,
         showSideview,
-        showArtifact,
         showCompactionSummary,
         close,
         isOpen: visibleState.type !== null,
@@ -262,7 +242,7 @@ export const usePreviewControls = () => {
   return context
     ? {
         isPreviewOpen: context.state.type === 'preview',
-        showPreview: context.showPreview,
+        showBrowser: context.showBrowser,
         closePreview: context.close,
       }
     : undefined

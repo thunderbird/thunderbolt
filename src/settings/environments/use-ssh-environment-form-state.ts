@@ -110,7 +110,7 @@ export const useSshEnvironmentFormState = (environment: SshEnvironment | undefin
           await invoke('agent_ssh_set_secret', { connection: sshConnection(next), secret: state.secret || null })
         }
         useSshEnvironmentsStore.getState().saveEnvironment(next)
-        if (connectionChanged || state.secret || state.clearSavedSecret || state.cwd.trim() !== environment?.cwd) {
+        if (connectionChanged || state.secret || state.clearSavedSecret) {
           useSshEnvironmentsStore.getState().clearConnectionStatus(next.id)
           void queryClient.resetQueries({ queryKey: ['ssh-environment-status', JSON.stringify(sshConnection(next))] })
         }

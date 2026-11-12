@@ -7,7 +7,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, expect, it, mock, spyOn } f
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import * as tauri from '@tauri-apps/api/core'
 import * as platform from '@/lib/platform'
-import { useSshEnvironmentsStore, type SshEnvironment } from '@/agent-execution/ssh-environments'
+import { sshConnection, useSshEnvironmentsStore, type SshEnvironment } from '@/agent-execution/ssh-environments'
+import { createSshInvoke } from '@/agent-execution/ssh-invoke'
 import { useSshEnvironmentStatus } from '@/agent-execution/use-ssh-environment-status'
 import { useAgentExecutionStore } from '@/agent-execution/store'
 import { createProject } from '@/dal/projects'
@@ -101,18 +102,66 @@ it('automatically shares status across projects and retains successful checks', 
   expect(invoke.mock.calls.filter(([command]) => command === 'agent_ssh_request')).toHaveLength(1)
 })
 
-it.each(['missing', 'deleted', 'web'] as const)('keeps a red indicator when the environment is %s', async (state) => {
-  const project = await createSshProject()
-  if (state === 'missing') {
-    useSshEnvironmentsStore.setState({ environments: {}, connectionStatuses: {} })
-  } else if (state === 'deleted') {
-    useSshEnvironmentsStore.getState().deleteEnvironment(environment.id)
-  } else {
-    spyOn(platform, 'isTauriDesktop').mockReturnValue(false)
-  }
-  render(<ProjectSshStatus projectId={project.id} />, { wrapper: createTestProvider() })
+it.each(['missing', 'deleted', 'web'] as const)(
+  'shows an unavailable icon when the environment is %s',
+  async (state) => {
+    const project = await createSshProject()
+    if (state === 'missing') {
+      useSshEnvironmentsStore.setState({ environments: {}, connectionStatuses: {} })
+    } else if (state === 'deleted') {
+      useSshEnvironmentsStore.getState().deleteEnvironment(environment.id)
+    } else {
+      spyOn(platform, 'isTauriDesktop').mockReturnValue(false)
+    }
+    render(<ProjectSshStatus projectId={project.id} />, { wrapper: createTestProvider() })
+    await settle()
+    const indicator = screen.getByRole('status', { name: 'SSH environment unavailable' })
+    expect(indicator).toHaveClass('text-muted-foreground')
+    expect(indicator).not.toHaveClass('bg-destructive')
+    expect(indicator.querySelector('svg.lucide-link-2-off')).not.toBeNull()
+    expect(indicator).toHaveAttribute(
+      'title',
+      state === 'web'
+        ? 'SSH environments require the desktop app.'
+        : 'This SSH environment is unavailable on this computer.',
+    )
+  },
+)
+
+it('updates every bound project after a tool succeeds without letting an older probe turn them red', async () => {
+  const first = await createSshProject()
+  const second = await createSshProject()
+  const probe = Promise.withResolvers<unknown>()
+  spyOn(tauri, 'invoke').mockImplementation(async <T,>(command: string, args?: Record<string, unknown>): Promise<T> => {
+    if (command !== 'agent_ssh_request') {
+      return undefined as T
+    }
+    if ((args?.request as { operation: string }).operation === 'probe') {
+      return (await probe.promise) as T
+    }
+    return { stdout: 'done', stderr: '', exitCode: 0 } as T
+  })
+  render(
+    <>
+      <ProjectSshStatus projectId={first.id} />
+      <ProjectSshStatus projectId={second.id} />
+    </>,
+    { wrapper: createTestProvider() },
+  )
   await settle()
-  expect(screen.getByRole('status', { name: 'Disconnected' })).toHaveClass('bg-destructive')
+  expect(screen.getAllByRole('status', { name: 'Checking connection' })).toHaveLength(2)
+  await act(async () => {
+    await createSshInvoke(sshConnection(environment), tauri.invoke)('agent_ssh_request', {
+      id: 'project-tool',
+      request: { operation: 'exec', cwd: '~/project' },
+    })
+  })
+  expect(screen.getAllByRole('status', { name: 'Connected' })).toHaveLength(2)
+  await act(async () => {
+    probe.reject(new Error('SSH connection failed: Connection refused'))
+  })
+  await settle()
+  expect(screen.getAllByRole('status', { name: 'Connected' })).toHaveLength(2)
 })
 
 it('does not show an SSH indicator for sandbox, computer, or cloud projects', async () => {

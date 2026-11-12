@@ -91,6 +91,22 @@ test('published file pages retain live state while website and device-local outp
                 },
               },
             },
+            {
+              type: 'tool-local_app',
+              toolCallId: crypto.randomUUID(),
+              state: 'output-available',
+              input: { action: 'update', appId: localId, args: ['server.cjs'] },
+              output: {
+                status: 'ready',
+                updated: true,
+                sessionId: 'old-preview-session',
+                page: {
+                  id: `local-app:${localId}`,
+                  title: 'Updated device-only preview',
+                  source: { kind: 'local-app', appId: localId },
+                },
+              },
+            },
           ],
         },
       ],
@@ -106,7 +122,13 @@ test('published file pages retain live state while website and device-local outp
   await expect(page.locator('[data-page-panel]')).toBeVisible()
   await expect(frameElement).toHaveAttribute('data-retained-frame', 'same-document')
   await expect(frame.getByRole('textbox', { name: 'Unsaved draft' })).toHaveValue('Keep this draft through expansion')
-  await page.getByRole('button', { name: 'Show inline', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Show inline', exact: true })).toHaveCount(0)
+  await page.evaluate(async (pageId) => {
+    const modulePath = '/src/pages/page-store.ts'
+    const { usePageStore } = (await import(modulePath)) as typeof import('../src/pages/page-store')
+    const session = usePageStore.getState().sessions.find((item) => item.page.id === pageId)!
+    usePageStore.getState().present(session.id, 'inline')
+  }, htmlId)
   await expect(frameElement).toHaveAttribute('data-retained-frame', 'same-document')
   await expect(frame.getByRole('textbox', { name: 'Unsaved draft' })).toHaveValue('Keep this draft through expansion')
 
@@ -117,6 +139,8 @@ test('published file pages retain live state while website and device-local outp
   )
   await expect(external.getByRole('link')).toHaveAttribute('target', '_blank')
   await expect(external.locator('[data-page-slot], iframe')).toHaveCount(0)
+  await expect(page.getByText('Updated device-only preview', { exact: true })).toBeVisible()
+  await expect(page.locator(`[data-published-page="local-app:${localId}"]`)).toHaveCount(1)
   await expect(page.getByText(/Its files do not sync/)).toBeVisible()
   await expect(page.locator('[data-page-host] iframe')).toHaveCount(1)
   await expect(page.locator(`[data-published-page="${failedPageId}"]`)).toHaveCount(0)
@@ -128,3 +152,112 @@ test('published file pages retain live state while website and device-local outp
   await expect(frame.getByRole('textbox', { name: 'Unsaved draft' })).toHaveValue('Keep this draft through expansion')
   expect(errors).toEqual(['Late artifact runtime failure'])
 })
+
+for (const toolName of ['render_html', 'page_show_file'] as const) {
+  test(`${toolName} shows no sidebar publication widgets and keeps one latest preview only while inline`, async ({
+    page,
+  }) => {
+    test.setTimeout(120_000)
+    const errors = collectPageErrors(page)
+    const email = await loginViaEmailCode(page)
+    const chatId = crypto.randomUUID()
+    const pageId = crypto.randomUUID()
+    const graphicId = crypto.randomUUID()
+    const messageId = crypto.randomUUID()
+    const title = `${toolName} revision fixture`
+    const publication = (html: string) => ({
+      type: `tool-${toolName}`,
+      toolCallId: crypto.randomUUID(),
+      state: 'output-available',
+      input: toolName === 'render_html' ? { title, html, presentation: 'sidebar' } : { path: 'app.html', title },
+      output: {
+        ok: true,
+        presentation: 'sidebar',
+        // Closing the live tab can make this false; transcript identity still determines revisions.
+        updated: false,
+        ...(toolName === 'render_html' ? { pageId } : { page: { id: pageId, title, source: { kind: 'html', html } } }),
+      },
+    })
+    await importBackup(page, {
+      format: 'thunderbolt-export',
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      user: { id: 'publication-placement-fixture', email },
+      tables: {
+        chat_threads: [{ id: chatId, title: 'Publication placement fixture' }],
+        chat_messages: [
+          {
+            id: messageId,
+            chatThreadId: chatId,
+            parentId: null,
+            role: 'assistant',
+            content: '',
+            modelId: defaultModelOpus55.id,
+            parts: [
+              publication('<h1>Old app version</h1>'),
+              publication('<h1>Latest app version</h1><label>Draft <input aria-label="Draft"></label>'),
+              {
+                type: 'tool-render_html',
+                toolCallId: crypto.randomUUID(),
+                state: 'output-available',
+                input: {
+                  title: 'Compact graphic',
+                  html: '<svg width="80" height="40"><circle cx="20" cy="20" r="15" fill="purple"/></svg>',
+                  presentation: 'inline',
+                },
+                output: { ok: true, pageId: graphicId, presentation: 'inline', updated: false },
+              },
+            ],
+          },
+        ],
+      },
+    })
+    await page.goto(`/chats/${chatId}`)
+    const appFrame = page.locator(`[data-page-host] iframe[title="${title}"]`)
+    await expect(page.locator('[data-page-host] iframe[title="Compact graphic"]')).toBeVisible()
+    await expect(appFrame).toHaveCount(0)
+    await expect(page.locator('[data-page-panel]')).toHaveCount(0)
+    const transcript = page.locator(`[data-message-id="${messageId}"]`)
+    await expect(transcript.getByTitle('Open in side panel', { exact: true })).toHaveCount(1)
+    await expect(transcript.getByText(title, { exact: true })).toHaveCount(0)
+    await expect(transcript.locator('[data-published-page], [data-page-update]')).toHaveCount(0)
+    await expect(transcript.getByRole('button', { name: 'Show inline', exact: true })).toHaveCount(0)
+    const latestPage = {
+      id: pageId,
+      title,
+      source: {
+        kind: 'html' as const,
+        html: '<h1>Latest app version</h1><label>Draft <input aria-label="Draft"></label>',
+      },
+    }
+    const sessionId = await page.evaluate(async (latestPage) => {
+      const modulePath = '/src/pages/page-controller.ts'
+      const { pageController } = (await import(modulePath)) as typeof import('../src/pages/page-controller')
+      return pageController.publishHtml(latestPage)
+    }, latestPage)
+    await expect(page.locator('[data-page-panel]')).toBeVisible()
+    await expect(appFrame.contentFrame().getByRole('heading', { name: 'Latest app version' })).toBeVisible()
+    await appFrame.contentFrame().getByRole('textbox', { name: 'Draft' }).fill('Retain my draft')
+    await page.evaluate(async (latestPage) => {
+      const modulePath = '/src/pages/page-controller.ts'
+      const { pageController } = (await import(modulePath)) as typeof import('../src/pages/page-controller')
+      pageController.publishHtml(latestPage)
+    }, latestPage)
+    await expect(page.getByRole('tab', { name: title, exact: true })).toHaveCount(1)
+    await expect(appFrame.contentFrame().getByRole('textbox', { name: 'Draft' })).toHaveValue('Retain my draft')
+    await expect(transcript.getByText(title, { exact: true })).toHaveCount(0)
+    await expect(transcript.locator('[data-published-page], [data-page-update]')).toHaveCount(0)
+    await page.evaluate(async (sessionId) => {
+      const modulePath = '/src/pages/page-store.ts'
+      const { usePageStore } = (await import(modulePath)) as typeof import('../src/pages/page-store')
+      usePageStore.getState().present(sessionId, 'inline')
+    }, sessionId)
+    await expect(page.locator('[data-page-panel]')).toHaveCount(0)
+    await expect(appFrame).toBeVisible()
+    await expect(appFrame.contentFrame().getByRole('textbox', { name: 'Draft' })).toHaveValue('Retain my draft')
+    await expect(transcript.getByTitle('Open in side panel', { exact: true })).toHaveCount(2)
+    await expect(transcript.locator('[data-page-update]')).toHaveCount(0)
+    await expect(page.locator('[data-page-host] iframe')).toHaveCount(2)
+    expect(errors).toEqual([])
+  })
+}

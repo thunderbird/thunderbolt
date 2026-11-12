@@ -178,8 +178,8 @@ msgstr[0] "Completed # step in {duration}"
 msgstr[1] "Completed # steps in {duration}"
 
 #: src/components/chat/artifact-message-part.tsx
-msgid "{title} — shown in side panel"
-msgstr "{title} — shown in side panel"
+#~ msgid "{title} — shown in side panel"
+#~ msgstr "{title} — shown in side panel"
 
 #. js-lingui:icu=%7Btotal%2C+plural%2C+one+%7BImported+%23+row.+The+app+may+take+a+moment+to+reflect+new+chats.%7D+other+%7BImported+%23+rows.+The+app+may+take+a+moment+to+reflect+new+chats.%7D%7D&pluralize_on=total
 #: src/settings/preferences.tsx
@@ -3954,17 +3954,24 @@ msgstr "More"
 
 #: src/layout/sidebar/chat-list-item.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
-#: src/projects/project-badge.tsx
 msgid "Move"
 msgstr "Move"
+
+#: src/projects/project-move-confirmation-dialog.tsx
+msgid "Move chat"
+msgstr "Move chat"
+
+#: src/projects/project-move-confirmation-dialog.tsx
+msgid "Move chat to a different environment?"
+msgstr "Move chat to a different environment?"
 
 #: src/components/chat/permission-dialog.tsx
 msgid "Move file"
 msgstr "Move file"
 
 #: src/projects/project-badge.tsx
-msgid "Move session?"
-msgstr "Move session?"
+#~ msgid "Move session?"
+#~ msgstr "Move session?"
 
 #: src/layout/sidebar/chat-list-item.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
@@ -4368,6 +4375,10 @@ msgstr "OneDrive Access"
 msgid "Only available in private chats."
 msgstr "Only available in private chats."
 
+#: src/projects/project-move-confirmation-dialog.tsx
+msgid "Only the chat context will move. Files, running apps, and other environment state will stay in the original environment."
+msgstr "Only the chat context will move. Files, running apps, and other environment state will stay in the original environment."
+
 #. placeholder {0}: agent.name
 #. placeholder {0}: connection.name
 #: src/components/settings/agents/agent-row.tsx
@@ -4454,8 +4465,8 @@ msgid "Open Link"
 msgstr "Open Link"
 
 #: src/pages/page-message-part.tsx
-msgid "Open local app"
-msgstr "Open local app"
+#~ msgid "Open local app"
+#~ msgstr "Open local app"
 
 #: src/components/otari-connection/otari-connection.tsx
 msgid "Open Otari"
@@ -4470,8 +4481,8 @@ msgid "Open the store to check for updates."
 msgstr "Open the store to check for updates."
 
 #: src/pages/page-message-part.tsx
-msgid "Open this local app to start its server on this computer."
-msgstr "Open this local app to start its server on this computer."
+#~ msgid "Open this local app to start its server on this computer."
+#~ msgstr "Open this local app to start its server on this computer."
 
 #: src/components/agent-execution-controls/use-project-execution-controls-state.ts
 msgid "Open this project in the desktop app to run its agent."
@@ -5635,8 +5646,8 @@ msgstr "Show fewer recent chats"
 
 #: src/components/chat/artifact-message-part.tsx
 #: src/pages/page-message-part.tsx
-msgid "Show inline"
-msgstr "Show inline"
+#~ msgid "Show inline"
+#~ msgstr "Show inline"
 
 #: src/layout/sidebar/chat-menu-items.tsx
 #: src/layout/sidebar/project-tree-menu.tsx
@@ -5676,8 +5687,8 @@ msgid "Showing 50 of {totalCount} tasks"
 msgstr "Showing 50 of {totalCount} tasks"
 
 #: src/pages/page-message-part.tsx
-msgid "Shown in browser"
-msgstr "Shown in browser"
+#~ msgid "Shown in browser"
+#~ msgstr "Shown in browser"
 
 #: src/components/external-link-toggle-group.tsx
 msgid "Sidebar"
@@ -5916,6 +5927,7 @@ msgid "SSH config and agent"
 msgstr "SSH config and agent"
 
 #: src/components/agent-execution-controls/agent-execution-controls.tsx
+#: src/components/ssh-environments/ssh-environment-status.tsx
 #: src/projects/project-execution-field.tsx
 #: src/projects/project-execution-summary.tsx
 msgid "SSH environment unavailable"
@@ -6475,8 +6487,8 @@ msgid "this project"
 msgstr "this project"
 
 #: src/components/agent-execution-controls/use-project-execution-controls-state.ts
-msgid "This project's SSH environment is unavailable on this computer."
-msgstr "This project's SSH environment is unavailable on this computer."
+#~ msgid "This project's SSH environment is unavailable on this computer."
+#~ msgstr "This project's SSH environment is unavailable on this computer."
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "This removes the connection from {appName} only. Nothing on the remote server is changed."
@@ -6489,6 +6501,10 @@ msgstr "This removes the connection from your devices. Models and search using i
 #: src/settings/devices.tsx
 msgid "This replaces your 24-word phrase. The one you have now will stop working, and you will need to save the new one."
 msgstr "This replaces your 24-word phrase. The one you have now will stop working, and you will need to save the new one."
+
+#: src/components/chat/error-message.tsx
+msgid "This reply was interrupted before it finished. Retrying may repeat actions the agent already performed."
+msgstr "This reply was interrupted before it finished. Retrying may repeat actions the agent already performed."
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "This server needs a personal access token or API key. Paste it in the Credential field above, then test again."
@@ -6558,8 +6574,8 @@ msgstr "This will deny the device access to your encrypted data. The device will
 
 #. placeholder {0}: dialog.project.name
 #: src/projects/project-badge.tsx
-msgid "This will move the session to <0>{0}</0>."
-msgstr "This will move the session to <0>{0}</0>."
+#~ msgid "This will move the session to <0>{0}</0>."
+#~ msgstr "This will move the session to <0>{0}</0>."
 
 #: src/settings/preferences.tsx
 msgid "This will permanently delete all of your local data including settings, chat history, and cached information. This action cannot be undone."
@@ -6903,6 +6919,10 @@ msgstr "Update Thunderbolt to connect to Thunderbolt Cloud. You can still set up
 #: src/settings/preferences.tsx
 msgid "Update Units"
 msgstr "Update Units"
+
+#: src/pages/page-update-link.tsx
+#~ msgid "Updated {title}"
+#~ msgstr "Updated {title}"
 
 #: src/settings/app-version-section.tsx
 msgid "Updates"
@@ -7321,6 +7341,10 @@ msgstr "Work on this computer"
 #: src/settings/environments/ssh-environment-form.tsx
 msgid "Working folder"
 msgstr "Working folder"
+
+#: src/components/chat/synthetic-loading-part.tsx
+msgid "Working…"
+msgstr "Working…"
 
 #: src/settings/preferences.tsx
 msgid "Would you like to change the language to {suggestedLanguageLabel}?"

@@ -18,6 +18,7 @@ if [ -z "${DISPLAY:-}" ]; then
 fi
 command -v tauri-driver
 command -v WebKitWebDriver
+command -v xdotool
 
 ffmpeg -loglevel error -y -f x11grab -framerate 15 -video_size 1600x1200 \
   -i "$DISPLAY" -c:v libx264 -pix_fmt yuv420p /tmp/native-smoke/linux.mp4 &

@@ -86,6 +86,8 @@ export type ChatSession = {
     onAcpSessionEvent?: AgentAdapterContext['onAcpSessionEvent']
   }
   compactionStatus?: CompactionStatus
+  /** A restored partial reply, shown as interrupted until the user explicitly continues or retries. */
+  interruptedReplyId?: string
   /** Opened with no messages while the device was still syncing; the chat shows a loader, not the empty state. */
   awaitingSyncedMessages?: boolean
   chatThread: ChatThread | null

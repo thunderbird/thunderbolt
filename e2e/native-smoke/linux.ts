@@ -47,6 +47,24 @@ type NativeBrowserSnapshot = Omit<PageSnapshot, 'pageId' | 'sessionId' | 'capabi
   capabilities: { nativeInput: boolean; screenshot: boolean }
 }
 
+/** Native GTK menus sit outside WebDriver's DOM; select them with real X11 keyboard input. */
+const chooseNativeTabMenuItem = async (keys: string[], pageVisible = true) => {
+  assert.equal(await browser.execute(() => document.querySelectorAll('[role="menu"][data-state="open"]').length), 0)
+  if (pageVisible) {
+    assert(
+      await browser.execute(() =>
+        [...document.querySelectorAll<HTMLElement>('[data-page-host]')].some(
+          (host) => getComputedStyle(host).visibility === 'visible' && !host.inert,
+        ),
+      ),
+      'A native tab menu must not hide the active browser surface',
+    )
+  }
+  // The IPC call shows a GTK popup asynchronously after the right-click event returns.
+  const result = Bun.spawn(['xdotool', 'sleep', '0.25', 'key', '--clearmodifiers', '--delay', '80', ...keys, 'Return'])
+  assert.equal(await result.exited, 0, 'Native tab menu keyboard input failed')
+}
+
 /** Menus in the composer must hand off to their siblings without stacking. */
 const exerciseComposerMenus = async () => {
   const location = await browser.$('button[aria-label="Agent location"]')
@@ -124,12 +142,18 @@ const exerciseSshEnvironments = async () => {
   await (await removeDialog.$('button=Remove SSH environment')).click()
   await (await browser.$('button[aria-label="Edit Smoke SSH"]')).waitForExist({ reverse: true })
   await browser.back()
-  await browser.waitUntil(async () =>
-    (await (await browser.$('body')).getText()).includes('SSH environment is unavailable'),
-  )
+  await (await projectRow.$('[role="status"][aria-label="SSH environment unavailable"]')).waitForDisplayed()
+  await (await projectSelector.$('[role="status"][aria-label="SSH environment unavailable"]')).waitForDisplayed()
   assert.equal(await (await browser.$('button[aria-label="Agent access"]')).isEnabled(), false)
-  await (await projectRow.$('[role="status"][aria-label="Disconnected"]')).waitForDisplayed()
-  await (await projectSelector.$('[role="status"][aria-label="Disconnected"]')).waitForDisplayed()
+  assert(
+    !(await (await browser.$('body')).getText()).includes(
+      "This project's SSH environment is unavailable on this computer.",
+    ),
+  )
+  assert.equal(
+    await (await projectRow.$('[role="status"][aria-label="SSH environment unavailable"]')).getAttribute('title'),
+    'This SSH environment is unavailable on this computer.',
+  )
   await (await browser.$('button=New Chat')).click()
   await browser.waitUntil(async () => browser.execute(() => location.pathname === '/chats/new' && !location.search))
 }
@@ -395,11 +419,44 @@ const exerciseBrowser = async () => {
   const visits = new Map<string, number>()
   const receivedCookies = new Map<string, string>()
   const sessionCookie = `browser-smoke-session=${crypto.randomUUID()}`
+  const mainCookie = `browser-smoke-main=${crypto.randomUUID()}`
+  const storageValue = crypto.randomUUID()
+  const defaultProfileStorage: (string | null)[] = []
+  const indexedStorageScript = `
+    const storedValue = (value) => new Promise((resolve, reject) => {
+      const opening = indexedDB.open('browser-smoke', 1);
+      opening.onupgradeneeded = () => opening.result.createObjectStore('values');
+      opening.onerror = () => reject(opening.error);
+      opening.onsuccess = () => {
+        const database = opening.result;
+        const transaction = database.transaction('values', value === undefined ? 'readonly' : 'readwrite');
+        const store = transaction.objectStore('values');
+        const request = value === undefined ? store.get('saved') : store.put(value, 'saved');
+        transaction.oncomplete = () => { database.close(); resolve(request.result ?? null); };
+        transaction.onerror = () => { database.close(); reject(transaction.error); };
+      };
+    });`
   const fixture = createServer((request, response) => {
-    const path = new URL(request.url ?? '/', 'http://localhost').pathname
+    const requestUrl = new URL(request.url ?? '/', 'http://localhost')
+    const path = requestUrl.pathname
     visits.set(path, (visits.get(path) ?? 0) + 1)
     receivedCookies.set(path, request.headers.cookie ?? '')
     response.setHeader('Cache-Control', 'no-store')
+    if (path === '/default-profile-report') {
+      defaultProfileStorage.push(requestUrl.searchParams.get('value'))
+      response.end('ok')
+      return
+    }
+    if (path === '/default-profile') {
+      response.setHeader('Content-Type', 'text/html; charset=utf-8')
+      response.setHeader('Set-Cookie', `${mainCookie}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400`)
+      response.end(`<!doctype html><title>Default profile probe</title><script>
+        const value = localStorage.getItem('browser-smoke-data');
+        fetch('/default-profile-report' + (value === null ? '' : '?value=' + encodeURIComponent(value)));
+        localStorage.setItem('main-profile-data', ${JSON.stringify(storageValue)});
+      </script>`)
+      return
+    }
     if (path === '/follow-link') {
       pendingLinks.add(response)
       response.on('close', () => pendingLinks.delete(response))
@@ -423,10 +480,13 @@ const exerciseBrowser = async () => {
     }
     response.setHeader('Content-Type', 'text/html; charset=utf-8')
     if (path === '/one') {
-      response.setHeader('Set-Cookie', `${sessionCookie}; Path=/; HttpOnly; SameSite=Lax`)
+      response.setHeader('Set-Cookie', `${sessionCookie}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400`)
       response.end(`<!doctype html><title>Browser smoke one</title>
         <h1>First page</h1><a id="next" href="/redirect" target="_blank">Next page</a>
-        <script>fetch('/follow-link').then(() => document.getElementById('next').click())</script>`)
+        <script>${indexedStorageScript}
+          localStorage.setItem('browser-smoke-data', ${JSON.stringify(storageValue)});
+          Promise.all([storedValue(${JSON.stringify(storageValue)}), fetch('/follow-link')]).then(() => document.getElementById('next').click());
+        </script>`)
       return
     }
     if (path === '/two') {
@@ -434,15 +494,17 @@ const exerciseBrowser = async () => {
         <script>window.nativeRuntimeAtStartup = ['isTauri', '__TAURI__', '__TAURI_INTERNALS__', '__TAURI_OS_PLUGIN_INTERNALS__'].filter(name => name in window);</script>
         <style>body{min-height:2400px}input,button{display:block;margin:16px;padding:10px}</style>
         <h1>Second page</h1>
-        <p id="runtime-isolation"></p>
+        <p id="runtime-isolation"></p><p id="storage-state"></p><p id="indexed-state"></p>
         <a id="pick-target" href="/one">First page</a>
         <a href="/three">Navigate third page</a>
         <input aria-label="Native entry" value="Replace this"/>
         <button id="agent-target">Native click target</button>
         <p id="input-event"></p><p id="key-event"></p><p id="click-event"></p>
-        <script>
+        <script>${indexedStorageScript}
+          storedValue().then(value => document.getElementById('indexed-state').textContent = 'Indexed value: ' + value);
           document.getElementById('runtime-isolation').textContent = window.nativeRuntimeAtStartup.length
             ? 'Native runtime leaked: ' + window.nativeRuntimeAtStartup.join(',') : 'Web runtime isolated';
+          document.getElementById('storage-state').textContent = 'Stored value: ' + localStorage.getItem('browser-smoke-data') + '; Main profile value: ' + localStorage.getItem('main-profile-data');
           const entry = document.querySelector('input');
           entry.addEventListener('input', event => document.getElementById('input-event').textContent = 'Input trusted: ' + event.isTrusted);
           entry.addEventListener('keydown', event => document.getElementById('key-event').textContent = 'Key trusted: ' + event.isTrusted + ' ' + event.key);
@@ -669,10 +731,10 @@ const exerciseBrowser = async () => {
     await exerciseBrowserOverlayBoundary(activePanel)
     await exerciseBrowserChrome(activePanel)
     await (await tab('Browser smoke two')).click({ button: 'right' })
-    await (await browser.$('[role="menuitem"]=Pin')).click()
+    await chooseNativeTabMenuItem(['Home'])
     await (await browser.$('[data-saved-page-id] [data-sidebar="menu-button"]=Browser smoke two')).waitForDisplayed()
     await (await tab('Browser smoke two')).click({ button: 'right' })
-    await (await browser.$('[role="menuitem"]=Rename')).click()
+    await chooseNativeTabMenuItem(['Home', 'Down', 'Down'])
     const pageName = await browser.$('input[aria-label="Page name"]')
     await pageName.waitForDisplayed()
     await pageName.setValue('My browser fixture')
@@ -682,7 +744,7 @@ const exerciseBrowser = async () => {
     await waitForPage(secondLabel, secondUrl, 'Browser smoke two', 'My browser fixture')
     await (await tab('My browser fixture')).waitForDisplayed()
     await (await tab('My browser fixture')).click({ button: 'right' })
-    await (await browser.$('[role="menuitem"]=Unpin')).click()
+    await chooseNativeTabMenuItem(['Home', 'Down', 'Down', 'Down'])
     await (await tab('Browser smoke two')).waitForDisplayed()
     const beforeExpand = await getLabels()
     const originalRoute = await browser.execute(() => location.pathname)
@@ -738,6 +800,37 @@ const exerciseBrowser = async () => {
     )
     assert((visits.get('/redirect') ?? 0) > 0, 'The target=_blank link should follow its HTTP redirect')
     assert(receivedCookies.get('/two')?.includes(sessionCookie), 'Popup tabs should share the browser login session')
+    assert(
+      (await observe(secondLabel)).text.includes(`Stored value: ${storageValue}`),
+      'Tabs should share website storage',
+    )
+    // A regular child uses the main app's default profile. Its same-origin data
+    // must stay separate from the managed browser profile in both directions.
+    const defaultProfileLabel = `profile-isolation-${crypto.randomUUID()}`
+    await invokeNative('plugin:webview|create_webview', {
+      windowLabel: 'main',
+      options: {
+        label: defaultProfileLabel,
+        url: `${origin}/default-profile`,
+        x: -10,
+        y: -10,
+        width: 1,
+        height: 1,
+        focus: false,
+      },
+    })
+    try {
+      await browser.waitUntil(() => defaultProfileStorage.length > 0, { timeout: 10_000 })
+      assert.equal(defaultProfileStorage.at(-1), null, 'The main profile must not see browser localStorage')
+      assert.equal(
+        receivedCookies.get('/default-profile')?.includes(sessionCookie),
+        false,
+        'The main profile must not receive browser cookies',
+      )
+    } finally {
+      await invokeNative('plugin:webview|webview_close', { label: defaultProfileLabel })
+    }
+
     assert.equal(((await invokeNative('browser_get_state', { label })) as NativeBrowserState).url, firstUrl)
     assert.equal(await (await control('button[aria-label="Go back"]')).isEnabled(), false)
 
@@ -851,7 +944,7 @@ const exerciseBrowser = async () => {
     assert.equal(await (await control('[data-browser-new-tab]')).isExisting(), false)
     assert(receivedCookies.get('/one')?.includes(sessionCookie), 'Manually opened tabs should share the login session')
     await (await tab('Browser smoke three')).click({ button: 'right' })
-    await (await browser.$('[role="menuitem"]=Close tab')).click()
+    await chooseNativeTabMenuItem(['End', 'Up'])
     await browser.waitUntil(async () => (await getLabels()).length === 2, { timeout: 5000 })
     assert.deepEqual((await getLabels()).sort(), [secondLabel, thirdLabel].sort())
     await waitForPage(thirdLabel, firstUrl, 'Browser smoke one')
@@ -874,10 +967,47 @@ const exerciseBrowser = async () => {
     assert.equal(reopenedLabels.length, 1)
     await navigate(secondUrl)
     await waitForPage(reopenedLabels[0], secondUrl, 'Browser smoke two')
-    assert.equal(
+    assert(
       receivedCookies.get('/two')?.includes(sessionCookie),
+      'Closing every tab must preserve persistent browser cookies',
+    )
+    assert.equal(
+      receivedCookies.get('/two')?.includes(mainCookie),
       false,
-      'Closing every tab should end the private browser session',
+      'Browser requests must not receive main-profile cookies',
+    )
+    const reopenedSnapshot = await observe(reopenedLabels[0])
+    assert(
+      reopenedSnapshot.text.includes(`Stored value: ${storageValue}`),
+      'Closing every tab must preserve localStorage',
+    )
+    await browser.waitUntil(async () =>
+      (await observe(reopenedLabels[0])).text.includes(`Indexed value: ${storageValue}`),
+    )
+    assert(
+      reopenedSnapshot.text.includes('Main profile value: null'),
+      'Browser localStorage must remain separate from the main profile',
+    )
+
+    await browser.refresh()
+    await browser.waitUntil(async () => (await getLabels()).length === 0, { timeout: 15_000 })
+    await (await browser.$('button[aria-label="Open browser"]')).waitForDisplayed({ timeout: 15_000 })
+    await (await browser.$('button[aria-label="Open browser"]')).click()
+    await (await control('[data-browser-new-tab]')).waitForDisplayed()
+    await navigate(secondUrl)
+    const restoredLabels = await getLabels()
+    assert.equal(restoredLabels.length, 1)
+    await waitForPage(restoredLabels[0], secondUrl, 'Browser smoke two')
+    assert(
+      receivedCookies.get('/two')?.includes(sessionCookie),
+      'Reloading the main app must preserve persistent browser cookies',
+    )
+    assert(
+      (await observe(restoredLabels[0])).text.includes(`Stored value: ${storageValue}`),
+      'Reloading the main app must preserve localStorage',
+    )
+    await browser.waitUntil(async () =>
+      (await observe(restoredLabels[0])).text.includes(`Indexed value: ${storageValue}`),
     )
     await closeBrowser()
 
@@ -893,7 +1023,7 @@ const exerciseBrowser = async () => {
 
     await (await browser.$('[data-browser-toggle]')).click()
     await (await control('[role="tab"]')).click({ button: 'right' })
-    await (await browser.$('[role="menuitem"]=Close all tabs')).click()
+    await chooseNativeTabMenuItem(['End'], false)
     await waitForClosed()
     await browser.waitUntil(
       async () => browser.execute(() => document.getElementById('content-view')!.getBoundingClientRect().width < 1),
@@ -912,9 +1042,19 @@ const exerciseBrowser = async () => {
       timeoutMsg: 'The browser fixture did not finish its native tool calls',
     })
     const banner = await control('[role="status"]')
+    assert.match(
+      String((await banner.getCSSProperty('background-image')).value),
+      /linear-gradient/,
+      'The browser activity banner uses the brand gradient',
+    )
     const bannerId = banner.elementId
     const observationStarted = Date.now()
     while (Date.now() - observationStarted < 1000) {
+      assert.equal(
+        await (await browser.$('[data-testid="loading-status"]')).isDisplayed(),
+        true,
+        'The transcript must show activity after commentary while the agent is still working',
+      )
       assert.equal(await banner.isDisplayed(), true, 'The agent banner must remain visible between browser tool calls')
       assert((await banner.getText()).includes('Agent is using this tab'))
       assert.equal(
@@ -931,6 +1071,7 @@ const exerciseBrowser = async () => {
       timeout: 10_000,
       timeoutMsg: 'The completed agent turn left its browser activity banner visible',
     })
+    assert.equal(await (await browser.$('[data-testid="loading-status"]')).isExisting(), false)
     await closeBrowser()
 
     await (await browser.$(`a[href="${secondUrl}"]`)).click()
@@ -975,6 +1116,58 @@ const exerciseBrowser = async () => {
       },
       { timeout: 5000, timeoutMsg: 'Reloading the app must remove its old native browser tabs and grip' },
     )
+
+    /** Native identity cleanup must await all website storage, with or without live tabs. */
+    const assertProfileCleared = async () => {
+      await (await browser.$('button[aria-label="Open browser"]')).click()
+      await (await control('[data-browser-new-tab]')).waitForDisplayed()
+      await navigate(secondUrl)
+      const [label] = await getLabels()
+      await waitForPage(label, secondUrl, 'Browser smoke two')
+      assert.equal(receivedCookies.get('/two')?.includes(sessionCookie), false, 'Identity cleanup removes cookies')
+      await browser.waitUntil(
+        async () => {
+          const snapshot = await observe(label)
+          return snapshot.text.includes('Stored value: null') && snapshot.text.includes('Indexed value: null')
+        },
+        { timeout: 5000, timeoutMsg: 'Identity cleanup left website storage behind' },
+      )
+    }
+    await invokeNative('browser_clear_profile')
+    assert.deepEqual(await getLabels(), [], 'Cleanup must close its hidden maintenance view')
+    await assertProfileCleared()
+
+    await navigate(firstUrl)
+    await waitForPage((await getLabels())[0], firstUrl, 'Browser smoke one')
+    await invokeNative('browser_clear_profile')
+    assert.deepEqual(await getLabels(), [], 'Identity cleanup must close existing website tabs')
+    await browser.refresh()
+    await (await browser.$('textarea')).waitForDisplayed({ timeout: 60_000 })
+    await assertProfileCleared()
+    await closeBrowser()
+
+    const mainProfileVisits = visits.get('/default-profile') ?? 0
+    await invokeNative('plugin:webview|create_webview', {
+      windowLabel: 'main',
+      options: {
+        label: defaultProfileLabel,
+        url: `${origin}/default-profile`,
+        x: -10,
+        y: -10,
+        width: 1,
+        height: 1,
+        focus: false,
+      },
+    })
+    try {
+      await browser.waitUntil(() => (visits.get('/default-profile') ?? 0) > mainProfileVisits)
+      assert(
+        receivedCookies.get('/default-profile')?.includes(mainCookie),
+        'Browser cleanup must preserve the main app profile',
+      )
+    } finally {
+      await invokeNative('plugin:webview|webview_close', { label: defaultProfileLabel })
+    }
   } finally {
     fixture.closeAllConnections()
     await new Promise<void>((resolve, reject) => fixture.close((error) => (error ? reject(error) : resolve())))

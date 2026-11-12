@@ -24,6 +24,7 @@ type PageStore = {
     page: PageDefinition,
     options?: { chrome?: PageChrome; presentation?: PagePresentation; chatThreadId?: string | null },
   ) => string
+  replacePage: (id: string, page: PageDefinition) => void
   present: (id: string, mode: PagePresentation) => void
   close: (id: string) => void
   update: (
@@ -64,6 +65,24 @@ export const usePageStore = create<PageStore>((set, get) => ({
     }))
     return id
   },
+  replacePage: (id, page) =>
+    set((state) => ({
+      sessions: state.sessions.map((session) =>
+        session.id === id
+          ? {
+              ...session,
+              page,
+              error:
+                session.page.source.kind === 'html' &&
+                page.source.kind === 'html' &&
+                session.page.source.html === page.source.html
+                  ? session.error
+                  : null,
+              browser: { ...session.browser, title: page.title },
+            }
+          : session,
+      ),
+    })),
   present: (id, presentation) =>
     set((state) => ({
       sessions: state.sessions.map((session) => (session.id === id ? { ...session, presentation } : session)),

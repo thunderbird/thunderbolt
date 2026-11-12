@@ -9,6 +9,9 @@ import { blobToBase64, isAttachmentPart } from '@/lib/attachments'
 import { getAttachment, type StoredFile } from '@/lib/file-blob-storage'
 import { hydrateQuotesAsText } from '@/lib/quotes'
 import type { ThunderboltUIMessage } from '@/types'
+import { getToolName, isToolOrDynamicToolUIPart } from 'ai'
+import { isRecord } from '@shared/lib/is-record'
+import { pageSnapshotText, showFileModelOutput } from '@/pages/page-model-output'
 import type { ImageContent } from '@earendil-works/pi-ai'
 import type { CompactionCheckpoint, SeedTurn, WorkspaceFile } from '@shared/agent-core'
 
@@ -65,12 +68,12 @@ export const prepareBuiltInHistory = async (
       if (message.role !== 'user' && message.role !== 'assistant') {
         return null
       }
-      return { role: message.role, prepared: await prepareMessage(message, false, options, deps) }
+      return { prepared: await prepareMessage(message, false, options, deps) }
     }),
   )
   const turns = preparedMessages
     .slice(messagesToPrepare.length - previous.messages.length)
-    .flatMap((entry): SeedTurn[] => (entry?.prepared.text ? [{ role: entry.role, text: entry.prepared.text }] : []))
+    .flatMap((entry): SeedTurn[] => entry?.prepared.history ?? [])
   const files = preparedMessages.flatMap((entry) => entry?.prepared.files ?? [])
   return {
     compaction: previous.compaction,
@@ -83,7 +86,10 @@ type PreparedPart = {
   readonly text: string
   readonly images: ImageContent[]
   readonly files: WorkspaceFile[]
+  readonly toolCall?: SeedTurn['toolCall']
 }
+
+type PreparedMessage = PreparedPart & { readonly history: SeedTurn[] }
 
 type AttachmentData = Extract<ThunderboltUIMessage['parts'][number], { type: 'data-attachment' }>['data']
 
@@ -268,13 +274,82 @@ const prepareAttachment = async (
   return { text: `${attachmentText(filename)} (file type unsupported by built-in agent)`, images: [], files: [] }
 }
 
+/** Keep the head and tail of unusually large historical tool results, including trailing errors. */
+const savedToolText = (text: string): string => {
+  const limit = 24_000
+  if (text.length <= limit) {
+    return text
+  }
+  return `${text.slice(0, limit / 2)}\n[Saved tool result truncated: ${text.length - limit} characters omitted]\n${text.slice(-limit / 2)}`
+}
+
+/** Restore Pi's model-facing content, or project known raw outputs from older/non-Pi turns. */
+const savedToolOutput = (name: string, output: unknown): string => {
+  if (isRecord(output) && Array.isArray(output.content)) {
+    return savedToolText(
+      output.content
+        .map((part: unknown) => {
+          if (!isRecord(part)) {
+            return ''
+          }
+          if (part.type === 'text' && typeof part.text === 'string') {
+            return part.text
+          }
+          return part.type === 'image' ? '[Image omitted from saved tool result]' : ''
+        })
+        .filter(Boolean)
+        .join('\n'),
+    )
+  }
+  if (isRecord(output)) {
+    if (['page_snapshot', 'page_navigate', 'page_action'].includes(name)) {
+      return savedToolText(pageSnapshotText(output))
+    }
+    if (
+      name === 'page_show_file' &&
+      output.ok === true &&
+      isRecord(output.page) &&
+      typeof output.page.id === 'string' &&
+      typeof output.page.title === 'string'
+    ) {
+      return JSON.stringify(
+        showFileModelOutput({
+          output: { ok: true, page: { id: output.page.id, title: output.page.title } },
+        }).value,
+      )
+    }
+  }
+  return savedToolText(typeof output === 'string' ? output : (JSON.stringify(output) ?? ''))
+}
+
+/** A truncated input stream cannot prove execution never began; only settled results establish an outcome. */
+const savedToolCall = (
+  part: Extract<ThunderboltUIMessage['parts'][number], { type: `tool-${string}` | 'dynamic-tool' }>,
+): NonNullable<SeedTurn['toolCall']> => {
+  const output =
+    part.state === 'output-available'
+      ? savedToolOutput(getToolName(part), part.output)
+      : part.state === 'output-error'
+        ? part.errorText
+        : part.state === 'output-denied'
+          ? 'Tool execution was denied.'
+          : 'Tool outcome was not saved. It may have changed external state. Verify the current state before repeating this action.'
+  return {
+    id: part.toolCallId,
+    name: getToolName(part),
+    input: isRecord(part.input) ? part.input : {},
+    output: savedToolText(output),
+    isError: part.state !== 'output-available' || (isRecord(part.output) && part.output.isError === true),
+  }
+}
+
 /** Convert one UI message to Pi-compatible text/images while preserving part order. */
 const prepareMessage = async (
   message: ThunderboltUIMessage,
   isCurrentTurn: boolean,
   options: BuiltInConversationOptions,
   deps: BuiltInConversationDeps,
-): Promise<PreparedPart> => {
+): Promise<PreparedMessage> => {
   const hydrated = hydrateQuotesAsText([message])[0]
   const parts = await Promise.all(
     hydrated.parts.map(async (part): Promise<PreparedPart> => {
@@ -283,6 +358,9 @@ const prepareMessage = async (
       }
       if (isAttachmentPart(part)) {
         return prepareAttachment(part, isCurrentTurn, options, deps)
+      }
+      if (message.role === 'assistant' && isToolOrDynamicToolUIPart(part)) {
+        return { text: '', images: [], files: [], toolCall: savedToolCall(part) }
       }
       return { text: '', images: [], files: [] }
     }),
@@ -294,22 +372,33 @@ const prepareMessage = async (
       .join('\n'),
     images: parts.flatMap((part) => part.images),
     files: parts.flatMap((part) => part.files),
+    history: coalesceTurns(
+      parts.flatMap((part): SeedTurn[] => {
+        if (part.toolCall) {
+          return [{ role: 'assistant', text: '', toolCall: part.toolCall }]
+        }
+        return part.text && (message.role === 'user' || message.role === 'assistant')
+          ? [{ role: message.role, text: part.text }]
+          : []
+      }),
+      '\n',
+    ),
   }
 }
 
-/** Collapse consecutive same-role seed turns to satisfy provider alternation. */
-const coalesceTurns = (turns: readonly SeedTurn[]): SeedTurn[] =>
+/** Coalesce adjacent text without moving it across historical tool calls. */
+const coalesceTurns = (turns: readonly SeedTurn[], separator = '\n\n'): SeedTurn[] =>
   turns.reduce<SeedTurn[]>((acc, turn) => {
     const previous = acc.at(-1)
-    if (previous?.role === turn.role) {
-      acc[acc.length - 1] = { role: turn.role, text: `${previous.text}\n\n${turn.text}` }
+    if (previous?.role === turn.role && !previous.toolCall && !turn.toolCall) {
+      acc[acc.length - 1] = { role: turn.role, text: `${previous.text}${separator}${turn.text}` }
       return acc
     }
     acc.push(turn)
     return acc
   }, [])
 
-/** Prepare prior text history, latest Pi-native prompt content, and the attachment files to write. */
+/** Prepare saved conversation evidence, latest Pi-native prompt content, and attachment files to restore. */
 export const prepareBuiltInConversation = async (
   messages: ThunderboltUIMessage[],
   skillInstructions: string[] | undefined,

@@ -2,17 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Trans, useLingui } from '@lingui/react/macro'
+import { useLingui } from '@lingui/react/macro'
 import { AppWindow, LoaderCircle, Pin, PinOff, Plus, X, CopyX, Pencil } from 'lucide-react'
 import { useEffect, useRef, type ReactNode } from 'react'
 import type { PageChrome } from '@shared/page-protocol'
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from '@/components/ui/context-menu'
 import { BrowserToolbarButton } from '@/content-view/browser-toolbar-button'
 import { isTauriDesktop } from '@/lib/platform'
 import { cn } from '@/lib/utils'
@@ -20,6 +13,7 @@ import type { PageSession } from './page-store'
 import { canPinPage } from './page-display'
 import { PageIcon } from './page-icon'
 import type { SavedPage } from './saved-page'
+import { PageTabContextMenu, type PageTabMenuItem } from './page-tab-context-menu'
 
 export const PageTabStrip = ({
   sessions,
@@ -50,6 +44,8 @@ export const PageTabStrip = ({
 }) => {
   const { t } = useLingui()
   const pinnedById = new Map(pinnedPages.map((page) => [page.id, page]))
+  const nativeMenu =
+    isTauriDesktop() && sessions.some((session) => session.id === activeId && session.page.source.kind !== 'html')
   const openingRename = useRef(false)
   const stripRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -108,102 +104,97 @@ export const PageTabStrip = ({
               ? t`New tab`
               : session.browser.title || session.page.title || URL.parse(session.browser.url)?.hostname || t`Page`)
           const selected = session.id === activeId
+          const items: PageTabMenuItem[] = [
+            {
+              id: 'pin',
+              label: t`Pin`,
+              icon: Pin,
+              disabled: !canPinPage(session),
+              onSelect: () => onPin(session, 'browser'),
+            },
+            {
+              id: 'pin-app',
+              label: t`Pin as app`,
+              icon: AppWindow,
+              disabled: !canPinPage(session),
+              onSelect: () => onPin(session, 'app'),
+            },
+            ...(pinned
+              ? [
+                  {
+                    id: 'rename',
+                    label: t`Rename`,
+                    icon: Pencil,
+                    onSelect: () => {
+                      openingRename.current = !nativeMenu
+                      onRename(pinned)
+                    },
+                  },
+                  { id: 'unpin', label: t`Unpin`, icon: PinOff, onSelect: () => onUnpin(session.page.id) },
+                ]
+              : []),
+            'separator',
+            { id: 'close', label: t`Close tab`, icon: X, onSelect: () => onClose(session.id) },
+            { id: 'close-all', label: t`Close all tabs`, icon: CopyX, onSelect: onCloseAll },
+          ]
           return (
-            <ContextMenu key={session.id}>
-              <ContextMenuTrigger asChild>
-                <div
-                  data-browser-tab
-                  role="presentation"
-                  className={cn(
-                    'group flex min-w-28 max-w-48 flex-1 items-center rounded-xl',
-                    selected ? 'bg-background' : 'hover:bg-accent',
-                  )}
-                  onAuxClick={(event) => {
-                    if (event.button === 1) {
-                      event.preventDefault()
-                      onClose(session.id)
-                    }
-                  }}
-                >
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={selected}
-                    aria-controls={`browser-tab-panel-${session.id}`}
-                    tabIndex={selected ? 0 : -1}
-                    title={session.browser.url || session.page.title}
-                    onClick={() => onSelect(session.id)}
-                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-xl px-2 py-2 text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                  >
-                    {session.browser.isLoading ? (
-                      <LoaderCircle
-                        aria-hidden="true"
-                        className="size-3.5 shrink-0 animate-spin text-muted-foreground"
-                      />
-                    ) : (
-                      <PageIcon
-                        source={session.page.source}
-                        url={session.browser.url}
-                        icons={session.browser.faviconUrls}
-                      />
-                    )}
-                    <span className="truncate">{title}</span>
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={t`Close tab ${title}`}
-                    tabIndex={selected ? 0 : -1}
-                    onClick={() => onClose(session.id)}
-                    className="mr-1 cursor-pointer rounded-xl p-1 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <X aria-hidden="true" className="size-3" />
-                  </button>
-                </div>
-              </ContextMenuTrigger>
-              <ContextMenuContent
-                onCloseAutoFocus={(event) => {
-                  if (openingRename.current) {
+            <PageTabContextMenu
+              key={session.id}
+              native={nativeMenu}
+              items={items}
+              onCloseAutoFocus={(event) => {
+                if (openingRename.current) {
+                  event.preventDefault()
+                  openingRename.current = false
+                }
+              }}
+            >
+              <div
+                data-browser-tab
+                role="presentation"
+                className={cn(
+                  'group flex min-w-28 max-w-48 flex-1 items-center rounded-xl',
+                  selected ? 'bg-background' : 'hover:bg-accent',
+                )}
+                onAuxClick={(event) => {
+                  if (event.button === 1) {
                     event.preventDefault()
-                    openingRename.current = false
+                    onClose(session.id)
                   }
                 }}
               >
-                <ContextMenuItem disabled={!canPinPage(session)} onSelect={() => onPin(session, 'browser')}>
-                  <Pin />
-                  <Trans>Pin</Trans>
-                </ContextMenuItem>
-                <ContextMenuItem disabled={!canPinPage(session)} onSelect={() => onPin(session, 'app')}>
-                  <AppWindow />
-                  <Trans>Pin as app</Trans>
-                </ContextMenuItem>
-                {pinned && (
-                  <ContextMenuItem
-                    onSelect={() => {
-                      openingRename.current = true
-                      onRename(pinned)
-                    }}
-                  >
-                    <Pencil />
-                    <Trans>Rename</Trans>
-                  </ContextMenuItem>
-                )}
-                {pinned && (
-                  <ContextMenuItem onSelect={() => onUnpin(session.page.id)}>
-                    <PinOff />
-                    <Trans>Unpin</Trans>
-                  </ContextMenuItem>
-                )}
-                <ContextMenuSeparator />
-                <ContextMenuItem onSelect={() => onClose(session.id)}>
-                  <X />
-                  <Trans>Close tab</Trans>
-                </ContextMenuItem>
-                <ContextMenuItem onSelect={onCloseAll}>
-                  <CopyX />
-                  <Trans>Close all tabs</Trans>
-                </ContextMenuItem>
-              </ContextMenuContent>
-            </ContextMenu>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  aria-controls={`browser-tab-panel-${session.id}`}
+                  tabIndex={selected ? 0 : -1}
+                  title={session.browser.url || session.page.title}
+                  onClick={() => onSelect(session.id)}
+                  className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-xl px-2 py-2 text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                >
+                  {session.browser.isLoading ? (
+                    <LoaderCircle aria-hidden="true" className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
+                  ) : (
+                    <PageIcon
+                      source={session.page.source}
+                      url={session.browser.url}
+                      icons={session.browser.faviconUrls}
+                    />
+                  )}
+                  <span className="truncate">{title}</span>
+                </button>
+                <button
+                  type="button"
+                  aria-label={t`Close tab ${title}`}
+                  tabIndex={selected ? 0 : -1}
+                  onClick={() => onClose(session.id)}
+                  className="mr-1 cursor-pointer rounded-xl p-1 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <X aria-hidden="true" className="size-3" />
+                </button>
+              </div>
+            </PageTabContextMenu>
           )
         })}
         <div

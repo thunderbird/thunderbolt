@@ -98,6 +98,23 @@ it('does not mark a cancelled command as connected', async () => {
   expect(useSshEnvironmentsStore.getState().connectionStatuses[profile.id]).toBeUndefined()
 })
 
+it('keeps a successful tool connected when an older request fails afterward', async () => {
+  useSshEnvironmentsStore.getState().saveEnvironment(profile)
+  const failed = Promise.withResolvers<unknown>()
+  const native: NativeInvoke = async <T>(_command: string, args: Record<string, unknown>): Promise<T> => {
+    if (args.id === 'older') {
+      return (await failed.promise) as T
+    }
+    return { stdout: 'done', stderr: '', exitCode: 0 } as T
+  }
+  const invoke = createSshInvoke(sshConnection(profile), native)
+  const older = invoke('agent_ssh_request', { id: 'older', request: { operation: 'read', cwd: '~' } })
+  await invoke('agent_ssh_request', { id: 'newer', request: { operation: 'exec', cwd: '~' } })
+  failed.reject(new Error('SSH connection failed: Connection refused'))
+  await expect(older).rejects.toThrow('Connection refused')
+  expect(useSshEnvironmentsStore.getState().connectionStatuses[profile.id].status).toBe('connected')
+})
+
 it('forgets local output ownership without reconnecting a removed SSH environment', async () => {
   const calls: Record<string, unknown>[] = []
   const native: NativeInvoke = async <T>(_command: string, args: Record<string, unknown>): Promise<T> => {

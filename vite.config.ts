@@ -262,6 +262,9 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
+    // This dependency is first imported by the shell worker, outside the startup
+    // scan. Prebundle it so the first bash call cannot reload an active agent turn.
+    include: ['just-bash'],
     exclude: ['@journeyapps/wa-sqlite', '@powersync/web'],
   },
   worker: {

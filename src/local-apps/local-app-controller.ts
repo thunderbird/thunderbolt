@@ -5,10 +5,22 @@
 import { invoke } from '@tauri-apps/api/core'
 import type { LocalApp, LocalAppLaunch, LocalAppOwner, LocalAppStatus } from '@shared/local-app-protocol'
 import { isTauriDesktop } from '@/lib/platform'
+import { createSerialQueue } from '@/lib/serial-queue'
 import { getLocalApp, listLocalApps, useLocalAppStore } from './local-app-store'
 
 type NativeInvoke = <T>(command: string, args: Record<string, unknown>) => Promise<T>
 type LocalAppInput = { owner: LocalAppOwner; title: string; cwd: string; launch: LocalAppLaunch }
+type LocalAppLaunchChanges = Partial<Omit<LocalAppLaunch, 'port'>> & { port?: number | null }
+
+/** Validate a recipe before changing the currently running process. */
+const validateLaunch = (launch: LocalAppLaunch) => {
+  if (!launch.executable.trim()) {
+    throw new Error('A local app needs an executable')
+  }
+  if (launch.port !== undefined && (!Number.isInteger(launch.port) || launch.port < 1 || launch.port > 65535)) {
+    throw new Error('The preview port must be between 1 and 65535')
+  }
+}
 
 const delay = (signal?: AbortSignal): Promise<void> =>
   new Promise((resolve, reject) => {
@@ -32,6 +44,16 @@ export const createLocalAppController = (native: NativeInvoke = invoke, supporte
   const listeners = new Set<(status: LocalAppStatus) => void>()
   type Startup = { abort: AbortController; promise: Promise<LocalAppStatus>; waiters: Set<symbol>; settled: boolean }
   const startups = new Map<string, Startup>()
+  const operations = new Map<string, ReturnType<typeof createSerialQueue>>()
+  const queueFor = (id: string) => {
+    const existing = operations.get(id)
+    if (existing) {
+      return existing
+    }
+    const queue = createSerialQueue()
+    operations.set(id, queue)
+    return queue
+  }
   const publish = (value: LocalAppStatus) => {
     for (const listener of listeners) {
       listener(value)
@@ -153,6 +175,17 @@ export const createLocalAppController = (native: NativeInvoke = invoke, supporte
       }
     })
   }
+  // Serialize recipe changes and process admission, not HTTP readiness: Stop must
+  // remain able to cancel a shared startup while it waits for the server.
+  const launchInOrder = async (id: string, signal?: AbortSignal, prepare?: () => Promise<void>) => {
+    const { pending } = await queueFor(id)(async () => {
+      signal?.throwIfAborted()
+      await prepare?.()
+      signal?.throwIfAborted()
+      return { pending: start(id, signal) }
+    })
+    return pending
+  }
   return {
     subscribe: (listener: (status: LocalAppStatus) => void) => {
       listeners.add(listener)
@@ -167,9 +200,7 @@ export const createLocalAppController = (native: NativeInvoke = invoke, supporte
       if (!owner.id || !cwd || !title.trim() || !launch.executable.trim()) {
         throw new Error('A local app needs an owner, title, working directory, and executable')
       }
-      if (launch.port !== undefined && (!Number.isInteger(launch.port) || launch.port < 1 || launch.port > 65535)) {
-        throw new Error('The preview port must be between 1 and 65535')
-      }
+      validateLaunch(launch)
       const app: LocalApp = {
         id: crypto.randomUUID(),
         owner,
@@ -181,17 +212,35 @@ export const createLocalAppController = (native: NativeInvoke = invoke, supporte
       useLocalAppStore.getState().save(app)
       return app
     },
-    start,
+    start: (id: string, signal?: AbortSignal) => launchInOrder(id, signal),
     status,
-    stop,
-    restart: async (id: string, signal?: AbortSignal) => {
-      await stop(id)
-      return start(id, signal)
-    },
-    remove: async (id: string) => {
-      await stop(id)
-      useLocalAppStore.getState().remove(id)
-    },
+    stop: (id: string) => queueFor(id)(() => stop(id)),
+    restart: (id: string, signal?: AbortSignal) =>
+      launchInOrder(id, signal, async () => {
+        await stop(id)
+      }),
+    /** Replace only launch fields and restart under the same app/page identity. */
+    update: (id: string, changes: LocalAppLaunchChanges, signal?: AbortSignal) =>
+      launchInOrder(id, signal, async () => {
+        const app = requireApp(id)
+        if (changes.executable === undefined && changes.args === undefined && changes.port === undefined) {
+          throw new Error('Provide executable, args, or port for update')
+        }
+        const launch: LocalAppLaunch = {
+          executable: changes.executable ?? app.launch.executable,
+          args: changes.args ?? app.launch.args,
+          port: changes.port === null ? undefined : (changes.port ?? app.launch.port),
+        }
+        validateLaunch(launch)
+        await stop(id)
+        signal?.throwIfAborted()
+        useLocalAppStore.getState().save({ ...app, launch })
+      }),
+    remove: (id: string) =>
+      queueFor(id)(async () => {
+        await stop(id)
+        useLocalAppStore.getState().remove(id)
+      }),
   }
 }
 

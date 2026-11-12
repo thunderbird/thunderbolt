@@ -18,6 +18,7 @@ const ROOT = path.resolve(import.meta.dirname)
 describe('vite server.fs allowlist', () => {
   let resolvedAllow: string[]
   let serverFsConfig: { strict: boolean; allow: string[] }
+  let prebundledDependencies: string[]
 
   beforeAll(async () => {
     const loaded = await loadConfigFromFile(
@@ -25,6 +26,7 @@ describe('vite server.fs allowlist', () => {
       path.join(ROOT, 'vite.config.ts'),
     )
     if (!loaded) throw new Error('Failed to load vite config')
+    prebundledDependencies = loaded.config.optimizeDeps?.include ?? []
 
     // Create a minimal server to resolve the full fs config (merges Vite defaults)
     let server
@@ -41,6 +43,10 @@ describe('vite server.fs allowlist', () => {
     expect(serverFsConfig.strict).toBe(true)
   })
 
+  it('prebundles the shell worker dependency before an agent can start', () => {
+    expect(prebundledDependencies).toContain('just-bash')
+  })
+
   it('defines an explicit allow list', () => {
     expect(resolvedAllow).toBeArray()
     expect(resolvedAllow.length).toBeGreaterThan(0)
@@ -54,9 +60,7 @@ describe('vite server.fs allowlist', () => {
         // Check both directions: the sensitive dir is an allowed path (or child),
         // AND no allowed path is a subdirectory of the sensitive dir.
         const isAllowed =
-          allowed === targetDir ||
-          targetDir.startsWith(allowed + path.sep) ||
-          allowed.startsWith(targetDir + path.sep)
+          allowed === targetDir || targetDir.startsWith(allowed + path.sep) || allowed.startsWith(targetDir + path.sep)
         expect(isAllowed).toBe(false)
       }
     })

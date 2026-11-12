@@ -54,7 +54,12 @@ export const validateSshEnvironment = (environment: SshEnvironment): SshEnvironm
 type SshEnvironmentsState = {
   environments: Record<string, SshEnvironment>
   connectionStatuses: Record<string, SshConnectionStatus>
-  recordConnectionStatus: (connection: SshConnection, status: SshConnectionStatus['status']) => void
+  /** Failures need the status observed before the request; newer connection evidence takes precedence. */
+  recordConnectionStatus: (
+    connection: SshConnection,
+    status: SshConnectionStatus['status'],
+    observedStatus?: SshConnectionStatus,
+  ) => void
   clearConnectionStatus: (id: string) => void
   saveEnvironment: (environment: SshEnvironment) => void
   deleteEnvironment: (id: string) => void
@@ -66,11 +71,15 @@ export const useSshEnvironmentsStore = create<SshEnvironmentsState>()(
     (set) => ({
       environments: {},
       connectionStatuses: {},
-      recordConnectionStatus: (connection, status) =>
+      recordConnectionStatus: (connection, status, observedStatus) =>
         set((state) => {
           const environment = state.environments[connection.environmentId]
           const connectionKey = JSON.stringify(connection)
           if (!environment || environment.deletedAt || JSON.stringify(sshConnection(environment)) !== connectionKey) {
+            return state
+          }
+          // A request started before newer evidence cannot turn that connection red.
+          if (status === 'disconnected' && state.connectionStatuses[environment.id] !== observedStatus) {
             return state
           }
           return {
@@ -90,10 +99,6 @@ export const useSshEnvironmentsStore = create<SshEnvironmentsState>()(
         const validated = validateSshEnvironment(environment)
         set((state) => ({
           environments: { ...state.environments, [validated.id]: validated },
-          connectionStatuses:
-            state.environments[validated.id]?.cwd !== validated.cwd
-              ? Object.fromEntries(Object.entries(state.connectionStatuses).filter(([key]) => key !== validated.id))
-              : state.connectionStatuses,
         }))
       },
       deleteEnvironment: (id) =>

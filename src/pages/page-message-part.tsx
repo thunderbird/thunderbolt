@@ -19,41 +19,58 @@ import { useLocalAppStore } from '@/local-apps/local-app-store'
 import { InlinePage } from './inline-page'
 import { pageController } from './page-controller'
 import { usePageStore } from './page-store'
+import { usePagePublication } from './page-publications-context'
 import { publishedPageOutput } from './published-page-output'
 
 /** Published page results retain the same document identity across transcript and browser placements. */
 export const PageMessagePart = ({ part, messageId }: { part: ToolOrDynamicToolUIPart; messageId: string }) => {
   const published = useMemo(() => publishedPageOutput(part), [part])
+  const latest = usePagePublication(published?.page.id ?? '')
   const chatThreadId = useChatStore((state) => state.currentSessionId)
   const page = useMemo(() => {
     if (!published) {
       return null
     }
-    const source = published.page.source
+    const current = latest?.page ?? published.page
+    const source = current.source
     return source.kind === 'html'
-      ? { ...published.page, source: { ...source, artifact: { toolCallId: part.toolCallId, messageId, chatThreadId } } }
-      : published.page
-  }, [published, part.toolCallId, messageId, chatThreadId])
-  return page ? <PublishedPageCard page={page} /> : null
+      ? {
+          ...current,
+          source: { ...source, artifact: { toolCallId: part.toolCallId, messageId, ...source.artifact, chatThreadId } },
+        }
+      : current
+  }, [published, latest, part.toolCallId, messageId, chatThreadId])
+  if (latest && latest.firstToolCallId !== part.toolCallId) {
+    return null
+  }
+  return page ? <PublishedPageCard page={page} presentation={latest?.presentation ?? published?.presentation} /> : null
 }
 
-const PublishedPageCard = ({ page }: { page: PageDefinition }) => {
+type PublishedPageCardProps = {
+  page: PageDefinition
+  presentation?: 'inline' | 'sidebar'
+}
+
+const PublishedPageCard = ({ page, presentation }: PublishedPageCardProps) => {
   const { t } = useLingui()
   const ref = useRef<HTMLDivElement>(null)
   const settled = useAppSettled()
   const onScreen = useOnScreen(ref)
   const active = settled && onScreen
   const session = usePageStore((state) => state.sessions.find((item) => item.page.id === page.id))
+  const currentPage = session?.page ?? page
   const localApp = useLocalAppStore((state) =>
     page.source.kind === 'local-app' ? state.apps[page.source.appId] : undefined,
   )
   const [verification, setVerification] = useState<{ html: string; error: string | null } | null>(null)
-  const source = page.source
+  const source = currentPage.source
   const html = source.kind === 'html' ? source.html : null
+  // Websites and local apps are browser pages by default; legacy HTML keeps its inline placement.
+  const placement = session?.presentation ?? presentation ?? (html !== null ? 'inline' : 'sidebar')
   // Synced tool results can be reopened long after the original verification. Recheck a
   // fresh HTML session; an existing live document must keep its state and never rerun here.
   useEffect(() => {
-    if (!active || !html || session) {
+    if (!active || !html || session || placement !== 'inline') {
       return
     }
     let current = true
@@ -71,7 +88,7 @@ const PublishedPageCard = ({ page }: { page: PageDefinition }) => {
     return () => {
       current = false
     }
-  }, [active, html, session])
+  }, [active, html, session, placement])
   const verified = html === null || !!session || (verification?.html === html && verification.error === null)
   const verificationError = verification?.html === html ? verification.error : null
   const unavailableLocal = source.kind === 'local-app' && (!isTauriDesktop() || !localApp || !!localApp.deletedAt)
@@ -79,20 +96,24 @@ const PublishedPageCard = ({ page }: { page: PageDefinition }) => {
   const dormantLocal = source.kind === 'local-app' && !session
   const webExternal = source.kind === 'url' && !isTauri()
   const title =
-    page.title.trim() || (source.kind === 'url' ? (source.url === 'about:blank' ? t`New tab` : source.url) : t`Page`)
+    currentPage.title.trim() ||
+    (source.kind === 'url' ? (source.url === 'about:blank' ? t`New tab` : source.url) : t`Page`)
   const open = () => {
-    pageController.open(page)
+    pageController.open(currentPage)
   }
 
-  if (html !== null && verified && (!session || session.presentation === 'inline')) {
-    return <InlineArtifactCard html={html} title={title} page={page} onOpenInPanel={open} />
+  if (!unavailableLocal && !webExternal && (placement !== 'inline' || dormantLocal)) {
+    return null
+  }
+  if (html !== null && verified) {
+    return <InlineArtifactCard html={html} title={title} page={currentPage} onOpenInPanel={open} />
   }
   return (
     <div ref={ref} data-published-page={page.id} className="my-2 overflow-hidden rounded-xl border border-border">
       <div className="flex min-h-10 items-center gap-2 border-b px-3 py-1">
         <Globe className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate text-sm font-medium">{title}</span>
-        {!unavailableLocal && !dormantLocal && verified && (
+        {!unavailableLocal && !webExternal && verified && (
           <Button
             variant="ghost"
             size="icon"
@@ -110,15 +131,6 @@ const PublishedPageCard = ({ page }: { page: PageDefinition }) => {
             This local app is available in the desktop app on the computer where it was created. Its files do not sync.
           </Trans>
         </p>
-      ) : dormantLocal ? (
-        <div className="space-y-3 p-4 text-sm text-muted-foreground">
-          <p>
-            <Trans>Open this local app to start its server on this computer.</Trans>
-          </p>
-          <Button variant="outline" onClick={open}>
-            <Trans>Open local app</Trans>
-          </Button>
-        </div>
       ) : webExternal ? (
         <div className="space-y-3 p-4 text-sm text-muted-foreground">
           <p>
@@ -142,17 +154,8 @@ const PublishedPageCard = ({ page }: { page: PageDefinition }) => {
             <Trans>Checking this page…</Trans>
           </p>
         )
-      ) : session && session.presentation !== 'inline' ? (
-        <div className="flex items-center gap-3 px-3 py-2">
-          <span className="min-w-0 flex-1 text-sm text-muted-foreground">
-            <Trans>Shown in browser</Trans>
-          </span>
-          <Button variant="ghost" size="sm" onClick={() => usePageStore.getState().present(session.id, 'inline')}>
-            <Trans>Show inline</Trans>
-          </Button>
-        </div>
       ) : (
-        <InlinePage page={page} enabled={active} />
+        <InlinePage page={currentPage} enabled={active} />
       )}
     </div>
   )

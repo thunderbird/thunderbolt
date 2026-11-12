@@ -31,6 +31,7 @@ import * as embed from '@/lib/embed'
 import * as platform from '@/lib/platform'
 import { ThemeProvider } from '@/lib/theme-provider'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { usePageStore } from '@/pages/page-store'
 import { Header } from './header'
 
 /** A custom (synced) agent the thread is pinned to. */
@@ -320,7 +321,8 @@ describe('Header', () => {
     expect(screen.getByTestId('create-request')).toHaveTextContent('/chats/thread-1|agent')
   })
 
-  it.each([true, false])('opens and closes the browser from the shared header (native: %s)', (native) => {
+  it.each([true, false])('opens and closes the browser, reusing the last selected tab (native: %s)', (native) => {
+    usePageStore.setState({ sessions: [], activeId: null })
     const desktop = spyOn(platform, 'isTauriDesktop').mockReturnValue(native)
     restoreViewport()
     setupWithAgent(builtInAgent)
@@ -363,8 +365,32 @@ describe('Header', () => {
       expect(screen.getByTestId('preview-url')).toBeEmptyDOMElement()
       expect(screen.getByRole('button', { name: 'Open browser' })).toHaveAttribute('aria-pressed', 'false')
       expect(screen.getByRole('button', { name: 'Open browser' })).toHaveFocus()
+
+      const store = usePageStore.getState()
+      act(() => {
+        const recent = store.ensure({
+          id: 'recent-page',
+          title: 'Recent page',
+          source: { kind: 'url', url: 'https://example.com/recent' },
+        })
+        store.ensure({
+          id: 'newer-page',
+          title: 'Newer page',
+          source: { kind: 'url', url: 'https://example.com/newer' },
+        })
+        store.present(recent, 'sidebar')
+      })
+      const recent = usePageStore.getState().activeId
+      fireEvent.click(screen.getByRole('button', { name: 'Open browser' }))
+      expect(usePageStore.getState().activeId).toBe(recent)
+      expect(usePageStore.getState().sessions).toHaveLength(3)
+      fireEvent.click(screen.getByRole('button', { name: 'Close browser' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Open browser' }))
+      expect(usePageStore.getState().activeId).toBe(recent)
+      expect(usePageStore.getState().sessions).toHaveLength(3)
     } finally {
       desktop.mockRestore()
+      usePageStore.setState({ sessions: [], activeId: null })
     }
   })
 

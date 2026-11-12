@@ -5,8 +5,9 @@
 import '@/testing-library'
 import { act, render, renderHook, fireEvent } from '@testing-library/react'
 import type { DynamicToolUIPart, ToolUIPart } from 'ai'
-import { describe, expect, mock, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import type { EventType } from '@/lib/posthog'
+import { usePageStore } from '@/pages/page-store'
 import { memo, type ReactNode } from 'react'
 import {
   ContentViewProvider,
@@ -15,6 +16,7 @@ import {
   useObjectView,
   useSideview,
   useShowCompactionSummary,
+  usePreviewControls,
 } from './context'
 
 const wrapper = ({ children }: { children: ReactNode }) => <ContentViewProvider>{children}</ContentViewProvider>
@@ -173,5 +175,48 @@ describe('summary action subscription', () => {
     fireEvent.click(view.getByText('compaction-summary'))
     expect(view.getByText('Closed')).toBeTruthy()
     expect(renderAction).toHaveBeenCalledTimes(initialRenders)
+  })
+})
+
+describe('browser panel reopening', () => {
+  beforeEach(() => usePageStore.setState({ sessions: [], activeId: null }))
+  afterEach(() => usePageStore.setState({ sessions: [], activeId: null }))
+
+  test('reopens the newest remaining browser tab when no active selection remains', () => {
+    const store = usePageStore.getState()
+    store.ensure({ id: 'first', title: 'First', source: { kind: 'url', url: 'https://example.com/first' } })
+    const latest = store.ensure({
+      id: 'latest',
+      title: 'Latest',
+      source: { kind: 'url', url: 'https://example.com/latest' },
+    })
+    store.ensure(
+      { id: 'graphic', title: 'Graphic', source: { kind: 'html', html: '<svg />' } },
+      { presentation: 'inline' },
+    )
+    usePageStore.setState({ activeId: null })
+    const { result } = renderHook(() => usePreviewControls(), { wrapper })
+    act(() => result.current!.showBrowser())
+    expect(result.current?.isPreviewOpen).toBe(true)
+    expect(usePageStore.getState().activeId).toBe(latest)
+    expect(usePageStore.getState().sessions).toHaveLength(3)
+  })
+
+  test('creates a blank tab only when the remaining documents are inline', () => {
+    const inline = usePageStore
+      .getState()
+      .ensure(
+        { id: 'graphic', title: 'Graphic', source: { kind: 'html', html: '<svg />' } },
+        { presentation: 'inline' },
+      )
+    const { result } = renderHook(() => usePreviewControls(), { wrapper })
+    act(() => result.current!.showBrowser())
+    const { sessions, activeId } = usePageStore.getState()
+    expect(sessions).toHaveLength(2)
+    expect(sessions.find((session) => session.id === inline)?.presentation).toBe('inline')
+    expect(sessions.find((session) => session.id === activeId)?.page.source).toEqual({
+      kind: 'url',
+      url: 'about:blank',
+    })
   })
 })

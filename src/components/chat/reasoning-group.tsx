@@ -22,6 +22,7 @@ type ReasoningGroupProps = {
   reasoningTime: Record<string, number>
   reasoningStartTimes?: Record<string, number>
   mcpTools?: UIMessageMetadata['mcpTools']
+  continuesMessage?: boolean
 }
 
 export const ReasoningGroup = ({
@@ -32,6 +33,7 @@ export const ReasoningGroup = ({
   reasoningTime,
   reasoningStartTimes,
   mcpTools,
+  continuesMessage = false,
 }: ReasoningGroupProps) => {
   const { openObjectSidebar } = useObjectView()
 
@@ -41,7 +43,7 @@ export const ReasoningGroup = ({
     .filter((part) => part.type === 'reasoning')
     .pop() as ReasoningGroupItem<ReasoningUIPart> | null
 
-  const isGroupReasoning = isLastPartInMessage && (isStreaming || currentReasoningPart?.content.state === 'streaming')
+  const isGroupReasoning = isLastPartInMessage && isStreaming
 
   const reasoningInstanceKey = currentReasoningPart?.id ?? ''
 
@@ -70,7 +72,7 @@ export const ReasoningGroup = ({
   })
 
   return (
-    <div className="mt-6">
+    <div className={continuesMessage ? 'mt-2' : 'mt-6'}>
       <Expandable
         className="shadow-none tool-invocation-card rounded-xl overflow-hidden transition-colors"
         icon={

@@ -92,11 +92,11 @@ it('shows the saved SSH choice even when this computer has no connection profile
     },
   })
   useSshEnvironmentsStore.setState({ environments: {} })
-  spyOn(statusHook, 'useSshEnvironmentStatus').mockReturnValue({ status: 'disconnected', error: null, refresh: mock() })
+  spyOn(statusHook, 'useSshEnvironmentStatus').mockReturnValue({ status: 'unavailable', error: null, refresh: mock() })
   render(<ProjectExecutionSummary projectId={project.id} />, { wrapper: createTestProvider() })
   await settle()
   expect(screen.getByLabelText('Project environment')).toHaveTextContent('SSH environment unavailable')
-  expect(screen.getByRole('status', { name: 'Disconnected' })).toBeInTheDocument()
+  expect(screen.getByRole('status', { name: 'SSH environment unavailable' })).toBeInTheDocument()
   expect(screen.getByText('~/project')).toBeInTheDocument()
 })
 

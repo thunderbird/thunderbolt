@@ -20,6 +20,10 @@ mod browser_operation;
 #[cfg(desktop)]
 mod browser_presentation;
 #[cfg(desktop)]
+mod browser_profile;
+#[cfg(desktop)]
+mod browser_profile_clear;
+#[cfg(desktop)]
 mod browser_resize;
 pub mod cli_installer;
 #[allow(dead_code)]
@@ -101,6 +105,8 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
                 browser::browser_get_state,
                 #[cfg(desktop)]
                 browser::browser_close,
+                #[cfg(desktop)]
+                browser::browser_clear_profile,
                 #[cfg(desktop)]
                 browser_control::browser_agent_snapshot,
                 #[cfg(desktop)]

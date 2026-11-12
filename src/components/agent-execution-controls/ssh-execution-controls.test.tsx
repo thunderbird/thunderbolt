@@ -152,6 +152,36 @@ it('does not expose desktop SSH choices on web', () => {
   expect(screen.queryByText('Manage SSH environments')).toBeNull()
 })
 
+it('uses the unavailable indicator without a repeated composer message for a removed project environment', async () => {
+  useSshEnvironmentsStore.getState().saveEnvironment(environment)
+  const project = await createProject(getDb(), {
+    name: 'Removed SSH environment',
+    execution: { location: 'ssh', environmentId: environment.id, cwd: environment.cwd, access: 'ask' },
+  })
+  useSshEnvironmentsStore.getState().deleteEnvironment(environment.id)
+  spyOn(statusHook, 'useSshEnvironmentStatus').mockReturnValue({
+    status: 'unavailable',
+    error: 'This SSH environment is unavailable on this computer.',
+    refresh: mock(),
+  })
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <MemoryRouter>
+      <DatabaseProvider db={getDb()}>
+        <PowerSyncMockProvider>
+          <QueryClientProvider client={client}>
+            <AgentExecutionControls threadId="removed-ssh-chat" projectId={project.id} disabled={false} />
+          </QueryClientProvider>
+        </PowerSyncMockProvider>
+      </DatabaseProvider>
+    </MemoryRouter>,
+  )
+  await waitForElement(() => screen.queryByRole('status', { name: 'SSH environment unavailable' }))
+  expect(screen.getByRole('button', { name: 'Agent access' })).toBeDisabled()
+  expect(screen.queryByText("This project's SSH environment is unavailable on this computer.")).toBeNull()
+  client.clear()
+})
+
 it('dismisses the project creator before navigating to manage SSH environments', () => {
   const onManage = mock()
   render(

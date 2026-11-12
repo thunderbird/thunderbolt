@@ -8,7 +8,8 @@ import { getClock } from '@/testing-library'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import * as platform from '@/lib/platform'
 import * as tauri from '@tauri-apps/api/core'
-import { useSshEnvironmentsStore } from './ssh-environments'
+import { sshConnection, useSshEnvironmentsStore } from './ssh-environments'
+import { createSshInvoke } from './ssh-invoke'
 import { useSshEnvironmentStatus } from './use-ssh-environment-status'
 
 const environment = {
@@ -127,6 +128,80 @@ it('retains a successful check across remounts without repeated background authe
   expect(invoke.mock.calls.filter(([command]) => command === 'agent_ssh_request')).toHaveLength(1)
 })
 
+it('checks the remote runtime independently of the default project folder', async () => {
+  useSshEnvironmentsStore.getState().saveEnvironment({ ...environment, cwd: '/removed-workspace' })
+  const invoke = spyOn(tauri, 'invoke').mockImplementation(
+    async <T>(command: string): Promise<T> =>
+      (command === 'agent_ssh_request' ? { cwd: '/home/test', platform: 'linux' } : undefined) as T,
+  )
+  const view = renderHook(() => useSshEnvironmentStatus(environment.id), { wrapper: createQueryTestWrapper() })
+  await act(async () => {
+    await getClock().tickAsync(5)
+  })
+  expect(view.result.current.status).toBe('connected')
+  expect(invoke.mock.calls.find(([command]) => command === 'agent_ssh_request')?.[1]).toMatchObject({
+    request: { operation: 'probe', cwd: '~' },
+  })
+  await act(async () => {
+    useSshEnvironmentsStore.getState().saveEnvironment({ ...environment, cwd: '/another-workspace' })
+    await getClock().tickAsync(5)
+  })
+  expect(view.result.current.status).toBe('connected')
+  expect(invoke.mock.calls.filter(([command]) => command === 'agent_ssh_request')).toHaveLength(1)
+})
+
+it.each(['SSH connection failed: Connection refused', 'SSH operation timed out'])(
+  'ignores a stale probe failure after a real tool succeeds: %s',
+  async (message) => {
+    const probe = Promise.withResolvers<unknown>()
+    spyOn(tauri, 'invoke').mockImplementation(
+      async <T>(command: string, args?: Record<string, unknown>): Promise<T> => {
+        if (command !== 'agent_ssh_request') {
+          return undefined as T
+        }
+        if ((args?.request as { operation: string }).operation === 'probe') {
+          return (await probe.promise) as T
+        }
+        return { stdout: 'done', stderr: '', exitCode: 0 } as T
+      },
+    )
+    const view = renderHook(() => useSshEnvironmentStatus(environment.id), { wrapper: createQueryTestWrapper() })
+    await act(async () => {
+      await getClock().tickAsync(5)
+      await createSshInvoke(sshConnection(environment), tauri.invoke)('agent_ssh_request', {
+        id: 'tool',
+        request: { operation: 'exec', cwd: '/project' },
+      })
+    })
+    expect(view.result.current.status).toBe('connected')
+    await act(async () => {
+      probe.reject(new Error(message))
+      await getClock().tickAsync(5)
+    })
+    expect(view.result.current.status).toBe('connected')
+    expect(view.result.current.error).toBeNull()
+  },
+)
+
+it('restores successful tool status after persisted state is rehydrated on restart', async () => {
+  const invoke = spyOn(tauri, 'invoke').mockImplementation(async <T>(): Promise<T> => 'file contents' as T)
+  await createSshInvoke(sshConnection(environment), tauri.invoke)('agent_ssh_request', {
+    id: 'read',
+    request: { operation: 'read', cwd: '/project' },
+  })
+  const persisted = localStorage.getItem('thunderbolt-ssh-environments-v1')!
+  useSshEnvironmentsStore.setState({ environments: {}, connectionStatuses: {} })
+  localStorage.setItem('thunderbolt-ssh-environments-v1', persisted)
+  await useSshEnvironmentsStore.persist.rehydrate()
+  invoke.mockClear()
+  const view = renderHook(() => useSshEnvironmentStatus(environment.id), { wrapper: createQueryTestWrapper() })
+  expect(view.result.current.status).toBe('connected')
+  await act(async () => {
+    await getClock().tickAsync(5)
+  })
+  expect(invoke).not.toHaveBeenCalled()
+})
+
 it.each(['web', 'missing', 'deleted'] as const)(
   'does not cross IPC for an unavailable %s environment',
   async (reason) => {
@@ -141,7 +216,7 @@ it.each(['web', 'missing', 'deleted'] as const)(
     }
     const invoke = spyOn(tauri, 'invoke')
     const view = renderHook(() => useSshEnvironmentStatus(environment.id), { wrapper: createQueryTestWrapper() })
-    expect(view.result.current.status).toBe('disconnected')
+    expect(view.result.current.status).toBe('unavailable')
     act(() => view.result.current.refresh())
     expect(invoke).not.toHaveBeenCalled()
   },

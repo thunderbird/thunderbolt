@@ -49,13 +49,17 @@ test('a synced SSH project on web keeps its fixed identity and cannot fall back 
   })
   await page.goto(`/chats/${threadId}`)
   const projectRow = page.locator(`button[aria-controls="project-chats-${projectId}"]`)
-  await expect(projectRow.getByRole('status', { name: 'Disconnected', exact: true })).toBeVisible()
+  await expect(projectRow.getByRole('status', { name: 'SSH environment unavailable', exact: true })).toBeVisible()
+  await expect(projectRow.getByRole('status', { name: 'SSH environment unavailable', exact: true })).toHaveAttribute(
+    'title',
+    'SSH environments require the desktop app.',
+  )
   await expect(
     page.locator(`button[aria-controls="project-chats-${sandboxProjectId}"]`).getByRole('status'),
   ).toHaveCount(0)
 
   const projectSelector = page.locator('[title="In project: Remote project"]')
-  await expect(projectSelector.getByRole('status', { name: 'Disconnected', exact: true })).toBeVisible()
+  await expect(projectSelector.getByRole('status', { name: 'SSH environment unavailable', exact: true })).toBeVisible()
   await projectSelector.click()
   const picker = page.locator('[data-slot="popover-content"]')
   await expect(
@@ -63,14 +67,14 @@ test('a synced SSH project on web keeps its fixed identity and cannot fall back 
       .getByRole('button')
       .filter({ hasText: /^Remote project$/ })
       .getByRole('status'),
-  ).toHaveAttribute('aria-label', 'Disconnected')
+  ).toHaveAttribute('aria-label', 'SSH environment unavailable')
   await expect(picker.getByRole('button', { name: 'Sandbox project', exact: true }).getByRole('status')).toHaveCount(0)
   await picker.getByRole('button', { name: 'Configure Remote project', exact: true }).click()
   const projectSettings = page.getByRole('dialog', { name: 'Project settings', exact: true })
   await expect(projectSettings.getByLabel('Project environment', { exact: true })).toContainText(
     'SSH environment unavailable',
   )
-  await expect(projectSettings.getByRole('status', { name: 'Disconnected', exact: true })).toBeVisible()
+  await expect(projectSettings.getByRole('status', { name: 'SSH environment unavailable', exact: true })).toBeVisible()
   await expect(projectSettings.getByRole('button', { name: 'Project environment', exact: true })).toHaveCount(0)
   await projectSettings.getByRole('button', { name: 'Cancel', exact: true }).click()
   await expect(projectSettings).toHaveCount(0)
@@ -86,7 +90,7 @@ test('a synced SSH project on web keeps its fixed identity and cannot fall back 
     page
       .getByRole('menuitem')
       .filter({ hasText: /^Remote project$/ })
-      .getByRole('status', { name: 'Disconnected' }),
+      .getByRole('status', { name: 'SSH environment unavailable' }),
   ).toBeVisible()
   await expect(page.getByRole('menuitem', { name: 'Sandbox project', exact: true }).getByRole('status')).toHaveCount(0)
   await page.keyboard.press('Escape')

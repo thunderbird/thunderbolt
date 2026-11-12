@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'bun:test'
 import type { AssistantMessageEvent, Context } from '@earendil-works/pi-ai'
 import { buildConfidentialModel, type BuildConfidentialModelOptions } from './index.ts'
+import { resolveConfidentialModelCompatibility } from './confidential-model.ts'
 
 const context: Context = { messages: [{ role: 'user', content: 'hi', timestamp: 0 }] }
 
@@ -63,6 +64,50 @@ const collectEvents = async (built: ReturnType<typeof buildConfidentialModel>): 
 }
 
 describe('buildConfidentialModel compatibility', () => {
+  it.each(['low', 'high'] as const)(
+    'preserves the catalog output budget for DeepSeek reasoning %s',
+    async (reasoning) => {
+      const payloads: Record<string, unknown>[] = []
+      const metadata = resolveConfidentialModelCompatibility({ modelId: 'deepseek-v4-1-flash', vendor: 'deepseek' })
+      const built = build({
+        modelId: 'deepseek-v4-1-flash',
+        vendor: 'deepseek',
+        contextWindow: undefined,
+        fetch: async (_input, init) => {
+          payloads.push((await new Response(init?.body).json()) as Record<string, unknown>)
+          return sseResponse('deepseek-v4-1-flash')
+        },
+      })
+
+      await providerFor(built).streamSimple(built.model, context, { reasoning }).result()
+
+      expect(built.model.contextWindow).toBe(metadata.contextWindow)
+      expect(built.model.maxTokens).toBe(metadata.maxTokens)
+      expect(payloads).toHaveLength(1)
+      expect(payloads[0].max_tokens ?? payloads[0].max_completion_tokens).toBe(metadata.maxTokens)
+    },
+  )
+
+  it('fits the output budget within a smaller deployment context window', async () => {
+    const payloads: Record<string, unknown>[] = []
+    const built = build({
+      modelId: 'deepseek-v4-1-flash',
+      vendor: 'deepseek',
+      contextWindow: 32_000,
+      fetch: async (_input, init) => {
+        payloads.push((await new Response(init?.body).json()) as Record<string, unknown>)
+        return sseResponse('deepseek-v4-1-flash')
+      },
+    })
+
+    await providerFor(built).streamSimple(built.model, context, { reasoning: 'high' }).result()
+
+    const budget = payloads[0].max_tokens ?? payloads[0].max_completion_tokens
+    expect(built.model.contextWindow).toBe(32_000)
+    expect(budget).toBeGreaterThan(8_192)
+    expect(budget).toBeLessThan(32_000)
+  })
+
   it.each([
     ['zhipu GLM', 'glm-5-2', 'zhipu', { type: 'enabled', clear_thinking: false }, 'high'],
     ['GLM 5.3', 'glm-5-3', 'zhipu', { type: 'enabled', clear_thinking: false }, 'max'],

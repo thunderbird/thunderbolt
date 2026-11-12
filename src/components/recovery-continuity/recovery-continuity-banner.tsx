@@ -7,7 +7,7 @@ import { GradientCircleCheck } from '@/components/ui/gradient-circle-check'
 import { MobileForegroundPortalProvider } from '@/components/ui/mobile-foreground-portal'
 import { useSidebar } from '@/components/ui/sidebar'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { isMacDesktop, isTauriDesktop } from '@/lib/platform'
+import { isFramelessControlsPlatform, isMacDesktop, isTauriDesktop } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Info, ShieldAlert, WifiOff, X } from 'lucide-react'
@@ -63,7 +63,12 @@ const BannerShell = ({ icon, title, description, actions, compact }: BannerShell
         'relative z-40 flex shrink-0 gap-2 border-b border-border bg-card px-4 pb-2 md:flex-row md:items-center md:gap-4',
         compact ? 'flex-row items-center' : 'flex-col',
       )}
-      style={{ paddingTop: 'calc(var(--header-safe-area-top) + 0.5rem)' }}
+      style={{
+        paddingTop: 'calc(var(--header-safe-area-top) + 0.5rem)',
+        // The banner spans the window's top-right corner, where the frameless Windows/Linux
+        // caption buttons are pinned (see WindowControls); keep the actions clear of them.
+        paddingRight: isFramelessControlsPlatform() ? 'calc(var(--window-controls-width) + 0.5rem)' : undefined,
+      }}
     >
       <div
         className={cn(

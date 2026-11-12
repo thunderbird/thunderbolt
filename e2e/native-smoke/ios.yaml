@@ -2,34 +2,176 @@ appId: net.thunderbird.thunderbolt.dev
 env:
   # The confidential default every fresh account lands on; a model swap changes it here only.
   DEFAULT_MODEL: DeepSeek V4.1 Flash
+# ios.sh passes EMAIL and PROVIDER_URL, the fake provider's OpenAI-compatible base URL. A value set in this
+# env block would win over `maestro test -e`.
 ---
+# A fresh install opens the setup wizard. This flow takes it twice from a clean app, the way a new user
+# would: first Local (no server, the user's own model), then Cloud (a waitlist account on the smoke
+# backend). Enterprise asks for a server address, which here would be the same backend as Cloud.
+#
+# Each retry block re-checks its own outcome. The simulator can drop a tap on a slow runner, and inputText
+# types anyway; eraseText stops a partial try doubling up. Maestro aims a tap with the hierarchy read
+# before it settles, so a sheet sliding into place can take the tap on a neighbouring row.
+
+# ---- Local ----
 - launchApp:
     clearState: true
 - extendedWaitUntil:
-    visible: Connect your AI
+    visible: I agree to the Privacy Policy and Terms of Service.*
     timeout: 300000
-# On a slow runner the first tap can land before the page takes input and the sidebar never opens, so
-# only tap while "Sign in" is missing: a retry then cannot close a sidebar that did open.
+# The checkbox carries the whole sentence as its name; iOS reads it with a space before the full stop.
+# Tap it only while Continue is still disabled, so a retry cannot clear a tick that landed.
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible:
+              text: Continue
+              enabled: false
+          commands:
+            - tapOn: I agree to the Privacy Policy and Terms of Service.*
+      - assertVisible:
+          text: Continue
+          enabled: true
+- tapOn: Continue
+- extendedWaitUntil:
+    visible: Choose your setup
+    timeout: 60000
+- tapOn: Local
+- tapOn: Continue
+- extendedWaitUntil:
+    visible: Choose a provider to power your agents.
+    timeout: 60000
+- tapOn: Other provider
+- tapOn: Continue
+- extendedWaitUntil:
+    visible: Add a model
+    timeout: 60000
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          text: http://localhost:11434/v1
+          retryTapIfNoChange: true
+      - eraseText
+      - inputText: ${PROVIDER_URL}
+      - assertVisible: ${PROVIDER_URL}
+# A fresh simulator shows a one-time keyboard tip with its own Continue button. Dismiss it here, where the
+# wizard has no Continue, so it cannot take a later wizard tap.
+- runFlow:
+    when:
+      visible: Speed up your typing.*
+    commands:
+      - tapOn: Continue
+# The model list loads from the provider when the picker opens. iOS names the picker by its "Model" label
+# and reports the option rows with bounds that run under the keyboard, so pick by search and Return.
+- retry:
+    maxRetries: 2
+    commands:
+      - waitForAnimationToEnd
+      - runFlow:
+          when:
+            notVisible: Search models…
+          commands:
+            - tapOn: Model
+      - extendedWaitUntil:
+          visible: fake-model
+          timeout: 30000
+      - eraseText
+      - inputText: fake-model
+      - pressKey: Enter
+      - assertVisible: Fake Model
+- tapOn: Test model
+- extendedWaitUntil:
+    visible: Test successful!.*
+    timeout: 60000
+# The result pushes Add Model below the fold, under the wizard's Skip. Maestro taps where the element is
+# without scrolling, so that tap would land on Skip and leave setup without a model.
+- scroll
+- tapOn: Add Model
+- extendedWaitUntil:
+    visible: Add web search
+    timeout: 60000
+- tapOn: Skip
+- extendedWaitUntil:
+    visible: What should we call you?
+    timeout: 60000
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          text: Enter your name
+          retryTapIfNoChange: true
+      - eraseText
+      - inputText: Smoke
+      - assertVisible: Smoke
+- tapOn: Continue
+- extendedWaitUntil:
+    visible: Which language do you prefer?
+    timeout: 60000
+- tapOn: Continue
+- extendedWaitUntil:
+    visible: You're all set!.*
+    timeout: 60000
+- tapOn: Continue
+# The model added during setup is already the chat's model.
+- extendedWaitUntil:
+    visible: Fake Model
+    timeout: 60000
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn: Ask me anything…
+      - eraseText
+      - inputText: Please greet me briefly.
+      - assertVisible:
+          text: Send message
+          enabled: true
+- tapOn: Send message
+- extendedWaitUntil:
+    visible: Hello from the fake provider, one word at a time.
+    timeout: 60000
+
+# ---- Cloud ----
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: I agree to the Privacy Policy and Terms of Service.*
+    timeout: 300000
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible:
+              text: Continue
+              enabled: false
+          commands:
+            - tapOn: I agree to the Privacy Policy and Terms of Service.*
+      - assertVisible:
+          text: Continue
+          enabled: true
+- tapOn: Continue
+- extendedWaitUntil:
+    visible: Choose your setup
+    timeout: 60000
+- tapOn: Cloud \(Waitlist\)
+# The app stops waiting for the server after 5 s and shows "Couldn't reach Thunderbolt Cloud", with
+# Continue as the way to try again. A slow first request on a loaded runner can hit that, so tap again
+# only while the waitlist form is missing.
 - retry:
     maxRetries: 3
     commands:
       - runFlow:
           when:
-            notVisible: Sign in
+            notVisible: Want early access?
           commands:
-            - tapOn: Toggle Sidebar
-      - assertVisible: Sign in
-- tapOn: Sign in
-- tapOn: Cloud \(Waitlist\)
-- tapOn: Continue
-- extendedWaitUntil:
-    visible: Want early access?
-    timeout: 300000
+            - tapOn: Continue
+      - extendedWaitUntil:
+          visible: Want early access?
+          timeout: 30000
 - waitForAnimationToEnd
-# Each retry block re-checks its own outcome. The simulator can drop a focus tap, and inputText
-# types anyway; eraseText stops a partial try doubling up. Maestro aims a tap with the
-# hierarchy read before it settles, so the model sheet sliding into place can take the tap
-# on a neighbouring row ("Add Model").
 - retry:
     maxRetries: 2
     commands:
@@ -39,18 +181,42 @@ env:
       - eraseText
       - inputText: ${EMAIL}
       - assertVisible: ${EMAIL}
-- tapOn: Continue
+# Return submits the email form. With the keyboard up the wizard lifts its content, and a tap aimed at
+# Continue lands beside it and only closes the keyboard.
+- pressKey: Enter
 - extendedWaitUntil:
     visible: Check your email
     timeout: 120000
 - inputText: 12345678
 - extendedWaitUntil:
-    visible: Set up sync
+    visible: Connect Google
     timeout: 120000
-- tapOn: Close
-# Cloud sign-in does not require enabling sync. Close the sidebar before choosing a model.
-- tapOn:
-    point: 95%,50%
+- tapOn: Skip
+- extendedWaitUntil:
+    visible: What should we call you?
+    timeout: 60000
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          text: Enter your name
+          retryTapIfNoChange: true
+      - eraseText
+      - inputText: Smoke
+      - assertVisible: Smoke
+- tapOn: Continue
+- extendedWaitUntil:
+    visible: Where are you located?
+    timeout: 60000
+- tapOn: Skip
+- extendedWaitUntil:
+    visible: Which language do you prefer?
+    timeout: 60000
+- tapOn: Continue
+- extendedWaitUntil:
+    visible: You're all set!.*
+    timeout: 60000
+- tapOn: Continue
 - extendedWaitUntil:
     visible: ${DEFAULT_MODEL}
     timeout: 120000
@@ -61,11 +227,6 @@ env:
     commands:
       # Counts as an interaction, so it restores the lookup time a failed attempt used up.
       - waitForAnimationToEnd
-      - runFlow:
-          when:
-            visible: Close
-          commands:
-            - tapOn: Close
       - runFlow:
           when:
             notVisible: Model and reasoning effort

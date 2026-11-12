@@ -1,6 +1,6 @@
-# House Rules (CLAUDE.md / AGENTS.md) — with rule ids
+# House Rules (AGENTS.md) — with rule ids
 
-Cite the `R-*` id when surfacing a finding. Source of truth is `CLAUDE.md` (symlinked `AGENTS.md`) at repo root — read it if in doubt.
+Cite the `R-*` id when surfacing a finding. Source of truth is `AGENTS.md` at repo root (`CLAUDE.md` is a symlink to it) — read it if in doubt.
 
 ## TypeScript & style
 - **R-NOANY** — never use `any` (incl. `as any`, `as unknown as`). Unsafe non-null `!` on possibly-undefined also flagged.

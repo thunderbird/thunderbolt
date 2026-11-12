@@ -5,7 +5,7 @@ How Thunderbolt red-teams itself: the pipeline that turns *arguments* that a vul
 not just E2EE.
 
 This is the architecture doc. The operator entry point is the **`thunder-red-team` skill**
-(`.claude/skills/thunder-red-team/`). The authority on *what* is attacked for a given domain is that
+(`.agents/skills/thunder-red-team/`). The authority on *what* is attacked for a given domain is that
 domain's **threat model** (for E2EE: [`e2ee-threat-model.md`](e2ee-threat-model.md)). This file explains
 the *machine* that runs around both.
 

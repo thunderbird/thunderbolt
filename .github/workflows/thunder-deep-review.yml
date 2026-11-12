@@ -160,7 +160,7 @@ jobs:
       # `.agents/skills/`. The Claude SDK scans `.claude/` (the project setting
       # source) and crashes (`ENOENT ... statx`) on a symlink whose target is
       # missing, e.g. when a PR renames a skill folder but keeps the old link.
-      # Remove ONLY broken symlinks; links that resolve are left untouched.
+      # Remove only broken symlinks; links that resolve stay untouched.
       # ─────────────────────────────────────────────────────────────────────
       - name: Prune dangling .claude symlinks
         run: |

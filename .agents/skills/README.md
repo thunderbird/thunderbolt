@@ -66,7 +66,7 @@ Two skills run only when you name them, because they act without supervision or 
 
 ## Cleanup ledger
 
-When a skill creates something outside the worktree, such as a repo snapshot, a Docker Compose project or a simulator, it records it with `.agents/skills/thunder-cleanup/scripts/record.sh`. The record goes to a ledger under `.git/thunder-resources/` in the main checkout, one file per worktree path. Git does not track it, and it survives the worktree's removal. `thunder-cleanup` reads it to know what the task owns. A new skill that creates such things should record them the same way.
+When a skill creates something outside the worktree, such as a repo snapshot, a Docker Compose project or a simulator, it records it with `.agents/skills/thunder-cleanup/scripts/record.sh`. The record goes to a ledger under `.git/thunder-resources/` in the main checkout, one file per worktree. Git does not track it, and it survives the worktree's removal. `thunder-cleanup` reads it to know what the task owns. A new skill that creates such things should record them the same way.
 
 ## Adding a skill
 

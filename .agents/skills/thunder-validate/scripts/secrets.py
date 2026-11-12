@@ -63,8 +63,8 @@ def main():
         content = path.read_bytes()
         if any(v in content for v in needles):
             safe_path = str(path)
-            for value in values.values():
-                safe_path = safe_path.replace(value, '<redacted>')
+            for needle in sorted(needles, key=len, reverse=True):
+                safe_path = safe_path.replace(needle.decode(), '<redacted>')
             hits.append(safe_path)
     for path in hits:
         print('SECRET HIT: ' + path)

@@ -1,5 +1,6 @@
 """Local deterministic checks. Uses only temporary files under this skill; no live DB/clipboard."""
 import argparse
+import base64
 import importlib.util
 import json
 import os
@@ -71,6 +72,11 @@ def main():
         scan = run([*checker, 'scan', str(artifacts)], env=env)
         assert scan.returncode == 1 and 'hit.txt' in scan.stdout and dummy not in scan.stdout
         (artifacts/'hit.txt').unlink()
+        encoded_name = base64.b64encode(dummy.encode()).decode() + '.txt'
+        (artifacts/encoded_name).write_text(dummy)
+        scan = run([*checker, 'scan', str(artifacts)], env=env)
+        assert scan.returncode == 1 and '<redacted>.txt' in scan.stdout and encoded_name not in scan.stdout
+        (artifacts/encoded_name).unlink()
         assert run([*checker, 'scan', str(artifacts)], env=env).returncode == 0
         print('PASS: secret presence and scan hit/clean paths; values never emitted')
         mockbin = tmp/'bin'

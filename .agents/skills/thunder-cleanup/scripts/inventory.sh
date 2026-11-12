@@ -34,9 +34,11 @@ refuse_reason() { bash "$record" --refuse "$1" "${2:-}"; }
 valid() { bash "$record" --valid "$1" "$2"; }
 
 total_kb=0
+manual_rows=0
 row() { # status kind id size_kb proof command
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$(human "$4")" "$5" "$6"
   case "$1" in owned | probable) case "$4" in '' | *[!0-9]*) ;; *) total_kb=$((total_kb + $4)) ;; esac ;; esac
+  [ "$1" != manual ] || manual_rows=$((manual_rows + 1))
 }
 
 roots='' # newline-separated paths (raw and physical) whose contents belong to the task
@@ -190,6 +192,7 @@ inventory_task() { # worktree-path (may be empty) branch
   entries=$(printf '%s' "$entries" | sort -u)
   roots=''
   total_kb=0
+  manual_rows=0
   [ -n "$wt" ] && add_root "$wt"
   while IFS=$'\t' read -r kind value skill _; do
     [ "$kind" = snapshot ] && [ -z "$(refuse_reason "$value" "$wt")" ] && add_root "$value"
@@ -333,7 +336,10 @@ inventory_task() { # worktree-path (may be empty) branch
   row owned prune - - 'stale worktree entries' "git -C $(q "$main") worktree prune"
   while IFS=$'\t' read -r f mode; do
     [ -n "$f" ] || continue
-    if [ "$mode" = own ]; then
+    # The ledger is the only record of what is left, so keep it while any manual row stays unresolved.
+    if [ "$manual_rows" -gt 0 ]; then
+      row info ledger "$f" - "kept: $manual_rows manual row(s) still unresolved" ''
+    elif [ "$mode" = own ]; then
       row owned ledger "$f" "$(kb_of "$f")" 'thunder-resources ledger of this worktree' "rm -f $(q "$f")"
     else
       row owned ledger "$f" - "this branch's rows in another ledger" \

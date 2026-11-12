@@ -152,18 +152,20 @@ printf 'pid\t1\tselftest\t%s\t%s\n' "$branch" "$wt" >> "$ledger"
 
 out=$(cd "$tmp" && bash "$here/inventory.sh" "$wt")
 claimed=$(awk -F'\t' '$1 == "owned" || $1 == "probable" { print $1 "\t" $2 "\t" $3 }' <<< "$out")
-expected=$(printf '%s\n' "owned	scratch	$scratch" "owned	worktree	$wt" "owned	branch	$branch" "owned	prune	-" "owned	ledger	$ledger")
+expected=$(printf '%s\n' "owned	scratch	$scratch" "owned	worktree	$wt" "owned	branch	$branch" "owned	prune	-")
 [ "$(sort <<< "$claimed")" = "$(sort <<< "$expected")" ] ||
   fail "inventory claimed a different set of items:"$'\n'"$claimed"$'\n'"expected:"$'\n'"$expected"
 for k in snapshot ios-simulator process; do
   awk -F'\t' -v k="$k" '$1 == "manual" && $2 == k' <<< "$out" | grep -q . || fail "no manual $k row for the refused ledger value"
 done
 ! grep -q 'simctl delete all' <<< "$out" || fail 'inventory printed simctl delete all'
+grep -qF "info	ledger	$ledger" <<< "$out" || fail 'ledger not kept while manual rows remain'
 
 remove_owned "$out"
 [ ! -e "$wt" ] || fail 'worktree still on disk'
 [ ! -e "$scratch" ] || fail 'scratch dir still on disk'
-[ ! -f "$ledger" ] || fail 'ledger still present'
+[ -f "$ledger" ] || fail 'ledger removed while manual rows remain'
+rm -f "$ledger" # its remaining rows are this test's fake values
 ! git -C "$repo" show-ref --verify --quiet "refs/heads/$branch" || fail 'branch still exists'
 ! git -C "$repo" worktree list --porcelain | grep -qxF "worktree $wt" || fail 'worktree still registered'
 

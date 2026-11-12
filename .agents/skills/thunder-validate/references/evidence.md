@@ -88,8 +88,10 @@ reproduced issues.
 When the person must understand or choose between two behaviours (a question they could
 not follow in text, "show me before and after"), record a before/after pair instead of
 issue videos (with validate-locally installed, follow its `references/before-after.md`).
-Here that means one detached worktree per commit (record each as `snapshot` in the
-cleanup ledger), each with its own Vite/backend ports and a Playwright config with
+Here that means one snapshot directory per commit instead of a worktree:
+`git -C <checkout> archive <commit> | tar -x -C <$TMPDIR/new-dir>`, then copy env files and
+install dependencies as in `stack.md`. Record each from the task checkout as `snapshot` in the
+cleanup ledger (`record.sh` refuses registered worktrees). Give each its own Vite/backend ports and a Playwright config with
 `reuseExistingServer: false`; simulate offline by blocking the backend and calling
 `context.setOffline(true)` after the page loads (full offline also blocks Vite). Keep
 the report server out of the recording worker. The orchestrator serves the report folder

@@ -87,12 +87,16 @@ ledger. The commands already `cd` where needed, use absolute paths, and run in b
 - `git branch -D` is right here because step 3 saw the PR merged (squash merges leave the branch
   unmerged by ancestry) or the user accepted losing the work.
 - When a command fails, note it and continue with the next row.
+- Run the `ledger` row last, and only when every other confirmed row succeeded and the user
+  excluded none. Otherwise skip it and say why: the ledger is the only record of what is left.
+  The inventory already keeps the ledger (an `info` row) while any `manual` row remains.
 
 Done when every confirmed row has run.
 
 ### 6. Report
 
-Report the freed space (the sum of the sizes of the rows that succeeded) and account for every
+Report the freed space as an estimate (the sum of the sizes of the rows that succeeded; a
+recorded path inside another removed path is counted twice) and account for every
 inventory row: removed, left with its reason (excluded, failed with the error, manual), or
 info. A `remote-branch` row means the branch is still on origin; GitHub deletes merged branches
 itself, so report it and leave it there. Done when every row is accounted for.

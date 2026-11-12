@@ -17,7 +17,7 @@ export const CreatedFileCard = ({ file }: { file: CreatedFile }) => {
   const { status, filename, mimeType, isSaved, saveError, download } = useCreatedFileCardState(file)
 
   const downloadLabel = t`Download ${filename}`
-  const note =
+  const problem =
     status === 'error' ? (
       <Trans>Not available on this device</Trans>
     ) : saveError ? (
@@ -29,7 +29,18 @@ export const CreatedFileCard = ({ file }: { file: CreatedFile }) => {
       localFileId={file.id}
       filename={filename}
       mimeType={mimeType}
-      note={note}
+      note={
+        (file.edited || problem) && (
+          <>
+            {file.edited && (
+              <span className="block">
+                <Trans>Edited</Trans>
+              </span>
+            )}
+            {problem && <span className="block">{problem}</span>}
+          </>
+        )
+      }
       action={
         status === 'ready' && (
           <button

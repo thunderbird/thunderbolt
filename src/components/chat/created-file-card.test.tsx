@@ -93,6 +93,59 @@ describe('the chip for a file the agent created', () => {
     expect(container.querySelectorAll('.lucide-presentation')).toHaveLength(1)
   })
 
+  it('marks an edited copy, and only that one', async () => {
+    await renderMessage(finishedCall({ ok: true, files: [{ ...report, edited: true }, deck], logs: '' }))
+
+    expect(screen.getAllByText('Edited')).toHaveLength(1)
+    expect(screen.getByText('Edited').closest('.group')?.textContent).toContain('report.docx')
+  })
+
+  it('opens each version of an edited file as it was when that chip was made', async () => {
+    const versions = ['first', 'second'].map((id, index) => ({
+      ...report,
+      id,
+      size: 1,
+      createdAt: index,
+      blob: new Blob([new Uint8Array([index + 1])], { type: docxMime }),
+    }))
+    getAttachment.mockImplementation(async (id) => versions.find((file) => file.id === id) ?? null)
+    const message: ThunderboltUIMessage = {
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        finishedCall({ ok: true, files: [{ ...report, id: 'first' }], logs: '' }),
+        {
+          ...finishedCall({ ok: true, files: [{ ...report, id: 'second', edited: true }], logs: '' }),
+          toolCallId: 'c2',
+        },
+      ],
+    }
+    render(
+      <ContentViewProvider>
+        <AssistantMessage message={message} isStreaming={false} />
+      </ContentViewProvider>,
+    )
+    await act(async () => void (await getClock().runAllAsync()))
+
+    const buttons = screen.getAllByRole('button', { name: 'Download report.docx' })
+    expect(buttons).toHaveLength(2)
+    for (const button of buttons) {
+      await act(async () => {
+        fireEvent.click(button)
+        await getClock().runAllAsync()
+      })
+    }
+    expect(downloadFile.mock.calls.map(([file]) => file.contents)).toEqual([new Uint8Array([1]), new Uint8Array([2])])
+  })
+
+  it('still says an edited copy is not on this device', async () => {
+    getAttachment.mockResolvedValue(null)
+    await renderMessage(finishedCall({ ok: true, files: [{ ...report, edited: true }], logs: '' }))
+
+    expect(screen.getByText('Edited')).toBeDefined()
+    expect(screen.getByText('Not available on this device')).toBeDefined()
+  })
+
   it('says the file is not on this device instead of offering a download', async () => {
     getAttachment.mockResolvedValue(null)
     await renderMessage(finishedCall({ ok: true, files: [report], logs: '' }))

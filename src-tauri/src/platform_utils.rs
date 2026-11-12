@@ -4,7 +4,12 @@
 
 use serde::Serialize;
 #[cfg(desktop)]
-use std::{ffi::OsStr, fs::File, io::Write, path::Path};
+use std::{
+    ffi::OsStr,
+    fs::File,
+    io::Write,
+    path::{Path, PathBuf},
+};
 use tauri::{command, plugin::Builder, plugin::TauriPlugin, Runtime};
 #[cfg(desktop)]
 use tauri::{AppHandle, Manager};
@@ -55,19 +60,50 @@ async fn save_to_downloads<R: Runtime>(
     name: String,
     data: String,
 ) -> Result<SavedDownload, String> {
-    let folder = app
-        .path()
-        .download_dir()
-        .map_err(|error| error.to_string())?;
     tauri::async_runtime::spawn_blocking(move || {
         use base64::Engine;
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(data)
             .map_err(|error| error.to_string())?;
-        save_into(&folder, &name, &bytes, mark_from_internet)
+        save_into(&downloads_folder(&app)?, &name, &bytes, mark_from_internet)
     })
     .await
     .map_err(|error| error.to_string())?
+}
+
+/// The user's Downloads folder. On Linux `dirs` reads it only from
+/// `user-dirs.dirs`, so a system without xdg-user-dirs, or with Downloads
+/// disabled there, has none; like Firefox and Chromium, fall back to
+/// `~/Downloads`, created if missing.
+#[cfg(desktop)]
+fn downloads_folder<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    let folder = app.path().download_dir();
+    #[cfg(not(any(windows, target_os = "macos")))]
+    if matches!(folder, Err(tauri::Error::UnknownPath)) {
+        let home = app
+            .path()
+            .home_dir()
+            .map_err(|error| format!("Could not find the home folder to save into: {error}"))?;
+        return ensure_folder(&home.join("Downloads"));
+    }
+    folder.map_err(|error| format!("Could not find the Downloads folder: {error}"))
+}
+
+/// `folder`, created if missing, but not its parents. An existing folder, or a
+/// link to one, is used as it is. A file or a broken link in its place is
+/// refused, so nothing is saved where the user would not look for it.
+#[cfg(all(desktop, any(test, not(any(windows, target_os = "macos")))))]
+fn ensure_folder(folder: &Path) -> Result<PathBuf, String> {
+    match std::fs::create_dir(folder) {
+        Ok(()) => Ok(folder.to_owned()),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists && folder.is_dir() => {
+            Ok(folder.to_owned())
+        }
+        Err(error) => Err(format!(
+            "Could not use {} as the Downloads folder: {error}",
+            folder.display()
+        )),
+    }
 }
 
 /// Saves under `name`, or `name (1)`, `name (2)` and so on, never over an
@@ -265,6 +301,40 @@ mod tests {
         );
         assert_eq!(std::fs::read(folder.join("report.docx")).unwrap(), b"mine");
         std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn creates_a_missing_downloads_folder_but_not_its_parents() {
+        let home = temp_folder("home");
+
+        let folder = ensure_folder(&home.join("Downloads")).unwrap();
+        std::fs::write(folder.join("report.docx"), b"mine").unwrap();
+
+        assert_eq!(ensure_folder(&folder).unwrap(), folder);
+        assert_eq!(names_in(&folder), ["report.docx"]);
+        let error = ensure_folder(&home.join("gone").join("Downloads")).unwrap_err();
+        assert!(error.contains("as the Downloads folder"), "{error}");
+        assert!(!home.join("gone").exists());
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn uses_a_link_to_a_folder_and_refuses_a_file_or_a_broken_link() {
+        let home = temp_folder("links");
+        std::fs::create_dir(home.join("elsewhere")).unwrap();
+        std::os::unix::fs::symlink(home.join("elsewhere"), home.join("linked")).unwrap();
+        std::fs::write(home.join("file"), b"").unwrap();
+        std::os::unix::fs::symlink(home.join("missing"), home.join("broken")).unwrap();
+
+        assert_eq!(
+            ensure_folder(&home.join("linked")).unwrap(),
+            home.join("linked")
+        );
+        assert!(ensure_folder(&home.join("file")).is_err());
+        assert!(ensure_folder(&home.join("broken")).is_err());
+        assert!(!home.join("missing").exists());
+        std::fs::remove_dir_all(&home).unwrap();
     }
 
     #[test]

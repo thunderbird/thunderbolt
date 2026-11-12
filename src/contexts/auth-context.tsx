@@ -34,8 +34,8 @@ import {
   isCurrentSession,
   setCachedSession,
 } from '@/lib/session-cache'
-import { signOutAndLeave } from '@/lib/sign-out'
 import { resolveAbsoluteBackendUrl } from '@/lib/url-utils'
+import { signOutAndLeave } from '@/lib/sign-out'
 import { anonymousClient, emailOTPClient } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
 import { consumePendingSsoPromotion } from '@/lib/analytics/anonymous-promotion-sso-bridge'
@@ -435,10 +435,10 @@ const sessionRetryIntervalMs = 30_000
 /**
  * Shows the app once the open slot is `ready`, and `LocalDataSwitchScreen` until then. The screen says
  * the app is waiting for the network when a slot with an owner stays `unbound` because the session
- * request failed. It reads the auth client from context: as a prop, React's development build logs
- * its changes and crashes turning the Better Auth proxy's `.name` into a string.
+ * request failed.
  */
 const LocalDataGate = ({ children }: { children: ReactNode }) => {
+  // Better Auth's callable proxy has a non-string `name`; React's dev prop formatter cannot inspect it.
   const authClient = useAuth()
   const localDataStatus = useSyncExternalStore(subscribeLocalDataStatus, getLocalDataStatus)
   const session = authClient.useSession()
@@ -463,14 +463,11 @@ const LocalDataGate = ({ children }: { children: ReactNode }) => {
   if (localDataStatus === 'ready') {
     return children
   }
-
-  // The way out if reloading keeps failing: sign the new account out and leave the previous owner's data in place.
   const signOut = () =>
     signOutAndLeave(authClient, async () => {
       clearAuthToken()
       clearCachedSession()
     })
-
   return (
     <LocalDataSwitchScreen
       hasFailed={localDataStatus === 'failed'}

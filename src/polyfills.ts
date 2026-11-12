@@ -2,10 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import './lib/install-webkit-own-property'
+
 /**
  * Polyfills that need to run before the rest of the application code.
  *
  * Currently includes:
+ *   • Desktop WebKit own-property checks (M6 checked-pointer JIT crash).
  *   • `URL.canParse` (missing on WebKit versions before Safari 17).
  *   • `crypto.randomUUID` (missing on older/embedded WebKit/Gecko engines such as
  *     Firefox Focus or legacy Safari versions.)

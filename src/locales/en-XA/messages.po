@@ -1800,6 +1800,10 @@ msgstr ""
 msgid "Could not render pairing code."
 msgstr ""
 
+#: src/webview-recovery/index.ts
+msgid "Could not restart the app. Quit Thunderbolt and open it again."
+msgstr ""
+
 #: src/settings/connections/use-provider-connection-form.ts
 msgid "Could not save the connection. Try again."
 msgstr ""
@@ -5691,6 +5695,10 @@ msgstr ""
 msgid "The AI provider took too long to respond. Try again."
 msgstr ""
 
+#: src/webview-recovery/index.ts
+msgid "The app's web content stopped unexpectedly more than once. Automatic reloads have been paused."
+msgstr ""
+
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "The chat will be retained by the {recipient} team."
 msgstr ""
@@ -6164,6 +6172,10 @@ msgstr ""
 msgid "Thunderbolt CLI"
 msgstr ""
 
+#: src/webview-recovery/index.ts
+#~ msgid "Thunderbolt couldn't keep running"
+#~ msgstr ""
+
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "Thunderbolt couldn't verify this device's encryption keys, so it can't update your recovery phrase or passkey. To verify it, sign out with \"Delete data from device\", sign in again, and approve it from a device that was trusted before."
 msgstr ""
@@ -6174,6 +6186,10 @@ msgstr ""
 
 #: src/settings/connections/use-integrations-controller.tsx
 msgid "Thunderbolt Pro is not available yet. Stay tuned!"
+msgstr ""
+
+#: src/webview-recovery/index.ts
+msgid "Thunderbolt ran into a problem"
 msgstr ""
 
 #: src/settings/preferences.tsx
@@ -6334,7 +6350,12 @@ msgstr ""
 #: src/components/sso-error.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
+#: src/webview-recovery/index.ts
 msgid "Try again"
+msgstr ""
+
+#: src/webview-recovery/index.ts
+msgid "Try again, or install available system updates and reopen Thunderbolt if the problem continues."
 msgstr ""
 
 #: src/components/chat/image-support-notice.tsx

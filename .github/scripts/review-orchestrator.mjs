@@ -122,9 +122,9 @@ const matchesSecurityPath = (filename = '') =>
   !excludesExtraPasses(filename) && SECURITY_PATH_MATCHERS.some((m) => m(filename ?? ''));
 
 // Lane routing. Deterministic, like the deep-mode and security gates: code decides
-// which of the skill's category lanes (A–K) spend, never the model. Conservative:
+// which of the skill's category lanes (A to K) spend, never the model. Conservative:
 // a lane runs whenever any changed file could hold its kind of issue. Lane D (React)
-// is never emitted because `react-effect-reviewer` carries its charter and runs on
+// is never emitted because `react-effect-reviewer` carries its checks and runs on
 // exactly the same files.
 const PROSE_OR_ASSET_RE = /\.(?:mdx?|txt|rst|po|png|jpe?g|gif|webp|ico|svg|pdf|woff2?|ttf)$/i;
 const JS_FAMILY_RE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
@@ -165,8 +165,10 @@ const touchesReact = (patch = '') =>
   /\buse[A-Z]\w*\(/.test(patch ?? '') || /\bfrom\s+['"]react(?:-dom)?(?:\/[^'"]*)?['"]/.test(patch ?? '');
 const DOMAIN_REVIEWER_RULES = {
   'powersync-sync-reviewer': (f) => POWERSYNC_PATH_PREFIXES.some((prefix) => f.filename.startsWith(prefix)),
+  // Tests and CI scripts mention hooks in fixture strings, so the content check skips them.
   'react-effect-reviewer': (f) => /\.tsx$/.test(f.filename) || /(?:^|\/)use[-A-Z][^/]*\.[jt]sx?$/.test(f.filename) ||
-    (JS_FAMILY_RE.test(f.filename) && (touchesReact(f.patch) || touchesReact(f.headContent))),
+    (JS_FAMILY_RE.test(f.filename) && !isTestFile(f.filename) && !f.filename.startsWith('.github/') &&
+      (touchesReact(f.patch) || touchesReact(f.headContent))),
 };
 
 /** The head version of a changed file from the checked-out working tree; '' when it is gone (deleted or renamed away). */

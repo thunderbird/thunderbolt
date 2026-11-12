@@ -70,7 +70,7 @@ Every recall figure in this skill was measured on a prior model: treat it as dir
 
 | Domain reviewer | Runs when any changed file is… |
 |---|---|
-| `react-effect-reviewer` | `.tsx`, a hook file (`use-*.ts`, `useX.ts`), or a JS/TS file whose patch or head version calls a hook (`useX(`) or imports from `react` |
+| `react-effect-reviewer` | `.tsx`, a hook file (`use-*.ts`, `useX.ts`), or a non-test JS/TS file outside `.github/` whose patch or head version calls a hook (`useX(`) or imports from `react` |
 | `powersync-sync-reviewer` | `shared/powersync-tables.ts`, `powersync-service/**`, the deploy sync-rule configs, `backend/drizzle/**`, `backend/src/db/**`, `backend/src/api/account*`, `backend/src/api/powersync*`, `backend/src/dal/{powersync,devices,users}*`, `src/db/**`, `src/dal/**`, `src/drizzle/**`, `src/defaults/**`, `shared/defaults/**`, `src/lib/{reconcile-defaults,pick-defaults}*`, `src/lib/data-migrations/**` |
 
 Skill and agent prompts (`.agents/**`, `.claude/**`, `AGENTS.md`) are prose for routing, so lane I reviews them. A change to these rules is a change to `selectLanes` and its tests first; then update this table to match.

@@ -998,7 +998,7 @@ describe('computeDeepMode: size gate + bounded-mode flag', () => {
 });
 
 // ---------------------------------------------------------------------------
-// SCENARIO 7a — selectLanes: deterministic lane routing by changed files.
+// SCENARIO 7a, selectLanes: deterministic lane routing by changed files.
 // ---------------------------------------------------------------------------
 
 describe('selectLanes: only the lanes the diff can need', () => {
@@ -1062,6 +1062,13 @@ describe('selectLanes: only the lanes the diff can need', () => {
     const importPatch = ['@@ -1,1 +1,2 @@', " import { a } from './a'", "+import { startTransition } from 'react'"].join('\n');
     expect(lanesForPatch('src/lib/handler.ts', importPatch).domainReviewers).toEqual(['react-effect-reviewer']);
     expect(lanesForPatch('src/lib/handler.ts', ['@@ -1 +1 @@', '-a()', '+b()'].join('\n')).domainReviewers).toEqual([]);
+  });
+
+  test('hook names inside test fixtures or CI scripts do not summon the React lens', () => {
+    const fixturePatch = ['@@ -1,1 +1,2 @@', ' const a = 1', "+const patch = '   useEffect(() => {'"].join('\n');
+    expect(lanesForPatch('.github/scripts/review-orchestrator.test.mjs', fixturePatch).domainReviewers).toEqual([]);
+    expect(lanesForPatch('.github/scripts/helper.mjs', fixturePatch).domainReviewers).toEqual([]);
+    expect(lanesForPatch('src/lib/handler.test.ts', fixturePatch).domainReviewers).toEqual([]);
   });
 
   test('a hunk inside a useEffect body still gets the React lens from the head file', () => {

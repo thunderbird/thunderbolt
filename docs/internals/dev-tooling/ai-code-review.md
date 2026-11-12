@@ -171,13 +171,15 @@ names Claude Code dispatches and point at the lens files.
 
 - [`powersync-sync-lens.md`](../../../.agents/skills/thunder-deep-review/references/powersync-sync-lens.md)
   (`powersync-sync-reviewer`) fires on `shared/powersync-tables.ts`, the sync-rule configs, Drizzle schema,
-  `backend/drizzle/**`, `src/db/**`, both DALs, the defaults and their reconciliation, and account and device code. It checks the two-PR deploy flow,
-  `_journal.json` integrity, sync-rule/column parity, sync classification across sibling tables, encryption config
-  and hard-delete correctness. These mistakes pass local testing and fail _silently_ across devices (see
-  [powersync-account-devices.md](../architecture/powersync-account-devices.md)).
+  `backend/drizzle/**`, `src/db/**`, both DALs, the defaults and their reconciliation, and account and device code.
+  It checks the two-PR deploy flow, `_journal.json` integrity, sync-rule/column parity, sync classification across
+  sibling tables, encryption config and hard-delete correctness. These mistakes pass local testing and fail
+  _silently_ across devices (see [powersync-account-devices.md](../architecture/powersync-account-devices.md)).
 - [`react-effect-lens.md`](../../../.agents/skills/thunder-deep-review/references/react-effect-lens.md)
-  (`react-effect-reviewer`) fires on `.tsx` files, hook files, and any JS/TS file whose patch or head version calls a hook
-  or imports React (the `pre` step reads the head file from the checkout). It checks the `useEffect` discipline in `AGENTS.md`.
+  (`react-effect-reviewer`) fires on `.tsx` files, hook files, and any JS/TS file whose patch or head version calls a
+  hook or imports React (the `pre` step reads the head file from the checkout). Test files and `.github/` scripts skip
+  that content check, because their fixtures quote hook names. It checks the `useEffect` discipline
+  in `AGENTS.md`.
 
 ## Running it locally
 

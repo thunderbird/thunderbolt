@@ -32,6 +32,7 @@ type AddModelFormProps = {
   catalogError: string | null
   isPending: boolean
   isTesting: boolean
+  isLoadingModel: boolean
   connectionStatus: 'idle' | 'success' | 'error'
   connectionError: string | null
   toolSupport: ToolSupport | null
@@ -53,6 +54,7 @@ export const AddModelForm = ({
   catalogError,
   isPending,
   isTesting,
+  isLoadingModel,
   connectionStatus,
   connectionError,
   toolSupport,
@@ -246,6 +248,7 @@ export const AddModelForm = ({
           model={model}
           apiKey={apiKey}
           isTesting={isTesting}
+          isLoadingModel={isLoadingModel}
           onTest={onTestConnection}
           status={connectionStatus}
           error={connectionError}

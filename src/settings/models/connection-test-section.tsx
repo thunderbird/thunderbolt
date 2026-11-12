@@ -16,6 +16,7 @@ type ConnectionTestSectionProps = {
   model: string
   apiKey: string | undefined
   isTesting: boolean
+  isLoadingModel: boolean
   onTest: () => void
   status: 'idle' | 'success' | 'error'
   error: string | null
@@ -36,6 +37,7 @@ export const ConnectionTestSection = ({
   model,
   apiKey,
   isTesting,
+  isLoadingModel,
   onTest,
   status,
   error,
@@ -52,12 +54,17 @@ export const ConnectionTestSection = ({
           {isTesting ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              <Trans>Testing model…</Trans>
+              {isLoadingModel ? <Trans>Loading model…</Trans> : <Trans>Testing model…</Trans>}
             </>
           ) : (
             <Trans>Test model</Trans>
           )}
         </Button>
+      )}
+      {isLoadingModel && (
+        <p className="text-center text-sm text-muted-foreground">
+          <Trans>Local models can take a few minutes to load the first time.</Trans>
+        </p>
       )}
       {showApiKeyHint && (
         <p className="text-center text-sm text-muted-foreground">

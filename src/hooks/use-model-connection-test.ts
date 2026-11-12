@@ -6,6 +6,7 @@ import { useLingui } from '@lingui/react/macro'
 import { createModel } from '@/ai/fetch'
 import { getTinfoilClient } from '@/ai/tinfoil-client'
 import type { FetchFn } from '@/lib/proxy-fetch'
+import { isLocalOrPrivateHost } from '@/lib/mcp-url-validation'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import type { Model } from '@/types'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
@@ -13,7 +14,12 @@ import { APICallError, generateText, tool } from 'ai'
 import { useCallback, useReducer, useRef } from 'react'
 import { z } from 'zod'
 
-const connectionTestTimeoutMs = 10_000
+const remoteTimeoutMs = 10_000
+/** Matches Ollama's default model-load timeout. Aborting the request cancels the
+ *  load, so a short limit would fail every retry of a cold model the same way. */
+const localTimeoutMs = 300_000
+/** How long a local test runs before the UI says the model is probably loading. */
+const loadingHintDelayMs = 5_000
 
 /** Whether the tested model accepted a request carrying a tool definition. */
 export type ToolSupport = 'supported' | 'unsupported'
@@ -34,6 +40,7 @@ type NormalizedConfig = {
 
 type ConnectionTestState = {
   isTesting: boolean
+  isLoadingModel: boolean
   rawStatus: 'idle' | 'success' | 'error'
   error: string | null
   toolSupport: ToolSupport | null
@@ -42,32 +49,51 @@ type ConnectionTestState = {
 
 type ConnectionTestAction =
   | { type: 'START'; tested: NormalizedConfig }
+  | { type: 'LOADING' }
   | { type: 'SUCCESS'; tested: NormalizedConfig; toolSupport: ToolSupport }
   | { type: 'FAILURE'; tested: NormalizedConfig; error: string }
   | { type: 'RESET' }
 
 const initialState: ConnectionTestState = {
   isTesting: false,
+  isLoadingModel: false,
   rawStatus: 'idle',
   error: null,
   toolSupport: null,
   tested: null,
 }
 
-const reducer = (_state: ConnectionTestState, action: ConnectionTestAction): ConnectionTestState => {
+const reducer = (state: ConnectionTestState, action: ConnectionTestAction): ConnectionTestState => {
   switch (action.type) {
     case 'START':
-      return { isTesting: true, rawStatus: 'idle', error: null, toolSupport: null, tested: action.tested }
+      return {
+        isTesting: true,
+        isLoadingModel: false,
+        rawStatus: 'idle',
+        error: null,
+        toolSupport: null,
+        tested: action.tested,
+      }
+    case 'LOADING':
+      return { ...state, isLoadingModel: true }
     case 'SUCCESS':
       return {
         isTesting: false,
+        isLoadingModel: false,
         rawStatus: 'success',
         error: null,
         toolSupport: action.toolSupport,
         tested: action.tested,
       }
     case 'FAILURE':
-      return { isTesting: false, rawStatus: 'error', error: action.error, toolSupport: null, tested: action.tested }
+      return {
+        isTesting: false,
+        isLoadingModel: false,
+        rawStatus: 'error',
+        error: action.error,
+        toolSupport: null,
+        tested: action.tested,
+      }
     case 'RESET':
       return initialState
   }
@@ -79,6 +105,14 @@ const normalize = (config: ModelConnectionConfig): NormalizedConfig => ({
   url: config.url || null,
   apiKey: config.apiKey || null,
 })
+
+/** Whether a config targets a Custom endpoint on this device or the local network. */
+export const isLocalEndpoint = (config: Pick<NormalizedConfig, 'provider' | 'url'>): boolean => {
+  if (config.provider !== 'custom' || !config.url || !URL.canParse(config.url)) {
+    return false
+  }
+  return isLocalOrPrivateHost(new URL(config.url).hostname)
+}
 
 const sameConfig = (left: NormalizedConfig, right: NormalizedConfig): boolean =>
   left.provider === right.provider &&
@@ -208,6 +242,17 @@ export const createDefaultProbe =
 
 const defaultProbe = createDefaultProbe()
 
+/** Abort signal plus a promise that rejects with a readable error when it fires. */
+const startTimeout = (timeoutMs: number) => {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs)
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutSignal.addEventListener('abort', () =>
+      reject(new Error(`Connection test timed out after ${timeoutMs / 1000} seconds`)),
+    )
+  })
+  return { timeoutSignal, timeoutPromise }
+}
+
 /**
  * Manages the state machine for a "Test Model" round-trip: idle → testing →
  * success/error. Returns `isTesting`, `status`, and `error` derived at render
@@ -216,10 +261,12 @@ const defaultProbe = createDefaultProbe()
  * `'success'` can't survive a credential edit and a mid-flight edit stops the
  * spinner immediately (no useEffect-based invalidation).
  *
- * The probe is bounded by a single 10s `AbortSignal.timeout` piped through
- * both the provider construction (via `Promise.race`) and the `generateText`
+ * The probe is bounded by a single `AbortSignal.timeout` piped through both
+ * the provider construction (via `Promise.race`) and the `generateText`
  * request (via `abortSignal`), so a hanging Tinfoil attestation or a stuck
- * `generateText` request both surface as a timeout error.
+ * `generateText` request both surface as a timeout error. Local endpoints get
+ * a longer limit because a cold model load can take minutes, and after a few
+ * seconds `isLoadingModel` turns on so the UI can say why it is waiting.
  *
  * `test` resolves with the tool-support verdict so the caller can apply it in
  * its event handler, or `null` when the run was superseded or the config was
@@ -242,12 +289,12 @@ export const useModelConnectionTest = (current: ModelConnectionConfig, probe: Co
       const tested = normalize(config)
       dispatch({ type: 'START', tested })
 
-      const timeoutSignal = AbortSignal.timeout(connectionTestTimeoutMs)
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutSignal.addEventListener('abort', () =>
-          reject(new Error(`Connection test timed out after ${connectionTestTimeoutMs / 1000} seconds`)),
-        )
-      })
+      const isLocal = isLocalEndpoint(tested)
+      const timeoutMs = isLocal ? localTimeoutMs : remoteTimeoutMs
+      const { timeoutSignal, timeoutPromise } = startTimeout(timeoutMs)
+      const loadingTimer = isLocal
+        ? setTimeout(() => isCurrent() && dispatch({ type: 'LOADING' }), loadingHintDelayMs)
+        : undefined
       const runPromise = probe(tested, getProxyFetch, timeoutSignal)
 
       try {
@@ -268,6 +315,8 @@ export const useModelConnectionTest = (current: ModelConnectionConfig, probe: Co
           error: err instanceof Error ? err.message : t`Failed to connect to model`,
         })
         return null
+      } finally {
+        clearTimeout(loadingTimer)
       }
     },
     [getProxyFetch, probe],
@@ -284,6 +333,7 @@ export const useModelConnectionTest = (current: ModelConnectionConfig, probe: Co
   const error = matchesCurrent ? state.error : null
   const toolSupport = matchesCurrent ? state.toolSupport : null
   const isTesting = matchesCurrent && state.isTesting
+  const isLoadingModel = isTesting && state.isLoadingModel
 
-  return { isTesting, status, error, toolSupport, test, reset }
+  return { isTesting, isLoadingModel, status, error, toolSupport, test, reset }
 }

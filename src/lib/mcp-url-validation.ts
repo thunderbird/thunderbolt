@@ -75,7 +75,7 @@ export const isLoopbackHost = (rawHost: string): boolean => {
 }
 
 /** True for localhost, *.localhost, loopback/private IPv4, or loopback/ULA IPv6. */
-const isLocalOrPrivateHost = (rawHost: string): boolean => {
+export const isLocalOrPrivateHost = (rawHost: string): boolean => {
   const host = rawHost.startsWith('[') && rawHost.endsWith(']') ? rawHost.slice(1, -1) : rawHost
   const lower = host.toLowerCase()
   if (lower === 'localhost' || lower.endsWith('.localhost')) {

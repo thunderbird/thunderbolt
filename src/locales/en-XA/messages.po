@@ -2615,6 +2615,10 @@ msgstr ""
 msgid "Loading emoji…"
 msgstr ""
 
+#: src/settings/models/connection-test-section.tsx
+msgid "Loading model…"
+msgstr ""
+
 #: src/settings/passkeys.tsx
 #~ msgid "Loading passkeys…"
 #~ msgstr ""
@@ -2632,6 +2636,10 @@ msgstr ""
 #: src/components/sidebar-footer.tsx
 #: src/widgets/connect-integration/widget.tsx
 msgid "Loading…"
+msgstr ""
+
+#: src/settings/models/connection-test-section.tsx
+msgid "Local models can take a few minutes to load the first time."
 msgstr ""
 
 #: src/components/onboarding/onboarding-privacy-step.tsx

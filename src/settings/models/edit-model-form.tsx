@@ -136,6 +136,7 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitErro
           model={state.watchedModel}
           apiKey={state.effectiveApiKey}
           isTesting={state.connection.isTesting}
+          isLoadingModel={state.connection.isLoadingModel}
           onTest={state.testConnection}
           status={state.connection.status}
           error={state.connection.error}

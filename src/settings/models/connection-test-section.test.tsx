@@ -13,6 +13,7 @@ const baseProps: ComponentProps<typeof ConnectionTestSection> = {
   model: 'gemma3:4b',
   apiKey: undefined,
   isTesting: false,
+  isLoadingModel: false,
   onTest: () => {},
   status: 'success',
   error: null,
@@ -43,5 +44,12 @@ describe('ConnectionTestSection', () => {
 
     expect(screen.getByText('invalid api key')).toBeInTheDocument()
     expect(screen.queryByText('Connected without tools')).not.toBeInTheDocument()
+  })
+
+  it('says the model is loading while a local model loads', () => {
+    render(<ConnectionTestSection {...baseProps} isTesting isLoadingModel status="idle" toolSupport={null} />)
+
+    expect(screen.getByText('Loading model…')).toBeInTheDocument()
+    expect(screen.getByText('Local models can take a few minutes to load the first time.')).toBeInTheDocument()
   })
 })

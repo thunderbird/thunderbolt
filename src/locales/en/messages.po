@@ -2615,6 +2615,10 @@ msgstr "Loading devices…"
 msgid "Loading emoji…"
 msgstr "Loading emoji…"
 
+#: src/settings/models/connection-test-section.tsx
+msgid "Loading model…"
+msgstr "Loading model…"
+
 #: src/settings/passkeys.tsx
 #~ msgid "Loading passkeys…"
 #~ msgstr "Loading passkeys…"
@@ -2633,6 +2637,10 @@ msgstr "Loading this app's pairing identity…"
 #: src/widgets/connect-integration/widget.tsx
 msgid "Loading…"
 msgstr "Loading…"
+
+#: src/settings/models/connection-test-section.tsx
+msgid "Local models can take a few minutes to load the first time."
+msgstr "Local models can take a few minutes to load the first time."
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Local Storage"

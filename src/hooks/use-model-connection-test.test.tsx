@@ -8,6 +8,7 @@ import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import type { ReactNode } from 'react'
 import {
+  isLocalEndpoint,
   useModelConnectionTest,
   type ConnectionTestProbe,
   type ModelConnectionConfig,
@@ -257,5 +258,91 @@ describe('useModelConnectionTest', () => {
     })
 
     expect(verdict).toBeNull()
+  })
+})
+
+describe('isLocalEndpoint', () => {
+  it.each([
+    ['http://localhost:11434/v1', true],
+    ['http://127.0.0.1:1234', true],
+    ['http://192.168.1.20:11434', true],
+    ['http://[::1]:8080/v1', true],
+    ['https://api.example.com/v1', false],
+  ])('classifies %s as local: %p', (url, expected) => {
+    expect(isLocalEndpoint({ provider: 'custom', url })).toBe(expected)
+  })
+
+  it('treats hosted providers and missing urls as remote', () => {
+    expect(isLocalEndpoint({ provider: 'openai', url: 'http://localhost:11434' })).toBe(false)
+    expect(isLocalEndpoint({ provider: 'custom', url: null })).toBe(false)
+  })
+})
+
+describe('useModelConnectionTest loading hint', () => {
+  const localConfig: ModelConnectionConfig = {
+    provider: 'custom',
+    model: 'llama3.2:1b',
+    url: 'http://localhost:11434/v1',
+    apiKey: null,
+  }
+
+  afterEach(() => {
+    cleanup()
+    mock.restore()
+  })
+
+  /** Captures the hook's loading-hint timer so the test can fire it without waiting. */
+  const captureLoadingTimer = () => {
+    const realSetTimeout = globalThis.setTimeout
+    const captured: { fire: (() => void) | null } = { fire: null }
+    spyOn(globalThis, 'setTimeout').mockImplementation(((handler: () => void, delay?: number) => {
+      if (delay === 5_000) {
+        captured.fire = handler
+        return 0
+      }
+      return realSetTimeout(handler, delay)
+    }) as typeof setTimeout)
+    return captured
+  }
+
+  it('flags a slow local test as loading, then clears it on completion', async () => {
+    const timer = captureLoadingTimer()
+    let resolveInFlight: ((support: ToolSupport) => void) | null = null
+    const probe: ConnectionTestProbe = mock(
+      () =>
+        new Promise<ToolSupport>((resolve) => {
+          resolveInFlight = resolve
+        }),
+    )
+    const { result } = renderHook(() => useModelConnectionTest(localConfig, probe), { wrapper })
+
+    let testPromise: Promise<ToolSupport | null> = Promise.resolve(null)
+    act(() => {
+      testPromise = result.current.test(localConfig)
+    })
+    expect(result.current.isLoadingModel).toBe(false)
+
+    act(() => timer.fire!())
+    expect(result.current.isTesting).toBe(true)
+    expect(result.current.isLoadingModel).toBe(true)
+
+    await act(async () => {
+      resolveInFlight!('supported')
+      await testPromise
+    })
+    expect(result.current.isLoadingModel).toBe(false)
+    expect(result.current.status).toBe('success')
+  })
+
+  it('never schedules the loading hint for remote providers', async () => {
+    const timer = captureLoadingTimer()
+    const probe: ConnectionTestProbe = mock(async () => 'supported' as const)
+    const { result } = renderHook(() => useModelConnectionTest(anthropicConfig, probe), { wrapper })
+
+    await act(async () => {
+      await result.current.test(anthropicConfig)
+    })
+
+    expect(timer.fire).toBeNull()
   })
 })

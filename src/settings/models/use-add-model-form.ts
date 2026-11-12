@@ -263,6 +263,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     catalogError: catalog.error,
     isPending: addMutation.isPending,
     isTesting: connection.isTesting,
+    isLoadingModel: connection.isLoadingModel,
     connectionStatus: connection.status,
     connectionError: connection.error,
     toolSupport: connection.toolSupport,

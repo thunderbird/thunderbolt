@@ -2627,6 +2627,10 @@ msgstr "Carregando os dispositivos…"
 msgid "Loading emoji…"
 msgstr "Carregando emojis…"
 
+#: src/settings/models/connection-test-section.tsx
+msgid "Loading model…"
+msgstr ""
+
 #: src/settings/passkeys.tsx
 #~ msgid "Loading passkeys…"
 #~ msgstr ""
@@ -2645,6 +2649,10 @@ msgstr "Carregando a identidade de emparelhamento deste app…"
 #: src/widgets/connect-integration/widget.tsx
 msgid "Loading…"
 msgstr "Carregando…"
+
+#: src/settings/models/connection-test-section.tsx
+msgid "Local models can take a few minutes to load the first time."
+msgstr ""
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Local Storage"

@@ -139,9 +139,10 @@ applies. A vague description means the skill is never used.
 Skills can be enabled, disabled, and pinned as chips above the composer, up to ten of them. Five
 built-in skills define how Thunderbolt renders things like weather and maps in a reply: those can be
 switched off but not edited or deleted, and once unpinned cannot be pinned again. The other four it
-ships with, Search, Research, Daily Brief and Important Emails, you can edit or delete like your own. Your
-edits to a built-in skill are preserved when Thunderbolt updates its own copies. Worked examples:
-[Skills](using/skills.md).
+ships with, Search, Research, Daily Brief and Important Emails, you can edit or delete like your own.
+Research and four of the rendering skills (Link Preview, Map, Ask, Connect Integration) stay hidden
+from the library until you change them. Your edits to a built-in skill are preserved when
+Thunderbolt updates its own copies. Worked examples: [Skills](using/skills.md).
 
 ## Connections
 

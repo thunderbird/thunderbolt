@@ -47,22 +47,24 @@ Changing a slug does not rewrite tokens you have already typed into a draft, so 
 
 Every account starts with nine skills.
 
-| Skill               | On by default | Pinned | You can edit it |
-| ------------------- | ------------- | ------ | --------------- |
-| Search              | Yes           | 1st    | Yes             |
-| Research            | Yes           | 2nd    | Yes             |
-| Weather             | Yes           | 3rd    | No              |
-| Daily Brief         | Yes           | No     | Yes             |
-| Important Emails    | No            | No     | Yes             |
-| Link Preview        | Yes           | No     | No              |
-| Map                 | Yes           | No     | No              |
-| Ask                 | Yes           | No     | No              |
-| Connect Integration | Yes           | No     | No              |
+| Skill               | On by default | Pinned | In your library | You can edit it |
+| ------------------- | ------------- | ------ | --------------- | --------------- |
+| Search              | Yes           | 1st    | Yes             | Yes             |
+| Weather             | Yes           | 2nd    | Yes             | No              |
+| Daily Brief         | Yes           | No     | Yes             | Yes             |
+| Important Emails    | No            | No     | Yes             | Yes             |
+| Research            | Yes           | No     | Hidden          | Yes             |
+| Link Preview        | Yes           | No     | Hidden          | No              |
+| Map                 | Yes           | No     | Hidden          | No              |
+| Ask                 | Yes           | No     | Hidden          | No              |
+| Connect Integration | Yes           | No     | Hidden          | No              |
 
 - **Search** returns web results as a list of link previews rather than a written answer.
 - **Research** runs a multi-source investigation and reports findings with citations.
 - **Daily Brief** assembles forecast, headlines, inbox and calendar, skipping any section it has no data or connection for.
 - **Important Emails** ships turned off. Turn it on in Settings → Skills; it needs a connected mail account to return anything.
+
+Research, Link Preview, Map, Ask and Connect Integration are system skills: the assistant loads them on its own, so they stay out of the library and the `/` menu. Typing `/research` still works, and `Cmd/Ctrl+K` still finds them. Once you edit, disable or pin one, it shows in the library like any other skill.
 
 Search and Research also raise the number of web lookups allowed for the message that uses them.
 

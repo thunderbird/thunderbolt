@@ -266,7 +266,7 @@ export const useSlashCommand = ({
   )
 
   const hasSuggestions = useMemo(
-    () => agentCommands.length > 0 || library.some((s) => isEnabled(s.name)),
+    () => agentCommands.length > 0 || library.some((s) => !isHiddenSystemSkill(s) && isEnabled(s.name)),
     [agentCommands, library, isEnabled],
   )
 

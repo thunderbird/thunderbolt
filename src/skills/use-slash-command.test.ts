@@ -470,6 +470,12 @@ describe('useSlashCommand pending sigil', () => {
     expect(press('/', 0).preventDefault).not.toHaveBeenCalled()
   })
 
+  it('leaves "/" literal when only hidden system skills are enabled', () => {
+    const hidden = { ...defaultSkillResearch, defaultHash: hashSkill(defaultSkillResearch) }
+    const { press } = setup('', [hidden])
+    expect(press('/', 0).preventDefault).not.toHaveBeenCalled()
+  })
+
   it('filters on the typed query and replaces the whole token on select', () => {
     const { hook, press, change, getValue } = setup('')
     press('/', 0)

@@ -7,6 +7,8 @@ import { Plug, Plus } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 
 import { SettingsNoResults } from '@/components/settings/settings-empty-state'
+import { MemoryProviderLogo } from '@/components/memory-provider-logo'
+import { getMemoryMcpProvider } from '@/memory/providers'
 import { SettingsListBody, SettingsListPane, SettingsSelectableRow } from '@/components/settings/settings-list'
 import { StatusIndicator, type StatusState } from '@/components/status-indicator'
 import { Button } from '@/components/ui/button'
@@ -119,21 +121,31 @@ const ServerRow = ({
   const { t } = useLingui()
   const title = serverDisplayName(server)
   const isEnabled = server.enabled === 1
+  const memoryProvider = getMemoryMcpProvider(server.url)
   return (
     <li>
       <ConnectionRow
         contextMenu={{ onEdit, onRemove: onDelete }}
         title={title}
-        leading={<StatusIndicator status={isEnabled ? status : 'neutral'} size="sm" />}
+        leading={
+          memoryProvider ? (
+            <MemoryProviderLogo provider={memoryProvider.id} className="size-5" />
+          ) : (
+            <StatusIndicator status={isEnabled ? status : 'neutral'} size="sm" />
+          )
+        }
         isActive={isActive}
         isDimmed={!isEnabled}
         onSelect={onSelect}
         trailing={
-          <Switch
-            checked={isEnabled}
-            onCheckedChange={onToggleEnabled}
-            aria-label={isEnabled ? t`Disable ${title}` : t`Enable ${title}`}
-          />
+          <span className="flex items-center gap-3">
+            {memoryProvider && <StatusIndicator status={isEnabled ? status : 'neutral'} size="sm" />}
+            <Switch
+              checked={isEnabled}
+              onCheckedChange={onToggleEnabled}
+              aria-label={isEnabled ? t`Disable ${title}` : t`Enable ${title}`}
+            />
+          </span>
         }
       />
     </li>

@@ -211,6 +211,177 @@ describe('startMcpOAuthFlow', () => {
     expect(redirectedTo).toBe(`${authServerUrl}/authorize?x=1`)
   })
 
+  it.each([
+    ['https://mcp.mem0.ai/mcp/', 'https://mcp.mem0.ai/'],
+    ['https://api.hindsight.vectorize.io/mcp/personal/', 'https://api.hindsight.vectorize.io/mcp'],
+  ])('pins the advertised resource audience for %s through authorization and exchange', async (endpoint, resource) => {
+    const audiences: Array<string | undefined> = []
+    await startMcpOAuthFlow(
+      { db: getDb(), serverId, serverUrl: endpoint, fetchFn: noFetch, origin },
+      {
+        ...happyDiscovery(metadata()),
+        discoverOAuthProtectedResourceMetadata: async () => ({ resource, authorization_servers: [authServerUrl] }),
+        registerClient: async () => ({ client_id: 'client', redirect_uris: [`${origin}/oauth/callback`] }),
+        startAuthorization: async (_url, options) => {
+          audiences.push(options.resource?.href)
+          return { authorizationUrl: new URL(`${authServerUrl}/authorize`), codeVerifier: 'verifier' }
+        },
+      },
+    )
+    const handshake = getMcpOAuthState()
+    expect(handshake.serverUrl).toBe(endpoint)
+    expect(handshake.resource).toBe(resource)
+    await completeMcpOAuthFlow(
+      { db: getDb(), serverId, code: 'code', returnedState: handshake.stateNonce, returnedIss: null, fetchFn: noFetch },
+      {
+        exchangeAuthorization: async (_url, options) => {
+          audiences.push(options.resource?.href)
+          return { access_token: 'fixture-access', token_type: 'Bearer' }
+        },
+      },
+    )
+    expect(audiences).toEqual([resource, resource])
+    expect(await getMcpServerCredentials(getDb(), serverId)).toMatchObject({ resource })
+  })
+
+  it('rejects an unrelated protected-resource audience before registering a client', async () => {
+    let registered = false
+    await expect(
+      startMcpOAuthFlow(
+        { db: getDb(), serverId, serverUrl, fetchFn: noFetch, origin },
+        {
+          ...happyDiscovery(metadata()),
+          discoverOAuthProtectedResourceMetadata: async () => ({
+            resource: 'https://another-service.example/mcp',
+            authorization_servers: [authServerUrl],
+          }),
+          registerClient: async () => {
+            registered = true
+            return { client_id: 'client', redirect_uris: [] }
+          },
+        },
+      ),
+    ).rejects.toThrow(/does not match expected/)
+    expect(registered).toBe(false)
+    expect(getMcpOAuthState().serverId).toBeNull()
+  })
+
+  it.each(['client_secret_post', 'client_secret_basic'] as const)(
+    'retains DCR client credentials for a server requiring %s',
+    async (method) => {
+      const methods: Array<string | undefined> = []
+      await startMcpOAuthFlow(
+        { db: getDb(), serverId, serverUrl, fetchFn: noFetch, origin },
+        {
+          ...happyDiscovery(metadata({ token_endpoint_auth_methods_supported: [method] })),
+          registerClient: async (_url, options) => {
+            methods.push(options.clientMetadata.token_endpoint_auth_method)
+            return { client_id: 'client', client_secret: 'fixture-secret', redirect_uris: [] }
+          },
+          startAuthorization: async () => ({
+            authorizationUrl: new URL(`${authServerUrl}/authorize`),
+            codeVerifier: 'verifier',
+          }),
+        },
+      )
+      const handshake = getMcpOAuthState()
+      await completeMcpOAuthFlow(
+        {
+          db: getDb(),
+          serverId,
+          code: 'code',
+          returnedState: handshake.stateNonce,
+          returnedIss: null,
+          fetchFn: noFetch,
+        },
+        {
+          exchangeAuthorization: async (_url, options) => {
+            expect(options.clientInformation.client_secret).toBe('fixture-secret')
+            expect(options.clientInformation).toMatchObject({ token_endpoint_auth_method: method })
+            return { access_token: 'fixture-access', token_type: 'Bearer', refresh_token: 'fixture-refresh' }
+          },
+        },
+      )
+      expect(methods).toEqual([method])
+      expect(await getMcpServerCredentials(getDb(), serverId)).toMatchObject({
+        clientSecret: 'fixture-secret',
+        tokenEndpointAuthMethod: method,
+      })
+    },
+  )
+
+  it('prefers a public PKCE client when the server also supports client secrets', async () => {
+    await startMcpOAuthFlow(
+      { db: getDb(), serverId, serverUrl, fetchFn: noFetch, origin },
+      {
+        ...happyDiscovery(metadata({ token_endpoint_auth_methods_supported: ['client_secret_post', 'none'] })),
+        registerClient: async (_url, options) => {
+          expect(options.clientMetadata.token_endpoint_auth_method).toBe('none')
+          return { client_id: 'public-client', redirect_uris: [] }
+        },
+        startAuthorization: async () => ({
+          authorizationUrl: new URL(`${authServerUrl}/authorize`),
+          codeVerifier: 'verifier',
+        }),
+      },
+    )
+    expect(JSON.parse(getMcpOAuthState().clientInfo!)).toMatchObject({
+      client_id: 'public-client',
+      token_endpoint_auth_method: 'none',
+    })
+  })
+
+  it('rejects an incomplete secret-client registration before opening authorization', async () => {
+    await expect(
+      startMcpOAuthFlow(
+        { db: getDb(), serverId, serverUrl, fetchFn: noFetch, origin },
+        {
+          ...happyDiscovery(metadata({ token_endpoint_auth_methods_supported: ['client_secret_post'] })),
+          registerClient: async () => ({ client_id: 'client-without-secret', redirect_uris: [] }),
+        },
+      ),
+    ).rejects.toThrow('did not issue the required client secret')
+    expect(getMcpOAuthState().serverId).toBeNull()
+    expect(redirectedTo).toBeUndefined()
+  })
+
+  it.each(['discovery', 'registration', 'authorization'] as const)(
+    'does not persist or clear another attempt when cancelled during %s',
+    async (phase) => {
+      const controller = new AbortController()
+      const cancelAndReplace = () => {
+        controller.abort()
+        setMcpOAuthState({ serverId, stateNonce: 'newer-attempt', codeVerifier: 'newer-verifier' })
+      }
+      await expect(
+        startMcpOAuthFlow(
+          { db: getDb(), serverId, serverUrl, fetchFn: noFetch, origin, signal: controller.signal },
+          {
+            ...happyDiscovery(metadata()),
+            discoverAuthorizationServerMetadata: async () => {
+              if (phase === 'discovery') {
+                cancelAndReplace()
+              }
+              return metadata()
+            },
+            registerClient: async () => {
+              if (phase === 'registration') {
+                cancelAndReplace()
+              }
+              return { client_id: 'client', redirect_uris: [] }
+            },
+            startAuthorization: async () => {
+              cancelAndReplace()
+              return { authorizationUrl: new URL(`${authServerUrl}/authorize`), codeVerifier: 'stale-verifier' }
+            },
+          },
+        ),
+      ).rejects.toMatchObject({ name: 'AbortError' })
+      expect(getMcpOAuthState()).toMatchObject({ stateNonce: 'newer-attempt', codeVerifier: 'newer-verifier' })
+      expect(redirectedTo).toBeUndefined()
+    },
+  )
+
   it('leaves the stored credentials untouched when a re-authorization is abandoned', async () => {
     const db = getDb()
     const existing = {

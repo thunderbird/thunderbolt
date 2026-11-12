@@ -6,6 +6,14 @@ import { useProviderVisibility } from '@/providers/use-provider-visibility'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useReducer } from 'react'
 import { Navigate, useLocation } from 'react-router'
+import { v7 as uuidv7 } from 'uuid'
+import { createMcpServer, getRemoteMcpServers, enableMcpServerIfCurrent } from '@/dal/mcp-servers'
+import { memoryMcpProviders } from '@/memory/providers'
+import { MemoryProviderLogo } from '@/components/memory-provider-logo'
+import { MemoryProviderForm } from '@/settings/memory-connections/memory-provider-form'
+import { useAsyncAttempt } from '@/hooks/use-async-attempt'
+import { useAuthAttempt } from '@/hooks/use-auth-attempt'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
 
 import { irohClientNodeId } from '@/acp/iroh/iroh-transport'
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
@@ -93,6 +101,8 @@ export type ConnectionsPageDeps = {
 
 type ConnectionSurfaceProps = {
   connectionId?: string
+  mcpServerId?: string
+  memoryOnly?: boolean
   initialAction?: 'edit' | 'remove'
   open: boolean
   onClose: () => void
@@ -117,6 +127,8 @@ const ConnectionsPage = ({
   // lives in the single global useMcpSync() in AppContent — running it here too
   // would re-run the reconciliation effect and double-register servers.
   const { servers: mcpServers, reconnectServer, updateServer } = useMCP()
+  const memoryConnectionAttempt = useAsyncAttempt()
+  const memoryEnableAttempt = useAuthAttempt()
   const location = useLocation()
 
   const initialCallback = getConnectionsOAuthCallback(location.state)
@@ -132,6 +144,10 @@ const ConnectionsPage = ({
       const mcpProvider = getMcpSearchProvider(getMcpOAuthState().serverId)
       if (initialCallback.kind === 'mcp' && mcpProvider) {
         return { ...initialState, selected: { kind: 'add-provider', id: mcpProvider } }
+      }
+      const callbackServerId = initialCallback.kind === 'mcp' ? getMcpOAuthState().serverId : null
+      if (callbackServerId || surface?.mcpServerId) {
+        return { ...initialState, selected: { kind: 'server', id: callbackServerId ?? surface!.mcpServerId! } }
       }
       if (surface?.connectionId) {
         return {
@@ -178,6 +194,7 @@ const ConnectionsPage = ({
     cardStateFor,
     dialogError,
     clearDialogError,
+    cancelAuthorization,
     isAddAuthorizePending,
     startAuthorize,
     startAddAndAuthorize,
@@ -242,11 +259,14 @@ const ConnectionsPage = ({
   const connectionFor = (serverId: string) => mcpServers.find((s) => s.id === serverId)
 
   const getConnectionStatus = (server: McpServer): 'connected' | 'connecting' | 'disconnected' => {
+    if (server.enabled !== 1) {
+      return 'disconnected'
+    }
     const mcpServer = connectionFor(server.id)
     if (mcpServer) {
-      return mcpServer.isConnected ? 'connected' : 'disconnected'
+      return mcpServer.isConnected ? 'connected' : mcpServer.error ? 'disconnected' : 'connecting'
     }
-    return server.enabled ? 'connecting' : 'disconnected'
+    return 'connecting'
   }
 
   const handleRetryConnection = async (serverId: string) => {
@@ -264,6 +284,44 @@ const ConnectionsPage = ({
       })
     } finally {
       dispatch({ type: 'RETRY_SETTLED' })
+    }
+  }
+
+  const handleEnableConnection = async (server: McpServer) => {
+    const attempt = memoryEnableAttempt.begin()
+    if (!attempt) {
+      return false
+    }
+    const signal = AbortSignal.any([attempt.signal, getIdentitySignal()])
+    dispatch({ type: 'RETRY_STARTED', serverId: server.id })
+    try {
+      const enabled = await enableMcpServerIfCurrent(db, server.id, server.url, signal)
+      if (!enabled) {
+        throw new Error(t`This connection changed. Please open it again.`)
+      }
+      signal.throwIfAborted()
+      await updateServer({
+        id: enabled.id,
+        name: enabled.name ?? '',
+        url: enabled.url ?? '',
+        type: enabled.type === 'sse' ? 'sse' : enabled.type === 'iroh' ? 'iroh' : 'http',
+        enabled: true,
+      })
+      return attempt.isCurrent() && !signal.aborted
+    } catch (error) {
+      if (attempt.isCurrent() && !signal.aborted) {
+        dispatch({
+          type: 'SERVER_FAILED',
+          serverId: server.id,
+          error: error instanceof Error ? error.message : t`Failed to update MCP server`,
+        })
+      }
+      return false
+    } finally {
+      if (attempt.isCurrent()) {
+        dispatch({ type: 'RETRY_SETTLED' })
+      }
+      attempt.finish()
     }
   }
 
@@ -337,6 +395,67 @@ const ConnectionsPage = ({
   const activeServer = selected?.kind === 'server' ? servers.find((s) => s.id === selected.id) : undefined
 
   const renderPanel = () => {
+    if (selected?.kind === 'add-memory-provider') {
+      const provider = memoryMcpProviders.find(({ id }) => id === selected.id)!
+      return (
+        <DetailPanel title={provider.name} icon={<MemoryProviderLogo provider={provider.id} />} onClose={closePanel}>
+          <MemoryProviderForm
+            key={provider.id}
+            provider={provider}
+            pending={!areServersReady || isAddAuthorizePending}
+            error={dialogError ?? addError}
+            onBack={backToPicker}
+            onCancel={cancelMemoryAuthorization}
+            onConnect={async (url, name) => {
+              const attempt = memoryConnectionAttempt.begin()
+              if (!attempt) {
+                return
+              }
+              const identity = getIdentitySignal()
+              clearDialogError()
+              dispatch({ type: 'FORM_RESET' })
+              try {
+                const currentServers = await getRemoteMcpServers(db)
+                if (!attempt.isCurrent() || identity.aborted) {
+                  return
+                }
+                const existing = currentServers.find(
+                  (server) => server.url?.replace(/\/$/, '') === url.replace(/\/$/, ''),
+                )
+                if (existing) {
+                  dispatch({ type: 'SELECTION_CHANGED', selection: { kind: 'server', id: existing.id } })
+                  if (existing.enabled !== 1 && !(await handleEnableConnection(existing))) {
+                    return
+                  }
+                  if (attempt.isCurrent() && !identity.aborted) {
+                    await startAuthorize(existing)
+                  }
+                  return
+                }
+                const serverId = uuidv7()
+                const started = await startAddAndAuthorize({
+                  serverId,
+                  serverUrl: url,
+                  createRow: () => createMcpServer(db, { id: serverId, name, url, type: 'http', enabled: 1 }),
+                })
+                if (started && attempt.isCurrent()) {
+                  dispatch({ type: 'SELECTION_CHANGED', selection: { kind: 'server', id: serverId } })
+                }
+              } catch (error) {
+                if (attempt.isCurrent()) {
+                  dispatch({
+                    type: 'ADD_FAILED',
+                    error: error instanceof Error ? error.message : t`Failed to add MCP server`,
+                  })
+                }
+              } finally {
+                attempt.finish()
+              }
+            }}
+          />
+        </DetailPanel>
+      )
+    }
     if (form.isAddFormOpen) {
       return (
         <DetailPanel title={form.editingServerId ? t`Edit MCP Server` : t`Add MCP Server`} onClose={closePanel}>
@@ -370,6 +489,11 @@ const ConnectionsPage = ({
       return (
         <DetailPanel title={t`New Connection`} onClose={closePanel}>
           <NewConnectionPicker
+            memoryOnly={surface?.memoryOnly}
+            onMemoryProvider={(id) => {
+              clearDialogError()
+              dispatch({ type: 'SELECTION_CHANGED', selection: { kind: 'add-memory-provider', id } })
+            }}
             otariEnabled={otariEnabled}
             onProvider={(id) => {
               const existing = aiProviders.find(
@@ -460,6 +584,10 @@ const ConnectionsPage = ({
           isRetrying={retryingServerId === activeServer.id}
           onRetry={() => handleRetryConnection(activeServer.id)}
           onAuthorize={() => startAuthorize(activeServer)}
+          onCancelAuthorize={cancelMemoryAuthorization}
+          onEnable={() => {
+            void handleEnableConnection(activeServer)
+          }}
           onEdit={() => formController.edit(activeServer)}
           onDelete={() => dispatch({ type: 'DELETE_REQUESTED', server: activeServer })}
           onClose={closePanel}
@@ -469,8 +597,16 @@ const ConnectionsPage = ({
     return null
   }
 
+  const cancelMemoryAuthorization = () => {
+    memoryConnectionAttempt.cancel()
+    memoryEnableAttempt.cancel()
+    dispatch({ type: 'RETRY_SETTLED' })
+    cancelAuthorization()
+  }
+
   const closePanel = () => {
     authorization.cancel()
+    cancelMemoryAuthorization()
     dispatch({ type: 'INTEGRATION_ERROR_CLEARED' })
     if (surface) {
       surface.onClose()
@@ -485,6 +621,7 @@ const ConnectionsPage = ({
 
   const backToPicker = () => {
     authorization.cancel()
+    cancelMemoryAuthorization()
     if (form.isAddFormOpen) {
       formController.cancel()
     }
@@ -493,6 +630,7 @@ const ConnectionsPage = ({
 
   const selectConnection = (next: NonNullable<ConnectionSelection>, toggle = false) => {
     authorization.cancel()
+    cancelMemoryAuthorization()
     const isReselected = toggle && !form.isAddFormOpen && selected?.kind === next.kind && selected.id === next.id
     // Row clicks and context-menu actions both supersede the current form and authorization.
     if (form.isAddFormOpen) {
@@ -503,6 +641,7 @@ const ConnectionsPage = ({
 
   const openAddForm = () => {
     authorization.cancel()
+    cancelMemoryAuthorization()
     formController.cancel()
     dispatch({ type: 'SELECTION_CHANGED', selection: null })
     form.openAddForm()
@@ -513,6 +652,7 @@ const ConnectionsPage = ({
     const server = servers.find((s) => s.id === id)
     if (server) {
       authorization.cancel()
+      cancelMemoryAuthorization()
       action(server)
     }
   }

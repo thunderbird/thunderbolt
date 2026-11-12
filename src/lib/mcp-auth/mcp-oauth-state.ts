@@ -32,6 +32,8 @@ export type McpOAuthState = {
   returnTo?: string
   serverId: string | null
   serverUrl: string | null
+  /** Validated protected-resource audience, pinned across authorization and token exchange. */
+  resource?: string
   codeVerifier: string | null
   stateNonce: string | null
   issuer: string | null

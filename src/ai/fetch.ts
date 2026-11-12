@@ -18,7 +18,13 @@ import { buildMiniAppPromptSection } from '@/mini-apps/mini-app-prompt'
 import { getMiniAppSnapshot, useMiniAppStore } from '@/mini-apps/mini-app-store'
 import { buildMiniAppToolsPromptSection, createMiniAppTools, toToolsetName } from '@/mini-apps/mini-app-tools'
 import { buildProjectPromptSection } from '@/projects/project-prompt'
-import { createProjectSearchTool } from '@/projects/project-search-tool'
+import { createSessionHistoryTools } from '@/session-history/tools'
+import { createMemoryTools } from '@/memory/tools'
+import { getMemoryDocument } from '@/dal/memories'
+import { buildMemoryContext } from '@/memory/context'
+import { createMemoryMcpAccess, type MemoryMcpAccess } from '@/memory/mcp-access'
+import { getMemoryMcpProvider } from '@/memory/providers'
+import type { MemoryProviderTarget } from '@/memory/access'
 import { createTurnBudget, createTurnBudgetExhaustedError, type TurnBudgetConsumer } from '@/ai/retry-budget'
 import type { TurnTelemetry } from '@/ai/turn-telemetry'
 import { selectMinimalMode, useConfigStore } from '@/api/config-store'
@@ -89,6 +95,7 @@ import {
   type ToolSet,
 } from 'ai'
 import type { MCPClient, NamedMCPClient, ReconnectClient } from '@/lib/mcp-provider'
+import { getMcpClientEndpoint } from '@/lib/mcp-client-identity'
 import { isMcpDiscoveryError } from '@/lib/mcp-errors'
 import { withTimeout } from '@/lib/timeout'
 import { smoothStreamWordDelayMs } from '@/chats/chat-throttle'
@@ -205,17 +212,28 @@ export const mergeMcpTools = async (
   toolset: Record<string, Tool>,
   mcpClients: NamedMCPClient[],
   reconnectClient: ReconnectClient,
-  { reconnectTimeoutMs = defaultMcpReconnectTimeoutMs }: { reconnectTimeoutMs?: number } = {},
-): Promise<{ toolset: Record<string, Tool>; summary?: string; mcpTools: UIMessageMetadata['mcpTools'] }> => {
+  {
+    reconnectTimeoutMs = defaultMcpReconnectTimeoutMs,
+    memoryAccess,
+  }: { reconnectTimeoutMs?: number; memoryAccess?: MemoryMcpAccess } = {},
+): Promise<{
+  toolset: Record<string, Tool>
+  summary?: string
+  mcpTools: UIMessageMetadata['mcpTools']
+  memoryTools: Record<string, MemoryProviderTarget>
+}> => {
   const takenPrefixes = new Set<string>()
   const mcpServerEntries: string[] = []
   const mcpTools: NonNullable<UIMessageMetadata['mcpTools']> = {}
+  const memoryTools: Record<string, MemoryProviderTarget> = {}
+  type DiscoveredTools = { url: string; tools: Awaited<ReturnType<MCPClient['tools']>> }
+  const emptyDiscovery = (url: string): DiscoveredTools => ({ url, tools: {} })
 
   /** Prefix and merge one server's tools, recording each into `mcpTools` and
    *  returning how many were added. */
   const addTools = (
     prefix: string,
-    server: { name: string; url: string },
+    server: { id: string; name: string; url: string },
     tools: Awaited<ReturnType<MCPClient['tools']>>,
   ): number => {
     let added = 0
@@ -225,7 +243,12 @@ export const mergeMcpTools = async (
         console.warn(`MCP tool "${prefixedName}" from "${server.name}" conflicts with an existing tool and was skipped`)
         continue
       }
-      toolset[prefixedName] = tool as Tool
+      toolset[prefixedName] = getMemoryMcpProvider(server.url)
+        ? memoryAccess!.protectTool(server, tool as Tool)
+        : (tool as Tool)
+      if (getMemoryMcpProvider(server.url)) {
+        memoryTools[prefixedName] = { id: server.id, url: server.url }
+      }
       mcpTools[prefixedName] = { name: server.name, url: server.url, toolName: name }
       added++
     }
@@ -245,50 +268,76 @@ export const mergeMcpTools = async (
     return prefix
   }
 
-  /** Wait for a connect, then run discovery once on the client it produced.
-   *  Returns `{}` when the connect fails or the fresh client fails discovery too. */
-  const discoverOnConnect = async (serverName: string, connecting: Promise<MCPClient | null>) => {
+  const canDiscover = async (entry: Pick<NamedMCPClient, 'id' | 'url'>) =>
+    !getMemoryMcpProvider(entry.url) || Boolean(await memoryAccess?.isAllowed(entry))
+
+  /** Classify the transport that will actually receive calls, not an older server-row snapshot. */
+  const discoverClient = async (
+    entry: Pick<NamedMCPClient, 'id' | 'url'>,
+    client: MCPClient,
+  ): Promise<DiscoveredTools> => {
+    const url = getMcpClientEndpoint(client) ?? entry.url
+    if (!(await canDiscover({ id: entry.id, url }))) {
+      return emptyDiscovery(url)
+    }
+    return { url, tools: await client.tools() }
+  }
+
+  /** Wait for a connect, then rediscover only within that fresh client's own endpoint policy. */
+  const discoverOnConnect = async (
+    entry: Pick<NamedMCPClient, 'id' | 'name' | 'url'>,
+    connecting: Promise<MCPClient | null>,
+  ): Promise<DiscoveredTools> => {
     const fresh = await connecting
+    if (!(await canDiscover(entry))) {
+      return emptyDiscovery(entry.url)
+    }
     if (!fresh) {
-      console.warn(`MCP server "${serverName}" did not connect; skipping its tools for this send`)
-      return {}
+      console.warn(`MCP server "${entry.name}" did not connect; skipping its tools for this send`)
+      return emptyDiscovery(entry.url)
     }
     try {
-      return await fresh.tools()
+      return await discoverClient(entry, fresh)
     } catch (err) {
       if (!isMcpDiscoveryError(err)) {
         throw err
       }
       console.warn(
-        `MCP tool discovery failed for "${serverName}" after reconnect; skipping its tools for this send`,
+        `MCP tool discovery failed for "${entry.name}" after reconnect; skipping its tools for this send`,
         err,
       )
-      return {}
+      return emptyDiscovery(getMcpClientEndpoint(fresh) ?? entry.url)
     }
   }
 
   /** {@link discoverOnConnect} under one bound, so a server that reconnects but
    *  never answers discovery can't hold up the send. `withTimeout` warns when it
    *  fires; the connect keeps running for the next send. */
-  const discoverAfterConnect = async (serverName: string, connecting: Promise<MCPClient | null>) =>
+  const discoverAfterConnect = async (entry: NamedMCPClient, connecting: Promise<MCPClient | null>) =>
     (await withTimeout(
-      discoverOnConnect(serverName, connecting),
+      discoverOnConnect(entry, connecting),
       reconnectTimeoutMs,
-      `MCP connect and discovery for ${serverName}`,
-    )) ?? {}
+      `MCP connect and discovery for ${entry.name}`,
+    )) ?? emptyDiscovery(entry.url)
 
   const discover = async (entry: NamedMCPClient) => {
+    if (!(await canDiscover(entry))) {
+      return emptyDiscovery(entry.url)
+    }
     if (!entry.client) {
-      return discoverAfterConnect(entry.name, entry.connecting)
+      return discoverAfterConnect(entry, entry.connecting)
     }
     try {
-      return await entry.client.tools()
+      return await discoverClient(entry, entry.client)
     } catch (err) {
       if (!isMcpDiscoveryError(err)) {
         throw err
       }
+      if (!(await canDiscover(entry))) {
+        return emptyDiscovery(entry.url)
+      }
       console.warn(`MCP tool discovery failed for "${entry.name}"; reconnecting and retrying once`, err)
-      return discoverAfterConnect(entry.name, reconnectClient(entry.client, err))
+      return discoverAfterConnect(entry, reconnectClient(entry.client, err))
     }
   }
 
@@ -296,17 +345,22 @@ export const mergeMcpTools = async (
   // tools merge in that same order so collisions resolve first-registered-wins.
   const servers = mcpClients.map((entry) => ({ entry, prefix: reservePrefix(entry.name) }))
   const discovered = await Promise.all(servers.map(({ entry }) => discover(entry)))
-  servers.forEach(({ entry, prefix }, i) => {
-    const added = addTools(prefix, { name: entry.name, url: entry.url }, discovered[i])
+  for (const [i, { entry, prefix }] of servers.entries()) {
+    const { url, tools } = discovered[i]
+    if (getMemoryMcpProvider(url) && !(await memoryAccess?.isAllowed({ id: entry.id, url }))) {
+      continue
+    }
+    const added = addTools(prefix, { id: entry.id, name: entry.name, url }, tools)
     if (added > 0) {
       mcpServerEntries.push(`- ${prefix} (${added} ${added === 1 ? 'tool' : 'tools'})`)
     }
-  })
+  }
 
   return {
     toolset,
     summary: mcpServerEntries.length > 0 ? mcpServerEntries.join('\n') : undefined,
     mcpTools: Object.keys(mcpTools).length > 0 ? mcpTools : undefined,
+    memoryTools,
   }
 }
 
@@ -626,6 +680,9 @@ export const prepareAiRequestConfig = async ({
     integrations_do_not_ask_again: false,
     experimental_feature_tasks: false,
     integrations_pro_is_enabled: false,
+    memory_enabled: false,
+    memory_provider: 'builtin',
+    session_history_enabled: false,
   })
   const integrationStatus = await getIntegrationStatus(db)
   const model = await getModel(db, modelId)
@@ -658,16 +715,17 @@ export const prepareAiRequestConfig = async ({
     loadsSkillsByTool,
     webToolBudget,
   )
-  // Cross-chat recall is a tool, not an injection: it costs nothing when unused
-  // and leaves the cacheable stable prompt untouched. Only registered when there
-  // is actually something to search.
-  if (supportsTools && projectContext && projectContext.siblingThreadIds.length > 0) {
-    appToolset.search_project_chats = createProjectSearchTool({
-      db,
-      projectName: projectContext.prompt.name,
-      threadIds: projectContext.siblingThreadIds,
-      titleByThreadId: projectContext.titleByThreadId,
-    })
+  const includePrivate = model.isConfidential === 1
+  const memoryAccess = createMemoryMcpAccess(db, chatThreadId, settings.memoryProvider)
+  const memoryAllowed = await memoryAccess.isAllowed()
+  if (supportsTools && memoryAllowed && chatThreadId) {
+    Object.assign(appToolset, createMemoryTools({ db, currentThreadId: chatThreadId }))
+  }
+  if (supportsTools && settings.sessionHistoryEnabled && chatThreadId) {
+    Object.assign(
+      appToolset,
+      createSessionHistoryTools({ db, currentThreadId: chatThreadId, allowPrivate: includePrivate }),
+    )
   }
   // Mini App context is a tool for the same reason cross-chat recall is: the
   // app's state changes on every click, and injecting it would invalidate the
@@ -728,8 +786,8 @@ export const prepareAiRequestConfig = async ({
   }
   telemetry?.startPhase('mcp_discovery')
   const merged = supportsTools
-    ? await mergeMcpTools(appToolset, mcpClients, reconnectClient)
-    : { toolset: appToolset, summary: undefined, mcpTools: undefined }
+    ? await mergeMcpTools(appToolset, mcpClients, reconnectClient, { memoryAccess })
+    : { toolset: appToolset, summary: undefined, mcpTools: undefined, memoryTools: {} }
   telemetry?.endPhase('mcp_discovery')
   const miniAppContextNote =
     miniAppContextPromise && miniApp ? buildMiniAppContextNote(miniApp, await miniAppContextPromise) : null
@@ -739,12 +797,51 @@ export const prepareAiRequestConfig = async ({
     integrationStatus.microsoftConnected && !integrationStatus.microsoftEnabled ? 'MICROSOFT_DISABLED' : null,
     settings.integrationsDoNotAskAgain ? 'PROMPTS_DISABLED' : null,
   ].filter((status): status is string => status !== null)
+  const memoryStillAllowed = await memoryAccess.isAllowed()
+  if (!memoryStillAllowed) {
+    delete merged.toolset.read_memory
+    delete merged.toolset.save_memory
+  }
+  const selectedMemoryToolNames: string[] = []
+  for (const [name, provider] of Object.entries(merged.memoryTools)) {
+    // Reconcile routing again after parallel discovery; queued calls also enforce it live.
+    if (!memoryStillAllowed && (await memoryAccess.isAllowed(provider))) {
+      selectedMemoryToolNames.push(name)
+    } else {
+      delete merged.toolset[name]
+      if (merged.mcpTools) {
+        delete merged.mcpTools[name]
+      }
+    }
+  }
+  if (Object.keys(merged.memoryTools).length > 0) {
+    const counts = new Map<string, number>()
+    for (const [name, metadata] of Object.entries(merged.mcpTools ?? {})) {
+      const prefix = name.slice(0, -(metadata.toolName.length + 1))
+      counts.set(prefix, (counts.get(prefix) ?? 0) + 1)
+    }
+    merged.summary =
+      [...counts].map(([prefix, count]) => `- ${prefix} (${count} ${count === 1 ? 'tool' : 'tools'})`).join('\n') ||
+      undefined
+    if (counts.size === 0) {
+      merged.mcpTools = undefined
+    }
+  }
+  const memorySection =
+    chatThreadId && memoryStillAllowed
+      ? buildMemoryContext(
+          (await getMemoryDocument(db, { currentThreadId: chatThreadId, requireEnabled: true })).content,
+        )
+      : null
   const prompt = createPromptParts({
     modelName: model.name,
     profile,
+    memorySection,
+    selectedMemoryToolNames,
     projectSection: buildProjectPromptSection(projectContext?.prompt ?? null, {
-      // Only advertise the tool when it was actually registered above.
-      hasSearchableChats: supportsTools && (projectContext?.siblingThreadIds.length ?? 0) > 0,
+      // Global recall is governed by session_history_enabled; the old project
+      // tool must not offer a second path around that consent boundary.
+      hasSearchableChats: false,
     }),
     // Same rule: only describe the app when `get_app_context` actually exists,
     // and only advertise the actions that survived the merge above.

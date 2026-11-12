@@ -5,11 +5,13 @@
 import type { McpServer } from '@/types'
 import type { AddServerMode } from './mcp-server-form'
 import type { ProviderType } from '@/providers/types'
+import type { MemoryMcpProviderId } from '@/memory/providers'
 
 export type ConnectionSelection =
   | { kind: 'integration' | 'server' | 'provider'; id: string; fromPicker?: boolean; action?: 'edit' | 'remove' }
   | { kind: 'new'; id: '' }
   | { kind: 'add-provider'; id: ProviderType; authMethod?: 'api_key' }
+  | { kind: 'add-memory-provider'; id: MemoryMcpProviderId }
   | null
 
 export type ConnectionsPageState = {

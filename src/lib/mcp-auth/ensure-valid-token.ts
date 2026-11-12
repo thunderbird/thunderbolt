@@ -11,6 +11,7 @@ import { eq } from 'drizzle-orm'
 import {
   getMcpServerCredentialSnapshot,
   updateMcpServerCredentialsIfCurrent,
+  type McpOAuthClientAuthMethod,
   type McpServerCredentials,
 } from '@/dal/mcp-secrets'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
@@ -46,11 +47,16 @@ export class McpOAuthNeedsReauthError extends Error {
 const credentialRejectedCodes = new Set(['invalid_grant', 'invalid_request', 'invalid_client', 'unauthorized_client'])
 
 /** Builds the minimal AS metadata the SDK refresh path reads (token endpoint). */
-const buildMetadata = (issuer: string, tokenEndpoint: string): AuthorizationServerMetadata => ({
+const buildMetadata = (
+  issuer: string,
+  tokenEndpoint: string,
+  authMethod?: McpOAuthClientAuthMethod,
+): AuthorizationServerMetadata => ({
   issuer,
   authorization_endpoint: issuer,
   token_endpoint: tokenEndpoint,
   response_types_supported: ['code'],
+  ...(authMethod ? { token_endpoint_auth_methods_supported: [authMethod] } : {}),
 })
 
 type RefreshFn = typeof sdkRefreshAuthorization
@@ -77,8 +83,8 @@ const tokenRefreshInFlight = new Map<
  * On refresh the rotated refresh token replaces the stored one and `expires_at`
  * is recomputed from the new `expires_in` (a response without `expires_in` is
  * stored as non-expiring, never as the stale pre-refresh timestamp, which would
- * trigger a refresh on every subsequent connect). The RFC 8707 `resource` (the
- * canonical MCP server URL) is sent on the refresh request. A rejected refresh
+ * trigger a refresh on every subsequent connect). The RFC 8707 `resource` pinned
+ * during authorization is sent on refresh, with a server-URL fallback for older credentials. A rejected refresh
  * token or client (`credentialRejectedCodes`) surfaces as `McpOAuthNeedsReauthError`
  * so the UI can prompt a clean re-authorization. `refreshAuthorization` is injectable
  * for tests.
@@ -136,13 +142,21 @@ const resolveValidMcpOAuthToken = async (
 
   const server = await db.select().from(mcpServersTable).where(eq(mcpServersTable.id, serverId)).get()
   signal.throwIfAborted()
-  const resource = server?.url ? resourceUrlFromServerUrl(server.url) : undefined
+  const resource = cred.resource
+    ? new URL(cred.resource)
+    : server?.url
+      ? resourceUrlFromServerUrl(server.url)
+      : undefined
 
   const tokens = await (async () => {
     try {
       return await refreshAuthorization(issuer, {
-        metadata: buildMetadata(issuer, tokenEndpoint),
-        clientInformation: { client_id: clientId },
+        metadata: buildMetadata(issuer, tokenEndpoint, cred.tokenEndpointAuthMethod),
+        clientInformation: {
+          client_id: clientId,
+          client_secret: cred.clientSecret,
+          token_endpoint_auth_method: cred.tokenEndpointAuthMethod,
+        },
         refreshToken,
         resource,
         fetchFn: (input, init) => {

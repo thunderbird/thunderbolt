@@ -176,6 +176,26 @@ describe('createPrompt', () => {
     expect(result.stablePrompt).not.toContain('Built-in web search is unavailable')
   })
 
+  test('discloses selected provider memory only for authorized tools actually present in the request', () => {
+    const active = createPromptParts({
+      ...baseParams,
+      availableToolNames: ['personal_notes_search'],
+      selectedMemoryToolNames: ['personal_notes_search'],
+    })
+    expect(active.stablePrompt).toContain("Your selected memory provider's tools are available")
+    expect(active.stablePrompt).not.toContain('Saved-memory tools are unavailable')
+    expect(active.stablePrompt).not.toContain('expectedRevision')
+
+    for (const params of [
+      { availableToolNames: ['personal_notes_search'], selectedMemoryToolNames: [] },
+      { availableToolNames: [], selectedMemoryToolNames: ['personal_notes_search'] },
+    ]) {
+      const unavailable = createPromptParts({ ...baseParams, ...params })
+      expect(unavailable.stablePrompt).toContain('Saved-memory tools are unavailable')
+      expect(unavailable.stablePrompt).not.toContain("Your selected memory provider's tools are available")
+    }
+  })
+
   test('explains missing web access before search rules and prevents unrelated tool detours', () => {
     const result = createPromptParts({ ...baseParams, availableToolNames: [] })
 

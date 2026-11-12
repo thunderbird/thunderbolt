@@ -7,7 +7,7 @@ import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { mcpSecretsTable, mcpServersTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import { deleteMcpServerCredentials, setMcpServerCredentials, type McpServerCredentials } from './mcp-secrets'
-import { type McpServer } from '@/types'
+import { type McpServer, type McpServerRow } from '@/types'
 import type { DrizzleQueryWithPromise } from '@/types'
 
 /**
@@ -102,6 +102,30 @@ export const updateMcpServer = async (
 export const updateMcpServerEnabled = async (db: AnyDrizzleDatabase, id: string, enabled: boolean): Promise<void> => {
   await updateMcpServer(db, id, { enabled: enabled ? 1 : 0 })
 }
+
+/** Enable an unchanged active connection, cancelling queued writes when its originating action ends. */
+export const enableMcpServerIfCurrent = async (
+  db: AnyDrizzleDatabase,
+  id: string,
+  expectedUrl: string | null,
+  signal: AbortSignal,
+): Promise<McpServerRow | null> =>
+  db.transaction(async (tx) => {
+    signal.throwIfAborted()
+    const rows = await tx
+      .update(mcpServersTable)
+      .set({ enabled: 1, updatedAt: nowIso() })
+      .where(
+        and(
+          eq(mcpServersTable.id, id),
+          isNull(mcpServersTable.deletedAt),
+          expectedUrl === null ? isNull(mcpServersTable.url) : eq(mcpServersTable.url, expectedUrl),
+        ),
+      )
+      .returning()
+    signal.throwIfAborted()
+    return rows[0] ?? null
+  })
 
 /**
  * Updates an MCP server row and (optionally) its on-device credentials in a

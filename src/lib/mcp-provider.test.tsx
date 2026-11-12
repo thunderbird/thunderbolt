@@ -19,6 +19,7 @@ import { z } from 'zod'
 import type { ensureValidMcpOAuthToken } from './mcp-auth/ensure-valid-token'
 import { MCPProvider, useMCP, type MCPClient as ProviderMCPClient } from './mcp-provider'
 import { resolveMcpAccessToken } from './mcp-client'
+import { getMcpClientEndpoint } from './mcp-client-identity'
 
 /** A `Deferred` lets a test hold a fake `createClient` open so two concurrent
  *  reconnects (or a remove mid-reconnect) overlap deterministically. */
@@ -864,6 +865,60 @@ describe('MCPProvider reconnect', () => {
     expect(after?.url).toBe('https://new.test/mcp')
     expect(after?.client).toBe(refreshed as unknown as ProviderMCPClient)
   })
+
+  it.each([false, true])(
+    'uses the actual reconnected endpoint for memory access and attribution (allowed: %s)',
+    async (allowed) => {
+      const discoveryError = Object.assign(new Error('Connection closed'), { name: 'MCPClientError' })
+      const initial = Object.assign(fakeClient(), {
+        tools: async () => {
+          throw discoveryError
+        },
+      })
+      const resource = { description: 'Read memory resource', inputSchema: z.object({}) }
+      const guarded = { ...resource, description: 'Guarded memory resource' }
+      const fresh = Object.assign(fakeClient(), { tools: async () => ({ read_resource: resource }) })
+      const discover = spyOn(fresh, 'tools')
+      const memoryUrl = 'https://mcp.mem0.ai/mcp'
+      const { result } = renderProvider(async (_id, url) => (url === memoryUrl ? fresh : initial))
+      const warn = spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        await act(async () => {
+          await result.current.addServer(server)
+        })
+        const snapshot = result.current.getEnabledClients()
+        await act(async () => {
+          await result.current.updateServer({ ...server, url: memoryUrl })
+        })
+        expect(getMcpClientEndpoint(initial)).toBe(server.url)
+        expect(getMcpClientEndpoint(fresh)).toBe(memoryUrl)
+        const protectedTools: unknown[] = []
+        const sent = await mergeMcpTools({}, snapshot, result.current.reconnectClient, {
+          memoryAccess: {
+            isAllowed: async () => allowed,
+            protectTool: (_provider, candidate) => {
+              protectedTools.push(candidate)
+              return guarded
+            },
+          },
+        })
+        if (allowed) {
+          expect(discover).toHaveBeenCalledTimes(1)
+          expect(protectedTools).toEqual([resource])
+          expect(sent.toolset.server_1_read_resource).toBe(guarded)
+          expect(sent.mcpTools?.server_1_read_resource.url).toBe(memoryUrl)
+        } else {
+          expect(discover).not.toHaveBeenCalled()
+          expect(protectedTools).toEqual([])
+          expect(sent.toolset).toEqual({})
+          expect(sent.mcpTools).toBeUndefined()
+        }
+      } finally {
+        discover.mockRestore()
+        warn.mockRestore()
+      }
+    },
+  )
 
   // A rename (or any pure metadata edit) on an already-connected server must
   // NOT close the healthy client. The provider used to reconnect unconditionally

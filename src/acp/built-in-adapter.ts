@@ -241,7 +241,7 @@ const fetchTinfoil = async (
  *  thinking level is derived from the model's profile for both families. */
 export const resolvePiModel = async (
   agentCore: AgentCoreModule,
-  context: AgentAdapterContext,
+  context: Pick<AgentAdapterContext, 'selectedModel' | 'getProxyFetch' | 'telemetry'>,
   profile: ModelProfile | null,
   options: TinfoilClientOptions = {},
 ): Promise<ResolvedPiModel | null> => {

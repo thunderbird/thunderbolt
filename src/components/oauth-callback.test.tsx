@@ -39,6 +39,7 @@ const renderCallback = () =>
         <Route path="/chats/new" element={<PageProbe testId="chat-page" />} />
         <Route path="/oauth/callback" element={<OAuthCallback />} />
         <Route path="/settings/connections" element={<PageProbe testId="connections-page" />} />
+        <Route path="/settings/memory" element={<PageProbe testId="memory-page" />} />
       </Routes>
     </MemoryRouter>,
   )
@@ -72,6 +73,21 @@ describe('OAuthCallback routing', () => {
   afterEach(() => {
     sessionStorage.removeItem('thunderbolt-provider-authorization-draft')
     Object.defineProperty(window, 'location', { value: originalLocation, writable: true, configurable: true })
+  })
+
+  it('restores memory-provider callbacks to the Memory page with its connection aside', async () => {
+    setMcpOAuthState({
+      serverId: 'memory-provider',
+      stateNonce: 'matching',
+      returnTo: '/settings/memory',
+      startedAt: Date.now(),
+    })
+    setCallbackUrl('?code=test-code&state=matching')
+    renderCallback()
+    await settleDeferredRedirect()
+    expect(screen.getByTestId('memory-page')).toHaveAttribute('data-return', 'matching')
+    expect(screen.getByTestId('memory-page')).toHaveAttribute('data-path', '/settings/memory')
+    expect(screen.queryByTestId('connections-page')).toBeNull()
   })
 
   it('returns search authorization to onboarding without opening a connection aside', async () => {

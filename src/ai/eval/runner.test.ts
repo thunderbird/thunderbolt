@@ -54,6 +54,28 @@ const contextFor = (messages: ThunderboltUIMessage[]) =>
     getProxyFetch: () => proxyFetch,
   })
 
+test('partial app-tool traces prove excess calls but cannot prove a missing required call', () => {
+  const scenario = {
+    ...fixtureScenario(),
+    criteria: { mustProduceOutput: true, toolCallLimits: { save_memory: { min: 1, max: 1 } } },
+  }
+  const stream = fixtureAttempt().streams[0]
+  expect(deterministicVerdicts(scenario, stream, false).toolCallLimits).toBe('unknown')
+  expect(
+    deterministicVerdicts(
+      scenario,
+      {
+        ...stream,
+        toolCalls: [
+          { toolName: 'save_memory', toolCallId: 'a' },
+          { toolName: 'save_memory', toolCallId: 'b' },
+        ],
+      },
+      false,
+    ).toolCallLimits,
+  ).toBe('fail')
+})
+
 /** Create a deterministic timeout scheduler controlled directly by each test. */
 const manualTimeout = () => {
   const callbacks: Array<() => void> = []

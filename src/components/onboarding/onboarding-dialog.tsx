@@ -4,11 +4,11 @@
 
 import { useAppName } from '@/lib/branding-selectors'
 import { Trans, useLingui } from '@lingui/react/macro'
-import { lazy, Suspense, useEffect, useEffectEvent, useState, useTransition } from 'react'
+import { lazy, Suspense, useEffect, useEffectEvent, useReducer, useState, useTransition } from 'react'
 import { Dialog, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { ResponsiveModalContentComposable } from '@/components/ui/responsive-modal'
 import { useDatabase, useSignInModal } from '@/contexts'
-import { deleteIntegrationCredentials } from '@/dal'
+import { deleteIntegrationCredentials, updateSettings } from '@/dal'
 import type { OAuthProvider } from '@/lib/auth'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSettings } from '@/hooks/use-settings'
@@ -18,6 +18,7 @@ import { OnboardingAuthStep } from './onboarding-auth-step'
 import { OnboardingNameStep } from './onboarding-name-step'
 import { OnboardingLocationStep } from './onboarding-location-step'
 import { OnboardingLanguageStep } from './onboarding-language-step'
+import { OnboardingMemoryStep } from './onboarding-memory-step'
 import { OnboardingPasskeyStep } from './onboarding-passkey-step'
 import { OnboardingCelebrationStep } from './onboarding-celebration-step'
 import { useAccountPasskey } from '@/lib/passkey'
@@ -31,6 +32,7 @@ import { OnboardingServerStep } from './onboarding-server-step'
 import { useOnboardingServerState } from './use-onboarding-server-state'
 import { useNeedsOwnModel } from '@/hooks/use-needs-own-model'
 import { preloadInBackground } from '@/lib/after-paint'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
 
 /** Share the AI setup bundle between lazy rendering and background preloading. */
 const loadOnboardingModelStep = () => import('./onboarding-model-step')
@@ -75,6 +77,14 @@ const OnboardingWizard = ({ isOpen, isMobile }: { isOpen: boolean; isMobile: boo
   const db = useDatabase()
   const queryClient = useQueryClient()
   const { dataCollection } = useSettings({ data_collection: true })
+  const { memoryEnabled, sessionHistoryEnabled } = useSettings({ memory_enabled: true, session_history_enabled: true })
+  const [recallDraft, setRecallDraft] = useReducer(
+    (state: { memory?: boolean; history?: boolean }, patch: { memory?: boolean; history?: boolean }) => ({
+      ...state,
+      ...patch,
+    }),
+    {},
+  )
   const { state, actions, stepIndex, totalSteps } = useOnboardingState({ isStandalone, hasBuiltInSearch })
   const accountPasskey = useAccountPasskey()
   const shouldOfferPasskeyStep = accountPasskey.isSettled && !accountPasskey.isUnavailable && !accountPasskey.passkey
@@ -113,20 +123,24 @@ const OnboardingWizard = ({ isOpen, isMobile }: { isOpen: boolean; isMobile: boo
   const isBusy = isNavigating || state.isSubmittingName || state.isSubmittingLocation || serverState.isBusy
   const continueDisabled =
     isBusy ||
+    (state.currentStep === 11 && (memoryEnabled.isLoading || sessionHistoryEnabled.isLoading)) ||
     (!isCelebration && !state.canGoNext) ||
     (state.currentStep === passkeyStep && !accountPasskey.isSettled) ||
     (isCelebration && (dataCollection.isLoading || donationMutation.isPending || donationMutation.isError))
 
-  const runAction = (action: () => Promise<void>) => {
+  const runAction = (action: (signal: AbortSignal) => Promise<void>) => {
+    const identity = getIdentitySignal()
     startNavigation(async () => {
       setCompletionError(null)
       try {
-        await action()
+        identity.throwIfAborted()
+        await action(identity)
       } catch (error) {
-        console.error('Failed to update onboarding:', error)
-        if (isCelebration) {
-          setCompletionError(t`Could not finish setup. Please try again.`)
+        if (identity.aborted) {
+          return
         }
+        console.error('Failed to update onboarding:', error)
+        setCompletionError(t`Could not save setup. Please try again.`)
       }
     })
   }
@@ -139,7 +153,20 @@ const OnboardingWizard = ({ isOpen, isMobile }: { isOpen: boolean; isMobile: boo
       serverState.continueSetup(() => runAction(actions.nextStep))
       return
     }
-    runAction(isCelebration ? actions.completeOnboarding : actions.nextStep)
+    runAction(async (signal) => {
+      if (state.currentStep === 11) {
+        await updateSettings(
+          db,
+          {
+            memory_enabled: recallDraft.memory ?? memoryEnabled.value,
+            session_history_enabled: recallDraft.history ?? sessionHistoryEnabled.value,
+          },
+          { signal },
+        )
+      }
+      signal.throwIfAborted()
+      await (isCelebration ? actions.completeOnboarding() : actions.nextStep())
+    })
   }
 
   const handleBackAction = () => {
@@ -206,6 +233,15 @@ const OnboardingWizard = ({ isOpen, isMobile }: { isOpen: boolean; isMobile: boo
               <OnboardingLocationStep state={{ ...state, isSubmittingLocation: isBusy }} actions={actions} />
             )}
             {state.currentStep === 5 && <OnboardingLanguageStep />}
+            {state.currentStep === 11 && (
+              <OnboardingMemoryStep
+                memory={recallDraft.memory ?? memoryEnabled.value}
+                history={recallDraft.history ?? sessionHistoryEnabled.value}
+                onMemoryChange={(memory) => setRecallDraft({ memory })}
+                onHistoryChange={(history) => setRecallDraft({ history })}
+                disabled={continueDisabled}
+              />
+            )}
             {state.currentStep === passkeyStep && !accountPasskey.isSettled && (
               <div className="flex flex-1 items-center justify-center">
                 <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -239,7 +275,7 @@ const OnboardingWizard = ({ isOpen, isMobile }: { isOpen: boolean; isMobile: boo
               onContinue={handleContinue}
               showBack={isCelebration ? false : state.canGoBack}
               backDisabled={isBusy}
-              showSkip={isCelebration || state.currentStep === 8 ? false : state.canSkip}
+              showSkip={isCelebration || state.currentStep === 8 || state.currentStep === 11 ? false : state.canSkip}
               showContinue={state.currentStep !== 8 || serverState.isChoosingSetup}
               skipDisabled={
                 isBusy ||

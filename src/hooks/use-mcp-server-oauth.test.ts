@@ -5,6 +5,7 @@
 import '@/testing-library'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { createMcpServer, getAllMcpServers } from '@/dal'
+import { getMcpServerCredentials, setMcpServerCredentials } from '@/dal/mcp-secrets'
 import { getDb } from '@/db/database'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { clearMcpOAuthState, getMcpOAuthState, setMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
@@ -172,6 +173,142 @@ const renderOAuth = (overrides: Partial<UseMcpServerOAuthOptions> = {}) => {
 }
 
 describe('useMcpServerOAuth ownership', () => {
+  it('commits desktop credentials before reconnecting the same persisted connection', async () => {
+    const credential = { type: 'oauth' as const, access_token: 'test-access', refresh_token: 'test-refresh' }
+    const reconnect = mock(async (id: string) => {
+      expect(await getMcpServerCredentials(getDb(), id)).toEqual(credential)
+    })
+    const { result } = renderOAuth({
+      reconnectServer: reconnect,
+      startMcpOAuthFlow: async (args) => {
+        expect(args.signal?.aborted).toBe(false)
+        await args.saveCredentials!(credential)
+        return { status: 'completed' }
+      },
+    })
+    await act(async () => {
+      expect(
+        await result.current.startAddAndAuthorize({
+          serverId: 'memory',
+          serverUrl: 'https://mcp.mem0.ai/mcp/',
+          createRow: () =>
+            createMcpServer(getDb(), { id: 'memory', name: 'Mem0', url: 'https://mcp.mem0.ai/mcp/', type: 'http' }),
+        }),
+      ).toBe(true)
+    })
+    expect(reconnect).toHaveBeenCalledWith('memory')
+    expect(await getAllMcpServers(getDb())).toHaveLength(1)
+  })
+
+  it('cancels pending authorization, rejects late credentials, and keeps the new row available for retry', async () => {
+    type StartArgs = Parameters<NonNullable<UseMcpServerOAuthOptions['startMcpOAuthFlow']>>[0]
+    const called = Promise.withResolvers<StartArgs>()
+    const pending = Promise.withResolvers<{ status: 'completed' }>()
+    const { result, options } = renderOAuth({
+      startMcpOAuthFlow: async (args) => {
+        called.resolve(args)
+        return pending.promise
+      },
+    })
+    const running = result.current.startAddAndAuthorize({
+      serverId: 'memory',
+      serverUrl: 'https://mcp.mem0.ai/mcp/',
+      createRow: () =>
+        createMcpServer(getDb(), { id: 'memory', name: 'Mem0', url: 'https://mcp.mem0.ai/mcp/', type: 'http' }),
+    })
+    const args = await called.promise
+    act(() => result.current.cancelAuthorization())
+    expect(args.signal?.aborted).toBe(true)
+    await expect(args.saveCredentials!({ type: 'oauth', access_token: 'must-not-save' })).rejects.toThrow()
+    pending.resolve({ status: 'completed' })
+    await act(async () => {
+      expect(await running).toBe(false)
+    })
+    expect(await getAllMcpServers(getDb())).toHaveLength(1)
+    expect(await getMcpServerCredentials(getDb(), 'memory')).toBeNull()
+    expect(options.reconnectServer).not.toHaveBeenCalled()
+    expect(result.current.dialogError).toBeNull()
+    expect(result.current.isAddAuthorizePending).toBe(false)
+    await act(async () => {
+      await result.current.startAuthorize({ id: 'retry', url: 'https://mcp.mem0.ai/mcp/' })
+    })
+    expect(options.reconnectServer).toHaveBeenCalledWith('retry')
+  })
+
+  it.each([false, true])('cancels only its owned redirected handshake (superseded: %s)', async (superseded) => {
+    const { result } = renderOAuth({
+      startMcpOAuthFlow: async ({ serverId }) => {
+        setMcpOAuthState({ serverId, stateNonce: 'owned-nonce', startedAt: Date.now() })
+        return { status: 'redirected' }
+      },
+    })
+    await act(async () => {
+      await result.current.startAuthorize({ id: 'memory', url: 'https://mcp.mem0.ai/mcp/' })
+    })
+    expect(result.current.cardStateFor('memory')).toEqual({ phase: 'authorizing' })
+    if (superseded) {
+      setMcpOAuthState({ serverId: 'other', stateNonce: 'newer-nonce', startedAt: Date.now() })
+    }
+    act(() => result.current.cancelAuthorization())
+    expect(getMcpOAuthState().stateNonce).toBe(superseded ? 'newer-nonce' : null)
+    expect(result.current.cardStateFor('memory')).toBeNull()
+  })
+
+  it('does not remove a newly authorized row when its older cancelled attempt settles late', async () => {
+    const called = Promise.withResolvers<void>()
+    const pending = Promise.withResolvers<{ status: 'completed' }>()
+    const start = mock<NonNullable<UseMcpServerOAuthOptions['startMcpOAuthFlow']>>()
+      .mockImplementationOnce(async () => {
+        called.resolve()
+        return pending.promise
+      })
+      .mockImplementationOnce(async (args) => {
+        await args.saveCredentials!({ type: 'oauth', access_token: 'new-authorization' })
+        return { status: 'completed' }
+      })
+    const { result } = renderOAuth({ startMcpOAuthFlow: start })
+    const running = result.current.startAddAndAuthorize({
+      serverId: 'memory',
+      serverUrl: 'https://mcp.mem0.ai/mcp/',
+      createRow: () => createMcpServer(getDb(), { id: 'memory', name: 'Mem0', url: 'https://mcp.mem0.ai/mcp/' }),
+    })
+    await called.promise
+    act(() => result.current.cancelAuthorization())
+    await act(async () => {
+      await result.current.startAuthorize({ id: 'memory', url: 'https://mcp.mem0.ai/mcp/' })
+    })
+    pending.resolve({ status: 'completed' })
+    await act(async () => {
+      expect(await running).toBe(false)
+    })
+    expect(await getAllMcpServers(getDb())).toHaveLength(1)
+    expect(await getMcpServerCredentials(getDb(), 'memory')).toMatchObject({ access_token: 'new-authorization' })
+  })
+
+  it('cancels reauthorization without losing existing credentials or exposing an error', async () => {
+    const called = Promise.withResolvers<Parameters<NonNullable<UseMcpServerOAuthOptions['startMcpOAuthFlow']>>[0]>()
+    const pending = Promise.withResolvers<{ status: 'completed' }>()
+    await createMcpServer(getDb(), { id: 'existing', name: 'Memory', url: 'https://mcp.mem0.ai/mcp/' })
+    await setMcpServerCredentials(getDb(), 'existing', { type: 'oauth', access_token: 'original' })
+    const { result, options } = renderOAuth({
+      startMcpOAuthFlow: async (args) => {
+        called.resolve(args)
+        return pending.promise
+      },
+    })
+    const running = result.current.startAuthorize({ id: 'existing', url: 'https://mcp.mem0.ai/mcp/' })
+    const args = await called.promise
+    act(() => result.current.cancelAuthorization())
+    await expect(args.saveCredentials!({ type: 'oauth', access_token: 'late' })).rejects.toThrow()
+    pending.resolve({ status: 'completed' })
+    await act(async () => {
+      await running
+    })
+    expect(await getMcpServerCredentials(getDb(), 'existing')).toEqual({ type: 'oauth', access_token: 'original' })
+    expect(result.current.cardStateFor('existing')).toBeNull()
+    expect(options.reconnectServer).not.toHaveBeenCalled()
+  })
+
   it('reserves one flow across existing-server, add, and callback entry points', async () => {
     const pending = Promise.withResolvers<{ status: 'completed' }>()
     const start = mock(() => pending.promise)

@@ -139,6 +139,9 @@ const traceAssertions = new Set([
   'noHomepageLinks',
   'noReviewSites',
   'expectResearchSkill',
+  'toolCallLimits',
+  'toolOutputLimits',
+  'responseExcludes',
 ])
 
 /** Grade each declared deterministic assertion independently; incomplete traces can only prove violations. */
@@ -157,7 +160,13 @@ export const deterministicVerdicts = (
         ) {
           return [key, 'unknown']
         }
-        const criteria: EvalCriteria = { mustProduceOutput: false, [key]: value }
+        const criterionValue =
+          !completed && key === 'toolCallLimits'
+            ? Object.fromEntries(
+                Object.entries(scenario.criteria.toolCallLimits ?? {}).map(([name, { max }]) => [name, { max }]),
+              )
+            : value
+        const criteria: EvalCriteria = { mustProduceOutput: false, [key]: criterionValue }
         const score = scoreResult({ ...scenario, criteria }, { ...parsed, error: undefined }, 0)
         return [key, score.passed ? (completed ? 'pass' : 'unknown') : 'fail']
       }),
@@ -329,7 +338,7 @@ export const runScenario = async (
   const profile = await getModelProfile(getDb(), selectedModel.id)
   const researchSkill = await getSkillByName(getDb(), 'research')
   const explicitResearch = scenario.modeName === 'research' && researchSkill?.enabled === 1
-  const threadId = uuidv7()
+  const threadId = scenario.threadId ?? uuidv7()
   const skillToken = scenario.modeName === 'chat' ? '' : `/${scenario.modeName} `
   const httpClient = getEvalHttpClient()
   const proxyFetch = createProxyFetch({ cloudUrl: getLocalSetting('cloudUrl'), getProxyAuthToken: getAuthToken })

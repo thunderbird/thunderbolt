@@ -5,8 +5,7 @@
 import { useLocation, useNavigate } from 'react-router'
 import { lazy, Suspense, useState } from 'react'
 
-import { createItemTitle, type CreateItemRequest, useCreateItem } from './context'
-import { CreateItemLoadingPanel } from './create-item-panel-shell'
+import { type CreateItemRequest, useCreateItem } from './context'
 
 const CreateSkillPanel = lazy(() =>
   import('./create-skill-panel').then((module) => ({ default: module.CreateSkillPanel })),
@@ -16,6 +15,10 @@ const CreateAgentPanel = lazy(() =>
 )
 const CreateModelPanel = lazy(() =>
   import('./create-model-panel').then((module) => ({ default: module.CreateModelPanel })),
+)
+
+const MemoryDocumentPanel = lazy(() =>
+  import('@/settings/memory/memory-document-panel').then((module) => ({ default: module.MemoryDocumentPanel })),
 )
 
 const CreateConnectionPanel = lazy(() =>
@@ -43,17 +46,7 @@ export const CreateItemHost = () => {
       navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, state: null })
     }
     return (
-      <Suspense
-        fallback={
-          <CreateItemLoadingPanel
-            kind="connection"
-            title={createItemTitle({ kind: 'connection', id: 0 })}
-            open
-            onClose={close}
-            onCloseComplete={() => {}}
-          />
-        }
-      >
+      <Suspense fallback={null}>
         <CreateConnectionPanel
           key={location.state.connectionOAuthReturn}
           open
@@ -96,9 +89,13 @@ export const CreateItemHost = () => {
           <CreateConnectionPanel
             {...sharedProps}
             connectionId={renderedRequest.connectionId}
+            mcpServerId={renderedRequest.mcpServerId}
+            memoryOnly={renderedRequest.memoryOnly}
             initialAction={renderedRequest.action}
           />
         )
+      case 'memory':
+        return <MemoryDocumentPanel {...sharedProps} initialEditContent={renderedRequest.initialEditContent} />
       case 'model':
         return <CreateModelPanel {...sharedProps} />
       default:
@@ -107,18 +104,9 @@ export const CreateItemHost = () => {
   })()
 
   return (
-    <Suspense
-      key={renderedRequest.id}
-      fallback={
-        <CreateItemLoadingPanel
-          kind={renderedRequest.kind}
-          title={createItemTitle(renderedRequest)}
-          open={isSurfaceOpen}
-          onClose={closeRequest}
-          onCloseComplete={handleCloseComplete}
-        />
-      }
-    >
+    // Only the actual panel owns the animated surface. A temporary surface here
+    // would be replaced mid-transition as soon as the lazy body resolves.
+    <Suspense key={renderedRequest.id} fallback={null}>
       {panel}
     </Suspense>
   )

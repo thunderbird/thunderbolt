@@ -5,6 +5,7 @@
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
+import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { MemoryRouter } from 'react-router'
@@ -67,7 +68,7 @@ describe('CreateItemHost', () => {
       fireEvent.click(screen.getByRole('button', { name: 'open skill' }))
       await getClock().runAllAsync()
     })
-    expect(await screen.findByRole('heading', { name: 'Create Skill' })).toBeInTheDocument()
+    expect(await waitForElement(() => screen.queryByRole('heading', { name: 'Create Skill' }))).toBeInTheDocument()
 
     // Closing keeps the last request mounted (hidden and inert) so the
     // surface can animate shut instead of vanishing.
@@ -82,7 +83,7 @@ describe('CreateItemHost', () => {
     }
     expect(closingPanel).toHaveAttribute('aria-hidden', 'true')
 
-    fireEvent.transitionEnd(closingPanel, { propertyName: 'width' })
+    fireEvent(closingPanel, Object.assign(new Event('transitionend', { bubbles: true }), { propertyName: 'width' }))
     expect(document.querySelector('[data-slot="slide-in-panel"]')).toBeNull()
   })
 })

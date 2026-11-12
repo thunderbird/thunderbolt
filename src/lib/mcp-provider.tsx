@@ -9,6 +9,7 @@ import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { isUnauthorizedError } from './mcp-unauthorized-error'
 import { withDeadline } from './timeout'
 import type { MCPTransportType } from './mcp-transport'
+import { bindMcpClientEndpoint } from './mcp-client-identity'
 
 type SdkMcpClient = Awaited<ReturnType<typeof createMCPClient>>
 type MCPTools = Awaited<ReturnType<SdkMcpClient['tools']>>
@@ -146,11 +147,13 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
   const connectWithDeadline = async (server: MCPServer): Promise<MCPClient> => {
     const connecting = createClient(server.id, server.url, server.type)
     try {
-      return await withDeadline(
+      const client = await withDeadline(
         connecting,
         connectDeadlineMs,
         () => new Error(`MCP connect timed out after ${connectDeadlineMs}ms`),
       )
+      bindMcpClientEndpoint(client, server.url)
+      return client
     } catch (err) {
       void connecting.then(closeClient, () => {})
       throw err

@@ -13,6 +13,7 @@ import { getClock } from '@/testing-library'
 import type { McpServer } from '@/types'
 import { ConnectionsList } from './connections-list'
 import type { Integration } from './types'
+import { memoryMcpProviders } from '@/memory/providers'
 
 const thunderbolt: Integration = {
   id: 'thunderbolt',
@@ -134,6 +135,15 @@ describe('ConnectionsList empty state', () => {
     expect(screen.getByRole('button', { name: 'Open Team tools' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'No connections yet' })).not.toBeInTheDocument()
     expect(screen.queryByText('Add your first server')).not.toBeInTheDocument()
+  })
+
+  it.each(memoryMcpProviders)('shows the $name logo for its endpoint even when the connection is renamed', (memory) => {
+    renderList({ servers: [{ ...server, name: 'My memory account', url: memory.url }] })
+    const row = screen.getByRole('button', { name: 'Open My memory account' })
+    const image = row.querySelector('img')
+    expect(image?.getAttribute('src')).toContain(memory.id)
+    expect(image).toHaveAttribute('alt', '')
+    expect(screen.getByRole('switch', { name: 'Disable My memory account' })).toBeEnabled()
   })
 
   it.each([{ integrations: [] }, { integrations: [thunderbolt] }])(

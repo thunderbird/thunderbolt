@@ -265,6 +265,10 @@ export const defaultSettings: ReadonlyArray<Setting> = [
   defaultSettingIntegrationsDoNotAskAgain,
   defaultSettingLanguage,
   defaultSettingExperimentalFeatureOtari,
+  // Consent belongs to the user. Missing values are off; onboarding alone offers on.
+  { key: 'memory_enabled', value: null, updatedAt: null, defaultHash: null, userId: null },
+  { key: 'session_history_enabled', value: null, updatedAt: null, defaultHash: null, userId: null },
+  { key: 'memory_provider', value: null, updatedAt: null, defaultHash: null, userId: null },
 ] as const
 
 /**
@@ -278,7 +282,7 @@ export const defaultSettings: ReadonlyArray<Setting> = [
  * The paired snapshot test in `settings.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultSettingsVersion = 8
+export const defaultSettingsVersion = 10
 
 /**
  * Whether the bundle ships no value for a setting, leaving something else to

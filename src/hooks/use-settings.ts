@@ -15,6 +15,8 @@ import { usePowerSync } from '@powersync/react'
 import { useEffect, useMemo } from 'react'
 import { subscribeToSettingsChanges } from './settings-subscription'
 
+type SettingUpdateOptions = NonNullable<Parameters<typeof updateSettings>[2]>
+
 /**
  * Generic setting hook interface
  */
@@ -28,7 +30,7 @@ type SettingHook<TValue, TInput = TValue> = {
   /** Whether the setting has been modified from its default */
   isModified: boolean
   /** Update the setting's value (can pass null to clear) */
-  setValue: (value: TInput, options?: { recomputeHash?: boolean; updateHashOnly?: boolean }) => Promise<void>
+  setValue: (value: TInput, options?: SettingUpdateOptions) => Promise<void>
   /** Reset the setting to its default */
   reset: () => Promise<void>
   /** Whether the query is loading */
@@ -218,7 +220,7 @@ export function useSettings<T extends SettingSchema>(
     }: {
       key: string
       value: string | number | boolean | null
-      options?: { recomputeHash?: boolean; updateHashOnly?: boolean }
+      options?: SettingUpdateOptions
     }) => updateSettings(db, { [key]: value }, options),
     onSuccess: (_, { key }) => refreshSettingQueries(db, queryClient, key),
   })
@@ -286,10 +288,7 @@ export function useSettings<T extends SettingSchema>(
         rawSetting: setting ?? null,
         value,
         isModified: isSettingModified(setting),
-        setValue: async (
-          value: string | number | boolean | null,
-          options?: { recomputeHash?: boolean; updateHashOnly?: boolean },
-        ) => {
+        setValue: async (value: string | number | boolean | null, options?: SettingUpdateOptions) => {
           await updateMutation.mutateAsync({ key, value, options })
         },
         reset: async () => {

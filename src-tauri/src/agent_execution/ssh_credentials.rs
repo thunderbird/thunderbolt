@@ -691,8 +691,20 @@ mod tests {
         let endpoint = session.endpoint;
         let mut command = Command::new("ssh");
         session.configure(&mut command).unwrap();
-        assert!(!format!("{command:?}").contains("must-not-be-in-environment"));
-        assert!(format!("{command:?}").contains("SSH_ASKPASS_REQUIRE"));
+        assert!(!command
+            .as_std()
+            .get_envs()
+            .any(|(_, value)| value.is_some_and(|value| value
+                .to_string_lossy()
+                .contains("must-not-be-in-environment"))));
+        assert_eq!(
+            command
+                .as_std()
+                .get_envs()
+                .find(|(key, _)| *key == "SSH_ASKPASS_REQUIRE")
+                .and_then(|(_, value)| value),
+            Some(std::ffi::OsStr::new("force"))
+        );
         drop(session);
         tokio::time::timeout(Duration::from_secs(1), async {
             while tokio::net::TcpStream::connect(endpoint).await.is_ok() {
@@ -735,7 +747,9 @@ mod tests {
             Err(error)
                 if matches!(
                     error.kind(),
-                    std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::BrokenPipe
+                    std::io::ErrorKind::ConnectionReset
+                        | std::io::ErrorKind::ConnectionAborted
+                        | std::io::ErrorKind::BrokenPipe
                 ) => {}
             result => panic!(
                 "The expired credential channel must close without returning a secret: {result:?}"

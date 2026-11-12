@@ -27,7 +27,7 @@ test('recovery loads without starting the app and retries only on request', asyn
   })
 
   await page.goto('/webview-recovery.html')
-  await expect(page.getByRole('heading', { name: "Thunderbolt couldn't keep running" })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Thunderbolt ran into a problem' })).toBeVisible()
   await expect(page.getByText('Automatic reloads have been paused.', { exact: false })).toBeVisible()
   await expect(page.locator('main img')).toBeVisible()
   expect(await page.locator('main img').evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0)

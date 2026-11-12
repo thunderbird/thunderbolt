@@ -6161,8 +6161,8 @@ msgid "Thunderbolt CLI"
 msgstr "Thunderbolt CLI"
 
 #: src/webview-recovery/index.ts
-msgid "Thunderbolt couldn't keep running"
-msgstr ""
+#~ msgid "Thunderbolt couldn't keep running"
+#~ msgstr ""
 
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "Thunderbolt couldn't verify this device's encryption keys, so it can't update your recovery phrase or passkey. To verify it, sign out with \"Delete data from device\", sign in again, and approve it from a device that was trusted before."
@@ -6175,6 +6175,10 @@ msgstr "Thunderbolt はオープンソースです"
 #: src/settings/connections/use-integrations-controller.tsx
 msgid "Thunderbolt Pro is not available yet. Stay tuned!"
 msgstr "Thunderbolt Pro はまだ利用できません。お楽しみに！"
+
+#: src/webview-recovery/index.ts
+msgid "Thunderbolt ran into a problem"
+msgstr "Thunderbolt で問題が発生しました"
 
 #: src/settings/preferences.tsx
 #~ msgid "Thunderbolt Server"

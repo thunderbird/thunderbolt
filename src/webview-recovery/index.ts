@@ -45,7 +45,7 @@ systemTheme.addEventListener('change', applyTheme)
 /** Render from the active catalog, including the synchronous English fallback. */
 const render = () => {
   document.documentElement.lang = i18n.locale
-  heading.textContent = i18n._(msg`Thunderbolt couldn't keep running`)
+  heading.textContent = i18n._(msg`Thunderbolt ran into a problem`)
   explanation.textContent = i18n._(
     msg`The app's web content stopped unexpectedly more than once. Automatic reloads have been paused.`,
   )

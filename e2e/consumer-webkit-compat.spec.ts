@@ -21,7 +21,7 @@ test('HTML bootstrap protects captured own-property methods before app modules r
     })
   })
   await page.goto('/webview-recovery.html')
-  await expect(page.getByRole('heading', { name: "Thunderbolt couldn't keep running" })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Thunderbolt ran into a problem' })).toBeVisible()
   expect(
     await page.evaluate(() => {
       const own = (globalThis as typeof globalThis & { moduleCapturedOwn: typeof Object.prototype.hasOwnProperty })

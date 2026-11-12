@@ -34,6 +34,10 @@ const test = baseTest.extend({
   ],
 })
 
+// Most tests here sign in three times, and signing the same address in again waits out the backend's OTP
+// cooldown, so a slow runner (macOS WebKit) takes 51 to 59 s of the 60 s default.
+test.describe.configure({ timeout: 120_000 })
+
 const isOffMachine = (url: URL) => !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
 
 /**
@@ -195,9 +199,6 @@ test('a magic link switches accounts without redeeming its code twice', async ({
 
 // Without OPFS, Chromium and Firefox persist each slot in IndexedDB. WebKit keeps it in memory per tab.
 test.describe('without OPFS', () => {
-  // Three sign-ins with a second app tab open run close to the 60 s default on a CI runner.
-  test.describe.configure({ timeout: 120_000 })
-
   test.beforeEach(async ({ page }) => {
     // The persistent WebKit page fixture clears OPFS before this hook disables it.
     await page.context().addInitScript(() => {

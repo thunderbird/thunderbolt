@@ -52,7 +52,8 @@ Each workspace below has its own dependencies and its own checks; there is no si
 - Install latest versions: `bun add <package>@latest`
 - Use the app's `HttpClient` (`src/lib/http.ts`) instead of bare `fetch` — `useHttpClient()` (`src/contexts/http-client-context.tsx`) for authenticated backend calls in React, `createAuthenticatedClient()` when you need to build one yourself, `http` for external APIs, and `getAuthenticatedHeaders()` (`src/lib/auth-token.ts`) for non-React callers that can't hold a client (e.g. the PowerSync connector)
 - Generate Drizzle migrations with `bun db generate` - never manually create SQL files
-- Never manually run `git add`, `git commit`, or `git push` — always use `/thunderpush`
+- Never manually run `git add`, `git commit`, or `git push` — always use the `thunderpush` skill (`/thunderpush` in Claude Code, `$thunderpush` in Codex)
+- Project skills live in `.agents/skills/`; [its README](.agents/skills/README.md) lists what each one does and how to add one
 - Use `resolve-library-id` and `get-library-docs` tools for library documentation (if unavailable, request access)
 
 ## React Patterns

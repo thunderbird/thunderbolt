@@ -1,0 +1,17 @@
+stack ready
+[32mINFO[0m (42):
+    [36mevent[0m: "proxy_request"
+    method: "GET"
+    target_host: "api.example.test"
+    status: 200
+    bytes_in: 15
+    bytes_out: 15
+    request_id: "validation-a"
+[32mINFO[0m (42):
+    event: "proxy_request"
+    method: "POST"
+    target_host: "chat.example.test"
+    status: 429
+    request_id: "validation-b"
+{"event":"proxy_ws_relay","method":"WS","target_host":"ignored.example.test","status":1000}
+{"event":"proxy_request","method":"POST","target_host":"api.example.test","status":201,"request_id":"validation-c"}

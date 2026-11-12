@@ -9,6 +9,7 @@ import JSZip from 'jszip'
 import mammoth from 'mammoth'
 import { docxMime, pptxMime } from '@/files/transformers'
 import type { StoredFile } from '@/lib/file-blob-storage'
+import { findBrokenFile } from './check-output'
 import { type SandboxLimits, sandboxLimits } from './constants'
 import { createOfficeScriptTool, type OfficeScriptOutput, type OfficeScriptToolDeps } from './office-script-tool'
 import { runSandboxedScript, type SandboxJob, type SandboxResult } from './sandbox'
@@ -122,6 +123,9 @@ const mib = 1024 * 1024
 const zipWith = (xml: string) =>
   zipSync({ '[Content_Types].xml': strToU8('<Types/>'), 'word/document.xml': strToU8(xml) })
 
+/** `xml` in UTF-16 after a byte-order mark: little-endian as returned, big-endian after `.swap16()`. */
+const utf16 = (xml: string) => Buffer.from(`\uFEFF${xml}`, 'utf16le')
+
 /** Overwrite the uncompressed size the central directory gives the zip's last entry. */
 const claimSize = (zip: Uint8Array<ArrayBuffer>, size: number) => {
   const central = Buffer.from(zip).lastIndexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]))
@@ -131,6 +135,9 @@ const claimSize = (zip: Uint8Array<ArrayBuffer>, size: number) => {
 
 const tooLargeToCheck =
   'The XML in "a.docx" is too large to check. Make the file smaller or split it into several files, then call the tool again.'
+
+const checkOutOfTime = (seconds: number) =>
+  `Checking "a.docx" did not finish within the ${seconds}-second limit, which the script and the check share. Make the script finish sooner or save smaller files, then call the tool again.`
 
 describe.each([
   ['with Symbol.dispose', inProcess],
@@ -475,18 +482,52 @@ describe.each([
     )
   })
 
-  it('refuses XML that does not parse, or that is not UTF-8', async () => {
+  it('saves an edit to an attached file whose untouched parts are UTF-16', async () => {
+    const settings = '<?xml version="1.0" encoding="UTF-16"?><w:settings xmlns:w="urn:w"/>'
+    const attached = storeAttachment(
+      'utf16.docx',
+      zipSync({
+        'word/document.xml': strToU8('<w:document xmlns:w="urn:w"><w:body/></w:document>'),
+        'word/settings.xml': utf16(settings),
+        'word/webSettings.xml': utf16(settings).swap16(),
+      }),
+    )
+
+    const { files } = await okFiles(
+      call(
+        { listThreadFiles: async () => [attached] },
+        replaceTextScript('utf16.docx', '<w:body/>', '<w:body><w:p/></w:body>'),
+        ['utf16.docx'],
+      ),
+    )
+
+    expect(files[0]).toMatchObject({ filename: 'utf16.docx', edited: true })
+  })
+
+  it('refuses XML that does not parse, in UTF-8 or UTF-16, or that is in neither', async () => {
     for (const xml of ['<a></b>', '<a/><b/>', '<x:a/>', '<a font="Ari"al"/>']) {
       expect(await checkErrorOf(zipWith(xml))).toContain('its part word/document.xml is not valid XML')
     }
+    const brokenUtf16 = zipSync({ 'word/document.xml': utf16('<a></b>') })
+    expect(await checkErrorOf(brokenUtf16)).toContain('its part word/document.xml is not valid XML')
     const notUtf8 = zipSync({ 'word/document.xml': new Uint8Array([0x3c, 0x61, 0xff, 0x2f, 0x3e]) })
     expect(await checkErrorOf(notUtf8)).toContain('its part word/document.xml is not valid XML')
   })
 
-  it('refuses XML parts that claim more than the check can hold, without unzipping them', async () => {
-    expect(await checkErrorOf(claimSize(zipWith('<a/>'), 300 * mib))).toContain(
-      'its XML parts unzip to more than 256 MiB',
+  it('refuses a part whose XML declaration names an encoding other than the one it is in', async () => {
+    const declaringUtf8 = '<?xml version="1.0" encoding="UTF-8"?><a/>'
+    for (const bytes of [utf16(declaringUtf8), utf16(declaringUtf8).swap16()]) {
+      expect(await checkErrorOf(zipSync({ 'word/document.xml': bytes }))).toContain(
+        'the XML declaration says encoding="UTF-8", but the part is UTF-16',
+      )
+    }
+    expect(await checkErrorOf(zipWith(`<?xml version='1.0' encoding='utf-16'?><a/>`))).toContain(
+      'the XML declaration says encoding="utf-16", but the part is UTF-8',
     )
+  })
+
+  it('refuses XML parts that claim more than the check can hold, without unzipping them', async () => {
+    expect(await checkErrorOf(claimSize(zipWith('<a/>'), 300 * mib))).toBe(tooLargeToCheck)
   })
 
   it('refuses a small zip whose XML builds a tree too large for the check memory', async () => {
@@ -501,7 +542,7 @@ describe.each([
     expect(await checkErrorOf(claimSize(zipWith('<a/>'), 0))).toContain('its part word/document.xml is not valid XML')
 
     const longStream = claimSize(zipWith(`<a>${' '.repeat(40 * mib)}</a>`), 0)
-    expect(await checkErrorOf(longStream, { timeoutMs: 300 })).toBe(tooLargeToCheck)
+    expect(await checkErrorOf(longStream, { timeoutMs: 300 })).toBe(checkOutOfTime(0.3))
   })
 
   it('marks a copy saved under the input name as edited, however that name is cleaned', async () => {
@@ -649,5 +690,14 @@ describe('runSandboxedScript', () => {
     })
 
     expect(result).toMatchObject({ ok: true })
+  })
+})
+
+describe('findBrokenFile', () => {
+  it('says the check ran out of the script time, not that a valid file is too large', async () => {
+    // QuickJS asks for an interrupt only every few thousand steps, so the part must be long enough to reach one.
+    const files = [{ filename: 'a.docx', bytes: zipWith(`<a>${'<b/>'.repeat(10_000)}</a>`) }]
+
+    expect(await findBrokenFile(runtime, files, sandboxLimits, performance.now() - 1)).toBe(checkOutOfTime(30))
   })
 })

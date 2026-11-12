@@ -18,7 +18,19 @@ const checkMemoryFactor = 4
  * the rest still takes time, which the deadline bounds.
  */
 const checker = (maxXmlBytes: number) => `(() => {
-  const decoder = new TextDecoder('utf-8', { fatal: true })
+  // Office may keep a part in UTF-16, which XML requires to start with a byte-order mark.
+  const utf16 = { 0xfffe: 'utf-16le', 0xfeff: 'utf-16be' }
+  const decode = (data) => {
+    const encoding = utf16[(data[0] << 8) | data[1]] ?? 'utf-8'
+    const text = new TextDecoder(encoding, { fatal: true }).decode(data)
+    // XML calls a declaration that names another encoding a fatal error, though this parser ignores it.
+    const declared = /^<\\?xml[^>]*\\sencoding\\s*=\\s*["']([^"']*)["']/.exec(text)?.[1]
+    const actual = encoding.slice(0, 6).toUpperCase()
+    if (declared !== undefined && declared.toUpperCase() !== actual) {
+      throw new Error('the XML declaration says encoding="' + declared + '", but the part is ' + actual + '; declare ' + actual + ' or leave the encoding out')
+    }
+    return text
+  }
   const isXmlPart = (name) => /\\.(xml|rels)$/i.test(name)
   const reason = (error) => {
     const text = error instanceof Error ? error.message : String(error)
@@ -44,7 +56,7 @@ const checker = (maxXmlBytes: number) => `(() => {
       return { reason: reason(error) }
     }
     if (declared > ${maxXmlBytes}) {
-      return { reason: 'its XML parts unzip to more than ${maxXmlBytes / 1024 / 1024} MiB' }
+      return { tooLarge: true }
     }
     for (const name of names) {
       let data
@@ -54,7 +66,7 @@ const checker = (maxXmlBytes: number) => `(() => {
         return { reason: reason(error) }
       }
       try {
-        new xmldom.DOMParser({ onError: xmldom.onWarningStopParsing }).parseFromString(decoder.decode(data), 'text/xml')
+        new xmldom.DOMParser({ onError: xmldom.onWarningStopParsing }).parseFromString(decode(data), 'text/xml')
       } catch (error) {
         return { part: name, reason: reason(error) }
       }
@@ -62,7 +74,13 @@ const checker = (maxXmlBytes: number) => `(() => {
   }
 })()`
 
+const tooLargeToCheck = (filename: string) =>
+  `The XML in "${filename}" is too large to check. Make the file smaller or split it into several files, then call the tool again.`
+
 const describeProblem = (filename: string, problem: JSValueHandle) => {
+  if (problem.getProp('tooLarge').consume((handle) => handle.toBoolean())) {
+    return tooLargeToCheck(filename)
+  }
   const part = problem.getProp('part').consume((handle) => (handle.isUndefined ? undefined : handle.toString()))
   const reason = problem.getProp('reason').consume((handle) => handle.toString())
   return part === undefined
@@ -115,10 +133,13 @@ export const findBrokenFile = async (
           return problem
         }
       } catch (error) {
-        if (!/out of memory|interrupted|stack overflow/i.test(String(error))) {
+        if (/interrupted/i.test(String(error))) {
+          return `Checking "${filename}" did not finish within the ${limits.timeoutMs / 1000}-second limit, which the script and the check share. Make the script finish sooner or save smaller files, then call the tool again.`
+        }
+        if (!/out of memory|stack overflow/i.test(String(error))) {
           throw error
         }
-        return `The XML in "${filename}" is too large to check. Make the file smaller or split it into several files, then call the tool again.`
+        return tooLargeToCheck(filename)
       }
     }
     return undefined

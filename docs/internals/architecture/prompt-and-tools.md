@@ -141,11 +141,13 @@ own context.
   only CommonJS files, so `?sandbox-script` (`scripts/office-sandbox-script.ts`) bundles
   `src/office/ooxml-globals.ts` into one script at build time. Before a run returns, a second QuickJS VM
   checks the output (`src/office/check-output.ts`). It starts after the script's VM is gone, opens every
-  saved file, and parses each XML part on its own with errors and warnings set to throw. The bytes come
-  from the model, so the check has its own memory limit (four times the script's), stops at the script's
-  deadline, and never parses on the Worker's heap. By default the parser lets an undefined entity or an
-  unquoted attribute through; Word and PowerPoint refuse both. If any file fails, the run saves nothing,
-  and the error names the part or says the XML is too large to check.
+  saved file, and parses each XML part on its own with errors and warnings set to throw. It reads a part
+  as UTF-8, or as UTF-16 when the part starts with a byte-order mark, and refuses a part whose XML
+  declaration names another encoding. The bytes come from the model, so the check has its own memory
+  limit (four times the script's), stops at the script's deadline, and never parses on the Worker's heap.
+  By default the parser lets an undefined entity or an unquoted attribute through; Word and PowerPoint
+  refuse both. If any file fails, the run saves nothing. The error names the part, says the XML is too
+  large to check, or says the check ran out of time.
 - `hasProAccess` resolves a hardcoded `isProUser = true`
   (`src/integrations/thunderbolt-pro/utils.ts:8`), so the settings flag is the only real gate on the
   web tools.

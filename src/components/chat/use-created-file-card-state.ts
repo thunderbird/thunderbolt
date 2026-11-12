@@ -22,10 +22,11 @@ export const useCreatedFileCardState = (file: CreatedFile) => {
       if (!attachment) {
         throw new Error('The file is no longer on this device')
       }
+      // The transcript only points at the file: any agent can write a tool result, but the store holds the checked name.
       await downloadFile({
-        name: file.filename,
+        name: attachment.filename,
         contents: new Uint8Array(await attachment.blob.arrayBuffer()),
-        mimeType: file.mimeType,
+        mimeType: attachment.mimeType,
       })
       flagSaved()
     } catch (error) {

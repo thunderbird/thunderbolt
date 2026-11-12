@@ -67,6 +67,18 @@ describe('the chip for a file the agent created', () => {
     expect(downloadFile).toHaveBeenCalledWith({ name: 'report.docx', contents: bytes, mimeType: docxMime })
   })
 
+  it('saves under the stored name and type, whatever name the tool result gives', async () => {
+    await renderMessage(
+      finishedCall({ ok: true, files: [{ ...report, filename: 'x.html', mimeType: 'text/html' }], logs: '' }),
+    )
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Download x.html' }))
+      await getClock().runAllAsync()
+    })
+    expect(downloadFile).toHaveBeenCalledWith({ name: 'report.docx', contents: bytes, mimeType: docxMime })
+  })
+
   it('shows one chip per file, with a presentation icon for a deck', async () => {
     const deck = { id: 'file-2', filename: 'deck.pptx', mimeType: pptxMime }
     const { container } = await renderMessage(finishedCall({ ok: true, files: [report, deck], logs: '' }))

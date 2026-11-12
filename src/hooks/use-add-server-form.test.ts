@@ -430,6 +430,54 @@ describe('useAddServerForm', () => {
     expect(result.current.testResult.kind).toBe('success')
   })
 
+  describe('stored bearer after a URL edit', () => {
+    // A 401 tells the two cases apart: a probe that carried a credential reports it rejected,
+    // while an empty-credential probe asks discovery whether the server takes OAuth.
+    const renderEditWithStoredBearer = () => {
+      const probeMcpServerTools = mock<AddServerFormDeps['probeMcpServerTools']>(() => Promise.reject(unauthorized()))
+      const classifyMcpServerAuth = mock<AddServerFormDeps['classifyMcpServerAuth']>(async () => 'authorizable')
+      const rendered = renderForm(makeDeps({ probeMcpServerTools, classifyMcpServerAuth }))
+      act(() =>
+        rendered.result.current.openEditForm(
+          makeMcpServer({ url: 'https://mcp.example.com/mcp' }),
+          'saved-secret',
+          'bearer',
+        ),
+      )
+      return { ...rendered, classifyMcpServerAuth }
+    }
+
+    it('does not send it when the URL moves to another destination before Save', async () => {
+      const { result, classifyMcpServerAuth } = renderEditWithStoredBearer()
+
+      act(() => result.current.changeUrl('https://evil.example.com/mcp'))
+      await act(async () => {
+        getClock().tick(700)
+        await getClock().runAllAsync()
+      })
+
+      expect(classifyMcpServerAuth).toHaveBeenCalledTimes(1)
+      expect(result.current.testResult.kind).toBe('needs-oauth')
+      expect(result.current.hasStoredBearerToken).toBe(false)
+      expect(result.current.isStoredCredentialLeftBehind).toBe(true)
+    })
+
+    it('keeps sending it for another spelling of the same URL', async () => {
+      const { result, classifyMcpServerAuth } = renderEditWithStoredBearer()
+
+      act(() => result.current.changeUrl('https://MCP.example.com:443/mcp'))
+      await act(async () => {
+        getClock().tick(700)
+        await getClock().runAllAsync()
+      })
+
+      expect(classifyMcpServerAuth).not.toHaveBeenCalled()
+      expect(result.current.testResult.kind).toBe('token-rejected')
+      expect(result.current.hasStoredBearerToken).toBe(true)
+      expect(result.current.isStoredCredentialLeftBehind).toBe(false)
+    })
+  })
+
   it('hasConnectionEdits is true in Add mode (no original snapshot)', () => {
     const { result } = renderForm(makeDeps())
 

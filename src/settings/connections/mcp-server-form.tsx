@@ -348,6 +348,19 @@ export const McpServerForm = ({
                       )}
                     </Button>
                   )}
+                  {form.isStoredCredentialLeftBehind && (
+                    <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
+                      {form.isOAuthEdit ? (
+                        <Trans>
+                          The saved authorization only works with the previous URL. Authorize again after saving.
+                        </Trans>
+                      ) : (
+                        <Trans>
+                          The saved credential is only sent to the URL it was saved for. Enter it again to use this URL.
+                        </Trans>
+                      )}
+                    </p>
+                  )}
                 </div>
 
                 {isUrlReady && (

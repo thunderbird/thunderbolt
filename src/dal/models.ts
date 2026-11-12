@@ -16,6 +16,7 @@ import {
 } from '../db/tables'
 import { providerCredentialConnected } from '@/providers/credentials'
 import { defaultModelId, hashModel, type SharedModel } from '@shared/defaults/models'
+import { isSameModelKeyDestination } from '../lib/credential-destination'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { DrizzleQueryWithPromise, Model } from '@/types'
 import { getLastMessage } from './chat-messages'
@@ -70,12 +71,23 @@ const modelWithSecretColumns = {
   hasLocalCredentialRecord: sql<boolean>`${modelsSecretsTable.modelId} IS NOT NULL`.mapWith(Boolean),
 }
 
-/** Base query that LEFT JOINs models with their local-only secrets. */
+/**
+ * Base query that LEFT JOINs models with their local-only secrets. A key joins
+ * only while the model keeps the provider and URL it was saved for, so an
+ * endpoint changed by an edit, a sync or an import never reads it.
+ */
 const selectModelsWithSecrets = (db: AnyDrizzleDatabase) =>
   db
     .select(modelWithSecretColumns)
     .from(modelsTable)
-    .leftJoin(modelsSecretsTable, eq(modelsTable.id, modelsSecretsTable.modelId))
+    .leftJoin(
+      modelsSecretsTable,
+      and(
+        eq(modelsTable.id, modelsSecretsTable.modelId),
+        eq(modelsTable.provider, modelsSecretsTable.provider),
+        sql`${modelsTable.url} IS ${modelsSecretsTable.url}`,
+      ),
+    )
     .leftJoin(connections, eq(modelsTable.providerConnectionId, connections.id))
     .leftJoin(secrets, eq(connections.id, secrets.id))
 
@@ -210,7 +222,12 @@ export const getDefaultModelForThread = async (db: AnyDrizzleDatabase, threadId:
 
 type ModelTransaction = Parameters<Parameters<AnyDrizzleDatabase['transaction']>[0]>[0]
 
-/** Update a model and its local credentials atomically. */
+/**
+ * Update a model and its local credentials atomically (preserves defaultHash for
+ * modification tracking). A new key is bound to the model's provider and URL after
+ * the update. A kept key follows the model only to an equivalent endpoint; otherwise
+ * it stays bound to the old one and drops out of reads.
+ */
 export const updateModel = (db: AnyDrizzleDatabase, id: string, updates: Partial<Model>): Promise<void> =>
   db.transaction((tx) => updateModelInTransaction(tx, id, updates))
 
@@ -238,21 +255,75 @@ export const updateModelInTransaction = async (
     await tx.update(modelsTable).set(updateFields).where(eq(modelsTable.id, id))
   }
 
+  const writesCredentials = apiKey !== undefined || oauthProvider !== undefined || providerDefault !== undefined
+  if (!writesCredentials && !('provider' in updateFields) && !('url' in updateFields)) {
+    return
+  }
+  const destination = await tx
+    .select({ provider: modelsTable.provider, url: modelsTable.url })
+    .from(modelsTable)
+    .where(eq(modelsTable.id, id))
+    .get()
+  if (!destination) {
+    return
+  }
+  const existing = await tx.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, id)).get()
+  if (!writesCredentials) {
+    if (existing && isSameModelKeyDestination(existing, destination)) {
+      await tx.update(modelsSecretsTable).set(destination).where(eq(modelsSecretsTable.modelId, id))
+    }
+    return
+  }
   // PowerSync exposes local-only tables as SQLite views, which don't support
   // INSERT...ON CONFLICT DO UPDATE. Emulate UPSERT with SELECT-then-INSERT/UPDATE.
-  if (apiKey !== undefined || oauthProvider !== undefined || providerDefault !== undefined) {
-    const existing = await tx.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, id)).get()
-    const credentials = {
-      providerDefault: providerDefault === undefined ? (existing?.providerDefault ?? null) : providerDefault,
-      apiKey: apiKey === undefined ? (existing?.apiKey ?? null) : apiKey,
-      // Explicit key changes switch back to BYOK; clearing access clears either kind.
-      oauthProvider:
-        oauthProvider === undefined ? (apiKey === undefined ? (existing?.oauthProvider ?? null) : null) : oauthProvider,
-    }
-    if (existing) {
-      await tx.update(modelsSecretsTable).set(credentials).where(eq(modelsSecretsTable.modelId, id))
-    } else if (credentials.apiKey !== null || credentials.oauthProvider !== null || credentials.providerDefault === 1) {
-      await tx.insert(modelsSecretsTable).values({ modelId: id, ...credentials })
+  const credentials = {
+    providerDefault: providerDefault === undefined ? (existing?.providerDefault ?? null) : providerDefault,
+    apiKey: apiKey === undefined ? (existing?.apiKey ?? null) : apiKey,
+    // Explicit key changes switch back to BYOK; clearing access clears either kind.
+    oauthProvider:
+      oauthProvider === undefined ? (apiKey === undefined ? (existing?.oauthProvider ?? null) : null) : oauthProvider,
+  }
+  // Only a new key binds to the model's current endpoint. Credentials that stay move with it
+  // only to an equivalent spelling of the endpoint they were saved for.
+  const binding =
+    apiKey === undefined && existing && !isSameModelKeyDestination(existing, destination) ? {} : destination
+  if (existing) {
+    await tx
+      .update(modelsSecretsTable)
+      .set({ ...credentials, ...binding })
+      .where(eq(modelsSecretsTable.modelId, id))
+  } else if (credentials.apiKey !== null || credentials.oauthProvider !== null || credentials.providerDefault === 1) {
+    await tx.insert(modelsSecretsTable).values({ modelId: id, ...credentials, ...destination })
+  }
+}
+
+/**
+ * Brings each key's saved destination in line with its model without ever
+ * moving a key somewhere new. A key with no destination yet (saved by an older
+ * version, or restored from an older backup) is bound to its model's current
+ * provider and URL. A key whose model spells the same endpoint differently, as
+ * after a sync or import, follows the new spelling. A key without a live model
+ * has nothing to bind to and is dropped, so it can never attach to a model
+ * created later under its id.
+ */
+export const bindModelKeyDestinations = async (db: AnyDrizzleDatabase): Promise<void> => {
+  // Two reads rather than a join: both tables have `provider` and `url` columns, which collide in one row.
+  const keys = await db
+    .select({ id: modelsSecretsTable.modelId, provider: modelsSecretsTable.provider, url: modelsSecretsTable.url })
+    .from(modelsSecretsTable)
+  for (const saved of keys) {
+    const current = await db
+      .select({ provider: modelsTable.provider, url: modelsTable.url })
+      .from(modelsTable)
+      .where(and(eq(modelsTable.id, saved.id), isNull(modelsTable.deletedAt)))
+      .get()
+    if (!current?.provider) {
+      await db.delete(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, saved.id))
+    } else if (
+      saved.provider === null ||
+      ((saved.provider !== current.provider || saved.url !== current.url) && isSameModelKeyDestination(saved, current))
+    ) {
+      await db.update(modelsSecretsTable).set(current).where(eq(modelsSecretsTable.modelId, saved.id))
     }
   }
 }
@@ -317,7 +388,15 @@ export const createModelInTransaction = async (tx: ModelTransaction, data: NewMo
   } = data
   await tx.insert(modelsTable).values(modelData)
   if (apiKey != null || oauthProvider || providerDefault === 1) {
-    await tx.insert(modelsSecretsTable).values({ modelId: data.id, apiKey, oauthProvider, providerDefault })
+    // The credentials are bound to the provider and URL the model is created with.
+    await tx.insert(modelsSecretsTable).values({
+      modelId: data.id,
+      apiKey,
+      oauthProvider,
+      providerDefault,
+      provider: data.provider,
+      url: data.url ?? null,
+    })
   }
   await createDefaultModelProfile(tx, data.id)
 }

@@ -2,9 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { eq } from 'drizzle-orm'
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
+import { modelsSecretsTable, modelsTable } from '@/db/tables'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { PowerSyncDatabaseImpl } from './database'
 import { WASQLiteVFS } from '@powersync/web'
@@ -344,5 +348,43 @@ describe('PowerSync connection ownership', () => {
     await database.close()
     expect(events).toEqual(['clear', 'close'])
     expect(database.powerSyncInstance).toBeNull()
+  })
+})
+
+describe('credential binding before sync', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+    useLocalSettingsStore.getState().setLocalSetting('syncEnabled', false)
+  })
+
+  it('binds a key saved by an older version before sync can move its model', async () => {
+    const db = getDb()
+    await db.insert(modelsTable).values({
+      id: 'model-1',
+      provider: 'custom',
+      name: 'Mine',
+      model: 'llama',
+      url: 'https://llm.example.com/v1',
+    })
+    await db.insert(modelsSecretsTable).values({ modelId: 'model-1', apiKey: 'sk-legacy' })
+    const boundAtConnect: Array<string | null | undefined> = []
+    const powerSync = {
+      registerListener: () => () => {},
+      connect: mock(async () => {
+        const secret = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, 'model-1')).get()
+        boundAtConnect.push(secret?.url)
+      }),
+    }
+    const database = new PowerSyncDatabaseImpl()
+    Object.assign(database, { powerSync, _db: db })
+    useLocalSettingsStore.getState().setLocalSetting('syncEnabled', true)
+
+    await database.connectAfterBindingCredentials()
+
+    expect(boundAtConnect).toEqual(['https://llm.example.com/v1'])
   })
 })

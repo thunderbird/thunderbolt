@@ -3,10 +3,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getDb } from '@/db/database'
+import { createModel as createAiModel } from '@/ai/fetch'
+import type { FetchFn } from '@/lib/proxy-fetch'
+import type { Model } from '@/types'
+import { generateText } from 'ai'
 import {
   agentsTable,
   chatMessagesTable,
   chatThreadsTable,
+  mcpServersTable,
   modelsSecretsTable,
   modelsTable,
   settingsTable,
@@ -17,6 +22,14 @@ import { eq, sql } from 'drizzle-orm'
 import { sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { exportFormat, exportSchemaVersion } from './export'
 import { derivePkSpec, ImportFormatError, importUserData, summarizeExportEnvelope } from './import'
+import {
+  getMcpServerCredentialRows,
+  getMcpServerCredentialsFor,
+  parseMcpCredentialSummary,
+  setMcpServerCredentials,
+} from './mcp-secrets'
+import { createMcpServerWithCredentials } from './mcp-servers'
+import { createModel, getModel } from './models'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
 beforeAll(async () => {
@@ -204,6 +217,185 @@ describe('Import DAL', () => {
 
       const row = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, 'model-1')).get()
       expect(row?.apiKey).toBe('sk-imported')
+    })
+  })
+
+  describe('credential destinations', () => {
+    /** Runs one completion through the production AI client and reports where it went and with what key. */
+    const sendThroughAiClient = async (model: Model) => {
+      const sent = { url: '', authorization: null as string | null }
+      const capture: FetchFn = Object.assign(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          sent.url = String(input)
+          sent.authorization = new Headers(init?.headers).get('authorization')
+          return Response.json({
+            id: 'completion',
+            object: 'chat.completion',
+            created: 0,
+            model: 'llama',
+            choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          })
+        },
+        { preconnect: async () => false },
+      )
+      await generateText({ model: await createAiModel(model, () => capture), prompt: 'hi' })
+      return sent
+    }
+
+    const goodUrl = 'https://llm.example.com/v1'
+    const evilUrl = 'https://evil.example.com/v1'
+    const mcpUrl = 'https://mcp.example.com/mcp'
+    const evilMcpUrl = 'https://evil.example.com/mcp'
+
+    it('a backup that moves a model id to another URL without its key leaves the local key behind', async () => {
+      const db = getDb()
+      await createModel(db, {
+        id: 'model-1',
+        provider: 'custom',
+        name: 'Mine',
+        model: 'llama',
+        url: goodUrl,
+        apiKey: 'sk-mine',
+      })
+
+      await importUserData(db, envelope({ models: [{ id: 'model-1', provider: 'custom', url: evilUrl }] }), currentUser)
+
+      const model = await getModel(db, 'model-1')
+      expect(model?.url).toBe(evilUrl)
+      expect(model?.apiKey).toBeNull()
+      const sent = await sendThroughAiClient(model!)
+      expect(sent.url).toBe(`${evilUrl}/chat/completions`)
+      expect(sent.authorization).toBeNull()
+    })
+
+    it('still authenticates a model whose destination did not change', async () => {
+      const db = getDb()
+      await createModel(db, {
+        id: 'model-1',
+        provider: 'custom',
+        name: 'Mine',
+        model: 'llama',
+        url: goodUrl,
+        apiKey: 'sk-mine',
+      })
+
+      const sent = await sendThroughAiClient((await getModel(db, 'model-1'))!)
+
+      expect(sent).toEqual({ url: `${goodUrl}/chat/completions`, authorization: 'Bearer sk-mine' })
+    })
+
+    it('a backup that moves an MCP server id to another URL without its credential leaves it behind', async () => {
+      const db = getDb()
+      await createMcpServerWithCredentials(
+        db,
+        { id: 'mcp-1', name: 'Mine', type: 'http', url: mcpUrl, enabled: 1 },
+        { type: 'bearer', token: 'mine' },
+      )
+
+      await importUserData(db, envelope({ mcp_servers: [{ id: 'mcp-1', url: evilMcpUrl }] }), currentUser)
+
+      expect(await getMcpServerCredentialsFor(db, 'mcp-1', evilMcpUrl)).toBeNull()
+      expect((await getMcpServerCredentialRows(db)).map(parseMcpCredentialSummary)).toEqual([null])
+    })
+
+    it('a partial secret row cannot keep the local key while rebinding it', async () => {
+      const db = getDb()
+      await createModel(db, {
+        id: 'model-1',
+        provider: 'custom',
+        name: 'Mine',
+        model: 'llama',
+        url: goodUrl,
+        apiKey: 'sk-mine',
+      })
+
+      await importUserData(
+        db,
+        envelope({
+          models: [{ id: 'model-1', url: evilUrl }],
+          models_secrets: [{ modelId: 'model-1', provider: 'custom', url: evilUrl }],
+        }),
+        currentUser,
+      )
+
+      expect((await getModel(db, 'model-1'))?.apiKey).toBeNull()
+      const row = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, 'model-1')).get()
+      expect(row?.apiKey).toBeNull()
+    })
+
+    it('binds a local key saved before binding to its own URL, not the one the backup brings', async () => {
+      const db = getDb()
+      await db
+        .insert(modelsTable)
+        .values({ id: 'model-1', provider: 'custom', name: 'Mine', model: 'llama', url: goodUrl })
+      await db.insert(modelsSecretsTable).values({ modelId: 'model-1', apiKey: 'sk-legacy' })
+      await db.insert(mcpServersTable).values({ id: 'mcp-1', name: 'Mine', type: 'http', url: mcpUrl, enabled: 1 })
+      await setMcpServerCredentials(db, 'mcp-1', { type: 'bearer', token: 'legacy' })
+
+      await importUserData(
+        db,
+        envelope({ models: [{ id: 'model-1', url: evilUrl }], mcp_servers: [{ id: 'mcp-1', url: evilMcpUrl }] }),
+        currentUser,
+      )
+
+      expect((await getModel(db, 'model-1'))?.apiKey).toBeNull()
+      expect(await getMcpServerCredentialsFor(db, 'mcp-1', evilMcpUrl)).toBeNull()
+      expect(await getMcpServerCredentialsFor(db, 'mcp-1', mcpUrl)).toMatchObject({ token: 'legacy' })
+    })
+
+    it('restores the keys of a backup written before binding against the restored URLs', async () => {
+      const db = getDb()
+
+      await importUserData(
+        db,
+        envelope({
+          models: [{ id: 'model-1', provider: 'custom', name: 'Mine', model: 'llama', url: goodUrl }],
+          models_secrets: [{ modelId: 'model-1', apiKey: 'sk-backup' }],
+          mcp_servers: [{ id: 'mcp-1', name: 'Mine', type: 'http', url: mcpUrl, enabled: 1 }],
+          mcp_secrets: [{ id: 'mcp-1', credentials: JSON.stringify({ type: 'bearer', token: 'backup' }) }],
+        }),
+        currentUser,
+      )
+
+      expect((await getModel(db, 'model-1'))?.apiKey).toBe('sk-backup')
+      expect(await getMcpServerCredentialsFor(db, 'mcp-1', mcpUrl)).toMatchObject({ token: 'backup' })
+    })
+
+    it('keeps the local key when the backup re-spells the same URL', async () => {
+      const db = getDb()
+      await createModel(db, {
+        id: 'model-1',
+        provider: 'custom',
+        name: 'Mine',
+        model: 'llama',
+        url: goodUrl,
+        apiKey: 'sk-mine',
+      })
+
+      await importUserData(
+        db,
+        envelope({ models: [{ id: 'model-1', url: 'HTTPS://LLM.example.com:443/v1/' }] }),
+        currentUser,
+      )
+
+      expect((await getModel(db, 'model-1'))?.apiKey).toBe('sk-mine')
+    })
+
+    it('keeps the local key when the backup leaves the destination alone', async () => {
+      const db = getDb()
+      await createModel(db, {
+        id: 'model-1',
+        provider: 'custom',
+        name: 'Mine',
+        model: 'llama',
+        url: goodUrl,
+        apiKey: 'sk-mine',
+      })
+
+      await importUserData(db, envelope({ models: [{ id: 'model-1', name: 'Renamed', url: goodUrl }] }), currentUser)
+
+      expect((await getModel(db, 'model-1'))?.apiKey).toBe('sk-mine')
     })
   })
 

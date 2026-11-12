@@ -124,11 +124,18 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitErro
                     type="password"
                     {...field}
                     onChange={(event) => state.changeApiKey(event.target.value)}
-                    placeholder={model.apiKey ? '••••••••••••••••' : 'sk-...'}
+                    placeholder={state.hasStoredApiKey ? '••••••••••••••••' : 'sk-...'}
                     className="rounded-lg"
                   />
                 </FormControl>
-                {model.apiKey && (
+                {state.isStoredApiKeyLeftBehind && (
+                  <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
+                    <Trans>
+                      The saved API key is only sent to the URL it was saved for. Enter it again to use this URL.
+                    </Trans>
+                  </p>
+                )}
+                {state.hasStoredApiKey && (
                   <Button type="button" variant="ghost" className="mt-1" onClick={state.toggleClearApiKey}>
                     {state.apiKeyEdit.kind === 'clear' ? (
                       <Trans>Keep saved API key</Trans>

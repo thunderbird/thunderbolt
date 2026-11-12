@@ -117,6 +117,52 @@ describe('useEditModelFormState tool support', () => {
     expect(result.current.submissionFor(result.current.form.getValues()).toolUsage).toBe(0)
   })
 
+  describe('saved API key after a URL edit', () => {
+    /** A provider that records the URL and Authorization header of each request. */
+    const recordingFetch = () => {
+      const requests: Array<{ url: string; authorization: string | null }> = []
+      const fetch: FetchFn = Object.assign(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          requests.push({ url: String(input), authorization: new Headers(init?.headers).get('authorization') })
+          return completion()
+        },
+        { preconnect: async () => true },
+      )
+      return { fetch, requests }
+    }
+    const keyedModel: Model = { ...savedModel, apiKey: 'sk-saved' }
+
+    it('tests a new destination without the saved key', async () => {
+      const { fetch, requests } = recordingFetch()
+      const { result } = renderEditState(keyedModel, fetch)
+
+      act(() => result.current.changeUrl('https://evil.example.com/v1'))
+      await act(async () => {
+        await result.current.testConnection()
+      })
+
+      expect(requests.length).toBeGreaterThan(0)
+      expect(requests.every(({ url }) => url.startsWith('https://evil.example.com/v1/'))).toBe(true)
+      expect(requests.every(({ authorization }) => authorization === null)).toBe(true)
+      expect(result.current.hasStoredApiKey).toBe(false)
+      expect(result.current.isStoredApiKeyLeftBehind).toBe(true)
+    })
+
+    it('keeps the saved key for another spelling of the same URL', async () => {
+      const { fetch, requests } = recordingFetch()
+      const { result } = renderEditState(keyedModel, fetch)
+
+      act(() => result.current.changeUrl('https://MODELS.example.com:443/v1/'))
+      await act(async () => {
+        await result.current.testConnection()
+      })
+
+      expect(requests.length).toBeGreaterThan(0)
+      expect(requests.every(({ authorization }) => authorization === 'Bearer sk-saved')).toBe(true)
+      expect(result.current.isStoredApiKeyLeftBehind).toBe(false)
+    })
+  })
+
   it('loads the current connection catalog only after explicitly opening the model selector', async () => {
     const id = await saveProviderConnection(getDb(), {
       provider: 'openai',

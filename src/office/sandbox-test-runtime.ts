@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import path from 'node:path'
+import { bundleSandboxScript } from './bundle-sandbox-script'
 import type { SandboxRuntime } from './sandbox'
 
 /** A file that sits next to a package's entry point. The packages' `exports` maps hide these files. */
@@ -24,4 +25,5 @@ export const loadTestSandboxRuntime = async (): Promise<SandboxRuntime> => ({
     await Bun.file(besideEntry('docx', 'index.umd.cjs')).text(),
     await Bun.file(besideEntry('pptxgenjs', 'pptxgen.bundle.js')).text(),
   ],
+  ooxmlLibrary: await bundleSandboxScript(path.join(import.meta.dir, 'ooxml-globals.ts')),
 })

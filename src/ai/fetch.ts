@@ -65,6 +65,7 @@ import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { HttpClient } from '@/lib/http'
+import type { ReadWorkspaceFile } from '@/office/script-inputs'
 import { v7 as uuidv7 } from 'uuid'
 
 // Currently @openrouter/ai-sdk-provider is NOT compatible with Vercel AI SDK v5. If you enable this, you will get the following error:
@@ -575,6 +576,9 @@ export type PrepareAiRequestConfigOptions = {
   /** Thread being sent to. Resolves the owning project's instructions into the
    *  stable system prompt; omit for non-thread callers. */
   readonly chatThreadId?: string
+  /** The built-in agent's workspace, where the Office tool looks for an input after the thread's files. The
+   *  legacy pipeline has no workspace and passes none. */
+  readonly readWorkspaceFile?: ReadWorkspaceFile
   readonly telemetry?: TurnTelemetry
 }
 
@@ -610,6 +614,7 @@ export const prepareAiRequestConfig = async ({
   httpClient,
   webToolBudget,
   chatThreadId,
+  readWorkspaceFile,
   telemetry,
 }: PrepareAiRequestConfigOptions): Promise<PreparedAiRequestConfig> => {
   telemetry?.startPhase('request_config')
@@ -646,11 +651,12 @@ export const prepareAiRequestConfig = async ({
   const sourceCollector = webToolBudget?.sourceCollector ?? []
   const toolCallCache: ToolCallCache = new Map()
   const availableTools = supportsTools
-    ? await getAvailableTools(httpClient, sourceCollector, {
-        settings,
-        integrationStatus,
-        ...(await loadConnectedSearchApis(db)),
-      })
+    ? await getAvailableTools(
+        httpClient,
+        sourceCollector,
+        { settings, integrationStatus, ...(await loadConnectedSearchApis(db)) },
+        { chatThreadId, readWorkspaceFile },
+      )
     : []
   const appToolset = addSkillTool(
     createToolset(availableTools, toolCallCache, webToolBudget),

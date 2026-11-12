@@ -11,10 +11,14 @@ import { type DynamicToolUIPart, getToolName, isToolOrDynamicToolUIPart, type To
 import { z } from 'zod'
 import { officeScriptToolName, sandboxLimits } from './constants'
 import { runInSandboxWorker } from './run-in-worker'
-import type { SandboxResult, SavedFile } from './sandbox'
+import type { SandboxJob, SandboxResult, SavedFile } from './sandbox'
+import { type ReadWorkspaceFile, resolveInputs } from './script-inputs'
 
-/** A file the tool added to the attachment store, as listed in its result. The chips are built from this list. */
-export type CreatedFile = { id: string; filename: string; mimeType: string }
+/**
+ * A file the tool added to the attachment store, as listed in its result. The chips are built from this list.
+ * `edited` is true when the script saved it under the name of a file it read.
+ */
+export type CreatedFile = { id: string; filename: string; mimeType: string; edited: boolean }
 
 export type OfficeScriptOutput =
   | { ok: true; files: CreatedFile[]; logs: string }
@@ -28,7 +32,10 @@ export const isOfficeScriptPart = (part: UIMessage['parts'][number]): part is Of
 
 const createdFilesSchema = z.object({
   ok: z.literal(true),
-  files: z.array(z.object({ id: z.string(), filename: z.string(), mimeType: z.string() })),
+  files: z.array(
+    // Results stored before the tool could edit files have no `edited`.
+    z.object({ id: z.string(), filename: z.string(), mimeType: z.string(), edited: z.boolean().default(false) }),
+  ),
 })
 
 /** The files a finished, successful call created, or `undefined` while it runs and when it failed. */
@@ -44,6 +51,12 @@ const fileTypes = [
 const maxFilenameLength = 200
 
 type DeliverableFile = SavedFile & { mimeType: string }
+
+/** The name a file is stored under once `safeFileName` has cleaned it. */
+const storedFilename = (raw: string) => {
+  const { stem, extension } = safeFileName(raw)
+  return `${stem}.${extension}`
+}
 
 /**
  * Sanitize each saved file's name and pair it with its type, or say (to the model) why the files cannot be
@@ -98,54 +111,93 @@ const officeScriptParameters = z.object({
     .describe(
       'JavaScript that runs as the body of an async function, so `await` works. Example: `const doc = new docx.Document({ sections: [{ children: [new docx.Paragraph("Hello")] }] }); saveFile("hello.docx", await docx.Packer.toArrayBuffer(doc))`',
     ),
+  inputs: z
+    .array(z.string())
+    .max(sandboxLimits.maxFiles)
+    .optional()
+    .describe('The files the script reads with `readFile(name)`, each by its file name or its id.'),
 })
 
 export type OfficeScriptInput = z.infer<typeof officeScriptParameters>
 
-/**
- * Build the tool around a script runner and a file store, so the tests can run the real VM in-process.
- * Each saved file becomes a new attachment-store entry; nothing is ever overwritten.
- */
-export const createOfficeScriptTool = (
-  runScript: (script: string, signal?: AbortSignal) => Promise<SandboxResult> = runInSandboxWorker,
-  storeFiles: (files: StoredFile[]) => Promise<void> = putAttachments,
-): ToolConfig => ({
-  name: officeScriptToolName,
-  description: [
-    'Create a Word document (.docx) or a PowerPoint presentation (.pptx) that the user can download.',
-    'Write a short JavaScript script. It runs in a sandbox where the `docx` library (global `docx`) and the `pptxgenjs` library (global `PptxGenJS`) are already loaded.',
+/** What the tool needs from the app. All are optional; the tests pass their own to run the real VM in-process. */
+export type OfficeScriptToolDeps = {
+  runScript?: (job: SandboxJob, signal?: AbortSignal) => Promise<SandboxResult>
+  storeFiles?: (files: StoredFile[]) => Promise<void>
+  /** The stored files of the chat thread: its attachments and the files this tool made in it. */
+  listThreadFiles?: () => Promise<StoredFile[]>
+  /** The built-in agent's workspace. The legacy pipeline has none. */
+  readWorkspaceFile?: ReadWorkspaceFile
+}
+
+const describeTool = (hasWorkspace: boolean) =>
+  [
+    'Create or edit a Word document (.docx) or a PowerPoint presentation (.pptx) that the user can download.',
+    'Write a short JavaScript script. It runs in a sandbox where these libraries are already loaded: `docx` (global `docx`), `pptxgenjs` (global `PptxGenJS`), `fflate` (global `fflate`) and `@xmldom/xmldom` (global `xmldom`).',
     'Pass each finished file to `saveFile(filename, bytes)`. The name must end in .docx or .pptx. Get the bytes from `await docx.Packer.toArrayBuffer(doc)` or `await pres.write({ outputType: "uint8array" })`; `Packer.toBuffer`, `Packer.toBlob` and `pres.writeFile` do not work here.',
-    'The sandbox has no network, no DOM, no fetch, no imports and no access to the chat or its attachments, so write all the content into the script.',
+    `To read a file, list it in \`inputs\` and call \`readFile(name)\`, which returns its bytes as a Uint8Array. The files you can read are the ones attached in this chat and the ones this tool made earlier in it. Name a file by its file name to get the newest file with that name, or by its id to get that exact file, such as an older version.${hasWorkspace ? ' A name that matches none of them is read from your workspace, as a path relative to it, so a script can use data you prepared there.' : ''}`,
+    'To edit a file, read it, change it, and save the result under the same name: the user gets an edited copy and the original stays as it was. `await docx.patchDocument({ outputType: "uint8array", data: readFile(name), patches })` replaces `{{key}}` placeholders and keeps everything else, including comments and tracked changes. For changes docx and PptxGenJS cannot make, such as adding a tracked change or copying a slide, unzip the file with `fflate.unzipSync`, edit its XML parts with `xmldom.DOMParser` and `xmldom.XMLSerializer` (`fflate.strFromU8` and `fflate.strToU8` convert the bytes), and zip it again with `fflate.zipSync`. Only the sync fflate functions work here.',
+    'Every saved file is checked before it is stored. If a zip does not open or an XML part does not parse, nothing is saved, and the error names the file and, for XML, the part.',
+    'The sandbox has no network, no DOM, no fetch and no imports, so write all new content into the script.',
     'Each saved file appears in the chat for the user to download, so do not paste its contents into your reply.',
     `Limits per run: ${sandboxLimits.timeoutMs / 1000} seconds of script time (loading the libraries does not count), ${sandboxLimits.memoryBytes / 1024 / 1024} MiB of memory, ${sandboxLimits.textOutputBytes / 1024 / 1024} MiB of console output and ${sandboxLimits.maxFiles} files. If the result is { ok: false }, read the error: fix the script when the error is about it, then call the tool again.`,
-  ].join(' '),
-  verb: 'Creating file',
-  parameters: officeScriptParameters,
-  execute: async (
-    { script }: OfficeScriptInput,
-    options?: { abortSignal?: AbortSignal },
-  ): Promise<OfficeScriptOutput> => {
-    const result = await runScript(script, options?.abortSignal)
-    if (!result.ok) {
-      return result
-    }
-    const deliverable = toDeliverableFiles(result.files)
-    if (!deliverable.ok) {
-      return { ok: false, error: deliverable.error, logs: result.logs }
-    }
-    const records = deliverable.files.map(({ filename, mimeType, bytes }) => ({
-      id: crypto.randomUUID(),
-      filename,
-      mimeType,
-      size: bytes.byteLength,
-      createdAt: Date.now(),
-      blob: new Blob([bytes], { type: mimeType }),
-    }))
-    await storeFiles(records)
-    const files = records.map(({ id, filename, mimeType }) => ({ id, filename, mimeType }))
-    return { ok: true, files, logs: result.logs }
-  },
-})
+  ].join(' ')
 
-/** Agent tool that runs a model-written script in a sandbox with the Office libraries and saves the files it makes. */
-export const officeScriptTool = createOfficeScriptTool()
+/**
+ * Build the tool for one send. Each saved file becomes a new attachment-store entry; nothing is ever overwritten.
+ * The tool also keeps the files it made during the send, because the thread's stored messages lag behind the
+ * turn that is still streaming.
+ */
+export const createOfficeScriptTool = ({
+  runScript = runInSandboxWorker,
+  storeFiles = putAttachments,
+  listThreadFiles = async () => [],
+  readWorkspaceFile,
+}: OfficeScriptToolDeps = {}): ToolConfig => {
+  const madeThisSend: StoredFile[] = []
+  return {
+    name: officeScriptToolName,
+    description: describeTool(readWorkspaceFile !== undefined),
+    verb: 'Creating file',
+    parameters: officeScriptParameters,
+    execute: async (
+      { script, inputs = [] }: OfficeScriptInput,
+      options?: { abortSignal?: AbortSignal },
+    ): Promise<OfficeScriptOutput> => {
+      const threadFiles = inputs.length > 0 ? [...(await listThreadFiles()), ...madeThisSend] : []
+      const resolved = await resolveInputs(inputs, threadFiles, readWorkspaceFile, sandboxLimits.memoryBytes)
+      if (!resolved.ok) {
+        return { ok: false, error: resolved.error, logs: '' }
+      }
+      const result = await runScript({ script, inputs: resolved.inputs }, options?.abortSignal)
+      if (!result.ok) {
+        return result
+      }
+      const deliverable = toDeliverableFiles(result.files)
+      if (!deliverable.ok) {
+        return { ok: false, error: deliverable.error, logs: result.logs }
+      }
+      const records = deliverable.files.map(({ filename, mimeType, bytes }) => ({
+        id: crypto.randomUUID(),
+        filename,
+        mimeType,
+        size: bytes.byteLength,
+        createdAt: Date.now(),
+        blob: new Blob([bytes], { type: mimeType }),
+      }))
+      await storeFiles(records)
+      madeThisSend.push(...records)
+      // Compared as stored, so `REPORT.DOCX` read and saved again counts as the same name.
+      const inputNames = new Set(
+        resolved.filenames.filter((name) => name.length <= maxFilenameLength).map(storedFilename),
+      )
+      const files = records.map(({ id, filename, mimeType }) => ({
+        id,
+        filename,
+        mimeType,
+        edited: inputNames.has(filename),
+      }))
+      return { ok: true, files, logs: result.logs }
+    },
+  }
+}

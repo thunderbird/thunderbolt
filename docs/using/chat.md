@@ -113,4 +113,16 @@ Projects group related chats and add instructions every chat in the project inhe
 
 Search (`Cmd/Ctrl + K`) runs entirely on the device, so your query is never sent anywhere. Matching is on keywords rather than meaning: try the wording you used at the time. See [Search](./search.md).
 
+## Importing ChatGPT conversations
+
+The offline converter in the Thunderbolt repository turns an unzipped ChatGPT data export into a file accepted by **Settings → Preferences → Data → Import Data**:
+
+```bash
+bun run convert:chatgpt -- "/path/to/chatgpt export" "/path/to/thunderbolt-chatgpt-import.json"
+```
+
+Pass the export directory or a `conversations.json` file. The directory can contain ChatGPT's split `conversations-NNN.json` files. If you omit the output path, the converter creates `thunderbolt-chatgpt-import.json` beside the input; it refuses to overwrite an existing file.
+
+The converter imports each conversation's selected message path, readable user and assistant text, and conversation title. It omits alternate branches, system/tool messages, hidden reasoning, attachments, and non-text media. When an export has no selected message, it uses the path to the most recently timestamped leaf. ChatGPT's archived conversations are imported as regular chats. The output contains your chat text in plaintext; keep it private and delete it when you no longer need it. Thunderbolt's importer has a 200 MB file limit.
+
 Conversations are stored on the device first. If sync is enabled they appear on your other devices, encrypted end to end when you turn that on. Deleting a chat removes it everywhere you are signed in.

@@ -11,6 +11,9 @@ node_modules
 dist
 dist-ssr
 dist-isolation
+__pycache__
+# thunderbot team-orchestration scratch (see .agents/skills/thunderbot/references/team-orchestration.md)
+.team/
 *.local
 
 # Editor directories and files
@@ -48,20 +51,32 @@ evals/
 mise*.toml
 mise.toml
 .claude/**
-!.claude/commands/
-!.claude/commands/**
 !.claude/agents/
 !.claude/agents/**
-!.claude/rules/
-!.claude/rules/**
-!.claude/skills/
-!.claude/skills/thunder-deep-review/
-!.claude/skills/thunder-deep-review/**
 !.claude/security/
 !.claude/security/**
-!.claude/skills/thunder-red-team/
-!.claude/skills/thunder-red-team/**
+!.claude/skills/
+# Each committed skill is a symlink into .agents/skills, the copy every agent reads.
+# Listed one by one so personal skills in .claude/skills stay untracked.
+!.claude/skills/thunder-cleanup
+!.claude/skills/thunder-deep-review
+!.claude/skills/thunder-performance
+!.claude/skills/thunder-red-team
 !.claude/skills/thunder-update-model
+!.claude/skills/thunder-validate
+!.claude/skills/thunderbot
+!.claude/skills/thunderbot-daemon
+!.claude/skills/thundercheck
+!.claude/skills/thunderclean
+!.claude/skills/thunderdoctor
+!.claude/skills/thunderdown
+!.claude/skills/thunderfeedback
+!.claude/skills/thunderfix
+!.claude/skills/thunderimprove
+!.claude/skills/thunderin
+!.claude/skills/thunderout
+!.claude/skills/thunderpush
+!.claude/skills/thunderup
 .zed/**
 .zedscratches/**
 .mcp.json

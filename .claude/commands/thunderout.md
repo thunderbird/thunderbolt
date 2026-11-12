@@ -1,1 +1,0 @@
-../../.thunderbot/thunderout.md

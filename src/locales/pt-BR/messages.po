@@ -1812,6 +1812,10 @@ msgstr "Não foi possível ler o arquivo de importação."
 msgid "Could not render pairing code."
 msgstr "Não foi possível exibir o código de emparelhamento."
 
+#: src/webview-recovery/index.ts
+msgid "Could not restart the app. Quit Thunderbolt and open it again."
+msgstr ""
+
 #: src/settings/connections/use-provider-connection-form.ts
 msgid "Could not save the connection. Try again."
 msgstr ""
@@ -5703,6 +5707,10 @@ msgstr "O provedor de IA está com problemas neste momento. Tente novamente em i
 msgid "The AI provider took too long to respond. Try again."
 msgstr "O provedor de IA demorou demais para responder. Tente novamente."
 
+#: src/webview-recovery/index.ts
+msgid "The app's web content stopped unexpectedly more than once. Automatic reloads have been paused."
+msgstr ""
+
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "The chat will be retained by the {recipient} team."
 msgstr ""
@@ -6176,6 +6184,10 @@ msgstr "Pensou por {duration}"
 msgid "Thunderbolt CLI"
 msgstr "CLI do Thunderbolt"
 
+#: src/webview-recovery/index.ts
+#~ msgid "Thunderbolt couldn't keep running"
+#~ msgstr ""
+
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "Thunderbolt couldn't verify this device's encryption keys, so it can't update your recovery phrase or passkey. To verify it, sign out with \"Delete data from device\", sign in again, and approve it from a device that was trusted before."
 msgstr ""
@@ -6187,6 +6199,10 @@ msgstr "O Thunderbolt é código aberto"
 #: src/settings/connections/use-integrations-controller.tsx
 msgid "Thunderbolt Pro is not available yet. Stay tuned!"
 msgstr "O Thunderbolt Pro ainda não está disponível. Fique de olho!"
+
+#: src/webview-recovery/index.ts
+msgid "Thunderbolt ran into a problem"
+msgstr "O Thunderbolt encontrou um problema"
 
 #: src/settings/preferences.tsx
 #~ msgid "Thunderbolt Server"
@@ -6346,8 +6362,13 @@ msgstr "Dispositivos confiáveis"
 #: src/components/sso-error.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
+#: src/webview-recovery/index.ts
 msgid "Try again"
 msgstr "Tentar novamente"
+
+#: src/webview-recovery/index.ts
+msgid "Try again, or install available system updates and reopen Thunderbolt if the problem continues."
+msgstr ""
 
 #: src/components/chat/image-support-notice.tsx
 msgid "Try anyway"

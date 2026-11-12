@@ -35,6 +35,7 @@ import {
   setCachedSession,
 } from '@/lib/session-cache'
 import { resolveAbsoluteBackendUrl } from '@/lib/url-utils'
+import { signOutAndLeave } from '@/lib/sign-out'
 import { anonymousClient, emailOTPClient } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
 import { consumePendingSsoPromotion } from '@/lib/analytics/anonymous-promotion-sso-bridge'
@@ -423,7 +424,7 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
 
   return (
     <AuthContext.Provider value={value}>
-      <LocalDataGate authClient={value.authClient}>{children}</LocalDataGate>
+      <LocalDataGate>{children}</LocalDataGate>
     </AuthContext.Provider>
   )
 }
@@ -436,7 +437,9 @@ const sessionRetryIntervalMs = 30_000
  * the app is waiting for the network when a slot with an owner stays `unbound` because the session
  * request failed.
  */
-const LocalDataGate = ({ authClient, children }: { authClient: AuthClient; children: ReactNode }) => {
+const LocalDataGate = ({ children }: { children: ReactNode }) => {
+  // Better Auth's callable proxy has a non-string `name`; React's dev prop formatter cannot inspect it.
+  const authClient = useAuth()
   const localDataStatus = useSyncExternalStore(subscribeLocalDataStatus, getLocalDataStatus)
   const session = authClient.useSession()
   const isUnknown = isSessionUnknown(session)
@@ -460,11 +463,16 @@ const LocalDataGate = ({ authClient, children }: { authClient: AuthClient; child
   if (localDataStatus === 'ready') {
     return children
   }
+  const signOut = () =>
+    signOutAndLeave(authClient, async () => {
+      clearAuthToken()
+      clearCachedSession()
+    })
   return (
     <LocalDataSwitchScreen
       hasFailed={localDataStatus === 'failed'}
       isWaitingForNetwork={isWaitingForNetwork}
-      authClient={authClient}
+      onSignOut={signOut}
     />
   )
 }

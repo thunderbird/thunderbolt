@@ -1800,6 +1800,10 @@ msgstr "Could not read the import file."
 msgid "Could not render pairing code."
 msgstr "Could not render pairing code."
 
+#: src/webview-recovery/index.ts
+msgid "Could not restart the app. Quit Thunderbolt and open it again."
+msgstr "Could not restart the app. Quit Thunderbolt and open it again."
+
 #: src/settings/connections/use-provider-connection-form.ts
 msgid "Could not save the connection. Try again."
 msgstr "Could not save the connection. Try again."
@@ -5691,6 +5695,10 @@ msgstr "The AI provider is having trouble right now. Try again in a moment."
 msgid "The AI provider took too long to respond. Try again."
 msgstr "The AI provider took too long to respond. Try again."
 
+#: src/webview-recovery/index.ts
+msgid "The app's web content stopped unexpectedly more than once. Automatic reloads have been paused."
+msgstr "The app's web content stopped unexpectedly more than once. Automatic reloads have been paused."
+
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "The chat will be retained by the {recipient} team."
 msgstr "The chat will be retained by the {recipient} team."
@@ -6164,6 +6172,10 @@ msgstr "Thought for {duration}"
 msgid "Thunderbolt CLI"
 msgstr "Thunderbolt CLI"
 
+#: src/webview-recovery/index.ts
+#~ msgid "Thunderbolt couldn't keep running"
+#~ msgstr "Thunderbolt couldn't keep running"
+
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "Thunderbolt couldn't verify this device's encryption keys, so it can't update your recovery phrase or passkey. To verify it, sign out with \"Delete data from device\", sign in again, and approve it from a device that was trusted before."
 msgstr "Thunderbolt couldn't verify this device's encryption keys, so it can't update your recovery phrase or passkey. To verify it, sign out with \"Delete data from device\", sign in again, and approve it from a device that was trusted before."
@@ -6175,6 +6187,10 @@ msgstr "Thunderbolt is open-source"
 #: src/settings/connections/use-integrations-controller.tsx
 msgid "Thunderbolt Pro is not available yet. Stay tuned!"
 msgstr "Thunderbolt Pro is not available yet. Stay tuned!"
+
+#: src/webview-recovery/index.ts
+msgid "Thunderbolt ran into a problem"
+msgstr "Thunderbolt ran into a problem"
 
 #: src/settings/preferences.tsx
 #~ msgid "Thunderbolt Server"
@@ -6334,8 +6350,13 @@ msgstr "Trusted devices"
 #: src/components/sso-error.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
+#: src/webview-recovery/index.ts
 msgid "Try again"
 msgstr "Try again"
+
+#: src/webview-recovery/index.ts
+msgid "Try again, or install available system updates and reopen Thunderbolt if the problem continues."
+msgstr "Try again, or install available system updates and reopen Thunderbolt if the problem continues."
 
 #: src/components/chat/image-support-notice.tsx
 msgid "Try anyway"

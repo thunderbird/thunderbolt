@@ -115,7 +115,14 @@ test.describe('Passkey continuity', () => {
     for (const servedSeal of [null, tampered]) {
       await context.unrouteAll({ behavior: 'wait' })
       await overrideEncryptionMetadata(context, { passkey_continuity: servedSeal })
+      const metadataRequest = page.waitForRequest(
+        (request) => request.method() === 'GET' && new URL(request.url()).pathname === '/v1/encryption/canary',
+      )
       await unlock.click()
+      const response = await (await metadataRequest).response()
+      expect(await response?.json()).toMatchObject({ passkey_continuity: servedSeal })
+      // The previous refusal stays visible during a retry; wait for this attempt before changing its response.
+      await expect(unlock).toBeEnabled({ timeout: 30_000 })
       await expect(dialog.getByText(refusal)).toBeVisible({ timeout: 30_000 })
       expect(await getEncryptionKeyNames(page)).not.toContain('thunderbolt_ak')
       expect(envelopePosts).toEqual([])

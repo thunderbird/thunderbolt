@@ -14,9 +14,8 @@ import { useCreatedFileCardState } from './use-created-file-card-state'
  */
 export const CreatedFileCard = ({ file }: { file: CreatedFile }) => {
   const { t } = useLingui()
-  const { status, isSaved, saveError, download } = useCreatedFileCardState(file)
+  const { status, filename, mimeType, isSaved, saveError, download } = useCreatedFileCardState(file)
 
-  const { filename } = file
   const downloadLabel = t`Download ${filename}`
   const note =
     status === 'error' ? (
@@ -28,8 +27,8 @@ export const CreatedFileCard = ({ file }: { file: CreatedFile }) => {
   return (
     <FileCard
       localFileId={file.id}
-      filename={file.filename}
-      mimeType={file.mimeType}
+      filename={filename}
+      mimeType={mimeType}
       note={note}
       action={
         status === 'ready' && (

@@ -14,7 +14,14 @@ import { afterEach, beforeEach, describe, expect, it, type Mock, spyOn } from 'b
 import { AssistantMessage } from './assistant-message'
 
 const report = { id: 'file-1', filename: 'report.docx', mimeType: docxMime }
+const deck = { id: 'file-2', filename: 'deck.pptx', mimeType: pptxMime }
 const bytes = new Uint8Array([80, 75, 3, 4])
+const storedFiles = [report, deck].map((file) => ({
+  ...file,
+  size: bytes.byteLength,
+  createdAt: 0,
+  blob: new Blob([bytes], { type: file.mimeType }),
+}))
 
 const finishedCall = (output: ToolUIPart['output']): ToolUIPart => ({
   type: 'tool-run_office_script',
@@ -40,12 +47,9 @@ describe('the chip for a file the agent created', () => {
   let downloadFile: Mock<typeof download.downloadFile>
 
   beforeEach(() => {
-    getAttachment = spyOn(attachmentStorage, 'getAttachment').mockResolvedValue({
-      ...report,
-      size: bytes.byteLength,
-      createdAt: 0,
-      blob: new Blob([bytes], { type: docxMime }),
-    })
+    getAttachment = spyOn(attachmentStorage, 'getAttachment').mockImplementation(
+      async (id) => storedFiles.find((file) => file.id === id) ?? null,
+    )
     downloadFile = spyOn(download, 'downloadFile').mockResolvedValue('report.docx')
   })
 
@@ -67,20 +71,21 @@ describe('the chip for a file the agent created', () => {
     expect(downloadFile).toHaveBeenCalledWith({ name: 'report.docx', contents: bytes, mimeType: docxMime })
   })
 
-  it('saves under the stored name and type, whatever name the tool result gives', async () => {
+  it('shows and saves the stored name and type, whatever name the tool result gives', async () => {
     await renderMessage(
       finishedCall({ ok: true, files: [{ ...report, filename: 'x.html', mimeType: 'text/html' }], logs: '' }),
     )
 
+    expect(screen.queryByText('x.html')).toBeNull()
+    expect(screen.getByText('DOCX')).toBeDefined()
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Download x.html' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Download report.docx' }))
       await getClock().runAllAsync()
     })
     expect(downloadFile).toHaveBeenCalledWith({ name: 'report.docx', contents: bytes, mimeType: docxMime })
   })
 
   it('shows one chip per file, with a presentation icon for a deck', async () => {
-    const deck = { id: 'file-2', filename: 'deck.pptx', mimeType: pptxMime }
     const { container } = await renderMessage(finishedCall({ ok: true, files: [report, deck], logs: '' }))
 
     expect(screen.getByText('deck.pptx')).toBeDefined()
@@ -93,6 +98,14 @@ describe('the chip for a file the agent created', () => {
     await renderMessage(finishedCall({ ok: true, files: [report], logs: '' }))
 
     expect(screen.getByText('report.docx')).toBeDefined()
+    expect(screen.getByText('Not available on this device')).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'Download report.docx' })).toBeNull()
+  })
+
+  it('treats a store that cannot be read like a missing file', async () => {
+    getAttachment.mockRejectedValue(new Error('IndexedDB unavailable'))
+    await renderMessage(finishedCall({ ok: true, files: [report], logs: '' }))
+
     expect(screen.getByText('Not available on this device')).toBeDefined()
     expect(screen.queryByRole('button', { name: 'Download report.docx' })).toBeNull()
   })

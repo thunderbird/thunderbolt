@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { createServer, type Server } from 'node:http'
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { json } from 'node:stream/consumers'
 import { setTimeout } from 'node:timers/promises'
 import type { RawMessageStreamEvent } from '@anthropic-ai/sdk/resources/messages'
@@ -65,10 +65,87 @@ const scriptedToolCall = (request: FakeRequest): { name: string; input: Record<s
   return body === null ? null : { name: miniAppToolsetName, input: { note: body } }
 }
 
-/** Start a local Anthropic Messages provider with a deterministic streamed reply. */
+/** The model a Local setup finds when it lists this provider's models. */
+export const fakeOpenAiModelId = 'fake-model'
+
+// The app's Local mode calls an OpenAI-compatible URL straight from the page, so these routes answer CORS.
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+}
+const openAiRequestSchema = z.object({ model: z.string(), stream: z.boolean().optional() })
+
+/**
+ * Answer the OpenAI-compatible routes a Local "Other provider" setup uses: the model list, and the reply in one piece
+ * or streamed word by word. Returns false for any other route.
+ */
+const serveOpenAiCompatible = async (
+  req: IncomingMessage,
+  res: ServerResponse,
+  pathname: string,
+  delayMs: number,
+): Promise<boolean> => {
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, corsHeaders).end()
+    return true
+  }
+  if (req.method === 'GET' && pathname.endsWith('/v1/models')) {
+    res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ object: 'list', data: [{ id: fakeOpenAiModelId, object: 'model', owned_by: 'e2e' }] }))
+    return true
+  }
+  if (req.method !== 'POST' || !pathname.endsWith('/v1/chat/completions')) {
+    return false
+  }
+  const parsed = openAiRequestSchema.safeParse(await json(req).catch(() => null))
+  if (!parsed.success) {
+    res.writeHead(400, corsHeaders).end('Invalid chat completions request')
+    return true
+  }
+  const { model, stream } = parsed.data
+  const base = { id: `chatcmpl-${crypto.randomUUID()}`, created: Math.floor(Date.now() / 1000), model }
+  const usage = { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18 }
+  if (!stream) {
+    res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' })
+    res.end(
+      JSON.stringify({
+        ...base,
+        object: 'chat.completion',
+        choices: [{ index: 0, message: { role: 'assistant', content: fakeProviderReply }, finish_reason: 'stop' }],
+        usage,
+      }),
+    )
+    return true
+  }
+  res.writeHead(200, { ...corsHeaders, 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' })
+  const writeChunk = (delta: { role?: 'assistant'; content?: string }, finishReason: 'stop' | null) =>
+    res.write(
+      `data: ${JSON.stringify({ ...base, object: 'chat.completion.chunk', choices: [{ index: 0, delta, finish_reason: finishReason }] })}\n\n`,
+    )
+  writeChunk({ role: 'assistant' }, null)
+  for (const content of fakeProviderReply.match(/\S+\s*/g)!) {
+    await setTimeout(delayMs)
+    if (res.destroyed) {
+      return true
+    }
+    writeChunk({ content }, null)
+  }
+  writeChunk({}, 'stop')
+  res.end('data: [DONE]\n\n')
+  return true
+}
+
+/**
+ * Start a local provider with a deterministic streamed reply: Anthropic Messages for the backend, plus the
+ * OpenAI-compatible routes a Local setup connects to directly.
+ */
 export const createFakeProvider = async (port: number, options: FakeProviderOptions = {}): Promise<Server> => {
   const server = createServer(async (req, res) => {
     const url = new URL(req.url!, `http://localhost:${port}`)
+    if (await serveOpenAiCompatible(req, res, url.pathname, options.delayMs ?? 150)) {
+      return
+    }
     if (req.method !== 'POST' || !url.pathname.endsWith('/v1/messages')) {
       res.writeHead(404)
       res.end('Not found')

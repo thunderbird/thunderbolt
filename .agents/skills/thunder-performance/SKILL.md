@@ -1,6 +1,6 @@
 ---
 name: thunder-performance
-description: Profile Thunderbolt responsiveness, CPU and memory with the local production browser harness, investigate measured hot paths, and validate small performance fixes against a baseline.
+description: Profile Thunderbolt performance with the production browser harness and prove a fix against a baseline. Use when the app feels slow, laggy or janky; for CPU or memory use, a suspected leak, startup time, long chats or large accounts; to find a performance regression; or to show a change is faster.
 ---
 
 Use this for Thunderbolt performance investigations and regressions. The harness lives in `scripts/performance/`; its operating guide is `docs/internals/development/performance.md`.

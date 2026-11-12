@@ -25,8 +25,7 @@ in a subagent.
 Up to four space-separated tokens, in this order: the leaving model (slug or export constant,
 never a display name), the provider that serves the replacement, the incoming model id, and a
 Linear ticket (`THU-nnn`). Each token answers its question below; ask only the questions that
-remain. Claude Code passes them as `$ARGUMENTS`; other harnesses pass the text typed after the
-skill name.
+remain. They arrive as the text typed after the skill name.
 
 ## Harness notes
 

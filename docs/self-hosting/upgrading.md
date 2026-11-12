@@ -120,7 +120,7 @@ These apply to every sign-in mode, email codes included, when you upgrade to a r
 
 The built-in authentication limiter keys each request on the client address it reads from a header: the one `TRUSTED_PROXY` names, or `X-Forwarded-For` when it is empty. Before, a request without that header skipped the limit, and an `X-Forwarded-For` holding several addresses counted against the first one. Now both share one bucket per route with every other request the limiter cannot place. The header is missing when nothing in front of the API adds it. It holds several addresses when the request crossed two or more proxies.
 
-A shared bucket fills fast. Entering an emailed sign-in code (`/sign-in/email-otp`) allows 3 requests per 60 seconds, so behind such a proxy only three people a minute can finish signing in with a code. Requesting the code itself (`/email-otp/send-verification-otp`) has the same limit when a client calls it directly. Many users then get `429` at the same time. Set `TRUSTED_PROXY` to `cloudflare` or `akamai` if one of them sits in front of the API. See [Configuration](./configuration.md#rate-limiting) for the other buckets.
+A shared bucket fills fast. Entering an emailed sign-in code (`/sign-in/email-otp`) allows 3 requests per 60 seconds, so behind such a proxy only three people a minute can finish signing in with a code. Requesting the code itself (`/email-otp/send-verification-otp`) has the same limit when a client calls it directly. Many users then get `429` at the same time. Set `TRUSTED_PROXY` to `cloudflare` or `akamai` if one of them sits in front of the API, or to the hop count of a fixed reverse-proxy chain. See [Configuration](./configuration.md#rate-limiting) for the other buckets.
 
 ## Order of upgrade
 

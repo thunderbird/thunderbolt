@@ -148,6 +148,19 @@ export const isLocalNetworkAddress = (address: ParsedIpAddress): boolean => {
   )
 }
 
+/** True for a hostname on this device or the local network: a local-network IP literal,
+ *  `localhost`/`*.localhost`, mDNS `*.local`, or Docker's `host.docker.internal`. */
+export const isLocalNetworkHost = (hostname: string): boolean => {
+  const host = hostname.replace(/\.$/, '')
+  const ip = parseIpAddress(host)
+  if (ip) {
+    return isLocalNetworkAddress(ip)
+  }
+  return (
+    host === 'localhost' || host.endsWith('.localhost') || host === 'host.docker.internal' || host.endsWith('.local')
+  )
+}
+
 /** Extract IPv4 embedded by an IPv6 mapping or transition mechanism. */
 export const extractEmbeddedIpv4Address = (address: ParsedIpAddress): EmbeddedIpv4Address | undefined => {
   if (address.version === 4) {

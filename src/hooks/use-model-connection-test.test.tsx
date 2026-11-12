@@ -8,6 +8,7 @@ import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import type { ReactNode } from 'react'
 import {
+  connectionTestLimits,
   isLocalEndpoint,
   useModelConnectionTest,
   type ConnectionTestProbe,
@@ -267,6 +268,8 @@ describe('isLocalEndpoint', () => {
     ['http://127.0.0.1:1234', true],
     ['http://192.168.1.20:11434', true],
     ['http://[::1]:8080/v1', true],
+    ['http://ollama.local:11434', true],
+    ['http://host.docker.internal:11434/v1', true],
     ['https://api.example.com/v1', false],
   ])('classifies %s as local: %p', (url, expected) => {
     expect(isLocalEndpoint({ provider: 'custom', url })).toBe(expected)
@@ -278,6 +281,17 @@ describe('isLocalEndpoint', () => {
   })
 })
 
+describe('connectionTestLimits', () => {
+  it('waits longer and hints at a model load for local endpoints', () => {
+    const local = connectionTestLimits({ provider: 'custom', url: 'http://localhost:11434/v1' })
+    const remote = connectionTestLimits({ provider: 'openai', url: null })
+
+    expect(local.timeoutMs).toBeGreaterThan(remote.timeoutMs)
+    expect(local.loadingHintAfterMs).not.toBeNull()
+    expect(remote.loadingHintAfterMs).toBeNull()
+  })
+})
+
 describe('useModelConnectionTest loading hint', () => {
   const localConfig: ModelConnectionConfig = {
     provider: 'custom',
@@ -285,6 +299,7 @@ describe('useModelConnectionTest loading hint', () => {
     url: 'http://localhost:11434/v1',
     apiKey: null,
   }
+  const { loadingHintAfterMs } = connectionTestLimits(localConfig)
 
   afterEach(() => {
     cleanup()
@@ -296,7 +311,7 @@ describe('useModelConnectionTest loading hint', () => {
     const realSetTimeout = globalThis.setTimeout
     const captured: { fire: (() => void) | null } = { fire: null }
     spyOn(globalThis, 'setTimeout').mockImplementation(((handler: () => void, delay?: number) => {
-      if (delay === 5_000) {
+      if (delay === loadingHintAfterMs) {
         captured.fire = handler
         return 0
       }

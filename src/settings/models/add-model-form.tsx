@@ -15,7 +15,7 @@ import { ResponsiveModalCancel } from '@/components/ui/responsive-modal'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatusCard } from '@/components/ui/status-card'
 import { useAutofocusOnMount } from '@/hooks/use-autofocus-on-mount'
-import type { ToolSupport } from '@/hooks/use-model-connection-test'
+import type { ModelConnectionTest } from '@/hooks/use-model-connection-test'
 import { useAppName } from '@/lib/branding-selectors'
 import type { Model } from '@/types'
 import { ConnectionTestSection } from './connection-test-section'
@@ -31,11 +31,7 @@ type AddModelFormProps = {
   isLoadingCatalog: boolean
   catalogError: string | null
   isPending: boolean
-  isTesting: boolean
-  isLoadingModel: boolean
-  connectionStatus: 'idle' | 'success' | 'error'
-  connectionError: string | null
-  toolSupport: ToolSupport | null
+  connection: ModelConnectionTest
   submitError: string | null
   onSubmit: (values: AddModelFormValues) => void
   onCancel: () => void
@@ -53,11 +49,7 @@ export const AddModelForm = ({
   isLoadingCatalog,
   catalogError,
   isPending,
-  isTesting,
-  isLoadingModel,
-  connectionStatus,
-  connectionError,
-  toolSupport,
+  connection,
   submitError,
   onSubmit,
   onCancel,
@@ -247,18 +239,14 @@ export const AddModelForm = ({
           provider={provider}
           model={model}
           apiKey={apiKey}
-          isTesting={isTesting}
-          isLoadingModel={isLoadingModel}
+          connection={connection}
           onTest={onTestConnection}
-          status={connectionStatus}
-          error={connectionError}
-          toolSupport={toolSupport}
         />
         {provider !== 'thunderbolt' && (
           <SupportsToolsSwitch
             checked={supportsTools}
             onCheckedChange={(checked) => form.setValue('supportsTools', checked)}
-            disabled={isTesting}
+            disabled={connection.isTesting}
           />
         )}
         {submitError && (
@@ -278,7 +266,7 @@ export const AddModelForm = ({
               isPending,
               isFormValid: form.formState.isValid,
               provider,
-              connectionStatus,
+              connectionStatus: connection.status,
             })}
           >
             <Trans>Add Model</Trans>

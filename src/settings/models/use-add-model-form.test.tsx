@@ -262,8 +262,8 @@ describe('useAddModelForm', () => {
       await result.current.onTestConnection()
     })
 
-    expect(result.current.connectionStatus).toBe('success')
-    expect(result.current.toolSupport).toBe('unsupported')
+    expect(result.current.connection.status).toBe('success')
+    expect(result.current.connection.toolSupport).toBe('unsupported')
     expect(result.current.form.getValues('supportsTools')).toBe(false)
 
     await act(async () => {

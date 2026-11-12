@@ -7,7 +7,7 @@ import { AlertTriangle, Check, Loader2, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { StatusCard } from '@/components/ui/status-card'
-import type { ToolSupport } from '@/hooks/use-model-connection-test'
+import type { ModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
 import { providerRequiresApiKey, providerRequiresConnectionTest } from './model-policy'
 
@@ -15,12 +15,8 @@ type ConnectionTestSectionProps = {
   provider: Model['provider']
   model: string
   apiKey: string | undefined
-  isTesting: boolean
-  isLoadingModel: boolean
+  connection: Pick<ModelConnectionTest, 'isTesting' | 'isLoadingModel' | 'status' | 'error' | 'toolSupport'>
   onTest: () => void
-  status: 'idle' | 'success' | 'error'
-  error: string | null
-  toolSupport: ToolSupport | null
 }
 
 /** Determines whether the current provider fields are sufficient for a test. */
@@ -32,18 +28,9 @@ const canTestModelConnection = (provider: Model['provider'], model?: string, api
 }
 
 /** Shared connection test controls and result presentation for model forms. */
-export const ConnectionTestSection = ({
-  provider,
-  model,
-  apiKey,
-  isTesting,
-  isLoadingModel,
-  onTest,
-  status,
-  error,
-  toolSupport,
-}: ConnectionTestSectionProps) => {
+export const ConnectionTestSection = ({ provider, model, apiKey, connection, onTest }: ConnectionTestSectionProps) => {
   const { t } = useLingui()
+  const { isTesting, isLoadingModel, status, error, toolSupport } = connection
   const canTest = canTestModelConnection(provider, model, apiKey)
   const showApiKeyHint = !canTest && Boolean(model) && providerRequiresApiKey(provider)
 

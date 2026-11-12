@@ -41,6 +41,12 @@ git -C "$repo" worktree add -q -b "$branch" "$wt" HEAD
 mkdir -p "$scratch"
 echo data > "$scratch/file"
 inv() { (export THUNDER_CLEANUP_SOURCE=1; set +e; source "$here/inventory.sh"; "$@"); }
+# Full inventories see a healthy Docker with no containers, so the result does not depend on
+# whether this machine has Docker, and the test never talks to a real Docker host.
+mkdir -p "$tmp/inventory-bin"
+printf '#!/bin/sh\nexit 0\n' > "$tmp/inventory-bin/docker"
+chmod +x "$tmp/inventory-bin/docker"
+inventory() { (cd "$tmp" && PATH="$tmp/inventory-bin:$PATH" bash "$here/inventory.sh" "$@"); }
 rec() { (cd "$1" && bash "$here/record.sh" "$2" "$3" selftest) > /dev/null; ledgers="$ledgers $(bash "$here/record.sh" --ledger "$1")"; }
 # Run every owned row's command except prune (it also clears other already-deleted worktrees).
 remove_owned() {
@@ -94,7 +100,7 @@ pick() { printf '%b' "$1" | inv pick_pr "$branch"; }
 [ "$(pick "4\tMERGED\tu4\t$unrelated\tfalse\n" | cut -f2)" = MERGED-UNVERIFIED ] || fail 'unrelated PR head accepted'
 [ "$(pick "5\tMERGED\tu5\t0000000000000000000000000000000000000001\tfalse\n" | cut -f2)" = MERGED-UNVERIFIED ] || fail 'unknown PR head accepted'
 [ -z "$(pick "6\tMERGED\tu6\t$tip\ttrue\n")" ] || fail 'fork-only PR list produced a PR'
-if (cd "$tmp" && bash "$here/inventory.sh" main) > /dev/null 2>&1; then fail 'inventory accepted the default branch'; fi
+if inventory main > /dev/null 2>&1; then fail 'inventory accepted the default branch'; fi
 
 # 3 and 9. Compose ownership and nested worktrees, from fake inputs.
 [ -z "$(export THUNDER_CLEANUP_SOURCE=1; set +e; source "$here/inventory.sh"; roots="$wt"; compose_dirs=$(printf 'p1\t%s\n' "$wt/powersync-service"); outside_dirs p1)" ] ||
@@ -150,7 +156,7 @@ printf 'snapshot\t%s\tselftest\t%s\t%s\n' "$main" "$branch" "$wt" >> "$ledger"
 printf 'ios-simulator\tall\tselftest\t%s\t%s\n' "$branch" "$wt" >> "$ledger"
 printf 'pid\t1\tselftest\t%s\t%s\n' "$branch" "$wt" >> "$ledger"
 
-out=$(cd "$tmp" && bash "$here/inventory.sh" "$wt")
+out=$(inventory "$wt")
 claimed=$(awk -F'\t' '$1 == "owned" || $1 == "probable" { print $1 "\t" $2 "\t" $3 }' <<< "$out")
 expected=$(printf '%s\n' "owned	scratch	$scratch" "owned	worktree	$wt" "owned	branch	$branch" "owned	prune	-")
 [ "$(sort <<< "$claimed")" = "$(sort <<< "$expected")" ] ||
@@ -179,15 +185,18 @@ old_ledger=$(bash "$here/record.sh" --ledger "$wt2")
 git -C "$repo" worktree remove --force "$wt2"
 git -C "$repo" worktree add -q -b "$branch-new" "$wt2" HEAD
 rec "$wt2" scratch "$tmp/scratch-new"
-[ "$(bash "$here/record.sh" --ledger "$wt2")" != "$old_ledger" ] || fail 'a new worktree at the same path inherited the old ledger'
-out=$(cd "$tmp" && bash "$here/inventory.sh" "$wt2")
+new_ledger=$(bash "$here/record.sh" --ledger "$wt2")
+[ "$new_ledger" != "$old_ledger" ] || fail 'a new worktree at the same path inherited the old ledger'
+out=$(inventory "$wt2")
 ! grep -qF "$tmp/scratch-gone" <<< "$out" || fail 'the new worktree claimed the old worktree scratch'
 grep -qF "owned	scratch	$tmp/scratch-new" <<< "$out" || fail 'the new worktree lost its own scratch'
-gone=$(cd "$tmp" && bash "$here/inventory.sh" "$branch-gone")
+grep -qF "owned	ledger	$new_ledger" <<< "$out" || fail 'a ledger with no manual rows was not claimed for removal'
+gone=$(inventory "$branch-gone")
 grep -qF "owned	scratch	$tmp/scratch-gone" <<< "$gone" || fail 'branch mode missed the removed worktree ledger rows'
 remove_owned "$gone"
 [ ! -e "$tmp/scratch-gone" ] || fail 'removed-worktree scratch still on disk'
 [ ! -f "$old_ledger" ] || fail 'emptied ledger of the removed worktree still present'
 remove_owned "$out"
 [ ! -e "$wt2" ] && [ ! -e "$tmp/scratch-new" ] || fail 'second worktree or its scratch still on disk'
+[ ! -f "$new_ledger" ] || fail 'ledger of the second worktree still present'
 echo "thunder-cleanup self-test passed (removal commands in $cleanup_shell)"

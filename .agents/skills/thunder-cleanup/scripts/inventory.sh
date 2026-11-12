@@ -330,7 +330,7 @@ inventory_task() { # worktree-path (may be empty) branch
   if git -C "$main" show-ref --verify --quiet "refs/heads/$branch"; then
     row owned branch "$branch" - 'local branch; delete only after gh confirms the PR merged' "git -C $(q "$main") branch -D $(q "$branch")"
   fi
-  if git -C "$main" ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+  if with_timeout 20 git -C "$main" ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
     row info remote-branch "origin/$branch" - 'still on origin; left alone (merged branches are deleted by GitHub)' ''
   fi
   row owned prune - - 'stale worktree entries' "git -C $(q "$main") worktree prune"

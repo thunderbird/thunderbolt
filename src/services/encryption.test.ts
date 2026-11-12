@@ -24,6 +24,8 @@ import {
   decrypt,
   exportPublicKey,
   exportMlKemPublicKey,
+  importPublicKey,
+  importMlKemPublicKey,
   base64ToUint8Array,
   uint8ArrayToBase64,
   anchorVersion,
@@ -46,8 +48,16 @@ import {
   encodeRecoverySeed,
   generateKdfSalt,
   generateRecoverySeed,
+  kdfSaltRequiresContinuity,
+  recoveryContinuityHolds,
+  sealRecoveryContinuity,
 } from '@/crypto/recovery-key'
-import { derivePasskeyKeyPair } from '@/crypto/passkey-key'
+import {
+  derivePasskeyKeyPair,
+  deriveSealedPasskeyKeyPair,
+  passkeyContinuityHolds,
+  sealPasskeyContinuity,
+} from '@/crypto/passkey-key'
 import { createDeviceApprovalFingerprint } from '@/crypto/device-approval-fingerprint'
 import {
   createApprovalCodeContext,
@@ -69,6 +79,7 @@ const storedDEKs = new Map<KeyId, string>()
 let storedPrimaryKeyId: KeyId | null = null
 let storedKeyVersion: number | null = null
 let storedKeyringAnchor: KeyringAnchor | null = null
+let storedAKUnverified = false
 let storedAKKeyVersion: number | null = null
 const keyWrites = { ak: 0, dek: 0, primary: 0, version: 0, witness: 0 }
 /** Simulates a persistent IndexedDB write failure inside `storeAK` (post-commit staging). */
@@ -161,7 +172,12 @@ mock.module('@/crypto/key-storage', () => ({
     storedKeyringAnchor = anchor
   },
   getKeyringAnchor: async () => storedKeyringAnchor,
+  markAKUnverified: async () => {
+    storedAKUnverified = true
+  },
+  isAKUnverified: async () => storedAKUnverified,
   clearAllKeys: async () => {
+    storedAKUnverified = false
     storedKeyPair = null
     storedAK = null
     storedLegacyCK = null
@@ -193,6 +209,12 @@ const {
   finishDeviceLockout,
   LockoutIncompleteError,
   RecoveryAnchorError,
+  RecoveryContinuityError,
+  PasskeyContinuityError,
+  PasskeyContinuityUnsupportedError,
+  PasskeyMismatchError,
+  UnverifiedAccountKeyError,
+  migratePasskeyContinuity,
   MissingRecoverySlotError,
   RotationStaleError,
   AKAnchorError,
@@ -217,11 +239,13 @@ type MetaState = {
   recoveryMlkemPublicKey: string | null
   recoveryWrappedAk: string | null
   recoveryAttestation: string | null
+  recoveryContinuity?: string | null
   passkeyCredentialId?: string | null
   passkeyEcdhPublicKey?: string | null
   passkeyMlkemPublicKey?: string | null
   passkeyWrappedAk?: string | null
   passkeyAttestation?: string | null
+  passkeyContinuity?: string | null
   keyVersion: number
   primaryKeyId: KeyId
   schemeVersion: 1 | 2
@@ -272,6 +296,10 @@ type FakeServer = {
   lastBindNonce: string | null
   /** Status GET /devices/me/envelope answers with, instead of serving the envelope. */
   failEnvelopeFetchWith?: number
+  /** Status an envelope POST answers with AFTER committing it: a lost response. */
+  loseEnvelopePostWith?: number
+  /** Serve metadata the way a backend without the `passkey_continuity` column does. */
+  omitPasskeyContinuity?: boolean
   fetch: (input: Request) => Promise<Response>
 }
 
@@ -352,27 +380,33 @@ const createFakeServer = (): FakeServer => {
       // GET requests have no body
     }
 
-    const metaResponse = () =>
-      server.metadata
-        ? jsonResponse({
-            canary_iv: server.metadata.canaryIv,
-            canary_ctext: server.metadata.canaryCtext,
-            kdf_salt: server.metadata.kdfSalt,
-            signing_public_key: server.metadata.signingPublicKey,
-            recovery_ecdh_public_key: server.metadata.recoveryEcdhPublicKey,
-            recovery_mlkem_public_key: server.metadata.recoveryMlkemPublicKey,
-            recovery_wrapped_ak: server.metadata.recoveryWrappedAk,
-            recovery_attestation: server.metadata.recoveryAttestation,
-            passkey_credential_id: server.metadata.passkeyCredentialId ?? null,
-            passkey_ecdh_public_key: server.metadata.passkeyEcdhPublicKey ?? null,
-            passkey_mlkem_public_key: server.metadata.passkeyMlkemPublicKey ?? null,
-            passkey_wrapped_ak: server.metadata.passkeyWrappedAk ?? null,
-            passkey_attestation: server.metadata.passkeyAttestation ?? null,
-            key_version: server.metadata.keyVersion,
-            primary_key_id: server.metadata.primaryKeyId,
-            scheme_version: server.metadata.schemeVersion,
-          })
-        : jsonResponse({ error: 'not set up' }, 404)
+    const metaResponse = () => {
+      if (!server.metadata) {
+        return jsonResponse({ error: 'not set up' }, 404)
+      }
+      const served = {
+        canary_iv: server.metadata.canaryIv,
+        canary_ctext: server.metadata.canaryCtext,
+        kdf_salt: server.metadata.kdfSalt,
+        signing_public_key: server.metadata.signingPublicKey,
+        recovery_ecdh_public_key: server.metadata.recoveryEcdhPublicKey,
+        recovery_mlkem_public_key: server.metadata.recoveryMlkemPublicKey,
+        recovery_wrapped_ak: server.metadata.recoveryWrappedAk,
+        recovery_attestation: server.metadata.recoveryAttestation,
+        recovery_continuity: server.metadata.recoveryContinuity ?? null,
+        passkey_credential_id: server.metadata.passkeyCredentialId ?? null,
+        passkey_ecdh_public_key: server.metadata.passkeyEcdhPublicKey ?? null,
+        passkey_mlkem_public_key: server.metadata.passkeyMlkemPublicKey ?? null,
+        passkey_wrapped_ak: server.metadata.passkeyWrappedAk ?? null,
+        passkey_attestation: server.metadata.passkeyAttestation ?? null,
+        passkey_continuity: server.metadata.passkeyContinuity ?? null,
+        key_version: server.metadata.keyVersion,
+        primary_key_id: server.metadata.primaryKeyId,
+        scheme_version: server.metadata.schemeVersion,
+      }
+      const { passkey_continuity: _absentOnOldBackends, ...withoutPasskeySeal } = served
+      return jsonResponse(server.omitPasskeyContinuity ? withoutPasskeySeal : served)
+    }
 
     if (path === '/devices' && method === 'POST') {
       const deviceId = body!.deviceId as string
@@ -413,6 +447,7 @@ const createFakeServer = (): FakeServer => {
           kdfSalt: body!.kdfSalt as string,
           signingPublicKey: body!.signingPublicKey as string,
           ...recoverySlotFrom(body!),
+          recoveryContinuity: (body!.recoveryContinuity as string | undefined) ?? null,
           keyVersion: 1,
           primaryKeyId: '0',
           schemeVersion: 2,
@@ -420,6 +455,9 @@ const createFakeServer = (): FakeServer => {
         for (const entry of (body!.wrappedKeys as Array<{ keyId: KeyId; wrappedKey: string }>) ?? []) {
           server.wrappedKeys.set(entry.keyId, entry.wrappedKey)
         }
+      }
+      if (server.loseEnvelopePostWith) {
+        return jsonResponse({ error: 'response lost' }, server.loseEnvelopePostWith)
       }
       return jsonResponse({ trusted: true })
     }
@@ -508,15 +546,33 @@ const createFakeServer = (): FakeServer => {
       if (newPrimaryKey) {
         server.wrappedKeys.set(newPrimaryKey.keyId, newPrimaryKey.wrappedKey)
       }
+      // Like the server: the stored seal survives a same-key rotation and is
+      // replaced only when the recovery keys change.
+      const recoveryChanged =
+        server.metadata!.recoveryEcdhPublicKey !== body!.recoveryEcdhPublicKey ||
+        server.metadata!.recoveryMlkemPublicKey !== body!.recoveryMlkemPublicKey
+      const recoveryContinuity = recoveryChanged
+        ? ((body!.recoveryContinuity as string | undefined) ?? null)
+        : server.metadata!.recoveryContinuity
       server.metadata = {
         ...server.metadata!,
         ...(newPrimaryKey ? { primaryKeyId: newPrimaryKey.keyId } : {}),
+        recoveryContinuity,
         canaryIv: body!.canaryIv as string,
         canaryCtext: body!.canaryCtext as string,
         kdfSalt: body!.kdfSalt as string,
         signingPublicKey: body!.signingPublicKey as string,
         ...recoverySlotFrom(body!),
         ...passkeySlotFrom(body!),
+        // Like the server: no slot clears the seal, changed slot keys store the
+        // sent one, unchanged keys keep the stored one.
+        passkeyContinuity: !body!.passkeyCredentialId
+          ? null
+          : body!.passkeyCredentialId === server.metadata!.passkeyCredentialId &&
+              body!.passkeyEcdhPublicKey === server.metadata!.passkeyEcdhPublicKey &&
+              body!.passkeyMlkemPublicKey === server.metadata!.passkeyMlkemPublicKey
+            ? server.metadata!.passkeyContinuity
+            : ((body!.passkeyContinuity as string | undefined) ?? null),
         keyVersion: server.metadata!.keyVersion + 1,
       }
       return jsonResponse({ key_version: server.metadata.keyVersion })
@@ -546,6 +602,7 @@ const createFakeServer = (): FakeServer => {
         kdfSalt: body!.kdfSalt as string,
         signingPublicKey: body!.signingPublicKey as string,
         ...recoverySlotFrom(body!),
+        recoveryContinuity: (body!.recoveryContinuity as string | undefined) ?? null,
         keyVersion,
         primaryKeyId: body!.primaryKeyId as KeyId,
         schemeVersion: 2,
@@ -576,6 +633,9 @@ const authTokenKey = 'thunderbolt_auth_token'
 // needs a distinct phrase.
 const fixtureRecoverySalt = generateKdfSalt()
 const fixtureRecoveryKeyPair = await deriveRecoveryKeyPairFromSeed(new Uint8Array(32).fill(7), fixtureRecoverySalt)
+// A fully random salt, as minted before the continuity seal existed.
+const legacyRecoverySalt = uint8ArrayToBase64(crypto.getRandomValues(new Uint8Array(32)))
+const legacyRecoveryKeyPair = await deriveRecoveryKeyPairFromSeed(new Uint8Array(32).fill(7), legacyRecoverySalt)
 
 /** Unwrap this device's staged envelope into the account AK (test convenience). */
 const unwrapDeviceAK = async (server: FakeServer): Promise<CryptoKey> =>
@@ -624,7 +684,7 @@ const seedV2Account = async (
   extraDekIds: KeyId[] = [],
 ): Promise<CryptoKey> => {
   const ak = await generateAK(true)
-  const { wrappedKey: w0 } = await mintDEK(ak, '0')
+  const { wrappedKey: w0, dek: dek0 } = await mintDEK(ak, '0')
   server.wrappedKeys.set('0', w0)
   server.wrappedKeys.set('v1', await wrapDEK(legacyCK, ak, 'v1'))
   for (const id of extraDekIds) {
@@ -674,11 +734,76 @@ const seedV2Account = async (
       recoveryEcdhPublicKey,
       recoveryMlkemPublicKey,
     }),
+    recoveryContinuity: await sealRecoveryContinuity(dek0, fixtureRecoveryKeyPair.continuityKey, testUserId),
     keyVersion: 1,
     primaryKeyId: '0',
     schemeVersion: 2,
   }
   return ak
+}
+
+/** Wipe this device the way a server-forced revocation does, leaving a fresh device id. */
+const wipeAsRevoked = async () => {
+  await handleFullWipe()
+  localStorage.setItem(deviceIdKey, 'recovered-device-id')
+}
+
+/** A refused unlock leaves the wiped device holding nothing and trusted by nobody. */
+const expectNothingAdopted = (server: FakeServer) => {
+  expect(storedAK).toBeNull()
+  expect(storedKeyringAnchor).toBeNull()
+  expect(storedPrimaryKeyId).toBeNull()
+  expect(storedAKUnverified).toBe(false)
+  expect(server.envelopes.has('recovered-device-id')).toBe(false)
+  expect(server.deviceTrusted.get('recovered-device-id')).not.toBe(true)
+  expect(server.requests.some((request) => request.startsWith('POST /devices/recovered-device-id/envelope'))).toBe(
+    false,
+  )
+}
+
+/**
+ * Write a passkey slot for `ak` straight into the fake server, in the legacy or
+ * the sealed format, with a real attestation from the seeded epoch. `seal`
+ * overrides the stored `passkeyContinuity`; by default a sealed slot gets a valid
+ * seal and a legacy slot gets none.
+ */
+const seedPasskeySlot = async (
+  server: FakeServer,
+  ak: CryptoKey,
+  credentialId: string,
+  prfOutput: Uint8Array,
+  format: 'legacy' | 'sealed',
+  seal?: string | null,
+) => {
+  const metadata = server.metadata!
+  const keys = format === 'sealed' ? await deriveSealedPasskeyKeyPair(prfOutput) : await derivePasskeyKeyPair(prfOutput)
+  const canaryKey = await unwrapCanaryKey(ak, testUserId, metadata.canaryIv!, metadata.canaryCtext!)
+  const passkeyEcdhPublicKey = await exportPublicKey(keys.ecdhPublicKey)
+  const passkeyMlkemPublicKey = exportMlKemPublicKey(keys.mlkemPublicKey)
+  const dek0 = await unwrapDEK(server.wrappedKeys.get(initialKeyId)!, ak, initialKeyId)
+  const defaultSeal =
+    format === 'sealed'
+      ? await sealPasskeyContinuity(
+          dek0,
+          (await deriveSealedPasskeyKeyPair(prfOutput)).continuityKey,
+          testUserId,
+          credentialId,
+        )
+      : null
+  Object.assign(metadata, {
+    passkeyCredentialId: credentialId,
+    passkeyEcdhPublicKey,
+    passkeyMlkemPublicKey,
+    passkeyWrappedAk: await wrapAK(ak, keys.ecdhPublicKey, keys.mlkemPublicKey, initialKeyId, metadata.keyVersion),
+    passkeyAttestation: await signPasskeyAttestation(canaryKey, {
+      userId: testUserId,
+      credentialId,
+      passkeyEcdhPublicKey,
+      passkeyMlkemPublicKey,
+    }),
+    passkeyContinuity: seal === undefined ? defaultSeal : seal,
+  })
+  return { dek0 }
 }
 
 /** Build a v1 (legacy) account: an AES-GCM CK, a no-AAD v1 canary, and a v1 envelope. */
@@ -728,6 +853,7 @@ describe('encryption service (v2)', () => {
     storedPrimaryKeyId = null
     storedKeyVersion = null
     storedKeyringAnchor = null
+    storedAKUnverified = false
     storedAKKeyVersion = null
     failStageDEKs = false
     failStoreAK = false
@@ -2274,6 +2400,230 @@ describe('encryption service (v2)', () => {
         'has not finished upgrading',
       )
     })
+
+    /**
+     * A malicious server forces an established device to wipe its keys, then
+     * serves an Account Key, DEK "0", canary and signing key of its own, with the
+     * AK wrapped to the account's real recovery public keys. Those keys are
+     * public, so the victim's correct phrase opens the envelope and every check
+     * that compares one served artifact with another passes. Only material bound
+     * to the phrase itself can expose the substitution.
+     */
+    const forgeServerEpoch = async (server: FakeServer): Promise<CryptoKey> => {
+      const metadata = server.metadata!
+      const attackerAK = await generateAK(true)
+      const attackerDek0 = await generateDEK(true)
+      const { canaryIv, canaryCtext, canaryKey } = await mintCanary(attackerAK, testUserId)
+      const { publicKeySpki } = await deriveSigningKeyPair(canaryKey)
+      server.wrappedKeys.clear()
+      server.wrappedKeys.set(initialKeyId, await wrapDEK(attackerDek0, attackerAK, initialKeyId))
+      server.metadata = {
+        ...metadata,
+        canaryIv,
+        canaryCtext,
+        signingPublicKey: publicKeySpki,
+        recoveryWrappedAk: await wrapAK(
+          attackerAK,
+          await importPublicKey(metadata.recoveryEcdhPublicKey!),
+          importMlKemPublicKey(metadata.recoveryMlkemPublicKey!),
+          initialKeyId,
+          metadata.keyVersion,
+        ),
+        // Self-consistent: signed with the canary key the attacker just minted.
+        recoveryAttestation: await signRecoveryAttestation(canaryKey, {
+          userId: testUserId,
+          kdfSalt: metadata.kdfSalt!,
+          recoveryEcdhPublicKey: metadata.recoveryEcdhPublicKey!,
+          recoveryMlkemPublicKey: metadata.recoveryMlkemPublicKey!,
+        }),
+      }
+      return attackerDek0
+    }
+
+    it('refuses a forged key set after a forced wipe, even with the correct phrase', async () => {
+      const server = createFakeServer()
+      storedKeyPair = await generateFullKeyPair()
+      const victimPhrase = await completeFirstDeviceSetup(clientFor(server))
+      await wipeAsRevoked()
+      await forgeServerEpoch(server)
+
+      const wrongPhrase = encodeRecoverySeed(generateRecoverySeed())
+      await expect(recoverWithKey(clientFor(server), wrongPhrase)).rejects.toThrow('Invalid recovery key')
+      expectNothingAdopted(server)
+
+      await expect(recoverWithKey(clientFor(server), victimPhrase)).rejects.toThrow(RecoveryContinuityError)
+      expectNothingAdopted(server)
+    })
+
+    it('refuses the forged key set when the server withholds the seal', async () => {
+      const server = createFakeServer()
+      storedKeyPair = await generateFullKeyPair()
+      const victimPhrase = await completeFirstDeviceSetup(clientFor(server))
+      await wipeAsRevoked()
+      await forgeServerEpoch(server)
+      server.metadata!.recoveryContinuity = null
+
+      await expect(recoverWithKey(clientFor(server), victimPhrase)).rejects.toThrow(RecoveryContinuityError)
+      expectNothingAdopted(server)
+    })
+
+    it('refuses a seal the server made for its own DEK "0" without the phrase', async () => {
+      const server = createFakeServer()
+      storedKeyPair = await generateFullKeyPair()
+      const victimPhrase = await completeFirstDeviceSetup(clientFor(server))
+      await wipeAsRevoked()
+      const attackerDek0 = await forgeServerEpoch(server)
+      const attackerKeys = await deriveRecoveryKeyPairFromSeed(generateRecoverySeed(), server.metadata!.kdfSalt!)
+      server.metadata!.recoveryContinuity = await sealRecoveryContinuity(
+        attackerDek0,
+        attackerKeys.continuityKey,
+        testUserId,
+      )
+
+      await expect(recoverWithKey(clientFor(server), victimPhrase)).rejects.toThrow(RecoveryContinuityError)
+      expectNothingAdopted(server)
+    })
+
+    it('recovers after a forced wipe when the server serves the real key set', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      // A silent rotation re-wraps DEK "0" and keeps the stored seal.
+      await rotateAccountKey(clientFor(server), {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+      const honestWrappedDek0 = server.wrappedKeys.get(initialKeyId)!
+      await wipeAsRevoked()
+
+      await recoverWithKey(clientFor(server), encodeRecoverySeed(new Uint8Array(32).fill(7)))
+
+      expect(server.deviceTrusted.get('recovered-device-id')).toBe(true)
+      expect(storedKeyringAnchor).not.toBeNull()
+      const dek0 = await unwrapDEK(honestWrappedDek0, storedAK!, initialKeyId)
+      expect(await keyringAnchorOpens(storedKeyringAnchor!, dek0)).toBe(true)
+    })
+
+    it('refuses a seal left over from the previous phrase', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      const previousSeal = server.metadata!.recoveryContinuity
+      const newPhrase = await changeRecoveryPhrase(clientFor(server), {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+      expect(server.metadata!.recoveryContinuity).not.toBe(previousSeal)
+      await wipeAsRevoked()
+      const currentSeal = server.metadata!.recoveryContinuity
+      server.metadata!.recoveryContinuity = previousSeal
+
+      await expect(recoverWithKey(clientFor(server), newPhrase)).rejects.toThrow(RecoveryContinuityError)
+      expectNothingAdopted(server)
+
+      server.metadata!.recoveryContinuity = currentSeal
+      await recoverWithKey(clientFor(server), newPhrase)
+      expect(server.deviceTrusted.get('recovered-device-id')).toBe(true)
+    })
+
+    it('still recovers a phrase minted before the seal existed', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const ak = await seedV2Account(server, kp, await generateDEK(true))
+      server.metadata = {
+        ...server.metadata!,
+        kdfSalt: legacyRecoverySalt,
+        recoveryEcdhPublicKey: await exportPublicKey(legacyRecoveryKeyPair.ecdhPublicKey),
+        recoveryMlkemPublicKey: exportMlKemPublicKey(legacyRecoveryKeyPair.mlkemPublicKey),
+        recoveryWrappedAk: await wrapAK(
+          ak,
+          legacyRecoveryKeyPair.ecdhPublicKey,
+          legacyRecoveryKeyPair.mlkemPublicKey,
+          initialKeyId,
+          server.metadata!.keyVersion,
+        ),
+        recoveryContinuity: null,
+      }
+      await wipeAsRevoked()
+
+      await recoverWithKey(clientFor(server), encodeRecoverySeed(new Uint8Array(32).fill(7)))
+
+      expect(server.deviceTrusted.get('recovered-device-id')).toBe(true)
+    })
+
+    it('marks the device unverified after recovering with a pre-seal phrase', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const ak = await seedV2Account(server, kp, await generateDEK(true))
+      server.metadata = {
+        ...server.metadata!,
+        kdfSalt: legacyRecoverySalt,
+        recoveryEcdhPublicKey: await exportPublicKey(legacyRecoveryKeyPair.ecdhPublicKey),
+        recoveryMlkemPublicKey: exportMlKemPublicKey(legacyRecoveryKeyPair.mlkemPublicKey),
+        recoveryWrappedAk: await wrapAK(
+          ak,
+          legacyRecoveryKeyPair.ecdhPublicKey,
+          legacyRecoveryKeyPair.mlkemPublicKey,
+          initialKeyId,
+          server.metadata!.keyVersion,
+        ),
+        recoveryContinuity: null,
+      }
+      await wipeAsRevoked()
+
+      await recoverWithKey(clientFor(server), encodeRecoverySeed(new Uint8Array(32).fill(7)))
+
+      expect(storedAK).not.toBeNull()
+      expect(storedAKUnverified).toBe(true)
+    })
+
+    // The envelope POST is the remote commit: a restart after it adopts the
+    // committed envelope through the approval path, so the marker must already be there.
+    it('marks the device unverified before committing a pre-seal recovery', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const ak = await seedV2Account(server, kp, await generateDEK(true))
+      server.metadata = {
+        ...server.metadata!,
+        kdfSalt: legacyRecoverySalt,
+        recoveryEcdhPublicKey: await exportPublicKey(legacyRecoveryKeyPair.ecdhPublicKey),
+        recoveryMlkemPublicKey: exportMlKemPublicKey(legacyRecoveryKeyPair.mlkemPublicKey),
+        recoveryWrappedAk: await wrapAK(
+          ak,
+          legacyRecoveryKeyPair.ecdhPublicKey,
+          legacyRecoveryKeyPair.mlkemPublicKey,
+          initialKeyId,
+          server.metadata!.keyVersion,
+        ),
+        recoveryContinuity: null,
+      }
+      await wipeAsRevoked()
+      server.loseEnvelopePostWith = 500
+
+      await expect(recoverWithKey(clientFor(server), encodeRecoverySeed(new Uint8Array(32).fill(7)))).rejects.toThrow()
+
+      expect(server.envelopes.has('recovered-device-id')).toBe(true)
+      expect(storedAK).toBeNull()
+      expect(storedAKUnverified).toBe(true)
+    })
+
+    it('leaves no marker after a sealed recovery', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await wipeAsRevoked()
+
+      await recoverWithKey(clientFor(server), encodeRecoverySeed(new Uint8Array(32).fill(7)))
+
+      expect(storedAK).not.toBeNull()
+      expect(storedAKUnverified).toBe(false)
+    })
   })
 
   describe('rotateAccountKey', () => {
@@ -2513,6 +2863,11 @@ describe('encryption service (v2)', () => {
       const recoveredAK = await unwrapAK(server.metadata!.recoveryWrappedAk!, rkp.ecdhPrivateKey, rkp.mlkemSecretKey)
       const dek0 = await unwrapDEK(server.wrappedKeys.get('0')!, recoveredAK.ak, '0')
       expect(dek0.algorithm.name).toBe('AES-GCM')
+      // The new phrase seals the same DEK "0".
+      expect(kdfSaltRequiresContinuity(server.metadata!.kdfSalt!)).toBe(true)
+      expect(
+        await recoveryContinuityHolds(server.metadata!.recoveryContinuity!, dek0, rkp.continuityKey, testUserId),
+      ).toBe(true)
     })
 
     it('still returns the new phrase when post-commit local staging fails', async () => {
@@ -2548,7 +2903,7 @@ describe('encryption service (v2)', () => {
       return { server, listTrustedDevices }
     }
 
-    it('enrolls: the passkey opens the new AK and the phrase survives', async () => {
+    it('enrolls a new passkey as a sealed slot; the phrase survives', async () => {
       const { server, listTrustedDevices } = await establishedDevice()
       const recoveryEcdhBefore = server.metadata!.recoveryEcdhPublicKey
 
@@ -2557,14 +2912,234 @@ describe('encryption service (v2)', () => {
       expect(server.metadata!.passkeyCredentialId).toBe(credentialId)
       expect(server.metadata!.passkeyAttestation).toBeTruthy()
       expect(server.metadata!.recoveryEcdhPublicKey).toBe(recoveryEcdhBefore)
-      const passkeyKeyPair = await derivePasskeyKeyPair(prfOutput)
+      const sealedKeyPair = await deriveSealedPasskeyKeyPair(prfOutput)
+      expect(server.metadata!.passkeyEcdhPublicKey).toBe(await exportPublicKey(sealedKeyPair.ecdhPublicKey))
       const { ak } = await unwrapAK(
         server.metadata!.passkeyWrappedAk!,
-        passkeyKeyPair.ecdhPrivateKey,
-        passkeyKeyPair.mlkemSecretKey,
+        sealedKeyPair.ecdhPrivateKey,
+        sealedKeyPair.mlkemSecretKey,
       )
       const dek0 = await unwrapDEK(server.wrappedKeys.get('0')!, ak, '0')
-      expect(dek0.algorithm.name).toBe('AES-GCM')
+      expect(
+        await passkeyContinuityHolds(
+          server.metadata!.passkeyContinuity,
+          dek0,
+          sealedKeyPair.continuityKey,
+          testUserId,
+          credentialId,
+        ),
+      ).toBe(true)
+    })
+
+    it('refuses enrollment against a backend without passkey_continuity', async () => {
+      const { server, listTrustedDevices } = await establishedDevice()
+      server.omitPasskeyContinuity = true
+      server.requests.length = 0
+
+      await expect(
+        enrollPasskey(clientFor(server), { credentialId, prfOutput }, { listTrustedDevices }),
+      ).rejects.toThrow(PasskeyContinuityUnsupportedError)
+      expect(server.requests.filter((request) => request !== 'GET /encryption/canary')).toEqual([])
+    })
+
+    /** An established device whose account carries a legacy passkey slot. */
+    const establishedDeviceWithLegacySlot = async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const ak = await seedV2Account(server, kp, await generateDEK(true))
+      await seedPasskeySlot(server, ak, credentialId, prfOutput, 'legacy')
+      await checkApprovalAndUnwrap(clientFor(server))
+      const listTrustedDevices = async () => [await deviceKeysFor(kp, 'test-device-id')]
+      return { server, listTrustedDevices, ak }
+    }
+
+    const recoverySlotOf = (server: FakeServer) => {
+      const { kdfSalt, recoveryEcdhPublicKey, recoveryMlkemPublicKey, recoveryContinuity } = server.metadata!
+      return { kdfSalt, recoveryEcdhPublicKey, recoveryMlkemPublicKey, recoveryContinuity }
+    }
+
+    it('migrates a legacy passkey slot in one rotation and keeps the recovery slot byte for byte', async () => {
+      const { server, listTrustedDevices } = await establishedDeviceWithLegacySlot()
+      const recoveryBefore = recoverySlotOf(server)
+      server.requests.length = 0
+
+      expect(
+        await migratePasskeyContinuity(clientFor(server), { credentialId, prfOutput }, { listTrustedDevices }),
+      ).toBe('sealed')
+
+      expect(server.requests.filter((request) => request === 'POST /encryption/rotate')).toHaveLength(1)
+      expect(recoverySlotOf(server)).toEqual(recoveryBefore)
+      const sealedKeyPair = await deriveSealedPasskeyKeyPair(prfOutput)
+      expect(server.metadata!.passkeyEcdhPublicKey).toBe(await exportPublicKey(sealedKeyPair.ecdhPublicKey))
+      const { ak } = await unwrapAK(
+        server.metadata!.recoveryWrappedAk!,
+        fixtureRecoveryKeyPair.ecdhPrivateKey,
+        fixtureRecoveryKeyPair.mlkemSecretKey,
+      )
+      const dek0 = await unwrapDEK(server.wrappedKeys.get('0')!, ak, '0')
+      expect(
+        await passkeyContinuityHolds(
+          server.metadata!.passkeyContinuity,
+          dek0,
+          sealedKeyPair.continuityKey,
+          testUserId,
+          credentialId,
+        ),
+      ).toBe(true)
+      expect(
+        await recoveryContinuityHolds(
+          server.metadata!.recoveryContinuity!,
+          dek0,
+          fixtureRecoveryKeyPair.continuityKey,
+          testUserId,
+        ),
+      ).toBe(true)
+    })
+
+    it('refuses to migrate with a passkey that does not match the stored slot', async () => {
+      const { server, listTrustedDevices } = await establishedDeviceWithLegacySlot()
+      server.requests.length = 0
+
+      await expect(
+        migratePasskeyContinuity(
+          clientFor(server),
+          { credentialId, prfOutput: new Uint8Array(32).fill(3) },
+          { listTrustedDevices },
+        ),
+      ).rejects.toThrow(PasskeyMismatchError)
+      expect(server.requests).not.toContain('POST /encryption/rotate')
+    })
+
+    it('leaves an already sealed slot alone', async () => {
+      const { server, listTrustedDevices } = await establishedDevice()
+      await enrollPasskey(clientFor(server), { credentialId, prfOutput }, { listTrustedDevices })
+      server.requests.length = 0
+
+      expect(
+        await migratePasskeyContinuity(clientFor(server), { credentialId, prfOutput }, { listTrustedDevices }),
+      ).toBe('alreadySealed')
+      expect(server.requests).not.toContain('POST /encryption/rotate')
+    })
+
+    it('keeps the passkey seal across a silent rotation', async () => {
+      const { server, listTrustedDevices } = await establishedDevice()
+      await enrollPasskey(clientFor(server), { credentialId, prfOutput }, { listTrustedDevices })
+      const seal = server.metadata!.passkeyContinuity
+
+      await rotateAccountKey(clientFor(server), { listTrustedDevices })
+
+      expect(server.metadata!.passkeyContinuity).toBe(seal)
+    })
+
+    it('clears the passkey seal on removal', async () => {
+      const { server, listTrustedDevices } = await establishedDevice()
+      await enrollPasskey(clientFor(server), { credentialId, prfOutput }, { listTrustedDevices })
+
+      await removePasskeySlot(clientFor(server), { listTrustedDevices })
+
+      expect(server.metadata!.passkeyContinuity).toBeNull()
+    })
+
+    it('refuses a replayed legacy slot on the next rotation', async () => {
+      const { server, listTrustedDevices } = await establishedDeviceWithLegacySlot()
+      const legacy = { ...server.metadata! }
+      await migratePasskeyContinuity(clientFor(server), { credentialId, prfOutput }, { listTrustedDevices })
+      Object.assign(server.metadata!, {
+        passkeyEcdhPublicKey: legacy.passkeyEcdhPublicKey,
+        passkeyMlkemPublicKey: legacy.passkeyMlkemPublicKey,
+        passkeyWrappedAk: legacy.passkeyWrappedAk,
+        passkeyAttestation: legacy.passkeyAttestation,
+        passkeyContinuity: null,
+      })
+
+      await expect(rotateAccountKey(clientFor(server), { listTrustedDevices })).rejects.toThrow(PasskeyAnchorError)
+    })
+
+    it.each(['phrase first', 'passkey first'] as const)(
+      'migrates a legacy phrase and a legacy passkey on a trusted device, %s',
+      async (order) => {
+        const { server, listTrustedDevices, ak } = await establishedDeviceWithLegacySlot()
+        const canaryKey = await unwrapCanaryKey(
+          ak,
+          testUserId,
+          server.metadata!.canaryIv!,
+          server.metadata!.canaryCtext!,
+        )
+        const recoveryEcdhPublicKey = await exportPublicKey(legacyRecoveryKeyPair.ecdhPublicKey)
+        const recoveryMlkemPublicKey = exportMlKemPublicKey(legacyRecoveryKeyPair.mlkemPublicKey)
+        server.metadata = {
+          ...server.metadata!,
+          kdfSalt: legacyRecoverySalt,
+          recoveryEcdhPublicKey,
+          recoveryMlkemPublicKey,
+          recoveryWrappedAk: await wrapAK(
+            ak,
+            legacyRecoveryKeyPair.ecdhPublicKey,
+            legacyRecoveryKeyPair.mlkemPublicKey,
+            initialKeyId,
+            server.metadata!.keyVersion,
+          ),
+          recoveryAttestation: await signRecoveryAttestation(canaryKey, {
+            userId: testUserId,
+            kdfSalt: legacyRecoverySalt,
+            recoveryEcdhPublicKey,
+            recoveryMlkemPublicKey,
+          }),
+          recoveryContinuity: null,
+        }
+        const migratePhrase = () => changeRecoveryPhrase(clientFor(server), { listTrustedDevices })
+        const migratePasskey = () =>
+          migratePasskeyContinuity(clientFor(server), { credentialId, prfOutput }, { listTrustedDevices })
+
+        if (order === 'phrase first') {
+          await migratePhrase()
+          expect(server.metadata!.passkeyContinuity).toBeNull()
+          await migratePasskey()
+        } else {
+          await migratePasskey()
+          expect(server.metadata!.recoveryContinuity).toBeNull()
+          await migratePhrase()
+        }
+
+        expect(server.metadata!.recoveryContinuity).toBeTruthy()
+        expect(server.metadata!.passkeyContinuity).toBeTruthy()
+      },
+    )
+
+    describe('on an unverified device', () => {
+      it.each([
+        [
+          'approveDevice',
+          (server: FakeServer) =>
+            approveDevice(clientFor(server), 'pending-dev', 'ecdh', 'mlkem', {
+              kind: 'fingerprint',
+              fingerprint: 'fingerprint',
+            }),
+        ],
+        ['enrollPasskey', (server: FakeServer) => enrollPasskey(clientFor(server), { credentialId, prfOutput })],
+        [
+          'migratePasskeyContinuity',
+          (server: FakeServer) => migratePasskeyContinuity(clientFor(server), { credentialId, prfOutput }),
+        ],
+        ['changeRecoveryPhrase', (server: FakeServer) => changeRecoveryPhrase(clientFor(server))],
+      ])('%s refuses before any request', async (_name, act) => {
+        const { server } = await establishedDeviceWithLegacySlot()
+        storedAKUnverified = true
+        server.requests.length = 0
+
+        await expect(act(server)).rejects.toThrow(UnverifiedAccountKeyError)
+        expect(server.requests).toEqual([])
+      })
+
+      it('never builds a sealed recovery slot while the store carries the marker', async () => {
+        const server = createFakeServer()
+        storedKeyPair = await generateFullKeyPair()
+        storedAKUnverified = true
+
+        await expect(completeFirstDeviceSetup(clientFor(server))).rejects.toThrow(UnverifiedAccountKeyError)
+        expect(server.requests).toEqual([])
+      })
     })
 
     it('re-anchors the slot on a silent rotation — same keys, new wrapped AK', async () => {
@@ -2700,6 +3275,99 @@ describe('encryption service (v2)', () => {
         unlockWithPasskey(clientFor(server), { credentialId, prfOutput: new Uint8Array(32).fill(1) }),
       ).rejects.toThrow('cannot unlock sync')
       expect(server.requests).toEqual(['GET /encryption/canary'])
+    })
+
+    /** A seeded account with a passkey slot written by the test, then a wiped device. */
+    const wipedDeviceWithSlot = async (format: 'legacy' | 'sealed', seal?: string | null) => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const ak = await seedV2Account(server, kp, await generateDEK(true))
+      const { dek0 } = await seedPasskeySlot(server, ak, credentialId, prfOutput, format, seal)
+      await wipeAsRevoked()
+      server.requests.length = 0
+      return { server, dek0 }
+    }
+
+    it('verifies a sealed passkey slot and leaves no marker', async () => {
+      const { server } = await wipedDeviceWithSlot('sealed')
+
+      await unlockWithPasskey(clientFor(server), { credentialId, prfOutput })
+
+      expect(storedAK).not.toBeNull()
+      expect(storedAKUnverified).toBe(false)
+      expect(server.deviceTrusted.get('recovered-device-id')).toBe(true)
+    })
+
+    it('refuses a sealed slot whose seal was stripped, before adopting anything', async () => {
+      const { server } = await wipedDeviceWithSlot('sealed', null)
+
+      await expect(unlockWithPasskey(clientFor(server), { credentialId, prfOutput })).rejects.toThrow(
+        PasskeyContinuityError,
+      )
+      expectNothingAdopted(server)
+    })
+
+    it('refuses a seal made for another credential', async () => {
+      const { server, dek0 } = await wipedDeviceWithSlot('sealed')
+      const { continuityKey } = await deriveSealedPasskeyKeyPair(prfOutput)
+      server.metadata!.passkeyContinuity = await sealPasskeyContinuity(dek0, continuityKey, testUserId, 'other')
+
+      await expect(unlockWithPasskey(clientFor(server), { credentialId, prfOutput })).rejects.toThrow(
+        PasskeyContinuityError,
+      )
+      expectNothingAdopted(server)
+    })
+
+    it('refuses a seal made for another account', async () => {
+      const { server, dek0 } = await wipedDeviceWithSlot('sealed')
+      const { continuityKey } = await deriveSealedPasskeyKeyPair(prfOutput)
+      server.metadata!.passkeyContinuity = await sealPasskeyContinuity(dek0, continuityKey, 'other-user', credentialId)
+
+      await expect(unlockWithPasskey(clientFor(server), { credentialId, prfOutput })).rejects.toThrow(
+        PasskeyContinuityError,
+      )
+      expectNothingAdopted(server)
+    })
+
+    it('refuses a tampered seal', async () => {
+      const { server } = await wipedDeviceWithSlot('sealed')
+      const [iv, ciphertext, mac] = server.metadata!.passkeyContinuity!.split(':')
+      // The first character's bits are all significant; a trailing one may be padding.
+      server.metadata!.passkeyContinuity = [iv, ciphertext, `${mac![0] === 'A' ? 'B' : 'A'}${mac!.slice(1)}`].join(':')
+
+      await expect(unlockWithPasskey(clientFor(server), { credentialId, prfOutput })).rejects.toThrow(
+        PasskeyContinuityError,
+      )
+      expectNothingAdopted(server)
+    })
+
+    it('refuses a legacy slot that carries a seal', async () => {
+      const { server } = await wipedDeviceWithSlot('legacy', 'iv:ciphertext:mac')
+
+      await expect(unlockWithPasskey(clientFor(server), { credentialId, prfOutput })).rejects.toThrow(
+        PasskeyContinuityError,
+      )
+      expectNothingAdopted(server)
+    })
+
+    it('marks the device unverified before committing a legacy slot unlock', async () => {
+      const { server } = await wipedDeviceWithSlot('legacy')
+      server.loseEnvelopePostWith = 500
+
+      await expect(unlockWithPasskey(clientFor(server), { credentialId, prfOutput })).rejects.toThrow()
+
+      expect(storedAK).toBeNull()
+      expect(storedAKUnverified).toBe(true)
+    })
+
+    it('unlocks a legacy slot as trust-on-first-use and marks the device unverified', async () => {
+      const { server } = await wipedDeviceWithSlot('legacy')
+
+      await unlockWithPasskey(clientFor(server), { credentialId, prfOutput })
+
+      expect(storedAK).not.toBeNull()
+      expect(storedAKUnverified).toBe(true)
     })
   })
 
@@ -2966,7 +3634,11 @@ describe('encryption service (v2)', () => {
       const rkp = await deriveRecoveryKeyPairFromSeed(decodeRecoveryKey(result.recoveryKey), server.metadata!.kdfSalt!)
       expect(server.metadata!.recoveryEcdhPublicKey).toBe(await exportPublicKey(rkp.ecdhPublicKey))
       const recoveredAK = await unwrapAK(server.metadata!.recoveryWrappedAk!, rkp.ecdhPrivateKey, rkp.mlkemSecretKey)
-      expect(await unwrapDEK(server.wrappedKeys.get('0')!, recoveredAK.ak, '0')).toBeDefined()
+      const dek0 = await unwrapDEK(server.wrappedKeys.get('0')!, recoveredAK.ak, '0')
+      expect(kdfSaltRequiresContinuity(server.metadata!.kdfSalt!)).toBe(true)
+      expect(
+        await recoveryContinuityHolds(server.metadata!.recoveryContinuity!, dek0, rkp.continuityKey, testUserId),
+      ).toBe(true)
     })
 
     it('follows after a 409 only when this device already has a valid recipient envelope', async () => {

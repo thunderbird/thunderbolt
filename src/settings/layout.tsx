@@ -5,6 +5,7 @@
 import { useConfigCapability } from '@/hooks/use-config-capability'
 import { selectMinimalMode } from '@/api/config-store'
 import { FloatingHeader } from '@/components/floating-header'
+import { RecoveryContinuityColumn } from '@/components/recovery-continuity'
 import { SidebarInset } from '@/components/ui/sidebar'
 import { PageFallback } from '@/loading'
 import { Suspense, type CSSProperties } from 'react'
@@ -29,22 +30,24 @@ const SettingsLayout = () => {
   return (
     <>
       <SidebarInset className="h-full overflow-hidden flex flex-col">
-        <div
-          className="relative flex flex-col h-full"
-          style={
-            {
-              paddingBottom: 'var(--kb, 0px)',
-              '--page-create-action-clearance-inset': 'max(var(--safe-area-bottom-padding) - var(--kb, 0px), 0px)',
-            } as CSSProperties
-          }
-        >
-          <FloatingHeader />
-          <div className="flex-1 overflow-auto md:pt-[var(--header-inset)]">
-            <Suspense fallback={<PageFallback />}>
-              <Outlet />
-            </Suspense>
+        <RecoveryContinuityColumn>
+          <div
+            className="relative flex flex-col h-full"
+            style={
+              {
+                paddingBottom: 'var(--kb, 0px)',
+                '--page-create-action-clearance-inset': 'max(var(--safe-area-bottom-padding) - var(--kb, 0px), 0px)',
+              } as CSSProperties
+            }
+          >
+            <FloatingHeader />
+            <div className="flex-1 overflow-auto md:pt-[var(--header-inset)]">
+              <Suspense fallback={<PageFallback />}>
+                <Outlet />
+              </Suspense>
+            </div>
           </div>
-        </div>
+        </RecoveryContinuityColumn>
       </SidebarInset>
     </>
   )

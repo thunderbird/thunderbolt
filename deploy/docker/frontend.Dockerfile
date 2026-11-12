@@ -21,12 +21,12 @@ RUN bun install --frozen-lockfile
 # Copy frontend source
 COPY src ./src
 COPY public ./public
-COPY index.html ./
+COPY index.html webview-recovery.html ./
 # lingui.config.ts is load-bearing: @lingui/vite-plugin resolves it at build
 # time to locate and compile the .po catalogs (THU-806).
 COPY vite.config.ts lingui.config.ts tsconfig.json tsconfig.node.json ./
 # Helpers imported by vite.config.ts must be present even when only used in dev.
-COPY scripts/copy-powersync-assets.ts scripts/tinfoil-search-relay.ts scripts/exa-relay.ts ./scripts/
+COPY scripts/copy-powersync-assets.ts scripts/webkit-compat.ts scripts/tinfoil-search-relay.ts scripts/exa-relay.ts ./scripts/
 COPY components.json ./
 COPY .storybook ./.storybook
 

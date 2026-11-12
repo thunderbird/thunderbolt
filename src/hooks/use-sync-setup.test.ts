@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { generateKdfSalt } from '@/crypto/recovery-key'
+import { PasskeyContinuityError } from '@/services/encryption'
 import * as encryptionService from '@/services/encryption'
 import * as encryptionApi from '@/api/encryption'
 import * as passkeys from '@/lib/passkey'
@@ -28,11 +30,13 @@ const metadata = (schemeVersion: 1 | 2): EncryptionMetadataResponse => ({
   recovery_mlkem_public_key: schemeVersion === 2 ? 'recovery-mlkem' : null,
   recovery_wrapped_ak: schemeVersion === 2 ? 'recovery-envelope' : null,
   recovery_attestation: schemeVersion === 2 ? 'recovery-attestation' : null,
+  recovery_continuity: schemeVersion === 2 ? 'recovery-continuity' : null,
   passkey_credential_id: null,
   passkey_ecdh_public_key: null,
   passkey_mlkem_public_key: null,
   passkey_wrapped_ak: null,
   passkey_attestation: null,
+  passkey_continuity: null,
   key_version: 1,
   primary_key_id: '0',
   scheme_version: schemeVersion,
@@ -401,6 +405,30 @@ describe('sync setup operation outcomes', () => {
     } else {
       expect(result.current.approvalError).toBeNull()
     }
+  })
+
+  it('flags a recovery phrase minted before the continuity seal', async () => {
+    const { result } = mount()
+    await act(async () => result.current.continueIntro())
+    expect(result.current.legacyRecoveryPhrase).toBe(true)
+  })
+
+  it('does not flag a phrase whose salt carries the continuity tag', async () => {
+    spies.metadata.mockResolvedValue({ ...metadata(2), kdf_salt: generateKdfSalt() })
+    const { result } = mount()
+    await act(async () => result.current.continueIntro())
+    expect(result.current.legacyRecoveryPhrase).toBe(false)
+  })
+
+  it('refuses a passkey whose seal does not vouch for the unlocked keys, and can retry', async () => {
+    const { result } = mount()
+    await act(async () => result.current.continueIntro())
+    spies.unlock.mockRejectedValueOnce(new PasskeyContinuityError())
+    await act(async () => expect(await result.current.unlockWithPasskey()).toBe(false))
+    expect(result.current.approvalError).toBe(
+      "This passkey unlocked keys that don't belong to your account, so nothing was changed on this device.",
+    )
+    await act(async () => expect(await result.current.unlockWithPasskey()).toBe(true))
   })
 
   it('logs a failed manual check without the error, its message or cause', async () => {

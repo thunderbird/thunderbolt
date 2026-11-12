@@ -27,6 +27,15 @@ const isCopiedAtBuildPath = (file: string): boolean =>
     return !child.startsWith('..') && !isAbsolute(child) && join(destination, child) === relative(root, file)
   })
 
+test('the frontend image includes every HTML build entry', () => {
+  const config = readFileSync(join(root, 'vite.config.ts'), 'utf8')
+  const entries = [...config.matchAll(/path\.resolve\(dirname, '([^']+\.html)'\)/g)].map((match) => match[1]!)
+  expect(entries.length).toBeGreaterThan(0)
+  for (const entry of entries) {
+    expect(isCopiedAtBuildPath(join(root, entry))).toBe(true)
+  }
+})
+
 test('the frontend image copies the complete local Vite configuration import graph', async () => {
   const loaded: string[] = []
   const result = await Bun.build({

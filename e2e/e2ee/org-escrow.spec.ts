@@ -23,7 +23,7 @@ import { testOrgEscrowPrivateKey } from './org-escrow-key'
 const execFileAsync = promisify(execFile)
 
 const postgresPort = process.env.E2E_POSTGRES_PORT ?? '5434'
-const databaseUrl = `postgresql://postgres:postgres@localhost:${postgresPort}/postgres`
+const databaseUrl = `postgresql://postgres:postgres@${process.env.E2E_SERVICES_HOST ?? 'localhost'}:${postgresPort}/postgres`
 
 /**
  * Run the offline operator decrypt tool and return its stdout (the plaintext).

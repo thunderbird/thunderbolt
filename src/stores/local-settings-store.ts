@@ -64,6 +64,9 @@ type LocalSettingsState = {
    *  Survives reload/crash so the app can re-prompt — the phrase itself is
    *  unrecoverable (AK = PBKDF2(seed, salt)), so the prompt offers a rotation. */
   recoveryPhrasePending: boolean
+  /** The user whose recovery phrase was last seen needing a continuity update, so
+   *  the warning survives going offline. Set and cleared only by an online answer. */
+  recoveryContinuityUpdateRequiredFor: string | null
   /** Null until the user picks one; ThemeProvider then falls back to the operator default, then 'system'. */
   theme: 'light' | 'dark' | 'system' | null
   voiceProvider: VoiceProviderConfig
@@ -92,6 +95,7 @@ export const initialLocalSettings: LocalSettingsState = {
   hapticsEnabled: true,
   syncEnabled: false,
   recoveryPhrasePending: false,
+  recoveryContinuityUpdateRequiredFor: null,
   theme: null,
   voiceProvider: defaultVoiceProvider,
 }
@@ -149,6 +153,7 @@ export const useLocalSettingsStore = create<LocalSettingsStore>()(
         hapticsEnabled: s.hapticsEnabled,
         syncEnabled: s.syncEnabled,
         recoveryPhrasePending: s.recoveryPhrasePending,
+        recoveryContinuityUpdateRequiredFor: s.recoveryContinuityUpdateRequiredFor,
         theme: s.theme,
         voiceProvider: s.voiceProvider,
       }),

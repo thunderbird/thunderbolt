@@ -37,6 +37,7 @@ const dekIdPrefix = 'thunderbolt_dek_'
 const primaryKeyIdId = 'thunderbolt_primary_key_id'
 const keyVersionId = 'thunderbolt_key_version'
 const keyringAnchorId = 'thunderbolt_keyring_anchor'
+const akUnverifiedId = 'thunderbolt_ak_unverified'
 /**
  * The v1 content key, left in place by the non-destructive db bump above. v2
  * never WRITES this entry — it exists only so the v1->v2 migrator can prefer the
@@ -413,6 +414,21 @@ export const storeKeyringAnchor = async (anchor: KeyringAnchor): Promise<void> =
 
 /** Get the local DEK `"0"` witness, or null on a device that never minted one. */
 export const getKeyringAnchor = async (): Promise<KeyringAnchor | null> => getValue<KeyringAnchor>(keyringAnchorId)
+
+// =============================================================================
+// Unverified account key
+// =============================================================================
+
+/**
+ * Record that the stored AK was adopted without a continuity check: recovery
+ * with a phrase minted before the recovery seal, or an unlock through a legacy
+ * passkey slot. Such a key may be the server's own, so the device must not
+ * extend trust in it. Only `clearAllKeys` removes the marker.
+ */
+export const markAKUnverified = async (): Promise<void> => putValue(akUnverifiedId, 'unverified')
+
+/** Was the stored AK adopted without a continuity check? */
+export const isAKUnverified = async (): Promise<boolean> => (await getValue<string>(akUnverifiedId)) !== null
 
 // =============================================================================
 // Full wipe

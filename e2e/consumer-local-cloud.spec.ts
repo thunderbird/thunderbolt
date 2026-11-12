@@ -13,6 +13,8 @@ for (const viewport of [
     test.use({ viewport, hasTouch: viewport.width < 768 })
 
     test('connects from the local chat and leaves sync optional', async ({ page }) => {
+      const pageErrors: string[] = []
+      page.on('pageerror', (error) => pageErrors.push(error.message))
       // Match a fresh consumer native install without bypassing server selection or sign-in.
       await page.addInitScript(() => {
         localStorage.setItem(
@@ -44,6 +46,7 @@ for (const viewport of [
       expect(
         await page.evaluate(() => JSON.parse(localStorage.getItem('thunderbolt-local-settings')!).state.syncEnabled),
       ).not.toBe(true)
+      expect(pageErrors).toEqual([])
     })
   })
 }

@@ -84,12 +84,22 @@ export const envelopesTable = pgTable(
  * Nullable for the same pre-flip reason (and for v2 rows written before this
  * column existed, which fail closed on their next rotation).
  *
+ * `recovery_continuity` seals DEK `"0"` to the phrase itself (an HMAC keyed by
+ * the phrase over a sample encrypted under DEK `"0"`). The attestation above is
+ * signed by whoever holds the current AK, which on a wiped device recovering
+ * from the phrase could be the server's own key. The seal cannot be: the server
+ * holds neither DEK `"0"` nor the phrase. Written only when a phrase is minted
+ * and kept by same-key rotations. Null for phrases minted before it existed.
+ *
  * The `passkey_*` columns are a second virtual device built the same way: a
  * passkey's PRF output deterministically derives a hybrid keypair, the AK is
  * wrapped to its public halves, and `passkey_attestation` anchors them exactly
  * like `recovery_attestation`. Unlike the recovery slot it is optional — all
  * five are null until the user enrolls their passkey, and cleared again when it
- * is removed. `passkey_credential_id` names the `passkey` row the slot belongs
+ * is removed. `passkey_continuity` seals DEK `"0"` to the passkey the way
+ * `recovery_continuity` seals it to the phrase; it is null for a slot enrolled
+ * before the seal existed, kept while the slot keys stay the same, and cleared
+ * with the slot. `passkey_credential_id` names the `passkey` row the slot belongs
  * to (one passkey per account).
  *
  * `canary_secret_hash` is RETAINED (Decision B): it is the v1 CK-possession
@@ -111,6 +121,7 @@ export const encryptionMetadataTable = pgTable('encryption_metadata', {
   recoveryMlkemPublicKey: text('recovery_mlkem_public_key'),
   recoveryWrappedAk: text('recovery_wrapped_ak'),
   recoveryAttestation: text('recovery_attestation'),
+  recoveryContinuity: text('recovery_continuity'),
   // A foreign key, so the passkey can't be deleted while its slot still opens
   // the AK — not even by a delete racing an enrollment.
   passkeyCredentialId: text('passkey_credential_id').references(() => passkey.credentialID),
@@ -118,6 +129,7 @@ export const encryptionMetadataTable = pgTable('encryption_metadata', {
   passkeyMlkemPublicKey: text('passkey_mlkem_public_key'),
   passkeyWrappedAk: text('passkey_wrapped_ak'),
   passkeyAttestation: text('passkey_attestation'),
+  passkeyContinuity: text('passkey_continuity'),
   keyVersion: integer('key_version').default(1).notNull(),
   primaryKeyId: text('primary_key_id').default('0').notNull(),
   schemeVersion: smallint('scheme_version').default(1).notNull(),

@@ -120,6 +120,7 @@ export default function ChatUI() {
 
   return (
     <div className="h-full w-full" style={{ paddingBottom: 'var(--kb, 0px)' }}>
+      <h1 className="sr-only">{t`Chat`}</h1>
       {showModelSetup && (
         <div className="flex h-full w-full items-center justify-center overflow-y-auto p-6">
           <ChatModelSetup />

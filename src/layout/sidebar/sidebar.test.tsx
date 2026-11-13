@@ -70,6 +70,11 @@ describe('Sidebar reactivity', () => {
     restoreViewport()
   })
 
+  it('exposes the sidebar as a named navigation landmark', () => {
+    renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
+    expect(screen.getByRole('navigation', { name: 'Sidebar' })).toBeInTheDocument()
+  })
+
   it('updates when chat_threads table changes', async () => {
     const threadId1 = uuidv7()
     const threadId2 = uuidv7()

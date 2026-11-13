@@ -34,3 +34,22 @@ export const extractTextFromParts = (parts: UIMessage['parts'], separator = '\n\
     )
     .filter(Boolean)
     .join(separator)
+
+/**
+ * Builds a short plain-text excerpt of a message for accessible names.
+ * Collapses whitespace, drops code fences, paired emphasis and code markers (`*`, `**`, `_`, `__`, backticks) and leading markdown punctuation,
+ * reduces `[text](url)` links to `text`, and truncates by code point (never
+ * splitting a surrogate pair), appending an ellipsis when it cut anything.
+ */
+export const messageExcerpt = (text: string, maxLength = 40): string => {
+  const plain = text
+    .replace(/```\w*/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/(\*\*|__|\*|`)(.+?)\1/g, '$2')
+    .replace(/(?<!\w)_(.+?)_(?!\w)/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^[#>*\-+\s]+/, '')
+  const chars = Array.from(plain)
+  return chars.length > maxLength ? `${chars.slice(0, maxLength).join('').trimEnd()}…` : plain
+}

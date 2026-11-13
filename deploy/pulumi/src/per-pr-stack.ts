@@ -51,7 +51,7 @@ export type PerPrStackArgs = {
   confidentialApiKeysEnabled: boolean
   /** Operator branding JSON (env: BRANDING). Empty ships the default look. */
   branding: string
-  /** Optional Resend delivery and contact-form recipient, configured per stack. */
+  /** Optional transactional email delivery, configured per stack. */
   email?: EmailConfig
 }
 

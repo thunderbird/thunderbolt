@@ -77,9 +77,9 @@ const serviceHosts = {
   powersync: 'sync.example.com',
 }
 
-test('contact reaches the backend while distinct service hosts retain their routing', async () => {
-  const rules = await captureRules('distinct', serviceHosts, 9)
-  expect(route(rules, serviceHosts.marketing, '/v1/contact')).toBe('distinct-backend-tg')
+test('marketing routes stay separate from the backend', async () => {
+  const rules = await captureRules('distinct', serviceHosts, 8)
+  expect(route(rules, serviceHosts.marketing, '/v1/contact')).toBe('distinct-marketing-tg')
   for (const path of ['/', '/blog/', '/docs/', '/v1/contact/', '/v1/other']) {
     expect(route(rules, serviceHosts.marketing, path)).toBe('distinct-marketing-tg')
   }
@@ -95,11 +95,11 @@ test('contact reaches the backend while distinct service hosts retain their rout
   }
 })
 
-test('legacy shared hostnames keep marketing precedence with only the exact contact exception', async () => {
+test('legacy shared hostnames keep marketing precedence', async () => {
   const sharedHost = 'shared.example.com'
   const hostnames = Object.fromEntries(Object.keys(serviceHosts).map((service) => [service, sharedHost]))
-  const rules = await captureRules('legacy', hostnames, 9)
-  expect(route(rules, sharedHost, '/v1/contact')).toBe('legacy-backend-tg')
+  const rules = await captureRules('legacy', hostnames, 8)
+  expect(route(rules, sharedHost, '/v1/contact')).toBe('legacy-marketing-tg')
   for (const path of ['/', '/blog/', '/docs/', '/v1/contact/', '/v1/other', '/auth/', '/powersync/']) {
     expect(route(rules, sharedHost, path)).toBe('legacy-marketing-tg')
   }

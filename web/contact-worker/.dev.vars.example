@@ -1,0 +1,5 @@
+# Copy to .dev.vars for local development. Use a separate test inbox and sending key.
+RESEND_API_KEY=
+EMAIL_FROM=
+CONTACT_EMAIL_TO=
+ALLOWED_ORIGINS=http://localhost:4321,http://127.0.0.1:4321

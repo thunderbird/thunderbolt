@@ -15,6 +15,7 @@ const statusMessages: Record<number, string> = {
 
 /** Submit only public form fields; success requires an explicit acknowledgement from the API. */
 export const submitContactForm = async (fields: FormData, endpoint: string): Promise<ContactSubmission> => {
+  if (!endpoint.trim()) return { status: 'error', message: statusMessages[503] }
   try {
     const response = await fetch(endpoint, {
       method: 'POST',

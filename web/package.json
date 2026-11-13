@@ -8,8 +8,8 @@
     "build": "ASTRO_TELEMETRY_DISABLED=1 astro build",
     "preview": "ASTRO_TELEMETRY_DISABLED=1 astro preview",
     "astro": "astro",
-    "test": "bun test src --timeout 5000",
-    "test:coverage": "bun test src --timeout 5000 --coverage",
+    "test": "bun test ./src --timeout 5000",
+    "test:coverage": "bun test ./src --timeout 5000 --coverage",
     "typecheck": "ASTRO_TELEMETRY_DISABLED=1 astro sync && tsc --noEmit"
   },
   "dependencies": {

@@ -21,7 +21,7 @@ COPY web ./web
 COPY docs ./docs
 
 WORKDIR /app/web
-ARG PUBLIC_CONTACT_ENDPOINT=/v1/contact
+ARG PUBLIC_CONTACT_ENDPOINT=
 RUN PUBLIC_CONTACT_ENDPOINT="$PUBLIC_CONTACT_ENDPOINT" bun run build
 
 # Stage 2: Serve with nginx

@@ -18,7 +18,6 @@ One Elysia app, `prefix: '/v1'` (`backend/src/index.ts:72`). Route groups are pl
 | `GET /v1/config/branding/email-logo` (light logo if PNG/JPEG, else 302 to `${APP_URL}/email-logo.png`) | `api/config.ts`                         | public                                    | none                                              | exempt  |
 | `POST /v1/waitlist/join`                                                                               | `waitlist/routes.ts`                    | public                                    | `auth` (IP) + 15s per-email cooldown              | gated   |
 | `GET /v1/posthog/config`, `ALL /v1/posthog/*`                                                          | `posthog/routes.ts`                     | public                                    | none                                              | exempt  |
-| `POST /v1/contact` (website contact form; 503 until `CONTACT_EMAIL_TO` and Resend are configured)      | `contact/routes.ts`                     | public                                    | `contact` (IP) + `contact-global`, both always on | exempt  |
 | `GET /v1/auth/oidc/config`                                                                             | `auth/oidc.ts`                          | public                                    | none                                              | gated   |
 | `GET /v1/auth/{google,microsoft}/config`, `POST …/exchange`, `POST …/refresh`                          | `auth/google.ts`, `auth/microsoft.ts`   | session                                   | none                                              | gated   |
 | `GET /v1/locations`, `GET /v1/locations/:id`                                                           | `api/routes.ts`                         | session                                   | none                                              | gated   |
@@ -119,8 +118,6 @@ Metered routes add two guards:
 | `pro`                      | 100 / minute | `user:<id>`                     |
 | `auth`                     | 10 / minute  | `ip:<addr>`                     |
 | `integration-oauth`        | 30 / minute  | `ip:<addr>`                     |
-| `contact`                  | 3 / hour     | `ip:<addr>`                     |
-| `contact-global`           | 30 / hour    | `all` (one deployment-wide key) |
 | `anonymous-sign-in`        | 10 / minute  | `ip:<addr>`                     |
 | `captcha-challenge`        | 10 / minute  | `ip:<addr>`                     |
 | `anonymous-sign-in-global` | 2000 / hour  | `all` (one deployment-wide key) |
@@ -131,7 +128,7 @@ Limits are hardcoded per tier in `backend/src/middleware/rate-limit.ts:49-56`, t
 
 - **User-keyed limiters go after the auth macro's guard**: inside a `guard({ auth: true }, …)` callback, or inside `createMeteredRouteGuard` (`backend/src/inference/metered-route-guard.ts`), which fronts every managed-inference route. They read the macro-resolved `user`; at app level the resolve runs after `onBeforeHandle` and the limit is a silent no-op.
 - **IP-keyed limiters fail closed.** An unresolvable IP shares one `ip:unknown` bucket instead of skipping the check, so the guard on OTP send and waitlist join cannot disable itself. `extractClientIp` trusts forwarding headers only under `TRUSTED_PROXY`.
-- **`RATE_LIMIT_ENABLED=false` returns an empty plugin**: the limiter disappears rather than being bypassed per request. The `integration-oauth`, `contact` and `contact-global` limits are the exception: `index.ts` builds them with `enabled: true`, so those public endpoints stay limited.
+- **`RATE_LIMIT_ENABLED=false` returns an empty plugin**: the limiter disappears rather than being bypassed per request. The `integration-oauth` limit is the exception: `index.ts` builds it with `enabled: true`, so token exchanges stay limited.
 
 Limited responses carry `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset`; a 429 adds `Retry-After`. Mechanism and how to add a tier: [backend/docs/rate-limiting.md](../../../backend/docs/rate-limiting.md).
 

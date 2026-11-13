@@ -125,13 +125,10 @@ backend:
     # same place as `powersyncUrl` if you run PowerSync outside the cluster,
     # otherwise the probe reports on a service nothing is using.
     powersyncInternalUrl: ""
-  # -- Transactional email settings. Empty values preserve backend defaults;
-  # no contact recipient means the public contact endpoint is disabled.
+  # -- Transactional email settings. Empty values preserve backend defaults.
   email:
     # -- Verified Resend sender as a bare email address, e.g. "hello@example.com".
     from: ""
-    # -- Fixed inbox for website contact messages; never selected by visitors.
-    contactTo: ""
     # -- Base64-encoded Resend API key, stored in thunderbolt-secrets.
     # Generate with: printf %s "<your-key>" | base64 | tr -d '\n'
     resendApiKeyBase64: ""
@@ -275,8 +272,7 @@ ingress:
   # -- Optional per-service hostnames ("preview-style" host-header routing).
   # Every key you set gets its own ingress rule serving `/` from one service:
   # `marketing` → marketing, `app` → frontend, `api` → backend, `auth` →
-  # keycloak, `powersync` → powersync. The marketing hostname additionally
-  # routes the exact `/v1/contact` endpoint to backend for same-origin forms.
+  # keycloak, `powersync` → powersync. Marketing has no backend routes.
   # Leave the map empty to keep the default
   # path-based layout, where a single host routes `/v1`, `/realms`,
   # `/resources` and `/powersync` to their services and everything else to the

@@ -108,20 +108,10 @@ export const createAlb = ({ name, vpcId, publicSubnetIds, albSgId, hostnames }: 
     defaultActions: [{ type: 'forward', targetGroupArn: frontendTg.arn }],
   })
 
-  // -- Host-header rules (priority 6-12) — active only when hostnames provided.
-  // Contact precedes marketing, which retains precedence when service hosts overlap.
+  // -- Host-header rules (priority 7-12) — active only when hostnames provided.
+  // Marketing retains precedence when service hosts overlap.
   // Use previously vacant priorities so upgrades do not swap occupied ALB slots.
   if (hostnames?.marketing) {
-    new aws.lb.ListenerRule(`${name}-host-marketing-contact-rule`, {
-      listenerArn: listener.arn,
-      priority: 6,
-      conditions: [
-        { hostHeader: { values: [hostnames.marketing] } },
-        { pathPattern: { values: ['/v1/contact'] } },
-      ],
-      actions: [{ type: 'forward', targetGroupArn: backendTg.arn }],
-    })
-
     new aws.lb.ListenerRule(`${name}-host-marketing-rule`, {
       listenerArn: listener.arn,
       priority: 7,

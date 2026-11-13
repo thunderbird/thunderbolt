@@ -8,8 +8,6 @@ Hardcoded per-tier budgets, enforced by a Postgres-backed limiter in [backend/sr
 | `pro`                      | 100 / minute | user                     | `/v1/pro/*`, `/v1/proxy/*`, `/v1/proxy/ws`, `/v1/tinfoil/*`, `/v1/search`, `/v1/preview` |
 | `auth`                     | 10 / minute  | client IP                | `/v1/api/auth/*` (except anonymous sign-in and GET get-session), `/v1/waitlist/*`        |
 | `integration-oauth`        | 30 / minute  | client IP                | `/v1/auth/google/*`, `/v1/auth/microsoft/*`. Always on.                                  |
-| `contact`                  | 3 / hour     | client IP                | `POST /v1/contact`. Always on.                                                           |
-| `contact-global`           | 30 / hour    | one key, deployment-wide | `POST /v1/contact`, counting inquiries about to be emailed. Always on.                   |
 | `anonymous-sign-in`        | 10 / minute  | client IP                | `POST /v1/api/auth/sign-in/anonymous`                                                    |
 | `anonymous-sign-in-global` | 2000 / hour  | one key, deployment-wide | `POST /v1/api/auth/sign-in/anonymous`, while `AUTH_ALLOW_ANONYMOUS=true`                 |
 | `captcha-challenge`        | 10 / minute  | client IP                | `GET /v1/captcha/challenge`                                                              |
@@ -41,7 +39,7 @@ Debug-transcript intake is the consumer case: the caller is another deployment w
 
 With `settings.rateLimitEnabled` false, the plugin factories return a bare `new Elysia()` and the consumer factory returns `null`; nothing downstream changes shape, because call sites treat both as optional.
 
-Two public surfaces ignore that switch. `index.ts` builds the `integration-oauth` limiter and both contact limits with `enabled: true`, because each is an unauthenticated endpoint that spends something on a stranger's behalf (a token exchange, an email) and has no other control in front of it. The `contact-global` budget exists because the per-address limit cannot bound a sender who rotates addresses: one IPv6 /64 holds more addresses than the limit will ever count. It is a single `contact-global:all` bucket, charged in the handler after validation and the configuration check, so a malformed or unconfigured request never spends a point.
+Public integration OAuth ignores that switch. `index.ts` builds its limiter with `enabled: true` because it exchanges tokens without an app session.
 
 ## Placement rules that will bite you
 
@@ -92,12 +90,10 @@ Pick an existing tier before inventing one; a new tier is a new bucket namespace
 | Unauthenticated, can send email or create an account | `auth`, via `createAuthIpRateLimit`                             |
 | Caller is neither a session user nor usefully an IP  | `createRateLimitConsumer` with a key you compute in the handler |
 
-The website contact form sends email without a session, yet has its own tiers and does not use `auth`. Its limit must hold with `RATE_LIMIT_ENABLED=false`, and a visitor's inquiries should not draw down the budget that same address needs to sign in.
-
 A genuinely new tier goes in the `RateLimitTier` union and `tierConfigs` (`satisfies Record<RateLimitTier, RateLimitTierConfig>` makes a missing config a type error), plus the table above and the operator table in [docs/self-hosting/configuration.md](../../docs/self-hosting/configuration.md#rate-limiting).
 
 ## Testing
 
 Rate limiting is forced **off** for the whole backend suite (`test-setup.ts` sets `RATE_LIMIT_ENABLED=false`): `RateLimiterDrizzle` issues its own transactions, which bypass PGlite's transaction isolation and break per-test cleanup. A test that wants it constructs the middleware with `{ enabled: true }`, as [rate-limit.test.ts](../src/middleware/rate-limit.test.ts) does, and runs against the shared _isolated_ test database rather than the singleton for the same nested-transaction reason (see the comment on its `beforeAll`).
 
-The always-on limiters are the exception: a request to `/v1/contact` or an integration OAuth route through `createApp` is limited even in the suite. A test that sends one uses the isolated database as well and clears `rate_limits` between cases, as [contact/routes.test.ts](../src/contact/routes.test.ts) does.
+Integration OAuth routes remain limited through `createApp` even in the suite. Tests exercising those limits use an isolated database and clear `rate_limits` between cases.

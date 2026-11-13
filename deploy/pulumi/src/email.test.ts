@@ -36,26 +36,19 @@ test('email is opt-in and creates no secret or IAM dependencies by default', () 
   expect(createBackendEmail('disabled', 'exec-role')).toEqual({ environment: [], secrets: [], dependencies: [] })
 })
 
-test('sender and recipient can be configured independently without creating an empty secret', () => {
+test('sender can be configured without creating an empty secret', () => {
   const sender = createBackendEmail('sender', 'exec-role', { from: 'hello@example.com' })
   expect(sender.environment).toEqual([{ name: 'EMAIL_FROM', value: 'hello@example.com' }])
   expect(sender.secrets).toEqual([])
   expect(sender.dependencies).toEqual([])
-  const recipient = createBackendEmail('recipient', 'exec-role', { contactEmailTo: 'team@example.com' })
-  expect(recipient.environment).toEqual([{ name: 'CONTACT_EMAIL_TO', value: 'team@example.com' }])
-  expect(recipient.secrets).toEqual([])
 })
 
 test('configured email injects a secret reference and grants only the execution role access to that secret', async () => {
   const email = createBackendEmail('configured', 'backend-exec-role', {
     from: 'hello@example.com',
-    contactEmailTo: 'team@example.com',
     resendApiKey: pulumi.secret('re_test_not_a_real_key'),
   })
-  expect(email.environment).toEqual([
-    { name: 'EMAIL_FROM', value: 'hello@example.com' },
-    { name: 'CONTACT_EMAIL_TO', value: 'team@example.com' },
-  ])
+  expect(email.environment).toEqual([{ name: 'EMAIL_FROM', value: 'hello@example.com' }])
   expect(await resolve(email.secrets)).toEqual([
     { name: 'RESEND_API_KEY', valueFrom: 'arn:aws:secretsmanager:test:configured-resend-api-key:::version-one' },
   ])

@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "thunderbolt-contact",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-12",
+  "workers_dev": true,
+  "preview_urls": false,
+  "vars": {
+    "ALLOWED_ORIGINS": "https://www.thunderbolt.io,https://thunderbolt.io",
+  },
+  "ratelimits": [
+    { "name": "IP_LIMITER", "namespace_id": "150801", "simple": { "limit": 3, "period": 60 } },
+    { "name": "EMAIL_LIMITER", "namespace_id": "150802", "simple": { "limit": 10, "period": 60 } },
+  ],
+}

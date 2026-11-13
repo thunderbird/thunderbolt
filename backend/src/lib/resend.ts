@@ -43,9 +43,6 @@ export const shouldSkipEmail = (): boolean => {
   return false
 }
 
-/** Whether a real email provider is configured; public forms must never simulate delivery. */
-export const isEmailConfigured = (): boolean => resend !== null
-
 export type SendEmailParams = {
   to: string
   from?: string
@@ -78,7 +75,7 @@ type EmailClient = { emails: Pick<Resend['emails'], 'send'> }
  * Send an email using a React Email component.
  * Uses the default sender address unless overridden.
  * @throws Error when no provider is configured. Callers that can run without one check
- *   `shouldSkipEmail` or `isEmailConfigured` first.
+ *   `shouldSkipEmail` first.
  * @throws EmailDeliveryError when the provider rejects the email or cannot be reached.
  */
 export const sendEmail = async (

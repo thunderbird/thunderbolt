@@ -27,9 +27,9 @@ const fields = () => {
 
 test('posts public fields as JSON without credentials and requires confirmed API acceptance', async () => {
   request.mockResolvedValue(Response.json({ success: true }))
-  expect(await submitContactForm(fields(), '/v1/contact')).toEqual({ status: 'success' })
+  expect(await submitContactForm(fields(), 'https://contact.example.com/api/contact')).toEqual({ status: 'success' })
   const [endpoint, options] = request.mock.calls[0]
-  expect(endpoint).toBe('/v1/contact')
+  expect(endpoint).toBe('https://contact.example.com/api/contact')
   expect(options?.credentials).toBe('omit')
   expect(options?.method).toBe('POST')
   expect(options?.headers).toEqual({ 'Content-Type': 'application/json' })
@@ -48,7 +48,7 @@ test.each([
   [500, 'couldn’t confirm'],
 ] as const)('reports HTTP %s honestly without exposing server diagnostics', async (status, message) => {
   request.mockResolvedValue(new Response('Private upstream error details', { status }))
-  const result = await submitContactForm(fields(), '/v1/contact')
+  const result = await submitContactForm(fields(), 'https://contact.example.com/api/contact')
   expect(result.status).toBe('error')
   if (result.status === 'error') {
     expect(result.message).toContain(message)
@@ -60,18 +60,18 @@ test.each([null, {}, { success: false }, { success: 'true' }, 'success'])(
   'rejects unconfirmed success: %j',
   async (body) => {
     request.mockResolvedValue(Response.json(body))
-    expect((await submitContactForm(fields(), '/v1/contact')).status).toBe('error')
+    expect((await submitContactForm(fields(), 'https://contact.example.com/api/contact')).status).toBe('error')
   },
 )
 
 test('a static-host HTML fallback does not become a false success', async () => {
   request.mockResolvedValue(new Response('<html>Not found</html>'))
-  expect((await submitContactForm(fields(), '/v1/contact')).status).toBe('error')
+  expect((await submitContactForm(fields(), 'https://contact.example.com/api/contact')).status).toBe('error')
 })
 
 test('network failure returns an actionable error instead of a false acknowledgement', async () => {
   request.mockRejectedValue(new TypeError('network unavailable'))
-  expect((await submitContactForm(fields(), '/v1/contact')).status).toBe('error')
+  expect((await submitContactForm(fields(), 'https://contact.example.com/api/contact')).status).toBe('error')
 })
 
 test.each(['http', 'timeout'] as const)(
@@ -93,7 +93,7 @@ test.each(['http', 'timeout'] as const)(
     document.body.append(container)
     const root = createRoot(container)
     try {
-      await act(async () => root.render(<ContactPage />))
+      await act(async () => root.render(<ContactPage endpoint="https://contact.example.com/api/contact" />))
       const form = container.querySelector('form')!
       container.querySelector<HTMLInputElement>('[name=email]')!.value = 'person@example.org'
       container.querySelector<HTMLTextAreaElement>('[name=help]')!.value = 'Keep this message if sending fails.'
@@ -136,3 +136,11 @@ test.each(['http', 'timeout'] as const)(
     }
   },
 )
+
+test.each(['', '  '])('unconfigured builds never send inquiries to the website or app backend', async (endpoint) => {
+  expect(await submitContactForm(fields(), endpoint)).toEqual({
+    status: 'error',
+    message: 'The contact form is temporarily unavailable. Please try again later.',
+  })
+  expect(request).not.toHaveBeenCalled()
+})

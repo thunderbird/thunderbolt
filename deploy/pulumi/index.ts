@@ -26,7 +26,6 @@ const confidentialApiKeysEnabled = config.getBoolean('confidentialApiKeysEnabled
 const branding = config.get('branding') ?? ''
 const email = {
   from: config.get('emailFrom'),
-  contactEmailTo: config.get('contactEmailTo'),
   resendApiKey: config.getSecret('resendApiKey'),
 }
 

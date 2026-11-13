@@ -58,15 +58,13 @@ stack every other stack name still uses.
 Stack config and state are encrypted by Pulumi Cloud, which `PULUMI_ACCESS_TOKEN`
 authenticates against — there is no local secrets provider and no passphrase to set.
 
-## Contact email (Fargate and PR previews)
+## Transactional email (Fargate and PR previews)
 
-Set these on the stack that runs the backend, including an individual `preview-pr-*`
-stack when testing the contact form. They are optional; without a sending key and
-recipient the contact endpoint returns 503 instead of claiming a message was sent.
+Set these on the stack that runs the backend to enable transactional email such as
+sign-in messages. Marketing inquiries use the independent [contact Worker](../../web/contact-worker/README.md).
 
 ```bash
 pulumi config set emailFrom hello@example.com
-pulumi config set contactEmailTo team@example.com
 pulumi config set --secret resendApiKey
 pulumi up
 ```
@@ -75,7 +73,6 @@ Use a bare sender address from a domain verified in Resend. The secret command
 prompts for the key without placing it in shell history. Pulumi stores the key as a
 secret and provisions it in AWS Secrets Manager; ECS receives a secret reference,
 with read access scoped to that secret. The task reference includes the version ID,
-so changing the key with Pulumi rolls out new backend tasks. The recipient and sender are ordinary
-configuration. Preview stacks do not inherit production email credentials.
+so changing the key with Pulumi rolls out new backend tasks. The sender is ordinary configuration. Preview stacks do not inherit production email credentials.
 
 For Kubernetes deployments, configure `backend.email` in the Helm values instead.

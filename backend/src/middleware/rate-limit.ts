@@ -19,8 +19,6 @@ type RateLimitTier =
   | 'pro'
   | 'auth'
   | 'integration-oauth'
-  | 'contact'
-  | 'contact-global'
   | 'anonymous-sign-in'
   | 'anonymous-sign-in-global'
   | 'captcha-challenge'
@@ -53,9 +51,6 @@ const tierConfigs = {
   pro: { max: 100, durationSecs: 60 },
   auth: { max: 10, durationSecs: 60 },
   'integration-oauth': { max: 30, durationSecs: 60 },
-  contact: { max: 3, durationSecs: 60 * 60 },
-  // Every visitor shares this one: a sender who rotates addresses never reaches the per-address limit.
-  'contact-global': { max: 30, durationSecs: 60 * 60 },
   'debug-transcript': { max: 10, durationSecs: 60 * 60 },
   'debug-transcript-intake': { max: 600, durationSecs: 60 * 60 },
 } satisfies Record<FixedRateLimitTier, RateLimitTierConfig>
@@ -240,7 +235,7 @@ export type RateLimitConsumer = (key: string, set: RateLimitSet) => Promise<{ er
 
 /**
  * Rate limiting whose key is neither the session user nor the IP (an intake client, or the
- * single key of a deployment-wide budget: anonymous sign-in, website contact email).
+ * single key of a deployment-wide budget: anonymous sign-in).
  */
 export const createRateLimitConsumer = (
   database: typeof DbType,

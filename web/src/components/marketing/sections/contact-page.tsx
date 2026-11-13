@@ -6,15 +6,15 @@ import { SparkFooter } from '../spark/spark-footer'
 import { SparkHeader } from '../spark/spark-header'
 import { useContactFormState } from './use-contact-form-state'
 
-const contactEndpoint = import.meta.env.PUBLIC_CONTACT_ENDPOINT ?? '/v1/contact'
+const contactEndpoint = import.meta.env.PUBLIC_CONTACT_ENDPOINT ?? ''
 
 const inputClass =
   'w-full rounded-lg border border-border-strong bg-card px-4 py-3 text-base text-foreground placeholder:text-muted-foreground outline-none focus:border-brand focus:ring-1 focus:ring-brand'
 
 const labelClass = 'block text-sm font-medium text-secondary-foreground mb-1.5'
 
-export const ContactPage = () => {
-  const { submission, isPending, handleSubmit } = useContactFormState(contactEndpoint)
+export const ContactPage = ({ endpoint = contactEndpoint }: { endpoint?: string }) => {
+  const { submission, isPending, handleSubmit } = useContactFormState(endpoint)
 
   if (submission?.status === 'success') {
     return (

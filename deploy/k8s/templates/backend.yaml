@@ -180,10 +180,6 @@ spec:
             - name: EMAIL_FROM
               value: {{ . | quote }}
             {{- end }}
-            {{- with $email.contactTo }}
-            - name: CONTACT_EMAIL_TO
-              value: {{ . | quote }}
-            {{- end }}
             {{- with $email.resendApiKeyBase64 }}
             - name: RESEND_API_KEY
               valueFrom:

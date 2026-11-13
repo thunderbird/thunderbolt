@@ -1,4 +1,4 @@
-suite: Website contact delivery
+suite: Transactional email and marketing isolation
 templates:
   - templates/backend.yaml
   - templates/secrets.yaml
@@ -6,7 +6,7 @@ templates:
 set:
   backend.betterAuthSecretBase64: dGVzdA==
 tests:
-  - it: preserves backend email defaults and disables contact when unconfigured
+  - it: preserves backend email defaults
     template: templates/backend.yaml
     documentSelector: { path: kind, value: Deployment }
     asserts:
@@ -42,7 +42,7 @@ tests:
           content: { name: RESEND_API_KEY }
           any: true
 
-  - it: injects configured addresses and references the secret without exposing its key
+  - it: ignores the retired contact inbox and preserves transactional email
     template: templates/backend.yaml
     documentSelector: { path: kind, value: Deployment }
     set:
@@ -53,9 +53,10 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].env
           content: { name: EMAIL_FROM, value: hello@example.com }
-      - contains:
+      - notContains:
           path: spec.template.spec.containers[0].env
-          content: { name: CONTACT_EMAIL_TO, value: team@example.com }
+          content: { name: CONTACT_EMAIL_TO }
+          any: true
       - contains:
           path: spec.template.spec.containers[0].env
           content:
@@ -77,7 +78,7 @@ tests:
     asserts:
       - equal: { path: 'data["resend-api-key"]', value: '' }
 
-  - it: routes only the contact endpoint on the marketing host to the backend
+  - it: keeps all marketing paths isolated from the backend
     template: templates/ingress.yaml
     documentSelector: { path: metadata.name, value: thunderbolt-ingress }
     set:
@@ -91,12 +92,6 @@ tests:
             host: www.example.com
             http:
               paths:
-                - path: /v1/contact
-                  pathType: Exact
-                  backend:
-                    service:
-                      name: backend
-                      port: { number: 8080 }
                 - path: /
                   pathType: Prefix
                   backend:
@@ -130,7 +125,7 @@ tests:
           path: spec.template.spec.containers[0].env
           content: { name: TRUSTED_PROXY, value: '' }
 
-  - it: exposes a fixed ingress hop count alongside contact email
+  - it: exposes a fixed ingress hop count
     template: templates/backend.yaml
     documentSelector: { path: kind, value: Deployment }
     set:

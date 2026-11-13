@@ -73,7 +73,7 @@ describe('release tag wiring', () => {
   })
 })
 
-it('preview marketing builds use the same API as the preview app', () => {
+it('preview marketing builds never send contact inquiries to the AI backend', () => {
   const preview = Bun.YAML.parse(
     readFileSync(join(import.meta.dir, '../.github/workflows/preview-deploy.yml'), 'utf8'),
   ) as { jobs: { publish: { with: { vite_backend_url: string } } } }
@@ -86,11 +86,9 @@ it('preview marketing builds use the same API as the preview app', () => {
   const marketing = images.jobs.publish.steps.find(
     (step: { name?: string }) => step.name === 'Build and push marketing',
   )
-  expect(marketing.with['build-args']).toContain(
-    "PUBLIC_CONTACT_ENDPOINT=${{ inputs.vite_backend_url && format('{0}/contact', inputs.vite_backend_url) || '/v1/contact' }}",
-  )
+  expect(marketing.with['build-args']).toBeUndefined()
   const dockerfile = readFileSync(join(import.meta.dir, '../deploy/docker/marketing.Dockerfile'), 'utf8')
-  expect(dockerfile).toContain('ARG PUBLIC_CONTACT_ENDPOINT=/v1/contact')
+  expect(dockerfile).toContain('ARG PUBLIC_CONTACT_ENDPOINT=')
   expect(dockerfile).toContain('RUN PUBLIC_CONTACT_ENDPOINT="$PUBLIC_CONTACT_ENDPOINT" bun run build')
 })
 

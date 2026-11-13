@@ -301,9 +301,9 @@ describe('ChatMessages', () => {
       await act(async () => {
         await Bun.sleep(20)
       })
-      expect(Array.from(container.querySelectorAll('img')).map((image) => image.getAttribute('src'))).toEqual([
-        'https://images.example/before.png',
-      ])
+      // Markdown images render as their alt text in every turn (markdown-image.tsx).
+      expect(container.querySelector('img')).toBeNull()
+      expect(container.textContent).toContain('Before')
       expect(container.textContent).toContain('Follow-up image')
       // The follow-up's preview resolves the earlier private source by URL, still without its image.
       expect(container.textContent).toContain('Private source')

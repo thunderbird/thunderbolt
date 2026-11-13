@@ -389,3 +389,83 @@ describe('useModelConnectionTest loading hint', () => {
     expect(timer.fire).toBeNull()
   })
 })
+
+describe('useModelConnectionTest cancellation and limits', () => {
+  const localConfig: ModelConnectionConfig = {
+    provider: 'custom',
+    model: 'llama3.2:1b',
+    url: 'http://localhost:11434/v1',
+    apiKey: null,
+  }
+
+  afterEach(() => {
+    cleanup()
+    mock.restore()
+  })
+
+  /** Probe that never settles on its own and records the signal of each run. */
+  const pendingProbe = () => {
+    const signals: AbortSignal[] = []
+    const probe: ConnectionTestProbe = mock((_config, _getProxyFetch, signal) => {
+      signals.push(signal)
+      return new Promise<ToolSupport>(() => {})
+    })
+    return { probe, signals }
+  }
+
+  it('aborts the pending probe on reset', () => {
+    const { probe, signals } = pendingProbe()
+    const { result } = renderHook(() => useModelConnectionTest(localConfig, probe), { wrapper })
+
+    act(() => {
+      void result.current.test(localConfig)
+    })
+    act(() => result.current.reset())
+
+    expect(signals[0]?.aborted).toBe(true)
+  })
+
+  it('aborts the previous probe when a new test starts', () => {
+    const { probe, signals } = pendingProbe()
+    const { result } = renderHook(() => useModelConnectionTest(localConfig, probe), { wrapper })
+
+    act(() => {
+      void result.current.test(localConfig)
+    })
+    act(() => {
+      void result.current.test(localConfig)
+    })
+
+    expect(signals[0]?.aborted).toBe(true)
+    expect(signals[1]?.aborted).toBe(false)
+  })
+
+  it('aborts the pending probe on unmount', () => {
+    const { probe, signals } = pendingProbe()
+    const { result, unmount } = renderHook(() => useModelConnectionTest(localConfig, probe), { wrapper })
+
+    act(() => {
+      void result.current.test(localConfig)
+    })
+    unmount()
+
+    expect(signals[0]?.aborted).toBe(true)
+  })
+
+  it.each([
+    ['local', localConfig],
+    ['hosted', anthropicConfig],
+  ])('bounds a %s test by its own time limit', (_label, config) => {
+    const timeoutSpy = spyOn(AbortSignal, 'timeout')
+    const { probe } = pendingProbe()
+    const { result } = renderHook(() => useModelConnectionTest(config, probe), { wrapper })
+
+    act(() => {
+      void result.current.test(config)
+    })
+
+    expect(timeoutSpy).toHaveBeenCalledWith(
+      connectionTestLimits({ provider: config.provider, url: config.url ?? null }).timeoutMs,
+    )
+  })
+})

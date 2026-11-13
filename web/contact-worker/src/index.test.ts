@@ -20,20 +20,21 @@ const submission = (fields: Record<string, unknown> = { email: 'person@example.o
   })
 /** Isolate bindings and mock the mail provider so no test sends real email. */
 const setup = () => {
+  const consume = mock(async (_url: RequestInfo | URL, _init?: RequestInit) => new Response(null, { status: 204 }))
   const env: Env = {
     ALLOWED_ORIGINS: `${origin}, https://thunderbolt.io`,
     RESEND_API_KEY: 're_test',
     EMAIL_FROM: 'website@example.com',
     CONTACT_EMAIL_TO: 'team@example.com',
     IP_LIMITER: { limit: mock(async () => ({ success: true })) },
-    EMAIL_LIMITER: { limit: mock(async () => ({ success: true })) },
+    CONTACT_LIMITER: { getByName: mock(() => ({ fetch: consume })) },
   }
   const send = mock(async (_url: string, _init: RequestInit) => Response.json({ id: 'email-123' }))
-  return { env, send, run: (request = submission()) => handleContact(request, env, send) }
+  return { env, send, consume, run: (request = submission()) => handleContact(request, env, send) }
 }
 
 test('sends fixed notification with reply-to and acknowledges provider acceptance', async () => {
-  const { run, send, env } = setup()
+  const { run, send, env, consume } = setup()
   const response = await run(
     submission({
       email: ' person@example.org ',
@@ -63,7 +64,12 @@ test('sends fixed notification with reply-to and acknowledges provider acceptanc
     text: 'Email: person@example.org\nName: Sam Lee\nOrganization: Example\nJob title: Engineer\nCompany size: 1 to 50\n\nHow can we help?\n<script>Not HTML</script>\nA second line',
   })
   expect(env.IP_LIMITER.limit).toHaveBeenCalledWith({ key: '192.0.2.1' })
-  expect(env.EMAIL_LIMITER.limit).toHaveBeenCalledWith({ key: 'contact' })
+  expect(env.CONTACT_LIMITER.getByName).toHaveBeenCalledWith('contact')
+  const hash = new Bun.CryptoHasher('sha256').update('192.0.2.1').digest('hex')
+  expect(consume).toHaveBeenCalledWith('https://limiter/consume', {
+    method: 'POST',
+    headers: { 'X-Contact-IP-Hash': hash },
+  })
 })
 
 test('optional fields can be omitted', async () => {
@@ -170,12 +176,12 @@ test.each([
   const { run, send, env } = setup()
   expect((await run(submission(fields))).status).toBe(422)
   expect(send).not.toHaveBeenCalled()
-  expect(env.EMAIL_LIMITER.limit).not.toHaveBeenCalled()
+  expect(env.CONTACT_LIMITER.getByName).not.toHaveBeenCalled()
 })
 
-test.each(['IP_LIMITER', 'EMAIL_LIMITER'] as const)('stops delivery when %s rejects', async (key) => {
+test('stops delivery when the edge burst limit rejects', async () => {
   const { run, send, env } = setup()
-  env[key] = { limit: mock(async () => ({ success: false })) }
+  env.IP_LIMITER = { limit: mock(async () => ({ success: false })) }
   const response = await run()
   expect(response.status).toBe(429)
   expect(response.headers.get('Retry-After')).toBe('60')
@@ -245,4 +251,25 @@ test('the Worker entry point accepts the runtime context without using it as the
     context,
   )
   expect(response.status).toBe(204)
+})
+
+test('honors the shared hourly allowance and its retry time', async () => {
+  const { run, send, consume } = setup()
+  consume.mockImplementation(async () => new Response(null, { status: 429, headers: { 'Retry-After': '3540' } }))
+  const response = await run()
+  expect(response.status).toBe(429)
+  expect(response.headers.get('Retry-After')).toBe('3540')
+  expect(response.headers.get('Access-Control-Allow-Origin')).toBe(origin)
+  expect(send).not.toHaveBeenCalled()
+})
+
+test('shared limiter failure never sends mail', async () => {
+  const { run, send, consume } = setup()
+  consume.mockImplementation(async () => new Response(null, { status: 500 }))
+  expect((await run()).status).toBe(502)
+  consume.mockImplementation(async () => {
+    throw new Error('Unavailable')
+  })
+  expect((await run()).status).toBe(502)
+  expect(send).not.toHaveBeenCalled()
 })

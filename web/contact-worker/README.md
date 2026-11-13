@@ -2,7 +2,8 @@
 
 The Render marketing site posts JSON to this independent Cloudflare Worker. The
 Worker validates the inquiry and sends one internal notification through Resend.
-It has no Thunderbolt app/backend dependency, database, or account system. The
+It has no Thunderbolt app/backend dependency or account system. One Durable Object
+stores only the short-lived rate-limit budget. The
 website remains a Render **Static Site**.
 
 ## First deployment
@@ -41,8 +42,10 @@ The deployment prints a URL like
 This first deployment refuses submissions with 503 until all three secrets exist.
 No changes to DNS, Render hosting, or the app backend are needed.
 
-The two rate-limit namespace IDs in `wrangler.jsonc` must be unused by other
-Workers in the account. Change them before deployment if they already exist.
+The IP burst-limit namespace ID in `wrangler.jsonc` must be unused by other
+Workers in the account. Change it before deployment if it already exists.
+Wrangler also creates the SQLite-backed `ContactRateLimiter` Durable Object.
+Keep its class and singleton name stable across deployments to preserve the budget.
 
 ### 3. Set the three Worker secrets
 
@@ -98,14 +101,14 @@ Acceptance by Resend is not a guarantee of inbox delivery; bounces appear in Res
 
 Common failures:
 
-| Status | Check |
-| --- | --- |
-| No Worker request | Render needs `PUBLIC_CONTACT_ENDPOINT` and a fresh build. |
-| 403 / browser CORS error | Exact website origin must be in `ALLOWED_ORIGINS`. |
-| 422 | Invalid fields or a filled hidden honeypot. |
-| 429 | Wait at least a minute before trying again. |
-| 503 | All three Worker secrets must be present; sender and recipient must be bare valid email addresses. |
-| 502 | Check Resend domain verification, sending-key permissions, service status, and Worker binding errors. |
+| Status                   | Check                                                                                                 |
+| ------------------------ | ----------------------------------------------------------------------------------------------------- |
+| No Worker request        | Render needs `PUBLIC_CONTACT_ENDPOINT` and a fresh build.                                             |
+| 403 / browser CORS error | Exact website origin must be in `ALLOWED_ORIGINS`.                                                    |
+| 422                      | Invalid fields or a filled hidden honeypot.                                                           |
+| 429                      | Wait for the response’s `Retry-After` interval (up to an hour).                                       |
+| 503                      | All three Worker secrets must be present; sender and recipient must be bare valid email addresses.    |
+| 502                      | Check Resend domain verification, sending-key permissions, service status, and Worker binding errors. |
 
 A browser navigation to the Worker URL is not a form submission: `/` returns 404;
 GET is not supported on the endpoint.
@@ -147,18 +150,25 @@ PUBLIC_CONTACT_ENDPOINT=http://localhost:8787/api/contact bun run dev
 
 The example local origins assume Astro uses port 4321; update `.dev.vars` if it
 chooses another port. Manual submissions with real credentials send real email.
-The automated tests use a mock provider and never send email. `.dev.vars` files
+The automated tests use a mock provider and never send email. Limiter tests use
+real local workerd/SQLite storage to check concurrency, restart persistence, and
+expiry; they need permission to open loopback ports. `.dev.vars` files
 are ignored by Git. Use a separate Worker, origins, and inbox for hosted staging.
 
 ## Boundaries
 
 - JSON-only POST, exact origin allowlist, strict field validation, honeypot, and
   a 32 KiB streamed-body cap. CORS is a browser control, not bot authentication.
-- Cloudflare rate-limit bindings allow roughly 3 attempts per IP per minute and
-  10 valid inquiries per minute **per Cloudflare location**. They are approximate,
-  not a strict global quota or a replacement for bot challenges under sustained
-  distributed abuse. They use Cloudflare's client-IP header, never client-selected
-  forwarding headers. Shared networks can temporarily share an IP allowance.
+- One shared Durable Object allows **3 valid submission attempts per IP per rolling
+  hour and 30 total per rolling hour**, across all Cloudflare locations. Capacity is
+  reserved atomically before calling Resend; failed sends also consume the budget.
+  A separate approximate edge limit of 3 requests/IP/minute rejects bursts before
+  reading request bodies. Neither limit is bot authentication. Shared networks
+  share an IP allowance. Only Cloudflare's client-IP header is used.
+- Rate-limit state contains at most 30 timestamps and SHA-256 IP hashes, not raw
+  addresses or message content. Alarms remove expired records from active storage
+  after an hour; Cloudflare's storage recovery/backups have their own retention.
+  Hashes are pseudonymous identifiers, not a guarantee of anonymity.
 - The Worker does not store submissions or log message contents, addresses, keys,
   or provider responses. Messages necessarily pass through Cloudflare, Resend,
   and the destination email provider.

@@ -6,13 +6,15 @@ import { z } from 'zod'
 import { contactBodySchema, type ContactSubmission } from './body'
 import { readContactBody } from './request-body'
 
+export { ContactRateLimiter } from './rate-limit'
+
 export type Env = {
   ALLOWED_ORIGINS: string
   RESEND_API_KEY?: string
   EMAIL_FROM?: string
   CONTACT_EMAIL_TO?: string
   IP_LIMITER: Pick<RateLimit, 'limit'>
-  EMAIL_LIMITER: Pick<RateLimit, 'limit'>
+  CONTACT_LIMITER: { getByName: (name: string) => Pick<DurableObjectStub, 'fetch'> }
 }
 
 type SendRequest = (url: string, init: RequestInit) => Promise<Response>
@@ -36,7 +38,7 @@ const messageText = (submission: ContactSubmission) =>
     submission.help || 'Not provided',
   ].join('\n')
 
-/** Handle only marketing inquiries; no app credentials, database, or backend connection. */
+/** Handle only marketing inquiries; no app credentials or backend connection. */
 export const handleContact = async (
   request: Request,
   env: Env,
@@ -50,8 +52,9 @@ export const handleContact = async (
   const allowedOrigins = env.ALLOWED_ORIGINS.split(',')
     .map((value) => value.trim())
     .filter(Boolean)
-  if (!origin || !allowedOrigins.includes(origin)) return json(403, { error: 'Origin not allowed.' })
-  headers.set('Access-Control-Allow-Origin', origin)
+  const allowedOrigin = allowedOrigins.find((value) => value === origin)
+  if (!allowedOrigin) return json(403, { error: 'Origin not allowed.' })
+  headers.set('Access-Control-Allow-Origin', allowedOrigin)
   headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS')
   headers.set('Access-Control-Allow-Headers', 'Content-Type')
 
@@ -79,11 +82,17 @@ export const handleContact = async (
     const parsed = contactBodySchema.safeParse(body.value)
     if (!parsed.success) return json(422, { error: 'Please check your contact details.' })
 
-    // This is a per-location burst limit, not a worldwide email quota.
-    if (!(await env.EMAIL_LIMITER.limit({ key: 'contact' })).success) {
-      headers.set('Retry-After', '60')
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ip))
+    const ipHash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+    const allowance = await env.CONTACT_LIMITER.getByName('contact').fetch('https://limiter/consume', {
+      method: 'POST',
+      headers: { 'X-Contact-IP-Hash': ipHash },
+    })
+    if (allowance.status === 429) {
+      headers.set('Retry-After', allowance.headers.get('Retry-After')!)
       return json(429, { error: 'Please wait before trying again.' })
     }
+    if (!allowance.ok) throw new Error('Contact limiter unavailable')
     const response = await sendRequest('https://api.resend.com/emails', {
       method: 'POST',
       headers: {

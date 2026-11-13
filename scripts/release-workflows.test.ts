@@ -88,7 +88,7 @@ it('preview marketing builds never send contact inquiries to the AI backend', ()
   )
   expect(marketing.with['build-args']).toBeUndefined()
   const dockerfile = readFileSync(join(import.meta.dir, '../deploy/docker/marketing.Dockerfile'), 'utf8')
-  expect(dockerfile).toContain('ARG PUBLIC_CONTACT_ENDPOINT=')
+  expect(dockerfile).toMatch(/^ARG PUBLIC_CONTACT_ENDPOINT=$/m)
   expect(dockerfile).toContain('RUN PUBLIC_CONTACT_ENDPOINT="$PUBLIC_CONTACT_ENDPOINT" bun run build')
 })
 

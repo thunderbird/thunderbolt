@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Auth } from '@/auth/elysia-plugin'
-import { authorizeWsBearer } from '@/auth/ws-bearer-auth'
+import { createWsSessionGuard } from '@/auth/ws-bearer-auth'
 import { isPrivateAddress } from '@/utils/url-validation'
 import { wsCarrierSubprotocol } from '@shared/ws-bearer'
 import { Elysia, type AnyElysia } from 'elysia'
@@ -134,6 +134,7 @@ type RelayState = {
   pending: Array<string | ArrayBuffer | Uint8Array>
   pendingBytes: number
   closing: boolean
+  guard: ReturnType<typeof createWsSessionGuard> | null
 }
 
 /** Whether one more frame of `bytes` would push a pre-connect queue past its message or byte cap
@@ -317,25 +318,33 @@ export const createUniversalProxyWsRoutes = (options: {
         pending: [],
         pendingBytes: 0,
         closing: false,
+        guard: null,
       }
       extras.relay = state
       const refuse = (code: number, reason: string) => {
         state.closing = true
+        state.guard?.stop()
         state.pending = []
         state.pendingBytes = 0
+        if (state.upstream) {
+          safeWsClose(state.upstream)
+        }
         ws.close(code, reason)
       }
 
-      // Validate the bearer exactly once per accepted socket. The bearer rides
+      // Validate the bearer on open, then recheck the live session. The bearer rides
       // a `thunderbolt.bearer.<token>` subprotocol entry (browsers can't set
       // `Authorization` on `new WebSocket()`); it is verified via the same
       // Better Auth path REST uses (HMAC + DB lookup). Anonymous users are
       // rejected — they must never open a proxy WebSocket.
       const data = ws.data as unknown as { request?: Request }
       const subprotocolHeader = data.request?.headers.get('sec-websocket-protocol') ?? null
-      const authorization = await authorizeWsBearer(auth, subprotocolHeader)
+      state.guard = createWsSessionGuard(auth, subprotocolHeader, refuse)
+      const authorization = await state.guard.authorize()
       if (!authorization.ok) {
-        refuse(authorization.closeCode, authorization.closeReason)
+        if (!state.closing) {
+          refuse(authorization.closeCode, authorization.closeReason)
+        }
         return
       }
       const userId = authorization.user.id
@@ -367,19 +376,24 @@ export const createUniversalProxyWsRoutes = (options: {
 
       if (state.closing) {
         // The client closed, or overflowed the queue, while the bearer check ran: log it, dial nothing.
+        state.guard.stop()
         extras.observe()
         return
       }
 
       const upstream = openUpstream(wsFactory, targetUrl, connectArgs.callerProtocols, ws)
       if (!upstream) {
+        state.guard.stop()
         return
       }
       state.upstream = upstream
 
-      upstream.addEventListener('open', () => {
+      upstream.addEventListener('open', async () => {
         if (state.closing) {
           upstream.close(1000)
+          return
+        }
+        if (!(await state.guard?.check()) || state.closing) {
           return
         }
         state.upstreamReady = true
@@ -391,6 +405,9 @@ export const createUniversalProxyWsRoutes = (options: {
       })
 
       upstream.addEventListener('message', (event: MessageEvent) => {
+        if (state.closing) {
+          return
+        }
         try {
           ws.send(event.data as never)
         } catch {
@@ -403,6 +420,7 @@ export const createUniversalProxyWsRoutes = (options: {
           return
         }
         state.closing = true
+        state.guard?.stop()
         safeWsClose(ws, relayCloseCode(event.code) ?? downstreamNoStatusCloseCode, event.reason || '')
       })
 
@@ -411,10 +429,11 @@ export const createUniversalProxyWsRoutes = (options: {
           return
         }
         state.closing = true
+        state.guard?.stop()
         safeWsClose(ws, wsCloseCodes.internalError, 'upstream error')
       })
     },
-    message(ws, message) {
+    async message(ws, message) {
       const state = wsExtras(ws).relay
       if (!state) {
         return
@@ -431,6 +450,11 @@ export const createUniversalProxyWsRoutes = (options: {
           : sharedEncoder.encode(typeof message === 'object' ? JSON.stringify(message) : String(message))
 
       if (state.upstreamReady && state.upstream) {
+        // Only forwarded frames await the session check: the queue below must stay capped while a lookup is
+        // slow, and the upstream `open` listener checks the session once before it flushes that queue.
+        if (!(await state.guard?.check()) || state.closing) {
+          return
+        }
         state.upstream.send(payload as never)
         return
       }
@@ -439,6 +463,7 @@ export const createUniversalProxyWsRoutes = (options: {
       const bytes = messageByteLength(payload)
       if (overflowsPreConnectQueue(state, bytes)) {
         state.closing = true
+        state.guard?.stop()
         if (state.upstream) {
           safeWsClose(state.upstream, 1000)
         }
@@ -457,6 +482,7 @@ export const createUniversalProxyWsRoutes = (options: {
         return
       }
       state.closing = true
+      state.guard?.stop()
       // A close during the bearer check would otherwise keep the queue alive until auth settles.
       state.pending = []
       state.pendingBytes = 0

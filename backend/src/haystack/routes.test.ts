@@ -34,6 +34,7 @@ import { encodeWsBearer } from '@shared/ws-bearer'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { createHmac } from 'crypto'
 import { Elysia } from 'elysia'
+import { eq } from 'drizzle-orm'
 import type { HaystackAcpDeps } from './acp-server'
 import { createHaystackRoutes } from './routes'
 
@@ -319,6 +320,52 @@ describe('WS /v1/haystack/ws — auth gating', () => {
     expect(reply.result.protocolVersion).toBeGreaterThan(0)
     expect(reply.result.agentCapabilities.loadSession).toBe(true)
     client.close()
+  }, 15000)
+
+  it('closes an active socket within five seconds of session revocation', async () => {
+    const handle = await createTestApp({ database: iso.db })
+    const port = await startApp(handle.app as unknown as RunningApp)
+    cleanups.push(async () => {
+      await stopApp(handle.app as unknown as RunningApp)
+      await handle.cleanup()
+    })
+
+    const client = new WebSocket(
+      `ws://127.0.0.1:${port}/v1/haystack/ws?pipeline=rag`,
+      bearerProtocols(handle.bearerToken),
+    )
+    await new Promise<void>((resolve) => client.addEventListener('open', () => resolve()))
+    const initialized = nextMessage(client)
+    client.send(initializeFrame(1))
+    expect(JSON.parse(await initialized).id).toBe(1)
+
+    await handle.db.delete(sessionTable).where(eq(sessionTable.token, handle.bearerToken.split('.')[0]))
+    const closed = observeWsTermination(client)
+    client.send(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'session/new' }))
+    expect((await closed).code).toBe(4001)
+  }, 15000)
+
+  it('closes an idle socket within five seconds of session revocation', async () => {
+    const handle = await createTestApp({ database: iso.db })
+    const port = await startApp(handle.app as unknown as RunningApp)
+    cleanups.push(async () => {
+      await stopApp(handle.app as unknown as RunningApp)
+      await handle.cleanup()
+    })
+    const client = new WebSocket(
+      `ws://127.0.0.1:${port}/v1/haystack/ws?pipeline=rag`,
+      bearerProtocols(handle.bearerToken),
+    )
+    await new Promise<void>((resolve) => client.addEventListener('open', () => resolve()))
+    const initialized = nextMessage(client)
+    client.send(initializeFrame(1))
+    expect(JSON.parse(await initialized).id).toBe(1)
+
+    await handle.db.delete(sessionTable).where(eq(sessionTable.token, handle.bearerToken.split('.')[0]))
+    const closed = observeWsTermination(client)
+    const startedAt = Date.now()
+    expect((await closed).code).toBe(4001)
+    expect(Date.now() - startedAt).toBeLessThan(5_500)
   }, 15000)
 
   it('answers an initialize the client sends before the bearer check finishes', async () => {

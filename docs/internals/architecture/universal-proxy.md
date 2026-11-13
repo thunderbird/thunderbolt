@@ -188,11 +188,23 @@ list (logged by none). Hence:
 - **The carrier exists** because RFC 6455 requires the server to echo one offered subprotocol for
   strict clients, and echoing the _bearer_ would expose the credential on `WebSocket.protocol` to
   page JS and response logs ([ws.ts:264-286](../../../backend/src/proxy/ws.ts#L264)).
-- **The bearer is validated in `open()`, not `beforeHandle`**, which Elysia/Bun can invoke more than
+- **The bearer is first validated in `open()`, not `beforeHandle`**, which Elysia/Bun can invoke more than
   once per upgrade and so holds only synchronous, idempotent target checks. `open()` runs once per
   accepted socket, validates through the Better Auth path REST uses, and refuses anonymous users
   ([ws.ts:303-340](../../../backend/src/proxy/ws.ts#L303),
   [backend/src/auth/ws-bearer-auth.ts](../../../backend/src/auth/ws-bearer-auth.ts)).
+- Sockets using the same bearer in one backend process share a session check across both WebSocket
+  routes. The group is keyed by the bearer as Better Auth reads it (trimmed, percent-decoded), so every
+  accepted encoding of one credential shares one poll. Each new socket starts its own session lookup. A
+  successful check is reused for at most one second for forwarded frames; a separate forced database
+  poll runs every five seconds even when frames keep arriving. Revocation closes every socket in that
+  group with `4001` and closes their upstreams. Inbound and server-initiated traffic may pass for up to
+  five seconds after revocation, plus session lookup and close time. Checks do not refresh session
+  expiry; outgoing frames do not query the database. A lookup that fails, for example while the
+  database restarts, is not a revocation: only the handshake that made it is refused with `1013`, and
+  live sockets keep their last result. Frames sent before the upstream opens skip the per-frame check,
+  so the pre-connect queue cap applies even while a lookup is slow; the upstream `open` listener checks
+  the session once before flushing that queue.
 - **The whole `tbproxy.*` and `thunderbolt.*` namespace is stripped before the upstream handshake**
   ([ws.ts:86](../../../backend/src/proxy/ws.ts#L86)); caller protocols pass through so the upstream
   negotiates normally.

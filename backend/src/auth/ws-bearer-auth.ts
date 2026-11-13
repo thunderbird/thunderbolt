@@ -10,9 +10,10 @@
  * by Referer) and `Sec-WebSocket-Protocol` (logged by none). We carry the same
  * signed bearer token the REST channel uses as a `thunderbolt.bearer.<token>`
  * subprotocol entry and validate it via the identical Better Auth path —
- * `auth.api.getSession({ headers: { Authorization: Bearer <token> } })`, which
+ * `auth.api.getSession({ headers: { Authorization: Bearer <token> }, query: { disableRefresh: true } })`, which
  * runs `bearer({ requireSignature: true })`: HMAC signature check + DB session
- * lookup. This is stateless and works across instances; no in-memory store.
+ * lookup. The credential works across instances; each process only caches live
+ * socket validation briefly and polls the shared session store for revocation.
  *
  * The bearer entry is consumed in the WS `open()` handler (NOT `beforeHandle`,
  * which Elysia/Bun may invoke more than once per upgrade) and the carrier
@@ -83,6 +84,7 @@ export const authorizeWsBearer = async (
   try {
     const session = await auth.api.getSession({
       headers: new Headers({ Authorization: `Bearer ${token}` }),
+      query: { disableRefresh: true },
     })
     const user = session?.user as User | undefined
     if (!user || user.isAnonymous) {
@@ -92,5 +94,138 @@ export const authorizeWsBearer = async (
   } catch (error) {
     console.error(`WebSocket bearer check failed — ${getSafeLogMessage(error)}`)
     return { ok: false, closeCode: wsCloseAuthUnavailable, closeReason: 'auth unavailable' }
+  }
+}
+
+type GuardGroup = {
+  callbacks: Set<(code: number, reason: string) => void>
+  lookup: (force?: boolean) => Promise<WsBearerAuthorization>
+  freshLookup: () => Promise<WsBearerAuthorization>
+  timer: ReturnType<typeof setInterval>
+}
+
+// shortcut: one poll per distinct live bearer per process; add a shared limiter if many live bearers become a load source.
+const guardGroups = new WeakMap<Auth, Map<string, GuardGroup>>()
+
+/**
+ * The token Better Auth's bearer plugin verifies for a credential: trimmed, and percent-decoded when signed.
+ * Keying groups on it keeps every accepted encoding of one bearer in one group, so a session gets one poll.
+ */
+const canonicalBearer = (token: string) => {
+  const trimmed = token.trim()
+  if (!trimmed.includes('.') || !trimmed.includes('%')) {
+    return trimmed
+  }
+  try {
+    return decodeURIComponent(trimmed)
+  } catch {
+    return trimmed
+  }
+}
+
+/**
+ * Share bearer validation across sockets in this process, including both WebSocket routes. A read that
+ * fails (1013) refuses only the handshake that made it; live sockets keep their last result and retry.
+ */
+export const createWsSessionGuard = (
+  auth: Auth,
+  subprotocolHeader: string | null,
+  reject: (code: number, reason: string) => void,
+) => {
+  let stopped = false
+  const token = canonicalBearer(extractBearerSubprotocol(subprotocolHeader) ?? '')
+  const groups = guardGroups.get(auth) ?? new Map<string, GuardGroup>()
+  guardGroups.set(auth, groups)
+  let group = groups.get(token)
+  if (!group) {
+    let inFlight: Promise<WsBearerAuthorization> | null = null
+    let valid: Extract<WsBearerAuthorization, { ok: true }> | null = null
+    let validUntil = 0
+    let denied: Extract<WsBearerAuthorization, { ok: false }> | null = null
+    let polling = false
+    const callbacks = new Set<(code: number, reason: string) => void>()
+    const applyResult = (result: WsBearerAuthorization): WsBearerAuthorization => {
+      if (denied) {
+        return denied
+      }
+      if (result.ok && valid && result.user.id !== valid.user.id) {
+        result = unauthorized
+      }
+      if (result.ok) {
+        valid = result
+        validUntil = Date.now() + 1_000
+      } else if (result.closeCode === wsCloseAuthUnavailable) {
+        // A failed read is not a revocation: keep the last result and retry once the cache window ends.
+        validUntil = Date.now() + 1_000
+      } else {
+        denied = result
+        for (const callback of callbacks) {
+          callback(result.closeCode, result.closeReason)
+        }
+      }
+      return result
+    }
+    const freshLookup = () => authorizeWsBearer(auth, subprotocolHeader).then(applyResult)
+    const liveLookup = async () => {
+      const result = await freshLookup()
+      return !result.ok && result.closeCode === wsCloseAuthUnavailable && valid ? valid : result
+    }
+    const lookup = (force = false): Promise<WsBearerAuthorization> => {
+      if (denied) {
+        return Promise.resolve(denied)
+      }
+      if (inFlight) {
+        return inFlight
+      }
+      if (!force && valid && Date.now() < validUntil) {
+        return Promise.resolve(valid)
+      }
+      inFlight = liveLookup().finally(() => {
+        inFlight = null
+      })
+      return inFlight
+    }
+    const timer = setInterval(() => {
+      if (polling) {
+        return
+      }
+      polling = true
+      void (async () => {
+        try {
+          // An inbound lookup started before this tick cannot stand in for the forced poll.
+          if (inFlight) {
+            await inFlight
+          }
+          if (callbacks.size > 0) {
+            await lookup(true)
+          }
+        } finally {
+          polling = false
+        }
+      })()
+    }, 5_000)
+    timer.unref()
+    group = { callbacks, lookup, freshLookup, timer }
+    groups.set(token, group)
+  }
+  const currentGroup = group
+  currentGroup.callbacks.add(reject)
+  return {
+    authorize: async () => (stopped ? unauthorized : currentGroup.freshLookup()),
+    check: async () => !stopped && (await currentGroup.lookup()).ok && !stopped,
+    stop: () => {
+      if (stopped) {
+        return
+      }
+      stopped = true
+      currentGroup.callbacks.delete(reject)
+      if (currentGroup.callbacks.size === 0) {
+        clearInterval(currentGroup.timer)
+        groups.delete(token)
+        if (groups.size === 0) {
+          guardGroups.delete(auth)
+        }
+      }
+    },
   }
 }

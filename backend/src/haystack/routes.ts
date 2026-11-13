@@ -4,7 +4,7 @@
 
 import { registerAgentProvider } from '@/agents'
 import type { Auth } from '@/auth/elysia-plugin'
-import { authorizeWsBearer, wsCloseUnauthorized } from '@/auth/ws-bearer-auth'
+import { createWsSessionGuard, wsCloseUnauthorized } from '@/auth/ws-bearer-auth'
 import { createStandaloneLogger } from '@/config/logger'
 import type { Settings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
@@ -22,6 +22,7 @@ type HaystackSocketState = {
   pending: string[]
   pendingBytes: number
   closing: boolean
+  guard: ReturnType<typeof createWsSessionGuard> | null
 }
 
 /** Stashed on `ws.data`, the upgrade context, so the key is prefixed to stay clear of its fields. */
@@ -32,6 +33,7 @@ const haystackSocketData = (ws: { data: unknown }): HaystackSocketData => ws.dat
 /** Stop taking frames and drop the ones still waiting for the bearer check. */
 const stopAccepting = (state: HaystackSocketState) => {
   state.closing = true
+  state.guard?.stop()
   state.pending = []
   state.pendingBytes = 0
 }
@@ -55,11 +57,12 @@ const refuse = (
  *  - Exposes `WS /v1/haystack/ws?pipeline={pipelineId}` for the ACP wire.
  *
  * Auth: the signed bearer token carried as a `Sec-WebSocket-Protocol` entry of
- * the form `thunderbolt.bearer.<token>`. It is validated in `open()` (NOT
+ * the form `thunderbolt.bearer.<token>`. It is first validated in `open()` (NOT
  * `beforeHandle`, which Elysia/Bun invokes more than once per upgrade) via the
  * same Better Auth path REST uses — HMAC signature check + DB session lookup.
- * Anonymous users are rejected. `open()` is called exactly once per accepted
- * socket by the Bun WS adapter.
+ * Anonymous users are rejected. Live sessions share a one-second validation window
+ * for client frames and receive a forced poll every five seconds. `open()` is called
+ * once per accepted socket by Bun.
  *
  * The carrier subprotocol echo happens in the `upgrade` hook, which Elysia
  * runs once per upgrade attempt before `server.upgrade()` and is purely
@@ -156,21 +159,31 @@ export const createHaystackRoutes = (settings: Settings, auth: Auth, deps?: Hays
         const data = ws.data as unknown as { request?: Request }
         // Attached before the bearer check awaits: Bun can deliver frames together with the
         // upgrade, and `message()` must queue them rather than find no state and drop them.
-        const state: HaystackSocketState = { server: null, pending: [], pendingBytes: 0, closing: false }
+        const state: HaystackSocketState = { server: null, pending: [], pendingBytes: 0, closing: false, guard: null }
         haystackSocketData(ws).__haystack = state
 
-        // Validate the bearer exactly once per accepted socket. Doing this in
+        // Validate the bearer on open, then recheck the live session. Doing this in
         // `beforeHandle` instead is unsafe because Bun's adapter can call it
         // more than once per upgrade. The bearer rides a subprotocol entry
         // (browsers can't set `Authorization` on `new WebSocket()`); it is
         // verified via the same Better Auth path REST uses (HMAC + DB lookup).
         const subprotocolHeader = data.request?.headers.get('sec-websocket-protocol') ?? null
-        const authorization = await authorizeWsBearer(auth, subprotocolHeader)
+        state.guard = createWsSessionGuard(auth, subprotocolHeader, (code, reason) => {
+          refuse(ws, state, code, reason)
+          state.server?.dispose()
+        })
+        const authorization = await state.guard.authorize()
         if (!authorization.ok) {
-          refuse(ws, state, authorization.closeCode, authorization.closeReason)
+          if (!state.closing) {
+            refuse(ws, state, authorization.closeCode, authorization.closeReason)
+          }
           return
         }
         const { user } = authorization
+        if (state.closing) {
+          state.guard.stop()
+          return
+        }
 
         const url = new URL(data.request?.url ?? 'http://localhost/haystack/ws')
         const pipelineSlug = url.searchParams.get('pipeline')
@@ -196,7 +209,9 @@ export const createHaystackRoutes = (settings: Settings, auth: Auth, deps?: Hays
         const server = new HaystackAcpServer({
           userId: user.id,
           send: (payload) => {
-            ws.send(payload)
+            if (!state.closing) {
+              ws.send(payload)
+            }
           },
           pipelineId: descriptor.pipelineId,
           pipelineName: descriptor.pipelineName,
@@ -204,6 +219,9 @@ export const createHaystackRoutes = (settings: Settings, auth: Auth, deps?: Hays
           settings,
           deps,
         })
+        if (!(await state.guard.check()) || state.closing) {
+          return
+        }
         state.server = server
         log.debug({ pipelineSlug, pipelineName: descriptor.pipelineName, userId: user.id }, 'haystack ws opened')
         const queued = state.pending
@@ -219,6 +237,9 @@ export const createHaystackRoutes = (settings: Settings, auth: Auth, deps?: Hays
         }
         const text = typeof message === 'string' ? message : JSON.stringify(message)
         if (state.server) {
+          if (!(await state.guard?.check()) || state.closing) {
+            return
+          }
           await state.server.handleMessage(text)
           return
         }

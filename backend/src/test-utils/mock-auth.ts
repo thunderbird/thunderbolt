@@ -10,7 +10,9 @@ type MockAuthSession = {
 }
 
 /** Creates an auth test double with the supplied session lookup. */
-const createAuth = (getSession: (options: { headers: Headers }) => Promise<MockAuthSession | null>): Auth => {
+export const createAuthDouble = (
+  getSession: (options: { headers: Headers }) => Promise<MockAuthSession | null>,
+): Auth => {
   const api: typeof mockAuth.api = Object.create(mockAuth.api)
   Object.defineProperty(api, 'getSession', { value: getSession })
   const auth: Auth = Object.create(mockAuth)
@@ -35,7 +37,7 @@ export const mockAuthUnauthenticated = {
 /** Creates an authenticated session for the supplied test user. */
 export const createMockAuth = (id: string, isAnonymous?: boolean): Auth => {
   const testUser = isAnonymous === undefined ? { id } : { id, isAnonymous }
-  return createAuth(() => Promise.resolve({ user: testUser, session: {} }))
+  return createAuthDouble(() => Promise.resolve({ user: testUser, session: {} }))
 }
 
 /**
@@ -45,7 +47,7 @@ export const createMockAuth = (id: string, isAnonymous?: boolean): Auth => {
  * blocking the upgrade.
  */
 export const createGatedAuth = (id: string, gate: Promise<unknown>): Auth =>
-  createAuth(async ({ headers }) => {
+  createAuthDouble(async ({ headers }) => {
     if (!headers.has('authorization')) {
       return null
     }
@@ -54,4 +56,4 @@ export const createGatedAuth = (id: string, gate: Promise<unknown>): Auth =>
   })
 
 /** Creates an auth test double whose session lookup rejects. */
-export const createThrowingAuth = (error: Error): Auth => createAuth(() => Promise.reject(error))
+export const createThrowingAuth = (error: Error): Auth => createAuthDouble(() => Promise.reject(error))

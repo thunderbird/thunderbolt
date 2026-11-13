@@ -6,6 +6,7 @@ import { afterAll, describe, expect, it } from 'bun:test'
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { evaluate, type ExpressionContext } from './workflow-expression'
 
 type Step = { uses?: string; run?: string }
 
@@ -70,21 +71,6 @@ const runScript = (script: string, env: Record<string, string>) => {
       .map((line) => line.split('=', 2) as [string, string]),
   )
   return { exitCode: result.exitCode, outputs, ghCalls: readFileSync(ghLog, 'utf8') }
-}
-
-type ExpressionContext = { [path: string]: string | number | boolean | null }
-
-/**
- * Evaluates a workflow expression. The ones under test only use syntax JS shares
- * (==, !=, !, &&, ||, quotes) plus the `cancelled()` status function.
- */
-const evaluate = (expression: string, context: ExpressionContext) => {
-  const js = expression
-    .trim()
-    .replace(/^\$\{\{([\s\S]*)\}\}$/, '$1')
-    .replace(/\bcancelled\(\)/g, String(context['cancelled()'] ?? false))
-    .replace(/\b(?:github|inputs|needs)(?:\.[\w-]+)+/g, (path) => JSON.stringify(context[path] ?? null))
-  return new Function(`return ${js}`)()
 }
 
 /** Interpolates every `${{ }}` in a template string, such as the concurrency group. */

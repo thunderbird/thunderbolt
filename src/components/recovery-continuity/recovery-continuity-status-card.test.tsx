@@ -133,6 +133,7 @@ describe('RecoveryContinuityStatusCard', () => {
   it('announces an update elsewhere on an unapproved device without a device list it cannot load', () => {
     renderCard({ notice: 'updatedElsewhere', deviceTrusted: false })
     expect(screen.getByText('Updated on another device')).toBeInTheDocument()
+    expect(screen.getByText(/review your devices from an approved device\./)).toBeInTheDocument()
     expect(fact('This device')).toHaveTextContent('Not approved yet')
     expect(screen.getByRole('button', { name: 'Got it' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Review devices' })).toBeNull()

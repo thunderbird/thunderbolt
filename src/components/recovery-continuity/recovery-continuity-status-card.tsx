@@ -27,7 +27,7 @@ const Fact = ({ label, value, attention }: { label: ReactNode; value: ReactNode;
 type Header = { icon: ReactNode; title: string; description: string }
 
 /** The card's headline: this device's trust first, then the phrase, then a phrase notice, then the passkey. */
-const useHeader = ({ status, notice, passkey }: RecoveryContinuityContextValue): Header | null => {
+const useHeader = ({ status, notice, passkey, deviceTrusted }: RecoveryContinuityContextValue): Header | null => {
   const { t } = useLingui()
   const warningIcon = <ShieldAlert className="size-5 text-warning" aria-hidden />
   if (status === 'unverified') {
@@ -62,7 +62,10 @@ const useHeader = ({ status, notice, passkey }: RecoveryContinuityContextValue):
     return {
       icon: <Info className="size-5 text-muted-foreground" aria-hidden />,
       title: t`Updated on another device`,
-      description: t`Your recovery phrase was replaced on another of your devices. Use the new phrase you saved there; the old one no longer works. If this wasn't you, review your devices.`,
+      // An unapproved device can't list devices, so it points to one that can.
+      description: deviceTrusted
+        ? t`Your recovery phrase was replaced on another of your devices. Use the new phrase you saved there; the old one no longer works. If this wasn't you, review your devices.`
+        : t`Your recovery phrase was replaced on another of your devices. Use the new phrase you saved there; the old one no longer works. If this wasn't you, review your devices from an approved device.`,
     }
   }
   if (passkey === 'needsUpdate' || passkey === 'blocked') {

@@ -30,6 +30,7 @@ export type SpreadsheetEngines = {
   ironcalc: typeof Model
 }
 
+/** True when the bytes start with the gzip magic number. */
 const isGzip = (bytes: Uint8Array) => bytes[0] === 0x1f && bytes[1] === 0x8b
 
 /**

@@ -12,13 +12,15 @@ export type FormulaError = { sheet: string; cell: string; formula: string; error
 /** A workbook's zip entries by path, as `fflate.unzipSync` returns them. */
 export type WorkbookParts = Record<string, Uint8Array>
 
-/*
- * Sheet parts can hold hundreds of thousands of cells, too many for a DOM, so they are scanned with patterns.
- * Element names may carry a namespace prefix (`x:c`), which some generators write.
+/**
+ * A pattern for an element: its tag, its attribute text and its content. Sheet parts can hold hundreds of thousands
+ * of cells, too many for a DOM, so they are scanned with patterns. Element names may carry a namespace prefix
+ * (`x:c`), which some generators write.
  */
 const element = (name: string, flags = '') =>
   new RegExp(`<((?:[\\w.-]+:)?${name})\\b([^>]*?)(?:/>|>([\\s\\S]*?)</\\1>)`, flags)
 
+/** The value of attribute `name` (a pattern) in an element's attribute text, or `undefined` when it has none. */
 const attribute = (attributes: string, name: string) =>
   new RegExp(`(?:^|\\s)${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`)
     .exec(attributes)
@@ -36,6 +38,7 @@ const entities = new Map([
   ['apos', "'"],
 ])
 
+/** Text with its XML character and entity references resolved. */
 const decodeXml = (text: string) =>
   text.replace(/&(?:#x([\da-f]+)|#(\d+)|(\w+));/gi, (match, hex?: string, decimal?: string, name?: string) => {
     if (hex) {
@@ -64,6 +67,11 @@ const richText = (xml: string) =>
     .map(([, , , text = '']) => decodeText(text))
     .join('')
 
+/**
+ * The path of the part a relationship points to. `from` is the path of the part that holds the relationship, such as
+ * `xl/workbook.xml`, and `target` its `Target`, relative to that part's folder unless it starts with `/`. Returns a
+ * zip entry path, such as `xl/worksheets/sheet1.xml`.
+ */
 const resolvePart = (from: string, target: string) => {
   if (target.startsWith('/')) {
     return target.slice(1)
@@ -90,8 +98,10 @@ const relationshipsOf = (parts: WorkbookParts, part: string) => {
   }))
 }
 
+/** A column's number from its letters: `A` is 1, `AA` is 27. */
 const columnNumber = (letters: string) => [...letters.toUpperCase()].reduce((n, c) => n * 26 + c.charCodeAt(0) - 64, 0)
 
+/** A column's letters from its number: 1 is `A`, 27 is `AA`. */
 const columnName = (column: number): string =>
   column > 26
     ? columnName(Math.floor((column - 1) / 26)) + columnName(((column - 1) % 26) + 1)
@@ -187,11 +197,16 @@ const formulaOf = (cell: CellXml, readShared: () => string, date1904: boolean) =
   }
   const type = attribute(f[2], 't') ?? 'normal'
   const text = type === 'shared' && !f[3] ? readShared() : decodeXml(f[3] ?? '')
+  // A data-table formula has no text, so the type is checked first.
+  if (type !== 'normal' && type !== 'shared') {
+    return {
+      text,
+      notComputed:
+        'an array or data-table formula, which is not computed; formulas that read its cells use the values saved in them',
+    }
+  }
   if (text === '') {
     return undefined
-  }
-  if (type !== 'normal' && type !== 'shared') {
-    return { text, notComputed: 'an array or data-table formula, which is not computed' }
   }
   return { text, notComputed: date1904 ? 'the workbook counts dates from 1904, so no formula is computed' : undefined }
 }

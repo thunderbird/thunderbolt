@@ -97,6 +97,7 @@ const shim = (helpers: string[], constants: string) => `(() => {
   })
 })()`
 
+/** A byte count in MiB, to one decimal, for messages. */
 const mib = (bytes: number) => `${Math.round((bytes / 1024 / 1024) * 10) / 10} MiB`
 
 /** Excelize reports a failure in the result's `error`, which a script easily ignores. Here it becomes a thrown Error. */
@@ -122,7 +123,25 @@ const markMacros = (parts: WorkbookParts) => {
   }
 }
 
+/** True when two byte arrays hold the same bytes. */
 const sameBytes = (a: Uint8Array, b: Uint8Array) => a.byteLength === b.byteLength && a.every((byte, i) => byte === b[i])
+
+const isZip = (bytes: Uint8Array) => bytes[0] === 0x50 && bytes[1] === 0x4b
+
+/**
+ * The parts of a saved workbook that are byte for byte the same as in the file it was opened from: Excelize copied
+ * them without parsing them. A password-protected original is no zip to compare with, so every part counts as copied.
+ */
+const copiedFrom = (input: Uint8Array | undefined, parts: WorkbookParts) => {
+  if (!input) {
+    return []
+  }
+  if (!isZip(input)) {
+    return Object.keys(parts)
+  }
+  const original = unzipSync(input)
+  return Object.keys(parts).filter((name) => original[name] && sameBytes(original[name], parts[name]))
+}
 
 type OpenWorkbook = {
   file: ExcelizeFile
@@ -206,8 +225,7 @@ export const installWorkbooks = (
       throw new Error('WriteToBuffer returned no bytes.')
     }
     const parts = unzipSync(buffer)
-    const input = workbook.input ? unzipSync(workbook.input) : {}
-    const copiedParts = Object.keys(parts).filter((name) => input[name] && sameBytes(input[name], parts[name]))
+    const copiedParts = copiedFrom(workbook.input, parts)
     const formulaErrors = cacheFormulaResults(workbook.file, parts, ironcalc)
     markMacros(parts)
     const saved = { bytes: zipSync(parts), formulaErrors, copiedParts }

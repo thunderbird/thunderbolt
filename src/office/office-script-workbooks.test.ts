@@ -13,6 +13,7 @@ import { type SandboxLimits, sandboxLimits } from './constants'
 import { createOfficeScriptTool, type OfficeScriptOutput } from './office-script-tool'
 import { runSandboxedScript, type SandboxJob, type SandboxResult, type SandboxRuntime } from './sandbox'
 import { loadTestSandboxRuntime } from './sandbox-test-runtime'
+import { loadSpreadsheetEngines } from './spreadsheet-engines'
 
 type Runner = (job: SandboxJob, limits: SandboxLimits) => Promise<SandboxResult>
 
@@ -66,6 +67,9 @@ const storeAttachment = (filename: string, bytes: Uint8Array<ArrayBuffer>): Stor
   attachmentStore.set(file.id, file)
   return file
 }
+
+const packageFile = async (specifier: string) =>
+  new Uint8Array(await Bun.file(Bun.resolveSync(specifier, import.meta.dir)).arrayBuffer())
 
 const partsOf = async (file: StoredFile) => unzipSync(new Uint8Array(await file.blob.arrayBuffer()))
 
@@ -302,6 +306,56 @@ for (let i = 0; i < 2500; i++) f.GetCellValue('Sheet1', 'A1')
 saveFile('read.xlsx', f.WriteToBuffer().buffer)
 `)
     expect(output.ok).toBe(true)
+  })
+
+  it('lists a data-table formula, which has no text, and keeps its cached result', async () => {
+    const output = await run(`
+const made = excelize.NewFile()
+made.SetSheetCol('Sheet1', 'A1', [1, 2])
+const parts = fflate.unzipSync(made.WriteToBuffer().buffer)
+const sheet = fflate.strFromU8(parts['xl/worksheets/sheet1.xml'])
+parts['xl/worksheets/sheet1.xml'] = fflate.strToU8(sheet.replace('</row>', '<c r="B1"><f t="dataTable" ref="B1:B2" dt2D="0" dtr="0" r1="A1"/><v>3</v></c></row>'))
+const f = excelize.OpenReader(fflate.zipSync(parts))
+saveFile('table.xlsx', f.WriteToBuffer().buffer)
+`)
+    expect(output.ok && output.formulaErrors).toEqual([
+      {
+        file: 'table.xlsx',
+        sheet: 'Sheet1',
+        cell: 'B1',
+        formula: '',
+        error:
+          'an array or data-table formula, which is not computed; formulas that read its cells use the values saved in them',
+      },
+    ])
+    const sheet = textOf(
+      await partsOf(attachmentStore.get(output.ok ? output.files[0].id : '')!),
+      'xl/worksheets/sheet1.xml',
+    )
+    expect(sheet).toContain('<v>3</v>')
+  })
+
+  it('edits a workbook opened with its password, and saves it without one', async () => {
+    const engines = await loadSpreadsheetEngines(
+      await packageFile('excelize-wasm/excelize.wasm.gz'),
+      await packageFile('@ironcalc/wasm/wasm_bg.wasm'),
+    )
+    const locked = engines.excelize.NewFile()
+    locked.SetCellValue('Sheet1', 'A1', 5)
+    const { buffer } = locked.WriteToBuffer({ Password: 'pw' })
+    if (!(buffer instanceof Uint8Array)) {
+      throw new Error('WriteToBuffer returned no bytes')
+    }
+    storeAttachment('locked.xlsx', new Uint8Array(buffer))
+    const { file } = await runOk(
+      `
+const f = excelize.OpenReader(readFile('locked.xlsx'), { Password: 'pw' })
+f.SetCellFormula('Sheet1', 'B1', 'A1*2')
+saveFile('locked.xlsx', f.WriteToBuffer().buffer)
+`,
+      ['locked.xlsx'],
+    )
+    expect(textOf(await partsOf(file), 'xl/worksheets/sheet1.xml')).toContain('<f>A1*2</f><v>10</v>')
   })
 
   it('refuses options it cannot use, and a password on save', async () => {

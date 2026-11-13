@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Plural, Trans, useLingui } from '@lingui/react/macro'
-import { Check, Copy, SquarePen, Sparkles } from 'lucide-react'
+import { ArrowRight, Check, Copy, SquarePen, Sparkles } from 'lucide-react'
 import { AppLogo } from '@/components/app-logo'
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
 import { Button } from '@/components/ui/button'
@@ -11,16 +11,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { FormFooter } from '@/components/ui/form-footer'
 import { DetailActionsMenu } from '@/components/settings/detail-actions-menu'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { canCompactMemories } from '@/memory/compact'
-import { maxMemoryBytes } from '@/memory/limits'
+import { maxMemoryBytes, memoryCharacterLength } from '@/memory/limits'
 import { MemoryDocument } from './memory-document'
 import { useMemorySettingsState } from './use-memory-settings-state'
 
@@ -166,39 +159,60 @@ export const MemoryDocumentPanel = ({
           }
         }}
       >
-        <DialogContent className="max-h-[85dvh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent aria-describedby={undefined} className="flex max-h-[85dvh] flex-col gap-6 sm:max-w-4xl">
+          <DialogHeader className="shrink-0 pr-8 text-left">
             <DialogTitle>
               <Trans>Review compacted memory</Trans>
             </DialogTitle>
-            <DialogDescription>
-              <Trans>Check that every fact is preserved. Nothing changes until you apply.</Trans>
-            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 text-sm">
-            <div className="space-y-2">
-              <h3 className="font-medium">
-                <Trans>Current memory</Trans>
-              </h3>
-              <div className="break-words text-muted-foreground">
+          <div className="grid min-h-0 gap-3 overflow-y-auto text-sm md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+            <section aria-labelledby="memory-before-title" className="min-w-0 rounded-xl border bg-muted/30">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
+                <h3 id="memory-before-title" className="font-medium">
+                  <Trans>Current memory</Trans>
+                </h3>
+                <span className="text-xs text-muted-foreground">
+                  <Plural
+                    value={memoryCharacterLength(page.preview?.before ?? '')}
+                    one="# character"
+                    other="# characters"
+                  />
+                </span>
+              </div>
+              <div className="min-h-48 break-words p-4 leading-relaxed text-muted-foreground">
                 <MemoryDocument content={page.preview?.before ?? ''} />
               </div>
+            </section>
+            <div aria-hidden="true" className="flex items-center justify-center text-muted-foreground">
+              <ArrowRight className="size-5 rotate-90 md:rotate-0" />
             </div>
-            <div className="space-y-2">
-              <h3 className="font-medium">
-                <Trans>Compacted memory</Trans>
-              </h3>
-              <div className="break-words">
+            <section
+              aria-labelledby="memory-after-title"
+              className="min-w-0 rounded-xl border border-primary/20 bg-primary/5"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-primary/20 px-4 py-3">
+                <h3 id="memory-after-title" className="font-medium">
+                  <Trans>Proposed memory</Trans>
+                </h3>
+                <span className="text-xs text-muted-foreground">
+                  <Plural
+                    value={memoryCharacterLength(page.preview?.after ?? '')}
+                    one="# character"
+                    other="# characters"
+                  />
+                </span>
+              </div>
+              <div className="min-h-48 break-words p-4 leading-relaxed text-foreground/80">
                 <MemoryDocument content={page.preview?.after ?? ''} />
               </div>
-            </div>
+            </section>
           </div>
           {page.error && (
             <p role="alert" className="text-sm text-destructive">
               {page.error}
             </p>
           )}
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button variant="ghost" disabled={page.pending} onClick={() => page.patch({ preview: null, error: null })}>
               <Trans>Cancel</Trans>
             </Button>

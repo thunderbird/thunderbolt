@@ -21,6 +21,8 @@ msgstr "“{filename}” é muito grande (máx. {maxMegabytes} MB)."
 msgid "\"{filename}\" isn't a supported file type."
 msgstr "“{filename}” não é um tipo de arquivo compatível."
 
+#. placeholder {0}: memoryCharacterLength(page.preview?.after ?? '')
+#. placeholder {0}: memoryCharacterLength(page.preview?.before ?? '')
 #. placeholder {0}: page.usage.characters
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+character%7D+other+%7B%23+characters%7D%7D&pluralize_on=0
 #: src/settings/memory/memory-document-panel.tsx
@@ -993,8 +995,8 @@ msgstr "Verificar agora"
 #~ msgstr ""
 
 #: src/settings/memory/memory-document-panel.tsx
-msgid "Check that every fact is preserved. Nothing changes until you apply."
-msgstr ""
+#~ msgid "Check that every fact is preserved. Nothing changes until you apply."
+#~ msgstr ""
 
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "Check the backend logs"
@@ -1279,8 +1281,8 @@ msgid "Compacted"
 msgstr ""
 
 #: src/settings/memory/memory-document-panel.tsx
-msgid "Compacted memory"
-msgstr ""
+#~ msgid "Compacted memory"
+#~ msgstr ""
 
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "Compacting context…"
@@ -4742,6 +4744,10 @@ msgstr ""
 #: src/search/palette/entity-meta.ts
 msgid "Projects"
 msgstr "Projetos"
+
+#: src/settings/memory/memory-document-panel.tsx
+msgid "Proposed memory"
+msgstr ""
 
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "Protected"

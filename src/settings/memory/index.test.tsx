@@ -396,6 +396,8 @@ describe('Memory settings document', () => {
       pending.resolve('Prefers concise answers.')
       await flush()
       expect(screen.getByRole('dialog')).toHaveTextContent('Prefers concise answers.')
+      expect(screen.getByRole('region', { name: 'Current memory' })).toHaveTextContent(before)
+      expect(screen.getByRole('region', { name: 'Proposed memory' })).toHaveTextContent('Prefers concise answers.')
       expect((await getMemoryDocument(getDb())).content).toBe(before)
       fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
       await flush()

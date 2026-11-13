@@ -5,6 +5,8 @@
 import type { Locator, Page } from '@playwright/test'
 import { expect, test } from './test'
 import { collectPageErrors, loginViaEmailCode } from './helpers'
+import { fakeProviderReply } from './fake-provider'
+import { importBackup } from './import-backup'
 
 test.use({ locale: 'en-US' })
 
@@ -12,6 +14,96 @@ test.use({ locale: 'en-US' })
 const editFromAside = async (page: Page, aside: Locator) => {
   await aside.getByRole('button', { name: 'More', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Edit', exact: true }).click()
+}
+
+for (const width of [1280, 390]) {
+  test.describe(`compaction comparison at ${width}px`, () => {
+    test.use({ viewport: { width, height: 844 } })
+    test('compares current and proposed memory with accessible actions', async ({ page }) => {
+      const errors = collectPageErrors(page)
+      const email = await loginViaEmailCode(page)
+      const connectionId = crypto.randomUUID()
+      const modelId = crypto.randomUUID()
+      const url = 'http://localhost:18991/v1'
+      await page.route(`${url}/chat/completions`, (route) =>
+        route.fulfill({
+          contentType: 'text/event-stream',
+          body: `data: ${JSON.stringify({
+            id: 'memory-layout',
+            object: 'chat.completion.chunk',
+            choices: [{ index: 0, delta: { role: 'assistant', content: fakeProviderReply }, finish_reason: null }],
+          })}\n\ndata: ${JSON.stringify({
+            id: 'memory-layout',
+            object: 'chat.completion.chunk',
+            choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+          })}\n\ndata: [DONE]\n\n`,
+        }),
+      )
+      await importBackup(page, {
+        format: 'thunderbolt-export',
+        schemaVersion: 1,
+        exportedAt: new Date().toISOString(),
+        user: { id: 'memory-layout-fixture', email },
+        tables: {
+          provider_connections: [
+            { id: connectionId, provider: 'custom', name: 'Memory fixture', authMethod: 'api_key', url, enabled: 1 },
+          ],
+          provider_connection_secrets: [
+            {
+              id: connectionId,
+              binding: JSON.stringify(['custom', 'api_key', url]),
+              credentials: JSON.stringify({ apiKey: 'memory-layout-key' }),
+            },
+          ],
+          settings: [{ key: 'selected_model', value: modelId }],
+          models: [
+            {
+              id: modelId,
+              providerConnectionId: connectionId,
+              provider: 'custom',
+              name: 'Compaction model',
+              model: 'memory-layout',
+              enabled: 1,
+              isSystem: 0,
+              toolUsage: 1,
+            },
+          ],
+        },
+      })
+      await page.goto('/settings/memory')
+      await page.getByRole('switch', { name: 'Saved memories', exact: true }).click()
+      await page.getByRole('button', { name: 'Edit', exact: true }).click()
+      const before = '# Preferences\n\n' + '- Prefer concise answers with useful examples.\n'.repeat(50)
+      await page.getByRole('textbox', { name: 'Memory text', exact: true }).fill(before)
+      await page.getByRole('button', { name: 'Save', exact: true }).click()
+      await page.getByRole('button', { name: 'More', exact: true }).click()
+      await page.getByRole('menuitem', { name: 'Compact', exact: true }).click()
+      const review = page.getByRole('dialog', { name: 'Review compacted memory' })
+      await expect(review).toBeVisible()
+      const current = review.getByRole('region', { name: 'Current memory', exact: true })
+      const proposed = review.getByRole('region', { name: 'Proposed memory', exact: true })
+      await expect(current.getByRole('heading', { name: 'Preferences', exact: true })).toBeVisible()
+      await expect(proposed).toContainText(fakeProviderReply)
+      const left = (await current.boundingBox())!
+      const right = (await proposed.boundingBox())!
+      if (width === 1280) {
+        expect(right.x).toBeGreaterThan(left.x + left.width)
+        expect(Math.abs(right.y - left.y)).toBeLessThan(1)
+      } else {
+        expect(right.y).toBeGreaterThan(left.y + left.height)
+        expect(Math.abs(right.x - left.x)).toBeLessThan(1)
+      }
+      expect(await review.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+      await expect(review.getByRole('button', { name: 'Apply', exact: true })).toBeInViewport()
+      await expect(review.getByRole('button', { name: 'Cancel', exact: true })).toBeInViewport()
+      await review.getByRole('button', { name: 'Cancel', exact: true }).click()
+      await expect(review).toHaveCount(0)
+      await expect(page.getByRole('document', { name: 'Memory text', exact: true })).toContainText(
+        'Prefer concise answers',
+      )
+      expect(errors).toEqual([])
+    })
+  })
 }
 
 test('cold and warm memory asides animate continuously through opening, closing, and reopening', async ({

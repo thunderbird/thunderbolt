@@ -70,7 +70,7 @@ When a skill creates something outside the worktree, such as a repo snapshot, a 
 
 ## Adding a skill
 
-1. Create `.agents/skills/<name>/SKILL.md`. Use only `name` and `description` in the frontmatter, and put the phrases that should trigger the skill in `description`.
+1. Create `.agents/skills/<name>/SKILL.md`. Use only `name` and `description` in the frontmatter (plus the flag in step 5 when it applies), and put the phrases that should trigger the skill in `description`.
 2. Link it for Claude Code: `ln -s ../../.agents/skills/<name> .claude/skills/<name>`.
 3. Add `!.claude/skills/<name>` to `.gitignore`. Without it the link stays untracked.
 4. Do not name a model. When the skill asks the user something, delegates, uses a worktree or runs work in parallel, add a "Harness notes" table like the one in `thunder-update-model`.

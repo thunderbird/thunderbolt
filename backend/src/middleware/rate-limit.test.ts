@@ -76,6 +76,34 @@ describe('Rate Limiting', () => {
     expect((await app.handle(requestWithIp('203.0.113.11'))).status).toBe(200)
   })
 
+  it('limits the website contact form to 3 requests per hour per address', async () => {
+    const app = new Elysia()
+      .use(createIpTierRateLimit(database, { enabled: true, trustedProxy: 'cloudflare' }, 'contact'))
+      .get('/v1/test', () => ({ ok: true }))
+    for (let count = 0; count < 3; count++) {
+      const response = await app.handle(requestWithIp('192.0.2.1'))
+      expect(response.status).toBe(200)
+      expect(response.headers.get('ratelimit-limit')).toBe('3')
+    }
+    const limited = await app.handle(requestWithIp('192.0.2.1'))
+    expect(limited.status).toBe(429)
+    expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(3500)
+    expect((await app.handle(requestWithIp('192.0.2.2'))).status).toBe(200)
+  })
+
+  it('keys on the trusted hop of a fixed proxy chain and ignores forged leading hops', async () => {
+    const app = new Elysia()
+      .use(createIpTierRateLimit(database, { enabled: true, trustedProxy: 1 }, 'contact'))
+      .get('/v1/test', () => ({ ok: true }))
+    const requestThroughProxy = (forwarded: string) =>
+      app.handle(new Request('http://localhost/v1/test', { headers: { 'x-forwarded-for': forwarded } }))
+    for (let count = 0; count < 3; count++) {
+      expect((await requestThroughProxy(`192.0.2.${count}, 203.0.113.1`)).status).toBe(200)
+    }
+    expect((await requestThroughProxy('192.0.2.99, 203.0.113.1')).status).toBe(429)
+    expect((await requestThroughProxy('192.0.2.99, 203.0.113.2')).status).toBe(200)
+  })
+
   describe('user-based rate limiting', () => {
     it('should allow requests under the limit for an authenticated user', async () => {
       const app = createTestApp(database, enabledSettings, 'inference', 'user-1')

@@ -371,15 +371,18 @@ An app appears in the sidebar as soon as it is registered. An entry that fails v
 
 ## Email
 
-Sign-in codes are sent through Resend.
+Sign-in codes and website contact notifications are sent through Resend.
 
 | Variable                    | Default                     | What it does                                                                                                                                          |
 | --------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `RESEND_API_KEY`            | none                        | Sending key. Leave it unset and no mail is sent. Fine for local evaluation, and fine on OIDC or SAML, but it breaks email-code sign-in in production. |
 | `RESEND_MONITORING_API_KEY` | none                        | Separate full-access key used only by the email health check, so the sending key can stay send-only.                                                  |
 | `EMAIL_FROM`                | `hello@auth.thunderbolt.io` | Sender address for outgoing mail, and the contact address in its footer.                                                                              |
+| `CONTACT_EMAIL_TO`          | none                        | Fixed inbox for website inquiries. Unset disables the contact endpoint; it never defaults to the sender or a visitor-supplied address.                |
 
 Set `EMAIL_FROM` to an address on a domain your Resend account has verified: Resend rejects the default everywhere except Thunderbird's own deployment. There is no setting to use your own SMTP server.
+
+The website posts to `POST /v1/contact`. The endpoint requires a configured recipient and sending key. It limits each client IP to three requests per hour and the whole deployment to thirty inquiries per hour, even when application rate limits are disabled. Set `TRUSTED_PROXY` for your actual ingress so it can identify clients correctly; without it every visitor shares the three. Kubernetes exposes email settings under `backend.email` and proxy trust under `backend.env.trustedProxy` and routes `/v1/contact` on the marketing hostname to the backend.
 
 ## Browser access
 
@@ -396,8 +399,8 @@ Request headers need no configuration: the API echoes back whatever the browser 
 
 | Variable                                          | Default  | What it does                                                                                                                       |
 | ------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `RATE_LIMIT_ENABLED`                              | `true`   | Set `false` to switch limits off. Local evaluation only.                                                                           |
-| `TRUSTED_PROXY`                                   | empty    | `cloudflare` trusts `CF-Connecting-IP`, `akamai` trusts `True-Client-IP`, empty trusts only the connecting socket address.         |
+| `RATE_LIMIT_ENABLED`                              | `true`   | Set `false` to switch limits off, except on the website contact form and the integration token routes. Local evaluation only.      |
+| `TRUSTED_PROXY`                                   | empty    | `cloudflare` trusts `CF-Connecting-IP`, `akamai` trusts `True-Client-IP`, a positive integer (1–32) selects that many trusted hops from the right of `X-Forwarded-For`; empty trusts only the socket address.         |
 | `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX`                | `10`     | Anonymous sign-ins allowed per IP address per window. See [Anonymous sign-in](#anonymous-sign-in).                                 |
 | `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS`        | `60`     | Length of that window, in seconds.                                                                                                 |
 | `ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX`         | `2000`   | Anonymous sign-ins allowed per window across the whole deployment, every IP together. See [Anonymous sign-in](#anonymous-sign-in). |
@@ -409,12 +412,13 @@ Request headers need no configuration: the API echoes back whatever the browser 
 
 > Don't set `TRUSTED_PROXY` unless you know exactly what sits in front of the API. Trusting the wrong header lets any client claim any IP and walk straight past the limits.
 
-With `TRUSTED_PROXY` empty, the API cannot read a client address from a header it trusts. Two limiters then put every client in one shared bucket instead of skipping the limit:
+With `TRUSTED_PROXY` empty, the API cannot read a client address from a header it trusts. Three limiters then put every client in one shared bucket instead of skipping the limit:
 
 - The API's own limit on authentication requests (10 per minute) counts the address of whatever connects to it. Behind a reverse proxy or CDN, that is the proxy.
+- The website contact form's limit (3 per hour) counts the same address, so behind a proxy the whole site shares three inquiries an hour.
 - The built-in authentication limiter reads `X-Forwarded-For`. It trusts that header only when it holds a single address. A request that crossed two or more hops carries several, and the limiter then ignores the header and puts the request in one bucket per route. So does a request that arrives without the header. Those buckets allow 10 requests per minute, 3 per 10 seconds for starting an SSO sign-in, 3 per minute for requesting or entering an emailed sign-in code, and 30 per second for session checks.
 
-The symptom is many users getting `429` at the same moment, most often when a team signs in at the start of the day. If Cloudflare or Akamai sits in front of the API, set `TRUSTED_PROXY` to `cloudflare` or `akamai`. Behind any other proxy there is no setting that fixes it, because the limits are fixed: all users behind that proxy share them.
+The symptom is many users getting `429` at the same moment, most often when a team signs in at the start of the day. If Cloudflare or Akamai sits in front of the API, set `TRUSTED_PROXY` to `cloudflare` or `akamai`. For a fixed reverse-proxy chain, use the number of hops between the client and backend: `TRUSTED_PROXY=1` for one nginx ingress or ALB, `2` for two proxies. Selection starts at the right of `X-Forwarded-For`, so a forged leading address cannot create a new bucket. Missing, malformed, or too-short chains fall back to a shared bucket. Better Auth receives the same resolved address through a server-overwritten internal header. Restrict origin access to those proxies, require each to append or replace XFF with the actual peer address, and do not use a hop count when clients can reach the backend through shorter paths. Leave ALB client-port preservation disabled.
 
 Apart from anonymous sign-in, the limits are not configurable:
 
@@ -424,6 +428,9 @@ Apart from anonymous sign-in, the limits are not configurable:
 | Private chat, the bring-your-own-key relay, tools, search and previews, together | 100 per minute |
 | Sign-in                                                                          | 10 per minute  |
 | Debug transcript upload                                                          | 10 per hour    |
+| Google and Microsoft integration token exchange                                  | 30 per minute  |
+| Website contact form, per IP address                                             | 3 per hour     |
+| Website contact form, the whole deployment                                       | 30 per hour    |
 
 The third row is one shared bucket per user, not one per group. Authenticated requests are counted per user, anonymous accounts included, since those have a user record too. Sign-in requests have no session and are counted per IP address; when an IP cannot be determined they share a single bucket rather than skipping the limit, so that protection cannot quietly turn itself off.
 

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { createContactRoutes } from '@/contact/routes'
 import { createMainRoutes } from '@/api/routes'
 import { createHealthRoutes } from '@/api/health'
 import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
@@ -97,12 +98,10 @@ export const createApp = async (deps?: AppDeps) => {
 
   const rateLimitSettings = { enabled: settings.rateLimitEnabled }
   const ipRateLimitSettings = { ...rateLimitSettings, trustedProxy: settings.trustedProxy }
-  // Public token relays always enforce their IP budget, even when optional API limits are disabled.
-  const integrationOAuthRateLimit = createIpTierRateLimit(
-    database,
-    { ...ipRateLimitSettings, enabled: true },
-    'integration-oauth',
-  )
+  // Public token relays and the public contact form always enforce their limits, even when
+  // optional API limits are disabled.
+  const alwaysOnIpRateLimitSettings = { ...ipRateLimitSettings, enabled: true }
+  const integrationOAuthRateLimit = createIpTierRateLimit(database, alwaysOnIpRateLimitSettings, 'integration-oauth')
   const proRateLimit = createUserTierRateLimit(database, rateLimitSettings, 'pro')
   const inferenceRateLimit = createUserTierRateLimit(database, rateLimitSettings, 'inference')
   // Sizes both the anonymous sign-in bucket and the captcha challenge bucket: every anonymous
@@ -221,6 +220,14 @@ export const createApp = async (deps?: AppDeps) => {
         }),
       )
       .use(createPostHogRoutes(fetchFn))
+      .use(
+        createContactRoutes({
+          settings,
+          ipRateLimit: createIpTierRateLimit(database, alwaysOnIpRateLimitSettings, 'contact'),
+          emailBudget: createRateLimitConsumer(database, { enabled: true }, 'contact-global'),
+          emailService: deps?.contactEmailService,
+        }),
+      )
       .use(
         createWaitlistRoutes({
           database,

@@ -13,6 +13,9 @@ dist-ssr
 dist-isolation
 *.local
 
+# GitHub's latest-release answer, saved for a website build (see web/README.md)
+web/release-snapshot.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -62,6 +65,7 @@ mise.toml
 !.claude/skills/thunder-red-team/
 !.claude/skills/thunder-red-team/**
 !.claude/skills/thunder-update-model
+!.claude/skills/thunder-demo-videos
 .zed/**
 .zedscratches/**
 .mcp.json

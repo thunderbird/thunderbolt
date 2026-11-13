@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 180 180">
+  <filter id="paper"><feTurbulence type="fractalNoise" baseFrequency=".78" numOctaves="3" seed="12" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncA type="linear" slope=".22"/></feComponentTransfer></filter>
+  <path fill="#75644a" filter="url(#paper)" d="M0 0h180v180H0z"/>
+</svg>

@@ -7,6 +7,9 @@ Hardcoded per-tier budgets, enforced by a Postgres-backed limiter in [backend/sr
 | `inference`                | 60 / minute  | user                     | `/v1/chat/*` (managed inference)                                                         |
 | `pro`                      | 100 / minute | user                     | `/v1/pro/*`, `/v1/proxy/*`, `/v1/proxy/ws`, `/v1/tinfoil/*`, `/v1/search`, `/v1/preview` |
 | `auth`                     | 10 / minute  | client IP                | `/v1/api/auth/*` (except anonymous sign-in and GET get-session), `/v1/waitlist/*`        |
+| `integration-oauth`        | 30 / minute  | client IP                | `/v1/auth/google/*`, `/v1/auth/microsoft/*`. Always on.                                  |
+| `contact`                  | 3 / hour     | client IP                | `POST /v1/contact`. Always on.                                                           |
+| `contact-global`           | 30 / hour    | one key, deployment-wide | `POST /v1/contact`, counting inquiries about to be emailed. Always on.                   |
 | `anonymous-sign-in`        | 10 / minute  | client IP                | `POST /v1/api/auth/sign-in/anonymous`                                                    |
 | `anonymous-sign-in-global` | 2000 / hour  | one key, deployment-wide | `POST /v1/api/auth/sign-in/anonymous`, while `AUTH_ALLOW_ANONYMOUS=true`                 |
 | `captcha-challenge`        | 10 / minute  | client IP                | `GET /v1/captcha/challenge`                                                              |
@@ -38,6 +41,8 @@ Debug-transcript intake is the consumer case: the caller is another deployment w
 
 With `settings.rateLimitEnabled` false, the plugin factories return a bare `new Elysia()` and the consumer factory returns `null`; nothing downstream changes shape, because call sites treat both as optional.
 
+Two public surfaces ignore that switch. `index.ts` builds the `integration-oauth` limiter and both contact limits with `enabled: true`, because each is an unauthenticated endpoint that spends something on a stranger's behalf (a token exchange, an email) and has no other control in front of it. The `contact-global` budget exists because the per-address limit cannot bound a sender who rotates addresses: one IPv6 /64 holds more addresses than the limit will ever count. It is a single `contact-global:all` bucket, charged in the handler after validation and the configuration check, so a malformed or unconfigured request never spends a point.
+
 ## Placement rules that will bite you
 
 ### The user-keyed plugin must go inside `guard({ auth: true }, …)`
@@ -52,9 +57,9 @@ The skip branch is deliberate (such requests 401 anyway), but mounted is not enf
 
 ### IP resolution fails closed
 
-- `extractClientIp` ([utils/request.ts](../src/utils/request.ts)) trusts a proxy header only when `TRUSTED_PROXY` names the edge (`cloudflare` → `CF-Connecting-IP`, `akamai` → `True-Client-IP`). Without one, any client can forge `X-Forwarded-For` and mint a fresh bucket per request.
+- `extractClientIp` ([utils/request.ts](../src/utils/request.ts)) trusts a proxy header only when `TRUSTED_PROXY` names the edge (`cloudflare` → `CF-Connecting-IP`, `akamai` → `True-Client-IP`). A positive integer selects that many trusted hops from the right of `X-Forwarded-For`; use it only for a fixed chain with direct origin access blocked. Without explicit trust, forwarded headers are ignored.
 - An unresolvable address shares a single `ip:unknown` bucket rather than skipping the limit ([rate-limit.ts:167](../src/middleware/rate-limit.ts)); identifiable clients keep their own.
-- `getTrustedIpHeaders` feeds the same `TRUSTED_PROXY` value to Better Auth's `ipAddressHeaders`, so both limiters agree on the client. It returns `undefined`, not `[]`, when no proxy is configured. `undefined` lets Better Auth fall back to `x-forwarded-for`. With `[]` it finds no IP, so every client shares one bucket per path.
+- `getTrustedIpHeaders` feeds the same `TRUSTED_PROXY` value to Better Auth's `ipAddressHeaders`, so both limiters agree on the client. In hop-count mode, the auth handler overwrites an internal header with the selected address before Better Auth reads it; visitors cannot supply that value. It returns `undefined`, not `[]`, when no proxy is configured. `undefined` lets Better Auth fall back to `x-forwarded-for`. With `[]` it finds no IP, so every client shares one bucket per path.
 
 ## Response contract
 
@@ -87,8 +92,12 @@ Pick an existing tier before inventing one; a new tier is a new bucket namespace
 | Unauthenticated, can send email or create an account | `auth`, via `createAuthIpRateLimit`                             |
 | Caller is neither a session user nor usefully an IP  | `createRateLimitConsumer` with a key you compute in the handler |
 
+The website contact form sends email without a session, yet has its own tiers and does not use `auth`. Its limit must hold with `RATE_LIMIT_ENABLED=false`, and a visitor's inquiries should not draw down the budget that same address needs to sign in.
+
 A genuinely new tier goes in the `RateLimitTier` union and `tierConfigs` (`satisfies Record<RateLimitTier, RateLimitTierConfig>` makes a missing config a type error), plus the table above and the operator table in [docs/self-hosting/configuration.md](../../docs/self-hosting/configuration.md#rate-limiting).
 
 ## Testing
 
 Rate limiting is forced **off** for the whole backend suite (`test-setup.ts` sets `RATE_LIMIT_ENABLED=false`): `RateLimiterDrizzle` issues its own transactions, which bypass PGlite's transaction isolation and break per-test cleanup. A test that wants it constructs the middleware with `{ enabled: true }`, as [rate-limit.test.ts](../src/middleware/rate-limit.test.ts) does, and runs against the shared _isolated_ test database rather than the singleton for the same nested-transaction reason (see the comment on its `beforeAll`).
+
+The always-on limiters are the exception: a request to `/v1/contact` or an integration OAuth route through `createApp` is limited even in the suite. A test that sends one uses the isolated database as well and clears `rate_limits` between cases, as [contact/routes.test.ts](../src/contact/routes.test.ts) does.

@@ -161,6 +161,8 @@ spec:
               value: {{ .Values.powersync.jwt.kid }}
             - name: RATE_LIMIT_ENABLED
               value: {{ .Values.backend.env.rateLimitEnabled | quote }}
+            - name: TRUSTED_PROXY
+              value: {{ .Values.backend.env.trustedProxy | default "" | quote }}
             - name: MIN_APP_VERSION
               value: {{ .Values.backend.env.minAppVersion | quote }}
             - name: CLI_DEVICE_REGISTRATION_ENABLED
@@ -171,6 +173,23 @@ spec:
             {{- with .Values.backend.env.branding }}
             - name: BRANDING
               value: {{ . | quote }}
+            {{- end }}
+            {{- /* New email settings may be absent with helm upgrade --reuse-values. */}}
+            {{- $email := .Values.backend.email | default dict }}
+            {{- with $email.from }}
+            - name: EMAIL_FROM
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $email.contactTo }}
+            - name: CONTACT_EMAIL_TO
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $email.resendApiKeyBase64 }}
+            - name: RESEND_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: thunderbolt-secrets
+                  key: resend-api-key
             {{- end }}
             - name: ANTHROPIC_API_KEY
               valueFrom:

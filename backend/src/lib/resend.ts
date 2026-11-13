@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type React from 'react'
-import { Resend } from 'resend'
+import { Resend, type ErrorResponse } from 'resend'
 
 /**
  * Sender address for all outgoing emails, and the contact address in their
@@ -43,27 +43,56 @@ export const shouldSkipEmail = (): boolean => {
   return false
 }
 
+/** Whether a real email provider is configured; public forms must never simulate delivery. */
+export const isEmailConfigured = (): boolean => resend !== null
+
 export type SendEmailParams = {
   to: string
   from?: string
   subject: string
+  replyTo?: string
   react: React.ReactElement
 }
 
 /**
+ * A send the provider rejected or could not complete. `message` carries the provider's own
+ * explanation, which is what makes a failed sign-in email diagnosable. `providerCode` and
+ * `providerStatus` identify the failure without that text, for callers that must not log it.
+ */
+export class EmailDeliveryError extends Error {
+  readonly providerCode: ErrorResponse['name']
+  readonly providerStatus: number | null
+
+  constructor({ message, name, statusCode }: ErrorResponse) {
+    super(`Failed to send email: ${message}`)
+    this.name = 'EmailDeliveryError'
+    this.providerCode = name
+    this.providerStatus = statusCode
+  }
+}
+
+/** The one Resend call this module makes, so a test can pass a stand-in client. */
+type EmailClient = { emails: Pick<Resend['emails'], 'send'> }
+
+/**
  * Send an email using a React Email component.
  * Uses the default sender address unless overridden.
- * @throws Error if resend client is not configured (should call shouldSkipEmail first)
+ * @throws Error when no provider is configured. Callers that can run without one check
+ *   `shouldSkipEmail` or `isEmailConfigured` first.
+ * @throws EmailDeliveryError when the provider rejects the email or cannot be reached.
  */
-export const sendEmail = async ({ to, from = emailFrom, subject, react }: SendEmailParams) => {
-  if (!resend) {
+export const sendEmail = async (
+  { to, from = emailFrom, subject, react, replyTo }: SendEmailParams,
+  client: EmailClient | null = resend,
+) => {
+  if (!client) {
     throw new Error('Email service not configured')
   }
 
-  const { data, error } = await resend.emails.send({ from, to, subject, react })
+  const { data, error } = await client.emails.send({ from, to, subject, react, replyTo })
 
   if (error) {
-    throw new Error(`Failed to send email: ${error.message}`)
+    throw new EmailDeliveryError(error)
   }
 
   return data

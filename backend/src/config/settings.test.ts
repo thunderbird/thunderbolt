@@ -46,6 +46,40 @@ describe('Config Settings', () => {
     })
   })
 
+  describe('contact inbox', () => {
+    let saved: string | undefined
+    beforeEach(() => {
+      saved = process.env.CONTACT_EMAIL_TO
+      clearSettingsCache()
+    })
+    afterEach(() => {
+      if (saved === undefined) {
+        delete process.env.CONTACT_EMAIL_TO
+      } else {
+        process.env.CONTACT_EMAIL_TO = saved
+      }
+      clearSettingsCache()
+    })
+    it('has no default destination when absent or blank', () => {
+      delete process.env.CONTACT_EMAIL_TO
+      expect(getSettings().contactEmailTo).toBeUndefined()
+      process.env.CONTACT_EMAIL_TO = '  '
+      clearSettingsCache()
+      expect(getSettings().contactEmailTo).toBeUndefined()
+    })
+    it('accepts a trimmed single inbox', () => {
+      process.env.CONTACT_EMAIL_TO = ' team@example.org '
+      expect(getSettings().contactEmailTo).toBe('team@example.org')
+    })
+    it('rejects malformed or multiple recipients at startup', () => {
+      for (const value of ['invalid', 'a@example.org,b@example.org', 'a@example.org\r\nBcc: b@example.org']) {
+        process.env.CONTACT_EMAIL_TO = value
+        clearSettingsCache()
+        expect(() => getSettings()).toThrow()
+      }
+    })
+  })
+
   describe('Anthropic base URL', () => {
     let savedEnv: string | undefined
 
@@ -590,6 +624,16 @@ describe('Config Settings', () => {
       process.env.TRUSTED_PROXY = 'CLOUDFLARE'
       const settings = getSettings()
       expect(settings.trustedProxy).toBe('cloudflare')
+    })
+
+    it.each(['1', '2', '32'])('accepts a fixed trusted proxy hop count: %s', (value) => {
+      process.env.TRUSTED_PROXY = value
+      expect(getSettings().trustedProxy).toBe(Number(value))
+    })
+
+    it.each(['0', '-1', '1.5', '33', 'Infinity'])('rejects an unsafe proxy hop count: %s', (value) => {
+      process.env.TRUSTED_PROXY = value
+      expect(() => getSettings()).toThrow()
     })
 
     it('should reject invalid trustedProxy values', () => {

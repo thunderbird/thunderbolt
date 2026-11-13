@@ -46,4 +46,4 @@ Update `web/src/components/marketing/spark/product-demos.ts` when dimensions, fi
 
 Run `scripts/demo.py check OUTPUT.mp4`, the web build, and appropriate source checks. Visually review light/dark desktop and a phone-width layout, source changes between clients, playback/pause, corners, and poster fallback. Don't claim cadence or outcomes that weren't checked. Update capture notes when cuts, cosmetic cleanup, or recording method change the provenance.
 
-If review was requested, present candidates before integration. If selection/integration was already authorized, choose the strongest set and complete it. For commits/pushes, follow the repository's `/thunderpush` rule; don't bypass signing or publish to a different destination.
+If review was requested, present candidates before integration. If selection/integration was already authorized, choose the strongest set and complete it. For commits/pushes, follow the repository's `/thunder-push` rule; don't bypass signing or publish to a different destination.

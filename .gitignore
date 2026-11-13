@@ -11,6 +11,9 @@ node_modules
 dist
 dist-ssr
 dist-isolation
+__pycache__
+# thunderbot team-orchestration scratch (see .agents/skills/thunderbot/references/team-orchestration.md)
+.team/
 *.local
 
 # GitHub's latest-release answer, saved for a website build (see web/README.md)
@@ -51,21 +54,33 @@ evals/
 mise*.toml
 mise.toml
 .claude/**
-!.claude/commands/
-!.claude/commands/**
 !.claude/agents/
 !.claude/agents/**
-!.claude/rules/
-!.claude/rules/**
-!.claude/skills/
-!.claude/skills/thunder-deep-review/
-!.claude/skills/thunder-deep-review/**
 !.claude/security/
 !.claude/security/**
-!.claude/skills/thunder-red-team/
-!.claude/skills/thunder-red-team/**
-!.claude/skills/thunder-update-model
+!.claude/skills/
+# Each committed skill is a symlink into .agents/skills, the copy every agent reads.
+# Listed one by one so personal skills in .claude/skills stay untracked.
+!.claude/skills/thunder-check
+!.claude/skills/thunder-clean-build
+!.claude/skills/thunder-cleanup
+!.claude/skills/thunder-deep-review
 !.claude/skills/thunder-demo-videos
+!.claude/skills/thunder-doctor
+!.claude/skills/thunder-down
+!.claude/skills/thunder-feedback
+!.claude/skills/thunder-fix
+!.claude/skills/thunder-improve
+!.claude/skills/thunder-in
+!.claude/skills/thunder-out
+!.claude/skills/thunder-performance
+!.claude/skills/thunder-push
+!.claude/skills/thunder-red-team
+!.claude/skills/thunder-up
+!.claude/skills/thunder-update-model
+!.claude/skills/thunder-validate
+!.claude/skills/thunderbot
+!.claude/skills/thunderbot-daemon
 .zed/**
 .zedscratches/**
 .mcp.json

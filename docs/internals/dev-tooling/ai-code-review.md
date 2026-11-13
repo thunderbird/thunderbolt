@@ -14,13 +14,13 @@ Every non-draft pull request from a branch in this repository (Dependabot except
 | Cost guards   | 60s debounce `sleep` (`thunder-deep-review.yml:102`), `cancel-in-progress` keyed on the PR number (`:52-55`), `timeout-minutes: 30` (`:66`) |
 | Permissions   | `contents: read`, `pull-requests: write` (`thunder-deep-review.yml:37-40`)                                                  |
 | Secret        | `ANTHROPIC_API_KEY` only                                                                                                                    |
-| Run it myself | `/thunder-deep-review` in this working tree                                                                                                 |
+| Run it myself | `/thunder-deep-review` (Claude Code) or `$thunder-deep-review` (Codex) in this working tree                                                 |
 
 ## Can it block my merge? No
 
 `event: 'COMMENT'` is the only event the orchestrator sends (`.github/scripts/review-orchestrator.mjs`),
-so a finding is feedback, not a CI failure; `/thunderfix`
-([`.thunderbot/thunderfix.md`](../../../.thunderbot/thunderfix.md)) treats it that way. Reply in the thread if a finding
+so a finding is feedback, not a CI failure; `/thunder-fix`
+([`.agents/skills/thunder-fix/SKILL.md`](../../../.agents/skills/thunder-fix/SKILL.md)) treats it that way. Reply in the thread if a finding
 is wrong; a thread you resolve yourself stays resolved (see [Convergence](#convergence-across-pushes)).
 
 Fail-soft on purpose: a missing review is acceptable, a broken or duplicated one is not.
@@ -96,17 +96,29 @@ Spend is decided by code, not by the model (`computeDeepMode`, `review-orchestra
 
 | Flag          | Trigger                                                                | Effect                                                             |
 | ------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `deepMode`    | ≥ 600 changed lines or ≥ 40 files in the reviewed scope (the delta on incremental runs), or a `review:deep` label | The skill adds six narrow micro-specialists on top of its 11 lanes |
+| `deepMode`    | ≥ 600 changed lines or ≥ 40 files in the reviewed scope (the delta on incremental runs), or a `review:deep` label | The skill adds a narrow micro-specialist for each routed lane |
 | `boundedMode` | The PR exceeds GitHub's 3000-file listing cap                          | The diff handed to the model is clipped to the first 200 files     |
 | `securityMode` | A changed path matches `SECURITY_PATH_MATCHERS` | The skill adds the threat-model security dimension |
+| `lanes`, `domainReviewers` | Always set, from the changed paths (`selectLanes`) | The skill spawns only these lanes and domain reviewers |
 
 Deep and security mode exclude ordinary Markdown/MDX, the `docs/` tree, lockfiles and locale catalogs
-(`.po` and compiled `locales/**/messages.ts`). Markdown prompts under `.claude/` and `AGENTS.md`/`CLAUDE.md`
+(`.po` and compiled `locales/**/messages.ts`). Markdown prompts under `.claude/` and `.agents/` and `AGENTS.md`/`CLAUDE.md`
 count toward deep mode. Comment-only changes in sensitive code still trigger security mode.
 
 Thresholds are `DEEP_MODE_CHANGED_LINES` and `DEEP_MODE_FILE_COUNT`; the clip is `BOUNDED_MODE_FILE_LIMIT`,
 applied to the input itself so it is enforced rather than advisory. Label a small but risky PR
 `review:deep` to buy the expensive review.
+
+### Lane routing
+
+The skill reviews in category lanes (correctness, architecture, conventions, tests, bundle, security, intent,
+readability, localization), one sub-reviewer each. `selectLanes` picks the lanes from the changed paths, so a PR
+pays only for the lanes that can find something in it. A docs-only PR runs the intent lane alone; a backend-only PR
+skips the bundle and localization lanes unless it adds a package import, an email template or a Lingui import.
+The intent lane always runs. File kinds the rules do not recognize, such as YAML, Dockerfiles and Makefiles, count as
+code, so the routing errs toward running a lane. The React lane is never spawned on its own: the
+`react-effect-reviewer` carries its checks and runs on the same files. The full table is in the skill's
+"Lane routing" section; change `selectLanes` and its tests first, then that table.
 
 ## Convergence across pushes
 
@@ -130,7 +142,7 @@ Convergence relies on hidden hashes in the bot's own comments and on a head chec
 ## What the reviewer is checking
 
 Findings render as `🚫 Blocking`, `📐 Convention`, or `🔧 Nit` (`SEVERITY_LABEL`). The rule vocabulary lives
-under `.claude/skills/thunder-deep-review/`.
+under `.agents/skills/thunder-deep-review/`.
 
 | File                                    | Vocabulary                                                                        |
 | --------------------------------------- | --------------------------------------------------------------------------------- |
@@ -150,39 +162,46 @@ under `.claude/skills/thunder-deep-review/`.
   [`backend/docs/testing.md`](../../../backend/docs/testing.md) for `testing-rules.md`. On disagreement the source doc
   wins and the reference file needs updating.
 
-### Domain subagents
+### Domain reviewers
 
-Two high-stakes domains ship read-only subagents, dispatched alongside the skill's category lanes when the diff
-touches their area.
+Two high-stakes domains have their own read-only reviewers, dispatched next to the category lanes when
+`selectLanes` lists them in `domainReviewers`. Their rules live in lens files under
+`.agents/skills/thunder-deep-review/references/`, so any agent can run them. The `.claude/agents/` files keep the
+names Claude Code dispatches and point at the lens files.
 
-- [`.claude/agents/powersync-sync-reviewer.md`](../../../.claude/agents/powersync-sync-reviewer.md) fires on
-  `shared/powersync-tables.ts`, sync-rule `config.yaml`, Drizzle schema, `backend/drizzle/**`, `src/db/powersync/**`,
-  or a synced-table DAL/defaults/reconciliation, and checks the two-PR deploy flow, `_journal.json` integrity,
-  sync-rule/column parity, sync classification across sibling tables, encryption config and hard-delete correctness.
-  These mistakes pass local testing and fail _silently_ across devices (see
-  [powersync-account-devices.md](../architecture/powersync-account-devices.md)).
-- [`.claude/agents/react-effect-reviewer.md`](../../../.claude/agents/react-effect-reviewer.md) fires on React diffs for
-  the `useEffect`-discipline catalogue in `AGENTS.md`.
+- [`powersync-sync-lens.md`](../../../.agents/skills/thunder-deep-review/references/powersync-sync-lens.md)
+  (`powersync-sync-reviewer`) fires on `shared/powersync-tables.ts`, the sync-rule configs, Drizzle schema,
+  `backend/drizzle/**`, `src/db/**`, both DALs, the defaults and their reconciliation, and account and device code.
+  It checks the two-PR deploy flow, `_journal.json` integrity, sync-rule/column parity, sync classification across
+  sibling tables, encryption config and hard-delete correctness. These mistakes pass local testing and fail
+  _silently_ across devices (see [powersync-account-devices.md](../architecture/powersync-account-devices.md)).
+- [`react-effect-lens.md`](../../../.agents/skills/thunder-deep-review/references/react-effect-lens.md)
+  (`react-effect-reviewer`) fires on `.tsx` files, hook files, and any JS/TS file whose patch or head version calls a
+  hook or imports React (the `pre` step reads the head file from the checkout). Test files and `.github/` scripts skip
+  that content check, because their fixtures quote hook names. It checks the `useEffect` discipline
+  in `AGENTS.md`.
 
 ## Running it locally
 
-The skill is committed, so Claude Code discovers it here: invoke `/thunder-deep-review` (or ask for a deep review of a
-branch or PR number) before you push. Deep mode locally is opt-in: ask for it, or exceed the same ~600-line /
+The skill is committed under `.agents/skills/`, so any agent that reads that folder discovers it: invoke
+`/thunder-deep-review` in Claude Code or `$thunder-deep-review` in Codex (or ask for a deep review of a branch or PR
+number) before you push. Deep mode locally is opt-in: ask for it, or exceed the same ~600-line /
 ~40-file threshold CI uses.
 
 The skill reads its mode from the invoking prompt. Locally there is **no precision gate behind it**, so the markdown
 report (per `assets/finding-template.md`) is the final artifact and the skill filters itself: precision pass, recall
 floors, a nit cap, self-validation. In CI it skips that and hands everything grounded to the gate.
 
-`/thunderimprove` ([`.thunderbot/thunderimprove.md`](../../../.thunderbot/thunderimprove.md)) is the lighter,
-fix-capable pass and may edit; `thunder-deep-review` never does.
+`thunder-improve` ([`.agents/skills/thunder-improve/SKILL.md`](../../../.agents/skills/thunder-improve/SKILL.md)) runs this
+skill and can then apply the fixes and re-run the checks; `thunder-deep-review` itself never edits.
 
 ## Things that will bite
 
-- **A new skill directory needs a `.gitignore` exception.** `.gitignore:50-59` ignores `.claude/**`, then un-ignores
-  `commands/**`, `agents/**`, `rules/**` wholesale but only `skills/thunder-deep-review/**`. New agent files commit
-  as-is; a second skill is invisible to CI without its own carve-out.
-- **Dangling `.claude` symlinks crash the run.** `.claude/commands/thunderbot` points nowhere and the Agent SDK dies
+- **A new skill needs a symlink and a `.gitignore` line.** The skill itself lives in `.agents/skills/<name>/`.
+  Claude Code reads only `.claude/skills/`, so each skill also gets a symlink `.claude/skills/<name>` pointing at
+  `../../.agents/skills/<name>`. `.gitignore` ignores `.claude/**` and un-ignores each symlink by name; without that
+  line the link stays untracked and CI's Claude Code never sees the skill. New files under `.claude/agents/` commit as-is.
+- **Dangling `.claude` symlinks crash the run.** A skill symlink whose `.agents` target is gone makes the Agent SDK die
   scanning `.claude/` with `ENOENT ... statx`. The workflow prunes broken symlinks before each model step, twice,
   because the first `claude-code-action` run restores them from its own internal checkout.
 - **Action inputs are pinned and verified.** `model:`, `allowed_tools:` and `review_event:` do **not** exist on
@@ -207,7 +226,8 @@ fix-capable pass and may edit; `thunder-deep-review` never does.
 | `.github/workflows/thunder-deep-review.yml`      | Triggers, gates, the two model steps, file handoff          |
 | `.github/scripts/review-orchestrator.mjs`        | GitHub I/O: diff, dedup, post; model telemetry |
 | `.github/scripts/review-orchestrator.test.mjs`   | Unit tests for the pure orchestration logic                 |
-| `.claude/skills/thunder-deep-review/SKILL.md`    | The reviewer itself: lanes, fan-out, both output contracts  |
-| `.claude/skills/thunder-deep-review/references/` | `R-*` house rules, `INV-*` invariants, heuristics, severity |
-| `.claude/agents/powersync-sync-reviewer.md`      | Synced-table domain reviewer                                |
-| `.claude/agents/react-effect-reviewer.md`        | React `useEffect` domain reviewer                           |
+| `.agents/skills/thunder-deep-review/SKILL.md`    | The reviewer itself: lanes, routing table, both output contracts |
+| `.agents/skills/thunder-deep-review/references/` | `R-*` house rules, `INV-*` invariants, heuristics, severity, the two lens files |
+| `.claude/skills/thunder-deep-review`             | Symlink to the skill, for Claude Code                       |
+| `.claude/agents/powersync-sync-reviewer.md`      | Claude Code name for the synced-table lens                  |
+| `.claude/agents/react-effect-reviewer.md`        | Claude Code name for the React lens                         |

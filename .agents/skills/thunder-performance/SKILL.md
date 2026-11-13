@@ -1,6 +1,6 @@
 ---
 name: thunder-performance
-description: Profile Thunderbolt responsiveness, CPU and memory with the local production browser harness, investigate measured hot paths, and validate small performance fixes against a baseline.
+description: Profile Thunderbolt performance with the production browser harness and prove a fix against a baseline. Use when the app feels slow, laggy or janky; for CPU or memory use, a suspected leak, startup time, long chats or large accounts; to find a performance regression; or to show a change is faster.
 ---
 
 Use this for Thunderbolt performance investigations and regressions. The harness lives in `scripts/performance/`; its operating guide is `docs/internals/development/performance.md`.
@@ -20,4 +20,4 @@ For large accounts or long-session retention, use `bun run perf:large-session --
 
 Report measured changes, test evidence and remaining bottlenecks. Link the local raw reports and Chrome traces. Separate Playwright action time from browser Event Timing; rAF gaps are main-thread scheduling evidence, not GPU frame-rate measurements. Heap snapshots and one positive retention delta do not prove a leak. CPU throttling and a mobile viewport are a repeatable proxy, not a physical low-end phone; desktop-hosted WebKit does not reproduce a phone's GPU or software keyboard.
 
-The harness changes only disposable local test accounts. Never point it at a user's live account or add benchmark hooks to the production app. Keep reports/builds gitignored; retain a concise findings document when useful. Publishing, committing and pushing still follow the user's request and `/thunderpush` convention.
+The harness changes only disposable local test accounts. Never point it at a user's live account or add benchmark hooks to the production app. Keep reports/builds gitignored; retain a concise findings document when useful. Publishing, committing and pushing still follow the user's request and `/thunder-push` convention.

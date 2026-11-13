@@ -1,0 +1,82 @@
+[
+  {
+    "query": "confere se o fluxo de adicionar modelo custom funciona no Android",
+    "should_trigger": true,
+    "reason": "previously measured PT Android custom-model holdout"
+  },
+  {
+    "query": "QA the new sync onboarding on desktop and web before release",
+    "should_trigger": true,
+    "reason": "previously measured EN desktop/web onboarding holdout"
+  },
+  {
+    "query": "quiero probar que el login sigue funcionando en el simulador de iPhone",
+    "should_trigger": true,
+    "reason": "previously measured ES iPhone login holdout"
+  },
+  {
+    "query": "just take a screenshot of the iOS simulator home screen",
+    "should_trigger": false,
+    "reason": "previously measured screenshot-only holdout without app validation"
+  },
+  {
+    "query": "Check that MCP connections can be added and reconnected in the desktop app.",
+    "should_trigger": true,
+    "reason": "EN desktop MCP connection flow"
+  },
+  {
+    "query": "Teste o envio de anexos no simulador de iPhone e confira se aparecem no chat.",
+    "should_trigger": true,
+    "reason": "PT iPhone simulator attachment flow"
+  },
+  {
+    "query": "Verifica en la web que cambiar el idioma actualice los menús sin recargar.",
+    "should_trigger": true,
+    "reason": "ES web language-switch behavior"
+  },
+  {
+    "query": "Does the app still boot after the upgrade?",
+    "should_trigger": true,
+    "reason": "EN implicit runtime startup regression"
+  },
+  {
+    "query": "Reproduza a falha ao cancelar uma resposta no app para macOS.",
+    "should_trigger": true,
+    "reason": "PT desktop response-cancellation reproduction"
+  },
+  {
+    "query": "Vuelve a probar en Android la corrección del selector de modelos.",
+    "should_trigger": true,
+    "reason": "ES Android model-selector fix retest"
+  },
+  {
+    "query": "Smoke-test chat history after restarting the iOS app.",
+    "should_trigger": true,
+    "reason": "EN iOS chat persistence smoke test"
+  },
+  {
+    "query": "add a Playwright spec for login",
+    "should_trigger": false,
+    "reason": "EN test authoring without running app validation"
+  },
+  {
+    "query": "why is the Android build failing to compile",
+    "should_trigger": false,
+    "reason": "EN build diagnosis without runtime validation"
+  },
+  {
+    "query": "record a video of the simulator",
+    "should_trigger": false,
+    "reason": "EN recording-only request without app validation"
+  },
+  {
+    "query": "Configure um emulador Android para desenvolvimento, sem abrir o app.",
+    "should_trigger": false,
+    "reason": "PT device setup without app validation"
+  },
+  {
+    "query": "Ejecuta solo las pruebas unitarias del selector de idioma.",
+    "should_trigger": false,
+    "reason": "ES unit tests only"
+  }
+]

@@ -35,10 +35,13 @@ const invokeNative = async (command: string, args: Record<string, NativeValue> =
     await browser.execute('return window.__TAURI__.core.invoke(arguments[0], arguments[1])', command, args),
   )
 
-/** Wait for a wizard step by its heading. */
+/** Wait for a wizard step by its heading. The chat behind the wizard has its own "Connect your AI" heading. */
 const waitForStep = async (heading: string) =>
-  (await browser.$(`//h2[contains(normalize-space(), "${heading}")]`)).waitForDisplayed({ timeout: 60_000 })
+  (await browser.$(`//*[@role="dialog"]//h2[contains(normalize-space(), "${heading}")]`)).waitForDisplayed({
+    timeout: 60_000,
+  })
 
+/** Find a button by its exact text and click it once it can be clicked. */
 const clickButton = async (text: string) => {
   const button = await browser.$(`//button[normalize-space()="${text}"]`)
   await button.waitForClickable({ timeout: 30_000 })

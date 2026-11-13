@@ -110,7 +110,8 @@ const OnboardingWizard = ({ isOpen, isMobile }: { isOpen: boolean; isMobile: boo
   const [completionError, setCompletionError] = useState<string | null>(null)
   const donationMutation = useMutation({ mutationFn: (enabled: boolean) => dataCollection.setValue(enabled) })
   const isCelebration = state.currentStep === onboardingStepCount
-  // The waitlist state stays `verifying` after a Cloud sign-in (see useWaitlistState). Only step 8 waits on it.
+  // After a Cloud sign-in the waitlist state stays `verifying` or `passkey` (see useWaitlistState).
+  // Only step 8 waits on it.
   const isServerStepBusy = state.currentStep === 8 && serverState.isBusy
   const isBusy = isNavigating || state.isSubmittingName || state.isSubmittingLocation || isServerStepBusy
   const continueDisabled =

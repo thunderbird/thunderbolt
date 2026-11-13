@@ -206,6 +206,15 @@ jobs:
           labels: |
             org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
 
+      # The website build embeds the latest desktop release and fails without one. GitHub rate
+      # limits anonymous lookups by address, and hosted runners share theirs, so look it up
+      # here with the job's token. Only the answer enters the build context: the token must
+      # stay out of a build that runs code from the ref being built.
+      - name: Look up the latest desktop release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api repos/thunderbird/thunderbolt/releases/latest > web/release-snapshot.json
+
       - name: Build and push marketing
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:

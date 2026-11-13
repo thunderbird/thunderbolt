@@ -4,5 +4,6 @@
 
 import { getReleaseSnapshot } from '../../server/release-snapshot'
 
-// nginx serves the live shared cache at this URL; this generated file is its offline fallback.
-export const GET = async () => Response.json(await getReleaseSnapshot())
+// The release this build embeds, in the form GitHub describes it. The marketing nginx answers
+// this URL with GitHub's current release and falls back to this file; other hosts serve it as is.
+export const GET = async () => Response.json((await getReleaseSnapshot()).raw)

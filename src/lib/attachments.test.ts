@@ -87,7 +87,7 @@ describe('hydrateAttachmentsAsFileParts — history reduction', () => {
     expect(texts(u1)).toEqual(['summarize', '[Attachment: doc.pdf]\n\nEXTRACTED', '[Attachment: pic.png]'])
   })
 
-  test('an unreadable attachment is skipped instead of failing the turn', async () => {
+  test('an unreadable attachment becomes a note instead of failing the turn', async () => {
     // The reported bug: a file stored as a reference to a path on disk (rather
     // than a copy of its bytes) throws once the source is edited. Because every
     // send re-reads the whole history, letting that propagate failed the turn,
@@ -101,9 +101,16 @@ describe('hydrateAttachmentsAsFileParts — history reduction', () => {
 
     const result = await hydrateAttachmentsAsFileParts(conversation(), unreadable)
 
-    // The turn survives, carrying the user's text and the attachment reference.
-    expect(texts(result[0])).toContain('summarize')
-    expect(result).toHaveLength(3)
+    // The turn survives, carrying the user's text and a note the model can relay.
+    expect(texts(result[0])).toEqual([
+      'summarize',
+      '[Attachment "doc.pdf" could not be read: The requested file could not be read]',
+      '[Attachment "pic.png" could not be read: The requested file could not be read]',
+    ])
+    expect(texts(result[2])).toEqual([
+      'and this',
+      '[Attachment "data.csv" could not be read: The requested file could not be read]',
+    ])
   })
 
   test('one unreadable attachment does not take the readable ones with it', async () => {
@@ -120,6 +127,11 @@ describe('hydrateAttachmentsAsFileParts — history reduction', () => {
     const result = await hydrateAttachmentsAsFileParts(conversation(), oneBadFile)
 
     // f3 (csv, latest turn) still extracts even though f1 could not be read.
+    expect(texts(result[0])).toEqual([
+      'summarize',
+      '[Attachment "doc.pdf" could not be read: gone]',
+      '[Attachment: pic.png]',
+    ])
     expect(texts(result[2])).toEqual(['and this', '[Attachment: data.csv]\n\nEXTRACTED'])
   })
 

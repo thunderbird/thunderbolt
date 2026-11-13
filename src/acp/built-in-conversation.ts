@@ -5,7 +5,7 @@
 import { csvToTsv, toTsv } from '@/files/tabular'
 import { defaultDeliveryMode, getTransformer, isPlainTextMime, xlsxMime } from '@/files/transformers'
 import { readXlsxSheets } from '@/files/transformers/xlsx-to-text'
-import { blobToBase64, isAttachmentPart } from '@/lib/attachments'
+import { blobToBase64, isAttachmentPart, unreadableAttachmentNote } from '@/lib/attachments'
 import { getAttachment, type StoredFile } from '@/lib/file-blob-storage'
 import { hydrateQuotesAsText } from '@/lib/quotes'
 import type { ThunderboltUIMessage } from '@/types'
@@ -68,13 +68,20 @@ export const prepareBuiltInHistory = async (
       return { role: message.role, prepared: await prepareMessage(message, false, options, deps) }
     }),
   )
+  const restoredCount = messagesToPrepare.length - previous.messages.length
+  // The summary replaces the text of turns before the checkpoint and may name a file that could not be restored, so
+  // their could-not-be-read notes are kept.
+  const lost = preparedMessages
+    .slice(0, restoredCount)
+    .flatMap((entry) => entry?.prepared.unreadable ?? [])
+    .map((text): SeedTurn => ({ role: 'user', text }))
   const turns = preparedMessages
-    .slice(messagesToPrepare.length - previous.messages.length)
+    .slice(restoredCount)
     .flatMap((entry): SeedTurn[] => (entry?.prepared.text ? [{ role: entry.role, text: entry.prepared.text }] : []))
   const files = preparedMessages.flatMap((entry) => entry?.prepared.files ?? [])
   return {
     compaction: previous.compaction,
-    history: coalesceTurns(turns),
+    history: coalesceTurns([...lost, ...turns]),
     files: [...new Map(files.map((file) => [file.path, file])).values()],
   }
 }
@@ -83,6 +90,8 @@ type PreparedPart = {
   readonly text: string
   readonly images: ImageContent[]
   readonly files: WorkspaceFile[]
+  /** Notes for attachments that could not be read. `text` contains them too. */
+  readonly unreadable?: string[]
 }
 
 type AttachmentData = Extract<ThunderboltUIMessage['parts'][number], { type: 'data-attachment' }>['data']
@@ -218,7 +227,8 @@ const prepareAttachment = async (
   const { filename, localFileId, mimeType, deliverAs } = part.data
   const file = await deps.getAttachment(localFileId)
   if (!file) {
-    return { text: `${attachmentText(filename)} (file unavailable on this device)`, images: [], files: [] }
+    const text = `${attachmentText(filename)} (file unavailable on this device)`
+    return { text, images: [], files: [], unreadable: [text] }
   }
 
   if (!isCurrentTurn) {
@@ -282,7 +292,13 @@ const prepareMessage = async (
         return { text: part.text, images: [], files: [] }
       }
       if (isAttachmentPart(part)) {
-        return prepareAttachment(part, isCurrentTurn, options, deps)
+        // History is re-prepared every turn, so a throw here would break this turn and every later one.
+        try {
+          return await prepareAttachment(part, isCurrentTurn, options, deps)
+        } catch (error) {
+          const note = unreadableAttachmentNote(part.data.filename, error)
+          return { text: note, images: [], files: [], unreadable: [note] }
+        }
       }
       return { text: '', images: [], files: [] }
     }),
@@ -294,6 +310,7 @@ const prepareMessage = async (
       .join('\n'),
     images: parts.flatMap((part) => part.images),
     files: parts.flatMap((part) => part.files),
+    unreadable: parts.flatMap((part) => part.unreadable ?? []),
   }
 }
 

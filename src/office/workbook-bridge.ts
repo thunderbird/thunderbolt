@@ -233,7 +233,8 @@ export const installWorkbooks = (
     while (saves.reduce((total, { bytes }) => total + bytes.byteLength, 0) > limits.memoryBytes) {
       saves.shift()
     }
-    return { buffer: saved.bytes, error: null }
+    // The script can check the formulas before it saves anything, so it needs no test files to find out.
+    return { buffer: saved.bytes, formulaErrors, error: null }
   }
 
   /**

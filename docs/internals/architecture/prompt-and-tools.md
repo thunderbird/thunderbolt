@@ -173,7 +173,8 @@ own context.
   number, so results are formatted to 15 significant digits and parsed back. Excelize expands shared formulas.
   Some cells keep what Excelize saved: a formula IronCalc cannot compute (`AGGREGATE`, for example), an error
   result, an array or data-table formula, and every formula of a workbook that counts dates from 1904. The tool
-  result lists each in `formulaErrors` with its file, sheet and cell.
+  result lists each in `formulaErrors` with its file, sheet and cell. `WriteToBuffer` returns the same list, so a
+  script can check it before saving anything.
 - Parsing every XML part of a large workbook would take most of the script's time, so the output check skips the
   parts Excelize wrote when the script saves the bytes `WriteToBuffer` returned unchanged. Parts Excelize copied
   from the opened file without parsing them, such as charts, are still parsed.

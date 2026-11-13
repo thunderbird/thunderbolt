@@ -180,6 +180,17 @@ saveFile('partly.xlsx', f.WriteToBuffer().buffer)
     expect(data[1][1]).toBe(10)
   })
 
+  it('gives the script the formula errors before it saves anything', async () => {
+    const { output } = await runOk(`
+const f = excelize.NewFile()
+f.SetCellFormula('Sheet1', 'A1', 'AGGREGATE(9,6,B1:B2)')
+const { buffer, formulaErrors } = f.WriteToBuffer()
+console.log(formulaErrors.map(({ cell, error }) => cell + ' ' + error).join(', '))
+saveFile('checked.xlsx', buffer)
+`)
+    expect(output.logs).toBe('A1 #NAME?\n')
+  })
+
   it('lists formula errors once per saved file, under its name', async () => {
     const output = await run(`
 const broken = (name) => {

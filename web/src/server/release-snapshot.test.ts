@@ -2,11 +2,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterAll, describe, expect, mock, test } from 'bun:test'
+import { afterAll, afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import fallback from '../data/download-release.json'
+import { parseRelease } from '../components/marketing/download/downloads'
 import { loadReleaseSnapshot, shareLookup } from './release-snapshot'
+
+let warned: ReturnType<typeof spyOn<Console, 'warn'>>
+beforeEach(() => {
+  warned = spyOn(console, 'warn').mockImplementation(() => {})
+})
+afterEach(() => warned.mockRestore())
+const bundled = { raw: fallback, release: parseRelease(fallback) }
 
 const directory = mkdtempSync(join(tmpdir(), 'release-snapshot-'))
 afterAll(() => rmSync(directory, { recursive: true, force: true }))
@@ -21,6 +30,8 @@ const save = (name: string, contents: unknown) => {
 
 const gitHubRelease = {
   tag_name: 'v2.0.0',
+  draft: false,
+  prerelease: false,
   assets: [{ name: 'Thunderbolt_2.0.0_aarch64.dmg', state: 'uploaded' }],
 }
 const release = {
@@ -56,27 +67,43 @@ describe('loadReleaseSnapshot', () => {
     expect(request).not.toHaveBeenCalled()
   })
 
-  test("fails with GitHub's answer when it refuses the lookup", async () => {
+  test('retains a known-good release when GitHub refuses the lookup', async () => {
     const request = answering(() => new Response('API rate limit exceeded', { status: 403 }))
 
-    await expect(loadReleaseSnapshot({ savedPath: nothingSaved, request })).rejects.toThrow(
-      'GitHub answered the release lookup with 403: API rate limit exceeded',
+    expect(await loadReleaseSnapshot({ savedPath: nothingSaved, request })).toEqual(bundled)
+    expect(warned).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ message: 'GitHub answered the release lookup with 403: API rate limit exceeded' }),
     )
   })
 
-  test('fails when GitHub cannot be reached', async () => {
+  test('retains a known-good release when GitHub cannot be reached', async () => {
     const request = mock(async () => {
       throw new TypeError('Network unavailable')
     })
 
-    await expect(loadReleaseSnapshot({ savedPath: nothingSaved, request })).rejects.toThrow('Network unavailable')
+    expect(await loadReleaseSnapshot({ savedPath: nothingSaved, request })).toEqual(bundled)
   })
 
   test.each([
-    ['GitHub answers with', { savedPath: nothingSaved, request: answering(() => Response.json({})) }],
-    ['a build step saved', { savedPath: save('not-a-release.json', {}) }],
-  ])('fails when %s something other than a release', async (_, sources) => {
-    await expect(loadReleaseSnapshot(sources)).rejects.toThrow('Invalid release')
+    {},
+    { ...gitHubRelease, draft: true },
+    { ...gitHubRelease, prerelease: true },
+    { ...gitHubRelease, assets: [null] },
+  ])('retains the known-good release for invalid upstream metadata', async (raw) => {
+    expect(
+      await loadReleaseSnapshot({ savedPath: nothingSaved, request: answering(() => Response.json(raw)) }),
+    ).toEqual(bundled)
+  })
+
+  test('fails loudly when an explicitly supplied build input is invalid', async () => {
+    await expect(loadReleaseSnapshot({ savedPath: save('not-a-release.json', {}) })).rejects.toThrow('Invalid release')
+  })
+
+  test('fails loudly when an explicitly supplied build input is not JSON', async () => {
+    const path = join(directory, 'broken.json')
+    writeFileSync(path, '{')
+    await expect(loadReleaseSnapshot({ savedPath: path })).rejects.toThrow()
   })
 })
 

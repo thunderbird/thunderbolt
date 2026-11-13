@@ -128,7 +128,7 @@ backend:
   # -- Transactional email settings. Empty values preserve backend defaults;
   # no contact recipient means the public contact endpoint is disabled.
   email:
-    # -- Verified Resend sender, e.g. "Thunderbolt <hello@example.com>".
+    # -- Verified Resend sender as a bare email address, e.g. "hello@example.com".
     from: ""
     # -- Fixed inbox for website contact messages; never selected by visitors.
     contactTo: ""

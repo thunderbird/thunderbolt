@@ -23,19 +23,8 @@
   margin-top: 32px;
   font-size: 15px;
 }
-.privacy-section-heading {
-  margin-bottom: 40px;
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 40px;
-}
-.privacy-section-heading h2 {
-  font-size: clamp(32px, 3.8vw, 46px);
-}
-.privacy-section-heading > p {
-  max-width: 360px;
-  color: var(--spark-muted);
+.privacy-paths {
+  padding-bottom: 88px;
 }
 .privacy-path-grid {
   display: grid;
@@ -143,53 +132,6 @@
   fill: none;
   stroke: var(--spark-ink);
   stroke-width: 1.4;
-}
-.privacy-partner {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 36px;
-  padding-block: 40px 88px;
-}
-.privacy-tinfoil-logo {
-  display: block;
-  padding: 20px;
-  flex-shrink: 0;
-}
-.privacy-tinfoil-logo img {
-  width: auto;
-  height: 40px;
-  display: block;
-}
-.privacy-tinfoil-logo .partner-logo-dark {
-  display: none;
-}
-:root[data-theme='dark'] .privacy-tinfoil-logo .partner-logo-light {
-  display: none;
-}
-:root[data-theme='dark'] .privacy-tinfoil-logo .partner-logo-dark {
-  display: block;
-}
-.privacy-partner h3 {
-  font-family: var(--tb-font-sans);
-  font-size: 15px;
-  font-weight: 550;
-  margin-bottom: 8px;
-}
-.privacy-partner p {
-  font-size: 14px;
-  color: var(--spark-muted);
-  max-width: 560px;
-}
-.privacy-inline-link {
-  font-size: 13px;
-  white-space: nowrap;
-}
-.privacy-inline-link:hover {
-  color: var(--spark-red);
-}
-.privacy-inline-link span {
-  margin-left: 12px;
 }
 .privacy-training {
   padding-block: 80px;
@@ -416,13 +358,6 @@
   .privacy-path {
     padding: 28px;
   }
-  .privacy-partner {
-    grid-template-columns: auto 1fr;
-    gap: 16px 24px;
-  }
-  .privacy-partner > .privacy-inline-link {
-    grid-column: 2;
-  }
   .privacy-everyday,
   .privacy-safety-layout,
   .privacy-open {
@@ -446,13 +381,8 @@
     font-size: 16px;
     margin-top: 28px;
   }
-  .privacy-section-heading {
-    display: block;
-    margin-bottom: 28px;
-  }
-  .privacy-section-heading > p {
-    margin-top: 18px;
-    max-width: 440px;
+  .privacy-paths {
+    padding-bottom: 64px;
   }
   .privacy-path-grid {
     grid-template-columns: 1fr;
@@ -468,19 +398,6 @@
   .privacy-path-figure {
     max-width: 440px;
     margin-inline: auto;
-  }
-  .privacy-partner {
-    grid-template-columns: 1fr;
-    gap: 16px;
-    padding-block: 28px 64px;
-  }
-  .privacy-tinfoil-logo {
-    padding: 20px 0;
-    width: fit-content;
-    margin-inline: 20px;
-  }
-  .privacy-partner > .privacy-inline-link {
-    grid-column: auto;
   }
   .privacy-training {
     padding-block: 56px;

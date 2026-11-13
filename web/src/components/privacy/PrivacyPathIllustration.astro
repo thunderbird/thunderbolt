@@ -7,7 +7,7 @@ const { kind } = Astro.props;
 const local = kind === 'local';
 ---
 <figure class="privacy-path-figure">
-<svg class="privacy-path-illustration" viewBox="0 0 440 182" role="img" aria-label={local ? 'Thunderbolt and a local model both run inside infrastructure you control.' : 'Your device sends an encrypted request to a verified Tinfoil enclave. The model processes it inside the protected environment.'}>
+<svg class="privacy-path-illustration" viewBox="0 0 440 182" role="img" aria-label={local ? 'Thunderbolt and a local model both run inside infrastructure you control.' : 'Your device sends an encrypted request to a verified confidential-computing enclave. The model processes it inside the protected environment.'}>
   {local ? (
     <rect x="24" y="20" width="392" height="150" rx="24" class="path-boundary" />
   ) : (

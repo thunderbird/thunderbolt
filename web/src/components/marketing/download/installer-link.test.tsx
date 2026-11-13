@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, beforeEach, expect, jest, spyOn, test } from 'bun:test'
-import { act, type ComponentProps } from 'react'
+import { afterEach, beforeEach, expect, jest, mock, spyOn, test } from 'bun:test'
+import { act, type ComponentProps, type MouseEvent as ReactMouseEvent } from 'react'
 import { render } from '../../../../test/render'
 import { InstallerLink } from './installer-link'
 
@@ -99,5 +99,27 @@ test.each([
   jest.runAllTimers()
 
   expect(attributes(link)).toEqual({ href: installerUrl })
+  expect(assign).not.toHaveBeenCalled()
+})
+
+test('runs a caller click handler and respects a canceled download', () => {
+  const onClick = mock((event: ReactMouseEvent<HTMLAnchorElement>) => event.preventDefault())
+  const event = click(renderLink({ onClick }))
+  jest.runAllTimers()
+  expect(onClick).toHaveBeenCalledTimes(1)
+  expect(event.defaultPrevented).toBe(true)
+  expect(assign).not.toHaveBeenCalled()
+})
+
+test('honors cancellation from an ancestor capture handler', () => {
+  const { container } = render(
+    <div onClickCapture={(event) => event.preventDefault()}>
+      <InstallerLink href={installerUrl} installerId="mac-arm" continueToDownloadPage>
+        Download
+      </InstallerLink>
+    </div>,
+  )
+  click(container.querySelector('a'))
+  jest.runAllTimers()
   expect(assign).not.toHaveBeenCalled()
 })

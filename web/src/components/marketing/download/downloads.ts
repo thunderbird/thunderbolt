@@ -74,7 +74,15 @@ export const detectPlatform = (userAgent: string, maxTouchPoints: number): Detec
   return 'unknown'
 }
 
-/** The fields this site reads from GitHub's description of a release. */
+/** Validate the external metadata once, before constructing installer links. */
+const isReleaseAsset = (value: unknown): value is { name: string; state: string } =>
+  typeof value === 'object' &&
+  value !== null &&
+  'name' in value &&
+  typeof value.name === 'string' &&
+  'state' in value &&
+  typeof value.state === 'string'
+
 type GitHubRelease = { tag_name: string; assets: { name: string; state: string }[] }
 
 const isGitHubRelease = (value: unknown): value is GitHubRelease =>
@@ -82,8 +90,14 @@ const isGitHubRelease = (value: unknown): value is GitHubRelease =>
   value !== null &&
   'tag_name' in value &&
   typeof value.tag_name === 'string' &&
+  value.tag_name.trim().length > 0 &&
+  'draft' in value &&
+  value.draft === false &&
+  'prerelease' in value &&
+  value.prerelease === false &&
   'assets' in value &&
-  Array.isArray(value.assets)
+  Array.isArray(value.assets) &&
+  value.assets.every(isReleaseAsset)
 
 /**
  * Read a release from GitHub's description of it. Only uploaded assets whose names are those

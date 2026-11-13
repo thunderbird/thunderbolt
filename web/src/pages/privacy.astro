@@ -24,36 +24,26 @@ const safetyArticle = 'https://tinfoil.sh/blog/2026-09-14-safety-without-comprom
     <main id="privacy-main">
       <section class="privacy-hero spark-shell">
         <h1>A private place<br /><span class="spark-heading-accent">for big ideas.</span></h1>
-        <p>The unfinished thought. The ambitious plan. The question you haven’t asked anyone yet. You deserve room to explore without giving your privacy away.</p>
+        <p>Thunderbolt was built to protect your data, not profit from it.</p>
         <a class="spark-text-link" href="#privacy-paths"><span class="spark-text-link-label">Find your path to private AI</span><span aria-hidden="true">↓</span></a>
       </section>
 
-      <section class="privacy-paths spark-shell" id="privacy-paths" aria-labelledby="privacy-paths-title">
-        <div class="privacy-section-heading">
-          <h2 id="privacy-paths-title">Two paths. Your choice.</h2>
-        </div>
+      <section class="privacy-paths spark-shell" id="privacy-paths" aria-label="Paths to private AI">
         <div class="privacy-path-grid">
           <article class="privacy-path privacy-path-local">
             <h3>Keep it local.</h3>
             <PrivacyPathIllustration kind="local" />
-            <p>Use Thunderbolt on your device and connect a model running locally or on your own servers. Your prompts can stay inside your environment.</p>
-            <p class="privacy-path-detail">You decide what runs, where it runs, and who has access. Keep model inference within your environment, and choose which external services to connect.</p>
+            <p>Use Thunderbolt with Ollama, llama.cpp, Unsloth, and other local model tools. Run inference on your own hardware and keep your prompts on your device.</p>
+            <p class="privacy-path-detail">Connect an OpenAI-compatible local server and choose the models that work for you. You control the models, the hardware, and who has access.</p>
           </article>
           <article class="privacy-path privacy-path-cloud">
             <h3>Keep it verifiable.</h3>
             <PrivacyPathIllustration kind="confidential" />
-            <p>Connect your own Tinfoil account to run models inside hardware-protected enclaves, designed to keep your prompts and responses private from infrastructure operators.</p>
-            <p class="privacy-path-detail">Your Tinfoil connection verifies the enclave before sending encrypted requests. The model processes them inside that protected space.</p>
+            <p>Confidential AI providers such as Tinfoil and NEAR AI run models inside hardware-protected enclaves, designed to keep your prompts and responses private from infrastructure operators.</p>
+            <p class="privacy-path-detail">Thunderbolt makes attestation a first-class part of the experience, with built-in verification for Tinfoil. Check the evidence behind your connection before sending encrypted requests to the model.</p>
           </article>
         </div>
-        <div class="privacy-partner">
-          <a class="privacy-tinfoil-logo" href="https://tinfoil.sh/customers#mozilla" aria-label="Our partnership with Tinfoil">
-            <img class="partner-logo-light" src="/images/partners/tinfoil-black.svg" width="190" height="40" alt="Tinfoil" loading="lazy" />
-            <img class="partner-logo-dark" src="/images/partners/tinfoil-white.svg" width="190" height="40" alt="Tinfoil" loading="lazy" />
-          </a>
-          <div><h3>Private inference. A shared conviction.</h3><p>We partner with Tinfoil because privacy should be built into how AI runs. Bring your own Tinfoil account, whether you use Thunderbolt on your device or self-host it for your team.</p></div>
-          <a class="privacy-inline-link" href="https://tinfoil.sh/security-and-privacy-faq">How verification works <span aria-hidden="true">↗</span></a>
-        </div>
+
       </section>
 
       <section class="privacy-training" aria-labelledby="privacy-training-title">
@@ -69,7 +59,6 @@ const safetyArticle = 'https://tinfoil.sh/blog/2026-09-14-safety-without-comprom
           <details open><summary>Your workspace starts on your device.<span aria-hidden="true">+</span></summary><div><p>Conversations are stored locally first. Uploaded files and provider API keys aren’t included in cross-device sync. An attachment can still be sent to the model you ask to work with it.</p></div></details>
           <details><summary>Keep synced conversations encrypted.<span aria-hidden="true">+</span></summary><div><p>When you enable sync, sensitive content—including messages and chat titles—is encrypted on your device before upload. Some metadata, such as timestamps and record relationships, stays readable on the server.</p></div></details>
           <details><summary>Connected tools have their own boundaries.<span aria-hidden="true">+</span></summary><div><p>A search service receives your query. A connected tool receives the arguments it needs. An external model or agent receives the conversation it answers. These connections aren’t automatically protected by Tinfoil’s enclave.</p><p>Choose the services you trust, and turn off connections you don’t need. Self-hosting alone doesn’t keep requests to external services local. <a href="/docs/using/connections/">Manage your connections.</a></p></div></details>
-          <details><summary>Know what else is collected.<span aria-hidden="true">+</span></summary><div><p>Private content doesn’t mean zero operational data. Accounts and sign-in sessions help a deployment function. App analytics exclude conversation content. They are enabled by default when your deployment configures analytics, and can be turned off in Settings → Preferences.</p><p>This website uses Matomo for page-view and link analytics. For the specifics, read our <a href="/docs/admin/security-and-privacy/">data-flow documentation</a> and <a href="https://www.thunderbird.net/en-US/privacy/">privacy policy</a>.</p></div></details>
         </div>
       </section>
 

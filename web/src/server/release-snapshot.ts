@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import fallback from '../data/download-release.json'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { parseRelease, type DownloadRelease, type Fetch } from '../components/marketing/download/downloads'
@@ -27,21 +28,25 @@ const lookUpLatestRelease = async (request: Fetch): Promise<unknown> => {
 }
 
 /**
- * Read the latest stable release for a build to embed. A build without a valid release fails:
- * the site is never published with stale or missing downloads.
- *
- * CI saves GitHub's answer to `savedPath` (relative to `web/`) before it builds. It can use a
- * token there, and GitHub rate limits anonymous lookups by address, which hosted runners
- * share. The same file lets a build run offline. Any other build asks GitHub itself.
+ * Use a snapshot supplied by CI, or refresh once from GitHub. If GitHub is unavailable,
+ * keep the known-good bundled release so unrelated website builds can still ship.
+ * A supplied snapshot is validated strictly: a broken build input must not be hidden.
  */
 export const loadReleaseSnapshot = async ({
   savedPath = 'release-snapshot.json',
   request = fetch,
 }: { savedPath?: string; request?: Fetch } = {}): Promise<ReleaseSnapshot> => {
-  const raw: unknown = existsSync(savedPath)
-    ? JSON.parse(await readFile(savedPath, 'utf8'))
-    : await lookUpLatestRelease(request)
-  return { raw, release: parseRelease(raw) }
+  if (existsSync(savedPath)) {
+    const raw: unknown = JSON.parse(await readFile(savedPath, 'utf8'))
+    return { raw, release: parseRelease(raw) }
+  }
+  try {
+    const raw = await lookUpLatestRelease(request)
+    return { raw, release: parseRelease(raw) }
+  } catch (error) {
+    console.warn('Release lookup failed; building with the last-known-good snapshot', error)
+    return { raw: fallback, release: parseRelease(fallback) }
+  }
 }
 
 /**

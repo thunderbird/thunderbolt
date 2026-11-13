@@ -88,7 +88,7 @@ The UI reports success only after Resend accepts the message. Delivery to the fi
 
 ## Desktop download metadata
 
-The homepage and download page embed the latest stable release during the Astro build, so the download button does not wait for a network request. The build shares one GitHub lookup across both pages and `/downloads/release.json`, and fails if it cannot get a valid release: the site is never published with stale or missing downloads. `bun run dev` needs the same lookup to render those two pages.
+The homepage and download page embed the latest stable release during the Astro build, so the download button does not wait for a network request. The build shares one GitHub lookup across both pages and `/downloads/release.json`, and uses `src/data/download-release.json` as a last-known-good fallback if GitHub is unavailable or returns invalid metadata. This lets unrelated website fixes and local development continue during an outage. The fallback is build-only; it does not replace the live shared cache. Refresh the bundled snapshot periodically when updating the website.
 
 To build without asking GitHub (offline, or from an address it is rate limiting), save its answer first. The build reads `release-snapshot.json` in this directory when the file exists; it is git-ignored:
 
@@ -96,7 +96,7 @@ To build without asking GitHub (offline, or from an address it is rate limiting)
 gh api repos/thunderbird/thunderbolt/releases/latest > release-snapshot.json
 ```
 
-CI does exactly that before every build, in `web.yml` and `images-publish.yml`, because hosted runners share the addresses GitHub rate limits anonymous lookups by.
+CI attempts an authenticated lookup before every build, in `web.yml` and `images-publish.yml`, because hosted runners share the addresses GitHub rate limits anonymous lookups by. If that lookup fails, the build can still use the bundled snapshot. An explicitly supplied malformed snapshot fails validation rather than hiding a broken build input.
 
 Browsers refresh from **`/downloads/release.json` on the website origin**, never directly from GitHub. The marketing nginx container (`deploy/config/marketing-nginx.conf.template`) caches the fixed public GitHub latest-release response for five minutes, coalesces concurrent cache misses, and refreshes expired entries in the background. Each marketing instance has its own cache. No release webhook or website redeployment is needed for routine release updates.
 

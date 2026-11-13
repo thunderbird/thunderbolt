@@ -35,10 +35,17 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run test:coverage
       - run: bun run typecheck
-      # The build embeds the latest desktop release and fails without one. GitHub rate limits
-      # anonymous lookups by address, and hosted runners share theirs, so look it up here with
-      # the job's token and let the build read the saved answer.
-      - run: gh api repos/thunderbird/thunderbolt/releases/latest > release-snapshot.json
+      # Keep GitHub credentials on the runner; only public metadata enters the build.
+      # Outages retain the checked-in stable snapshot rather than blocking website changes.
+      - name: Refresh desktop release snapshot
+        run: |
+          RELEASE_RESPONSE=$(mktemp)
+          if gh api repos/thunderbird/thunderbolt/releases/latest > "$RELEASE_RESPONSE"; then
+            mv "$RELEASE_RESPONSE" release-snapshot.json
+          else
+            rm -f "$RELEASE_RESPONSE"
+            echo "::warning::Release lookup failed; building with the last-known-good snapshot."
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
       - run: bun run build

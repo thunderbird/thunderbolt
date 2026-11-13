@@ -13,12 +13,21 @@ type InstallerLinkProps = ComponentProps<'a'> & {
   continueToDownloadPage: boolean
 }
 
-export const InstallerLink = ({ installerId, continueToDownloadPage, ...props }: InstallerLinkProps) => {
-  if (!continueToDownloadPage || !installerId) return <a {...props} />
+export const InstallerLink = ({ installerId, continueToDownloadPage, onClick, ...props }: InstallerLinkProps) => {
+  if (!continueToDownloadPage || !installerId) return <a {...props} onClick={onClick} />
 
   const continueAfterDownload = (event: MouseEvent<HTMLAnchorElement>) => {
+    onClick?.(event)
     // A modified click opens the link the visitor's own way, so this page stays where it is.
-    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    )
+      return
 
     // Let the native link start the download in its own browsing context before leaving this page.
     window.setTimeout(() => window.location.assign(`${productLinks.download}?installer=${installerId}`), 0)

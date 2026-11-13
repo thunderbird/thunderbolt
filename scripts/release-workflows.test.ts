@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { readFileSync } from 'fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'path'
 
 type Step = {
@@ -91,4 +92,58 @@ it('preview marketing builds use the same API as the preview app', () => {
   const dockerfile = readFileSync(join(import.meta.dir, '../deploy/docker/marketing.Dockerfile'), 'utf8')
   expect(dockerfile).toContain('ARG PUBLIC_CONTACT_ENDPOINT=/v1/contact')
   expect(dockerfile).toContain('RUN PUBLIC_CONTACT_ENDPOINT="$PUBLIC_CONTACT_ENDPOINT" bun run build')
+})
+
+it('publishes marketing images when the website, its docs, or its build workflow changes', () => {
+  const images = Bun.YAML.parse(
+    readFileSync(join(import.meta.dir, '../.github/workflows/images-publish.yml'), 'utf8'),
+  ) as { on: { push: { branches: string[]; paths: string[] } } }
+  expect(images.on.push.branches).toContain('main')
+  for (const source of ['web/**', 'docs/**', 'deploy/**', '.github/workflows/images-publish.yml']) {
+    expect(images.on.push.paths).toContain(source)
+  }
+})
+
+it('checks both serving images when their Dockerfile changes', () => {
+  const serving = Bun.YAML.parse(
+    readFileSync(join(import.meta.dir, '../.github/workflows/frontend-serving.yml'), 'utf8'),
+  ) as { on: { push: { paths: string[] }; pull_request: { paths: string[] } } }
+  for (const event of [serving.on.push, serving.on.pull_request]) {
+    expect(event.paths).toContain('deploy/docker/frontend.Dockerfile')
+    expect(event.paths).toContain('deploy/docker/marketing.Dockerfile')
+  }
+})
+
+it.each([
+  ['web.yml', 'release-snapshot.json'],
+  ['images-publish.yml', 'web/release-snapshot.json'],
+])('%s preserves usable release metadata when GitHub fails mid-response', (file, destination) => {
+  const workflow = loadWorkflow(file)
+  const script = allSteps(workflow).find((step) => step.run?.includes('RELEASE_RESPONSE=$(mktemp)'))!.run!
+  const directory = mkdtempSync(join(tmpdir(), 'release-refresh-'))
+  try {
+    mkdirSync(join(directory, 'web'))
+    const gh = join(directory, 'gh')
+    writeFileSync(gh, `#!/bin/sh\nprintf '{"tag_name":'\nexit 1\n`)
+    chmodSync(gh, 0o755)
+    const snapshot = join(directory, destination)
+    writeFileSync(snapshot, '{"tag_name":"known-good"}')
+    const result = Bun.spawnSync(['bash', '-e', '-c', script], {
+      cwd: directory,
+      env: { ...process.env, PATH: `${directory}:${process.env.PATH}` },
+    })
+    expect(result.exitCode, result.stderr.toString()).toBe(0)
+    expect(readFileSync(snapshot, 'utf8')).toBe('{"tag_name":"known-good"}')
+    expect(result.stdout.toString()).toContain('::warning::Release lookup failed')
+
+    writeFileSync(gh, `#!/bin/sh\nprintf '{"tag_name":"fresh"}'\n`)
+    const refreshed = Bun.spawnSync(['bash', '-e', '-c', script], {
+      cwd: directory,
+      env: { ...process.env, PATH: `${directory}:${process.env.PATH}` },
+    })
+    expect(refreshed.exitCode, refreshed.stderr.toString()).toBe(0)
+    expect(JSON.parse(readFileSync(snapshot, 'utf8'))).toEqual({ tag_name: 'fresh' })
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
 })

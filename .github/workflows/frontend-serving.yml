@@ -5,12 +5,14 @@ on:
     paths:
       - 'deploy/config/**'
       - 'deploy/docker/frontend.Dockerfile'
+      - 'deploy/docker/marketing.Dockerfile'
       - '.github/workflows/frontend-serving.yml'
   push:
     branches: [main]
     paths:
       - 'deploy/config/**'
       - 'deploy/docker/frontend.Dockerfile'
+      - 'deploy/docker/marketing.Dockerfile'
       - '.github/workflows/frontend-serving.yml'
 
 permissions:

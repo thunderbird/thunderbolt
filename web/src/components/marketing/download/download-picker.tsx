@@ -18,6 +18,7 @@ type PickerProps = {
   detectedPlatform: DetectedPlatform | undefined
   release: DownloadRelease
   continueToDownloadPage?: boolean
+  showWebLink?: boolean
 }
 
 type DesktopPlatform = (typeof desktopPlatforms)[number]
@@ -34,18 +35,24 @@ const primaryAction = (
   return { href, text: `Download for ${platform.name}`, arrow: '↓', installerId: platform.installers[0].id }
 }
 
-export const DownloadPicker = ({ detectedPlatform, release, continueToDownloadPage = false }: PickerProps) => {
+export const DownloadPicker = ({
+  detectedPlatform,
+  release,
+  continueToDownloadPage = false,
+  showWebLink = false,
+}: PickerProps) => {
   const platform = desktopPlatforms.find((item) => item.id === detectedPlatform)
   const recommended = platform?.installers[0]
   const href = recommended && release.downloads[recommended.id]
   const primary = primaryAction(detectedPlatform, platform, href)
+  const showSecondaryLink = showWebLink && primary.href !== productLinks.web
   // Mac and Windows installers differ by chip, which their label names. The Linux ones share
   // a chip and differ by package, so naming the recommended one takes both parts.
   const variant =
     recommended && (detectedPlatform === 'linux' ? `${recommended.label} · ${recommended.format}` : recommended.label)
 
   return (
-    <div className="download-picker">
+    <div className={`download-picker${showSecondaryLink ? ' download-picker-with-web' : ''}`}>
       <div className="download-primary-action">
         <InstallerLink
           className="spark-button"
@@ -55,18 +62,18 @@ export const DownloadPicker = ({ detectedPlatform, release, continueToDownloadPa
         >
           {primary.text} <span aria-hidden="true">{primary.arrow}</span>
         </InstallerLink>
+        {showSecondaryLink && (
+          <a className="spark-text-link" href={productLinks.web}>
+            <span className="spark-text-link-label">Try it on the web</span> <span aria-hidden="true">↗</span>
+          </a>
+        )}
       </div>
       {(detectedPlatform === 'ios' || detectedPlatform === 'android') && (
         <p className="download-mobile-note">iOS and Android apps are coming soon.</p>
       )}
       <details className="download-options">
         <summary>
-          {variant && (
-            <span className="download-variant">
-              {variant} <span aria-hidden="true">·</span>
-            </span>
-          )}
-          Other options{' '}
+          {variant ?? 'Other options'}{' '}
           <svg viewBox="0 0 16 16" width="12" height="12" fill="none" aria-hidden="true">
             <path
               d="m4 6 4 4 4-4"

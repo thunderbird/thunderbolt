@@ -11,6 +11,8 @@ const downloadsOf = (tag: string) => `https://github.com/thunderbird/thunderbolt
 /** GitHub's description of a release whose assets have all finished uploading. */
 const gitHubRelease = (tag: string, names: string[]) => ({
   tag_name: tag,
+  draft: false,
+  prerelease: false,
   assets: names.map((name) => ({ name, state: 'uploaded' })),
 })
 
@@ -90,6 +92,8 @@ describe('parseRelease', () => {
   test('links to the official repository, whatever address or tag the description carries', () => {
     const description = {
       tag_name: 'v1/../../../../evil/repository',
+      draft: false,
+      prerelease: false,
       assets: [
         { name: 'Thunderbolt_1.0.0_x64.dmg', state: 'uploaded', browser_download_url: 'https://evil.test/x.dmg' },
       ],
@@ -136,3 +140,20 @@ describe('loadRelease', () => {
     await expect(loadRelease(signal, request)).rejects.toThrow('Release lookup failed: 503')
   })
 })
+
+const invalidReleaseMetadata: unknown[] = [
+  { tag_name: '', draft: false, prerelease: false, assets: [] },
+  { ...gitHubRelease('v1.0.0', []), draft: true },
+  { ...gitHubRelease('v1.0.0', []), prerelease: true },
+  { tag_name: 'v1.0.0', assets: [] },
+  { ...gitHubRelease('v1.0.0', []), assets: [null] },
+  { ...gitHubRelease('v1.0.0', []), assets: [{ name: 42, state: 'uploaded' }] },
+  { ...gitHubRelease('v1.0.0', []), assets: [{ name: 'Thunderbolt_1.0.0_x64.dmg' }] },
+]
+
+test.each(invalidReleaseMetadata.map((value) => [value] as const))(
+  'rejects incomplete or non-stable metadata at the external boundary',
+  (value) => {
+    expect(() => parseRelease(value)).toThrow('Invalid release')
+  },
+)

@@ -78,3 +78,15 @@ test('cancels the refresh when the page goes away, without reporting a failure',
   expect(signals.map((signal) => signal.aborted)).toEqual([true])
   expect(reported).not.toHaveBeenCalled()
 })
+
+test('a superseded refresh cannot replace the result of the current refresh', async () => {
+  const first = Promise.withResolvers<DownloadRelease>()
+  const second = Promise.withResolvers<DownloadRelease>()
+  const oldLoad: Load = () => first.promise
+  const newLoad: Load = () => second.promise
+  const { container, rerender } = render(<Probe load={oldLoad} />)
+  rerender(<Probe load={newLoad} />)
+  await act(async () => second.resolve(latest))
+  await act(async () => first.resolve(built))
+  expect(container.textContent).toBe(latest.version)
+})

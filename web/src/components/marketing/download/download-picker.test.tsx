@@ -19,7 +19,10 @@ const release: DownloadRelease = {
     'linux-rpm': 'https://example.test/app.rpm',
   },
 }
-const withoutAppleSilicon: DownloadRelease = { version: 'v1.2.3', downloads: { 'mac-intel': release.downloads['mac-intel'] } }
+const withoutAppleSilicon: DownloadRelease = {
+  version: 'v1.2.3',
+  downloads: { 'mac-intel': release.downloads['mac-intel'] },
+}
 
 /** Render the picker and return what a visitor can find in it. */
 const renderPicker = (
@@ -48,9 +51,9 @@ const renderPicker = (
 }
 
 test.each([
-  ['macos', 'Download for macOS ↓', 'https://example.test/arm.dmg', 'Apple Silicon ·Other options'],
-  ['windows', 'Download for Windows ↓', 'https://example.test/x64.exe', 'Intel / AMD (x64) ·Other options'],
-  ['linux', 'Download for Linux ↓', 'https://example.test/app.AppImage', 'AppImage · x64 ·Other options'],
+  ['macos', 'Download for macOS ↓', 'https://example.test/arm.dmg', 'Apple Silicon'],
+  ['windows', 'Download for Windows ↓', 'https://example.test/x64.exe', 'Intel / AMD (x64)'],
+  ['linux', 'Download for Linux ↓', 'https://example.test/app.AppImage', 'AppImage · x64'],
 ] as const)('offers a %s visitor their installer and names its variant', (platform, button, href, summary) => {
   const picker = renderPicker(platform)
 
@@ -131,5 +134,23 @@ test('opens installers in a new tab only where the page continues to the downloa
   expect(targets(continuing)).toEqual(['_blank', null, null])
   expect(renderPicker('windows', { continueToDownloadPage: true }).link('Download for')?.getAttribute('target')).toBe(
     '_blank',
+  )
+})
+
+test('the homepage offers the web app alongside a desktop download', () => {
+  const { container } = render(<DownloadPicker detectedPlatform="macos" release={release} showWebLink />)
+  const actions = container.querySelector('.download-primary-action')!
+  expect([...actions.querySelectorAll('a')].map((link) => link.getAttribute('href'))).toEqual([
+    'https://example.test/arm.dmg',
+    'https://app.thunderbolt.io/',
+  ])
+  expect(actions.querySelector('.spark-text-link')?.textContent).toContain('Try it on the web')
+})
+
+test.each(['ios', 'android', 'unknown'] as const)('does not duplicate the web action for %s visitors', (platform) => {
+  const { container } = render(<DownloadPicker detectedPlatform={platform} release={release} showWebLink />)
+  expect(container.querySelectorAll('.download-primary-action a')).toHaveLength(1)
+  expect(container.querySelector('.download-primary-action a')?.getAttribute('href')).toBe(
+    'https://app.thunderbolt.io/',
   )
 })

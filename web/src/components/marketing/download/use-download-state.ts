@@ -20,7 +20,8 @@ export const useDownloadState = (builtRelease: DownloadRelease, load = loadRelea
     const controller = new AbortController()
     const refresh = async () => {
       try {
-        setRelease(await load(controller.signal))
+        const latest = await load(controller.signal)
+        if (!controller.signal.aborted) setRelease(latest)
       } catch (error) {
         if (!controller.signal.aborted) console.error('Release refresh failed; offering the built-in release', error)
       }

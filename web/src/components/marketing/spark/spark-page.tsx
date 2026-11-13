@@ -64,10 +64,9 @@ export const SparkPage = ({ release }: { release: DownloadRelease }) => {
               <span className="spark-heading-accent">Because it is.</span>
             </h1>
             <p>
-              <span>An open-source AI workspace for chat, research, code, and getting things done.</span>{' '}
-              <span>Your models. Your tools. Your way.</span>
+              <span>An open-source AI workspace for chat, research, code, and getting things done.</span>
             </p>
-            <DownloadPicker {...downloads} continueToDownloadPage />
+            <DownloadPicker {...downloads} continueToDownloadPage showWebLink />
           </div>
           <ProductPreview />
         </section>

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { Locator, Page, Request } from '@playwright/test'
+import type { APIRequestContext, Locator, Page, Request } from '@playwright/test'
 import { defaultModelOpus55 } from '../shared/defaults/models'
 import { widgetPrompts } from '../src/ai/eval/widget-prompts'
 import { getHostname } from '../src/widgets/link-preview/utils'
@@ -38,12 +38,13 @@ const skipOnOutage = (id: string, { failures, outages }: Requests) =>
   test.skip(outages.length > 0 && failures.length === 0, `${id}: third-party outage: ${outages.join('; ')}`)
 
 /** The backend fetches link previews itself, so the browser never sees the page fail; ask the page directly. */
-const probeOutage = async (url: string): Promise<string[]> => {
+const probeOutage = async (api: APIRequestContext, url: string): Promise<string[]> => {
   try {
-    const { status } = await fetch(url, { signal: AbortSignal.timeout(10_000) })
+    const status = (await api.get(url, { timeout: 10_000, failOnStatusCode: false })).status()
     return status === 429 || status >= 500 ? [`${status} ${url}`] : []
   } catch (error) {
-    return [`${url}: ${error instanceof Error ? error.message : String(error)}`]
+    // Playwright appends its call log after the first line.
+    return [`${url}: ${(error instanceof Error ? error.message : String(error)).split('\n')[0]}`]
   }
 }
 
@@ -65,7 +66,7 @@ const expectWidget = async (page: Page, widget: Locator, id: string, requests: R
 }
 
 for (const id of widgetIds) {
-  test(`${id} renders real content`, async ({ page }) => {
+  test(`${id} renders real content`, async ({ page, request: api }) => {
     // A 4xx from a third party means we sent a bad request, so only network errors, 429 and 5xx count as outages.
     const requests: Requests = { failures: [], outages: [] }
     const { failures, outages } = requests
@@ -129,7 +130,7 @@ for (const id of widgetIds) {
       const title = page.locator(`a[href="${linkUrl}"] .line-clamp-1`)
       await expectWidget(page, title, id, requests)
       if ((await title.textContent())?.trim() === getHostname(linkUrl)) {
-        skipOnOutage(id, { failures, outages: await probeOutage(linkUrl) })
+        skipOnOutage(id, { failures, outages: await probeOutage(api, linkUrl) })
         throw new Error(`${id}: prerequisite failed: link preview returned its hostname fallback`)
       }
     } else {

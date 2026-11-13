@@ -26,6 +26,7 @@ import { LibraryRow, skillRowTransition } from './library-row'
  */
 export const SkillsList = ({
   skills,
+  isLoading = false,
   activeSkillId,
   isEnabled,
   onToggleEnabled,
@@ -35,6 +36,8 @@ export const SkillsList = ({
   onDeleteSkill,
 }: {
   skills: Skill[]
+  /** True while the skills query is still resolving; marks the list busy and withholds the empty state. */
+  isLoading?: boolean
   activeSkillId: string | null
   isEnabled: (id: string) => boolean
   onToggleEnabled: (id: string, next: boolean) => void
@@ -80,7 +83,7 @@ export const SkillsList = ({
           unmounts from one list and remounts in the other, and framer-motion
           animates between the two positions. */}
       <LayoutGroup>
-        <SettingsListBody>
+        <SettingsListBody aria-busy={isLoading || undefined}>
           {/* `layout="position"` on the wrappers (not full `layout`) so the
               containers reposition without animating their bounding-box
               SIZE — full `layout` interpolates height via a transform,
@@ -130,7 +133,7 @@ export const SkillsList = ({
             </m.div>
           )}
 
-          {isLibraryEmpty && (
+          {isLibraryEmpty && !isLoading && (
             // The "I deleted everything" empty state — the list is the page's
             // main surface now, so the create CTA lives here.
             <SettingsEmptyState

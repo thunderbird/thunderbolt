@@ -1081,9 +1081,16 @@ describe('selectLanes: only the lanes the diff can need', () => {
       .toEqual([]); // deleted head file: falls back to the patch alone
   });
 
-  test('the default reader takes the head version from the working tree', () => {
-    expect(selectLanes([{ filename: 'src/chats/pending-prompt-store.ts', patch: '' }]).domainReviewers)
-      .toEqual(['react-effect-reviewer']);
+  test('the default reader reads file contents from disk', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'thunder-review-head-'));
+    const filename = join(dir, 'handler.ts');
+    try {
+      writeFileSync(filename, "import { startTransition } from 'react';\n");
+      expect(selectLanes([{ filename, patch: '' }]).domainReviewers)
+        .toEqual(['react-effect-reviewer']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test.each(['shared/powersync-tables.ts', 'backend/drizzle/0042_x.sql', 'powersync-service/config/config.yaml',

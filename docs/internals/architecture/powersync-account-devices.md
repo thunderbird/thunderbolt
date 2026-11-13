@@ -10,7 +10,7 @@ Offline-first sync between the backend (PostgreSQL) and clients (SQLite), scoped
 
 The frontend never hard-codes the PowerSync URL; `/powersync/token` returns it, so URL changes stay transparent.
 
-PowerSync's Postgres storage never compacts parameter history: every write to a row a stream lookup reads (here `devices`) adds a version, and each checkpoint scans them all. To rebuild the storage from scratch, bump `PS_SYNC_CONFIG_VERSION` on the Render `powersync` service and redeploy (the automatic deploy never changes it); it feeds `version_label` in `deploy/config/powersync-config.yaml`. Every device then downloads its data again.
+PowerSync's Postgres storage never compacts parameter history: every write to a row a stream lookup reads (here `devices`) adds a version, and each checkpoint scans them all. To rebuild the storage from scratch, bump `PS_SYNC_CONFIG_VERSION` on the Render `powersync` service and redeploy; it feeds `version_label` in `deploy/config/powersync-config.yaml`. Every device then downloads its data again.
 
 ---
 
@@ -54,7 +54,7 @@ Backend: primary keys and one `user_id` index per table. No composite foreign ke
 
 Two PRs, to avoid sync rule mismatches.
 
-**PR 1: backend schema, migration and sync rules** (steps 2 and 4-6, plus the `backend/src/db/powersync-schema.ts` half of step 1). Merge; the backend applies the migration when it boots. `.github/workflows/images-publish.yml` rebuilds `thunderbolt-powersync` with the new rules baked in, and its `deploy-powersync` job rolls the Render `powersync` service onto it. The two can land in either order: PowerSync picks up a table created after its rules, since the `powersync` publication covers all tables. **Merge PR 2 only once both the backend deploy and the `deploy-powersync` job are live** (a skipped job deployed nothing; if `publish` failed, re-run the failed jobs while that run is still the newest on `main`); preview stacks pick the image up on their next Pulumi apply.
+**PR 1: backend schema, migration and sync rules** (steps 2 and 4-6, plus the `backend/src/db/powersync-schema.ts` half of step 1). Merge, then run the migration. `.github/workflows/images-publish.yml` rebuilds `thunderbolt-powersync` with the new rules baked in. **Roll the Render `powersync` service to the new tag** (dashboard > Manual Deploy > Deploy latest reference) before merging PR 2; preview stacks pick it up on their next Pulumi apply.
 
 **PR 2: frontend** (`src/db/tables.ts`, step 3, plus DAL, defaults, reconciliation, UI). Merge only after PR 1's image is live. Frontend-first fails silently: the table works locally but never replicates.
 

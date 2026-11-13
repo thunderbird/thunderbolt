@@ -26,4 +26,4 @@ jobs:
         with:
           bun-version: 1.4.4
       - run: docker pull nginxinc/nginx-unprivileged:alpine
-      - run: bun test --cwd=deploy/config nginx.test.ts --timeout 5000
+      - run: bun test --cwd=deploy/config --timeout 5000

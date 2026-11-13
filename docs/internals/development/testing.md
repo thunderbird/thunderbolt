@@ -452,11 +452,16 @@ Then run `helm unittest deploy/k8s`.
 
 ## Frontend HTTP serving
 
-The `Frontend Serving` workflow runs the deployed nginx configuration in an isolated container. It checks missing-chunk recovery, immutable asset caching, app-shell revalidation, cross-origin isolation headers, and source-map blocking. Run it locally with Docker available:
+The `Frontend Serving` workflow runs the deployed nginx configurations in isolated containers:
+
+- `nginx.test.ts` covers the app: missing-chunk recovery, immutable asset caching, app-shell revalidation, cross-origin isolation headers, and source-map blocking. It is also part of `bun run test`.
+- `marketing-nginx.test.ts` covers the website's release endpoint against a stand-in for GitHub: starting without DNS, one shared lookup, what reaches GitHub and what comes back, background refresh, and each way a lookup can fail. It takes about half a minute, so it runs only here.
+
+Run both locally with Docker available:
 
 ```sh
 docker pull nginxinc/nginx-unprivileged:alpine
-bun test --cwd=deploy/config nginx.test.ts --timeout 5000
+bun test --cwd=deploy/config --timeout 5000
 ```
 
-Use this working directory so the frontend's Happy DOM preload does not replace the HTTP client. The test creates and removes its own container and temporary files; it does not need the backend or the real frontend build.
+Use this working directory so the frontend's Happy DOM preload does not replace the HTTP client. The tests create and remove their own containers and temporary files; they do not need the backend or a real build.

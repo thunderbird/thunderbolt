@@ -41,7 +41,7 @@ The shared header shows Privacy, Enterprise, and Docs directly when space permit
 
 ## Deploys
 
-The site ships as a container image, not a hosted static-site service. `deploy/docker/marketing.Dockerfile` builds it and **must run with the repo root as its build context** — the docs loader reads `../docs`, so the Dockerfile copies both `web/` and the root `docs/` into the build. `.github/workflows/images-publish.yml` publishes the result as `ghcr.io/thunderbird/thunderbolt/thunderbolt-marketing`; the final stage is nginx-unprivileged listening on 8080 with `deploy/config/marketing-nginx.conf`, deployed by `deploy/k8s/templates/marketing.yaml`. All surfaces (landing, enterprise, contact, blog, docs) are served from one origin at `thunderbolt.io` under subpaths.
+The site ships as a container image, not a hosted static-site service. `deploy/docker/marketing.Dockerfile` builds it and **must run with the repo root as its build context** — the docs loader reads `../docs`, so the Dockerfile copies both `web/` and the root `docs/` into the build. `.github/workflows/images-publish.yml` publishes the result as `ghcr.io/thunderbird/thunderbolt/thunderbolt-marketing`; the final stage is nginx-unprivileged listening on 8080 with `deploy/config/marketing-nginx.conf.template`, deployed by `deploy/k8s/templates/marketing.yaml`. All surfaces (landing, enterprise, contact, blog, docs) are served from one origin at `thunderbolt.io` under subpaths.
 
 ## Content
 
@@ -90,8 +90,14 @@ The UI reports success only after Resend accepts the message. Delivery to the fi
 
 The homepage and download page embed a stable release snapshot during the Astro build, so the download button does not wait for a network request. The build shares one GitHub lookup across both pages and `/downloads/release.json`; offline builds use `src/data/download-release.json` as a known-good fallback.
 
-Browsers refresh from **`/downloads/release.json` on the website origin**, never directly from GitHub. The marketing nginx container caches the fixed public GitHub latest-release response for five minutes, coalesces concurrent cache misses, and refreshes expired entries in the background. Each marketing instance has its own cache. Stale metadata remains usable during upstream errors or rate limiting; a cold cache falls back to the build's static JSON file. Request headers and cookies from visitors are not forwarded upstream. No release webhook or website redeployment is needed for routine release updates.
+Browsers refresh from **`/downloads/release.json` on the website origin**, never directly from GitHub. The marketing nginx container (`deploy/config/marketing-nginx.conf.template`) caches the fixed public GitHub latest-release response for five minutes, coalesces concurrent cache misses, and refreshes expired entries in the background. Each marketing instance has its own cache. No release webhook or website redeployment is needed for routine release updates.
+
+The lookup is optional at run time. The container starts without DNS, and whenever GitHub cannot answer, visitors get the build's snapshot from the same URL:
+
+- If GitHub is unreachable or returns a server error, a release the instance has already cached stays in use, and each request retries in the background.
+- Any other failure is remembered for a minute and answered with the build's snapshot, which can be one release behind: a rate limit, a missing release, or an outage before anything was cached. A rate-limited instance therefore asks GitHub once a minute rather than on every page view.
+- Nothing of a visitor's request reaches GitHub: no headers, cookies, or query string. GitHub's own caching and transport headers are not passed back.
 
 Astro dev and static-only hosting serve the build snapshot at that URL. Other production hosts must provide the equivalent shared cache/reverse proxy to keep release metadata fresh between builds.
 
-Run `bun run test:release-cache` in `web/` to exercise the real nginx cache against a local upstream fixture in Docker (cache sharing, background refresh, and cold/warm upstream outages). Website CI runs this check as well.
+`deploy/config/marketing-nginx.test.ts` runs the real config in Docker against a stand-in for GitHub; the `Frontend Serving` workflow runs it. See [Frontend HTTP serving](../docs/internals/development/testing.md#frontend-http-serving).

@@ -113,6 +113,7 @@ Kubernetes and AWS publish no host ports. Traffic arrives at the ingress or load
 | `api.open-meteo.com`, `geocoding-api.open-meteo.com` | App, backend | Weather and location results                |
 | `basemaps.cartocdn.com`                              | App          | Map tiles                                   |
 | `cdn.crabnebula.app`                                 | Desktop app  | Update checks, official desktop builds only |
+| `api.github.com`                                     | Website      | Optional: offering a desktop release newer than the one the website image was built with |
 | Public relay servers run by n0                       | App, CLI     | Connecting the command-line tool to the app |
 
 Confidential models are the ones that run inside a hardware-isolated enclave, which the app verifies before it sends anything. See [Models and providers](./models.md) for what that means in practice.

@@ -376,16 +376,22 @@ describe('Memory settings document', () => {
       await flush()
       await enableMemory()
       await viewMemory()
+      expect(within(panel()).queryByRole('button', { name: 'Compact' })).toBeNull()
+      fireEvent.pointerDown(panelButton('More'), { button: 0 })
       const compactButton = await waitForElement(() => {
-        const button = screen.getByRole('button', { name: 'Compact' })
-        return button.hasAttribute('disabled') ? null : button
+        const item = screen.getByRole('menuitem', { name: 'Compact' })
+        return item.getAttribute('aria-disabled') === 'true' ? null : item
       })
       fireEvent.click(compactButton)
       await flush()
       expect(rewrite).toHaveBeenCalledWith(
         expect.objectContaining({ model: expect.objectContaining({ id: 'rewrite' }) }),
       )
-      expect(screen.getByRole('button', { name: 'Compacting…' })).toHaveAttribute('aria-busy', 'true')
+      fireEvent.pointerDown(panelButton('More'), { button: 0 })
+      const compacting = await waitForElement(() => screen.queryByRole('menuitem', { name: 'Compacting…' }))
+      expect(compacting).toHaveAttribute('aria-busy', 'true')
+      expect(compacting).toHaveAttribute('aria-disabled', 'true')
+      fireEvent.keyDown(compacting, { key: 'Escape' })
       expect(within(panel()).queryByRole('button', { name: 'Edit' })).toBeNull()
       pending.resolve('Prefers concise answers.')
       await flush()
@@ -394,7 +400,8 @@ describe('Memory settings document', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
       await flush()
       expect((await getMemoryDocument(getDb())).content).toBe(before)
-      fireEvent.click(screen.getByRole('button', { name: 'Compact' }))
+      fireEvent.pointerDown(panelButton('More'), { button: 0 })
+      fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: 'Compact' })))
       await flush()
       await saveMemoryDocument(getDb(), 'Prefers detailed answers.', { expectedContent: before })
       fireEvent.click(screen.getByRole('button', { name: 'Apply' }))

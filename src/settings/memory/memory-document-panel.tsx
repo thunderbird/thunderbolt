@@ -65,6 +65,22 @@ export const MemoryDocumentPanel = ({
                 <SquarePen />
                 <Trans>Edit</Trans>
               </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={page.compact}
+                aria-busy={page.compacting}
+                disabled={
+                  disabled ||
+                  page.pending ||
+                  page.isLoading ||
+                  !!page.edit ||
+                  !page.model ||
+                  !canCompactMemories(page.content)
+                }
+                className="cursor-pointer"
+              >
+                <Sparkles />
+                {page.compacting ? <Trans>Compacting…</Trans> : <Trans>Compact</Trans>}
+              </DropdownMenuItem>
             </DetailActionsMenu>
           }
         >
@@ -108,22 +124,6 @@ export const MemoryDocumentPanel = ({
               <p role="alert" className="text-sm text-destructive">
                 {page.error}
               </p>
-            )}
-            {!page.edit && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="self-start"
-                onClick={page.compact}
-                isLoading={page.compacting}
-                loadingLabel={t`Compacting…`}
-                disabled={
-                  disabled || page.pending || page.isLoading || !page.model || !canCompactMemories(page.content)
-                }
-              >
-                <Sparkles className="size-4" />
-                <Trans>Compact</Trans>
-              </Button>
             )}
             <div className="flex shrink-0 items-center justify-between gap-3 pb-2">
               <p id="memory-size" className={full ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>

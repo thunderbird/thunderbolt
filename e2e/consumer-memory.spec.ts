@@ -190,7 +190,10 @@ test('built-in preview opens a full memory aside for Markdown, editing, copy, ca
   await expect(memoryDocument).toBeVisible()
   await expect(text).toHaveCount(0)
   await expect(aside.getByText('0 characters', { exact: true })).toBeVisible()
-  await expect(aside.getByRole('button', { name: 'Compact', exact: true })).toBeDisabled()
+  await expect(aside.getByRole('button', { name: 'Compact', exact: true })).toHaveCount(0)
+  await aside.getByRole('button', { name: 'More', exact: true }).click()
+  await expect(page.getByRole('menuitem', { name: 'Compact', exact: true })).toBeDisabled()
+  await page.getByRole('menu').press('Escape')
   await expect(aside.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0)
   await editFromAside(page, aside)
   await expect(text).toBeEditable()
@@ -215,6 +218,7 @@ test('built-in preview opens a full memory aside for Markdown, editing, copy, ca
   await expect(editingMore).toBeEnabled()
   await editingMore.click()
   await expect(page.getByRole('menuitem', { name: 'Edit', exact: true })).toBeDisabled()
+  await expect(page.getByRole('menuitem', { name: 'Compact', exact: true })).toBeDisabled()
   await expect(page.getByRole('textbox', { name: 'Memory text', exact: true, includeHidden: true })).toHaveValue(
     content,
   )

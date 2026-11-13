@@ -46,6 +46,10 @@ The IP burst-limit namespace ID in `wrangler.jsonc` must be unused by other
 Workers in the account. Change it before deployment if it already exists.
 Wrangler also creates the SQLite-backed `ContactRateLimiter` Durable Object.
 Keep its class and singleton name stable across deployments to preserve the budget.
+This package's Wrangler version uses Cloudflare's [declarative Durable Object
+`exports`](https://developers.cloudflare.com/durable-objects/reference/durable-objects-migrations/)
+configuration, which replaces the legacy `migrations` array. Do not configure both.
+The `storage: "sqlite"` declaration creates the namespace on the first real deploy.
 
 ### 3. Set the three Worker secrets
 
@@ -165,6 +169,13 @@ are ignored by Git. Use a separate Worker, origins, and inbox for hosted staging
   A separate approximate edge limit of 3 requests/IP/minute rejects bursts before
   reading request bodies. Neither limit is bot authentication. Shared networks
   share an IP allowance. Only Cloudflare's client-IP header is used.
+- The shared cap deliberately prioritizes a bounded inbox/email bill over
+  availability during abuse. Ten addresses (including rotated IPv6 addresses)
+  can consume the hourly budget and cause legitimate visitors to receive 429
+  responses until capacity expires, potentially for an hour. IPs are keyed as
+  supplied by Cloudflare, not grouped by IPv6 subnet. If sustained abuse occurs,
+  add a verified bot challenge before reserving capacity rather than just raising
+  the global cap. CORS and these quotas alone cannot prevent this lockout.
 - Rate-limit state contains at most 30 timestamps and SHA-256 IP hashes, not raw
   addresses or message content. Alarms remove expired records from active storage
   after an hour; Cloudflare's storage recovery/backups have their own retention.

@@ -67,6 +67,8 @@ Images go to the model as images. Every document (PDF, `.docx`, spreadsheet, pla
 
 A scanned PDF is the case to watch. It has no text layer to extract and there is no text recognition (OCR) step, so the assistant receives the filename and nothing else. Screenshot the page you care about and attach that instead.
 
+If a file can't be converted, the message still sends. The assistant is told the file could not be read and why, and answers the rest. An `.xlsx` file is stored compressed, and one that expands to more than 32 MiB is refused this way. Split it into smaller workbooks.
+
 Only the newest message's attachments are sent at full fidelity. Files from earlier turns in the same conversation are replaced by their extracted text, which keeps a long thread from resending megabytes on every reply.
 
 ## Web search and citations

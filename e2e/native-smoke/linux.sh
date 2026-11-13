@@ -37,4 +37,9 @@ for _ in {1..30}; do
   sleep 1
 done
 
-bun e2e/native-smoke/linux.ts
+# Take the setup wizard once per choice, each from a fresh install: the app keeps all its state under these
+# three directories, and each session closes the app before the next one starts.
+for setup in local cloud; do
+  find "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME" -mindepth 1 -delete
+  bun e2e/native-smoke/linux.ts "$setup"
+done

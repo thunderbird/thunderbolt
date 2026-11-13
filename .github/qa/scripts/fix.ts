@@ -4,10 +4,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { existsSync } from 'node:fs'
-import { appendFile, readFile, rm, writeFile } from 'node:fs/promises'
+import { closeSync, existsSync, openSync } from 'node:fs'
+import { appendFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join, relative, resolve } from 'node:path'
-import { parseArgs } from 'node:util'
+import { parseArgs, stripVTControlCharacters } from 'node:util'
 import { format, resolveConfig } from 'prettier'
 import ts from 'typescript'
 import { z } from 'zod'
@@ -65,7 +66,7 @@ type Proof = { kind: 'spec'; spec: string } | { kind: 'spec' | 'visual'; flow: s
 /**
  * One fix-job matrix entry. `finding` holds the only ticket fields the fix agent sees. `real` marks a session on the
  * real AI providers, where the workflow verifies the fix on them too. `branch` is the branch route checked, which
- * publish pushes to.
+ * publish pushes to. `unitTest` asks the patch for a unit test that fails without the fix (see `needsUnitTest`).
  */
 export type FixTask = Ticket &
   Proof & {
@@ -73,6 +74,7 @@ export type FixTask = Ticket &
     charterDir: string
     platform: string
     real: boolean
+    unitTest: boolean
     screenshot?: string
     finding: Pick<Finding, 'title' | 'area' | 'viewport' | 'oracle' | 'steps' | 'expected' | 'actual'>
   }
@@ -330,7 +332,7 @@ export const route = async ({
     }
     if (!fresh) continue
     routed.add(fp)
-    plan.fixes.push({
+    const task = {
       fp,
       severity,
       issueId,
@@ -342,7 +344,8 @@ export const route = async ({
       real: realAiCharters.has(charterDir),
       screenshot: finding.screenshot ? join(outDir, charterDir, finding.screenshot) : undefined,
       finding: ticketView(finding),
-    })
+    }
+    plan.fixes.push({ ...task, unitTest: needsUnitTest(task) })
   }
   await writeFile(join(outDir, 'fix-plan.json'), JSON.stringify(plan, null, 2))
   log(`fix: ${plan.fixes.map((t) => t.fp).join(', ') || 'none'}`)
@@ -357,7 +360,7 @@ export const route = async ({
  * repo's testing guide sends browser storage to `e2e/`. A security fix, a native one, one from the onboarding build
  * and a real-AI one never add a spec.
  */
-export const whyNoSpec = (task: FixTask) => {
+export const whyNoSpec = (task: Omit<FixTask, 'unitTest'>) => {
   if (task.finding.area === 'security') return 'security'
   if ('flow' in task) return 'native'
   if (onboardingSession(task.charterDir)) return 'onboarding'
@@ -369,6 +372,15 @@ export const whyNoSpec = (task: FixTask) => {
     (type === 'layout' && !evidence.includes('[qa-layout] unnamed-control'))
   return needsBrowser ? undefined : 'unit'
 }
+
+/**
+ * Whether a task's patch must carry a unit test that fails without the fix: every web task but a layout or visual one
+ * whose PR adds the browser check as its regression spec (see `whyNoSpec`). That check failed without the patch and
+ * passed with it, which happy-dom cannot match for geometry, so it is the proof. Data lost on a reload gets the spec
+ * and keeps the unit test, since persistence is logic. A native task keeps its Maestro check.
+ */
+export const needsUnitTest = (task: Omit<FixTask, 'unitTest'>) =>
+  !('flow' in task) && (whyNoSpec(task) !== undefined || task.finding.oracle.type === 'lost-on-reload')
 
 /** Named exports of `e2e/test.ts`; a spec importing only these can switch to the repo fixture. */
 const e2eTestExports = new Set(['test', 'expect', 'Page', 'Request', 'Route'])
@@ -532,6 +544,39 @@ const noTestReason =
 const runTests = (cmd: string[], cwd: string) =>
   Bun.spawn(cmd, { cwd, stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' }).exited
 
+/** A finished test run: its exit code and everything it printed. */
+export type TestResult = { code: number; output: string }
+
+/**
+ * Runs a command, copies its output to the job log when it ends, and returns its exit code and output. The output goes
+ * to a file rather than a pipe: a process a test leaves behind inherits the pipe, and reading a pipe to its end waits
+ * for every process holding it, so one leftover would stall the check until the job's timeout.
+ */
+export const runTestsCapturing = async (cmd: string[], cwd: string): Promise<TestResult> => {
+  const dir = await mkdtemp(join(tmpdir(), 'qa-tests-'))
+  const path = join(dir, 'output')
+  const fd = openSync(path, 'w')
+  try {
+    const code = await Bun.spawn(cmd, { cwd, stdin: 'ignore', stdout: fd, stderr: fd }).exited
+    const output = await readFile(path, 'utf8')
+    process.stdout.write(output)
+    return { code, output }
+  } finally {
+    closeSync(fd)
+    await rm(dir, { recursive: true, force: true })
+  }
+}
+
+/**
+ * True when `bun test` output names a test that failed. A file that fails to import or compile, or throws at its top
+ * level, fails no named test, and a failed `beforeAll` or `afterAll` hook shows as `(unnamed)`, so none of them counts.
+ * A failed `beforeEach` shows as its test's failure and does count.
+ */
+export const testFailed = (output: string) =>
+  stripVTControlCharacters(output)
+    .split('\n')
+    .some((line) => line.startsWith('(fail) ') && !/(?:^\(fail\)|>) \(unnamed\)(?: \[|$)/.test(line))
+
 /**
  * `cmd` run as the OS user `user` through sudo, which resets the environment: the command gets `path` as its PATH and
  * that user's home, nothing else of the caller's environment.
@@ -555,15 +600,15 @@ type CheckTestsOptions = {
   user?: string
   repoDir?: string
   run?: Run
-  exec?: (cmd: string[], cwd: string) => Promise<number>
+  exec?: (cmd: string[], cwd: string) => Promise<TestResult>
   log?: (line: string) => void
 }
 
 /**
- * Whether a web patch's own unit tests prove its fix, on a checkout without the patch: they must fail with only the
- * patch's hunks for its test files and its added files applied (`failsWithout`), and pass with the whole patch
- * (`passesWith`). Both are false for a patch with no test file. One process runs both halves, so code a test leaves
- * behind cannot swap the verdict code between them. Each half takes its hunks out again, which leaves the checkout as
+ * Whether a web patch's own unit tests prove its fix, on a checkout without the patch: a named test must fail with
+ * only the patch's hunks for its test files and its added files applied (`failsWithout`; see `testFailed`), and every
+ * run must pass with the whole patch (`passesWith`). Both are false for a patch with no test file. One process runs
+ * both halves, so code a test leaves behind cannot swap the verdict code between them. Each half takes its hunks out again, which leaves the checkout as
  * it was. With `user` the tests run as that user, so they cannot read the environment of this user's processes, and
  * only the snapshot files are opened to it. A patch that adds or changes a symlink or submodule runs no test.
  */
@@ -573,7 +618,7 @@ export const checkTests = async ({
   user,
   repoDir = '.',
   run = runCommand,
-  exec = runTests,
+  exec = runTestsCapturing,
   log = console.log,
 }: CheckTestsOptions) => {
   const patch = resolve(outDir, 'fix', `${fp}.patch`)
@@ -588,17 +633,17 @@ export const checkTests = async ({
     log(`fix: ${noTestReason}`)
     return { failsWithout: false, passesWith: false }
   }
-  const exitCodes = async (include: string[]) => {
+  const results = async (include: string[]) => {
     await run(['git', 'apply', ...include, patch])
     try {
       if (user) await openSnapshots(run, repoDir)
-      const codes: number[] = []
+      const done: TestResult[] = []
       for (const { cwd, cmd: bunTest } of runs) {
         // As in CI, where Bun fails on a missing snapshot instead of writing it. sudo drops the variable.
         const cmd = ['env', 'CI=true', ...bunTest]
-        codes.push(await exec(user ? asUser(user, process.env.PATH ?? '', cmd) : cmd, join(repoDir, cwd)))
+        done.push(await exec(user ? asUser(user, process.env.PATH ?? '', cmd) : cmd, join(repoDir, cwd)))
       }
-      return codes
+      return done
     } finally {
       await run(['git', 'apply', '--reverse', ...include, patch])
     }
@@ -609,8 +654,12 @@ export const checkTests = async ({
   const baseline = files
     .filter((f) => isUnitTest(f.path) || f.status === 'A')
     .map((f) => `--include=${f.path.replace(/[[\]*?\\]/g, '\\$&')}`)
-  const failsWithout = (await exitCodes(baseline)).some((code) => code !== 0)
-  const passesWith = (await exitCodes([])).every((code) => code === 0)
+  const without = await results(baseline)
+  const failsWithout = without.some(({ code, output }) => code !== 0 && testFailed(output))
+  if (!failsWithout && without.some(({ code }) => code !== 0)) {
+    log('fix: without the fix the tests failed only to load or set up, which does not show the bug')
+  }
+  const passesWith = (await results([])).every(({ code }) => code === 0)
   return { failsWithout, passesWith }
 }
 
@@ -848,10 +897,10 @@ const missingPasses = ({ task, verifyNative, unitTests, artifacts, attempt, unch
     },
     {
       check: 'tests',
-      needed: web,
+      needed: task.unitTest,
       reason: unitTests
-        ? "the patch's unit tests did not fail without the fix and pass with it"
-        : `${noTestReason}, and every web fix needs one that fails without the fix`,
+        ? "the patch's unit tests did not fail without the fix and pass with it (a test that only fails to load or set up does not count)"
+        : `${noTestReason}, and a web fix that no browser check proves needs one that fails without the fix`,
     },
     {
       check: 'real',
@@ -953,14 +1002,70 @@ const stoppedReasons = {
 const reviewNotice =
   'An AI agent wrote this change. Review it like an outside contribution: the QA pipeline never merges, approves or marks PRs ready.'
 
-const intro = 'Draft fix by the weekly QA agent.'
-
 /** Why the PR adds no regression spec, for each reason of `whyNoSpec` but security and native. */
 const noSpecText = {
-  onboarding:
-    'The repro runs on the onboarding build, which the Playwright config of e2e/ does not serve, so the PR adds no regression spec.',
-  real: 'The repro passed on the real AI providers, and the consumer project of e2e/ runs on the fake provider, so the PR adds no regression spec.',
-  unit: 'The unit test in this patch guards the fix. The bug shows without a real browser, so the PR adds no end-to-end spec.',
+  onboarding: 'The repro runs on the onboarding build, which e2e/ does not serve, so the PR adds no regression spec.',
+  real: 'The consumer project of e2e/ runs on the fake provider, so the PR adds no regression spec.',
+  unit: 'The bug shows without a real browser, so the PR adds no end-to-end spec.',
+}
+
+/** The longest PR title and commit line publish writes. */
+const maxLine = 100
+
+/** `text` cut to `max` characters at the last space that fits; a single longer word is cut where it must be. */
+export const clip = (text: string, max = maxLine) => {
+  if (text.length <= max) return text
+  const cut = text.lastIndexOf(' ', max)
+  return text.slice(0, cut > 0 ? cut : max).trimEnd()
+}
+
+/** `text` wrapped at spaces into lines of at most `width` characters, as a commit body wants. */
+export const wrap = (text: string, width = maxLine) =>
+  text
+    .split(' ')
+    .reduce<string[]>((lines, word) => {
+      const last = lines.at(-1)
+      if (last !== undefined && last.length + 1 + word.length <= width) lines[lines.length - 1] = `${last} ${word}`
+      else lines.push(word)
+      return lines
+    }, [])
+    .join('\n')
+
+/** The Conventional Commits types `.github/workflows/lint-pr-title.yml` accepts, with an optional scope. */
+const conventionalTitle = /^(feat|fix|chore|docs|refactor|perf|test|ci|build|style)(\([\w-]+\))?: \S/
+
+/**
+ * The PR title: the fix agent's `fix/<fp>.title`, a Conventional Commits title of the change, when it has that shape,
+ * else `fix: <finding title>`. Both are cut at a word.
+ */
+const titleOf = async (outDir: string, task: FixTask) => {
+  const file = Bun.file(join(outDir, 'fix', `${task.fp}.title`))
+  const text = (await file.exists()) ? (await file.text()).split('\n')[0] : ''
+  // Sanitized like the ticket fields, and checked after the cut, which could leave `fix:` alone.
+  const written = clip(oneLine(sanitize(text, Infinity)))
+  const usable = conventionalTitle.test(written) && !secretPattern.test(text)
+  return usable ? written : clip(`fix: ${oneLine(task.finding.title)}`)
+}
+
+/** What the checks a published fix passed showed (see `missingPasses`), one paragraph. */
+const evidenceOf = (task: FixTask, spec: { path: string } | undefined) => {
+  if ('flow' in task) {
+    // A Maestro flow needs the QA stack and a fresh address per run, so it does not become a regression spec.
+    const flow = task.kind === 'spec' ? "The finding's Maestro flow" : "The fix agent's Maestro check"
+    return `${flow} passed three times on the ${task.platform} app built with this patch. The PR adds no regression spec.`
+  }
+  const proof =
+    task.kind === 'visual'
+      ? "The fix agent's check failed three times without this patch and passed three times with it."
+      : task.real
+        ? 'The repro spec passed three times on the real AI providers with the patched frontend.'
+        : 'The repro spec that confirmed the bug passed three times on the patched code.'
+  const why = whyNoSpec(task)
+  const guard = spec
+    ? `It is added with its assertions unchanged as \`${spec.path}\`.`
+    : noSpecText[why === 'onboarding' || why === 'real' ? why : 'unit']
+  const unit = task.unitTest ? " The patch's unit tests fail without the fix and pass with it." : ''
+  return `${proof} ${guard}${unit}`
 }
 
 /**
@@ -968,38 +1073,15 @@ const noSpecText = {
  * The description leaves the ticket out: the branch name links the PR to it. The repo is public and a security fix's
  * PR shows up before the fix ships, so that PR's title names only the ticket and nothing says "security".
  */
-const draftOf = (task: FixTask, spec: { path: string } | undefined) => {
-  const why = whyNoSpec(task)
-  if (why === 'security') {
+const draftOf = async (outDir: string, task: FixTask, spec: { path: string } | undefined) => {
+  if (whyNoSpec(task) === 'security') {
     const title = `fix: QA finding ${task.identifier ?? task.fp}`
-    const body = [intro, 'The finding stays out of this PR, and so does any regression spec.', reviewNotice].join(
-      '\n\n',
-    )
+    const body = ['The finding stays out of this PR, and so does any regression spec.', reviewNotice].join('\n\n')
     return { title, commit: title, body }
   }
-  const title = `fix: ${oneLine(task.finding.title)}`.slice(0, 100).trimEnd()
-  // A code span, so a model-written title cannot @mention anyone.
-  const findingLine = `**Finding:** \`${oneLine(task.finding.title).replaceAll('`', "'")}\` · ${task.finding.area} · ${task.severity}`
-  if (why === 'native') {
-    // A Maestro flow needs the QA stack and a fresh address per run, so it does not become a regression spec.
-    const checked = `Checked on ${task.platform} with ${task.kind === 'spec' ? "the finding's Maestro flow" : "the fix agent's Maestro check"}`
-    const body = [intro, findingLine, `${checked}. The PR adds no regression spec.`, reviewNotice].join('\n\n')
-    return { title, commit: `${title}\n\n${checked}.`, body }
-  }
-  if (why || !spec) {
-    const text = noSpecText[why ?? 'unit']
-    const body = [intro, findingLine, text, reviewNotice].join('\n\n')
-    return { title, commit: `${title}\n\n${text}`, body }
-  }
-  const [origin, proof] =
-    task.kind === 'spec'
-      ? ["the QA agent's repro", 'The repro spec, which the replay confirmed, is added with its assertions unchanged']
-      : [
-          "the fix agent's visual check",
-          "The fix agent's check, which failed without this patch and passes with it, is added",
-        ]
-  const body = [intro, findingLine, `${proof} as \`${spec.path}\`.`, reviewNotice].join('\n\n')
-  return { title, commit: `${title}\n\nKeeps ${origin} as the regression test ${spec.path}.`, body }
+  const title = await titleOf(outDir, task)
+  const evidence = evidenceOf(task, spec)
+  return { title, commit: `${title}\n\n${wrap(evidence.replaceAll('`', ''))}`, body: `${evidence}\n\n${reviewNotice}` }
 }
 
 /**
@@ -1141,7 +1223,7 @@ export const publish = async ({
   const { branch } = task
   if (!live) {
     const spec = await promotedSpec(outDir, task)
-    const { commit, body } = draftOf(task, spec)
+    const { commit, body } = await draftOf(outDir, task, spec)
     log(`[dry run] would push ${branch} with:\n${commit}\n\nand open a draft PR:\n${body}`)
     return { outcome: 'pr', branch, files, spec: spec?.path, commit }
   }
@@ -1150,7 +1232,7 @@ export const publish = async ({
   const git = noHooksGit(run)
   await git(['switch', '--create', branch])
   const spec = await stage(run, outDir, task, repoDir)
-  const { title, commit, body } = draftOf(task, spec)
+  const { title, commit, body } = await draftOf(outDir, task, spec)
   await git(['commit', '--no-verify', '--quiet', '--message', commit])
   const basic = Buffer.from(`x-access-token:${token}`).toString('base64')
   // An empty expected value in the lease means the remote branch must not exist yet.

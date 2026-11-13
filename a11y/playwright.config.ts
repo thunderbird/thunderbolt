@@ -11,6 +11,7 @@ import { getChromeLaunchOptions } from '../scripts/chrome'
  */
 export default defineConfig({
   testDir: '.',
+  globalSetup: './global-setup.ts',
   testMatch: /.*\.audit\.ts$/,
   fullyParallel: false,
   workers: 1,

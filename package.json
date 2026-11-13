@@ -57,7 +57,7 @@
     "build-storybook": "storybook build",
     "prepare": "husky",
     "size": "size-limit",
-    "a11y": "bunx playwright test -c a11y/playwright.config.ts; status=$?; bun a11y/report.ts; exit $status",
+    "a11y": "bunx playwright test -c a11y/playwright.config.ts; status=$?; A11Y_EXIT_STATUS=$status bun a11y/report.ts; exit $status",
     "e2e": "bunx playwright test",
     "e2e:check-collected": "bun scripts/check-e2e-specs-collected.ts",
     "e2e:preview": "bunx playwright test --config playwright.preview.config.ts",

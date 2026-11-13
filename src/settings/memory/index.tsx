@@ -3,23 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
 import { Switch } from '@/components/ui/switch'
 import { Card, CardContent } from '@/components/ui/card'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog'
 import { SettingsPageShell } from '@/components/settings/settings-list'
-import { canCompactMemories } from '@/memory/compact'
 import { MemoryConnections } from '@/settings/memory-connections'
 import { useCreateItem } from '@/components/create-item/context'
-import { MemoryDocument } from './memory-document'
 import { useMemorySettingsState } from './use-memory-settings-state'
 
 const MemorySettingsPage = () => {
@@ -38,7 +27,7 @@ const MemorySettingsPage = () => {
                 <Trans>Saved memories</Trans>
               </label>
               <p className="text-sm text-muted-foreground">
-                <Trans>Allow agents to recall and share info across sessions. Not used by private chats.</Trans>
+                <Trans>Allow agents to recall and share info across sessions.</Trans>
               </p>
             </div>
             <Switch
@@ -81,9 +70,6 @@ const MemorySettingsPage = () => {
           builtinMemory={{
             content: page.content,
             isLoading: page.isLoading,
-            compacting: page.compacting,
-            canCompact: !!page.model && canCompactMemories(page.content),
-            onCompact: page.compact,
             onEdit: () => openCreateItem({ kind: 'memory', initialEditContent: page.content }),
             onView: () => openCreateItem({ kind: 'memory' }),
           }}
@@ -94,56 +80,6 @@ const MemorySettingsPage = () => {
           </p>
         )}
       </fieldset>
-      <Dialog
-        open={page.preview !== null}
-        onOpenChange={(open) => {
-          if (!open && !page.pending) {
-            page.patch({ preview: null, error: null })
-          }
-        }}
-      >
-        <DialogContent className="max-h-[85dvh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              <Trans>Review compacted memory</Trans>
-            </DialogTitle>
-            <DialogDescription>
-              <Trans>Check that every fact is preserved. Nothing changes until you apply.</Trans>
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 text-sm">
-            <div className="space-y-2">
-              <h3 className="font-medium">
-                <Trans>Current memory</Trans>
-              </h3>
-              <div className="break-words text-muted-foreground">
-                <MemoryDocument content={page.preview?.before ?? ''} />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <h3 className="font-medium">
-                <Trans>Compacted memory</Trans>
-              </h3>
-              <div className="break-words">
-                <MemoryDocument content={page.preview?.after ?? ''} />
-              </div>
-            </div>
-          </div>
-          {page.error && (
-            <p role="alert" className="text-sm text-destructive">
-              {page.error}
-            </p>
-          )}
-          <DialogFooter>
-            <Button variant="ghost" disabled={page.pending} onClick={() => page.patch({ preview: null, error: null })}>
-              <Trans>Cancel</Trans>
-            </Button>
-            <Button disabled={memoryDisabled || page.pending} onClick={page.apply}>
-              <Trans>Apply</Trans>
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </SettingsPageShell>
   )
 }

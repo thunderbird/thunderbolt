@@ -16,7 +16,7 @@ beforeEach(resetTestDatabase)
 afterAll(teardownTestDatabase)
 
 describe('saved memory access', () => {
-  it('denies missing consent, unknown chats, deleted chats, and any private or unknown classification', async () => {
+  it('denies missing consent, unknown chats, deleted chats, regardless of legacy classification', async () => {
     const db = getDb()
     await db.insert(chatThreadsTable).values([
       { id: 'public', isEncrypted: 0 },
@@ -27,19 +27,21 @@ describe('saved memory access', () => {
     expect(await canUseSavedMemory(db, 'public')).toBe(false)
     await updateSettings(db, { memory_enabled: true })
     expect(await canUseSavedMemory(db, 'public')).toBe(true)
-    for (const id of [undefined, '', 'missing', 'private', 'unknown', 'deleted']) {
+    expect(await canUseSavedMemory(db, 'private')).toBe(true)
+    expect(await canUseSavedMemory(db, 'unknown')).toBe(true)
+    for (const id of [undefined, '', 'missing', 'deleted']) {
       expect(await canUseSavedMemory(db, id)).toBe(false)
     }
   })
 
-  it('rechecks consent and thread privacy after a toolset was prepared', async () => {
+  it('rechecks consent and ignores legacy thread flags after a toolset was prepared', async () => {
     const db = getDb()
     await db.insert(chatThreadsTable).values({ id: 'public', isEncrypted: 0 })
     await updateSettings(db, { memory_enabled: true })
     const allowed = () => canUseSavedMemory(db, 'public')
     expect(await allowed()).toBe(true)
     await db.update(chatThreadsTable).set({ isEncrypted: 1 }).where(eq(chatThreadsTable.id, 'public'))
-    expect(await allowed()).toBe(false)
+    expect(await allowed()).toBe(true)
     await db.update(chatThreadsTable).set({ isEncrypted: 0 }).where(eq(chatThreadsTable.id, 'public'))
     expect(await allowed()).toBe(true)
     await updateSettings(db, { memory_enabled: false })

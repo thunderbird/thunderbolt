@@ -1185,13 +1185,13 @@ describe('prepareAiRequestConfig — web search availability', () => {
     for (const [index, discover] of discoveries.entries()) {
       expect(discover).toHaveBeenCalledTimes(memoryMcpProviders[index].id === selected.id ? 1 : 0)
     }
-    await getDb().update(chatThreadsTable).set({ isEncrypted: 1 }).where(eq(chatThreadsTable.id, 'current'))
+    await getDb().update(chatThreadsTable).set({ deletedAt: '2026-11-12' }).where(eq(chatThreadsTable.id, 'current'))
     const privateChat = await prepare()
     expect(privateChat.toolset[`${selected.id}_recall`]).toBeUndefined()
     expect(privateChat.toolset.read_memory).toBeUndefined()
     expect(privateChat.volatileSystemPrompt).not.toContain('Built-in information must stay local.')
     expect(discoveries[memoryMcpProviders.indexOf(selected)]).toHaveBeenCalledTimes(1)
-    await getDb().update(chatThreadsTable).set({ isEncrypted: 0 }).where(eq(chatThreadsTable.id, 'current'))
+    await getDb().update(chatThreadsTable).set({ deletedAt: null }).where(eq(chatThreadsTable.id, 'current'))
     await updateSettings(getDb(), { memory_provider: 'mcp:unavailable-id' })
     const unavailable = await prepare()
     expect(unavailable.mcpToolsMetadata).toBeUndefined()
@@ -1225,40 +1225,37 @@ describe('prepareAiRequestConfig — web search availability', () => {
     expect(config.stableSystemPrompt).not.toContain('selected memory service')
   })
 
-  it.each([0, 1])(
-    'private chats have no saved-memory path even with model confidentiality %s',
-    async (isConfidential) => {
-      await updateModel(getDb(), modelId, { isConfidential: isConfidential as 0 | 1 })
-      await getDb().insert(chatThreadsTable).values({ id: 'current', isEncrypted: 1 })
-      await updateSettings(getDb(), { memory_enabled: true, session_history_enabled: true })
-      await saveMemoryDocument(getDb(), 'Never expose this personal memory.', { expectedContent: '' })
-      const discoveries = memoryMcpProviders.map(() => mock(async () => ({ read_resource: tool('memory') })))
-      const clients = memoryMcpProviders.map((provider, index) => ({
-        ...named(`Renamed ${index}`, discoveries[index]),
-        url: provider.url,
-      }))
-      const ordinary = mock(async () => ({ calendar: tool('calendar') }))
-      const config = await prepareAiRequestConfig({
-        modelId,
-        httpClient,
-        chatThreadId: 'current',
-        mcpClients: [...clients, named('Supermemory', ordinary)],
-      })
-      expect(config.volatileSystemPrompt).not.toContain('Never expose this personal memory.')
-      expect(config.toolset.read_memory).toBeUndefined()
-      expect(config.toolset.save_memory).toBeUndefined()
-      expect(config.toolset.search_sessions).toBeDefined()
-      expect(config.toolset.read_session).toBeDefined()
-      expect(config.toolset.supermemory_calendar).toBeDefined()
-      for (const discover of discoveries) {
-        expect(discover).not.toHaveBeenCalled()
-      }
-      expect(ordinary).toHaveBeenCalledTimes(1)
-      expect(Object.values(config.mcpToolsMetadata ?? {}).map(({ name }) => name)).toEqual(['Supermemory'])
-    },
-  )
+  it.each([0, 1])('legacy private chats use built-in memory with model confidentiality %s', async (isConfidential) => {
+    await updateModel(getDb(), modelId, { isConfidential: isConfidential as 0 | 1 })
+    await getDb().insert(chatThreadsTable).values({ id: 'current', isEncrypted: 1 })
+    await updateSettings(getDb(), { memory_enabled: true, session_history_enabled: true })
+    await saveMemoryDocument(getDb(), 'Never expose this personal memory.', { expectedContent: '' })
+    const discoveries = memoryMcpProviders.map(() => mock(async () => ({ read_resource: tool('memory') })))
+    const clients = memoryMcpProviders.map((provider, index) => ({
+      ...named(`Renamed ${index}`, discoveries[index]),
+      url: provider.url,
+    }))
+    const ordinary = mock(async () => ({ calendar: tool('calendar') }))
+    const config = await prepareAiRequestConfig({
+      modelId,
+      httpClient,
+      chatThreadId: 'current',
+      mcpClients: [...clients, named('Supermemory', ordinary)],
+    })
+    expect(config.volatileSystemPrompt).toContain('Never expose this personal memory.')
+    expect(config.toolset.read_memory).toBeDefined()
+    expect(config.toolset.save_memory).toBeDefined()
+    expect(config.toolset.search_sessions).toBeDefined()
+    expect(config.toolset.read_session).toBeDefined()
+    expect(config.toolset.supermemory_calendar).toBeDefined()
+    for (const discover of discoveries) {
+      expect(discover).not.toHaveBeenCalled()
+    }
+    expect(ordinary).toHaveBeenCalledTimes(1)
+    expect(Object.values(config.mcpToolsMetadata ?? {}).map(({ name }) => name)).toEqual(['Supermemory'])
+  })
 
-  it('omits all memory after a public chat becomes private during provider discovery', async () => {
+  it('omits all memory after a chat is deleted during provider discovery', async () => {
     await getDb().insert(chatThreadsTable).values({ id: 'current', isEncrypted: 0 })
     await updateSettings(getDb(), { memory_enabled: true })
     await saveMemoryDocument(getDb(), 'Personal memory.', { expectedContent: '' })
@@ -1275,7 +1272,7 @@ describe('prepareAiRequestConfig — web search availability', () => {
     await updateSettings(getDb(), { memory_provider: memoryProviderForServer(client.id) })
     const preparing = prepareAiRequestConfig({ modelId, httpClient, chatThreadId: 'current', mcpClients: [client] })
     await called.promise
-    await getDb().update(chatThreadsTable).set({ isEncrypted: 1 }).where(eq(chatThreadsTable.id, 'current'))
+    await getDb().update(chatThreadsTable).set({ deletedAt: '2026-11-12' }).where(eq(chatThreadsTable.id, 'current'))
     pending.resolve({ read_resource: tool('memory') })
     const config = await preparing
     expect(config.toolset.read_memory).toBeUndefined()
@@ -1285,7 +1282,7 @@ describe('prepareAiRequestConfig — web search availability', () => {
     expect(config.volatileSystemPrompt).not.toContain('Personal memory.')
   })
 
-  it('guards provider tools against live privatization and never reconnects a revoked memory provider', async () => {
+  it('guards provider tools against live deletion and never reconnects a revoked memory provider', async () => {
     await getDb().insert(chatThreadsTable).values({ id: 'current', isEncrypted: 0 })
     await updateSettings(getDb(), { memory_enabled: true })
     const execute = mock(async () => ({ content: [{ type: 'text', text: 'provider memory' }] }))
@@ -1297,16 +1294,16 @@ describe('prepareAiRequestConfig — web search availability', () => {
     await updateSettings(getDb(), { memory_provider: memoryProviderForServer(client.id) })
     const config = await prepareAiRequestConfig({ modelId, httpClient, chatThreadId: 'current', mcpClients: [client] })
     expect(config.toolset.memory_get_prompt).toBeDefined()
-    await getDb().update(chatThreadsTable).set({ isEncrypted: 1 }).where(eq(chatThreadsTable.id, 'current'))
+    await getDb().update(chatThreadsTable).set({ deletedAt: '2026-11-12' }).where(eq(chatThreadsTable.id, 'current'))
     await expect(
       config.toolset.memory_get_prompt.execute!(
         { privateText: 'Do not transmit' },
         { toolCallId: 'late', messages: [] },
       ),
-    ).rejects.toThrow('private chats')
+    ).rejects.toThrow('chat is unavailable')
     expect(execute).not.toHaveBeenCalled()
 
-    await getDb().update(chatThreadsTable).set({ isEncrypted: 0 }).where(eq(chatThreadsTable.id, 'current'))
+    await getDb().update(chatThreadsTable).set({ deletedAt: null }).where(eq(chatThreadsTable.id, 'current'))
     const called = Promise.withResolvers<void>()
     const pending = Promise.withResolvers<Record<string, Tool>>()
     const reconnect = mock(async () => client.client)
@@ -1325,7 +1322,7 @@ describe('prepareAiRequestConfig — web search availability', () => {
       reconnectClient: reconnect,
     })
     await called.promise
-    await getDb().update(chatThreadsTable).set({ isEncrypted: 1 }).where(eq(chatThreadsTable.id, 'current'))
+    await getDb().update(chatThreadsTable).set({ deletedAt: '2026-11-12' }).where(eq(chatThreadsTable.id, 'current'))
     pending.reject(closedError())
     expect((await preparing).toolset.memory_get_prompt).toBeUndefined()
     expect(reconnect).not.toHaveBeenCalled()

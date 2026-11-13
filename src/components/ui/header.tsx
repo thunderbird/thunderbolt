@@ -3,14 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useConfigCapability } from '@/hooks/use-config-capability'
-import { Trans, useLingui } from '@lingui/react/macro'
-import { useState, type ReactNode } from 'react'
+import { Trans } from '@lingui/react/macro'
+import { type ReactNode } from 'react'
 
 import { AgentSelector } from '@/components/ui/agent-selector'
 import { ProjectBadge } from '@/projects/project-badge'
 import { useCreateItem } from '@/components/create-item/context'
 import { Button, mutedIconButtonClass } from '@/components/ui/button'
-import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
 import { useSidebar } from '@/components/ui/sidebar'
 import { useAllAgents } from '@/dal'
@@ -25,7 +24,6 @@ import { RecoveryContinuityNavDot } from '@/components/recovery-continuity'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import { useChatStore } from '@/chats/chat-store'
 import type { ChatSession } from '@/chats/chat-store'
-import { exposesPrivateThread } from '@/chats/private-thread'
 import {
   selectAllowCustomAgents,
   selectBrandLogo,
@@ -203,7 +201,6 @@ const HistoryNavButtons = () => {
  * selection lives in the chat composer (next to the mode picker), not here.
  */
 export const Header = () => {
-  const { t } = useLingui()
   const { toggleSidebar, state: sidebarState, forceCollapsed } = useSidebar()
   const { isMobile } = useIsMobile()
   // Both desktop apps hide the native title bar (macOS overlays it with traffic
@@ -248,19 +245,6 @@ export const Header = () => {
   // has no agent.
   const effectiveAgent = selectedAgent ?? builtInAgent
   const hasThread = chatThread != null
-  // A switch that would send a private chat off the device waits here for the
-  // user to confirm it. Guarded in this handler rather than in `setSelectedAgent`
-  // so the store action stays a plain write. The agent outlives `open` so the
-  // dialog keeps its name through the close animation.
-  const [privateSwitch, setPrivateSwitch] = useState<{ agent: Agent; threadId: string; open: boolean } | null>(null)
-  const agentName = privateSwitch?.agent.name ?? ''
-  // The header outlives chat navigation, so a prompt raised in one chat closes
-  // when the user moves to another: its confirm must never land on the chat now
-  // shown. Adjusted during render, React's pattern for state that follows a prop.
-  if (privateSwitch?.open && privateSwitch.threadId !== chatThreadId) {
-    setPrivateSwitch({ ...privateSwitch, open: false })
-  }
-
   const isChatRoute = location.pathname.startsWith('/chats')
   // Wait for `/config` so a first visit never flashes the pill before minimal mode is known.
   const showAgentSelector =
@@ -297,28 +281,8 @@ export const Header = () => {
   }
 
   const handleAgentSelect = (agent: Agent) => {
-    if (chatThreadId && agent.id !== effectiveAgent.id && exposesPrivateThread(chatThread, agent)) {
-      setPrivateSwitch({ agent, threadId: chatThreadId, open: true })
-      return
-    }
     switchAgent(chatThreadId, agent)
   }
-
-  const privateSwitchDialog = (
-    <ConfirmActionDialog
-      open={privateSwitch?.open ?? false}
-      title={t`Send this private chat to ${agentName}?`}
-      description={t`This conversation will be sent to ${agentName} unencrypted and will no longer be private.`}
-      confirmLabel={t`Switch Agent`}
-      onConfirm={() => {
-        if (privateSwitch) {
-          switchAgent(privateSwitch.threadId, privateSwitch.agent)
-        }
-        setPrivateSwitch((current) => current && { ...current, open: false })
-      }}
-      onCancel={() => setPrivateSwitch((current) => current && { ...current, open: false })}
-    />
-  )
 
   const agentSelector = showAgentSelector && chatInstance && (
     <HeaderAgentSelector
@@ -377,7 +341,6 @@ export const Header = () => {
 
         {agentSelector}
         {brandLogoImage}
-        {privateSwitchDialog}
 
         {/* Empty right column — keeps the header row a drag surface on the
             Tauri desktop app. */}
@@ -419,7 +382,6 @@ export const Header = () => {
         {isChatRoute && <ProjectBadge chatThreadId={chatThreadId ?? null} />}
       </div>
       {brandLogoImage}
-      {privateSwitchDialog}
     </header>
   )
 }

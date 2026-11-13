@@ -164,7 +164,7 @@ test('built-in preview opens a full memory aside for Markdown, editing, copy, ca
   expect(await builtIn.evaluate((element) => getComputedStyle(element).backgroundImage)).toContain('linear-gradient')
   await expect(page.getByRole('combobox', { name: 'Model for compaction' })).toHaveCount(0)
   for (const description of [
-    'Allow agents to recall and share info across sessions. Not used by private chats.',
+    'Allow agents to recall and share info across sessions.',
     'Allow agents to view previous chat sessions.',
   ]) {
     const descriptionText = page.getByText(description, { exact: true })
@@ -184,18 +184,13 @@ test('built-in preview opens a full memory aside for Markdown, editing, copy, ca
   await expect(memoryToggle).toBeChecked()
   await builtIn.click()
   await expect(aside).toHaveCount(0)
-  // Hit-test the disabled action: it must not fall through to the card's View overlay.
-  const compact = providerSection.getByRole('button', { name: 'Compact', exact: true })
-  await expect(compact).toBeDisabled()
-  const compactBounds = (await compact.boundingBox())!
-  await page.mouse.click(compactBounds.x + compactBounds.width / 2, compactBounds.y + compactBounds.height / 2)
-  await expect(aside).toHaveCount(0)
+  await expect(providerSection.getByRole('button', { name: 'Compact', exact: true })).toHaveCount(0)
   await view.click()
   await expect(aside.getByRole('heading', { name: 'Built-in memory', exact: true })).toBeVisible()
   await expect(memoryDocument).toBeVisible()
   await expect(text).toHaveCount(0)
   await expect(aside.getByText('0 characters', { exact: true })).toBeVisible()
-  await expect(aside.getByRole('button', { name: 'Compact', exact: true })).toHaveCount(0)
+  await expect(aside.getByRole('button', { name: 'Compact', exact: true })).toBeDisabled()
   await expect(aside.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0)
   await editFromAside(page, aside)
   await expect(text).toBeEditable()
@@ -382,7 +377,7 @@ test('one memory provider stays selected across reloads while its built-in previ
   await expect(group).toContainText('Keep this local document when switching providers.')
   await expect(memoryDocument).toHaveCount(0)
   await expect(text).toHaveCount(0)
-  await expect(group.getByRole('button', { name: 'Compact', exact: true })).toBeVisible()
+  await expect(group.getByRole('button', { name: 'Compact', exact: true })).toHaveCount(0)
   await page.reload()
   await expect(external).toBeChecked()
   await expect(builtIn).not.toBeChecked()

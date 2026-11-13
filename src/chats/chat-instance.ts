@@ -26,7 +26,7 @@ import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getAllSkills as defaultGetAllSkills, getAvailableModels as defaultGetAvailableModels } from '@/dal'
 import { isAgentActive as defaultIsAgentActive } from '@/dal/agents'
 import { isBuiltInAgent, isHostedAgent } from '@/defaults/agents'
-import { isModelReady, matchesThreadConfidentiality } from '@/settings/models/model-policy'
+import { isModelReady } from '@/settings/models/model-policy'
 import { loadProjectContextForThread as defaultLoadProjectContext } from '@/projects/load-project-context'
 import { buildProjectPromptSection } from '@/projects/project-prompt'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
@@ -522,9 +522,6 @@ export const createAgentRoutingFetch = (
     }
     const runnableModel = requireRunnableModel(selectedAgent, selectedModel)
     const currentThread = useChatStore.getState().sessions.get(id)?.chatThread ?? chatThread
-    if (isBuiltInAgent(selectedAgent) && !matchesThreadConfidentiality(runnableModel, currentThread)) {
-      throw new ModelAccessError(t`This model no longer matches the conversation’s privacy setting.`)
-    }
     const context: AgentAdapterContext = {
       threadId: id,
       chatThread: currentThread,
@@ -1411,9 +1408,6 @@ export const createChatInstance = (
     if (!lastMessage) {
       throw new Error('Nothing to compact')
     }
-    if (session.chatThread && !matchesThreadConfidentiality(session.selectedModel, session.chatThread)) {
-      throw new Error('The selected model does not match the conversation confidentiality')
-    }
     const controller = new AbortController()
     compaction.controller = controller
     useChatStore.getState().updateSession(id, { compactionStatus: 'compacting' })
@@ -1456,21 +1450,13 @@ export const createChatInstance = (
       throw new Error('No session found')
     }
 
-    const { chatThread, selectedAgent, selectedModel } = session
+    const { selectedAgent, selectedModel } = session
 
     if (!selectedModel) {
       throw new Error('No selected model')
     }
 
     requireRunnableModel(selectedAgent, selectedModel)
-
-    // The hosted agent doesn't use the selected model, and its threads are never
-    // private, so the model/thread confidentiality lock doesn't apply to it.
-    if (chatThread && !isHostedAgent(selectedAgent) && !matchesThreadConfidentiality(selectedModel, chatThread)) {
-      throw new Error(
-        `This model is not available for ${chatThread.isEncrypted === 1 ? 'encrypted' : 'unencrypted'} conversations.`,
-      )
-    }
 
     const telemetry = getOrCreateTurnTelemetry()
     getOrCreateDebugTranscriptTraceId()

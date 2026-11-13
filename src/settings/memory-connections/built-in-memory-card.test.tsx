@@ -14,11 +14,8 @@ const setup = (overrides: Partial<BuiltInMemoryCardContent> = {}, disabled = fal
   const memory = {
     content: '# Preferences\n\n- Use **Celsius** unless I ask for Fahrenheit.',
     isLoading: false,
-    compacting: false,
-    canCompact: true,
     onView: mock(() => {}),
     onEdit: mock(() => {}),
-    onCompact: mock(() => {}),
     ...overrides,
   }
   const onSelect = mock((_id: string) => {})
@@ -38,8 +35,7 @@ test('preview, edit, compaction, and provider selection are independent actions'
   fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
   expect(memory.onEdit).toHaveBeenCalledTimes(1)
   expect(memory.onView).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button', { name: 'Compact' }))
-  expect(memory.onCompact).toHaveBeenCalledTimes(1)
+  expect(screen.queryByRole('button', { name: 'Compact' })).toBeNull()
   expect(memory.onView).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: 'View full memory' }))
   expect(memory.onView).toHaveBeenCalledTimes(1)
@@ -75,7 +71,6 @@ test('consent disables every card action without losing the preview', () => {
   }
   expect(memory.onView).not.toHaveBeenCalled()
   expect(memory.onEdit).not.toHaveBeenCalled()
-  expect(memory.onCompact).not.toHaveBeenCalled()
   expect(onSelect).not.toHaveBeenCalled()
   expect(screen.getByRole('heading', { name: 'Preferences' })).toBeVisible()
 })
@@ -90,13 +85,9 @@ test('loading blocks document actions while keeping provider selection independe
 })
 
 test('unavailable compaction cannot dispatch a rewrite or open the full document', () => {
-  const { memory } = setup({ content: '', canCompact: false })
+  const { memory } = setup({ content: '' })
   expect(screen.getByText('No memory yet. Click Edit or ask your agent to remember something.')).toBeVisible()
-  const compact = screen.getByRole('button', { name: 'Compact' })
-  expect(compact).toBeDisabled()
-  fireEvent.click(compact)
-  expect(memory.onCompact).not.toHaveBeenCalled()
+  expect(screen.queryByRole('button', { name: 'Compact' })).toBeNull()
   expect(memory.onView).not.toHaveBeenCalled()
-  expect(compact.parentElement).toHaveClass('pointer-events-auto', 'z-10')
   expect(screen.getByRole('button', { name: 'Edit' })).toBeEnabled()
 })

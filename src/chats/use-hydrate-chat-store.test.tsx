@@ -802,7 +802,7 @@ describe('useHydrateChatStore', () => {
       const session = await hydrateThread({ agentId: 'hosted-agent', isEncrypted: 0 })
 
       expect(session?.selectedAgent.id).toBe(builtInAgent.id)
-      expect(session?.selectedModel).toMatchObject({ name: 'System Model', isConfidential: 0 })
+      expect(session?.selectedModel).toMatchObject({ name: 'Confidential Model', isConfidential: 1 })
     })
 
     it('keeps the model of a thread whose confidentiality already matches it', async () => {
@@ -915,7 +915,7 @@ describe('useHydrateChatStore', () => {
 
     it.each([
       ['the hosted agent, never private, since its content reaches the backend', true, 0],
-      ['the built-in agent, private on a confidential model', false, 1],
+      ['the built-in agent on a confidential connection', false, 0],
     ])('creates a new thread on %s', async (_label, onHostedAgent, isEncrypted) => {
       const confidentialModelId = uuidv7()
       await getDb().insert(modelsTable).values({

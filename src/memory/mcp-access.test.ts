@@ -23,15 +23,16 @@ afterAll(teardownTestDatabase)
 beforeEach(async () => {
   invalidateIdentityLifetime()
   await resetTestDatabase()
-  await getDb().insert(chatThreadsTable).values({ id: 'current', isEncrypted: 0 })
+  // Legacy private chats have the same provider access and revocation rules.
+  await getDb().insert(chatThreadsTable).values({ id: 'current', isEncrypted: 1 })
   await getDb()
     .insert(mcpServersTable)
     .values({ ...provider, name: 'Memory', type: 'http', enabled: 1 })
   await updateSettings(getDb(), { memory_enabled: true, memory_provider: memoryProviderForServer(provider.id) })
 })
 
-const makePrivate = () =>
-  getDb().update(chatThreadsTable).set({ isEncrypted: 1 }).where(eq(chatThreadsTable.id, 'current'))
+const deleteChat = () =>
+  getDb().update(chatThreadsTable).set({ deletedAt: '2026-11-12' }).where(eq(chatThreadsTable.id, 'current'))
 const options = { toolCallId: 'memory-provider', messages: [] }
 const inputSchema = z.object({ query: z.string() })
 
@@ -96,18 +97,18 @@ describe('memory MCP execution boundary', () => {
     expect(execute).not.toHaveBeenCalled()
   })
 
-  it('blocks every tool name after a chat becomes private, before sending arguments externally', async () => {
+  it('blocks every tool name after a chat is deleted, before sending arguments externally', async () => {
     const execute = mock(async () => ({ content: [{ type: 'text', text: 'Remembered data' }] }))
     const access = createMemoryMcpAccess(getDb(), 'current', memoryProviderForServer(provider.id))
     const wrapped = access.protectTool(provider, tool({ inputSchema, execute }))
     expect(await access.isAllowed(provider)).toBe(true)
-    await makePrivate()
+    await deleteChat()
     expect(await access.isAllowed(provider)).toBe(false)
-    await expect(wrapped.execute!({ query: 'private user input' }, options)).rejects.toThrow('private chats')
+    await expect(wrapped.execute!({ query: 'private user input' }, options)).rejects.toThrow('chat is unavailable')
     expect(execute).not.toHaveBeenCalled()
   })
 
-  it('revokes pending results after privacy or consent changes', async () => {
+  it('revokes pending results after chat deletion or consent changes', async () => {
     const pending = Promise.withResolvers<string>()
     const called = Promise.withResolvers<void>()
     const wrapped = createMemoryMcpAccess(getDb(), 'current', memoryProviderForServer(provider.id)).protectTool(
@@ -122,9 +123,9 @@ describe('memory MCP execution boundary', () => {
     )
     const result = wrapped.execute!({ query: 'earlier preference' }, options)
     await called.promise
-    await makePrivate()
+    await deleteChat()
     pending.resolve('User memory must not enter the newly private context')
-    await expect(result).rejects.toThrow('private chats')
+    await expect(result).rejects.toThrow('chat is unavailable')
   })
 
   it('does not invoke a stale provider closure after consent or identity is revoked', async () => {
@@ -139,7 +140,7 @@ describe('memory MCP execution boundary', () => {
     expect(execute).not.toHaveBeenCalled()
   })
 
-  it('discards and closes a streaming result when its chat becomes private mid-stream', async () => {
+  it('discards and closes a streaming result when its chat is deleted mid-stream', async () => {
     const pending = Promise.withResolvers<void>()
     const streaming = Promise.withResolvers<void>()
     const closed = mock(() => {})
@@ -161,13 +162,13 @@ describe('memory MCP execution boundary', () => {
     )
     const result = wrapped.execute!({ query: 'preference' }, options)
     await streaming.promise
-    await makePrivate()
+    await deleteChat()
     pending.resolve()
-    await expect(result).rejects.toThrow('private chats')
+    await expect(result).rejects.toThrow('chat is unavailable')
     expect(closed).toHaveBeenCalledTimes(1)
   })
 
-  it('rechecks privacy before model-output conversion and preserves the production Pi bridge', async () => {
+  it('rechecks chat deletion before model-output conversion and preserves the production Pi bridge', async () => {
     const convert = mock(() => ({ type: 'text' as const, value: 'provider memory' }))
     const wrapped = createMemoryMcpAccess(getDb(), 'current', memoryProviderForServer(provider.id)).protectTool(
       provider,
@@ -181,9 +182,9 @@ describe('memory MCP execution boundary', () => {
     const result = await piTool.execute('pi-memory', { query: 'preference' })
     expect(result.content).toEqual([{ type: 'text', text: 'provider memory' }])
     expect(convert).toHaveBeenCalledTimes(1)
-    await makePrivate()
+    await deleteChat()
     await expect(wrapped.toModelOutput!({ toolCallId: 'late', input: {}, output: 'sensitive' })).rejects.toThrow(
-      'private chats',
+      'chat is unavailable',
     )
     expect(convert).toHaveBeenCalledTimes(1)
   })

@@ -17,10 +17,9 @@ import type { ThunderboltUIMessage } from '@/types'
 import type { Agent } from '@/types/acp'
 import * as voiceSession from '@/voice/session'
 import { isVoiceModeActive } from '@/voice/voice-mode'
-import { act, cleanup, render, renderHook, screen } from '@testing-library/react'
+import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
-import { voiceUiReducer, toReplyChat, toVoiceOverlayError, useVoiceSession } from './use-voice-session'
-import { VoiceModeComposer } from './voice-mode-composer'
+import { voiceUiReducer, toReplyChat, useVoiceSession } from './use-voice-session'
 
 const hostedAgent: Agent = { ...builtInAgent, id: 'hosted-agent', name: 'Assistant', type: 'managed-http' }
 
@@ -45,40 +44,16 @@ describe('toReplyChat', () => {
     useConfigStore.setState({ config: {} })
   })
 
-  /** The overlay line a held voice turn ends on, rendered the way the session shows it. */
-  const renderHeldTurnOverlay = async () => {
+  it('sends voice turns on a legacy private chat through the selected agent', async () => {
     const chatInstance = setupPrivateThread(hostedAgent)
-    const error = await toReplyChat(chatInstance, 'thread-1')
-      .sendMessage({ text: 'Go on' })
-      .then(
-        () => null,
-        (thrown: unknown) => thrown,
-      )
-    render(<VoiceModeComposer state="listening" error={toVoiceOverlayError(error)} onClose={() => {}} />)
-    return chatInstance
-  }
-
-  it('refuses a voice turn while the private auto-run hold applies, in the notice copy', async () => {
-    const chatInstance = await renderHeldTurnOverlay()
-
-    expect(chatInstance.sendMessage).not.toHaveBeenCalled()
-    expect(
-      screen.getByText("This private chat won't run on Assistant. Switch to Thunderbolt to run it."),
-    ).toBeInTheDocument()
-    expect(screen.queryByText(/^Error:/)).toBeNull()
-  })
-
-  it('drops the switch advice where the deployment has no built-in agent', async () => {
-    useConfigStore.setState({ config: { builtInAgentEnabled: false } })
-    await renderHeldTurnOverlay()
-
-    expect(screen.getByText("This private chat won't run on Assistant.")).toBeInTheDocument()
+    await toReplyChat(chatInstance).sendMessage({ text: 'Go on' })
+    expect(chatInstance.sendMessage).toHaveBeenCalledTimes(1)
   })
 
   it('sends a voice turn once the chat is on the built-in agent', async () => {
     const chatInstance = setupPrivateThread(builtInAgent)
 
-    await toReplyChat(chatInstance, 'thread-1').sendMessage({ text: 'Go on' })
+    await toReplyChat(chatInstance).sendMessage({ text: 'Go on' })
 
     expect(chatInstance.sendMessage).toHaveBeenCalledTimes(1)
   })

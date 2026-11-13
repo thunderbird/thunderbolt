@@ -247,22 +247,25 @@ describe('createAgentRoutingFetch — connection status', () => {
     expect(useChatStore.getState().models).toEqual([])
   })
 
-  it.each([false, true])('preserves conversation privacy after a fresh model read (new thread: %s)', async (isNew) => {
-    const fetchModel = mock(async () => new Response('ok'))
-    const thread = createMockChatThread({ isEncrypted: 0 })
-    if (!isNew) {
-      useChatStore.getState().updateSession(sessionId, { chatThread: thread })
-    }
-    const save = async () => {
-      useChatStore.getState().updateSession(sessionId, { chatThread: thread })
-    }
-    const fetch = createAgentRoutingFetch(sessionId, save, httpClient, getProxyFetch, {
-      getAvailableModels: async () => [{ ...testModels[0], isConfidential: 1 }],
-      getOrConnectAdapter: async () => ({ ...makeAdapter(builtInAgent), fetch: fetchModel }),
-    })
-    await expect(fetch('https://backend.test', { body: '{}' })).rejects.toThrow('privacy setting')
-    expect(fetchModel).not.toHaveBeenCalled()
-  })
+  it.each([false, true])(
+    'allows changed model confidentiality after a fresh model read (new thread: %s)',
+    async (isNew) => {
+      const fetchModel = mock(async () => new Response('ok'))
+      const thread = createMockChatThread({ isEncrypted: 0 })
+      if (!isNew) {
+        useChatStore.getState().updateSession(sessionId, { chatThread: thread })
+      }
+      const save = async () => {
+        useChatStore.getState().updateSession(sessionId, { chatThread: thread })
+      }
+      const fetch = createAgentRoutingFetch(sessionId, save, httpClient, getProxyFetch, {
+        getAvailableModels: async () => [{ ...testModels[0], isConfidential: 1 }],
+        getOrConnectAdapter: async () => ({ ...makeAdapter(builtInAgent), fetch: fetchModel }),
+      })
+      await fetch('https://backend.test', { body: '{}' })
+      expect(fetchModel).toHaveBeenCalledTimes(1)
+    },
+  )
 
   it('rechecks model access after awaiting the adapter before sending credentials', async () => {
     const connected = Promise.withResolvers<AgentAdapter>()
@@ -1372,9 +1375,9 @@ describe('createChatInstance — retry policy', () => {
   })
 
   it.each([
-    ['the built-in agent', builtInAgent, true],
-    ['the hosted agent, which ignores the selected model', { ...builtInAgent, type: 'managed-http' } as Agent, false],
-  ])("enforces a private chat's model lock for %s: %p", async (_label, agent, enforced) => {
+    ['the built-in agent', builtInAgent],
+    ['the hosted agent, which ignores the selected model', { ...builtInAgent, type: 'managed-http' } as Agent],
+  ])('allows any available model in a legacy private chat for %s: %p', async (_label, agent) => {
     const { instance, sendMessage } = createRetryHarness()
     useChatStore.getState().updateSession(sessionId, {
       selectedAgent: agent,
@@ -1383,13 +1386,8 @@ describe('createChatInstance — retry policy', () => {
 
     const sending = instance.sendMessage({ text: 'hi' })
 
-    if (enforced) {
-      await expect(sending).rejects.toThrow('This model is not available for encrypted conversations.')
-      expect(sendMessage).not.toHaveBeenCalled()
-    } else {
-      await sending
-      expect(sendMessage).toHaveBeenCalledTimes(1)
-    }
+    await sending
+    expect(sendMessage).toHaveBeenCalledTimes(1)
   })
 
   it.each([
@@ -2143,7 +2141,7 @@ describe('logical-turn web retry state through the SDK', () => {
     },
   )
 
-  it('stops automatic retries when the model no longer matches the conversation privacy', async () => {
+  it('continues retries when only model confidentiality changes', async () => {
     const consoleError = spyOn(console, 'error').mockImplementation(() => {})
     const { instance, modelIds } = createWebRetryChat(1)
     try {
@@ -2153,9 +2151,7 @@ describe('logical-turn web retry state through the SDK', () => {
       await instance.sendMessage({ text: 'Research a topic' })
       useChatStore.getState().setModels([{ ...testModels[0], isConfidential: 1 }])
       await getClock().tickAsync(60_000)
-      expect(modelIds).toEqual(['m1'])
-      expect(instance.error?.message).toContain('no longer matches')
-      expect(useChatStore.getState().sessions.get(sessionId)).toMatchObject({ retryCount: 1, retriesExhausted: true })
+      expect(modelIds).toEqual(['m1', 'm1'])
     } finally {
       await instance.stop()
       consoleError.mockRestore()

@@ -4,8 +4,7 @@
 
 import { clearAdapterCache } from '@/acp/adapter-cache'
 import { useChatStore } from '@/chats/chat-store'
-import { builtInAgent, isHostedAgent } from '@/defaults/agents'
-import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
+import { builtInAgent } from '@/defaults/agents'
 import type { AutomationRun, ChatThread, Model, ThunderboltUIMessage } from '@/types'
 import { type Chat } from '@ai-sdk/react'
 import { mock } from 'bun:test'
@@ -115,14 +114,6 @@ export const createMockChatInstanceWithValidation = (
 
     if (!session?.selectedModel) {
       throw new Error('No selected model')
-    }
-
-    const { chatThread, selectedAgent, selectedModel } = session
-
-    if (chatThread && !isHostedAgent(selectedAgent) && !matchesThreadConfidentiality(selectedModel, chatThread)) {
-      throw new Error(
-        `This model is not available for ${chatThread.isEncrypted === 1 ? 'encrypted' : 'unencrypted'} conversations.`,
-      )
     }
 
     return originalSendMessage(params)

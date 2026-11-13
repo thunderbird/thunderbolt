@@ -525,8 +525,12 @@ msgid "Allow access to your ChatGPT plan to use its models. You can also add an 
 msgstr ""
 
 #: src/settings/memory/index.tsx
-msgid "Allow agents to recall and share info across sessions. Not used by private chats."
+msgid "Allow agents to recall and share info across sessions."
 msgstr ""
+
+#: src/settings/memory/index.tsx
+#~ msgid "Allow agents to recall and share info across sessions. Not used by private chats."
+#~ msgstr ""
 
 #: src/settings/memory/index.tsx
 msgid "Allow agents to view previous chat sessions."
@@ -651,7 +655,7 @@ msgstr "App-Version"
 #~ msgid "Applied to every chat in this project."
 #~ msgstr "Gilt für jeden Chat in diesem Projekt."
 
-#: src/settings/memory/index.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Apply"
 msgstr ""
 
@@ -883,7 +887,6 @@ msgstr "Kalender"
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/connections/provider-connection-form.tsx
 #: src/settings/encryption/passkey-section.tsx
-#: src/settings/memory/index.tsx
 #: src/settings/memory/memory-document-panel.tsx
 #: src/settings/models/add-provider-models.tsx
 #: src/settings/models/index.tsx
@@ -977,7 +980,7 @@ msgstr "Jetzt prüfen"
 #~ msgid "Check that every fact is preserved before replacing your memories. Nothing changes until you apply."
 #~ msgstr ""
 
-#: src/settings/memory/index.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Check that every fact is preserved. Nothing changes until you apply."
 msgstr ""
 
@@ -1251,7 +1254,7 @@ msgstr "Befehlspalette"
 msgid "Command result"
 msgstr ""
 
-#: src/settings/memory-connections/built-in-memory-card.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Compact"
 msgstr ""
 
@@ -1263,7 +1266,7 @@ msgstr ""
 msgid "Compacted"
 msgstr ""
 
-#: src/settings/memory/index.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Compacted memory"
 msgstr ""
 
@@ -1272,7 +1275,7 @@ msgid "Compacting context…"
 msgstr ""
 
 #: src/components/context-usage/compaction-notice.tsx
-#: src/settings/memory-connections/built-in-memory-card.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Compacting…"
 msgstr ""
 
@@ -2203,7 +2206,7 @@ msgstr ""
 msgid "Currency"
 msgstr "Währung"
 
-#: src/settings/memory/index.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Current memory"
 msgstr ""
 
@@ -4195,16 +4198,16 @@ msgid "None of these match"
 msgstr "Keiner stimmt überein"
 
 #: src/components/chat/chat-prompt-input.tsx
-msgid "None of your models can be used in this chat. Choose another agent to send."
-msgstr "Keines deiner Modelle kann in diesem Chat verwendet werden. Wähle einen anderen Agenten, um zu senden."
+#~ msgid "None of your models can be used in this chat. Choose another agent to send."
+#~ msgstr "Keines deiner Modelle kann in diesem Chat verwendet werden. Wähle einen anderen Agenten, um zu senden."
 
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "Not approved yet"
 msgstr ""
 
 #: src/components/ui/model-selector/model-selector.tsx
-msgid "Not available in private chats."
-msgstr "In privaten Chats nicht verfügbar."
+#~ msgid "Not available in private chats."
+#~ msgstr "In privaten Chats nicht verfügbar."
 
 #: src/settings/devices.tsx
 msgid "Not configured"
@@ -4322,8 +4325,8 @@ msgid "OneDrive Access"
 msgstr "OneDrive-Zugriff"
 
 #: src/components/ui/model-selector/model-selector.tsx
-msgid "Only available in private chats."
-msgstr "Nur in privaten Chats verfügbar."
+#~ msgid "Only available in private chats."
+#~ msgstr "Nur in privaten Chats verfügbar."
 
 #. placeholder {0}: agent.name
 #. placeholder {0}: connection.name
@@ -5064,7 +5067,7 @@ msgstr "Neuer Versuch…"
 msgid "Return to Thunderbolt"
 msgstr ""
 
-#: src/settings/memory/index.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Review compacted memory"
 msgstr ""
 
@@ -5403,8 +5406,8 @@ msgid "Send message"
 msgstr "Nachricht senden"
 
 #: src/components/ui/header.tsx
-msgid "Send this private chat to {agentName}?"
-msgstr "Diesen privaten Chat an {agentName} senden?"
+#~ msgid "Send this private chat to {agentName}?"
+#~ msgstr "Diesen privaten Chat an {agentName} senden?"
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "Send to the {recipient} team"
@@ -5881,8 +5884,8 @@ msgid "Supports tools"
 msgstr ""
 
 #: src/components/ui/header.tsx
-msgid "Switch Agent"
-msgstr "Agent wechseln"
+#~ msgid "Switch Agent"
+#~ msgstr "Agent wechseln"
 
 #: src/settings/preferences.tsx
 msgid "Switch to {suggestedLanguageLabel}"
@@ -6251,8 +6254,8 @@ msgid "This conversation is too large for the model's context window. Start a ne
 msgstr "Diese Unterhaltung ist zu groß für das Kontextfenster des Modells. Starten Sie einen neuen Chat, entfernen Sie einige Anhänge oder wechseln Sie zu einem Modell mit größerem Kontextfenster."
 
 #: src/components/ui/header.tsx
-msgid "This conversation will be sent to {agentName} unencrypted and will no longer be private."
-msgstr "Diese Unterhaltung wird unverschlüsselt an {agentName} gesendet und ist danach nicht mehr privat."
+#~ msgid "This conversation will be sent to {agentName} unencrypted and will no longer be private."
+#~ msgstr "Diese Unterhaltung wird unverschlüsselt an {agentName} gesendet und ist danach nicht mehr privat."
 
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 #: src/settings/devices.tsx
@@ -6364,8 +6367,8 @@ msgid "This model is marked private, but this device cannot verify its provider 
 msgstr ""
 
 #: src/chats/chat-instance.ts
-msgid "This model no longer matches the conversation’s privacy setting."
-msgstr ""
+#~ msgid "This model no longer matches the conversation’s privacy setting."
+#~ msgstr ""
 
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "This model or agent does not offer context compaction."
@@ -6401,13 +6404,13 @@ msgstr "Damit wird die widerrufene Bridge-Registrierung endgültig entfernt. Die
 
 #: src/components/chat/chat-prompt-input.tsx
 #: src/voice/ui/use-voice-session.ts
-msgid "This private chat won't run on {agentName}."
-msgstr "Dieser private Chat wird nicht mit {agentName} ausgeführt."
+#~ msgid "This private chat won't run on {agentName}."
+#~ msgstr "Dieser private Chat wird nicht mit {agentName} ausgeführt."
 
 #: src/components/chat/chat-prompt-input.tsx
 #: src/voice/ui/use-voice-session.ts
-msgid "This private chat won't run on {agentName}. Switch to {builtInAgentName} to run it."
-msgstr "Dieser private Chat wird nicht mit {agentName} ausgeführt. Wechseln Sie zu {builtInAgentName}, um ihn auszuführen."
+#~ msgid "This private chat won't run on {agentName}. Switch to {builtInAgentName} to run it."
+#~ msgstr "Dieser private Chat wird nicht mit {agentName} ausgeführt. Wechseln Sie zu {builtInAgentName}, um ihn auszuführen."
 
 #: src/projects/project-create-form.tsx
 #: src/projects/project-form.tsx

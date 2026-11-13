@@ -525,8 +525,12 @@ msgid "Allow access to your ChatGPT plan to use its models. You can also add an 
 msgstr ""
 
 #: src/settings/memory/index.tsx
-msgid "Allow agents to recall and share info across sessions. Not used by private chats."
+msgid "Allow agents to recall and share info across sessions."
 msgstr ""
+
+#: src/settings/memory/index.tsx
+#~ msgid "Allow agents to recall and share info across sessions. Not used by private chats."
+#~ msgstr ""
 
 #: src/settings/memory/index.tsx
 msgid "Allow agents to view previous chat sessions."
@@ -651,7 +655,7 @@ msgstr ""
 #~ msgid "Applied to every chat in this project."
 #~ msgstr ""
 
-#: src/settings/memory/index.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Apply"
 msgstr ""
 
@@ -883,7 +887,6 @@ msgstr ""
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/connections/provider-connection-form.tsx
 #: src/settings/encryption/passkey-section.tsx
-#: src/settings/memory/index.tsx
 #: src/settings/memory/memory-document-panel.tsx
 #: src/settings/models/add-provider-models.tsx
 #: src/settings/models/index.tsx
@@ -977,7 +980,7 @@ msgstr ""
 #~ msgid "Check that every fact is preserved before replacing your memories. Nothing changes until you apply."
 #~ msgstr ""
 
-#: src/settings/memory/index.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Check that every fact is preserved. Nothing changes until you apply."
 msgstr ""
 
@@ -1251,7 +1254,7 @@ msgstr ""
 msgid "Command result"
 msgstr ""
 
-#: src/settings/memory-connections/built-in-memory-card.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Compact"
 msgstr ""
 
@@ -1263,7 +1266,7 @@ msgstr ""
 msgid "Compacted"
 msgstr ""
 
-#: src/settings/memory/index.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Compacted memory"
 msgstr ""
 
@@ -1272,7 +1275,7 @@ msgid "Compacting context…"
 msgstr ""
 
 #: src/components/context-usage/compaction-notice.tsx
-#: src/settings/memory-connections/built-in-memory-card.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Compacting…"
 msgstr ""
 
@@ -2203,7 +2206,7 @@ msgstr ""
 msgid "Currency"
 msgstr ""
 
-#: src/settings/memory/index.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Current memory"
 msgstr ""
 
@@ -4195,16 +4198,16 @@ msgid "None of these match"
 msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
-msgid "None of your models can be used in this chat. Choose another agent to send."
-msgstr ""
+#~ msgid "None of your models can be used in this chat. Choose another agent to send."
+#~ msgstr ""
 
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "Not approved yet"
 msgstr ""
 
 #: src/components/ui/model-selector/model-selector.tsx
-msgid "Not available in private chats."
-msgstr ""
+#~ msgid "Not available in private chats."
+#~ msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Not configured"
@@ -4322,8 +4325,8 @@ msgid "OneDrive Access"
 msgstr ""
 
 #: src/components/ui/model-selector/model-selector.tsx
-msgid "Only available in private chats."
-msgstr ""
+#~ msgid "Only available in private chats."
+#~ msgstr ""
 
 #. placeholder {0}: agent.name
 #. placeholder {0}: connection.name
@@ -5064,7 +5067,7 @@ msgstr ""
 msgid "Return to Thunderbolt"
 msgstr ""
 
-#: src/settings/memory/index.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Review compacted memory"
 msgstr ""
 
@@ -5403,8 +5406,8 @@ msgid "Send message"
 msgstr ""
 
 #: src/components/ui/header.tsx
-msgid "Send this private chat to {agentName}?"
-msgstr ""
+#~ msgid "Send this private chat to {agentName}?"
+#~ msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "Send to the {recipient} team"
@@ -5881,8 +5884,8 @@ msgid "Supports tools"
 msgstr ""
 
 #: src/components/ui/header.tsx
-msgid "Switch Agent"
-msgstr ""
+#~ msgid "Switch Agent"
+#~ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Switch to {suggestedLanguageLabel}"
@@ -6251,8 +6254,8 @@ msgid "This conversation is too large for the model's context window. Start a ne
 msgstr ""
 
 #: src/components/ui/header.tsx
-msgid "This conversation will be sent to {agentName} unencrypted and will no longer be private."
-msgstr ""
+#~ msgid "This conversation will be sent to {agentName} unencrypted and will no longer be private."
+#~ msgstr ""
 
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 #: src/settings/devices.tsx
@@ -6364,8 +6367,8 @@ msgid "This model is marked private, but this device cannot verify its provider 
 msgstr ""
 
 #: src/chats/chat-instance.ts
-msgid "This model no longer matches the conversation’s privacy setting."
-msgstr ""
+#~ msgid "This model no longer matches the conversation’s privacy setting."
+#~ msgstr ""
 
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "This model or agent does not offer context compaction."
@@ -6401,13 +6404,13 @@ msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
 #: src/voice/ui/use-voice-session.ts
-msgid "This private chat won't run on {agentName}."
-msgstr ""
+#~ msgid "This private chat won't run on {agentName}."
+#~ msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
 #: src/voice/ui/use-voice-session.ts
-msgid "This private chat won't run on {agentName}. Switch to {builtInAgentName} to run it."
-msgstr ""
+#~ msgid "This private chat won't run on {agentName}. Switch to {builtInAgentName} to run it."
+#~ msgstr ""
 
 #: src/projects/project-create-form.tsx
 #: src/projects/project-form.tsx

@@ -132,21 +132,23 @@ describe('memory document', () => {
     }
   })
 
-  it('fails closed for private, missing, deleted, and unknown-classification chats at the DAL boundary', async () => {
+  it('fails closed for missing and deleted chats at the DAL boundary', async () => {
     await updateSettings(database.db, { memory_enabled: true })
     await database.db.insert(chatThreadsTable).values([
       { id: 'private', isEncrypted: 1 },
       { id: 'unknown', isEncrypted: null },
       { id: 'deleted', isEncrypted: 0, deletedAt: '2026-11-11' },
     ])
-    for (const currentThreadId of [undefined, '', 'private', 'unknown', 'missing', 'deleted']) {
+    for (const currentThreadId of [undefined, '', 'missing', 'deleted']) {
       const options = { requireEnabled: true, currentThreadId }
       await expect(getMemoryDocument(database.db, options)).rejects.toBeInstanceOf(MemoryDisabledError)
       await expect(
         saveMemoryDocument(database.db, 'Forbidden.', { ...options, expectedContent: '' }),
       ).rejects.toBeInstanceOf(MemoryDisabledError)
     }
-    expect(await getMemoryDocument(database.db)).toEqual({ content: '' })
+    for (const currentThreadId of ['private', 'unknown']) {
+      expect(await getMemoryDocument(database.db, { requireEnabled: true, currentThreadId })).toEqual({ content: '' })
+    }
   })
 
   it('does not return or save memory after cancellation', async () => {

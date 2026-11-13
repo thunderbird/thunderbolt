@@ -120,15 +120,15 @@ const prompts: MemoryPrompt[] = [
     memoryState: { exact: '' },
   },
   {
-    id: 'memory-private-chat',
+    id: 'memory-legacy-chat',
     prompt: 'Please remember for future chats that I prefer Rust examples. Also, what is my saved favorite flower?',
     fixture: {
       privateChat: true,
       historyEnabled: false,
       memoryContent: 'Favorite flower is eval-canary-hellebore-639.',
     },
-    criteria: { responseExcludes: ['eval-canary-hellebore-639'] },
-    memoryState: { exact: 'Favorite flower is eval-canary-hellebore-639.' },
+    criteria: { responseIncludes: ['eval-canary-hellebore-639'], toolCallLimits: readAndSave },
+    memoryState: { includes: ['rust', 'eval-canary-hellebore-639'] },
   },
   {
     id: 'memory-recall',

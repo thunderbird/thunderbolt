@@ -715,17 +715,13 @@ export const prepareAiRequestConfig = async ({
     loadsSkillsByTool,
     webToolBudget,
   )
-  const includePrivate = model.isConfidential === 1
   const memoryAccess = createMemoryMcpAccess(db, chatThreadId, settings.memoryProvider)
   const memoryAllowed = await memoryAccess.isAllowed()
   if (supportsTools && memoryAllowed && chatThreadId) {
     Object.assign(appToolset, createMemoryTools({ db, currentThreadId: chatThreadId }))
   }
   if (supportsTools && settings.sessionHistoryEnabled && chatThreadId) {
-    Object.assign(
-      appToolset,
-      createSessionHistoryTools({ db, currentThreadId: chatThreadId, allowPrivate: includePrivate }),
-    )
+    Object.assign(appToolset, createSessionHistoryTools({ db, currentThreadId: chatThreadId }))
   }
   // Mini App context is a tool for the same reason cross-chat recall is: the
   // app's state changes on every click, and injecting it would invalidate the

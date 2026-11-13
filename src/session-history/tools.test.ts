@@ -77,11 +77,11 @@ describe('PowerSync session-history driver', () => {
           ('message', 'message', 'earlier', '', 'Lantern-Kite ships on Friday.'),
           ('secret', 'message', 'private', '', 'Lantern-Kite private note.')`)
       expect(await db.all(sql`SELECT id FROM chat_threads WHERE id = 'earlier'`)).toEqual([{ id: 'earlier' }])
-      const tools = createSessionHistoryTools({ db, currentThreadId: 'current', allowPrivate: false })
+      const tools = createSessionHistoryTools({ db, currentThreadId: 'current' })
       const options = { toolCallId: 'production-driver', messages: [] }
       const result = parseSearch((await tools.search_sessions.execute!({ query: 'Lantern-Kite' }, options)) as string)
-      expect(result.results).toHaveLength(2)
-      expect(result.results.every(({ sessionId }) => sessionId === 'earlier')).toBe(true)
+      expect(result.results).toHaveLength(3)
+      expect(result.results.some(({ sessionId }) => sessionId === 'private')).toBe(true)
       const hit = result.results.find(({ messageId }) => messageId === 'message')!
       expect(hit.excerpt).toContain('ships on Friday')
       expect(hit.url).toBe('/chats/earlier')
@@ -95,10 +95,9 @@ describe('PowerSync session-history driver', () => {
 
 describe('session history', () => {
   let database: BunSQLiteDatabase
-  const context = (allowPrivate = false): SessionHistoryContext => ({
+  const context = (): SessionHistoryContext => ({
     db: database.db,
     currentThreadId: 'current',
-    allowPrivate,
   })
   const thread = async (id: string, title = 'Planning', isEncrypted = 0) => {
     await database.db.insert(chatThreadsTable).values({ id, title, isEncrypted })
@@ -151,7 +150,7 @@ describe('session history', () => {
     expect(parseSearch(await searchSessions(context(), { query: 'Planning' })).results[0].createdAt).toBeUndefined()
   })
 
-  it('enforces live parent/message deletion, current-chat exclusion, roles and confidentiality even with a stale index', async () => {
+  it('enforces live parent/message deletion, current-chat exclusion, roles regardless of legacy privacy even with a stale index', async () => {
     for (const id of ['current', 'public', 'private', 'deleted-thread', 'deleted-message', 'system']) {
       await thread(id, 'Budget', id === 'private' ? 1 : 0)
       await message(`m-${id}`, id, 'budget $400', id === 'system' ? 'system' : 'user')
@@ -165,10 +164,10 @@ describe('session history', () => {
       .set({ deletedAt: '2026-11-01' })
       .where(eq(chatMessagesTable.id, 'm-deleted-message'))
     const hits = parseSearch(await searchSessions(context(), { query: '$400' })).results
-    expect(hits.map((hit) => hit.sessionId)).toEqual(['public'])
-    const confidentialHits = parseSearch(await searchSessions(context(true), { query: '$400' })).results
+    expect(hits.map((hit) => hit.sessionId).sort()).toEqual(['private', 'public'])
+    const confidentialHits = parseSearch(await searchSessions(context(), { query: '$400' })).results
     expect(confidentialHits.map((hit) => hit.sessionId).sort()).toEqual(['private', 'public'])
-    for (const sessionId of ['private', 'deleted-thread', 'current', 'missing']) {
+    for (const sessionId of ['deleted-thread', 'current', 'missing']) {
       expect(await readSession(context(), { session_id: sessionId })).toContain('Session unavailable')
     }
   })

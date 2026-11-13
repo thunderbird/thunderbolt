@@ -151,7 +151,7 @@ type DetailPanelSurfaceProps = {
  * The responsive surface the detail panels render into. Desktop: an inline
  * right-side slide-in at a ~50/50 split with the list (half the viewport
  * minus half the sidebar), on one continuous surface card lifted off the
- * page by the app's soft glow shadow plus a faint border — bg-sidebar
+ * page by the app's soft glow shadow plus a faint border — bg-panel
  * (near-white in light mode) like the chat composer. The header inset above
  * and bottom padding below float the card off the window edges by the same
  * 48px; callers leave the outer
@@ -186,7 +186,7 @@ export const DetailPanelSurface = ({
         <div className={cn('h-full pb-12', topInset && 'pt-12')}>
           <div
             className={cn(
-              'h-full overflow-hidden rounded-l-2xl border border-r-0 border-border/60 bg-sidebar',
+              'h-full overflow-hidden rounded-l-2xl border border-r-0 border-border/60 bg-panel',
               panelFieldSurfaceClass,
             )}
           >

@@ -22,7 +22,6 @@ import {
   saveStreamingAssistantMessage,
 } from '@/dal'
 import { customRowToAgent, systemRowToAgent } from '@/dal/agents'
-import { isHostedAgent } from '@/defaults/agents'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
 import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
 import { markChatReady } from '@/lib/init-timing'
@@ -185,9 +184,6 @@ export const useHydrateChatStore = ({
         // on this first save, so both must ride the session to reach it.
         projectId: session.projectId,
         miniAppId: session.miniAppId,
-        // The hosted agent sends the chat to the backend unencrypted, so its threads
-        // are never private chats, whatever the (unused) selected model is.
-        isEncrypted: isHostedAgent(session.selectedAgent) ? 0 : undefined,
       })
       return { session, thread }
     })

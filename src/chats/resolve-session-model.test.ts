@@ -54,8 +54,8 @@ describe('resolveSessionModel', () => {
     expect(resolveSessionModel(builtInAgent, null, standard, [standard, local])).toBe(local)
   })
 
-  it('takes the first model the picker enables for the thread, skipping one missing its API key', () => {
-    expect(resolveSessionModel(builtInAgent, nonPrivateThread, confidential, models).id).toBe(standard.id)
+  it('retains the available selected model regardless of legacy thread privacy', () => {
+    expect(resolveSessionModel(builtInAgent, nonPrivateThread, confidential, models).id).toBe(confidential.id)
   })
 
   it('leaves the model alone for an agent that does not use it', () => {

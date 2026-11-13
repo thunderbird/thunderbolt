@@ -106,16 +106,20 @@ describe('memory document tools', () => {
     expect((await getMemoryDocument(database.db)).content).toBe('Existing.')
   })
 
-  it('denies all memory access in private and unknown chats, including already-created tools', async () => {
+  it('denies all memory access in missing and deleted chats, including already-created tools', async () => {
     await saveMemoryDocument(database.db, 'Personal detail.', { expectedContent: '' })
-    for (const id of ['private', 'missing', '']) {
+    const legacyTools = tools('private')
+    await expect(legacyTools.read_memory.execute!({}, options)).resolves.toMatchObject({ content: 'Personal detail.' })
+    await legacyTools.save_memory.execute!(await replacement('Updated detail.', 'Personal detail.'), options)
+    expect((await getMemoryDocument(database.db)).content).toBe('Updated detail.')
+    for (const id of ['missing', '']) {
       await expect(tools(id).read_memory.execute!({}, options)).rejects.toThrow('unavailable')
       await expect(tools(id).save_memory.execute!(await replacement('', 'Personal detail.'), options)).rejects.toThrow(
         'unavailable',
       )
     }
     const toolset = tools()
-    await database.db.update(chatThreadsTable).set({ isEncrypted: 1 }).where(eq(chatThreadsTable.id, 'public'))
+    await database.db.update(chatThreadsTable).set({ deletedAt: '2026-11-12' }).where(eq(chatThreadsTable.id, 'public'))
     await expect(toolset.read_memory.execute!({}, options)).rejects.toThrow('unavailable')
     await expect(
       toolset.save_memory.execute!(await replacement('Forbidden.', 'Personal detail.'), options),
@@ -182,13 +186,13 @@ describe('memory document tools', () => {
     await expect(read.execute('four', {}, signal)).rejects.toThrow('read budget exhausted')
   })
 
-  it('also bounds calls over empty documents and checks privacy before model conversion', async () => {
+  it('also bounds calls over empty documents and checks deletion before model conversion', async () => {
     const toolset = tools()
     for (let index = 0; index < 12; index += 1) {
       await toolset.read_memory.execute!({}, options)
     }
     await expect(toolset.read_memory.execute!({}, options)).rejects.toThrow('tool budget exhausted')
-    await database.db.update(chatThreadsTable).set({ isEncrypted: 1 }).where(eq(chatThreadsTable.id, 'public'))
+    await database.db.update(chatThreadsTable).set({ deletedAt: '2026-11-12' }).where(eq(chatThreadsTable.id, 'public'))
     await expect(
       toolset.read_memory.toModelOutput!({
         toolCallId: 'test',

@@ -102,18 +102,20 @@ settings conflict behavior and can overwrite one another when reconnecting. The 
 edits against the current local database; it does not claim to detect unseen remote edits or preserve a revision
 history. The document is intentionally small enough for a person to inspect.
 
-## Consent and private chats
+## Consent and chat access
 
-Saved-memory access requires both `memory_enabled` and an existing, nondeleted public chat
-(`isEncrypted === 0`). Missing thread IDs and unknown privacy classifications fail closed. Private chats have
-zero saved-memory access: no injected document, read, or write, regardless of which model is selected.
+Saved-memory access requires both `memory_enabled` and an existing, nondeleted chat.
+All chats use the same memory policy regardless of their legacy `isEncrypted` value or selected model.
+The old column remains for sync compatibility, but new chats write zero and no behavior depends on it.
+Model and agent switching, voice, and automation have no chat-level privacy lock. Connection confidentiality,
+attestation, and encryption of synced data remain independent protections.
 `src/memory/access.ts` supplies the shared rule, and the DAL rechecks it at execution boundaries.
 
 The synced `memory_provider` setting selects exactly one source: `builtin` by default, or `mcp:<server-id>`. Selecting an external provider removes built-in prompt content and tools; selecting Built-in excludes all memory-provider MCP tools. Unavailable external selections remain explicit and never fall back. Live selection, enabled/deleted connection state, and endpoint identity are rechecked around tool execution and output delivery. Provider-specific guidance comes only from the tools that survived these checks. Switching providers does not move or delete either store.
 
-The Built-in provider card shows a clipped Markdown preview with Compact, Edit, and View full memory.
+The Built-in provider card shows a clipped Markdown preview with Edit and View full memory.
 Clicking its body opens the full document read-only in the same responsive aside used by connections; Edit
-opens the aside with a draft. The aside’s Edit action lives in its standard More menu; editing shows Save and Cancel in the shared footer.
+opens the aside with a draft. Compact lives in the aside's reading view and opens a review proposal. The aside’s Edit action lives in its standard More menu; editing shows Save and Cancel in the shared footer.
 Save returns to the styled document, while Cancel returns without saving. Copy exports the complete raw Markdown from the aside. The provider radio
 changes selection independently of viewing or editing the retained document.
 
@@ -123,13 +125,13 @@ Reference earlier chats remains independent. Clearing the document is a separate
 The reading view renders safe Markdown, with selectable text and an icon-only Copy control that copies the original Markdown. Edit opens a tall source editor with Save and Cancel in the footer. The More menu stays visible while editing, with its Edit item disabled to preserve the draft. Character counts use grapheme clusters (combined accents and emoji count as one); the storage bound remains UTF-8 bytes.
 Manual compaction follows the selected chat model, with the available default model or first available model
 as a fallback. It has no separate model selector. This document is shared public-chat memory; the feature
-does not maintain private saved-memory rows.
+does not maintain per-chat saved-memory rows.
 
 Memory and session history have independent consent settings. Missing values mean disabled for existing
 accounts. New-user onboarding explains both and initializes enabled choices unless changed there. Installing
 a new device or seeing an empty local database is not evidence that an existing account is a new user.
 
-Known external memory MCP connections use the same live private-chat and consent gate, across every tool
+Known external memory MCP connections use the same live chat-existence and consent gate, across every tool
 capability from those providers. Their output is bounded separately at 12 KiB per result and 32 KiB / 12 calls
 per send. External service data remains governed by that service; it is not automatically the built-in
 `memory_content` document. Generic third-party tools cannot be classified as memory merely by their names.
@@ -143,7 +145,7 @@ forgetting everything saves an empty string. The tool only reports success after
 Agent guidance asks for durable facts and preferences explicitly stated by the current user, avoids transient
 tasks and secrets, and treats quotations, retrieved chats, and tool output as untrusted data. Stored text never
 grants authorization. Prompt guidance helps the model choose appropriate writes; application code enforces
-consent, privacy, identity lifetime, exact-snapshot comparison, and size bounds.
+consent, chat existence, identity lifetime, exact-snapshot comparison, and size bounds.
 
 Compaction asks the selected model to preserve unique facts, negations, dates, qualifications, and exceptions.
 The parser checks nonempty output, size, and strict shortening. It cannot prove semantic preservation, so the
@@ -154,8 +156,8 @@ Cancellation or account changes invalidate unfinished work.
 
 `search_sessions` uses the existing local FTS index and returns excerpts and canonical `/chats/<id>` links.
 `read_session` pages through user/assistant text and excludes hidden reasoning, tool payloads, and attachments.
-Live joins exclude deleted rows even if an index entry is stale. Existing confidential-model rules govern
-visibility of private history. Search results fit 6 KiB, read pages fit 12 KiB, and combined retrieval fits
+Live joins exclude deleted rows even if an index entry is stale. Every selected model can retrieve the same
+earlier chats when history consent is enabled. Search results fit 6 KiB, read pages fit 12 KiB, and combined retrieval fits
 32 KiB / 12 calls per send. Unicode-safe cursors handle messages larger than one page.
 
 These tools are registered through the built-in adapter for each send and therefore apply to the three default
@@ -173,7 +175,7 @@ reasoning, time-sensitive updates, and abstention categories are a useful covera
 [LongMemEval](https://arxiv.org/html/2410.10813v2)
 
 Mutable evals require isolated state. Provider errors are failed or blocked trials, never successful behavior.
-Unit tests cover transaction guards, private-chat boundaries, cancellation, Unicode/escaping limits, Pi tool
+Unit tests cover transaction guards, legacy chat flags, cancellation, Unicode/escaping limits, Pi tool
 conversion, and settings encryption. Live compaction trials separately check meaning preservation and
 shortening.
 

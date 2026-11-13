@@ -175,7 +175,7 @@ describe('chat-store', () => {
       await expect(session?.chatInstance?.sendMessage({ text: 'test message' })).rejects.toThrow('No selected model')
     })
 
-    it('should throw error when chatThread encryption does not match model confidentiality', async () => {
+    it('sends with a standard model in a legacy private chat', async () => {
       const chatInstance = createMockChatInstanceWithValidation()
       const encryptedThread = createMockChatThread({ isEncrypted: 1 })
       const nonConfidentialModel = createMockModel({ isConfidential: 0 })
@@ -191,12 +191,10 @@ describe('chat-store', () => {
       })
 
       const session = getCurrentSession()
-      await expect(session?.chatInstance?.sendMessage({ text: 'test message' })).rejects.toThrow(
-        'This model is not available for encrypted conversations.',
-      )
+      await expect(session!.chatInstance!.sendMessage({ text: 'test message' })).resolves.toBeUndefined()
     })
 
-    it('should throw error when unencrypted thread is used with confidential model', async () => {
+    it('sends with a confidential model regardless of legacy thread flag', async () => {
       const chatInstance = createMockChatInstanceWithValidation()
       const unencryptedThread = createMockChatThread({ isEncrypted: 0 })
       const confidentialModel = createMockModel({ isConfidential: 1 })
@@ -212,9 +210,7 @@ describe('chat-store', () => {
       })
 
       const session = getCurrentSession()
-      await expect(session?.chatInstance?.sendMessage({ text: 'test message' })).rejects.toThrow(
-        'This model is not available for unencrypted conversations.',
-      )
+      await expect(session!.chatInstance!.sendMessage({ text: 'test message' })).resolves.toBeUndefined()
     })
 
     it('should send message successfully when all conditions are met', async () => {
@@ -311,8 +307,8 @@ describe('chat-store', () => {
 
       const after = useChatStore.getState().sessions
       expect(after.get('hosted')).toBe(before.get('hosted'))
-      expect(after.get('fits')?.selectedModel.id).toBe(addedModel.id)
-      expect(after.get('blocked')?.selectedModel.id).toBe(addedModel.id)
+      expect(after.get('fits')?.selectedModel.id).toBe(confidentialModel.id)
+      expect(after.get('blocked')?.selectedModel.id).toBe(confidentialModel.id)
     })
   })
 
@@ -729,12 +725,12 @@ describe('chat-store', () => {
         useChatStore.getState().updateSession('hosted-thread', { selectedAgent: hostedAgent })
       }
 
-      it('swaps a confidential model for a compatible one so the next send goes through', async () => {
+      it('keeps the selected confidential model when switching agents', async () => {
         await seedHostedThread([confidentialModel, standardModel], confidentialModel)
 
         await useChatStore.getState().setSelectedAgent('hosted-thread', builtInAgent)
 
-        expect(getCurrentSession()?.selectedModel.id).toBe(standardModel.id)
+        expect(getCurrentSession()?.selectedModel.id).toBe(confidentialModel.id)
         const chatInstance = getCurrentSession()!.chatInstance as ReturnType<
           typeof createMockChatInstanceWithValidation
         >

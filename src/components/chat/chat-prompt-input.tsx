@@ -42,7 +42,6 @@ import { msg } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { messageBookkeepingThrottleMs } from '@/chats/chat-throttle'
 import { getTurnActivity } from '@/chats/turn-activity'
-import { isPrivateAutoRunBlocked } from '@/chats/private-thread'
 import { useDraftInput } from '@/hooks/use-draft-input'
 import { AnimatePresence } from 'framer-motion'
 import { AlertCircle, Loader2 } from 'lucide-react'
@@ -82,9 +81,7 @@ import { useVoiceSession } from '@/voice/ui/use-voice-session'
 import { FileCard } from './file-card'
 import { preloadChatMessageList } from './chat-messages-loader'
 import { isBuiltInAgent } from '@/defaults/agents'
-import { useAppName } from '@/lib/branding-selectors'
-import { selectBuiltInAgentEnabled, selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
-import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
+import { selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { useModelNeedsSetup } from './use-model-needs-setup'
 import { ComposerAlert } from './composer-alert'
 import { ImageSupportNotice } from './image-support-notice'
@@ -384,32 +381,10 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
     // Files queued before the chat landed on an agent that takes none (discovery moved
     // it, or the user switched) stay visible so they can be removed, but hold the send.
     const queuedAttachmentsBlockSend = !acceptsAttachments && attachments.length > 0
-    // Only when no model fits the thread's confidentiality lock: otherwise
-    // `resolveSessionModel` already swapped one in for the built-in.
-    const noModelForThread = isBuiltInAgent(selectedAgent) && !matchesThreadConfidentiality(selectedModel, chatThread)
     const modelNeedsSetup = useModelNeedsSetup()
-    // `useChatAutomation` holds back the unanswered last turn of a private chat
-    // on a non-built-in agent. Say so, and hold a typed send too: it would carry
-    // the private history to that agent unencrypted.
-    const privateAutoRunBlocked = isPrivateAutoRunBlocked({
-      chatThread,
-      agent: selectedAgent,
-      status,
-      stopping,
-      lastRole: messages.at(-1)?.role,
-    })
-    const builtInAgentName = useAppName()
-    const builtInAgentEnabled = useConfigCapability(selectBuiltInAgentEnabled)
-    const sendBlocked =
-      imageSupportBlocksSend ||
-      queuedAttachmentsBlockSend ||
-      noModelForThread ||
-      modelNeedsSetup ||
-      privateAutoRunBlocked
-    // Latest-input ref so deferred callers (e.g. the `runSkill` microtask
-    // below) read the current value at execution time rather than the value
-    // captured when the callback was created. Without this, a draft restore
-    // racing with the microtask could silently discard the user's text.
+    const sendBlocked = imageSupportBlocksSend || queuedAttachmentsBlockSend || modelNeedsSetup
+    // Deferred callers such as runSkill must read the latest draft, including
+    // text restored after their callback was created.
     const inputRef = useRef(input)
     inputRef.current = input
     /*
@@ -1030,22 +1005,6 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
                   </Trans>
                 </ComposerAlert>
               )}
-              {noModelForThread && (
-                <ComposerAlert key="no-model-for-thread">
-                  <Trans>None of your models can be used in this chat. Choose another agent to send.</Trans>
-                </ComposerAlert>
-              )}
-              {privateAutoRunBlocked && (
-                <ComposerAlert key="private-auto-run-blocked">
-                  {builtInAgentEnabled ? (
-                    <Trans>
-                      This private chat won&apos;t run on {agentName}. Switch to {builtInAgentName} to run it.
-                    </Trans>
-                  ) : (
-                    <Trans>This private chat won&apos;t run on {agentName}.</Trans>
-                  )}
-                </ComposerAlert>
-              )}
               {imageSupport.notice && (
                 <ImageSupportNotice
                   key="image-support"
@@ -1120,11 +1079,7 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
             footerEndElements={footerEndElements}
             // Empty + idle composer shows the voice-mode trigger in the send slot (swaps back to Send
             // once there's input); withheld in minimal mode and until config settles.
-            emptyStateAction={
-              minimalMode || !configSettled ? undefined : (
-                <VoiceModeButton onStart={voice.start} disabled={privateAutoRunBlocked} />
-              )
-            }
+            emptyStateAction={minimalMode || !configSettled ? undefined : <VoiceModeButton onStart={voice.start} />}
             // No overlay at all in minimal mode: its presence makes the textarea text transparent.
             renderOverlay={
               minimalMode

@@ -351,7 +351,7 @@ describe('chat compaction control', () => {
     expect(useChatStore.getState().sessions.get('chat')?.compactionStatus).toBe('idle')
   })
 
-  it('rejects compaction while generating and refuses an incompatible confidentiality model', async () => {
+  it('rejects compaction while generating and allows any available model regardless of legacy privacy', async () => {
     const f = fixture()
     Object.assign(f.instance, { status: 'streaming' })
     await expect(f.instance.compactContext()).rejects.toThrow('current response')
@@ -360,7 +360,7 @@ describe('chat compaction control', () => {
       chatThread: createMockChatThread({ isEncrypted: 1 }),
       selectedModel: createMockModel({ isConfidential: 0 }),
     })
-    await expect(f.instance.compactContext()).rejects.toThrow('confidentiality')
-    expect(f.adapterCompact).not.toHaveBeenCalled()
+    await f.instance.compactContext()
+    expect(f.adapterCompact).toHaveBeenCalledTimes(1)
   })
 })

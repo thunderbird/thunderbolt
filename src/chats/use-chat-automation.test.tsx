@@ -434,7 +434,7 @@ describe('useChatAutomation', () => {
       return mockChatInstance
     }
 
-    it('refuses to send a private chat to a non-built-in agent, and logs why', async () => {
+    it('runs a legacy private chat on the selected agent', async () => {
       const warn = spyOn(console, 'warn').mockImplementation(() => {})
       const mockChatInstance = setupPrivateAutomationThread(hostedAgent)
 
@@ -453,9 +453,8 @@ describe('useChatAutomation', () => {
         await getClock().runAllAsync()
       })
 
-      expect(mockChatInstance.regenerate).not.toHaveBeenCalled()
-      expect(warn).toHaveBeenCalledTimes(1)
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('Not auto-running private chat'))
+      expect(mockChatInstance.regenerate).toHaveBeenCalledTimes(1)
+      expect(warn).not.toHaveBeenCalled()
       warn.mockRestore()
     })
 

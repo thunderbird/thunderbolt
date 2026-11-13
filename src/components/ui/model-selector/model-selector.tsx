@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
 import type { I18n } from '@lingui/core'
 import {
@@ -15,7 +14,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useHaptics } from '@/hooks/use-haptics'
 import { useLocalProviders } from '@/hooks/use-local-providers'
 import { cn } from '@/lib/utils'
-import { isModelAvailable, matchesThreadConfidentiality, needsApiKey } from '@/settings/models/model-policy'
+import { isModelAvailable, needsApiKey } from '@/settings/models/model-policy'
 import { ModelProviderIcon, ModelProviderMark } from '@/settings/models/model-presentation'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { ChatThread } from '@/layout/sidebar/types'
@@ -43,79 +42,27 @@ export type ModelSelectorProps = {
 
 type ModelItemData = {
   model: Model
-  disabledByEncryption: boolean
 }
 
-const toMenuItem = (
-  model: Model,
-  isDisabled: boolean,
-  disabledByEncryption: boolean,
-): SearchableMenuItem<ModelItemData> => ({
+const toMenuItem = (model: Model, isDisabled: boolean): SearchableMenuItem<ModelItemData> => ({
   id: model.id,
   label: model.name,
   description: model.description || model.model,
   searchTerms: [model.model, model.vendor].filter(Boolean).join(' '),
   disabled: isDisabled,
-  data: { model, disabledByEncryption },
+  data: { model },
 })
-
-const disabledStandardLabel = msg`Not available in private chats.`
-const disabledConfidentialLabel = msg`Only available in private chats.`
 
 export const categorizeModels = (
   models: Model[],
-  chatThread: ModelSelectorProps['chatThread'],
-  i18n: I18n,
+  _chatThread: ModelSelectorProps['chatThread'],
+  _i18n: I18n,
   cloudUrl = useLocalSettingsStore.getState().cloudUrl,
 ): SearchableMenuGroup<ModelItemData>[] => {
-  // Custom and built-in models share one group — the selector only splits by
-  // confidentiality (available vs the greyed-out opposite-mode section below).
-  const available: SearchableMenuItem<ModelItemData>[] = []
-  const disabledConfidential: SearchableMenuItem<ModelItemData>[] = []
-  const disabledStandard: SearchableMenuItem<ModelItemData>[] = []
-
-  for (const model of models) {
-    if (!isModelAvailable(model, cloudUrl)) {
-      continue
-    }
-    const isDisabledByEncryption = !matchesThreadConfidentiality(model, chatThread)
-    const isDisabled = isDisabledByEncryption || needsApiKey(model)
-    const item = toMenuItem(model, isDisabled, isDisabledByEncryption)
-
-    if (isDisabledByEncryption) {
-      if (model.isConfidential === 1) {
-        disabledConfidential.push(item)
-      } else {
-        disabledStandard.push(item)
-      }
-    } else {
-      available.push(item)
-    }
-  }
-
-  const groups: SearchableMenuGroup<ModelItemData>[] = []
-
-  if (available.length > 0) {
-    groups.push({ id: 'available', items: available })
-  }
-  // A chat is locked to its confidentiality mode, so the opposite-mode models
-  // are shown greyed out with a header explaining why. Only one of these
-  // buckets is ever non-empty for a given chat.
-  if (disabledStandard.length > 0) {
-    groups.push({
-      id: 'standard-disabled',
-      label: i18n._(disabledStandardLabel),
-      items: disabledStandard,
-    })
-  }
-  if (disabledConfidential.length > 0) {
-    groups.push({
-      id: 'confidential-disabled',
-      label: i18n._(disabledConfidentialLabel),
-      items: disabledConfidential,
-    })
-  }
-
+  const items = models
+    .filter((model) => isModelAvailable(model, cloudUrl))
+    .map((model) => toMenuItem(model, needsApiKey(model)))
+  const groups: SearchableMenuGroup<ModelItemData>[] = items.length ? [{ id: 'available', items }] : []
   return groups
 }
 
@@ -174,7 +121,7 @@ export const ModelSelector = ({
     const model = item.data?.model
     // For an encryption-mismatch item the real blocker isn't a missing key, so
     // suppress the missing-key hint (the item is simply shown greyed out).
-    const showMissingKeyHint = model ? needsApiKey(model) && !item.data?.disabledByEncryption : false
+    const showMissingKeyHint = model ? needsApiKey(model) : false
 
     const content = (
       <div

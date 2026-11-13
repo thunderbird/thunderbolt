@@ -1,5 +1,13 @@
 # Memory and session-history validation
 
+## Current policy follow-up: November 12
+
+Chat-level privacy has been removed. Existing chats, including legacy `isEncrypted: 1` or null rows, use memory and retrieval under the same consent settings. Model and agent switching, voice, and automation no longer impose chat privacy restrictions. Connection confidentiality, attestation, and synced-data encryption remain independent protections. Historical private-chat exclusion results below describe the earlier policy and are superseded by this follow-up.
+
+Compact now lives in the built-in memory aside, retaining review and stale-proposal checks. Desktop asides use an opaque theme surface instead of the sidebar token that macOS vibrancy makes translucent.
+
+The scoped suite passed **11,080 tests** (10,229 frontend, 838 shared/scripts, 13 e2e helpers). Eleven Chromium scenarios passed across the main run and a focused rerun: four Memory, four model-aside, and three connection-attestation cases. The initial provider-selection attempt was interrupted by source hot reload and passed after edits stopped. TypeScript, production build, scoped lint (existing warnings only), localization extraction, and license checks passed. Native computer use verified the opaque Add Model panel and Compact in the memory aside. Paid model trials were not repeated; the former private-chat eval now expects successful recall and persistence on a legacy chat row.
+
 Validated in `codex/memory-and-session-tools`, based on main revision `ff0123d2514d488285b7bc5e79ee162b6761e487`. The user subsequently changed the design from memory rows to one freeform document. Results for the discarded row implementation are retained as historical artifacts and are **not** acceptance results for the current document contract.
 
 ## Current implementation

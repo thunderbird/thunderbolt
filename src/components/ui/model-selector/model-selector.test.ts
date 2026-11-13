@@ -51,50 +51,21 @@ describe('categorizeModels', () => {
     expect(groups[0].items.every((i) => !i.disabled)).toBe(true)
   })
 
-  test('encrypted chat: standard models in disabled section', () => {
-    const groups = categorizeModels([confidentialModel, standardModel], confidentialChat, i18n)
-
-    const available = groupById(groups, 'available')
-    expect(available.items).toHaveLength(1)
-    expect(available.items[0].id).toBe('conf-1')
-    expect(available.items[0].disabled).toBe(false)
-
-    const disabled = groupById(groups, 'standard-disabled')
-    expect(disabled.label).toBe('Not available in private chats.')
-    expect(disabled.subtitle).toBeUndefined()
-    expect(disabled.items).toHaveLength(1)
-    expect(disabled.items[0].id).toBe('std-1')
-    expect(disabled.items[0].disabled).toBe(true)
-  })
-
-  test('standard chat: encrypted models in disabled section', () => {
-    const groups = categorizeModels([confidentialModel, standardModel], standardChat, i18n)
-
-    const available = groupById(groups, 'available')
-    expect(available.items).toHaveLength(1)
-    expect(available.items[0].id).toBe('std-1')
-
-    const disabled = groupById(groups, 'confidential-disabled')
-    expect(disabled.label).toBe('Only available in private chats.')
-    expect(disabled.subtitle).toBeUndefined()
-    expect(disabled.items).toHaveLength(1)
-    expect(disabled.items[0].id).toBe('conf-1')
-    expect(disabled.items[0].disabled).toBe(true)
-  })
+  test.each([confidentialChat, standardChat])(
+    'offers all configured models regardless of legacy chat flag %p',
+    (thread) => {
+      const groups = categorizeModels([confidentialModel, standardModel, customModel], thread, i18n)
+      expect(groups).toHaveLength(1)
+      expect(groupById(groups, 'available').items.map((item) => item.id)).toEqual(['conf-1', 'std-1', 'custom-1'])
+      expect(groups[0].items.every((item) => !item.disabled)).toBe(true)
+    },
+  )
 
   test('custom models merge into the same group as built-in models', () => {
     const groups = categorizeModels([standardModel, customModel], null, i18n)
 
     expect(groups).toHaveLength(1)
     expect(groups[0].items.map((i) => i.id)).toEqual(['std-1', 'custom-1'])
-  })
-
-  test('disabled custom models go to the disabled section', () => {
-    const groups = categorizeModels([confidentialModel, customModel], confidentialChat, i18n)
-
-    const disabled = groupById(groups, 'standard-disabled')
-    expect(disabled.items).toHaveLength(1)
-    expect(disabled.items[0].id).toBe('custom-1')
   })
 
   test('empty models returns empty groups', () => {

@@ -568,11 +568,8 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     // a mid-sync device stays non-mutating.
     //
     // `frozenFields` protects two identity-critical columns from OTA drift:
-    // - `isConfidential`: an encrypted thread binds `isEncrypted` to the
-    //   model's `isConfidential` at creation and the send guard enforces
-    //   equality; a server slip that flips this on a live row would strand
-    //   every encrypted thread bound to that id (see the Flash-fresh-id
-    //   comment in `shared/defaults/models.ts`).
+    // - `isConfidential`: preserves the connection's declared confidentiality
+    //   across OTA catalog updates. This is a provider property, not a chat lock.
     // - `provider`: routes inference to the correct upstream; flipping it
     //   under an existing id would silently misroute or break sends.
     // OTA can still update name, description, contextWindow, tool flags, etc.

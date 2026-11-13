@@ -153,7 +153,7 @@ describe('DetailPanelSurface', () => {
 
     expect(document.querySelector('[data-slot="responsive-modal-content"]')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Close details' })).toBeInTheDocument()
-    const surface = screen.getByText('Detail body').closest('.bg-sidebar')
+    const surface = screen.getByText('Detail body').closest('.bg-panel')
     expect(surface?.closest('[data-slot="slide-in-panel"]')).toHaveClass(
       '[filter:drop-shadow(var(--shadow-glow-strong))]',
     )

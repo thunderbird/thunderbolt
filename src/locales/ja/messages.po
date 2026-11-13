@@ -513,8 +513,12 @@ msgid "Allow access to your ChatGPT plan to use its models. You can also add an 
 msgstr ""
 
 #: src/settings/memory/index.tsx
-msgid "Allow agents to recall and share info across sessions. Not used by private chats."
+msgid "Allow agents to recall and share info across sessions."
 msgstr ""
+
+#: src/settings/memory/index.tsx
+#~ msgid "Allow agents to recall and share info across sessions. Not used by private chats."
+#~ msgstr ""
 
 #: src/settings/memory/index.tsx
 msgid "Allow agents to view previous chat sessions."
@@ -639,7 +643,7 @@ msgstr "アプリのバージョン"
 #~ msgid "Applied to every chat in this project."
 #~ msgstr "このプロジェクトのすべてのチャットに適用されます。"
 
-#: src/settings/memory/index.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Apply"
 msgstr ""
 
@@ -871,7 +875,6 @@ msgstr "カレンダー"
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/connections/provider-connection-form.tsx
 #: src/settings/encryption/passkey-section.tsx
-#: src/settings/memory/index.tsx
 #: src/settings/memory/memory-document-panel.tsx
 #: src/settings/models/add-provider-models.tsx
 #: src/settings/models/index.tsx
@@ -965,7 +968,7 @@ msgstr "今すぐ確認"
 #~ msgid "Check that every fact is preserved before replacing your memories. Nothing changes until you apply."
 #~ msgstr ""
 
-#: src/settings/memory/index.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Check that every fact is preserved. Nothing changes until you apply."
 msgstr ""
 
@@ -1239,7 +1242,7 @@ msgstr "コマンドパレット"
 msgid "Command result"
 msgstr ""
 
-#: src/settings/memory-connections/built-in-memory-card.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Compact"
 msgstr ""
 
@@ -1251,7 +1254,7 @@ msgstr ""
 msgid "Compacted"
 msgstr ""
 
-#: src/settings/memory/index.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Compacted memory"
 msgstr ""
 
@@ -1260,7 +1263,7 @@ msgid "Compacting context…"
 msgstr ""
 
 #: src/components/context-usage/compaction-notice.tsx
-#: src/settings/memory-connections/built-in-memory-card.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Compacting…"
 msgstr ""
 
@@ -2191,7 +2194,7 @@ msgstr ""
 msgid "Currency"
 msgstr "通貨"
 
-#: src/settings/memory/index.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Current memory"
 msgstr ""
 
@@ -4183,16 +4186,16 @@ msgid "None of these match"
 msgstr "どれも一致しない"
 
 #: src/components/chat/chat-prompt-input.tsx
-msgid "None of your models can be used in this chat. Choose another agent to send."
-msgstr "このチャットで使用できるモデルがありません。送信するには別のエージェントを選択してください。"
+#~ msgid "None of your models can be used in this chat. Choose another agent to send."
+#~ msgstr "このチャットで使用できるモデルがありません。送信するには別のエージェントを選択してください。"
 
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "Not approved yet"
 msgstr ""
 
 #: src/components/ui/model-selector/model-selector.tsx
-msgid "Not available in private chats."
-msgstr "プライベートチャットでは利用できません。"
+#~ msgid "Not available in private chats."
+#~ msgstr "プライベートチャットでは利用できません。"
 
 #: src/settings/devices.tsx
 msgid "Not configured"
@@ -4310,8 +4313,8 @@ msgid "OneDrive Access"
 msgstr "OneDrive へのアクセス"
 
 #: src/components/ui/model-selector/model-selector.tsx
-msgid "Only available in private chats."
-msgstr "プライベートチャットでのみ利用できます。"
+#~ msgid "Only available in private chats."
+#~ msgstr "プライベートチャットでのみ利用できます。"
 
 #. placeholder {0}: agent.name
 #. placeholder {0}: connection.name
@@ -5052,7 +5055,7 @@ msgstr "再試行しています…"
 msgid "Return to Thunderbolt"
 msgstr ""
 
-#: src/settings/memory/index.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Review compacted memory"
 msgstr ""
 
@@ -5391,8 +5394,8 @@ msgid "Send message"
 msgstr "メッセージを送信"
 
 #: src/components/ui/header.tsx
-msgid "Send this private chat to {agentName}?"
-msgstr "この非公開チャットを{agentName}に送信しますか？"
+#~ msgid "Send this private chat to {agentName}?"
+#~ msgstr "この非公開チャットを{agentName}に送信しますか？"
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "Send to the {recipient} team"
@@ -5869,8 +5872,8 @@ msgid "Supports tools"
 msgstr ""
 
 #: src/components/ui/header.tsx
-msgid "Switch Agent"
-msgstr "エージェントを切り替える"
+#~ msgid "Switch Agent"
+#~ msgstr "エージェントを切り替える"
 
 #: src/settings/preferences.tsx
 msgid "Switch to {suggestedLanguageLabel}"
@@ -6239,8 +6242,8 @@ msgid "This conversation is too large for the model's context window. Start a ne
 msgstr "この会話はモデルのコンテキストウィンドウに対して大きすぎます。新しいチャットを開始する、添付ファイルを削除する、またはコンテキストウィンドウの大きいモデルに切り替えてください。"
 
 #: src/components/ui/header.tsx
-msgid "This conversation will be sent to {agentName} unencrypted and will no longer be private."
-msgstr "この会話は暗号化されずに{agentName}に送信され、非公開ではなくなります。"
+#~ msgid "This conversation will be sent to {agentName} unencrypted and will no longer be private."
+#~ msgstr "この会話は暗号化されずに{agentName}に送信され、非公開ではなくなります。"
 
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 #: src/settings/devices.tsx
@@ -6352,8 +6355,8 @@ msgid "This model is marked private, but this device cannot verify its provider 
 msgstr ""
 
 #: src/chats/chat-instance.ts
-msgid "This model no longer matches the conversation’s privacy setting."
-msgstr ""
+#~ msgid "This model no longer matches the conversation’s privacy setting."
+#~ msgstr ""
 
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "This model or agent does not offer context compaction."
@@ -6389,13 +6392,13 @@ msgstr "取り消されたブリッジの登録を完全に削除します。ブ
 
 #: src/components/chat/chat-prompt-input.tsx
 #: src/voice/ui/use-voice-session.ts
-msgid "This private chat won't run on {agentName}."
-msgstr "この非公開チャットは{agentName}では実行されません。"
+#~ msgid "This private chat won't run on {agentName}."
+#~ msgstr "この非公開チャットは{agentName}では実行されません。"
 
 #: src/components/chat/chat-prompt-input.tsx
 #: src/voice/ui/use-voice-session.ts
-msgid "This private chat won't run on {agentName}. Switch to {builtInAgentName} to run it."
-msgstr "この非公開チャットは{agentName}では実行されません。実行するには{builtInAgentName}に切り替えてください。"
+#~ msgid "This private chat won't run on {agentName}. Switch to {builtInAgentName} to run it."
+#~ msgstr "この非公開チャットは{agentName}では実行されません。実行するには{builtInAgentName}に切り替えてください。"
 
 #: src/projects/project-create-form.tsx
 #: src/projects/project-form.tsx

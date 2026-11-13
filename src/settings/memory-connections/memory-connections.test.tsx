@@ -56,11 +56,8 @@ test('lists shared MCP records alongside built-in and allows choosing or managin
         builtinMemory={{
           content: 'Keep the saved preview',
           isLoading: false,
-          compacting: false,
-          canCompact: true,
           onView: mock(() => {}),
           onEdit: mock(() => {}),
-          onCompact: mock(() => {}),
         }}
       />
       <Selection />

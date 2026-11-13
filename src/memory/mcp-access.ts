@@ -43,7 +43,7 @@ export const createMemoryMcpAccess = (
     signal?.throwIfAborted()
     if (!(await isAllowed(provider))) {
       throw new Error(
-        'Saved memory is unavailable in private chats, when memory is disabled, or for an unselected provider.',
+        'Saved memory is unavailable when memory is disabled, the chat is unavailable, or for an unselected provider.',
       )
     }
     identity.throwIfAborted()

@@ -48,14 +48,17 @@ describe('memory eval scenarios', () => {
     ])
   })
 
-  test('private-chat fixture persists privacy independently of model confidentiality', () => {
-    const scenarios = getMemoryScenarios(undefined, ['memory-private-chat'])
+  test('legacy chat fixture expects memory reads and writes for every model', () => {
+    const scenarios = getMemoryScenarios(undefined, ['memory-legacy-chat'])
     expect(scenarios).toHaveLength(evalModels.length)
     for (const scenario of scenarios) {
       expect(scenario.threadId).toBeDefined()
       expect(scenario.fixture.privateChat).toBe(true)
-      expect(scenario.criteria.toolCallLimits).toMatchObject({ read_memory: { max: 0 }, save_memory: { max: 0 } })
-      expect(scenario.memoryState.exact).toBe(scenario.fixture.memoryContent)
+      expect(scenario.criteria.toolCallLimits).toMatchObject({
+        read_memory: { min: 1, max: 2 },
+        save_memory: { min: 1, max: 2 },
+      })
+      expect(scenario.memoryState.includes).toContain('rust')
     }
   })
 })

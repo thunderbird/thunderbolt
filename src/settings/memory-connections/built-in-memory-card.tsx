@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { ArrowUpRight, Pencil, Sparkles } from 'lucide-react'
+import { ArrowUpRight, Pencil } from 'lucide-react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import { AppLogo } from '@/components/app-logo'
 import { Button } from '@/components/ui/button'
@@ -12,9 +12,6 @@ import { cn } from '@/lib/utils'
 export type BuiltInMemoryCardContent = {
   content: string
   isLoading: boolean
-  compacting: boolean
-  canCompact: boolean
-  onCompact: () => void
   onEdit: () => void
   onView: () => void
 }
@@ -98,19 +95,6 @@ export const BuiltInMemoryCard = ({ memory, selected, disabled, onSelect }: Buil
           <ArrowUpRight className="size-3" />
         </span>
         <div className="pointer-events-auto relative z-10 flex items-center gap-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="pointer-events-auto relative z-10"
-            onClick={memory.onCompact}
-            isLoading={memory.compacting}
-            loadingLabel={t`Compacting…`}
-            disabled={unavailable || !memory.canCompact}
-          >
-            <Sparkles className="size-4" aria-hidden="true" />
-            <Trans>Compact</Trans>
-          </Button>
           <Button
             type="button"
             variant="outline"

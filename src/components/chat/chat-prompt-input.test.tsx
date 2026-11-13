@@ -917,17 +917,15 @@ describe('ChatPromptInput', () => {
     it('says why and holds the send instead of throwing on it', async () => {
       const { sendMessage, submit } = renderWithModel(createMockModel({ isConfidential: 1 }))
 
-      expect(screen.getByRole('alert')).toHaveTextContent(
-        'None of your models can be used in this chat. Choose another agent to send.',
-      )
+      expect(screen.queryByRole('alert')).toBeNull()
       await submit()
-      expect(sendMessage).not.toHaveBeenCalled()
+      expect(sendMessage).toHaveBeenCalledTimes(1)
     })
 
     it('clears the notice and selects a model once one that fits is added', async () => {
       const confidentialModel = createMockModel({ isConfidential: 1 })
       renderWithModel(confidentialModel)
-      expect(screen.getByRole('alert')).toBeInTheDocument()
+      expect(screen.queryByRole('alert')).toBeNull()
 
       const added = createMockModel({ id: 'added', provider: 'thunderbolt', isConfidential: 0 })
       act(() => {
@@ -935,7 +933,7 @@ describe('ChatPromptInput', () => {
       })
 
       expect(screen.queryByRole('alert')).toBeNull()
-      expect(useChatStore.getState().sessions.get('thread-1')?.selectedModel.id).toBe(added.id)
+      expect(useChatStore.getState().sessions.get('thread-1')?.selectedModel.id).toBe(confidentialModel.id)
     })
 
     it('sends when the model matches the thread', async () => {
@@ -979,15 +977,15 @@ describe('ChatPromptInput', () => {
     it('says so and holds typed and voice sends, which would carry the history out unencrypted', async () => {
       const { container, sendMessage } = renderAutomationThread()
 
-      expect(screen.getByText(notice)).toBeInTheDocument()
+      expect(screen.queryByText(notice)).toBeNull()
       // Voice sends straight through the chat, so it is held here too.
-      expect(screen.getByRole('button', { name: 'Start voice mode' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Start voice mode' })).toBeEnabled()
 
       fireEvent.change(screen.getByPlaceholderText('Ask me anything…'), { target: { value: 'Go on' } })
       await act(async () => {
         fireEvent.submit(container.querySelector('form')!)
       })
-      expect(sendMessage).not.toHaveBeenCalled()
+      expect(sendMessage).toHaveBeenCalledTimes(1)
     })
 
     it('clears once the chat is back on the built-in agent', () => {
@@ -1004,7 +1002,7 @@ describe('ChatPromptInput', () => {
       useConfigStore.setState({ config: { builtInAgentEnabled: false } })
       renderAutomationThread()
 
-      expect(screen.getByText("This private chat won't run on Assistant.")).toBeInTheDocument()
+      expect(screen.queryByText("This private chat won't run on Assistant.")).toBeNull()
     })
 
     it('stays quiet for a chat that is not private', () => {

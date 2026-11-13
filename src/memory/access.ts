@@ -11,7 +11,7 @@ import { memoryProviderForServer } from './selection'
 
 export type MemoryProviderTarget = { id: string; url: string }
 
-/** Saved memory belongs only to known public chats with current user consent. */
+/** Saved memory belongs to existing chats with current user consent. */
 export const canUseSavedMemory = async (
   db: AnyDrizzleDatabase,
   currentThreadId?: string,
@@ -41,9 +41,9 @@ export const canUseSavedMemory = async (
     }
   }
   const thread = await db
-    .select({ isEncrypted: chatThreadsTable.isEncrypted })
+    .select({ id: chatThreadsTable.id })
     .from(chatThreadsTable)
     .where(and(eq(chatThreadsTable.id, currentThreadId), isNull(chatThreadsTable.deletedAt)))
     .get()
-  return thread?.isEncrypted === 0
+  return !!thread
 }

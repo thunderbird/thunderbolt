@@ -71,6 +71,15 @@ for (const viewport of [
           await page.getByRole('button', { name: 'New Model', exact: true }).click()
         }
         const connection = page.getByRole('combobox', { name: 'Connection', exact: true })
+        if (viewport.width >= 768) {
+          // Native macOS vibrancy must not make a panel reveal the chat beneath it.
+          await page.evaluate(() => document.documentElement.classList.add('mac-vibrancy'))
+          const surface = page.locator('aside[data-slot="slide-in-panel"] .bg-panel')
+          await expect(surface).toBeVisible()
+          const fill = await surface.evaluate((element) => getComputedStyle(element).backgroundColor)
+          expect(fill).toMatch(/^rgb\(\d+, \d+, \d+\)$/)
+          await page.evaluate(() => document.documentElement.classList.remove('mac-vibrancy'))
+        }
         await connection.click()
         await page.getByRole('option', { name: 'Catalog fixture', exact: true }).click()
         const catalog = page.getByRole('group', { name: 'Models', exact: true })

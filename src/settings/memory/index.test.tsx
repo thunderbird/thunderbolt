@@ -225,7 +225,7 @@ describe('Memory settings document', () => {
     expect(screen.getByRole('radio', { name: 'My Mem0' })).toBeChecked()
     expect(screen.getByRole('radio', { name: 'Built-in' })).not.toBeChecked()
     expect(screen.queryByRole('document')).toBeNull()
-    expect(screen.getByRole('button', { name: 'Compact' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Compact' })).toBeNull()
     expect(screen.getByRole('status')).toHaveTextContent('Connect and enable this provider')
     expect((await getSettings(getDb(), { memory_provider: 'builtin' })).memoryProvider).toBe('mcp:external-memory')
     fireEvent.click(screen.getByRole('switch', { name: 'Saved memories' }))
@@ -375,6 +375,7 @@ describe('Memory settings document', () => {
       mount()
       await flush()
       await enableMemory()
+      await viewMemory()
       const compactButton = await waitForElement(() => {
         const button = screen.getByRole('button', { name: 'Compact' })
         return button.hasAttribute('disabled') ? null : button
@@ -385,7 +386,7 @@ describe('Memory settings document', () => {
         expect.objectContaining({ model: expect.objectContaining({ id: 'rewrite' }) }),
       )
       expect(screen.getByRole('button', { name: 'Compacting…' })).toHaveAttribute('aria-busy', 'true')
-      expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled()
+      expect(within(panel()).queryByRole('button', { name: 'Edit' })).toBeNull()
       pending.resolve('Prefers concise answers.')
       await flush()
       expect(screen.getByRole('dialog')).toHaveTextContent('Prefers concise answers.')

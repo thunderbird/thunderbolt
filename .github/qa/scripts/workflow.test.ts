@@ -112,7 +112,7 @@ describe('secrets', () => {
   })
 
   test('the jobs that build, check or calibrate native apps hold no secret and no environment', () => {
-    for (const job of ['build-native', 'verify-native-build', 'verify-native-run', 'native-control']) {
+    for (const job of ['build-native', 'verify-native-build', 'verify-native-run', 'native-control', 'desktop-shell']) {
       expect({ job, hits: JSON.stringify(jobs[job]).match(/secrets\./g) ?? [] }).toEqual({ job, hits: [] })
       expect(jobs[job].environment).toBeUndefined()
     }

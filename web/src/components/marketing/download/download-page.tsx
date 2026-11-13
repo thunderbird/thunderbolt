@@ -29,7 +29,7 @@ export const DownloadPage = ({ release }: { release: DownloadRelease }) => {
       <a className="spark-skip" href="#download-main">
         Skip to content
       </a>
-      <SparkHeader />
+      <SparkHeader downloads={downloads} />
       <main id="download-main" className="spark-shell">
         <section className="download-hero" aria-labelledby="download-title">
           <DownloadArrival release={downloads.release} />

@@ -8,6 +8,7 @@ import { createRoot } from 'react-dom/client'
 import { ContactPage } from './contact-page'
 import { submitContactForm } from './use-contact-form-state'
 import releaseSnapshot from '../../../data/download-release.json'
+import { parseRelease } from '../download/downloads'
 
 let request: ReturnType<typeof spyOn<typeof globalThis, 'fetch'>>
 
@@ -100,7 +101,11 @@ test.each(['http', 'timeout'] as const)(
     document.body.append(container)
     const root = createRoot(container)
     try {
-      await act(async () => root.render(<ContactPage endpoint="https://contact.example.com/api/contact" />))
+      await act(async () =>
+        root.render(
+          <ContactPage release={parseRelease(releaseSnapshot)} endpoint="https://contact.example.com/api/contact" />,
+        ),
+      )
       const form = container.querySelector('form')!
       container.querySelector<HTMLInputElement>('[name=email]')!.value = 'person@example.org'
       container.querySelector<HTMLTextAreaElement>('[name=help]')!.value = 'Keep this message if sending fails.'

@@ -6,7 +6,11 @@ import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
 import { act } from 'react'
 import { renderToString } from 'react-dom/server'
 import { render } from '../../../../test/render'
+import { SiteHeader } from '../spark/site-header'
 import { SparkHeader } from '../spark/spark-header'
+import { DownloadPicker } from './download-picker'
+import { parseRelease } from './downloads'
+import { useDownloadState } from './use-download-state'
 
 const release = {
   tag_name: 'v1.2.3',
@@ -33,7 +37,7 @@ afterEach(() => {
 
 /** Exercise the actual shared header, including its release refresh. */
 const headerLink = async () => {
-  const view = render(<SparkHeader />)
+  const view = render(<SiteHeader release={parseRelease(release)} />)
   await act(async () => {})
   return view.container.querySelector<HTMLAnchorElement>('.spark-nav-cta')!
 }
@@ -81,9 +85,50 @@ test('a missing platform installer offers the download page', async () => {
 
 test('the server-rendered header remains a working download-page link without JavaScript', () => {
   const container = document.createElement('div')
-  container.innerHTML = renderToString(<SparkHeader />)
+  container.innerHTML = renderToString(<SiteHeader release={parseRelease(release)} />)
   const link = container.querySelector('.spark-nav-cta')!
   expect(link.getAttribute('href')).toBe('/download/')
   expect(link.hasAttribute('target')).toBe(false)
   expect(request).not.toHaveBeenCalled()
+})
+
+test('a slow or failed refresh keeps the release supplied by the build', async () => {
+  const pending = Promise.withResolvers<Response>()
+  request.mockReturnValue(pending.promise)
+  const report = spyOn(console, 'error').mockImplementation(() => {})
+  const built = { version: 'v9.0.0', downloads: { 'mac-arm': 'https://example.test/current-build.dmg' } }
+  try {
+    const { container } = render(<SiteHeader release={built} />)
+    const link = container.querySelector<HTMLAnchorElement>('.spark-nav-cta')!
+    expect(link.href).toBe(built.downloads['mac-arm'])
+    await act(async () => pending.reject(new Error('Offline')))
+    expect(link.href).toBe(built.downloads['mac-arm'])
+    expect(report).toHaveBeenCalledTimes(1)
+  } finally {
+    report.mockRestore()
+  }
+})
+
+test('the header and hero share one refresh and always offer the same release', async () => {
+  const pending = Promise.withResolvers<Response>()
+  request.mockReturnValue(pending.promise)
+  const built = { version: 'v9.0.0', downloads: { 'mac-arm': 'https://example.test/current-build.dmg' } }
+  const Page = () => {
+    const downloads = useDownloadState(built)
+    return (
+      <>
+        <SparkHeader downloads={downloads} />
+        <DownloadPicker {...downloads} />
+      </>
+    )
+  }
+  const { container } = render(<Page />)
+  const header = container.querySelector<HTMLAnchorElement>('.spark-nav-cta')!
+  const hero = container.querySelector<HTMLAnchorElement>('.download-primary-action a')!
+  expect(header.href).toBe(built.downloads['mac-arm'])
+  expect(header.href).toBe(hero.href)
+  await act(async () => pending.resolve(Response.json(release)))
+  expect(header.href).toBe(parseRelease(release).downloads['mac-arm']!)
+  expect(header.href).toBe(hero.href)
+  expect(request).toHaveBeenCalledTimes(1)
 })

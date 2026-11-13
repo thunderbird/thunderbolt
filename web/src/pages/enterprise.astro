@@ -4,6 +4,8 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 import MarketingLayout from '../layouts/MarketingLayout.astro';
 import { SparkEnterprisePage } from '../components/marketing/spark';
+import { getReleaseSnapshot } from '../server/release-snapshot';
+const { release } = await getReleaseSnapshot();
 ---
 
 <MarketingLayout
@@ -11,5 +13,5 @@ import { SparkEnterprisePage } from '../components/marketing/spark';
   description="An open-source AI workspace for your organization. Choose your models, connect your identity provider, and run it on infrastructure you control."
   canonical="https://thunderbolt.io/enterprise"
 >
-  <SparkEnterprisePage client:load />
+  <SparkEnterprisePage release={release} client:load />
 </MarketingLayout>

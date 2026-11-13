@@ -2,16 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import snapshot from '../../../data/download-release.json'
 import { productLinks } from '../../../data/website-product'
-import { desktopPlatforms, parseRelease } from './downloads'
+import { desktopPlatforms } from './downloads'
 import { InstallerLink } from './installer-link'
-import { useDownloadState } from './use-download-state'
+import type { useDownloadState } from './use-download-state'
 
-const fallbackRelease = parseRelease(snapshot)
-
-export const HeaderDownload = () => {
-  const { detectedPlatform, release } = useDownloadState(fallbackRelease)
+export const HeaderDownload = ({ detectedPlatform, release }: ReturnType<typeof useDownloadState>) => {
   const platform = desktopPlatforms.find(({ id }) => id === detectedPlatform)
   const installer = platform?.installers[0]
   const href = installer && release.downloads[installer.id]

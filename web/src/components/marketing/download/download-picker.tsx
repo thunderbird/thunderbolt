@@ -2,49 +2,63 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { desktopPlatforms, installers, releasesUrl, type DetectedPlatform } from './downloads'
-import type { ReleaseState } from './use-download-state'
+import {
+  desktopPlatforms,
+  latestReleasePage,
+  type DetectedPlatform,
+  type DownloadRelease,
+  type InstallerId,
+} from './downloads'
 import { InstallerLink } from './installer-link'
 import './download-picker.css'
 import { productLinks } from '../../../data/website-product'
 
 type PickerProps = {
-  detectedPlatform: DetectedPlatform
-  releaseState: ReleaseState
+  /** `undefined` until the page has hydrated and the platform can be read. */
+  detectedPlatform: DetectedPlatform | undefined
+  release: DownloadRelease
   continueToDownloadPage?: boolean
 }
 
-export const DownloadPicker = ({ detectedPlatform, releaseState, continueToDownloadPage = false }: PickerProps) => {
-  const installer = installers.find((item) => item.platform === detectedPlatform)
-  const platformName = desktopPlatforms.find((item) => item.id === detectedPlatform)?.name
-  const release = releaseState.status === 'ready' ? releaseState.release : null
-  const href = installer ? release?.downloads[installer.id] : undefined
-  const mobile = detectedPlatform === 'ios' || detectedPlatform === 'android'
-  const variant = installer ? (detectedPlatform === 'linux' ? 'AppImage · x64' : installer.label) : null
+type DesktopPlatform = (typeof desktopPlatforms)[number]
+
+/** What the main button offers: the visitor's installer when there is one for them in this release. */
+const primaryAction = (
+  detectedPlatform: PickerProps['detectedPlatform'],
+  platform: DesktopPlatform | undefined,
+  href: string | undefined,
+): { href: string; text: string; arrow: string; installerId?: InstallerId } => {
+  if (!detectedPlatform) return { href: latestReleasePage, text: 'Download Thunderbolt', arrow: '↓' }
+  if (!platform) return { href: productLinks.web, text: 'Open Thunderbolt on the web', arrow: '↗' }
+  if (!href) return { href: latestReleasePage, text: 'View release downloads', arrow: '↗' }
+  return { href, text: `Download for ${platform.name}`, arrow: '↓', installerId: platform.installers[0].id }
+}
+
+export const DownloadPicker = ({ detectedPlatform, release, continueToDownloadPage = false }: PickerProps) => {
+  const platform = desktopPlatforms.find((item) => item.id === detectedPlatform)
+  const recommended = platform?.installers[0]
+  const href = recommended && release.downloads[recommended.id]
+  const primary = primaryAction(detectedPlatform, platform, href)
+  // Mac and Windows installers differ by chip, which their label names. The Linux ones share
+  // a chip and differ by package, so naming the recommended one takes both parts.
+  const variant =
+    recommended && (detectedPlatform === 'linux' ? `${recommended.label} · ${recommended.format}` : recommended.label)
 
   return (
     <div className="download-picker">
       <div className="download-primary-action">
-        {!installer ? (
-          <a className="spark-button" href={productLinks.web}>
-            Open Thunderbolt on the web <span aria-hidden="true">↗</span>
-          </a>
-        ) : releaseState.status === 'loading' ? (
-          <button className="spark-button" disabled>
-            Preparing download…
-          </button>
-        ) : (
-          <InstallerLink
-            className="spark-button"
-            href={href ?? releasesUrl}
-            installerId={href ? installer.id : undefined}
-            continueToDownloadPage={continueToDownloadPage}
-          >
-            {href ? `Download for ${platformName}` : 'View release downloads'} <span aria-hidden="true">↓</span>
-          </InstallerLink>
-        )}
+        <InstallerLink
+          className="spark-button"
+          href={primary.href}
+          installerId={primary.installerId}
+          continueToDownloadPage={continueToDownloadPage}
+        >
+          {primary.text} <span aria-hidden="true">{primary.arrow}</span>
+        </InstallerLink>
       </div>
-      {mobile && <p className="download-mobile-note">iOS and Android apps are coming soon.</p>}
+      {(detectedPlatform === 'ios' || detectedPlatform === 'android') && (
+        <p className="download-mobile-note">iOS and Android apps are coming soon.</p>
+      )}
       <details className="download-options">
         <summary>
           {variant && (
@@ -65,32 +79,29 @@ export const DownloadPicker = ({ detectedPlatform, releaseState, continueToDownl
         </summary>
         <div className="download-options-panel">
           <div className="download-options-grid">
-            {desktopPlatforms.map((platform) => (
-              <section key={platform.id} aria-label={`${platform.name} downloads`}>
-                <h2>{platform.name}</h2>
+            {desktopPlatforms.map(({ id, name, installers }) => (
+              <section key={id} aria-label={`${name} downloads`}>
+                <h2>{name}</h2>
                 <div className="download-option-links">
-                  {installers
-                    .filter((item) => item.platform === platform.id)
-                    .map((option) => {
-                      const url = release?.downloads[option.id]
-                      return (
-                        <InstallerLink
-                          key={option.id}
-                          href={url ?? releasesUrl}
-                          installerId={url ? option.id : undefined}
-                          continueToDownloadPage={continueToDownloadPage}
-                          aria-label={
-                            url
-                              ? `Download ${platform.name} ${option.label} ${option.format}`
-                              : `Find ${platform.name} ${option.label} on the release page`
-                          }
-                        >
-                          <span>{option.label}</span>
-                          <small>{option.format}</small>
-                          <span aria-hidden="true">{url ? '↓' : '↗'}</span>
-                        </InstallerLink>
-                      )
-                    })}
+                  {installers.map((installer) => {
+                    const url = release.downloads[installer.id]
+                    return (
+                      <InstallerLink
+                        key={installer.id}
+                        href={url ?? latestReleasePage}
+                        installerId={url ? installer.id : undefined}
+                        continueToDownloadPage={continueToDownloadPage}
+                        aria-label={
+                          url
+                            ? `Download ${name} ${installer.label} ${installer.format}`
+                            : `Find ${name} ${installer.label} on the release page`
+                        }
+                      >
+                        <span>{installer.label}</span> <small>{installer.format}</small>{' '}
+                        <span aria-hidden="true">{url ? '↓' : '↗'}</span>
+                      </InstallerLink>
+                    )
+                  })}
                 </div>
               </section>
             ))}
@@ -103,18 +114,13 @@ export const DownloadPicker = ({ detectedPlatform, releaseState, continueToDownl
                 processor.
               </p>
             </details>
-            <a href={releasesUrl}>
-              {release?.version ? `${release.version} · ` : ''}Release notes <span aria-hidden="true">↗</span>
+            <a href={latestReleasePage}>
+              {release.version} · Release notes <span aria-hidden="true">↗</span>
             </a>
           </div>
         </div>
       </details>
-      {releaseState.status === 'failed' && installer && (
-        <p className="download-feedback" role="status">
-          We couldn’t load the latest installers. The release page has all downloads.
-        </p>
-      )}
-      {release && installer && !href && (
+      {recommended && !href && (
         <p className="download-feedback" role="status">
           This installer isn’t in the latest release. Check the release page for other options.
         </p>

@@ -2,81 +2,137 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, expect, mock, test } from 'bun:test'
+import { describe, expect, mock, test } from 'bun:test'
 import { detectPlatform, loadRelease, parseRelease } from './downloads'
 
-const originalFetch = globalThis.fetch
-const release = (names: string[]) => ({
-  tag_name: 'v0.1.162',
-  draft: false,
-  prerelease: false,
+const mac = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
+const downloadsOf = (tag: string) => `https://github.com/thunderbird/thunderbolt/releases/download/${tag}`
+
+/** GitHub's description of a release whose assets have all finished uploading. */
+const gitHubRelease = (tag: string, names: string[]) => ({
+  tag_name: tag,
   assets: names.map((name) => ({ name, state: 'uploaded' })),
 })
-afterEach(() => {
-  globalThis.fetch = originalFetch
+
+describe('detectPlatform', () => {
+  test.each([
+    ['a Mac', mac, 0, 'macos'],
+    ['a Mac that reports one touch point', mac, 1, 'macos'],
+    ['an iPad, which presents itself as a Mac with a multi-touch screen', mac, 2, 'ios'],
+    ['an iPad asking for the mobile site', 'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X)', 5, 'ios'],
+    ['an iPhone', 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)', 5, 'ios'],
+    ['an iPod touch', 'Mozilla/5.0 (iPod touch; CPU iPhone OS 15_8 like Mac OS X)', 5, 'ios'],
+    ['Windows', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 0, 'windows'],
+    ['Linux', 'Mozilla/5.0 (X11; Linux x86_64)', 0, 'linux'],
+    ['Android, which also names Linux', 'Mozilla/5.0 (Linux; Android 14; Pixel 8)', 5, 'android'],
+    ['ChromeOS, which has no installer', 'Mozilla/5.0 (X11; CrOS x86_64 14541.0.0)', 0, 'unknown'],
+    ['a browser that says nothing', '', 0, 'unknown'],
+  ] as const)('recognises %s', (_, userAgent, touchPoints, platform) => {
+    expect(detectPlatform(userAgent, touchPoints)).toBe(platform)
+  })
 })
 
-test.each([
-  ['Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 0, 'macos'],
-  ['Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 0, 'windows'],
-  ['Mozilla/5.0 (X11; Linux x86_64)', 0, 'linux'],
-  ['Mozilla/5.0 (Linux; Android 14; Pixel 8)', 5, 'android'],
-  ['Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)', 5, 'ios'],
-  ['Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X)', 5, 'ios'],
-  ['Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)', 5, 'ios'],
-  ['Mozilla/5.0 (X11; CrOS x86_64 1)', 0, 'unknown'],
-  ['', 0, 'unknown'],
-] as const)('detects %s without confusing mobile and desktop', (agent, touchPoints, expected) => {
-  expect(detectPlatform(agent, touchPoints)).toBe(expected)
+describe('parseRelease', () => {
+  test('offers each installer a release ships, and nothing else in it', () => {
+    const release = parseRelease(
+      gitHubRelease('v0.1.165', [
+        'SHA256SUMS',
+        'Thunderbolt-0.1.165-1.x86_64.rpm',
+        'Thunderbolt.app.tar.gz',
+        'Thunderbolt.app.tar.gz.sig',
+        'Thunderbolt_0.1.165_aarch64.dmg',
+        'Thunderbolt_0.1.165_amd64.AppImage',
+        'Thunderbolt_0.1.165_amd64.deb',
+        'Thunderbolt_0.1.165_arm64-setup.exe',
+        'Thunderbolt_0.1.165_arm64_en-US.msi',
+        'Thunderbolt_0.1.165_x64-setup.exe',
+        'Thunderbolt_0.1.165_x64.dmg',
+        'Thunderbolt_0.1.165_x64_en-US.msi',
+        'thunderbolt-cli-darwin-arm64',
+        'thunderbolt-cli-linux-arm64',
+        'thunderbolt-cli-linux-x64',
+      ]),
+    )
+
+    expect(release).toEqual({
+      version: 'v0.1.165',
+      downloads: {
+        'mac-arm': `${downloadsOf('v0.1.165')}/Thunderbolt_0.1.165_aarch64.dmg`,
+        'mac-intel': `${downloadsOf('v0.1.165')}/Thunderbolt_0.1.165_x64.dmg`,
+        'windows-x64': `${downloadsOf('v0.1.165')}/Thunderbolt_0.1.165_x64-setup.exe`,
+        'windows-arm': `${downloadsOf('v0.1.165')}/Thunderbolt_0.1.165_arm64-setup.exe`,
+        'linux-appimage': `${downloadsOf('v0.1.165')}/Thunderbolt_0.1.165_amd64.AppImage`,
+        'linux-deb': `${downloadsOf('v0.1.165')}/Thunderbolt_0.1.165_amd64.deb`,
+        'linux-rpm': `${downloadsOf('v0.1.165')}/Thunderbolt-0.1.165-1.x86_64.rpm`,
+      },
+    })
+  })
+
+  test.each([
+    'evil-Thunderbolt_1.0.0_x64.dmg',
+    'Thunderbolt_1.0.0_x64.dmg.sig',
+    'Thunderbolt_1.0.0_amd64.AppImage.zsync',
+    'prefix/Thunderbolt_1.0.0_amd64.deb',
+    'Thunderbolt_1.0.0_x64-setup.exe?download=1',
+  ])('does not take %s for an installer', (name) => {
+    expect(parseRelease(gitHubRelease('v1.0.0', [name])).downloads).toEqual({})
+  })
+
+  test('leaves out an installer that has not finished uploading', () => {
+    const description = gitHubRelease('v1.0.0', ['Thunderbolt_1.0.0_x64.dmg'])
+    description.assets.push({ name: 'Thunderbolt_1.0.0_aarch64.dmg', state: 'open' })
+
+    expect(parseRelease(description).downloads).toEqual({
+      'mac-intel': `${downloadsOf('v1.0.0')}/Thunderbolt_1.0.0_x64.dmg`,
+    })
+  })
+
+  test('links to the official repository, whatever address or tag the description carries', () => {
+    const description = {
+      tag_name: 'v1/../../../../evil/repository',
+      assets: [
+        { name: 'Thunderbolt_1.0.0_x64.dmg', state: 'uploaded', browser_download_url: 'https://evil.test/x.dmg' },
+      ],
+    }
+
+    expect(parseRelease(description).downloads).toEqual({
+      'mac-intel': `${downloadsOf('v1%2F..%2F..%2F..%2F..%2Fevil%2Frepository')}/Thunderbolt_1.0.0_x64.dmg`,
+    })
+  })
+
+  test.each([
+    ['null', null],
+    ['a string', 'v1.0.0'],
+    ['an empty object', {}],
+    ['a description with no tag', { assets: [] }],
+    ['a description whose tag is not a string', { tag_name: 1, assets: [] }],
+    ['a description with no assets', { tag_name: 'v1.0.0' }],
+    ['a description whose assets are not a list', { tag_name: 'v1.0.0', assets: {} }],
+  ])('rejects %s', (_, value) => {
+    expect(() => parseRelease(value)).toThrow('Invalid release')
+  })
 })
 
-test('maps actual release filenames to all supported desktop installer choices', () => {
-  const parsed = parseRelease(
-    release([
-      'Thunderbolt_0.1.162_aarch64.dmg',
-      'Thunderbolt_0.1.162_x64.dmg',
-      'Thunderbolt_0.1.162_x64-setup.exe',
-      'Thunderbolt_0.1.162_arm64-setup.exe',
-      'Thunderbolt_0.1.162_amd64.AppImage',
-      'Thunderbolt_0.1.162_amd64.deb',
-      'Thunderbolt-0.1.162-1.x86_64.rpm',
-      'Thunderbolt.app.tar.gz',
-      'thunderbolt-cli-linux-x64',
-    ]),
-  )
-  expect(Object.keys(parsed.downloads)).toHaveLength(7)
-  expect(parsed.downloads['mac-arm']).toBe(
-    'https://github.com/thunderbird/thunderbolt/releases/download/v0.1.162/Thunderbolt_0.1.162_aarch64.dmg',
-  )
-  expect(parsed.downloads['windows-arm']).toEndWith('/Thunderbolt_0.1.162_arm64-setup.exe')
-})
+describe('loadRelease', () => {
+  const { signal } = new AbortController()
 
-test('incomplete releases never invent links or expose untrusted asset URLs', () => {
-  const input = release(['Thunderbolt_0.1.162_x64.dmg'])
-  input.assets.push({ name: 'Thunderbolt_0.1.162_aarch64.dmg', state: 'new' })
-  Object.assign(input.assets[0], { browser_download_url: 'javascript:alert(1)' })
-  const parsed = parseRelease(input)
-  expect(parsed.downloads['mac-arm']).toBeUndefined()
-  expect(parsed.downloads['mac-intel']).toStartWith('https://github.com/thunderbird/thunderbolt/releases/download/')
-  expect(parseRelease(release([])).downloads).toEqual({})
-})
+  test("reads the release from the website's own copy of it", async () => {
+    const request = mock(async (_url: string, _init: RequestInit) =>
+      Response.json(gitHubRelease('v2.0.0', ['Thunderbolt_2.0.0_x64.dmg'])),
+    )
 
-test.each([
-  null,
-  {},
-  { ...release([]), draft: true },
-  { ...release([]), prerelease: true },
-  { ...release([]), assets: null },
-])('rejects malformed or non-stable release data', (input) => {
-  expect(() => parseRelease(input)).toThrow('Invalid stable release')
-})
+    const release = await loadRelease(signal, request)
 
-test('fetches the current release and surfaces API failures for the manual fallback', async () => {
-  const fetchMock = mock(async () => new Response(JSON.stringify(release([]))))
-  globalThis.fetch = fetchMock as unknown as typeof fetch
-  const signal = new AbortController().signal
-  expect((await loadRelease(signal)).version).toBe('v0.1.162')
-  expect(fetchMock.mock.calls).toHaveLength(1)
-  fetchMock.mockResolvedValueOnce(new Response('', { status: 403 }))
-  await expect(loadRelease(signal)).rejects.toThrow('403')
+    expect(release).toEqual({
+      version: 'v2.0.0',
+      downloads: { 'mac-intel': `${downloadsOf('v2.0.0')}/Thunderbolt_2.0.0_x64.dmg` },
+    })
+    expect(request.mock.calls).toEqual([['/downloads/release.json', { signal }]])
+  })
+
+  test('fails, naming the status, when the website answers with an error', async () => {
+    const request = mock(async () => new Response('', { status: 503 }))
+
+    await expect(loadRelease(signal, request)).rejects.toThrow('Release lookup failed: 503')
+  })
 })

@@ -4,7 +4,7 @@
 
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { parseRelease, type DownloadRelease } from '../components/marketing/download/downloads'
+import { parseRelease, type DownloadRelease, type Fetch } from '../components/marketing/download/downloads'
 
 const latestReleaseUrl = 'https://api.github.com/repos/thunderbird/thunderbolt/releases/latest'
 
@@ -14,9 +14,7 @@ export type ReleaseSnapshot = {
   release: DownloadRelease
 }
 
-type Request = (url: string, init: RequestInit) => Promise<Response>
-
-const lookUpLatestRelease = async (request: Request): Promise<unknown> => {
+const lookUpLatestRelease = async (request: Fetch): Promise<unknown> => {
   const response = await request(latestReleaseUrl, {
     signal: AbortSignal.timeout(5_000),
     // GitHub refuses requests that name no user agent.
@@ -39,7 +37,7 @@ const lookUpLatestRelease = async (request: Request): Promise<unknown> => {
 export const loadReleaseSnapshot = async ({
   savedPath = 'release-snapshot.json',
   request = fetch,
-}: { savedPath?: string; request?: Request } = {}): Promise<ReleaseSnapshot> => {
+}: { savedPath?: string; request?: Fetch } = {}): Promise<ReleaseSnapshot> => {
   const raw: unknown = existsSync(savedPath)
     ? JSON.parse(await readFile(savedPath, 'utf8'))
     : await lookUpLatestRelease(request)

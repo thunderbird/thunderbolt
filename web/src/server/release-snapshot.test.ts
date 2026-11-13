@@ -21,8 +21,6 @@ const save = (name: string, contents: unknown) => {
 
 const gitHubRelease = {
   tag_name: 'v2.0.0',
-  draft: false,
-  prerelease: false,
   assets: [{ name: 'Thunderbolt_2.0.0_aarch64.dmg', state: 'uploaded' }],
 }
 const release = {
@@ -77,8 +75,8 @@ describe('loadReleaseSnapshot', () => {
   test.each([
     ['GitHub answers with', { savedPath: nothingSaved, request: answering(() => Response.json({})) }],
     ['a build step saved', { savedPath: save('not-a-release.json', {}) }],
-  ])('fails when %s something other than a stable release', async (_, sources) => {
-    await expect(loadReleaseSnapshot(sources)).rejects.toThrow('Invalid stable release')
+  ])('fails when %s something other than a release', async (_, sources) => {
+    await expect(loadReleaseSnapshot(sources)).rejects.toThrow('Invalid release')
   })
 })
 

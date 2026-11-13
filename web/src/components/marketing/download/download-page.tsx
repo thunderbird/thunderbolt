@@ -21,7 +21,7 @@ import { useDownloadState } from './use-download-state'
 const desktop = productDemos.desktop
 const cornerMask = `inset(0 round ${(desktop.cornerRadius / desktop.width) * 100}% / ${(desktop.cornerRadius / desktop.height) * 100}%)`
 
-export const DownloadPage = ({ release }: { release?: DownloadRelease }) => {
+export const DownloadPage = ({ release }: { release: DownloadRelease }) => {
   const downloads = useDownloadState(release)
 
   return (
@@ -32,7 +32,7 @@ export const DownloadPage = ({ release }: { release?: DownloadRelease }) => {
       <SparkHeader />
       <main id="download-main" className="spark-shell">
         <section className="download-hero" aria-labelledby="download-title">
-          <DownloadArrival releaseState={downloads.releaseState} />
+          <DownloadArrival release={downloads.release} />
           <h1 id="download-title">
             Good ideas
             <br />

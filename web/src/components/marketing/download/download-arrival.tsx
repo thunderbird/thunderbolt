@@ -2,32 +2,31 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useSyncExternalStore } from 'react'
-import { installers, releasesUrl } from './downloads'
-import type { ReleaseState } from './use-download-state'
+import { installers, latestReleasePage, type DownloadRelease } from './downloads'
+import { useBrowserValue } from './use-browser-value'
 
-const subscribe = () => () => {}
-const getServerInstaller = () => undefined
-
-/** Accept only catalog IDs; a visit or refresh never starts a second download. */
-export const getRequestedInstaller = (search: string) => {
-  const id = new URLSearchParams(search).get('installer')
+/** The installer the address names in `?installer=`, when it is one this site offers. */
+const readRequestedInstaller = () => {
+  const id = new URLSearchParams(window.location.search).get('installer')
   return installers.find((installer) => installer.id === id)
 }
-const getInstaller = () => getRequestedInstaller(window.location.search)
 
-export const DownloadArrival = ({ releaseState }: { releaseState: ReleaseState }) => {
-  const installer = useSyncExternalStore(subscribe, getInstaller, getServerInstaller)
+/**
+ * A way to get the installer again, shown to a visitor the homepage sent here after starting
+ * a download. A reload or a shared link shows it too, so it makes no claim that one is under way.
+ */
+export const DownloadArrival = ({ release }: { release: DownloadRelease }) => {
+  const installer = useBrowserValue(readRequestedInstaller)
   if (!installer) return null
-  const href = releaseState.status === 'ready' ? releaseState.release.downloads[installer.id] : undefined
+  const href = release.downloads[installer.id]
 
   return (
     <div className="download-arrival" role="status">
       <span className="download-arrival-icon" aria-hidden="true">
         ↓
       </span>
-      <span>Your download should start shortly.</span>
-      <a href={href ?? releasesUrl}>
+      <span>Download didn’t start?</span>
+      <a href={href ?? latestReleasePage}>
         {href ? 'Download again' : 'View downloads'} <span aria-hidden="true">↗</span>
       </a>
     </div>

@@ -2,78 +2,79 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
+import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
 import { act } from 'react'
-import { createRoot, type Root } from 'react-dom/client'
-import { bundledRelease, useDownloadState } from './use-download-state'
+import { renderToString } from 'react-dom/server'
+import { render } from '../../../../test/render'
+import { detectPlatform, type DownloadRelease } from './downloads'
+import { useDownloadState } from './use-download-state'
 
-const originalFetch = globalThis.fetch
-const originalTimeout = window.setTimeout
-let container: HTMLDivElement
-let root: Root
-const Harness = () => {
-  const { releaseState } = useDownloadState()
-  return <p>{releaseState.status === 'ready' ? releaseState.release.version : releaseState.status}</p>
+const built: DownloadRelease = { version: 'v1.0.0', downloads: {} }
+const latest: DownloadRelease = { version: 'v2.0.0', downloads: {} }
+type Load = (signal: AbortSignal) => Promise<DownloadRelease>
+
+/** Shows what the hook returns: the platform as an attribute, the release's version as text. */
+const Probe = ({ load }: { load: Load }) => {
+  const { detectedPlatform, release } = useDownloadState(built, load)
+  return <output data-platform={detectedPlatform}>{release.version}</output>
 }
-beforeEach(() => {
-  container = document.createElement('div')
-  document.body.append(container)
-  root = createRoot(container)
-})
-afterEach(() => {
-  act(() => root.unmount())
-  container.remove()
-  globalThis.fetch = originalFetch
-  window.setTimeout = originalTimeout
-})
 
-test('refreshes bundled release data from the website cache', async () => {
-  globalThis.fetch = mock(
-    async () => new Response(JSON.stringify({ tag_name: 'v0.1.162', draft: false, prerelease: false, assets: [] })),
-  ) as unknown as typeof fetch
-  await act(async () => root.render(<Harness />))
-  expect(container.textContent).toBe('v0.1.162')
-  expect(globalThis.fetch).toHaveBeenCalledWith(
-    '/downloads/release.json',
-    expect.objectContaining({ signal: expect.any(AbortSignal) }),
-  )
-})
-
-test('an unavailable website cache retains working bundled installers', async () => {
-  globalThis.fetch = mock(async () => new Response('', { status: 403 })) as unknown as typeof fetch
-  await act(async () => root.render(<Harness />))
-  expect(container.textContent).toBe(bundledRelease.version)
-})
-
-test('unmount aborts the in-flight request', async () => {
+/** A refresh that settles only when the test says so, or when it is cancelled. */
+const pendingLoad = () => {
+  const { promise, resolve, reject } = Promise.withResolvers<DownloadRelease>()
   const signals: AbortSignal[] = []
-  globalThis.fetch = mock(
-    (_url: string, options: RequestInit) =>
-      new Promise<Response>((_resolve, reject) => {
-        const signal = options.signal!
-        signals.push(signal)
-        signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
-      }),
-  ) as unknown as typeof fetch
-  await act(async () => root.render(<Harness />))
-  expect(container.textContent).toBe(bundledRelease.version)
-  await act(async () => root.render(null))
-  expect(signals[0].aborted).toBe(true)
+  const load: Load = (signal) => {
+    signals.push(signal)
+    signal.addEventListener('abort', () => reject(signal.reason))
+    return promise
+  }
+  return { load, resolve, reject, signals }
+}
+
+let reported: ReturnType<typeof spyOn<Console, 'error'>>
+beforeEach(() => {
+  reported = spyOn(console, 'error').mockImplementation(() => {})
+})
+afterEach(() => reported.mockRestore())
+
+test('offers the release the page was built with until the latest one arrives', async () => {
+  const { load, resolve } = pendingLoad()
+  const { container } = render(<Probe load={load} />)
+  expect(container.textContent).toBe('v1.0.0')
+
+  await act(async () => resolve(latest))
+
+  expect(container.textContent).toBe('v2.0.0')
 })
 
-test('a stalled refresh keeps the download button immediately usable', async () => {
-  const timeouts: Array<() => void> = []
-  window.setTimeout = ((callback: () => void) => {
-    timeouts.push(callback)
-    return 123
-  }) as typeof window.setTimeout
-  globalThis.fetch = mock(
-    (_url: string, options: RequestInit) =>
-      new Promise<Response>((_resolve, reject) => {
-        options.signal!.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
-      }),
-  ) as unknown as typeof fetch
-  await act(async () => root.render(<Harness />))
-  await act(async () => timeouts[0]())
-  expect(container.textContent).toBe(bundledRelease.version)
+test("reads the visitor's platform once the page has hydrated, and not on the server", () => {
+  const { load } = pendingLoad()
+
+  const { container } = render(<Probe load={load} />)
+
+  expect(container.querySelector('output')?.dataset.platform).toBe(
+    detectPlatform(navigator.userAgent, navigator.maxTouchPoints),
+  )
+  expect(renderToString(<Probe load={load} />)).toBe('<output>v1.0.0</output>')
+})
+
+test('keeps offering the built release, and reports why, when the refresh fails', async () => {
+  const { load, reject } = pendingLoad()
+  const { container } = render(<Probe load={load} />)
+  const failure = new Error('Release lookup failed: 503')
+
+  await act(async () => reject(failure))
+
+  expect(container.textContent).toBe('v1.0.0')
+  expect(reported.mock.calls).toEqual([['Release refresh failed; offering the built-in release', failure]])
+})
+
+test('cancels the refresh when the page goes away, without reporting a failure', async () => {
+  const { load, signals } = pendingLoad()
+  const { unmount } = render(<Probe load={load} />)
+
+  await act(async () => unmount())
+
+  expect(signals.map((signal) => signal.aborted)).toEqual([true])
+  expect(reported).not.toHaveBeenCalled()
 })

@@ -2,58 +2,49 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
+import { afterEach, expect, test } from 'bun:test'
+import { renderToString } from 'react-dom/server'
 import { render } from '../../../../test/render'
-import { DownloadArrival, getRequestedInstaller } from './download-arrival'
-import { installers, releasesUrl } from './downloads'
+import { DownloadArrival } from './download-arrival'
+import { latestReleasePage, type DownloadRelease } from './downloads'
 
-const originalSearch = Object.getOwnPropertyDescriptor(window.location, 'search')
-beforeEach(() => {
-  Object.defineProperty(window.location, 'search', { configurable: true, writable: true, value: '' })
-})
-afterEach(() => {
-  if (originalSearch) Object.defineProperty(window.location, 'search', originalSearch)
-  else Reflect.deleteProperty(window.location, 'search')
-})
+const release: DownloadRelease = { version: 'v1.2.3', downloads: { 'mac-intel': 'https://example.test/intel.dmg' } }
 
-test('accepts only known installer IDs in the arrival query', () => {
-  for (const installer of installers) {
-    expect(getRequestedInstaller(`?installer=${installer.id}`)).toBe(installer)
-  }
-  for (const search of ['', '?installer=', '?installer=unlisted', '?installer=https://evil.test/file']) {
-    expect(getRequestedInstaller(search)).toBeUndefined()
-  }
-})
+/** Render the banner as a visitor arriving at this address sees it. */
+const arriveAt = (address: string) => {
+  window.history.replaceState(null, '', address)
+  return render(<DownloadArrival release={release} />).container
+}
 
-test('an arrival provides an explicit retry for the selected installer without restarting it', () => {
-  window.location.search = '?installer=mac-intel'
-  const assign = spyOn(window.location, 'assign')
-  try {
-    const { container } = render(
-      <DownloadArrival
-        releaseState={{
-          status: 'ready',
-          release: { version: 'v1', downloads: { 'mac-intel': 'https://example.test/intel.dmg' } },
-        }}
-      />,
-    )
-    expect(container.textContent).toContain('Your download should start shortly.')
-    expect(container.querySelector('a')!.getAttribute('href')).toBe('https://example.test/intel.dmg')
-    expect(container.querySelector('a')!.textContent).toContain('Download again')
-    expect(assign).not.toHaveBeenCalled()
-  } finally {
-    assign.mockRestore()
-  }
+afterEach(() => window.history.replaceState(null, '', '/'))
+
+test('offers the installer the address names again, without claiming a download is under way', () => {
+  const banner = arriveAt('/download/?installer=mac-intel').querySelector('[role="status"]')
+
+  expect(banner?.textContent).toBe('↓Download didn’t start?Download again ↗')
+  expect(banner?.querySelector('a')?.getAttribute('href')).toBe('https://example.test/intel.dmg')
 })
 
-test('an unavailable release gives a usable fallback instead of a fabricated file URL', () => {
-  window.location.search = '?installer=mac-arm'
-  const { container } = render(<DownloadArrival releaseState={{ status: 'failed' }} />)
-  expect(container.querySelector('a')!.getAttribute('href')).toBe(releasesUrl)
-  expect(container.textContent).toContain('View downloads')
+test('points at the release page when the release lacks that installer', () => {
+  const link = arriveAt('/download/?installer=mac-arm').querySelector('a')
+
+  expect(link?.textContent).toBe('View downloads ↗')
+  expect(link?.getAttribute('href')).toBe(latestReleasePage)
 })
 
-test('ordinary visits do not claim to have started a download', () => {
-  const { container } = render(<DownloadArrival releaseState={{ status: 'loading' }} />)
-  expect(container.textContent).toBe('')
+test.each([
+  '/download/',
+  '/download/?installer=',
+  '/download/?installer=unlisted',
+  '/download/?installer=mac-intel-and-more',
+  '/download/?installer=https://evil.test/file',
+  '/download/?other=mac-intel',
+])('shows nothing to a visitor arriving at %s', (address) => {
+  expect(arriveAt(address).innerHTML).toBe('')
+})
+
+test('is left out of the server-rendered page, which cannot see the address', () => {
+  window.history.replaceState(null, '', '/download/?installer=mac-intel')
+
+  expect(renderToString(<DownloadArrival release={release} />)).toBe('')
 })

@@ -4,5 +4,6 @@
 
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 
-GlobalRegistrator.register()
+// A real address, so that tests can move around the site with the History API.
+GlobalRegistrator.register({ url: 'https://thunderbolt.io/' })
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })

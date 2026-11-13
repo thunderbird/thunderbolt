@@ -47,7 +47,7 @@ const questions = [
   },
 ] as const
 
-export const SparkPage = ({ release }: { release?: DownloadRelease }) => {
+export const SparkPage = ({ release }: { release: DownloadRelease }) => {
   const downloads = useDownloadState(release)
   return (
     <div className="spark-page">

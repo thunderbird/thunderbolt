@@ -17,8 +17,19 @@ import {
   officeScriptFilename,
   officeScriptMarker,
   officeScriptPrompt,
+  officeWorkbookFilename,
+  officeWorkbookPrompt,
 } from './office-script-fixture'
 import { expect, test } from './test'
+
+/**
+ * The Excelize file itself. The dev server also answers `excelize.wasm.gz?import&url` with a small module that only
+ * names the file's URL, which every Office run loads.
+ */
+const isExcelizeDownload = (url: string) => {
+  const { pathname, searchParams } = new URL(url)
+  return /excelize[^/]*\.gz$/.test(pathname) && !searchParams.has('import')
+}
 
 const chooseFakeModel = async (page: Page) => {
   await page.getByTestId('model-selector-trigger').click()
@@ -35,6 +46,8 @@ test('the agent builds a Word document in the sandbox Worker and the user downlo
   const errors = collectPageErrors(page)
   const workerUrls: string[] = []
   page.on('worker', (worker) => workerUrls.push(worker.url()))
+  const excelizeRequests: string[] = []
+  page.on('request', (request) => isExcelizeDownload(request.url()) && excelizeRequests.push(request.url()))
   await loginViaEmailCode(page)
   await chooseFakeModel(page)
 
@@ -49,6 +62,33 @@ test('the agent builds a Word document in the sandbox Worker and the user downlo
   expect(file.suggestedFilename()).toBe(officeScriptFilename)
   const zip = await JSZip.loadAsync(await readFile(await file.path()))
   expect(await zip.file('word/document.xml')?.async('string')).toContain(officeScriptMarker)
+  // A chat that never touches a spreadsheet never downloads Excelize.
+  expect(excelizeRequests).toEqual([])
+
+  expect(errors).toEqual([])
+})
+
+test('the agent builds a workbook with Excelize and the downloaded file holds the computed total', async ({ page }) => {
+  const errors = collectPageErrors(page)
+  const excelizeRequests: string[] = []
+  page.on('request', (request) => isExcelizeDownload(request.url()) && excelizeRequests.push(request.url()))
+  await loginViaEmailCode(page)
+  await chooseFakeModel(page)
+
+  await sendChatPrompt(page, officeWorkbookPrompt)
+
+  const download = page.getByRole('button', { name: `Download ${officeWorkbookFilename}` })
+  // Excelize is about 4.6 MB, fetched on this first use.
+  await expect(download).toBeVisible({ timeout: 60_000 })
+  expect(excelizeRequests.length).toBeGreaterThan(0)
+
+  const [file] = await Promise.all([page.waitForEvent('download'), download.click()])
+  expect(file.suggestedFilename()).toBe(officeWorkbookFilename)
+  const sheet = await (await JSZip.loadAsync(await readFile(await file.path())))
+    .file('xl/worksheets/sheet1.xml')
+    ?.async('string')
+  // The total is stored as a number, so a viewer that does not calculate still shows it.
+  expect(sheet).toContain('<c r="B3"><f>SUM(B1:B2)</f><v>1650</v></c>')
 
   expect(errors).toEqual([])
 })

@@ -1257,6 +1257,25 @@ describe('ChatPromptInput', () => {
       expect(screen.getByText(/isn't a supported file type/)).toBeInTheDocument()
     })
 
+    // The Office script tool tells the model a user cannot attach .xlsm (`describeTool` in
+    // src/office/office-script-tool.ts). Update that sentence if this test changes.
+    it.each([['application/vnd.ms-excel.sheet.macroEnabled.12'], ['']])(
+      'rejects a macro workbook pasted as %p',
+      async (type) => {
+        const { mockUseChat } = setupStore()
+        render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+          wrapper: TestWrapper,
+        })
+
+        const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
+        const file = new File(['PK'], 'macros.xlsm', { type })
+        pasteItems(textarea, [{ kind: 'file', type, getAsFile: () => file }])
+        await flushAttachments()
+
+        expect(screen.getByText(/isn't a supported file type/)).toBeInTheDocument()
+      },
+    )
+
     it('lets a file paste fall through untouched for the hosted agent', async () => {
       const { mockUseChat } = setupStore()
       useChatStore.getState().updateSession('thread-1', { selectedAgent: hostedAgent })

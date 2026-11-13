@@ -38,14 +38,16 @@ const checker = (maxXmlBytes: number) => `(() => {
     if (error instanceof InternalError || /out of memory|stack overflow/i.test(text)) throw error
     return text.replace(/\\s+/g, ' ').trim()
   }
-  globalThis.__check = (index) => {
+  // \`macros\` is true for a .xlsm name, false for .xlsx and null for anything else; Excel opens a workbook only when
+  // its content type agrees. \`only\` lists the XML parts to parse, besides the content types; null parses them all.
+  globalThis.__check = (index, macros, only) => {
     const bytes = __savedFile(index)
     const names = []
     let declared = 0
     try {
       fflate.unzipSync(bytes, {
         filter: ({ name, originalSize }) => {
-          if (isXmlPart(name)) {
+          if (isXmlPart(name) && (only === null || only.includes(name) || name === '[Content_Types].xml')) {
             names.push(name)
             declared += originalSize
           }
@@ -65,10 +67,15 @@ const checker = (maxXmlBytes: number) => `(() => {
       } catch (error) {
         return { reason: reason(error) }
       }
+      let text
       try {
-        new xmldom.DOMParser({ onError: xmldom.onWarningStopParsing }).parseFromString(decode(data), 'text/xml')
+        text = decode(data)
+        new xmldom.DOMParser({ onError: xmldom.onWarningStopParsing }).parseFromString(text, 'text/xml')
       } catch (error) {
         return { part: name, reason: reason(error) }
+      }
+      if (name === '[Content_Types].xml' && macros !== null && text.includes('macroEnabled.main+xml') !== macros) {
+        return { macros }
       }
     }
   }
@@ -81,6 +88,12 @@ const describeProblem = (filename: string, problem: JSValueHandle) => {
   if (problem.getProp('tooLarge').consume((handle) => handle.toBoolean())) {
     return tooLargeToCheck(filename)
   }
+  const macros = problem.getProp('macros').consume((handle) => (handle.isUndefined ? undefined : handle.toBoolean()))
+  if (macros !== undefined) {
+    return macros
+      ? `"${filename}" has no macros, and Excel opens an .xlsm file only when it has them. Save it as .xlsx, then call the tool again.`
+      : `"${filename}" holds macros, and Excel opens a workbook with macros only as .xlsm. Save it as .xlsm, then call the tool again.`
+  }
   const part = problem.getProp('part').consume((handle) => (handle.isUndefined ? undefined : handle.toString()))
   const reason = problem.getProp('reason').consume((handle) => handle.toString())
   return part === undefined
@@ -88,16 +101,25 @@ const describeProblem = (filename: string, problem: JSValueHandle) => {
     : `"${filename}" would not open: its part ${part} is not valid XML (${reason}). Escape &, <, > and " in text and in attribute values such as font names, then call the tool again.`
 }
 
+/** `true` for a .xlsm name, `false` for .xlsx, `null` for any other file. */
+const macrosExpected = (filename: string) => {
+  const extension = /\.(xlsx|xlsm)$/i.exec(filename)?.[1].toLowerCase()
+  return extension === undefined ? null : extension === 'xlsm'
+}
+
 /**
- * Why Word or PowerPoint would refuse one of the saved files, worded for the model, or `undefined` when every
- * file's zip opens and every XML part parses. The files are the model's own bytes, so they are checked in a fresh
- * VM with its own memory limit and the script's deadline, never on the Worker's heap.
+ * Why Word, Excel or PowerPoint would refuse one of the saved files, worded for the model, or `undefined` when every
+ * file's zip opens, every XML part parses and every workbook's name matches whether it has macros. The files are the
+ * model's own bytes, so they are checked in a fresh VM with its own memory limit and the script's deadline, never on
+ * the Worker's heap. A file in `fromExcelize` has only the listed parts parsed: Excelize wrote the rest, and parsing
+ * a large workbook would take most of the script's time.
  */
 export const findBrokenFile = async (
   runtime: SandboxRuntime,
   files: SavedFile[],
   limits: SandboxLimits,
   deadline: number,
+  fromExcelize: ReadonlyMap<SavedFile, string[]> = new Map(),
 ): Promise<string | undefined> => {
   if (files.length === 0) {
     return undefined
@@ -124,10 +146,11 @@ export const findBrokenFile = async (
     vm.evalCode(runtime.ooxmlLibrary, 'ooxml.js').dispose()
     vm.evalCode(checker(memoryLimit), 'check.js').dispose()
     loaded = true
-    for (const [index, { filename }] of files.entries()) {
+    for (const [index, file] of files.entries()) {
+      const { filename } = file
       try {
         const problem = vm
-          .evalCode(`__check(${index})`)
+          .evalCode(`__check(${index}, ${macrosExpected(filename)}, ${JSON.stringify(fromExcelize.get(file) ?? null)})`)
           .consume((result) => (result.isUndefined ? undefined : describeProblem(filename, result)))
         if (problem !== undefined) {
           return problem

@@ -13,6 +13,8 @@ import {
   officeEditScript,
   officeScript,
   officeScriptPrompt,
+  officeWorkbookPrompt,
+  officeWorkbookScript,
 } from './office-script-fixture'
 import { performanceStreamPrompt, performanceStreamReply } from './streaming-fixture'
 
@@ -158,6 +160,23 @@ test('plays a model that builds a Word document with run_office_script, then rep
       { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_test', content: '{"ok":true}' }] },
     ])
     expect(reply.content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('plays a model that builds a workbook with run_office_script', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: `http://127.0.0.1:${port}`, maxRetries: 0 })
+    const ask: Anthropic.MessageParam = { role: 'user', content: officeWorkbookPrompt }
+
+    const call = await client.messages.stream({ model: 'test-model', max_tokens: 100, messages: [ask] }).finalMessage()
+    expect(call.content).toMatchObject([
+      { type: 'tool_use', name: 'run_office_script', input: { script: officeWorkbookScript } },
+    ])
   } finally {
     server.close()
     server.closeAllConnections()

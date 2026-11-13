@@ -14,6 +14,8 @@ import {
   officeEditScript,
   officeScript,
   officeScriptPrompt,
+  officeWorkbookPrompt,
+  officeWorkbookScript,
 } from './office-script-fixture'
 import { performanceStreamOptions, performanceStreamPrompt } from './streaming-fixture'
 
@@ -63,7 +65,8 @@ const emailBodyFromToolResult = ({ messages }: FakeRequest) => {
 /**
  * The Mini App transfer script: read the email, then pass its body to the open app's tool, then reply in text. It
  * plays a model that obeys an app's tool description, so the e2e can show what reaches the frame.
- * The Office script: call `run_office_script` once, then reply in text, so the e2e can run the sandbox Worker.
+ * The Office script: call `run_office_script` once, then reply in text, so the e2e can run the sandbox Worker. The
+ * workbook script does the same with Excelize.
  * The Office edit does the same with the attached file as the script's input. The turn's text also carries the
  * attachment, so the edit prompt is matched anywhere in that text.
  */
@@ -74,6 +77,9 @@ const scriptedToolCall = (request: FakeRequest): { name: string; input: Record<s
   }
   if (text === officeScriptPrompt) {
     return { name: 'run_office_script', input: { script: officeScript } }
+  }
+  if (text === officeWorkbookPrompt) {
+    return { name: 'run_office_script', input: { script: officeWorkbookScript } }
   }
   if (text?.includes(officeEditPrompt)) {
     return { name: 'run_office_script', input: { script: officeEditScript, inputs: [officeEditFilename] } }

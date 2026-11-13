@@ -287,6 +287,8 @@ export default defineConfig({
       'quickjs-wasi',
       'office-sandbox-docx',
       'office-sandbox-pptxgenjs',
+      'excelize-wasm',
+      '@ironcalc/wasm',
     ],
   },
   worker: {

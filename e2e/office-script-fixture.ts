@@ -35,3 +35,17 @@ const patched = await docx.patchDocument({
 })
 saveFile(${JSON.stringify(officeEditFilename)}, patched)
 `
+
+/** Sent to the composer; the fake provider answers it by calling `run_office_script` to build a workbook. */
+export const officeWorkbookPrompt = 'Build the e2e budget as a spreadsheet.'
+
+export const officeWorkbookFilename = 'e2e-budget.xlsx'
+
+/** What a model would write: two rows and a total with the preloaded `excelize` API. */
+export const officeWorkbookScript = `
+const f = excelize.NewFile()
+f.SetSheetRow('Sheet1', 'A1', ['Rent', 1200])
+f.SetSheetRow('Sheet1', 'A2', ['Food', 450])
+f.SetCellFormula('Sheet1', 'B3', 'SUM(B1:B2)')
+saveFile(${JSON.stringify(officeWorkbookFilename)}, f.WriteToBuffer().buffer)
+`

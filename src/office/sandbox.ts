@@ -5,7 +5,22 @@
 import './symbol-dispose-polyfill'
 import { type ExtensionDescriptor, type JSValueHandle, QuickJS } from 'quickjs-wasi'
 import { findBrokenFile } from './check-output'
-import { type SandboxLimits, sandboxLimits } from './constants'
+import { maxFormulaErrors, type SandboxLimits, sandboxLimits } from './constants'
+import type { FormulaError } from './formula-cache'
+import type { SavedWorkbook } from './workbook-bridge'
+
+/**
+ * Gives a VM the `excelize` workbook API (see `installWorkbooks`). `stop` ends the run with a reason. Returns a
+ * lookup from saved bytes to the `WriteToBuffer` result they are, `undefined` for bytes that are not one unchanged.
+ */
+export type InstallWorkbooks = (
+  vm: QuickJS,
+  limits: SandboxLimits,
+  stop: (reason: string) => void,
+) => (bytes: Uint8Array) => SavedWorkbook | undefined
+
+/** A formula a saved workbook could not compute, with the name the script saved the workbook under. */
+export type FileFormulaError = FormulaError & { file: string }
 
 /** Everything a run needs: the QuickJS module, its extensions, and the library scripts evaluated before the script. */
 export type SandboxRuntime = {
@@ -14,6 +29,8 @@ export type SandboxRuntime = {
   libraries: string[]
   /** The `fflate` and `xmldom` script. The script's VM evaluates it after `libraries`; the check VM evaluates only it. */
   ooxmlLibrary: string
+  /** Loads Excelize and IronCalc, which only a script that uses `excelize` waits for: they are several megabytes. */
+  loadWorkbooks: () => Promise<InstallWorkbooks>
 }
 
 export type SavedFile = { filename: string; bytes: Uint8Array<ArrayBuffer> }
@@ -24,7 +41,12 @@ export type SandboxInput = { name: string; bytes: Uint8Array<ArrayBuffer> }
 /** What one run executes: the script and the files it may read. */
 export type SandboxJob = { script: string; inputs: SandboxInput[] }
 
-export type SandboxResult = { ok: true; files: SavedFile[]; logs: string } | { ok: false; error: string; logs: string }
+export type SandboxResult =
+  | { ok: true; files: SavedFile[]; logs: string; formulaErrors?: FileFormulaError[] }
+  | { ok: false; error: string; logs: string }
+
+/** A script that names `excelize` is about to open or create a workbook. */
+const usesWorkbooks = (script: string) => /\bexcelize\b/.test(script)
 
 /*
  * Globals the script and the libraries see. A bare QuickJS VM has no console and no timers. jszip (inside
@@ -90,6 +112,7 @@ export const runSandboxedScript = async (
   onReady: () => void = () => {},
 ): Promise<SandboxResult> => {
   const inputBytes = new Map(inputs.map(({ name, bytes }) => [name, bytes]))
+  const installWorkbooks = usesWorkbooks(script) ? await runtime.loadWorkbooks() : undefined
   // Loading the libraries is the app's own work, so it does not count against the script's time.
   let deadline = Infinity
   const encoder = new TextEncoder()
@@ -99,6 +122,10 @@ export const runSandboxedScript = async (
   let savedBytes = 0
   let stopped: string | null = null
   let finished: { error?: string } | null = null
+  const formulaErrors: FileFormulaError[] = []
+  // Files saved exactly as `WriteToBuffer` gave them, with the parts the check still parses: the rest is Excelize's.
+  const fromExcelize = new Map<SavedFile, string[]>()
+  let savedWorkbookOf: ReturnType<InstallWorkbooks> | undefined
 
   const vm = await QuickJS.create({
     wasm: runtime.wasm,
@@ -140,7 +167,13 @@ export const runSandboxedScript = async (
         stopped ??= `The script saved more than ${limits.memoryBytes / 1024 / 1024} MiB of files and was stopped. Build smaller files.`
         return
       }
-      files.push({ filename: name, bytes: copy })
+      const file = { filename: name, bytes: copy }
+      files.push(file)
+      const workbook = savedWorkbookOf?.(copy)
+      if (workbook) {
+        fromExcelize.set(file, workbook.copiedParts)
+        formulaErrors.push(...workbook.formulaErrors.map((error) => ({ file: name, ...error })))
+      }
     })
     // A fresh copy per call, made inside the VM, so its memory limit counts it. The VM takes its own reference to
     // a returned handle, so each call releases the previous one, or every copy would live until the run ends.
@@ -158,6 +191,9 @@ export const runSandboxedScript = async (
     vm.evalCode(prelude, 'prelude.js').dispose()
     runtime.libraries.forEach((code, index) => vm.evalCode(code, `library-${index}.js`).dispose())
     vm.evalCode(runtime.ooxmlLibrary, 'ooxml.js').dispose()
+    savedWorkbookOf = installWorkbooks?.(vm, limits, (reason) => {
+      stopped ??= reason
+    })
     deadline = performance.now() + limits.timeoutMs
     onReady()
     // Same line as the script's first line, so line numbers in its errors match what the model wrote.
@@ -185,9 +221,10 @@ export const runSandboxedScript = async (
 
   const shownLogs = clip(logs)
   // Checked only after the script's VM is gone, so the two never hold memory at the same time.
-  const error = stopped ?? finished?.error ?? (await findBrokenFile(runtime, files, limits, deadline))
+  const error = stopped ?? finished?.error ?? (await findBrokenFile(runtime, files, limits, deadline, fromExcelize))
   if (error === undefined) {
-    return { ok: true, files, logs: shownLogs }
+    const listed = formulaErrors.length > 0 ? formulaErrors.slice(0, maxFormulaErrors) : undefined
+    return { ok: true, files, logs: shownLogs, formulaErrors: listed }
   }
   if (/out of memory/i.test(error)) {
     return {

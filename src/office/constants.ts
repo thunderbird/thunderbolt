@@ -14,6 +14,15 @@ export const sandboxLimits = {
   memoryBytes: 64 * 1024 * 1024,
   textOutputBytes: 4 * 1024 * 1024,
   maxFiles: 20,
+  /** Largest workbook Excelize opens. It holds about 1.2 KB per cell, outside the VM's memory. */
+  maxWorkbookBytes: 2 * 1024 * 1024,
+  /** Largest unzipped size of a workbook Excelize opens, so a small zip cannot unpack into gigabytes. */
+  workbookUnzipBytes: 64 * 1024 * 1024,
+  /** Excelize's own WebAssembly memory. A run stops once it passes this. */
+  workbookMemoryBytes: 512 * 1024 * 1024,
 }
 
 export type SandboxLimits = typeof sandboxLimits
+
+/** How many formula errors a result lists, so a broken workbook cannot flood the model's context. */
+export const maxFormulaErrors = 50

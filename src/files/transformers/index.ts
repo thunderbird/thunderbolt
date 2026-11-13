@@ -34,6 +34,9 @@ export const docxMime = 'application/vnd.openxmlformats-officedocument.wordproce
 /** MIME type for `.xlsx` (OOXML spreadsheets). */
 export const xlsxMime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
+/** MIME type for `.xlsm` (OOXML spreadsheets with macros). */
+export const xlsmMime = 'application/vnd.ms-excel.sheet.macroEnabled.12'
+
 /** MIME type for `.pptx` (OOXML presentations). */
 export const pptxMime = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
 

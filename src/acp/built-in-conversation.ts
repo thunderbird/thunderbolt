@@ -296,6 +296,7 @@ const prepareMessage = async (
         try {
           return await prepareAttachment(part, isCurrentTurn, options, deps)
         } catch (error) {
+          console.warn('Sending a note in place of an unreadable attachment', { filename: part.data.filename, error })
           const note = unreadableAttachmentNote(part.data.filename, error)
           return { text: note, images: [], files: [], unreadable: [note] }
         }

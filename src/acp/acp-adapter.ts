@@ -265,6 +265,7 @@ const resolveEmbeddedDelivery = async (
       }
       return { kind: 'resource', attachment: { ...attachment, base64: await blobToBase64(file.blob) } }
     } catch (error) {
+      console.warn('Sending a note in place of an unreadable attachment', { filename: attachment.filename, error })
       return { kind: 'text', text: unreadableAttachmentNote(attachment.filename, error) }
     }
   }
@@ -287,6 +288,7 @@ const resolveTextDelivery = async (
       }
     }
   } catch (error) {
+    console.warn('Sending a note in place of an unreadable attachment', { filename: attachment.filename, error })
     return { kind: 'text', text: unreadableAttachmentNote(attachment.filename, error) }
   }
   return { kind: 'undeliverable', filename: attachment.filename }

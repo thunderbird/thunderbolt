@@ -129,7 +129,7 @@ export const ShareDebugTranscriptDialog = ({
               id={previewId}
               readOnly
               value={preview}
-              className="h-48 field-sizing-fixed font-mono text-[length:var(--font-size-sm)]"
+              className="h-48 field-sizing-fixed font-mono text-[length:var(--font-size-sm)] max-md:text-[length:var(--font-size-body)]"
             />
           </div>
         )}

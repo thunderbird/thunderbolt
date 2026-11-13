@@ -121,7 +121,7 @@ own context.
 - A `ToolConfig` (`src/types.ts:226`) carries `name`, `description`, `parameters` (Zod), a UI `verb`
   and an optional `cacheable` flag. `verb` is the loading phrase, `{param}` filled from the call's
   input (`src/lib/tool-metadata.ts:45`): `'searching for {query}'` → `Searching for "…"…`.
-- `run_office_script` builds `.docx` and `.pptx` files. The model writes a JavaScript script, and the app
+- `run_office_script` builds `.docx`, `.xlsx` and `.pptx` files. The model writes a JavaScript script, and the app
   runs it in a QuickJS VM inside a Web Worker (`src/office/office-script.worker.ts`), with no network, no
   DOM and no app state. The `docx` and `pptxgenjs` browser builds are loaded into the VM first. The Worker,
   the WASM files and the libraries are files the app serves, fetched on the first run, so the entry chunk
@@ -153,6 +153,30 @@ own context.
   By default the parser lets an undefined entity or an unquoted attribute through; Word and PowerPoint
   refuse both. If any file fails, the run saves nothing. The error names the part, says the XML is too
   large to check, or says the check ran out of time.
+- Workbooks go through Excelize (`excelize-wasm`). It is WebAssembly, which QuickJS cannot run, so it runs in
+  the same Worker outside the VM. The script reaches it through a global `excelize`, and every call goes to one
+  host function (`src/office/workbook-bridge.ts`). Arguments cross as JSON with the bytes beside them, so the VM
+  pays for building them, and the host checks them as they arrive. The script can call a workbook's own methods
+  and Excelize's pure helpers, nothing else. A failed call throws, where Excelize would return an `error` field
+  the model might ignore. Excelize and IronCalc are about 6.7 MB, so the Worker loads them only for a script that
+  names `excelize` (`src/office/spreadsheet-engines.ts`). A chat that never builds a workbook never downloads them.
+- A workbook opens only up to 2 MiB, and up to 64 MiB unzipped. Excelize holds about 1.2 KB per cell outside the
+  VM's 64 MiB, so a run stops once Excelize's memory passes 512 MiB. WebAssembly memory never shrinks, and the
+  Worker is closed after every run anyway. A new workbook names "Microsoft Excel" as its application, because
+  LibreOffice draws some charts differently for an application it does not know. An opened one keeps its own.
+  A workbook with a VBA project gets the macro content type, and the output check holds the name to it: `.xlsm`
+  with macros, `.xlsx` without, or Excel refuses the file.
+- Excelize saves a formula with no result and marks it as text, so a viewer that does not calculate shows an
+  empty cell. When the script saves a workbook, `src/office/formula-cache.ts` loads its values, formulas, hidden
+  rows and defined names into IronCalc (`@ironcalc/wasm`), computes every formula, and writes each result into
+  the sheet XML as the cell's cached value, typed as a number, text or boolean. IronCalc cannot return a raw
+  number, so results are formatted to 15 significant digits and parsed back. Excelize expands shared formulas.
+  Some cells keep what Excelize saved: a formula IronCalc cannot compute (`AGGREGATE`, for example), an error
+  result, an array or data-table formula, and every formula of a workbook that counts dates from 1904. The tool
+  result lists each in `formulaErrors` with its file, sheet and cell.
+- Parsing every XML part of a large workbook would take most of the script's time, so the output check skips the
+  parts Excelize wrote when the script saves the bytes `WriteToBuffer` returned unchanged. Parts Excelize copied
+  from the opened file without parsing them, such as charts, are still parsed.
 - `hasProAccess` resolves a hardcoded `isProUser = true`
   (`src/integrations/thunderbolt-pro/utils.ts:8`), so the settings flag is the only real gate on the
   web tools.

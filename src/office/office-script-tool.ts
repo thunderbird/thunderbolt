@@ -9,9 +9,9 @@ import { parseToolOutput } from '@/lib/tool-output'
 import type { ToolConfig } from '@/types'
 import { type DynamicToolUIPart, getToolName, isToolOrDynamicToolUIPart, type ToolUIPart, type UIMessage } from 'ai'
 import { z } from 'zod'
-import { officeScriptToolName, sandboxLimits } from './constants'
+import { maxFormulaErrors, officeScriptToolName, sandboxLimits } from './constants'
 import { runInSandboxWorker } from './run-in-worker'
-import { type FileFormulaError, maxFormulaErrors, type SandboxJob, type SandboxResult, type SavedFile } from './sandbox'
+import type { FileFormulaError, SandboxJob, SandboxResult, SavedFile } from './sandbox'
 import { type ReadWorkspaceFile, resolveInputs, type ThreadFile } from './script-inputs'
 
 /**

@@ -5,7 +5,7 @@
 import './symbol-dispose-polyfill'
 import { type ExtensionDescriptor, type JSValueHandle, QuickJS } from 'quickjs-wasi'
 import { findBrokenFile } from './check-output'
-import { type SandboxLimits, sandboxLimits } from './constants'
+import { maxFormulaErrors, type SandboxLimits, sandboxLimits } from './constants'
 import type { FormulaError } from './formula-cache'
 import type { SavedWorkbook } from './workbook-bridge'
 
@@ -44,9 +44,6 @@ export type SandboxJob = { script: string; inputs: SandboxInput[] }
 export type SandboxResult =
   | { ok: true; files: SavedFile[]; logs: string; formulaErrors?: FileFormulaError[] }
   | { ok: false; error: string; logs: string }
-
-/** How many formula errors a result lists, so a broken workbook cannot flood the model's context. */
-export const maxFormulaErrors = 50
 
 /** A script that names `excelize` is about to open or create a workbook. */
 const usesWorkbooks = (script: string) => /\bexcelize\b/.test(script)

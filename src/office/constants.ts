@@ -23,3 +23,6 @@ export const sandboxLimits = {
 }
 
 export type SandboxLimits = typeof sandboxLimits
+
+/** How many formula errors a result lists, so a broken workbook cannot flood the model's context. */
+export const maxFormulaErrors = 50

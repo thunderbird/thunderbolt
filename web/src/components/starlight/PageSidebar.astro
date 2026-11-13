@@ -1,0 +1,17 @@
+---
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+import TableOfContents from 'virtual:starlight/components/TableOfContents';
+---
+
+{Astro.locals.starlightRoute.toc && (
+  <div class="right-sidebar-panel">
+    <TableOfContents />
+  </div>
+)}
+
+<style>
+  .right-sidebar-panel { padding: 16px 0; }
+  .right-sidebar-panel :global(a) { display: block; text-decoration: none; overflow-wrap: anywhere; }
+</style>

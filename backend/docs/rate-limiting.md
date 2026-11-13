@@ -7,6 +7,7 @@ Hardcoded per-tier budgets, enforced by a Postgres-backed limiter in [backend/sr
 | `inference`                | 60 / minute  | user                     | `/v1/chat/*` (managed inference)                                                         |
 | `pro`                      | 100 / minute | user                     | `/v1/pro/*`, `/v1/proxy/*`, `/v1/proxy/ws`, `/v1/tinfoil/*`, `/v1/search`, `/v1/preview` |
 | `auth`                     | 10 / minute  | client IP                | `/v1/api/auth/*` (except anonymous sign-in and GET get-session), `/v1/waitlist/*`        |
+| `integration-oauth`        | 30 / minute  | client IP                | `/v1/auth/google/*`, `/v1/auth/microsoft/*`. Always on.                                  |
 | `anonymous-sign-in`        | 10 / minute  | client IP                | `POST /v1/api/auth/sign-in/anonymous`                                                    |
 | `anonymous-sign-in-global` | 2000 / hour  | one key, deployment-wide | `POST /v1/api/auth/sign-in/anonymous`, while `AUTH_ALLOW_ANONYMOUS=true`                 |
 | `captcha-challenge`        | 10 / minute  | client IP                | `GET /v1/captcha/challenge`                                                              |
@@ -38,6 +39,8 @@ Debug-transcript intake is the consumer case: the caller is another deployment w
 
 With `settings.rateLimitEnabled` false, the plugin factories return a bare `new Elysia()` and the consumer factory returns `null`; nothing downstream changes shape, because call sites treat both as optional.
 
+Public integration OAuth ignores that switch. `index.ts` builds its limiter with `enabled: true` because it exchanges tokens without an app session.
+
 ## Placement rules that will bite you
 
 ### The user-keyed plugin must go inside `guard({ auth: true }, …)`
@@ -52,9 +55,9 @@ The skip branch is deliberate (such requests 401 anyway), but mounted is not enf
 
 ### IP resolution fails closed
 
-- `extractClientIp` ([utils/request.ts](../src/utils/request.ts)) trusts a proxy header only when `TRUSTED_PROXY` names the edge (`cloudflare` → `CF-Connecting-IP`, `akamai` → `True-Client-IP`). Without one, any client can forge `X-Forwarded-For` and mint a fresh bucket per request.
+- `extractClientIp` ([utils/request.ts](../src/utils/request.ts)) trusts a proxy header only when `TRUSTED_PROXY` names the edge (`cloudflare` → `CF-Connecting-IP`, `akamai` → `True-Client-IP`). A positive integer selects that many trusted hops from the right of `X-Forwarded-For`; use it only for a fixed chain with direct origin access blocked. Without explicit trust, forwarded headers are ignored.
 - An unresolvable address shares a single `ip:unknown` bucket rather than skipping the limit ([rate-limit.ts:167](../src/middleware/rate-limit.ts)); identifiable clients keep their own.
-- `getTrustedIpHeaders` feeds the same `TRUSTED_PROXY` value to Better Auth's `ipAddressHeaders`, so both limiters agree on the client. It returns `undefined`, not `[]`, when no proxy is configured. `undefined` lets Better Auth fall back to `x-forwarded-for`. With `[]` it finds no IP, so every client shares one bucket per path.
+- `getTrustedIpHeaders` feeds the same `TRUSTED_PROXY` value to Better Auth's `ipAddressHeaders`, so both limiters agree on the client. In hop-count mode, the auth handler overwrites an internal header with the selected address before Better Auth reads it; visitors cannot supply that value. It returns `undefined`, not `[]`, when no proxy is configured. `undefined` lets Better Auth fall back to `x-forwarded-for`. With `[]` it finds no IP, so every client shares one bucket per path.
 
 ## Response contract
 
@@ -92,3 +95,5 @@ A genuinely new tier goes in the `RateLimitTier` union and `tierConfigs` (`satis
 ## Testing
 
 Rate limiting is forced **off** for the whole backend suite (`test-setup.ts` sets `RATE_LIMIT_ENABLED=false`): `RateLimiterDrizzle` issues its own transactions, which bypass PGlite's transaction isolation and break per-test cleanup. A test that wants it constructs the middleware with `{ enabled: true }`, as [rate-limit.test.ts](../src/middleware/rate-limit.test.ts) does, and runs against the shared _isolated_ test database rather than the singleton for the same nested-transaction reason (see the comment on its `beforeAll`).
+
+Integration OAuth routes remain limited through `createApp` even in the suite. Tests exercising those limits use an isolated database and clear `rate_limits` between cases.

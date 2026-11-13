@@ -76,6 +76,19 @@ describe('Rate Limiting', () => {
     expect((await app.handle(requestWithIp('203.0.113.11'))).status).toBe(200)
   })
 
+  it('keys on the trusted hop of a fixed proxy chain and ignores forged leading hops', async () => {
+    const app = new Elysia()
+      .use(createIpTierRateLimit(database, { enabled: true, trustedProxy: 1 }, 'integration-oauth'))
+      .get('/v1/test', () => ({ ok: true }))
+    const requestThroughProxy = (forwarded: string) =>
+      app.handle(new Request('http://localhost/v1/test', { headers: { 'x-forwarded-for': forwarded } }))
+    for (let count = 0; count < 30; count++) {
+      expect((await requestThroughProxy(`192.0.2.${count}, 203.0.113.1`)).status).toBe(200)
+    }
+    expect((await requestThroughProxy('192.0.2.99, 203.0.113.1')).status).toBe(429)
+    expect((await requestThroughProxy('192.0.2.99, 203.0.113.2')).status).toBe(200)
+  })
+
   describe('user-based rate limiting', () => {
     it('should allow requests under the limit for an authenticated user', async () => {
       const app = createTestApp(database, enabledSettings, 'inference', 'user-1')

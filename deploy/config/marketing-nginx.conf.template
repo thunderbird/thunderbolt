@@ -1,0 +1,93 @@
+# All visitors share one public release cache per marketing instance.
+proxy_cache_path /tmp/marketing-releases keys_zone=marketing_releases:1m max_size=10m inactive=7d;
+
+server {
+    listen 8080;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # The latest desktop release as GitHub describes it, looked up at most once every five
+    # minutes per instance. The copy written by the site build answers whenever GitHub cannot.
+    location = /downloads/release.json {
+        if ($request_method !~ ^(GET|HEAD)$) { return 405; }
+
+        # A host held in a variable is resolved when a request needs it, not when nginx loads
+        # this file, so the site starts without DNS. A variable also makes nginx send the URI
+        # exactly as written: a visitor's query string never reaches GitHub, which would act on
+        # it (`?callback=` turns the JSON into a script, which the cache would then share).
+        resolver ${NGINX_LOCAL_RESOLVERS} valid=60s;
+        resolver_timeout 2s;
+        set $release_upstream https://api.github.com;
+        proxy_pass $release_upstream/repos/thunderbird/thunderbolt/releases/latest;
+        proxy_pass_request_headers off;
+        proxy_set_header User-Agent Thunderbolt-Website;
+        proxy_set_header Accept application/vnd.github+json;
+        proxy_ssl_server_name on;
+        proxy_ssl_verify on;
+        proxy_ssl_verify_depth 3;
+        proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 5s;
+
+        proxy_cache marketing_releases;
+        proxy_cache_valid 200 5m;
+        # Any other answer is remembered for a minute, so an instance that GitHub is rate
+        # limiting asks once a minute instead of on every page view.
+        proxy_cache_valid any 1m;
+        proxy_cache_lock on;
+        proxy_cache_lock_timeout 10s;
+        proxy_cache_background_update on;
+        # While GitHub is unreachable or failing, keep serving the last release it described.
+        proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
+        # The upstream is a fixed public resource; visitors cannot vary the cached response.
+        proxy_ignore_headers Cache-Control Expires Set-Cookie Vary;
+        proxy_hide_header Set-Cookie;
+        proxy_hide_header Cache-Control;
+        proxy_hide_header Expires;
+        proxy_hide_header Vary;
+        # GitHub's HSTS policy is for its own domain. Relayed, it would pin this site and every
+        # subdomain of it to HTTPS for a year.
+        proxy_hide_header Strict-Transport-Security;
+        add_header Cache-Control "public, max-age=60";
+        add_header X-Release-Cache $upstream_cache_status;
+        # Every visit to a page with a download button fetches this, and GitHub's description
+        # of a release runs to tens of kilobytes.
+        gzip on;
+        gzip_types application/json;
+        gzip_vary on;
+        proxy_intercept_errors on;
+        error_page 403 404 429 500 502 503 504 = @release_snapshot;
+    }
+
+    location @release_snapshot {
+        try_files /downloads/release.json =503;
+        add_header Cache-Control "public, max-age=60";
+        gzip on;
+        gzip_types application/json;
+        gzip_vary on;
+    }
+
+    # Aggressive caching for static assets (Astro emits hashed filenames, so
+    # immutable is safe — a content change produces a new filename).
+    # No server-level `add_header` directives exist, so this doesn't override anything.
+    location /_astro/ {
+        expires 1y;
+        # nosemgrep: generic.nginx.security.header-redefinition.header-redefinition
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Block source maps — they shouldn't ship publicly. `astro build` only
+    # emits them when explicitly configured, but this is a safety net.
+    location ~* \.map$ {
+        return 404;
+    }
+
+    # Astro emits one .html file per route. Serve the file if it exists, then
+    # try the same path with .html appended (so `/blog/foo` serves `/blog/foo.html`).
+    # Anything else gets the custom 404 page with a 404 status. No SPA-style index.html
+    # fallback — this is a multi-page static site.
+    error_page 404 /404.html;
+    location / {
+        try_files $uri $uri/index.html $uri.html =404;
+    }
+}

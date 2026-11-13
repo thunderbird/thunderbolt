@@ -14,7 +14,7 @@ Guardrails: never edit an existing migration SQL or snapshot under `backend/driz
 `scripts/create-release.ts`) or any `.po` catalog (model names are reconciled by hash, never
 translated). Never run bare `bun test` at the repo root. Pin pi-ai where it is: items 16 and 17
 alias a model Pi's catalog lacks, and a dependency bump ships as its own PR. Never commit; the
-developer runs `/thunderpush`.
+developer runs `/thunder-push`.
 
 `AGENTS.md` (Testing, After Each Task), `backend/docs/testing.md` and
 `docs/internals/development/testing.md` bind every test the swap touches; read them before writing

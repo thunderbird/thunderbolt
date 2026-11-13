@@ -185,8 +185,8 @@ The Team Lead (you, the orchestrator):
 1. Reviews all implemented code for integration issues
 2. Verifies module interfaces align
 3. Runs `make check`, `bun run test` and `bun run test:backend` across the full project
-4. Runs the `thunderimprove` skill on the combined diff
-5. Commits with `thunderpush` and creates the PR per [pr-workflow.md](pr-workflow.md)
+4. Runs the `thunder-improve` skill on the combined diff
+5. Commits with `thunder-push` and creates the PR per [pr-workflow.md](pr-workflow.md)
 
 ---
 

@@ -17,12 +17,12 @@ identified target checkout into the snapshot. Copy without showing contents; avo
 `env`, `cat .env`, shell tracing, or `docker compose config` output. An env source that
 is not ignored requires a safer private configuration path, not tracked edits.
 
-Read Makefile, `.agents/skills/thunderup/SKILL.md`, `.agents/skills/thunderdoctor/SKILL.md`
+Read Makefile, `.agents/skills/thunder-up/SKILL.md`, `.agents/skills/thunder-doctor/SKILL.md`
 and `.github/qa/scripts/stack.sh` before selecting an existing bootstrap. `make setup`
-installs frontend/backend dependencies; use it only in a snapshot. The `thunderup`
+installs frontend/backend dependencies; use it only in a snapshot. The `thunder-up`
 skill with `all` reaches `make run`, which kills listeners on 8000/1420. `make dev`,
 `dev-desktop`, `dev-ios`, `dev-android` also contain listener-killing/generated-file
-behavior: launch individual owned processes instead. The `thunderdoctor` skill can
+behavior: launch individual owned processes instead. The `thunder-doctor` skill can
 rewrite env files: warn before running it and constrain repairs to the snapshot.
 
 ## Bring-up

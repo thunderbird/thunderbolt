@@ -141,7 +141,7 @@ Success criteria:
 
 ### 3. Review
 
-Run the `thunderimprove` skill. It reviews the diff with `thunder-deep-review` and applies the obvious fixes.
+Run the `thunder-improve` skill. It reviews the diff with `thunder-deep-review` and applies the obvious fixes.
 
 ### 4. Test Subagent
 

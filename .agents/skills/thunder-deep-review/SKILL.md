@@ -157,7 +157,7 @@ For each Pass-A candidate, KEEP it only if it can **(1) quote the exact offendin
 
 ### 5. Noise suppression (mandatory — but never at the cost of a real rule-cited finding)
 - The nit cap is **LOCAL-only**: it applies **only to purely cosmetic nits that carry no `R-*`/`INV-*` id** (e.g. spacing/wording taste): surface at most 5, append "plus N similar". In CI there is NO nit cap — emit every grounded nit as a candidate (the gate owns volume control). **Any finding that cites a real rule or invariant id is ALWAYS surfaced — never capped, collapsed, or dropped for volume.** A convention violation (camelCase, `let`, naming, JSDoc, deps-object, `.then/.catch`) and a docs-intent catch (undocumented marker/constant) are rule-grounded findings, not cosmetic nits.
-- **Skip** (in BOTH modes) only what `/thundercheck` (eslint/prettier/tsc) mechanically auto-fixes (pure formatting/import-order), generated files, `*.lock` (incl. `bun.lock`), auto-generated Drizzle SQL, vendored deps. Do NOT skip naming, typing, error-handling, or structural conventions — those are not auto-fixed.
+- **Skip** (in BOTH modes) only what `/thunder-check` (eslint/prettier/tsc) mechanically auto-fixes (pure formatting/import-order), generated files, `*.lock` (incl. `bun.lock`), auto-generated Drizzle SQL, vendored deps. Do NOT skip naming, typing, error-handling, or structural conventions — those are not auto-fixed.
 - Lead with **"No blocking issues"** when true (but only after the full per-hunk scan — an empty list on a non-trivial diff almost always means you skimmed).
 
 ### 6. Self-validation gate

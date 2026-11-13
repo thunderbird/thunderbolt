@@ -1,12 +1,12 @@
 # PR Workflow Reference
 
-Creating and finalizing ThunderBot's pull requests (Phases 8-9). The CI and review fix loop (Phase 10) lives in one place, the `thunderfix` skill.
+Creating and finalizing ThunderBot's pull requests (Phases 8-9). The CI and review fix loop (Phase 10) lives in one place, the `thunder-fix` skill.
 
 ---
 
 ## PR Creation (Draft)
 
-After the first meaningful commit has been pushed with `thunderpush`:
+After the first meaningful commit has been pushed with `thunder-push`:
 
 ```bash
 cd "$WORKTREE_PATH"
@@ -69,4 +69,4 @@ linear issue comment add <IDENTIFIER> --body "[Thunderbot] PR ready for review: 
 linear issue update <IDENTIFIER> --state "In Review"
 ```
 
-Then run the `thunderfix` skill for CI and review feedback.
+Then run the `thunder-fix` skill for CI and review feedback.

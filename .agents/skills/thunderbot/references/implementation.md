@@ -228,11 +228,11 @@ Always run this sequence before pushing. Each step must pass before the next:
 
 1. **`make check`** -- Type checking, linting, formatting. Fix failures: `make lint-fix`, `make format`.
 2. **`bun run test` + `bun run test:backend`** -- Run the frontend/shared suite and the backend suite. Fix any failures.
-3. **`thunderimprove`** -- Review changes for quality, security, and maintainability. Apply fixes, then re-run steps 1-2 if changes were made.
-4. **`thunderpush`** -- Atomic, conventional commit via the push skill.
-5. **`thunderfix`** -- Monitor CI and address any PR feedback.
+3. **`thunder-improve`** -- Review changes for quality, security, and maintainability. Apply fixes, then re-run steps 1-2 if changes were made.
+4. **`thunder-push`** -- Atomic, conventional commit via the push skill.
+5. **`thunder-fix`** -- Monitor CI and address any PR feedback.
 
-Never skip steps. Commit only through `thunderpush`.
+Never skip steps. Commit only through `thunder-push`.
 
 ### Test commands
 

@@ -14,34 +14,34 @@ Two skills run only when you name them, because they act without supervision or 
 
 | Skill | What it does | Needs |
 | --- | --- | --- |
-| `thunderup` | Sets up the dev environment: checks your tools, installs dependencies and starts the Docker stack. With `all` it also starts the backend and Vite. Given a ticket or a branch, it creates a worktree first. | make, Docker, bun |
-| `thunderdown` | Stops this checkout's containers. The data volumes are kept. | make, Docker |
-| `thunderdoctor` | Runs `make doctor` and explains how to install whatever is missing. | make |
-| `thundercheck` | Runs the type, lint and format checks and fixes what fails. | make, bun |
-| `thunderclean` | Deletes build output in the current checkout: `dist`, `src-tauri/target` and `node_modules`. | make |
+| `thunder-up` | Sets up the dev environment: checks your tools, installs dependencies and starts the Docker stack. With `all` it also starts the backend and Vite. Given a ticket or a branch, it creates a worktree first. | make, Docker, bun |
+| `thunder-down` | Stops this checkout's containers. The data volumes are kept. | make, Docker |
+| `thunder-doctor` | Runs `make doctor` and explains how to install whatever is missing. | make |
+| `thunder-check` | Runs the type, lint and format checks and fixes what fails. | make, bun |
+| `thunder-clean-build` | Deletes build output in the current checkout: `dist`, `src-tauri/target` and `node_modules`. | make |
 
 ### Worktrees and cleanup
 
 | Skill | What it does | Needs |
 | --- | --- | --- |
-| `thunderin` | Creates or reuses a worktree for a `THU-n` ticket or a branch. It can also install dependencies or start the stack inside it. | git, the `linear` CLI for tickets |
+| `thunder-in` | Creates or reuses a worktree for a `THU-n` ticket or a branch. It can also install dependencies or start the stack inside it. | git, the `linear` CLI for tickets |
 | `thunder-cleanup` | After a PR merges, removes what its task left on the machine: the worktree, the local branch, Docker containers and volumes, simulators it created, build caches and validation scratch. It lists everything with sizes and asks once before deleting. `merged` cleans every worktree whose PR has merged. It never touches other worktrees, shared caches or agent conversation history. | git, gh, Docker |
-| `thunderout` | Leaves the current worktree by running `thunder-cleanup` on it. | as `thunder-cleanup` |
+| `thunder-out` | Leaves the current worktree by running `thunder-cleanup` on it. | as `thunder-cleanup` |
 
 ### Commits and pull requests
 
 | Skill | What it does | Needs |
 | --- | --- | --- |
-| `thunderpush` | Stages files by name, writes a conventional commit and pushes. `AGENTS.md` requires it for every commit. | git |
-| `thunderfix` | Gathers the open review threads, PR comments and failing CI on the current PR, fixes them in one batch and waits for CI. Then it replies to and resolves each thread. | gh, bun |
-| `thunderfeedback` | Turns your feedback into a GitHub issue labeled `feedback`. Issues are public, so it asks before posting. | gh |
+| `thunder-push` | Stages files by name, writes a conventional commit and pushes. `AGENTS.md` requires it for every commit. | git |
+| `thunder-fix` | Gathers the open review threads, PR comments and failing CI on the current PR, fixes them in one batch and waits for CI. Then it replies to and resolves each thread. | gh, bun |
+| `thunder-feedback` | Turns your feedback into a GitHub issue labeled `feedback`. Issues are public, so it asks before posting. | gh |
 
 ### Review and security
 
 | Skill | What it does | Needs |
 | --- | --- | --- |
 | `thunder-deep-review` | Reviews a PR or branch against the house rules and the 80 architecture invariants, and reports findings without editing code. It chooses which review lanes to run from the changed files. CI runs it on every PR through `.github/workflows/thunder-deep-review.yml`. | an agent that can start subagents (it falls back to slower sequential passes) |
-| `thunderimprove` | Runs `thunder-deep-review` on your branch. If you ask, it applies the findings that have an obvious fix and runs the checks again. | as `thunder-deep-review` |
+| `thunder-improve` | Runs `thunder-deep-review` on your branch. If you ask, it applies the findings that have an obvious fix and runs the checks again. | as `thunder-deep-review` |
 | `thunder-red-team` | Tries to break the end-to-end encryption claims in `docs/internals/architecture/e2ee-threat-model.md`. It can sweep every area, run one pass, turn a finding into an executable attack spec, or attack a running local stack. | a local stack for live attacks, Playwright for attack specs |
 
 ### Validation and performance
@@ -62,7 +62,7 @@ Two skills run only when you name them, because they act without supervision or 
 
 | Skill | What it does | Needs |
 | --- | --- | --- |
-| `thunder-update-model` | Replaces a built-in model in the catalog end to end and hands back a branch ready for `thunderpush`. | gh, git |
+| `thunder-update-model` | Replaces a built-in model in the catalog end to end and hands back a branch ready for `thunder-push`. | gh, git |
 | `thunder-demo-videos` | Records real desktop, mobile and CLI demos of the app, edits their pacing and exports them for the website (`web/demo-edits.json`, `web/public`). | macOS window capture, Python, bun |
 
 ## Cleanup ledger
@@ -71,9 +71,10 @@ When a skill creates something outside the worktree, such as a repo snapshot, a 
 
 ## Adding a skill
 
-1. Create `.agents/skills/<name>/SKILL.md`. Use only `name` and `description` in the frontmatter (plus the flag in step 5 when it applies), and put the phrases that should trigger the skill in `description`.
-2. Link it for Claude Code: `ln -s ../../.agents/skills/<name> .claude/skills/<name>`.
-3. Add `!.claude/skills/<name>` to `.gitignore`. Without it the link stays untracked.
-4. Do not name a model. When the skill asks the user something, delegates, uses a worktree or runs work in parallel, add a "Harness notes" table like the one in `thunder-update-model`.
-5. To make it run only when named, add `disable-model-invocation: true` to the frontmatter and an `agents/openai.yaml` with `policy: { allow_implicit_invocation: false }` for Codex.
-6. Add a row to this README.
+1. Name it `thunder-<words>`: lowercase, words joined by hyphens, and the same as its folder. The prefix avoids clashes: in Claude Code a personal skill wins over a project skill with the same name, so a plain `cleanup` could be hidden. `thunderbot` and `thunderbot-daemon` keep the ThunderBot name.
+2. Create `.agents/skills/<name>/SKILL.md`. Use only `name` and `description` in the frontmatter (plus the flag in step 6 when it applies), and put the phrases that should trigger the skill in `description`.
+3. Link it for Claude Code: `ln -s ../../.agents/skills/<name> .claude/skills/<name>`.
+4. Add `!.claude/skills/<name>` to `.gitignore`. Without it the link stays untracked.
+5. Do not name a model. When the skill asks the user something, delegates, uses a worktree or runs work in parallel, add a "Harness notes" table like the one in `thunder-update-model`.
+6. To make it run only when named, add `disable-model-invocation: true` to the frontmatter and an `agents/openai.yaml` with `policy: { allow_implicit_invocation: false }` for Codex.
+7. Add a row to this README.

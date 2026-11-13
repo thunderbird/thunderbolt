@@ -19,8 +19,8 @@ Every non-draft pull request from a branch in this repository (Dependabot except
 ## Can it block my merge? No
 
 `event: 'COMMENT'` is the only event the orchestrator sends (`.github/scripts/review-orchestrator.mjs`),
-so a finding is feedback, not a CI failure; `/thunderfix`
-([`.agents/skills/thunderfix/SKILL.md`](../../../.agents/skills/thunderfix/SKILL.md)) treats it that way. Reply in the thread if a finding
+so a finding is feedback, not a CI failure; `/thunder-fix`
+([`.agents/skills/thunder-fix/SKILL.md`](../../../.agents/skills/thunder-fix/SKILL.md)) treats it that way. Reply in the thread if a finding
 is wrong; a thread you resolve yourself stays resolved (see [Convergence](#convergence-across-pushes)).
 
 Fail-soft on purpose: a missing review is acceptable, a broken or duplicated one is not.
@@ -192,7 +192,7 @@ The skill reads its mode from the invoking prompt. Locally there is **no precisi
 report (per `assets/finding-template.md`) is the final artifact and the skill filters itself: precision pass, recall
 floors, a nit cap, self-validation. In CI it skips that and hands everything grounded to the gate.
 
-`thunderimprove` ([`.agents/skills/thunderimprove/SKILL.md`](../../../.agents/skills/thunderimprove/SKILL.md)) runs this
+`thunder-improve` ([`.agents/skills/thunder-improve/SKILL.md`](../../../.agents/skills/thunder-improve/SKILL.md)) runs this
 skill and can then apply the fixes and re-run the checks; `thunder-deep-review` itself never edits.
 
 ## Things that will bite

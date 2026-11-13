@@ -151,10 +151,5 @@ export default defineConfig({
 		// production runtime from replacing a running dev server's cached runtime.
 		cacheDir: `./node_modules/.vite/${process.env.NODE_ENV === 'production' ? 'production' : 'development'}`,
 		plugins: [tailwindcss()],
-		server: {
-			proxy: {
-				'/v1/contact': { target: process.env.CONTACT_API_TARGET || 'http://127.0.0.1:8000', changeOrigin: true },
-			},
-		},
 	},
 });

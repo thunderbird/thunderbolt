@@ -7,6 +7,8 @@ import './spark-chrome.css'
 import { productLinks } from '../../../data/website-product'
 import { useSparkHeaderState } from './use-spark-header-state'
 import { SiteThemeToggle } from '../../site-theme/site-theme-toggle'
+import { HeaderDownload } from '../download/header-download'
+import type { useDownloadState } from '../download/use-download-state'
 
 const primaryPages = [
   { label: 'Privacy', href: '/privacy/' },
@@ -20,11 +22,12 @@ const morePages = [
 ] as const
 
 type SparkHeaderProps = {
+  downloads: ReturnType<typeof useDownloadState>
   currentPage?: (typeof primaryPages | typeof morePages)[number]['label']
   as?: 'header' | 'div'
 }
 
-export const SparkHeader = ({ currentPage, as: Element = 'header' }: SparkHeaderProps) => {
+export const SparkHeader = ({ currentPage, as: Element = 'header', downloads }: SparkHeaderProps) => {
   const { isOpen, toggleNavigation, closeNavigation, onNavigationBlur, navigationRef, triggerRef } =
     useSparkHeaderState()
   const panelId = useId()
@@ -104,9 +107,7 @@ export const SparkHeader = ({ currentPage, as: Element = 'header' }: SparkHeader
       </nav>
       <div className="spark-header-actions">
         <SiteThemeToggle />
-        <a className="spark-nav-cta" href={productLinks.download}>
-          Download <span aria-hidden="true">↓</span>
-        </a>
+        <HeaderDownload {...downloads} />
       </div>
     </Element>
   )

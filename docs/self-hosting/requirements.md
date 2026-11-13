@@ -107,7 +107,7 @@ Kubernetes and AWS publish no host ports. Traffic arrives at the ingress or load
 | `api.anthropic.com`                                  | Backend      | `ANTHROPIC_API_KEY` is set                  |
 | `inference.tinfoil.sh`                               | Backend      | Confidential models are in use              |
 | `api.exa.ai`                                         | Backend      | `EXA_API_KEY` is set, for web search        |
-| `api.resend.com`                                     | Backend      | `RESEND_API_KEY` is set, for sign-in email and website contact notifications |
+| `api.resend.com`                                     | Backend      | `RESEND_API_KEY` is set, for sign-in email |
 | `us.i.posthog.com`                                   | Backend, app | `POSTHOG_API_KEY` is set                    |
 | Your OTLP collector                                  | Backend      | `OTEL_EXPORTER_OTLP_ENDPOINT` is set        |
 | `api.open-meteo.com`, `geocoding-api.open-meteo.com` | App, backend | Weather and location results                |
@@ -174,7 +174,7 @@ The published desktop and mobile apps connect to Thunderbolt's hosted service. P
 | Keycloak              | You already run an OIDC or SAML identity provider                                                                                            |
 | Marketing site        | You do not need the public landing page and docs alongside the app                                                                           |
 | Multi-device sync     | Users only ever work on one device. Leave the sync service out and the app still works                                                       |
-| Transactional email   | You sign users in through an identity provider. Email is only used for code and magic-link sign-in and the website contact form                                           |
+| Transactional email   | You sign users in through an identity provider. Email is only used for code and magic-link sign-in                                           |
 | Analytics and tracing | Unset the PostHog and OpenTelemetry variables and nothing is sent                                                                            |
 | Web search            | Unset the Exa key and the web search tool is unavailable                                                                                     |
 | End-to-end encryption | Off by default. Turning it on requires each device to be approved before it syncs                                                            |

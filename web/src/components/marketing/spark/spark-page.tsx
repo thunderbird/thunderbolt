@@ -54,7 +54,7 @@ export const SparkPage = ({ release }: { release: DownloadRelease }) => {
       <a className="spark-skip" href="#spark-main">
         Skip to content
       </a>
-      <SparkHeader />
+      <SparkHeader downloads={downloads} />
       <main id="spark-main">
         <section className="spark-hero" aria-labelledby="spark-title">
           <div className="spark-hero-heading spark-shell">

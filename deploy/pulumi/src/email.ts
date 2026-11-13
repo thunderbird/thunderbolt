@@ -7,16 +7,12 @@ import * as pulumi from '@pulumi/pulumi'
 
 export type EmailConfig = {
   from?: string
-  contactEmailTo?: string
   resendApiKey?: pulumi.Output<string>
 }
 
 /** Configure backend email without putting the sending key in the task definition. */
 export const createBackendEmail = (name: string, role: pulumi.Input<string>, config: EmailConfig = {}) => {
-  const environment = [
-    ...(config.from ? [{ name: 'EMAIL_FROM', value: config.from }] : []),
-    ...(config.contactEmailTo ? [{ name: 'CONTACT_EMAIL_TO', value: config.contactEmailTo }] : []),
-  ]
+  const environment = config.from ? [{ name: 'EMAIL_FROM', value: config.from }] : []
   if (!config.resendApiKey) return { environment, secrets: [], dependencies: [] }
 
   const secret = new aws.secretsmanager.Secret(`${name}-resend-api-key`, {

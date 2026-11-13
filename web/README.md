@@ -41,7 +41,9 @@ The shared header shows Privacy, Enterprise, and Docs directly when space permit
 
 ## Deploys
 
-The site ships as a container image, not a hosted static-site service. `deploy/docker/marketing.Dockerfile` builds it and **must run with the repo root as its build context** — the docs loader reads `../docs`, so the Dockerfile copies both `web/` and the root `docs/` into the build. `.github/workflows/images-publish.yml` publishes the result as `ghcr.io/thunderbird/thunderbolt/thunderbolt-marketing`; the final stage is nginx-unprivileged listening on 8080 with `deploy/config/marketing-nginx.conf.template`, deployed by `deploy/k8s/templates/marketing.yaml`. All surfaces (landing, enterprise, contact, blog, docs) are served from one origin at `thunderbolt.io` under subpaths.
+The production marketing site is a Render Static Site. Set build-time variables such as `PUBLIC_CONTACT_ENDPOINT` on that service and rebuild to apply changes. Its contact delivery runs separately in the Cloudflare Worker described below.
+
+A container image is also available for Kubernetes and preview deployments. `deploy/docker/marketing.Dockerfile` builds it and **must run with the repo root as its build context** — the docs loader reads `../docs`, so the Dockerfile copies both `web/` and the root `docs/` into the build. `.github/workflows/images-publish.yml` publishes the result as `ghcr.io/thunderbird/thunderbolt/thunderbolt-marketing`; the final stage is nginx-unprivileged listening on 8080 with `deploy/config/marketing-nginx.conf.template`, deployed by `deploy/k8s/templates/marketing.yaml`. Container builds can set `PUBLIC_CONTACT_ENDPOINT` as a Docker build argument. All surfaces (landing, enterprise, contact, blog, docs) share one origin under subpaths.
 
 ## Content
 
@@ -70,25 +72,22 @@ The current source directory contains the `smooth/` GUI recordings and `cli-natu
 
 ## Contact form delivery
 
-The contact form posts to the backend's public `POST /v1/contact` endpoint. It sends an internal notification through Resend; it does not subscribe visitors to a mailing list. Configure these **backend** environment variables:
+Marketing inquiries are handled by the independent Cloudflare Worker in
+[`contact-worker/`](contact-worker/README.md). The website stays static on Render;
+no contact endpoint, credentials, or recipient configuration belong on the Thunderbolt AI backend.
 
-- `CONTACT_EMAIL_TO`: the inbox that receives inquiries. There is no default; leaving it unset disables delivery and returns an unavailable response.
-- `RESEND_API_KEY`: the existing transactional-email API key.
-- `EMAIL_FROM`: a sender on a domain verified in your Resend account.
+Set `PUBLIC_CONTACT_ENDPOINT` on the **Render marketing static site**, then rebuild:
+`https://thunderbolt-contact.<your-workers-subdomain>.workers.dev/api/contact`.
+This is a public URL, not a secret. Unconfigured development/preview builds report
+that contact is unavailable without sending a request. Preview origins are not
+allowed by the production Worker; use a separate Worker for preview delivery.
 
-Visitors can supply only their contact details and message. The recipient and subject are fixed by the server. Requests are limited to three per hour per client IP, even when general application rate limiting is disabled. Configure `TRUSTED_PROXY` for the deployment's actual ingress/proxy so unrelated visitors do not share one limit; never trust arbitrary forwarded headers. A fixed single nginx/ALB hop uses `TRUSTED_PROXY=1`; multiple hops require the exact count and an origin reachable only through that fixed chain.
-
-For Kubernetes, set `backend.env.trustedProxy` for your ingress and use `backend.email.contactTo`, `backend.email.from`, and `backend.email.resendApiKeyBase64`. The marketing hostname routes only the exact `/v1/contact` path to the backend; the rest remains static. Supply secrets through your normal deployment secret workflow, not committed values files.
-
-Fargate routes the exact `/v1/contact` path on the marketing hostname to the backend. PR preview image builds set `PUBLIC_CONTACT_ENDPOINT` to that preview’s API URL; the preview backend already permits its marketing origin.
-
-During `bun run dev`, Vite proxies `/v1/contact` to `http://127.0.0.1:8000`. Set `CONTACT_API_TARGET` to use another local backend. Static preview servers do not provide the API. On other hosting platforms, configure the same reverse-proxy route or set `PUBLIC_CONTACT_ENDPOINT` at build time to your backend URL and include the site's origin in backend CORS configuration. Only that public URL belongs in the website build; never expose a Resend key through a `PUBLIC_` variable.
-
-The UI reports success only after Resend accepts the message. Delivery to the final inbox can still bounce or be filtered; monitor that through Resend. Automated tests mock the mail provider and do not send email.
+See the [deployment walkthrough](contact-worker/README.md) for Cloudflare setup,
+Resend secrets, automated deployments, local testing, and the migration order.
 
 ## Desktop download metadata
 
-The homepage and download page embed the latest stable release during the Astro build, so the download button does not wait for a network request. The build shares one GitHub lookup across both pages and `/downloads/release.json`, and uses `src/data/download-release.json` as a last-known-good fallback if GitHub is unavailable or returns invalid metadata. This lets unrelated website fixes and local development continue during an outage. The fallback is build-only; it does not replace the live shared cache. Refresh the bundled snapshot periodically when updating the website.
+The homepage and download page embed the latest stable release during the Astro build, so the download button does not wait for a network request. The build shares one GitHub lookup across both pages and `/downloads/release.json`, and uses `src/data/download-release.json` as a last-known-good fallback if GitHub is unavailable or returns invalid metadata. This lets unrelated website fixes and local development continue during an outage. The fallback is build-only; container deployments also have the runtime cache described below. Refresh the bundled snapshot periodically when updating the website.
 
 To build without asking GitHub (offline, or from an address it is rate limiting), save its answer first. The build reads `release-snapshot.json` in this directory when the file exists; it is git-ignored:
 
@@ -98,14 +97,16 @@ gh api repos/thunderbird/thunderbolt/releases/latest > release-snapshot.json
 
 CI attempts an authenticated lookup before every build, in `web.yml` and `images-publish.yml`, because hosted runners share the addresses GitHub rate limits anonymous lookups by. If that lookup fails, the build can still use the bundled snapshot. An explicitly supplied malformed snapshot fails validation rather than hiding a broken build input.
 
-Browsers refresh from **`/downloads/release.json` on the website origin**, never directly from GitHub. The marketing nginx container (`deploy/config/marketing-nginx.conf.template`) caches the fixed public GitHub latest-release response for five minutes, coalesces concurrent cache misses, and refreshes expired entries in the background. Each marketing instance has its own cache. No release webhook or website redeployment is needed for routine release updates.
+Browsers refresh from **`/downloads/release.json` on the website origin**, never directly from GitHub.
 
-The lookup is optional at run time. The container starts without DNS, and whenever GitHub cannot answer, visitors get the build's snapshot from the same URL:
+**Render Static Site (production):** this URL serves the metadata generated by the latest website build. New app releases require a website rebuild to refresh it; a release-triggered build or a shared proxy would be needed for automatic updates between builds. Astro dev and other static-only hosts behave the same way.
+
+**Optional container hosting:** the marketing nginx container (`deploy/config/marketing-nginx.conf.template`) caches the fixed public GitHub latest-release response for five minutes, coalesces concurrent cache misses, and refreshes expired entries in the background. Each marketing instance has its own cache. No release webhook or website redeployment is needed for routine release updates.
+
+In container deployments, the lookup is optional at run time. The container starts without DNS, and whenever GitHub cannot answer, visitors get the build's snapshot from the same URL:
 
 - If GitHub is unreachable or returns a server error, a release the instance has already cached stays in use, and each request retries in the background.
 - Any other failure is remembered for a minute and answered with the build's snapshot, which can be one release behind: a rate limit, a missing release, or an outage before anything was cached. A rate-limited instance therefore asks GitHub once a minute rather than on every page view.
 - Nothing of a visitor's request reaches GitHub: no headers, cookies, or query string. GitHub's own caching and transport headers are not passed back.
-
-Astro dev and static-only hosting serve the build snapshot at that URL. Other production hosts must provide the equivalent shared cache/reverse proxy to keep release metadata fresh between builds.
 
 `deploy/config/marketing-nginx.test.ts` runs the real config in Docker against a stand-in for GitHub; the `Frontend Serving` workflow runs it. See [Frontend HTTP serving](../docs/internals/development/testing.md#frontend-http-serving).

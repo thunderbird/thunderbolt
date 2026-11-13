@@ -228,8 +228,6 @@ jobs:
         with:
           context: .
           file: deploy/docker/marketing.Dockerfile
-          build-args: |
-            PUBLIC_CONTACT_ENDPOINT=${{ inputs.vite_backend_url && format('{0}/contact', inputs.vite_backend_url) || '/v1/contact' }}
           push: true
           no-cache: true
           # Buildx's container driver attaches provenance attestations by

@@ -6,7 +6,8 @@ import { productLinks } from '../../../data/website-product'
 import { SparkBurst } from './spark-burst'
 import { SparkEnterprisePartnership } from './spark-enterprise-partnership'
 import { SparkFooter } from './spark-footer'
-import { SparkHeader } from './spark-header'
+import { SiteHeader } from './site-header'
+import type { DownloadRelease } from '../download/downloads'
 import '@fontsource-variable/lora'
 import './spark.css'
 import './spark-enterprise.css'
@@ -17,12 +18,12 @@ const deploymentOptions = [
   { name: 'AWS', href: productLinks.aws },
 ] as const
 
-export const SparkEnterprisePage = () => (
+export const SparkEnterprisePage = ({ release }: { release: DownloadRelease }) => (
   <div className="spark-page">
     <a className="spark-skip" href="#enterprise-main">
       Skip to content
     </a>
-    <SparkHeader currentPage="Enterprise" />
+    <SiteHeader currentPage="Enterprise" release={release} />
     <main id="enterprise-main">
       <section className="spark-enterprise-hero spark-shell">
         <h1>

@@ -43,7 +43,7 @@ helm unittest deploy/k8s
 
 ### AWS deployment routing
 
-`cd deploy/pulumi && bun run test && bun run typecheck` checks the Pulumi stack with mocked cloud resources; it does not deploy anything or need AWS credentials. CI runs this suite when `deploy/pulumi/**` changes. The ALB test evaluates rule precedence for the contact endpoint, normal marketing pages, API hosts, and path-based fallback. The root suite's release-workflow checks cover the preview image's contact-endpoint build argument.
+`cd deploy/pulumi && bun run test && bun run typecheck` checks the Pulumi stack with mocked cloud resources; it does not deploy anything or need AWS credentials. CI runs this suite when `deploy/pulumi/**` changes. The ALB test verifies marketing stays separate from API hosts, including the retired contact path, and checks path-based fallback. The root suite's release-workflow checks ensure preview marketing images do not send inquiries to the AI backend.
 
 ### Website and demo tooling
 
@@ -465,3 +465,7 @@ bun test --cwd=deploy/config --timeout 5000
 ```
 
 Use this working directory so the frontend's Happy DOM preload does not replace the HTTP client. The tests create and remove their own containers and temporary files; they do not need the backend or a real build.
+
+## Marketing contact Worker
+
+From `web/contact-worker`, run `bun run test`, `bun run check`, and `bun run build`. The build is a local Wrangler dry run; it does not deploy. Tests mock Resend and the rate-limit bindings, covering input limits, origin checks, throttling, provider failures, and acknowledgements without sending email. The Contact Worker workflow runs these checks independently of Astro. See [deployment and runtime verification](https://github.com/thunderbird/thunderbolt/tree/main/web/contact-worker).

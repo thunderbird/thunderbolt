@@ -2,10 +2,11 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
+import { getReleaseSnapshot } from '../server/release-snapshot';
 import '../styles/spark-editorial.css';
 import '@fontsource-variable/lora';
 import SiteHead from '../components/SiteHead.astro';
-import { SparkHeader } from '../components/marketing/spark/spark-header';
+import { SiteHeader } from '../components/marketing/spark/site-header';
 import { SparkFooter } from '../components/marketing/spark/spark-footer';
 
 type Props = {
@@ -24,6 +25,7 @@ const {
 	ogImage = 'https://thunderbolt.io/social.png',
 	ogType = 'website',
 } = Astro.props;
+const { release } = await getReleaseSnapshot();
 ---
 
 <!doctype html>
@@ -33,7 +35,7 @@ const {
 	</head>
 	<body>
 		<a class="spark-skip" href="#main-content">Skip to content</a>
-		<SparkHeader currentPage="Blog" client:load />
+		<SiteHeader release={release} currentPage="Blog" client:load />
 		<main id="main-content" class="spark-shell">
 			<slot />
 		</main>

@@ -28,13 +28,6 @@ spec:
     - host: {{ .marketing }}
       http:
         paths:
-          - path: /v1/contact
-            pathType: Exact
-            backend:
-              service:
-                name: backend
-                port:
-                  number: {{ $.Values.backend.service.port }}
           - path: /
             pathType: Prefix
             backend:

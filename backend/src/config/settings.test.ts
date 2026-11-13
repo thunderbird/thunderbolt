@@ -46,40 +46,6 @@ describe('Config Settings', () => {
     })
   })
 
-  describe('contact inbox', () => {
-    let saved: string | undefined
-    beforeEach(() => {
-      saved = process.env.CONTACT_EMAIL_TO
-      clearSettingsCache()
-    })
-    afterEach(() => {
-      if (saved === undefined) {
-        delete process.env.CONTACT_EMAIL_TO
-      } else {
-        process.env.CONTACT_EMAIL_TO = saved
-      }
-      clearSettingsCache()
-    })
-    it('has no default destination when absent or blank', () => {
-      delete process.env.CONTACT_EMAIL_TO
-      expect(getSettings().contactEmailTo).toBeUndefined()
-      process.env.CONTACT_EMAIL_TO = '  '
-      clearSettingsCache()
-      expect(getSettings().contactEmailTo).toBeUndefined()
-    })
-    it('accepts a trimmed single inbox', () => {
-      process.env.CONTACT_EMAIL_TO = ' team@example.org '
-      expect(getSettings().contactEmailTo).toBe('team@example.org')
-    })
-    it('rejects malformed or multiple recipients at startup', () => {
-      for (const value of ['invalid', 'a@example.org,b@example.org', 'a@example.org\r\nBcc: b@example.org']) {
-        process.env.CONTACT_EMAIL_TO = value
-        clearSettingsCache()
-        expect(() => getSettings()).toThrow()
-      }
-    })
-  })
-
   describe('Anthropic base URL', () => {
     let savedEnv: string | undefined
 

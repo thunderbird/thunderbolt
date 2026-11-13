@@ -16,7 +16,6 @@ import { Elysia } from 'elysia'
 export const appVersionExemptPrefixes = [
   '/v1/config',
   '/v1/health',
-  '/v1/contact', // public website form, no app version
   '/static',
   '/v1/api/auth/sso',
   '/v1/api/auth/error', // failed-SSO redirect target

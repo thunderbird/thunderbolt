@@ -41,7 +41,7 @@ test('Markdown images stay inert in chat and attachment previews while local ima
   await expect.poll(() => localImage.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0)
 
   await page.getByTestId('model-selector-trigger').click()
-  await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
+  await page.getByRole('button', { name: `${defaultModelOpus55.name} Thunderbolt`, exact: true }).click()
   await page.keyboard.press('Escape')
   await page.locator('textarea').fill(markdown)
   await page.getByRole('button', { name: 'Send message', exact: true }).click()

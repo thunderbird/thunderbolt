@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { ContentViewProvider } from '@/content-view/context'
-import { docxMime, pptxMime } from '@/files/transformers'
+import { docxMime, pptxMime, xlsxMime } from '@/files/transformers'
 import * as download from '@/lib/download'
 import * as attachmentStorage from '@/lib/file-blob-storage'
 import { getClock } from '@/testing-library'
@@ -15,8 +15,9 @@ import { AssistantMessage } from './assistant-message'
 
 const report = { id: 'file-1', filename: 'report.docx', mimeType: docxMime }
 const deck = { id: 'file-2', filename: 'deck.pptx', mimeType: pptxMime }
+const budget = { id: 'file-3', filename: 'budget.xlsx', mimeType: xlsxMime }
 const bytes = new Uint8Array([80, 75, 3, 4])
-const storedFiles = [report, deck].map((file) => ({
+const storedFiles = [report, deck, budget].map((file) => ({
   ...file,
   size: bytes.byteLength,
   createdAt: 0,
@@ -91,6 +92,13 @@ describe('the chip for a file the agent created', () => {
     expect(screen.getByText('deck.pptx')).toBeDefined()
     expect(screen.getAllByRole('button', { name: /^Download / })).toHaveLength(2)
     expect(container.querySelectorAll('.lucide-presentation')).toHaveLength(1)
+  })
+
+  it('shows a spreadsheet icon for a workbook', async () => {
+    const { container } = await renderMessage(finishedCall({ ok: true, files: [budget], logs: '' }))
+
+    expect(screen.getByRole('button', { name: 'Download budget.xlsx' })).toBeDefined()
+    expect(container.querySelectorAll('.lucide-file-spreadsheet')).toHaveLength(1)
   })
 
   it('marks an edited copy, and only that one', async () => {

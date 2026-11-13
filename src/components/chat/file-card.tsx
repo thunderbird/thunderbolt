@@ -5,8 +5,8 @@
 import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
-import { pptxMime } from '@/files/transformers'
-import { FileText, Presentation, X } from 'lucide-react'
+import { pptxMime, xlsmMime, xlsxMime } from '@/files/transformers'
+import { FileSpreadsheet, FileText, Presentation, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { DeferredPdfThumbnail } from './deferred-pdf-thumbnail'
 import { DocxThumbnail } from './docx-thumbnail'
@@ -33,6 +33,13 @@ type FileCardProps = {
   /** A short line under the card, such as why the file can't be opened here. */
   note?: ReactNode
 }
+
+/** The icon a card shows while it has no preview, by file type. */
+const placeholderIcons = new Map([
+  [pptxMime, Presentation],
+  [xlsxMime, FileSpreadsheet],
+  [xlsmMime, FileSpreadsheet],
+])
 
 /** Human label for a non-native delivery mode. */
 const deliverAsLabel: Record<'text' | 'images', MessageDescriptor> = {
@@ -77,7 +84,7 @@ export const FileCard = ({
 }: FileCardProps) => {
   const { i18n } = useLingui()
   const ext = filename.split('.').pop()?.toLowerCase()
-  const PlaceholderIcon = mimeType === pptxMime ? Presentation : FileText
+  const PlaceholderIcon = placeholderIcons.get(mimeType) ?? FileText
   const isPdf = mimeType === 'application/pdf'
   const isImage = mimeType.startsWith('image/')
   const isMarkdown = mimeType === 'text/markdown' || ext === 'md' || ext === 'markdown'

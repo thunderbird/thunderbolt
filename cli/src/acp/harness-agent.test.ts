@@ -12,7 +12,9 @@
  */
 
 import { afterAll, beforeAll, describe, expect, spyOn, test } from 'bun:test'
-import { realpath } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { AgentSideConnection, ClientSideConnection, PROTOCOL_VERSION, ndJsonStream } from '@agentclientprotocol/sdk'
 import type { Client, RequestPermissionRequest, SessionNotification, Stream } from '@agentclientprotocol/sdk'
 import type {
@@ -22,8 +24,9 @@ import type {
   ToolCallResult,
 } from '@earendil-works/pi-agent-core'
 import { buildWireSkillsMeta, skillsCapabilityMeta, type SkillDefinition } from '../../../shared/agent-core/skills.ts'
-import { createHarnessAgent } from './harness-agent.ts'
+import { createHarnessAgent, resolveTrustedWorkspace } from './harness-agent.ts'
 import type { BuildServeHarness } from './harness-agent.ts'
+import { createSessionStore } from './session-store.ts'
 import type { SessionStore } from './session-store.ts'
 import type { ReasoningEffort } from '../../../shared/reasoning-effort.ts'
 import type { CommandSyntaxServeConfig } from '../agent/types.ts'
@@ -212,6 +215,80 @@ describe('createHarnessAgent (ACP server)', () => {
     // A resumed session is live: a prompt against it succeeds.
     const prompt = await client.prompt({ sessionId: threadId, prompt: [{ type: 'text', text: 'hi' }] })
     expect(prompt.stopReason).toBe('end_turn')
+  })
+
+  test('session/resume never opens a session created in another workspace that shares its session directory', async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), 'thunderbolt-workspaces-')))
+    const victimDir = join(base, 'a', 'b')
+    const collidingDir = join(base, 'a\\b')
+    await mkdir(victimDir, { recursive: true })
+    await mkdir(collidingDir)
+    const store = createSessionStore(join(base, 'sessions'))
+    const sessionId = '66666666-6666-4666-8666-666666666666'
+    const victim = await store.createSession(sessionId, victimDir)
+    await victim.appendMessage({ role: 'user', content: 'victim transcript', timestamp: 0 })
+    await victim.appendMessage(assistantMessage())
+
+    const transcripts: string[] = []
+    const builder: BuildServeHarness = async (_config, _binding, session) => {
+      transcripts.push(JSON.stringify((await session.buildContext()).messages))
+      return fakeHarness()
+    }
+    const resumeFrom = async (cwd: string): Promise<void> => {
+      const controlled = controlledAgent((connection) =>
+        createHarnessAgent(connection, { ...config, cwd }, store, providerRuntime(), builder),
+      )
+      try {
+        if (!controlled.agent.resumeSession) throw new Error('ACP agent did not advertise resume')
+        await controlled.agent.resumeSession({ sessionId, cwd, mcpServers: [] })
+      } finally {
+        controlled.close()
+      }
+    }
+
+    try {
+      await expect(resumeFrom(collidingDir)).rejects.toThrow()
+      expect(transcripts).toEqual([])
+
+      await resumeFrom(victimDir)
+      expect(transcripts).toHaveLength(1)
+      expect(transcripts[0]).toContain('victim transcript')
+    } finally {
+      await rm(base, { recursive: true, force: true })
+    }
+  })
+
+  test('workspace resolution follows symlinks but rejects a real path that names another directory', async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), 'thunderbolt-workspaces-')))
+    const workspace = join(base, 'workspace')
+    const other = join(base, 'other')
+    await mkdir(workspace)
+    await mkdir(other)
+    await symlink(workspace, join(base, 'link'))
+
+    try {
+      expect(await resolveTrustedWorkspace(join(base, 'link'))).toBe(workspace)
+      await expect(resolveTrustedWorkspace(other, async () => workspace)).rejects.toThrow(
+        `the real path of workspace '${other}' names a different directory`,
+      )
+    } finally {
+      await rm(base, { recursive: true, force: true })
+    }
+  })
+
+  test('an unresolvable launch directory fails session requests without crashing the server', async () => {
+    const cwd = join(tmpdir(), `thunderbolt-missing-${crypto.randomUUID()}`)
+    const controlled = controlledAgent((connection) =>
+      createHarnessAgent(connection, { ...config, cwd }, fakeStore(), providerRuntime(), streamingBuilder),
+    )
+    // Let resolution fail before any request awaits it.
+    await Bun.sleep(50)
+
+    try {
+      await expect(controlled.agent.newSession({ cwd, mcpServers: [] })).rejects.toThrow('ENOENT')
+    } finally {
+      controlled.close()
+    }
   })
 
   test('session/resume rejects a path-traversal id before it reaches the store', async () => {

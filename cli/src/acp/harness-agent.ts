@@ -23,7 +23,7 @@
  */
 
 import { isReasoningEffort } from '../../../shared/reasoning-effort.ts'
-import { realpath } from 'node:fs/promises'
+import { realpath, stat } from 'node:fs/promises'
 import { PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk'
 import type {
   Agent,
@@ -105,6 +105,26 @@ const rejectWiring = async (session: Session, failure: Error): Promise<never> =>
  *  flows into the on-disk path builder, which `path.join`s it — a crafted `..`
  *  id would escape the sessions root and overwrite an arbitrary `.jsonl`. */
 const sessionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Resolve the launch directory to its real path and confirm both name the same
+ * directory. Older Bun releases read a `\` in a POSIX path as a separator, so
+ * `realpath('/w/a\\b')` returned `/w/a/b`, a different workspace.
+ *
+ * @param cwd - the directory `acp serve` was launched in
+ * @param resolveRealPath - real-path resolver; injected by tests, defaults to `realpath`
+ */
+export const resolveTrustedWorkspace = async (
+  cwd: string,
+  resolveRealPath: (path: string) => Promise<string> = realpath,
+): Promise<string> => {
+  const resolved = await resolveRealPath(cwd)
+  const [launch, canonical] = await Promise.all([stat(cwd), stat(resolved)])
+  if (launch.dev !== canonical.dev || launch.ino !== canonical.ino) {
+    throw new Error(`the real path of workspace '${cwd}' names a different directory`)
+  }
+  return resolved
+}
 
 /** The permission choices offered to the ACP client for a gated tool call.
  *  `allow-always` allows that tool for the rest of the session; the others are
@@ -204,7 +224,9 @@ export const createHarnessAgent = (
 ): Agent => {
   const sessions = new Map<SessionId, Session>()
   const pendingSessionChanges = new Map<SessionId, Promise<unknown>>()
-  const trustedWorkspace = realpath(config.cwd)
+  const trustedWorkspace = resolveTrustedWorkspace(config.cwd)
+  // Each session request awaits and reports the failure; this only stops an early rejection crashing the server.
+  trustedWorkspace.catch(() => {})
 
   // Release every session's execution environment when the connection ends, so
   // a dropped client never leaks the harness's temp dirs / shell. Deferred a

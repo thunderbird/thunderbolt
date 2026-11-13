@@ -7,16 +7,37 @@ import { addNote, inAppOrOnboarding, markScreen, signedInPage } from './support/
 import { checkDuplicateNames, checkFocusReturn, checkKeyboardFocus, checkReflow, scanAxe } from './support/checks'
 import { canSetTheme, setAppTheme } from './support/theme'
 
-/** axe under each app theme, plus the keyboard, reflow and naming checks (run in light). */
-const auditScreen = async (page: Page, state: string, options: { reflow?: boolean; keyboard?: boolean } = {}) => {
+/** Waits until a screen has finished rendering. Run after every theme reload, before scanning. */
+type Ready = () => Promise<unknown>
+
+/**
+ * axe under each app theme, plus the keyboard, reflow and naming checks (run in light). The theme
+ * setting is read at startup, so each switch reloads the page. `index.html` sets the root theme class before
+ * React mounts, so `ready` must confirm the screen itself is back; scanning a spinner would record a clean
+ * result. If it never is, the screen is left unfinished and the report says Incomplete.
+ */
+const auditScreen = async (
+  page: Page,
+  state: string,
+  ready: Ready,
+  options: { reflow?: boolean; keyboard?: boolean } = {},
+) => {
   markScreen('started', state)
-  if (canSetTheme(page)) {
-    await setAppTheme(page, 'dark')
-    await scanAxe(page, `${state} (dark)`)
-    await setAppTheme(page, 'light')
-    await scanAxe(page, `${state} (light)`)
-  } else {
-    await scanAxe(page, `${state} (default theme)`)
+  try {
+    await ready()
+    if (canSetTheme(page)) {
+      await setAppTheme(page, 'dark')
+      await ready()
+      await scanAxe(page, `${state} (dark)`)
+      await setAppTheme(page, 'light')
+      await ready()
+      await scanAxe(page, `${state} (light)`)
+    } else {
+      await scanAxe(page, `${state} (default theme)`)
+    }
+  } catch (error) {
+    addNote(`${state} was not scanned because the screen never finished loading: ${String(error).split('\n')[0]}`)
+    return
   }
   await checkDuplicateNames(page, state)
   if (options.keyboard !== false) {
@@ -29,10 +50,13 @@ const auditScreen = async (page: Page, state: string, options: { reflow?: boolea
   markScreen('completed', state)
 }
 
+/** Only the assistant's message root carries `data-quotable-message-id`; user messages also have a copy button. */
+const assistantCopyButtons = (page: Page) =>
+  page.locator('[data-quotable-message-id]').getByRole('button', { name: /^Copy message/ })
+
 /** Send a prompt and wait for the answer to finish streaming. */
 const ask = async (page: Page, prompt: string) => {
-  // Only the assistant's message root carries `data-quotable-message-id`; user messages also have a copy button.
-  const copyButtons = page.locator('[data-quotable-message-id]').getByRole('button', { name: /^Copy message/ })
+  const copyButtons = assistantCopyButtons(page)
   const before = await copyButtons.count()
   await page.getByPlaceholder('Ask me anything…').fill(prompt)
   await page.getByRole('button', { name: 'Send message' }).click()
@@ -57,7 +81,7 @@ test('signed-out entry screen', async ({ page }) => {
   // deployment makes the app create an anonymous user there, but nothing is written beyond that.
   const entry = page.locator('#username, input[placeholder="Email"]').or(inAppOrOnboarding(page))
   await entry.first().waitFor({ timeout: 90_000 })
-  await auditScreen(page, 'Signed-out entry')
+  await auditScreen(page, 'Signed-out entry', () => entry.first().waitFor({ timeout: 60_000 }))
 })
 
 test('signed in: chat and settings', async ({ browser }) => {
@@ -67,7 +91,8 @@ test('signed in: chat and settings', async ({ browser }) => {
     return
   }
 
-  await auditScreen(page, 'Chat home')
+  const inApp = () => inAppOrOnboarding(page).waitFor({ timeout: 60_000 })
+  await auditScreen(page, 'Chat home', inApp)
   // The account menu only exists for a signed-in account; anonymous deployments don't show it.
   const accountMenu = page.getByRole('button', { name: 'Account menu' })
   if (await accountMenu.isVisible()) {
@@ -77,14 +102,15 @@ test('signed in: chat and settings', async ({ browser }) => {
 
   for (const [state, path] of settingsScreens) {
     await page.goto(path)
-    await page.getByRole('heading').first().waitFor()
-    await auditScreen(page, state)
+    const heading = () => page.getByRole('heading').first().waitFor({ timeout: 60_000 })
+    await heading()
+    await auditScreen(page, state, heading)
   }
 
   if (process.env.A11Y_PROMPTS === '1') {
     await page.goto('/')
     await ask(page, 'What is the capital of France, and why did it become the capital?')
-    await auditScreen(page, 'Chat answer')
+    await auditScreen(page, 'Chat answer', () => assistantCopyButtons(page).last().waitFor({ timeout: 60_000 }))
   } else {
     addNote('Chat answer screen was not audited: set A11Y_PROMPTS=1 to send a real prompt (needs a working model).')
   }

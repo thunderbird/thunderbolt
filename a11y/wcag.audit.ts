@@ -5,16 +5,16 @@
 import { test, type Page } from '@playwright/test'
 import { addNote, inAppOrOnboarding, markScreen, signedInPage } from './support/auth'
 import { checkDuplicateNames, checkFocusReturn, checkKeyboardFocus, checkReflow, scanAxe } from './support/checks'
-import { canSetTheme, setAppTheme } from './support/theme'
+import { canSetTheme, followSystemTheme, setColorScheme } from './support/theme'
 
-/** Waits until a screen has finished rendering. Run after every theme reload, before scanning. */
+/** Waits until a screen has finished rendering, before it is scanned. */
 type Ready = () => Promise<unknown>
 
 /**
- * axe under each app theme, plus the keyboard, reflow and naming checks (run in light). The theme
- * setting is read at startup, so each switch reloads the page. `index.html` sets the root theme class before
- * React mounts, so `ready` must confirm the screen itself is back; scanning a spinner would record a clean
- * result. If it never is, the screen is left unfinished and the report says Incomplete.
+ * axe under each color scheme, plus the keyboard, reflow and naming checks (run in light). The app follows
+ * the emulated scheme live (see `followSystemTheme`), so the screen is never reloaded and every scan sees the
+ * state `ready` set up. If the screen never finishes loading it is left unfinished and the report says
+ * Incomplete; any other failure, such as a theme that doesn't flip, fails the test.
  */
 const auditScreen = async (
   page: Page,
@@ -25,19 +25,17 @@ const auditScreen = async (
   markScreen('started', state)
   try {
     await ready()
-    if (canSetTheme(page)) {
-      await setAppTheme(page, 'dark')
-      await ready()
-      await scanAxe(page, `${state} (dark)`)
-      await setAppTheme(page, 'light')
-      await ready()
-      await scanAxe(page, `${state} (light)`)
-    } else {
-      await scanAxe(page, `${state} (default theme)`)
-    }
   } catch (error) {
     addNote(`${state} was not scanned because the screen never finished loading: ${String(error).split('\n')[0]}`)
     return
+  }
+  if (canSetTheme(page)) {
+    await setColorScheme(page, 'dark')
+    await scanAxe(page, `${state} (dark)`)
+    await setColorScheme(page, 'light')
+    await scanAxe(page, `${state} (light)`)
+  } else {
+    await scanAxe(page, `${state} (default theme)`)
   }
   await checkDuplicateNames(page, state)
   if (options.keyboard !== false) {
@@ -75,6 +73,7 @@ const settingsScreens = [
 ] as const
 
 test('signed-out entry screen', async ({ page }) => {
+  await followSystemTheme(page.context())
   await page.goto('/')
   // Depending on the target, the first screen is a Keycloak page, the email step, or (anonymous
   // deployments such as production) the chat behind the onboarding wizard. Loading an anonymous

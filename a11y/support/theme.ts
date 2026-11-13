@@ -2,29 +2,33 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { expect, type Page } from '@playwright/test'
-
-export type AppTheme = 'light' | 'dark'
+import { expect, type BrowserContext, type Page } from '@playwright/test'
 
 const localSettingsKey = 'thunderbolt-local-settings'
 const appOrigin = new URL(process.env.A11Y_BASE_URL ?? 'http://localhost:1420').origin
 
-/** False on pages the app doesn't own (the Keycloak login), where its theme setting does nothing. */
+/** False on pages the app doesn't own (the Keycloak login), where its theme follows nothing we control. */
 export const canSetTheme = (page: Page) => new URL(page.url()).origin === appOrigin
 
 /**
- * Select the app's own theme setting and check the root class took effect. `emulateMedia` alone only
- * works while the theme is `system`; an operator default of light or dark would make both scans identical.
- * The setting is read at startup, so this reloads the page.
+ * Make the app follow `prefers-color-scheme` in every page of this context. A stored theme choice wins
+ * over the operator's `defaultThemeMode`, so pinning it to `system` makes `emulateMedia` flip the theme live,
+ * with no reload that would throw away the screen being audited. Runs before the app's own scripts.
  */
-export const setAppTheme = async (page: Page, theme: AppTheme) => {
-  await page.evaluate(
-    ([key, value]) => {
+export const followSystemTheme = (context: BrowserContext) =>
+  context.addInitScript(
+    ([key, origin]) => {
+      if (location.origin !== origin) {
+        return
+      }
       const stored = JSON.parse(localStorage.getItem(key) ?? '{"state":{},"version":1}')
-      localStorage.setItem(key, JSON.stringify({ ...stored, state: { ...stored.state, theme: value } }))
+      localStorage.setItem(key, JSON.stringify({ ...stored, state: { ...stored.state, theme: 'system' } }))
     },
-    [localSettingsKey, theme],
+    [localSettingsKey, appOrigin],
   )
-  await page.reload()
-  await expect(page.locator('html')).toHaveClass(new RegExp(`\\b${theme}\\b`))
+
+/** Switch the OS color scheme and wait for the app's root class to follow. */
+export const setColorScheme = async (page: Page, scheme: 'light' | 'dark') => {
+  await page.emulateMedia({ colorScheme: scheme })
+  await expect(page.locator('html')).toHaveClass(new RegExp(`\\b${scheme}\\b`))
 }

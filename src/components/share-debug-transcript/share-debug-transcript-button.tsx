@@ -27,7 +27,7 @@ export const ShareDebugTranscriptButton = ({ disabledReason, onShare }: ShareDeb
       disabled={disabledReason !== null}
       onClick={onShare}
     >
-      <Bug className="size-4 text-muted-foreground/80" />
+      <Bug className="size-4 text-muted-foreground" />
     </Button>
   )
 }

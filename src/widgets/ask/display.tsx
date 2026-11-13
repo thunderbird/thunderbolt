@@ -170,7 +170,7 @@ export const Ask = ({
                   className={cn(
                     'group flex w-full items-center gap-3 rounded-xl border px-3.5 text-left transition-all',
                     'min-h-[var(--touch-height-lg)] py-2.5',
-                    'disabled:cursor-default focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                    'disabled:cursor-default focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring',
                     !state.submitted && 'cursor-pointer active:scale-[0.99]',
                     statusStyles[status],
                   )}

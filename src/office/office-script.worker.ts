@@ -18,11 +18,20 @@ import ooxmlScript from './ooxml-globals.ts?sandbox-script'
 import type { SandboxMessage } from './run-in-worker'
 import { type InstallWorkbooks, runSandboxedScript, type SandboxJob, type SandboxResult } from './sandbox'
 
-const compile = async (url: string) => WebAssembly.compile(await (await fetch(url)).arrayBuffer())
+/** One of the app's own files. A missing one fails with its status, rather than as a module that does not compile. */
+const fetchAsset = async (url: string) => {
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`${url} answered ${response.status}`)
+  }
+  return response
+}
 
-const loadText = async (url: string) => (await fetch(url)).text()
+const compile = async (url: string) => WebAssembly.compile(await (await fetchAsset(url)).arrayBuffer())
 
-const loadBytes = async (url: string) => new Uint8Array(await (await fetch(url)).arrayBuffer())
+const loadText = async (url: string) => (await fetchAsset(url)).text()
+
+const loadBytes = async (url: string) => new Uint8Array(await (await fetchAsset(url)).arrayBuffer())
 
 /** Excelize, IronCalc and the code around them load only for a script that uses a workbook. */
 const loadWorkbooks = async (): Promise<InstallWorkbooks> => {

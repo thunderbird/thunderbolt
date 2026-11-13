@@ -54,7 +54,6 @@ export const ProviderConnectionButton = ({
       onFocus={() => setIsHighlighted(true)}
       onBlur={() => setIsHighlighted(false)}
       aria-label={canCancel ? t`Cancel connection` : isConnected && onDisconnect ? t`Disconnect` : undefined}
-      title={canCancel ? t`Cancel connection` : undefined}
     >
       {showCancel ? (
         <>

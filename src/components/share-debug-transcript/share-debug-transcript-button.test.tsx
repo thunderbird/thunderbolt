@@ -11,7 +11,7 @@ import { ShareDebugTranscriptButton } from './share-debug-transcript-button'
 afterEach(cleanup)
 
 describe('ShareDebugTranscriptButton', () => {
-  it('shares directly and names the enabled action with a native tooltip', () => {
+  it('shares directly and names the enabled action with a tooltip', async () => {
     const onShare = mock()
     render(<ShareDebugTranscriptButton disabledReason={null} onShare={onShare} />)
 
@@ -19,7 +19,9 @@ describe('ShareDebugTranscriptButton', () => {
     fireEvent.click(button)
     expect(onShare).toHaveBeenCalledTimes(1)
 
-    expect(button).toHaveAttribute('title', 'Share debug transcript')
+    expect(button).not.toHaveAttribute('title')
+    fireEvent.focus(button)
+    expect((await screen.findByRole('tooltip')).textContent).toBe('Share debug transcript')
   })
 
   it('keeps the same button across disabled-state transitions', () => {

@@ -31,9 +31,9 @@ export const CopyMessageButton = ({ text, className }: CopyMessageButtonProps) =
       onClick={() => copy(text)}
     >
       {isCopied ? (
-        <Check className="size-4 text-muted-foreground/80 animate-[fadeOut_2s_ease-in-out]" />
+        <Check className="size-4 text-muted-foreground animate-[fadeOut_2s_ease-in-out]" />
       ) : (
-        <Copy className="size-4 text-muted-foreground/80" />
+        <Copy className="size-4 text-muted-foreground" />
       )}
     </Button>
   )

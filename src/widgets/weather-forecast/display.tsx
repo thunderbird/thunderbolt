@@ -83,7 +83,7 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
           href="https://open-meteo.com"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-[10px] leading-none text-muted-foreground/60 hover:text-muted-foreground"
+          className="text-[10px] leading-none text-muted-foreground hover:text-foreground"
         >
           <Trans>Weather data provided by Open-Meteo.com</Trans>
         </a>

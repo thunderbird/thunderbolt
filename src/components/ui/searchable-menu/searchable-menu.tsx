@@ -135,7 +135,7 @@ const GroupSection = memo(<T,>({ group, value, onSelect, renderItem, closeMenu }
       {group.label && (
         <div className="px-3 pt-2">
           <h3 className="text-xs font-medium text-muted-foreground">{group.label}</h3>
-          {group.subtitle && <p className="text-xs text-muted-foreground/70 mt-0.5">{group.subtitle}</p>}
+          {group.subtitle && <p className="text-xs text-muted-foreground mt-0.5">{group.subtitle}</p>}
         </div>
       )}
       <div className="flex flex-col gap-0.5">

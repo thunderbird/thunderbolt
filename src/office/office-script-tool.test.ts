@@ -292,7 +292,7 @@ describe.each([
     )
 
     expect(logs).toBe('true true\n')
-    expect(files[0]).toMatchObject({ filename: 'summary.docx', edited: false })
+    expect(files[0]).toMatchObject({ filename: 'summary.docx', edited: true })
   })
 
   it('reads data the agent prepared in its workspace, and writes nothing there', async () => {
@@ -545,16 +545,36 @@ describe.each([
     expect(await checkErrorOf(longStream, { timeoutMs: 300 })).toBe(checkOutOfTime(0.3))
   })
 
-  it('marks a copy saved under the input name as edited, however that name is cleaned', async () => {
-    const attached = storeAttachment('REPORT.DOCX', await fixture('testComment.docx'))
+  it('marks each saved file of a type the script read as edited, under any name', async () => {
+    const attached = storeAttachment(`${'a'.repeat(300)}.DOCX`, await fixture('testComment.docx'))
 
     const { files } = await okFiles(
-      call({ listThreadFiles: async () => [attached] }, `saveFile('REPORT.DOCX', readFile('REPORT.DOCX'))`, [
-        'REPORT.DOCX',
-      ]),
+      call(
+        { listThreadFiles: async () => [attached] },
+        `saveFile('report_edited.docx', readFile(${JSON.stringify(attached.id)}))\n${pptxScript}`,
+        [attached.id],
+      ),
     )
 
-    expect(files[0]).toMatchObject({ filename: 'REPORT.docx', edited: true })
+    expect(files).toMatchObject([
+      { filename: 'report_edited.docx', edited: true },
+      { filename: 'deck.pptx', edited: false },
+    ])
+  })
+
+  it('reads the newest edit by the name the user gave, though the edit is stored under a cleaned name', async () => {
+    const threadFiles = [storeAttachment('REPORT.DOCX', await fixture('testComment.docx'), 1000)]
+    const edit = (from: string, to: string) =>
+      okFiles(
+        call({ listThreadFiles: async () => threadFiles }, replaceTextScript('REPORT.DOCX', from, to), ['REPORT.DOCX']),
+      )
+
+    const first = await edit('paragraph!', 'reviewed!')
+    threadFiles.push(stored(first.files[0].id))
+    const second = await edit('reviewed!', 'final!')
+
+    expect(first.files[0].filename).toBe('REPORT.docx')
+    expect(await textOf(stored(second.files[0].id))).toContain('this is a comment final!')
   })
 
   it('tells the script to declare a file it reads', async () => {

@@ -9,14 +9,14 @@ import { parseToolOutput } from '@/lib/tool-output'
 import type { ToolConfig } from '@/types'
 import { type DynamicToolUIPart, getToolName, isToolOrDynamicToolUIPart, type ToolUIPart, type UIMessage } from 'ai'
 import { z } from 'zod'
-import { officeScriptToolName, sandboxLimits } from './constants'
+import { maxFilenameLength, officeScriptToolName, sandboxLimits } from './constants'
 import { runInSandboxWorker } from './run-in-worker'
 import type { SandboxJob, SandboxResult, SavedFile } from './sandbox'
 import { type ReadWorkspaceFile, resolveInputs } from './script-inputs'
 
 /**
  * A file the tool added to the attachment store, as listed in its result. The chips are built from this list.
- * `edited` is true when the script saved it under the name of a file it read.
+ * `edited` is true when the script read a file of the same type, whatever name it saved this one under.
  */
 export type CreatedFile = { id: string; filename: string; mimeType: string; edited: boolean }
 
@@ -47,16 +47,7 @@ const fileTypes = [
   { extension: 'pptx', mimeType: pptxMime },
 ]
 
-// Checked before `safeFileName`, whose trimming backtracks on a long run of dots.
-const maxFilenameLength = 200
-
 type DeliverableFile = SavedFile & { mimeType: string }
-
-/** The name a file is stored under once `safeFileName` has cleaned it. */
-const storedFilename = (raw: string) => {
-  const { stem, extension } = safeFileName(raw)
-  return `${stem}.${extension}`
-}
 
 /**
  * Sanitize each saved file's name and pair it with its type, or say (to the model) why the files cannot be
@@ -136,7 +127,7 @@ const describeTool = (hasWorkspace: boolean) =>
     'Write a short JavaScript script. It runs in a sandbox where these libraries are already loaded: `docx` (global `docx`), `pptxgenjs` (global `PptxGenJS`), `fflate` (global `fflate`) and `@xmldom/xmldom` (global `xmldom`).',
     'Pass each finished file to `saveFile(filename, bytes)`. The name must end in .docx or .pptx. Get the bytes from `await docx.Packer.toArrayBuffer(doc)` or `await pres.write({ outputType: "uint8array" })`; `Packer.toBuffer`, `Packer.toBlob` and `pres.writeFile` do not work here.',
     `To read a file, list it in \`inputs\` and call \`readFile(name)\`, which returns its bytes as a Uint8Array. The files you can read are the ones attached in this chat and the ones this tool made earlier in it. Name a file by its file name to get the newest file with that name, or by its id to get that exact file, such as an older version.${hasWorkspace ? ' A name that matches none of them is read from your workspace, as a path relative to it, so a script can use data you prepared there.' : ''}`,
-    'To edit a file, read it, change it, and save the result under the same name: the user gets an edited copy and the original stays as it was. `await docx.patchDocument({ outputType: "uint8array", data: readFile(name), patches })` replaces `{{key}}` placeholders and keeps everything else, including comments and tracked changes. For changes docx and PptxGenJS cannot make, such as adding a tracked change or copying a slide, unzip the file with `fflate.unzipSync`, edit its XML parts with `xmldom.DOMParser` and `xmldom.XMLSerializer` (`fflate.strFromU8` and `fflate.strToU8` convert the bytes), and zip it again with `fflate.zipSync`. Only the sync fflate functions work here.',
+    'To edit a file, read it, change it, and save the result under exactly the same name, without a suffix such as "_edited" or "_v2": the user gets an edited copy, the original stays as it was, and the next edit finds the newest version by that name. `await docx.patchDocument({ outputType: "uint8array", data: readFile(name), patches })` replaces `{{key}}` placeholders and keeps everything else, including comments and tracked changes. For changes docx and PptxGenJS cannot make, such as adding a tracked change or copying a slide, unzip the file with `fflate.unzipSync`, edit its XML parts with `xmldom.DOMParser` and `xmldom.XMLSerializer` (`fflate.strFromU8` and `fflate.strToU8` convert the bytes), and zip it again with `fflate.zipSync`. Only the sync fflate functions work here.',
     'Every saved file is checked before it is stored. If a zip does not open or an XML part does not parse, nothing is saved, and the error names the file and, for XML, the part.',
     'The sandbox has no network, no DOM, no fetch and no imports, so write all new content into the script.',
     'Each saved file appears in the chat for the user to download, so do not paste its contents into your reply.',
@@ -187,15 +178,16 @@ export const createOfficeScriptTool = ({
       }))
       await storeFiles(records)
       madeThisSend.push(...records)
-      // Compared as stored, so `REPORT.DOCX` read and saved again counts as the same name.
-      const inputNames = new Set(
-        resolved.filenames.filter((name) => name.length <= maxFilenameLength).map(storedFilename),
+      // Models often rename the copy they edit, so the file type decides, not the name. The extension is at the
+      // end, so the end of a long name is enough.
+      const inputExtensions = new Set(
+        resolved.filenames.map((name) => safeFileName(name.slice(-maxFilenameLength)).extension),
       )
       const files = records.map(({ id, filename, mimeType }) => ({
         id,
         filename,
         mimeType,
-        edited: inputNames.has(filename),
+        edited: inputExtensions.has(safeFileName(filename).extension),
       }))
       return { ok: true, files, logs: result.logs }
     },

@@ -17,3 +17,6 @@ export const sandboxLimits = {
 }
 
 export type SandboxLimits = typeof sandboxLimits
+
+/** Longest file name the tool cleans. Checked before `safeFileName`, whose trimming backtracks on a long run of dots. */
+export const maxFilenameLength = 200

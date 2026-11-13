@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test'
+import { zipSync } from 'fflate'
 import type { StoredFile } from '@/lib/file-blob-storage'
 
 const readXlsxFile = mock(async () => [] as { sheet: string; data: unknown[][] }[])
@@ -20,7 +21,7 @@ const asFile = (): StoredFile =>
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     size: 0,
     createdAt: 0,
-    blob: new Blob(),
+    blob: new Blob([zipSync({})]),
   }) as StoredFile
 
 describe('xlsxToText', () => {

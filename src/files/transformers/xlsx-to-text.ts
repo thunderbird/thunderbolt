@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { StoredFile } from '@/lib/file-blob-storage'
+import type { UnzipFileInfo } from 'fflate'
 import type { CellValue } from 'read-excel-file/browser'
 
 /**
@@ -49,10 +50,60 @@ export type SpreadsheetSheet = {
   readonly rows: string[][]
 }
 
-/** Reads every worksheet of an XLSX blob as text cells via a lazily-imported read-excel-file. */
+const mib = 1024 * 1024
+// WebKit's peak memory while reading is about 16 times the unpacked size, so this keeps it near 0.5 GiB.
+const maxUnpackedMib = 32
+// The rewritten zip is a classic (non-ZIP64) zip, which stores its entry count in 16 bits.
+const maxEntries = 65_535
+
+/**
+ * Throws, with a message for the model, when unpacking and rewriting a workbook's zip could exhaust memory or change
+ * what the reader sees. A deflated entry inflates to at most the size it declares, but a stored one is copied at its
+ * compressed size, which can be larger, so each entry counts at the larger of the two.
+ */
+const checkEntries = (entries: readonly UnzipFileInfo[]): void => {
+  const unpacked = entries.reduce((total, { size, originalSize }) => total + Math.max(size, originalSize), 0)
+  if (unpacked > maxUnpackedMib * mib) {
+    throw new Error(
+      `This spreadsheet unpacks to ${Math.ceil(unpacked / mib)} MiB, over the ${maxUnpackedMib} MiB limit for reading it.`,
+    )
+  }
+  const names = entries.map(({ name }) => name)
+  // Unpacking stores each entry under its name in a plain object, where `__proto__` would replace the prototype.
+  if (names.includes('__proto__')) {
+    throw new Error('This spreadsheet has a part named __proto__, which cannot be read safely.')
+  }
+  // Repeated empty folder entries are harmless; repeated files leave it unclear which one the reader sees.
+  const files = names.filter((name) => !name.endsWith('/'))
+  if (new Set(files).size < files.length) {
+    throw new Error('This spreadsheet has two parts with the same name, so it is unclear which one to read.')
+  }
+}
+
+/**
+ * Reads every worksheet of an XLSX blob as text cells, once {@link checkEntries} accepts its zip. The zip and sheet
+ * readers are imported lazily.
+ */
 export const readXlsxSheets = async (file: StoredFile): Promise<SpreadsheetSheet[]> => {
-  const { default: readXlsxFile } = await import('read-excel-file/browser')
-  const sheets = await readXlsxFile(file.blob)
+  const [{ default: readXlsxFile }, { unzipSync, zipSync }] = await Promise.all([
+    import('read-excel-file/browser'),
+    import('fflate'),
+  ])
+  const zip = new Uint8Array(await file.blob.arrayBuffer())
+  const entries: UnzipFileInfo[] = []
+  unzipSync(zip, {
+    filter: (entry) => {
+      // Checked here because a forged entry count keeps this listing going past the end of the real directory.
+      if (entries.length === maxEntries) {
+        throw new Error(`This spreadsheet has more than ${maxEntries} parts, over the limit for reading it.`)
+      }
+      entries.push(entry)
+      return false
+    },
+  })
+  checkEntries(entries)
+  // The app's CSP blocks the `blob:` Workers the reader starts to inflate compressed sheets, so store every entry.
+  const sheets = await readXlsxFile(zipSync(unzipSync(zip), { level: 0 }).buffer)
   return sheets.map(({ sheet, data }) => ({
     name: sheet,
     rows: data.filter((row) => !isEmptyRow(row)).map((row) => row.map(cellText)),

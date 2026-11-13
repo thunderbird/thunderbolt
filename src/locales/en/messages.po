@@ -1535,6 +1535,10 @@ msgstr "Connection type"
 msgid "Connection unavailable on this device."
 msgstr "Connection unavailable on this device."
 
+#: src/settings/connections/use-provider-connection-form.ts
+msgid "Connection verification timed out. Try again."
+msgstr "Connection verification timed out. Try again."
+
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "Connection verified"
 msgstr "Connection verified"
@@ -1839,6 +1843,10 @@ msgstr "Could not update the connection. Try again."
 #: src/components/otari-connection/use-otari-connection-state.ts
 msgid "Could not verify or save the Otari model. Please try again."
 msgstr "Could not verify or save the Otari model. Please try again."
+
+#: src/settings/connections/use-provider-connection-form.ts
+msgid "Could not verify the connection. Check your network and try again."
+msgstr "Could not verify the connection. Check your network and try again."
 
 #: src/components/onboarding/use-onboarding-provider-state.ts
 msgid "Could not verify this code. Try again or start a new connection."
@@ -2302,6 +2310,14 @@ msgstr "Deny this device?"
 #: src/settings/devices.tsx
 msgid "Denying…"
 msgstr "Denying…"
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Deployment manifest digest"
+msgstr "Deployment manifest digest"
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Deployment policy hashes"
+msgstr "Deployment policy hashes"
 
 #: src/widgets/weather-forecast/lib.ts
 msgid "Depositing rime fog"
@@ -5692,8 +5708,16 @@ msgid "The AI provider is having trouble right now. Try again in a moment."
 msgstr "The AI provider is having trouble right now. Try again in a moment."
 
 #: src/components/chat/error-message.tsx
+msgid "The AI provider requires billing setup or additional credits. Check your provider account before retrying."
+msgstr "The AI provider requires billing setup or additional credits. Check your provider account before retrying."
+
+#: src/components/chat/error-message.tsx
 msgid "The AI provider took too long to respond. Try again."
 msgstr "The AI provider took too long to respond. Try again."
+
+#: src/settings/connections/use-provider-connection-form.ts
+msgid "The API key was rejected. Check it and try again."
+msgstr "The API key was rejected. Check it and try again."
 
 #: src/webview-recovery/index.ts
 msgid "The app's web content stopped unexpectedly more than once. Automatic reloads have been paused."
@@ -5794,6 +5818,10 @@ msgstr "The previous account's data on this device could not be secured. Reload 
 #: src/components/onboarding/provider-setup-error.ts
 msgid "The provider rejected the model request (HTTP {status}). Check model access and your subscription."
 msgstr "The provider rejected the model request (HTTP {status}). Check model access and your subscription."
+
+#: src/settings/connections/use-provider-connection-form.ts
+msgid "The provider's security verification failed. Try again."
+msgstr "The provider's security verification failed. Try again."
 
 #: src/components/device-approval.tsx
 msgid "The request was denied. You can safely close this page."
@@ -6721,6 +6749,10 @@ msgid "Verification unavailable"
 msgstr "Verification unavailable"
 
 #: src/components/chat/attestation/attestation-details.tsx
+msgid "Verified deployment policy"
+msgstr "Verified deployment policy"
+
+#: src/components/chat/attestation/attestation-details.tsx
 msgid "Verified on this device"
 msgstr "Verified on this device"
 
@@ -7174,8 +7206,8 @@ msgstr "Your deployment's server"
 #~ msgstr "Your device checks the confidential hardware and published code before sending to {provider}."
 
 #: src/components/chat/attestation/use-attestation-display.ts
-msgid "Your device checks the enclave hardware and signed build before sending to {provider}."
-msgstr "Your device checks the enclave hardware and signed build before sending to {provider}."
+#~ msgid "Your device checks the enclave hardware and signed build before sending to {provider}."
+#~ msgstr "Your device checks the enclave hardware and signed build before sending to {provider}."
 
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "Your device verified {provider}'s confidential inference endpoint. Model request bodies are encrypted for that enclave."
@@ -7184,6 +7216,10 @@ msgstr "Your device verified {provider}'s confidential inference endpoint. Model
 #: src/components/chat/attestation/attestation-control.tsx
 #~ msgid "Your device verified {provider}'s confidential inference endpoint. Requests are encrypted to that endpoint."
 #~ msgstr "Your device verified {provider}'s confidential inference endpoint. Requests are encrypted to that endpoint."
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Your device verifies the confidential environment and its software before sending to {provider}."
+msgstr "Your device verifies the confidential environment and its software before sending to {provider}."
 
 #: src/components/onboarding/onboarding-celebration-step.tsx
 msgid "Your donation helps us understand how the app is used and improve the product."

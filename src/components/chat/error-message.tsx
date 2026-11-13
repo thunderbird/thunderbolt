@@ -23,6 +23,7 @@ import { memo } from 'react'
 const defaultChatErrorMessage = msg`Something went wrong. Please try again.`
 const causeSpecificErrorMessages: Partial<Record<ChatErrorKind, MessageDescriptor>> = {
   attestation: msg`Couldn't verify the secure AI connection. This is usually temporary — try again in a moment.`,
+  billing: msg`The AI provider requires billing setup or additional credits. Check your provider account before retrying.`,
   timeout: msg`The AI provider took too long to respond. Try again.`,
   provider: msg`The AI provider is having trouble right now. Try again in a moment.`,
   network: msg`Connection problem. Check your internet and try again.`,

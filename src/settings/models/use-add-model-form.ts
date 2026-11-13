@@ -45,7 +45,16 @@ const apiKeyRequired = msg`API Key is required for this provider`
 export const createAddModelFormSchema = (i18n: I18n) =>
   z
     .object({
-      provider: z.enum(['thunderbolt', 'anthropic', 'openai', 'custom', 'openrouter', 'tinfoil', 'otari']),
+      provider: z.enum([
+        'thunderbolt',
+        'anthropic',
+        'openai',
+        'custom',
+        'openrouter',
+        'tinfoil',
+        'privatemode',
+        'otari',
+      ]),
       name: z.string().min(1, { message: i18n._(nameRequired) }),
       model: z.string().min(1, { message: i18n._(modelNameRequired) }),
       customModel: z.string().optional(),
@@ -204,6 +213,10 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
               url: null,
               isSystem: 0,
               enabled: 1,
+              isConfidential:
+                values.provider !== 'thunderbolt' && getProviderDefinition(values.provider).attested
+                  ? 1
+                  : values.isConfidential,
               toolUsage: supportsTools ? 1 : 0,
               contextWindow: values.contextWindow ?? null,
             })

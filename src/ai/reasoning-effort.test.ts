@@ -33,6 +33,17 @@ const response = (body: unknown) => {
 beforeAll(setupTestDatabase)
 afterAll(teardownTestDatabase)
 
+it('offers only Privatemode model-supported reasoning levels without importing a transport', async () => {
+  const load = createReasoningCapabilitiesLoader()
+  expect(await load(createMockModel({ provider: 'privatemode', model: 'glm-5.3' }))).toEqual({
+    efforts: ['none', 'low', 'high', 'max'],
+  })
+  expect(await load(createMockModel({ provider: 'privatemode', model: 'gpt-oss-120b' }))).toEqual({
+    efforts: ['low', 'medium', 'high'],
+  })
+  expect(await load(createMockModel({ provider: 'privatemode', model: 'future-model' }))).toEqual({ efforts: [] })
+})
+
 it('serializes repeated model writes and waits for the latest preference from any chat', async () => {
   const db = getDb()
   const model = createMockModel({ id: 'queued-effort' })

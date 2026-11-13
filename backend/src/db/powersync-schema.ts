@@ -135,7 +135,18 @@ export const providerConnectionsTable = powersyncSchema.table(
   {
     id: text('id').notNull(),
     provider: text('provider', {
-      enum: ['openai', 'anthropic', 'custom', 'openrouter', 'tinfoil', 'otari', 'exa', 'brave', 'tavily'],
+      enum: [
+        'openai',
+        'anthropic',
+        'custom',
+        'openrouter',
+        'tinfoil',
+        'privatemode',
+        'otari',
+        'exa',
+        'brave',
+        'tavily',
+      ],
     }),
     name: text('name'),
     url: text('url'),
@@ -160,7 +171,7 @@ export const modelsTable = powersyncSchema.table(
   {
     id: text('id').notNull(),
     provider: text('provider', {
-      enum: ['openai', 'custom', 'openrouter', 'thunderbolt', 'anthropic', 'tinfoil', 'otari'],
+      enum: ['openai', 'custom', 'openrouter', 'thunderbolt', 'anthropic', 'tinfoil', 'privatemode', 'otari'],
     }),
     name: text('name'),
     model: text('model'),

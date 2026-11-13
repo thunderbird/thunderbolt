@@ -5,7 +5,7 @@
 import exaLogo from '@/assets/exa.svg'
 import tavilyLogo from '@/assets/tavily.svg'
 import { SiAnthropic, SiBrave } from '@icons-pack/react-simple-icons'
-import { Search, Server } from 'lucide-react'
+import { Search, Server, Shield } from 'lucide-react'
 import openAiLogo from '@/assets/openai.svg'
 import { ProviderBrandLogo } from '@/components/provider-brand-logo'
 import { getProviderDefinition } from '@/providers/registry'
@@ -13,6 +13,9 @@ import type { ProviderType } from '@/providers/types'
 
 /** Uses provider identity for connection rows, independent of any selected model. */
 export const ProviderConnectionIcon = ({ provider }: { provider: ProviderType }) => {
+  if (provider === 'privatemode') {
+    return <Shield className="size-5" aria-hidden="true" />
+  }
   if (provider === 'openrouter' || provider === 'tinfoil' || provider === 'otari') {
     return <ProviderBrandLogo provider={provider} className="size-5" />
   }

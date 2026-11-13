@@ -32,7 +32,7 @@ const describeAttestation = (target: AttestationTarget, state: AttestationState)
       ? msg`Verification timed out. A verified connection is required before sending to this provider.`
       : msg`The connection could not be verified. A verified connection is required before sending to this provider.`
   }
-  return msg`Your device checks the enclave hardware and signed build before sending to ${provider}.`
+  return msg`Your device verifies the confidential environment and its software before sending to ${provider}.`
 }
 
 /** Resolve live copy and prevent remote agents from inheriting local verification. */

@@ -16,6 +16,7 @@ import pkg from './package.json' with { type: 'json' }
 import { exaRelayPlugin, exaRelayProxies } from './scripts/exa-relay'
 import { tinfoilSearchRelayPlugin, tinfoilSearchProxy } from './scripts/tinfoil-search-relay'
 import { copyPowerSyncAssets } from './scripts/copy-powersync-assets'
+import { confidentialSdkIsolationPlugin } from './scripts/confidential-sdk-isolation'
 import {
   addWebKitCompatToAsset,
   webkitCompatAssetFileNames,
@@ -94,6 +95,7 @@ export default defineConfig({
     },
   },
   plugins: [
+    confidentialSdkIsolationPlugin(),
     webkitCompatPlugin(),
     tinfoilSearchRelayPlugin(),
     exaRelayPlugin(),
@@ -190,6 +192,9 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@shared': path.resolve(__dirname, './shared'),
+      // The SDK does not export its WASM asset. Resolve it only from the lazy
+      // attestation adapter; ?url keeps the verifier in a separate asset.
+      'privatemode-wasm?url': `${path.resolve(__dirname, 'node_modules/privatemode-ai/dist/privatemode.wasm')}?url`,
       // Exposes PowerSync's internal lib/ so our sync worker can extend SharedSyncImplementation and
       // import WorkerClient and SharedWorkerConnectionRequest (none is in the public exports map).
       'powersync-web-internal': path.resolve(__dirname, 'node_modules/@powersync/web/lib'),
@@ -272,7 +277,8 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ['@journeyapps/wa-sqlite', '@powersync/web'],
+    // Keep provider SDKs out of development's shared dependency prebundles too.
+    exclude: ['@journeyapps/wa-sqlite', '@powersync/web', 'tinfoil', 'privatemode-ai'],
   },
   worker: {
     format: 'es',

@@ -28,6 +28,11 @@
  * so this shim only has to satisfy the module-scope reads above and stay inert.
  */
 
+const scope = globalThis as unknown as {
+  process?: Record<string, unknown> & { versions?: Record<string, string | undefined> }
+  global?: unknown
+}
+
 /** Minimal browser stand-in for Node's `process` — just the surface Pi reads. */
 const browserProcess = {
   /** Pi treats truthy `browser` as "take the browser code path" where it checks. */
@@ -46,15 +51,21 @@ const browserProcess = {
   },
   // Some libraries register lifecycle listeners (`process.on('exit', …)`); accept
   // and ignore them so the chainable API stays intact.
-  on: () => browserProcess,
-  once: () => browserProcess,
-  off: () => browserProcess,
-  removeListener: () => browserProcess,
+  on: () => scope.process,
+  once: () => scope.process,
+  off: () => scope.process,
+  removeListener: () => scope.process,
   emit: () => false,
 }
 
-const scope = globalThis as unknown as { process?: unknown; global?: unknown }
-scope.process ??= browserProcess
+// Go's WASM runtime may install a process with only POSIX methods first. Complete
+// that same object without replacing its methods or touching a native runtime.
+if (!scope.process?.versions?.node && !scope.process?.versions?.bun) {
+  const runtimeProcess = (scope.process ??= {})
+  for (const [key, value] of Object.entries(browserProcess)) {
+    runtimeProcess[key] ??= value
+  }
+}
 // Some Pi/dependency code references the bare Node `global` object; in the browser
 // it is the same as `globalThis`.
 scope.global ??= globalThis

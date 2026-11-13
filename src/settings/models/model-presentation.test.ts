@@ -12,6 +12,7 @@ describe('provider labels', () => {
     expect(getProviderLabel(i18n, 'custom', 'Acme AI')).toBe('Custom')
     expect(getProviderLabel(i18n, 'openai', 'Acme AI')).toBe('OpenAI')
     expect(getProviderLabel(i18n, 'otari', 'Acme AI')).toBe('Otari')
+    expect(getProviderLabel(i18n, 'privatemode', 'Acme AI')).toBe('Privatemode')
     expect(getProviderDisplay(i18n, { provider: 'otari', isSystem: 0 }, 'Acme AI')).toBe('Otari')
     expect(getProviderDisplay(i18n, { provider: 'openrouter', isSystem: 0 }, 'Acme AI')).toBe('OpenRouter')
   })
@@ -25,6 +26,7 @@ describe('provider labels', () => {
     expect(providerPickerOrder).toEqual([
       'thunderbolt',
       'tinfoil',
+      'privatemode',
       'otari',
       'openai',
       'openrouter',

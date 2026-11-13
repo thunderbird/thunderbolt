@@ -15,7 +15,7 @@ import { probeImageSupport } from './image-support-probe'
 export const imageSupportTimeoutMs = 30_000
 
 /** Providers whose model catalogs report image support per model. */
-const modalityCatalogProviders: ReadonlySet<Model['provider']> = new Set(['tinfoil', 'openrouter'])
+const modalityCatalogProviders: ReadonlySet<Model['provider']> = new Set(['tinfoil', 'privatemode', 'openrouter'])
 
 export type DetectImageSupportOptions = {
   /** Ends the check; defaults to a {@link imageSupportTimeoutMs} deadline. */
@@ -53,12 +53,17 @@ const catalogImageSupport = async (
     return undefined
   }
   try {
-    // Neither catalog request has its own timeout, so the deadline bounds it here.
     const catalog = await untilAborted(
       () =>
         fetchCatalog(
-          { provider: model.provider, apiKey: model.apiKey ?? undefined, url: model.url ?? undefined },
+          {
+            provider: model.provider,
+            apiKey: model.apiKey ?? undefined,
+            url: model.url ?? undefined,
+            connectionId: model.providerConnectionId ?? undefined,
+          },
           getProxyFetch,
+          signal,
         ),
       signal,
     )

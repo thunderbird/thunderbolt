@@ -35,11 +35,17 @@ describe('standalone model availability', () => {
     expect(isModelAvailable({ provider: 'custom', isSystem: 0 }, '')).toBe(true)
     expect(isModelAvailable({ provider: 'openai', isSystem: 0 }, '')).toBe(true)
     expect(isModelAvailable({ provider: 'tinfoil', isSystem: 0 }, '')).toBe(true)
+    expect(isModelAvailable({ provider: 'privatemode', isSystem: 0 }, '')).toBe(true)
     expect(needsApiKey({ provider: 'openai', isSystem: 0, apiKey: null })).toBe(true)
   })
 })
 
 describe('model readiness', () => {
+  it('requires a Privatemode API key without requiring a configurable endpoint or server', () => {
+    const model = createMockModel({ provider: 'privatemode', url: null, apiKey: 'private-key', isSystem: 0 })
+    expect(isModelReady(model, '')).toBe(true)
+    expect(isModelReady({ ...model, apiKey: null }, '')).toBe(false)
+  })
   it.each([null, '', '   '])('requires a configured custom endpoint (%s)', (url) => {
     expect(isModelReady(createMockModel({ provider: 'custom', url }), '')).toBe(false)
   })
@@ -113,6 +119,7 @@ describe('catalog policy', () => {
     expect(catalogRequiresApiKey('openrouter')).toBe(true)
     expect(catalogRequiresApiKey('anthropic')).toBe(true)
     expect(catalogRequiresApiKey('otari')).toBe(true)
+    expect(catalogRequiresApiKey('privatemode')).toBe(true)
     expect(catalogRequiresApiKey('tinfoil')).toBe(false)
     expect(catalogRequiresApiKey('thunderbolt')).toBe(false)
     expect(catalogRequiresApiKey('custom')).toBe(false)
@@ -122,6 +129,7 @@ describe('catalog policy', () => {
     expect(providerAutoFetchesCatalog('thunderbolt')).toBe(true)
     expect(providerAutoFetchesCatalog('tinfoil')).toBe(true)
     expect(providerAutoFetchesCatalog('anthropic')).toBe(false)
+    expect(providerAutoFetchesCatalog('privatemode')).toBe(false)
     expect(providerAutoFetchesCatalog('openai')).toBe(false)
     expect(providerAutoFetchesCatalog('custom')).toBe(false)
   })

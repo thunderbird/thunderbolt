@@ -16,7 +16,7 @@ import {
   type ReasoningCapabilities,
   type ReasoningEffort,
 } from '../../../shared/reasoning-effort.ts'
-import { SecureClient } from 'tinfoil'
+import type { SecureClient } from 'tinfoil'
 import { clampThinkingLevel } from '@earendil-works/pi-ai'
 import { apiBaseUrl, backendHeaders, isSecureCloudUrl } from '../auth/config.ts'
 import { abortable } from '../lib/abort.ts'
@@ -46,6 +46,12 @@ const invalidTinfoilConfigError = (message: string): TinfoilBindingError =>
 
 /** Encode the validated 256-bit installation secret in Tinfoil's expected lower-case form. */
 const cacheSecretHex = (secret: Uint8Array): string => Buffer.from(secret).toString('hex')
+
+/** Evaluate the confidential SDK only after its provider has been selected. */
+const createSecureClient = async (options: ConstructorParameters<typeof SecureClient>[0]): Promise<SecureClient> => {
+  const { SecureClient } = await import('tinfoil')
+  return new SecureClient(options)
+}
 
 /** Replace every caller-controlled auth header with the stored session bearer. */
 const authenticatedSecureFetch =
@@ -107,8 +113,7 @@ export const createTinfoilBinding = async (options: CreateTinfoilBindingOptions)
     }
   })()
   const baseUrl = `${apiBaseUrl(options.credential.backendUrl)}/tinfoil`
-  const createSecureClient = options.createSecureClient ?? ((clientOptions) => new SecureClient(clientOptions))
-  let client: SecureClient | null = createSecureClient({
+  let client: SecureClient | null = await (options.createSecureClient ?? createSecureClient)({
     baseURL: baseUrl,
     userCacheSecret: cacheSecretHex(options.credential.userCacheSecret),
   })

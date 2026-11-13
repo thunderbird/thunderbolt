@@ -6,6 +6,7 @@ import { EnclaveHTTPClient, RouterHTTPClient, type RouterOptions } from 'tinfoil
 import { getErrorName } from '@/lib/error-utils'
 import { withDeadline } from '@/lib/timeout'
 import type { AttestationEvidence, AttestationReporter } from './types'
+import { AttestedTransportClient } from './client'
 
 export type TinfoilVerification = Awaited<ReturnType<RouterHTTPClient['ensureVerified']>>
 type HttpClient = Pick<RouterHTTPClient, 'fetch' | 'baseURL' | 'enclave' | 'ensureVerified' | 'close'>
@@ -31,22 +32,36 @@ export const readTinfoilEvidence = (verification: TinfoilVerification, enclave: 
 })
 
 /** Keep vendor crypto and retry logic in the SDK while owning UI evidence and the client's lifetime. */
-export class AttestedTinfoilClient {
-  private readonly lifetime = new AbortController()
-  private verification: TinfoilVerification | undefined
-  private verifying: Promise<TinfoilVerification> | undefined
-  private expiration: ReturnType<typeof setTimeout> | undefined
-  private failure: unknown
-  readonly baseURL: string
+export class AttestedTinfoilClient extends AttestedTransportClient<TinfoilVerification> {
   readonly enclave: string
 
   constructor(
-    private readonly client: HttpClient,
-    private readonly reporter: AttestationReporter,
-    private readonly timeoutMs: number,
+    client: HttpClient,
+    reporter: AttestationReporter,
+    timeoutMs: number,
     baseURL = client.baseURL.replace(/\/$/, ''),
   ) {
-    this.baseURL = baseURL
+    super(
+      {
+        provider: 'Tinfoil',
+        baseURL,
+        verify: async (signal) => {
+          const verification = await client.ensureVerified({ signal })
+          return {
+            value: verification,
+            evidence: readTinfoilEvidence(verification, client.enclave),
+            expiresAt: verification.freshnessExpiresAt!.getTime(),
+          }
+        },
+        fetch: (input, init) => client.fetch(input, init),
+        close: () => client.close(),
+        isVerificationFailure: (error) =>
+          typeof error === 'object' && error !== null && 'category' in error && error.category === 'attestation',
+        verifyAfterRequest: true,
+      },
+      reporter,
+      timeoutMs,
+    )
     this.enclave = client.enclave
   }
 
@@ -95,95 +110,6 @@ export class AttestedTinfoilClient {
       )
       throw error
     }
-  }
-
-  /** Reuses the SDK's checked cache; expired or rejected evidence is verified again with a bounded wait. */
-  ensureVerified(): Promise<TinfoilVerification> {
-    if (this.lifetime.signal.aborted) {
-      return Promise.reject(this.failure ?? this.lifetime.signal.reason)
-    }
-    this.verifying ??= this.verify()
-    return this.verifying
-  }
-
-  private async verify(): Promise<TinfoilVerification> {
-    if (!this.verification || Date.now() >= this.verification.freshnessExpiresAt!.getTime()) {
-      this.reporter.publish({ status: 'verifying' })
-    }
-    const controller = new AbortController()
-    try {
-      const verification = await withDeadline(
-        this.client.ensureVerified({ signal: AbortSignal.any([controller.signal, this.lifetime.signal]) }),
-        this.timeoutMs,
-        () => {
-          const error = attestationTimeout(this.timeoutMs)
-          controller.abort(error)
-          return error
-        },
-      )
-      this.lifetime.signal.throwIfAborted()
-      if (verification !== this.verification) {
-        this.verification = verification
-        this.reporter.publish({ status: 'verified', evidence: readTinfoilEvidence(verification, this.enclave) })
-        clearTimeout(this.expiration)
-        this.expiration = setTimeout(
-          () => {
-            this.verification = undefined
-            this.reporter.publish({ status: 'idle' })
-          },
-          Math.max(0, verification.freshnessExpiresAt!.getTime() - Date.now()),
-        )
-      }
-      return verification
-    } catch (error) {
-      this.fail(error)
-      throw error
-    } finally {
-      this.verifying = undefined
-    }
-  }
-
-  /** The SDK owns key-rejection replay; a failed attestation retires this client before another request. */
-  readonly fetch: HttpClient['fetch'] = async (input, init) => {
-    const callerSignal = init?.signal === undefined && input instanceof Request ? input.signal : init?.signal
-    const signal = AbortSignal.any([this.lifetime.signal, ...(callerSignal ? [callerSignal] : [])])
-    signal.throwIfAborted()
-    await this.ensureVerified()
-    signal.throwIfAborted()
-    try {
-      const response = await this.client.fetch(input, { ...init, signal })
-      // Fetch may have rotated the enclave's keys internally. Read checked evidence, never current.
-      try {
-        await this.ensureVerified()
-      } catch (error) {
-        await response.body?.cancel().catch(() => {})
-        throw error
-      }
-      return response
-    } catch (error) {
-      if (typeof error === 'object' && error !== null && 'category' in error && error.category === 'attestation') {
-        this.fail(error)
-      }
-      throw error
-    }
-  }
-
-  private fail(error: unknown): void {
-    this.failure = error
-    this.reporter.publish({ status: 'failed', reason: failureReason(error) })
-    void this.close()
-  }
-
-  /** Revoke evidence immediately and release the SDK's resources, including after eviction or logout. */
-  async close(): Promise<void> {
-    this.lifetime.abort()
-    clearTimeout(this.expiration)
-    this.verification = undefined
-    if (!this.failure) {
-      this.reporter.publish({ status: 'idle' })
-    }
-    this.reporter.close()
-    await this.client.close()
   }
 }
 

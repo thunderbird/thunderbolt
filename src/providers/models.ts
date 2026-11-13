@@ -52,7 +52,7 @@ export const fetchProviderModels = async (
       .map((model) => ({ id: model.slug, name: model.display_name }))
   }
   const models = await fetchModelsForProvider(
-    { provider: connection.provider as Model['provider'], apiKey, url: connection.url ?? undefined },
+    { provider: connection.provider as Model['provider'], apiKey, url: connection.url ?? undefined, connectionId },
     getProxyFetch,
     signal,
   )
@@ -106,7 +106,7 @@ export const addProviderModels = async (
         isSystem: 0,
         enabled: 1,
         toolUsage: model.supports_tools === false ? 0 : 1,
-        isConfidential: connection.provider === 'tinfoil' ? 1 : 0,
+        isConfidential: getProviderDefinition(connection.provider).attested ? 1 : 0,
       })
       ids.push(id)
     }

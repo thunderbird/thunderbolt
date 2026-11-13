@@ -93,6 +93,7 @@
         "path-browserify": "^1.0.1",
         "pdf-lib": "^1.17.1",
         "posthog-js": "^1.288.1",
+        "privatemode-ai": "1.62.0",
         "qrcode": "^1.5.4",
         "react": "^19.2.1",
         "react-dom": "^19.2.1",
@@ -2492,6 +2493,8 @@
     "prettier": ["prettier@3.8.3", "", { "bin": { "prettier": "bin/prettier.cjs" } }, "sha512-7igPTM53cGHMW8xWuVTydi2KO233VFiTNyF5hLJqpilHfmn8C8gPf+PS7dUT64YcXFbiMGZxS9pCSxL/Dxm/Jw=="],
 
     "pretty-format": ["pretty-format@27.5.1", "", { "dependencies": { "ansi-regex": "^5.0.1", "ansi-styles": "^5.0.0", "react-is": "^17.0.1" } }, "sha512-Qb1gy5OrP5+zDf2Bvnzdl3jsTf1qXVMazbvCoKhtKqVs4/YK4ozX4gKQJJVyNe+cajNPn0KoC0MC3FUmaHWEmQ=="],
+
+    "privatemode-ai": ["privatemode-ai@1.62.0", "", { "peerDependencies": { "openai": "<8" } }, "sha512-6Nxa5d2WMaeywE5Nj6Mvo5i+CdVm2CrZDD+bemzzsh/Q5u4I2bwGUOsBgzFNHryRMf54nPX+H4JfPo/X5tZeQQ=="],
 
     "process": ["process@0.11.10", "", {}, "sha512-cdGef/drWFoydD1JsMzuFf8100nZl+GT+yacc2bEced5f9Rjk4z+WtFUTBu9PhOi9j/jfmBPu0mMEY4wIdAF8A=="],
 

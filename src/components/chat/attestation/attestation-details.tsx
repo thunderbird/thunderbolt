@@ -13,11 +13,14 @@ const checkLabels = {
   code: msg`Signed build provenance`,
   measurement: msg`Matching measurements`,
   channel: msg`Enclave-bound encryption key`,
+  policy: msg`Verified deployment policy`,
 }
 const detailLabels = {
   source: msg`Source repository`,
   release: msg`Release digest`,
   measurement: msg`Enclave measurement`,
+  manifest: msg`Deployment manifest digest`,
+  policy: msg`Deployment policy hashes`,
 }
 
 /** Progressive disclosure keeps measurements accessible without making the panel an audit log. */

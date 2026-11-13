@@ -8,6 +8,7 @@ import { z } from 'zod'
 
 const chatErrorKinds = [
   'attestation',
+  'billing',
   'timeout',
   'rate-limit',
   'provider',
@@ -150,7 +151,7 @@ export const classifyErrorKind = (error: unknown): ChatErrorKind | undefined => 
   const normalizedMessage = message?.toLowerCase()
   const isContentRejectionStatus = status === 400 || status === 422
 
-  if (name === 'TinfoilAttestationTimeoutError') {
+  if (name?.endsWith('AttestationTimeoutError')) {
     return 'timeout'
   }
   if (
@@ -159,6 +160,9 @@ export const classifyErrorKind = (error: unknown): ChatErrorKind | undefined => 
     (typeof error === 'object' && error !== null && 'category' in error && error.category === 'attestation')
   ) {
     return 'attestation'
+  }
+  if (status === 402) {
+    return 'billing'
   }
   if (status === 429) {
     return 'rate-limit'
@@ -316,6 +320,10 @@ const getAgentErrorCode = (error: Error | null | undefined, status: number): str
  * 408s with deterministic 400s.
  */
 export const getErrorRetryable = (error?: Error | null): boolean | undefined => {
+  // Billing needs an account change, including when serialization retained only the kind.
+  if (getChatErrorKind(error) === 'billing') {
+    return false
+  }
   if (error && 'isRetryable' in error && typeof error.isRetryable === 'boolean') {
     return error.isRetryable
   }

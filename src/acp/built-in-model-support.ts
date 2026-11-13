@@ -15,11 +15,13 @@ const piProviders = new Set<Model['provider']>([
   'otari',
   'thunderbolt',
   'tinfoil',
+  'privatemode',
 ])
 
-/** Whether a model is eligible for Pi resolution. Tinfoil has no legacy fallback. */
+/** Whether a model is eligible for Pi resolution; attested providers have no legacy fallback. */
 export const isPiModelCandidate = (model: Pick<Model, 'provider' | 'toolUsage'>): boolean =>
-  piProviders.has(model.provider) && (model.provider === 'tinfoil' || model.toolUsage !== 0)
+  piProviders.has(model.provider) &&
+  (model.provider === 'tinfoil' || model.provider === 'privatemode' || model.toolUsage !== 0)
 
 /** Match Pi's resolvable models without loading its engine or opening a transport. */
 export const supportsPiCompaction = (

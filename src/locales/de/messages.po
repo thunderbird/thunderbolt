@@ -1535,6 +1535,10 @@ msgstr ""
 msgid "Connection unavailable on this device."
 msgstr ""
 
+#: src/settings/connections/use-provider-connection-form.ts
+msgid "Connection verification timed out. Try again."
+msgstr ""
+
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "Connection verified"
 msgstr ""
@@ -1838,6 +1842,10 @@ msgstr ""
 
 #: src/components/otari-connection/use-otari-connection-state.ts
 msgid "Could not verify or save the Otari model. Please try again."
+msgstr ""
+
+#: src/settings/connections/use-provider-connection-form.ts
+msgid "Could not verify the connection. Check your network and try again."
 msgstr ""
 
 #: src/components/onboarding/use-onboarding-provider-state.ts
@@ -2302,6 +2310,14 @@ msgstr "Dieses Gerät ablehnen?"
 #: src/settings/devices.tsx
 msgid "Denying…"
 msgstr "Wird abgelehnt…"
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Deployment manifest digest"
+msgstr ""
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Deployment policy hashes"
+msgstr ""
 
 #: src/widgets/weather-forecast/lib.ts
 msgid "Depositing rime fog"
@@ -5692,8 +5708,16 @@ msgid "The AI provider is having trouble right now. Try again in a moment."
 msgstr "Beim KI-Anbieter gibt es gerade Probleme. Versuchen Sie es in einem Moment erneut."
 
 #: src/components/chat/error-message.tsx
+msgid "The AI provider requires billing setup or additional credits. Check your provider account before retrying."
+msgstr ""
+
+#: src/components/chat/error-message.tsx
 msgid "The AI provider took too long to respond. Try again."
 msgstr "Der KI-Anbieter hat zu lange für eine Antwort gebraucht. Versuchen Sie es erneut."
+
+#: src/settings/connections/use-provider-connection-form.ts
+msgid "The API key was rejected. Check it and try again."
+msgstr ""
 
 #: src/webview-recovery/index.ts
 msgid "The app's web content stopped unexpectedly more than once. Automatic reloads have been paused."
@@ -5793,6 +5817,10 @@ msgstr "Die Daten des vorherigen Kontos auf diesem Gerät konnten nicht geschüt
 
 #: src/components/onboarding/provider-setup-error.ts
 msgid "The provider rejected the model request (HTTP {status}). Check model access and your subscription."
+msgstr ""
+
+#: src/settings/connections/use-provider-connection-form.ts
+msgid "The provider's security verification failed. Try again."
 msgstr ""
 
 #: src/components/device-approval.tsx
@@ -6721,6 +6749,10 @@ msgid "Verification unavailable"
 msgstr ""
 
 #: src/components/chat/attestation/attestation-details.tsx
+msgid "Verified deployment policy"
+msgstr ""
+
+#: src/components/chat/attestation/attestation-details.tsx
 msgid "Verified on this device"
 msgstr ""
 
@@ -7174,8 +7206,8 @@ msgstr "Server Ihrer Bereitstellung"
 #~ msgstr ""
 
 #: src/components/chat/attestation/use-attestation-display.ts
-msgid "Your device checks the enclave hardware and signed build before sending to {provider}."
-msgstr ""
+#~ msgid "Your device checks the enclave hardware and signed build before sending to {provider}."
+#~ msgstr ""
 
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "Your device verified {provider}'s confidential inference endpoint. Model request bodies are encrypted for that enclave."
@@ -7184,6 +7216,10 @@ msgstr ""
 #: src/components/chat/attestation/attestation-control.tsx
 #~ msgid "Your device verified {provider}'s confidential inference endpoint. Requests are encrypted to that endpoint."
 #~ msgstr ""
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Your device verifies the confidential environment and its software before sending to {provider}."
+msgstr ""
 
 #: src/components/onboarding/onboarding-celebration-step.tsx
 msgid "Your donation helps us understand how the app is used and improve the product."

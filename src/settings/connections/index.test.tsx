@@ -201,6 +201,7 @@ describe('ConnectionsPage list', () => {
   it.each([
     'Otari Models and search',
     'Tinfoil Models and search',
+    'Privatemode Models',
     'OpenRouter Models',
     'OpenAI Models',
     'Google Productivity',

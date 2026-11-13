@@ -26,13 +26,26 @@ beforeEach(resetTestDatabase)
 afterAll(teardownTestDatabase)
 afterEach(() => mock.restore())
 
-const connect = (provider: 'openai' | 'exa' = 'openai') =>
+const connect = (provider: 'openai' | 'exa' | 'tinfoil' | 'privatemode' = 'openai') =>
   saveProviderConnection(getDb(), {
     provider,
     name: 'Work',
     authMethod: 'api_key',
     credentials: { apiKey: 'key' },
   })
+
+it.each(['tinfoil', 'privatemode'] as const)(
+  'marks %s models as confidential when added from their catalog',
+  async (provider) => {
+    const connectionId = await connect(provider)
+    const [modelId] = await addProviderModels(getDb(), connectionId, [{ id: 'private-model' }])
+    expect(await getModel(getDb(), modelId)).toMatchObject({
+      provider,
+      providerConnectionId: connectionId,
+      isConfidential: 1,
+    })
+  },
+)
 
 it.each(['missing', 'disabled', 'disconnected', 'deleted', 'search-only'] as const)(
   'does not add models to a %s connection',

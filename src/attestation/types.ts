@@ -7,8 +7,16 @@ export type AttestationEvidence = {
   provider: string
   verifiedAt: number
   endpoint: string
-  checks: readonly ('code' | 'hardware' | 'measurement' | 'channel')[]
-  details: readonly { label: 'source' | 'release' | 'measurement'; value: string }[]
+  checks: readonly ('code' | 'hardware' | 'measurement' | 'channel' | 'policy')[]
+  details: readonly { label: 'source' | 'release' | 'measurement' | 'manifest' | 'policy'; value: string }[]
+}
+
+/** SDK-independent transport used by inference, discovery, and the attestation UI. */
+export type AttestedClient = {
+  readonly baseURL: string
+  readonly fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+  ensureVerified: () => Promise<unknown>
+  close: () => void | Promise<void>
 }
 
 /** Ephemeral connection state. Evidence is absent whenever verification is not current. */

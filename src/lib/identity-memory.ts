@@ -11,6 +11,7 @@ import { clearAllOAuthConnectingState, clearOAuthState } from '@/lib/oauth-state
 import { clearMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
 import { clearProviderAuthorizationDraft } from '@/providers/authorization-draft'
 import { clearTinfoilClients } from '@/ai/tinfoil-client'
+import { clearPrivatemodeClients } from '@/ai/privatemode-client'
 import { attestationStore } from '@/attestation/store'
 import { clearOtariCapabilityCache } from '@/integrations/otari-search/capability-query'
 
@@ -35,5 +36,6 @@ export const clearIdentityScopedMemory = (): void => {
   }
   clearDebugTranscriptRecorder()
   clearTinfoilClients()
+  clearPrivatemodeClients()
   attestationStore.clearAll()
 }

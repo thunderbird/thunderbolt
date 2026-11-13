@@ -7,7 +7,6 @@ import { loadInferencePrice, type InferenceDatabase } from '@/inference/usage-le
 import { defaultModels, type SharedModel } from '@shared/defaults/models'
 import { randomBytes } from 'node:crypto'
 import OpenAI from 'openai'
-import { SecureClient } from 'tinfoil'
 import { getAnthropicV1BaseUrl } from './client'
 import { resolveConfidentialManagedModel, resolveManagedDirectRuntime } from './managed-models'
 
@@ -43,6 +42,7 @@ const modelProbeMaxTokens = 256
 
 /** Pair the encrypted transport with the enclave whose key was attested. */
 const createConfidentialTransport = async () => {
+  const { SecureClient } = await import('tinfoil')
   const secure = new SecureClient({ userCacheSecret: randomBytes(32).toString('hex') })
   await secure.ready()
   return { fetch: secure.fetch, baseURL: secure.getBaseURL()! }

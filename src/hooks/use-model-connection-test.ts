@@ -8,6 +8,8 @@ import { useLingui } from '@lingui/react/macro'
 import { createModel } from '@/ai/fetch'
 import { streamProbe } from '@/ai/stream-probe'
 import { getTinfoilClient } from '@/ai/tinfoil-client'
+import { getPrivatemodeClient } from '@/ai/privatemode-client'
+import type { AttestedClient } from '@/attestation/types'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import type { Model } from '@/types'
@@ -110,6 +112,7 @@ export type ConnectionTestProbe = (
 
 type DefaultProbeDependencies = {
   getTinfoilClient?: typeof getTinfoilClient
+  getPrivatemodeClient?: typeof getPrivatemodeClient
   createModel?: typeof createModel
   generateText?: typeof generateText
 }
@@ -138,15 +141,21 @@ const connectionTestModel = (config: NormalizedConfig): Model => ({
   userId: null,
 })
 
-/** Build a BYOK Tinfoil probe model over an attested enclave client. */
-const createTinfoilProbeModel = async (config: NormalizedConfig, acquireClient: typeof getTinfoilClient) => {
+/** Build a provider probe over the same attested transport used for inference. */
+const createAttestedProbeModel = async (
+  config: NormalizedConfig,
+  acquireClient: (options: {
+    apiKey: string
+    connectionId?: string
+  }) => Promise<Pick<AttestedClient, 'baseURL' | 'fetch'>>,
+) => {
   const { model, wrapFetch } = await bindModelProvider(connectionTestModel(config))
   if (!model.apiKey) {
     throw new Error('No API key provided')
   }
-  const client = await acquireClient()
+  const client = await acquireClient({ apiKey: model.apiKey, connectionId: model.providerConnectionId ?? undefined })
   const provider = createOpenAICompatible({
-    name: 'tinfoil',
+    name: config.provider,
     baseURL: client.baseURL,
     apiKey: model.apiKey,
     fetch: wrapFetch(
@@ -181,6 +190,7 @@ const isServerError = (error: unknown): boolean =>
 export const createDefaultProbe =
   ({
     getTinfoilClient: acquireTinfoilClient = getTinfoilClient,
+    getPrivatemodeClient: acquirePrivatemodeClient = getPrivatemodeClient,
     createModel: createAiModel = createModel,
     generateText: runGenerateText = generateText,
   }: DefaultProbeDependencies = {}): ConnectionTestProbe =>
@@ -190,9 +200,13 @@ export const createDefaultProbe =
         ? { ...config, apiKey: await tinfoilSession.getAccessToken() }
         : config
     const { api } = await bindModelProvider(connectionTestModel(resolved))
+    const acquireAttestedClient = {
+      tinfoil: () => acquireTinfoilClient(),
+      privatemode: acquirePrivatemodeClient,
+    }
     const aiModel =
-      config.provider === 'tinfoil'
-        ? await createTinfoilProbeModel(resolved, acquireTinfoilClient)
+      config.provider === 'tinfoil' || config.provider === 'privatemode'
+        ? await createAttestedProbeModel(resolved, acquireAttestedClient[config.provider])
         : await createAiModel(connectionTestModel(resolved), getProxyFetch)
     const request = {
       model: aiModel,

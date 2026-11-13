@@ -9,6 +9,7 @@ import { eq } from 'drizzle-orm'
 import { providerConnectionsTable } from '@/db/tables'
 import * as providerConnections from '@/dal/provider-connections'
 import * as otariAuth from '@/lib/otari-auth'
+import * as privatemode from '@/ai/privatemode-client'
 import { getAllModels } from '@/dal'
 import {
   getProviderConnection,
@@ -53,6 +54,7 @@ describe('provider connection form', () => {
   beforeEach(async () => {
     await resetTestDatabase()
     spyOn(otariAuth, 'revokeOtariToken').mockResolvedValue()
+    spyOn(privatemode, 'validatePrivatemodeApiKey').mockResolvedValue()
     authorization.authorize.mockClear()
     authorization.cancel.mockClear()
     onSaved.mockClear()
@@ -62,6 +64,165 @@ describe('provider connection form', () => {
     cleanup()
     mock.restore()
     useSearchProviderStore.getState().clearSearchProvider()
+  })
+
+  it('connects Privatemode with a device-local API key and no OAuth, custom endpoint, or search activation', async () => {
+    renderWithReactivity(
+      <ProviderConnectionForm
+        provider="privatemode"
+        authorization={authorization}
+        onSaved={onSaved}
+        onCancel={onCancel}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: 'Use sign-in instead' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Server URL')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save connection' })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: ' private-key ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save connection' }))
+    await settle()
+    const [connection] = await getProviderConnections(getDb())
+    expect(connection).toMatchObject({
+      provider: 'privatemode',
+      name: 'Privatemode',
+      authMethod: 'api_key',
+      url: null,
+      connected: true,
+    })
+    expect(await getProviderCredentials(getDb(), connection.id)).toMatchObject({ apiKey: 'private-key' })
+    expect(authorization.authorize).not.toHaveBeenCalled()
+    expect(useSearchProviderStore.getState().connectionStatus).toBeNull()
+  })
+
+  it('keeps a rejected Privatemode key unsaved and allows a verified retry', async () => {
+    const started = Promise.withResolvers<void>()
+    const validation = Promise.withResolvers<void>()
+    const validate = spyOn(privatemode, 'validatePrivatemodeApiKey').mockImplementationOnce(async () => {
+      started.resolve()
+      await validation.promise
+    })
+    renderWithReactivity(
+      <ProviderConnectionForm
+        provider="privatemode"
+        authorization={authorization}
+        onSaved={onSaved}
+        onCancel={onCancel}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'wrong-private-key' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save connection' }))
+    await act(async () => {
+      await started.promise
+      await getClock().tickAsync(1)
+    })
+    expect(screen.getByRole('button', { name: 'Save connection' })).toBeDisabled()
+    expect(await getProviderConnections(getDb())).toEqual([])
+    expect(onSaved).not.toHaveBeenCalled()
+    validation.reject(Object.assign(new Error('wrong-private-key was rejected'), { status: 401 }))
+    await settle()
+    expect(screen.getByRole('alert')).toHaveTextContent('The API key was rejected. Check it and try again.')
+    expect(screen.getByRole('alert')).not.toHaveTextContent('wrong-private-key')
+    expect(screen.getByLabelText('API key')).toHaveValue('wrong-private-key')
+    expect(await getProviderConnections(getDb())).toEqual([])
+    expect(onSaved).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: ' corrected-key ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save connection' }))
+    await settle()
+    const [connection] = await getProviderConnections(getDb())
+    expect(await getProviderCredentials(getDb(), connection.id)).toMatchObject({ apiKey: 'corrected-key' })
+    expect(validate).toHaveBeenCalledTimes(2)
+    expect(onSaved).toHaveBeenCalledTimes(1)
+  })
+
+  it('preserves the existing Privatemode account when its replacement key is rejected', async () => {
+    const id = await saveProviderConnection(getDb(), {
+      provider: 'privatemode',
+      name: 'Work',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'working-key' },
+    })
+    spyOn(privatemode, 'validatePrivatemodeApiKey').mockRejectedValueOnce(
+      Object.assign(new Error('rejected'), { status: 403 }),
+    )
+    renderWithReactivity(
+      <ProviderConnectionForm
+        mode="edit"
+        provider="privatemode"
+        connection={(await getProviderConnection(getDb(), id))!}
+        authorization={authorization}
+        onSaved={onSaved}
+        onCancel={onCancel}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Changed name' } })
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'wrong-key' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await settle()
+    expect(screen.getByRole('alert')).toHaveTextContent('The API key was rejected')
+    expect(await getProviderConnection(getDb(), id)).toMatchObject({ name: 'Work', connected: true })
+    expect(await getProviderCredentials(getDb(), id)).toMatchObject({ apiKey: 'working-key' })
+    expect(onSaved).not.toHaveBeenCalled()
+  })
+
+  it('does not overwrite a Privatemode connection changed while verification was pending', async () => {
+    const id = await saveProviderConnection(getDb(), {
+      provider: 'privatemode',
+      name: 'Work',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'working-key' },
+    })
+    const started = Promise.withResolvers<void>()
+    const validation = Promise.withResolvers<void>()
+    spyOn(privatemode, 'validatePrivatemodeApiKey').mockImplementationOnce(async () => {
+      started.resolve()
+      await validation.promise
+    })
+    renderWithReactivity(
+      <ProviderConnectionForm
+        mode="edit"
+        provider="privatemode"
+        connection={(await getProviderConnection(getDb(), id))!}
+        authorization={authorization}
+        onSaved={onSaved}
+        onCancel={onCancel}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'late-key' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await act(async () => started.promise)
+    await disconnectProviderConnection(getDb(), id)
+    validation.resolve()
+    await settle()
+    expect(await getProviderConnection(getDb(), id)).toMatchObject({ connected: false })
+    expect(await getProviderCredentials(getDb(), id)).toBeNull()
+    expect(onSaved).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not save the connection')
+  })
+
+  it('does not save a Privatemode key after its verification form unmounts', async () => {
+    const started = Promise.withResolvers<void>()
+    const validation = Promise.withResolvers<void>()
+    spyOn(privatemode, 'validatePrivatemodeApiKey').mockImplementationOnce(async () => {
+      started.resolve()
+      await validation.promise
+    })
+    const view = renderWithReactivity(
+      <ProviderConnectionForm
+        provider="privatemode"
+        authorization={authorization}
+        onSaved={onSaved}
+        onCancel={onCancel}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'late-key' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save connection' }))
+    await act(async () => started.promise)
+    view.unmount()
+    validation.resolve()
+    await settle()
+    expect(await getProviderConnections(getDb())).toEqual([])
+    expect(onSaved).not.toHaveBeenCalled()
   })
 
   it('saves a named API-key connection without creating a model, and supports another account for the same service', async () => {
@@ -118,6 +279,7 @@ describe('provider connection form', () => {
 
   it.each([
     { provider: 'openai', authMethod: 'api_key' },
+    { provider: 'privatemode', authMethod: 'api_key' },
     { provider: 'openrouter', authMethod: 'oauth' },
     { provider: 'otari', authMethod: 'oauth' },
   ] as const)(
@@ -165,6 +327,7 @@ describe('provider connection form', () => {
       expect(await getProviderCredentials(getDb(), id)).toMatchObject(credentials)
       expect(authorization.authorize).not.toHaveBeenCalled()
       expect(get).not.toHaveBeenCalled()
+      expect(privatemode.validatePrivatemodeApiKey).not.toHaveBeenCalled()
     },
   )
 

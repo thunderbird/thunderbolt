@@ -7,7 +7,7 @@ fn main() {
         tauri_build::Attributes::new().plugin(
             "platform-utils",
             tauri_build::InlinedPlugin::new()
-                .commands(&["get_android_insets", "set_bar_color"])
+                .commands(&["get_android_insets", "set_bar_color", "save_to_downloads"])
                 .default_permission(tauri_build::DefaultPermissionRule::AllowAllCommands),
         ),
     )

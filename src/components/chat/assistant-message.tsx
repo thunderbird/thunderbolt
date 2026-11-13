@@ -13,6 +13,7 @@ import {
   type ToolOrDynamicToolUIPart,
 } from '@/lib/assistant-message'
 import { extractTextFromParts } from '@/lib/message-utils'
+import { isOfficeScriptPart, officeScriptFiles } from '@/office/office-script-tool'
 import { splitPartType } from '@/lib/utils'
 import type { HaystackReferenceMeta, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
 import type { SourceMetadata } from '@/types/source'
@@ -20,6 +21,7 @@ import type { TextUIPart } from 'ai'
 import { memo, useMemo, type ReactNode } from 'react'
 import { ArtifactMessagePart } from './artifact-message-part'
 import { CopyMessageButton } from './copy-message-button'
+import { CreatedFileCard } from './created-file-card'
 import { ReasoningGroup } from './reasoning-group'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
@@ -44,6 +46,9 @@ const emptyReasoningTime: Record<string, number> = {}
 
 // Animation classes for subtle slide-in effect
 const animationClasses = 'animate-in slide-in-from-bottom-2 fade-in duration-300 ease-out'
+
+/** `tool-<name>` and `dynamic-tool` parts are both tool calls; anything else is the type's first segment. */
+const partKind = (part: GroupedUIPart): string => (part.type === 'dynamic-tool' ? 'tool' : splitPartType(part.type)[0])
 
 /**
  * Converts grouped message parts into React elements for rendering.
@@ -72,8 +77,8 @@ export const mountMessageParts = (
   // suppresses its ephemeral reasoning display (and that display's 200px reserve),
   // which otherwise leaves a large empty gap above an artifact card.
   const hasResponseBody = groupedParts.some((part) => {
-    const [partType] = splitPartType(part.type)
-    return partType === 'text' || partType === 'tool'
+    const kind = partKind(part)
+    return kind === 'text' || kind === 'tool'
   })
 
   groupedParts.forEach((part, index) => {
@@ -81,10 +86,9 @@ export const mountMessageParts = (
       partElements.push(<AcpCompactionNotice compaction={part.data} />)
       return
     }
-    const [partType] = splitPartType(part.type)
     const isLastPart = index === groupedParts.length - 1
 
-    switch (partType) {
+    switch (partKind(part)) {
       case 'reasoning_group': {
         const reasoningGroupPart = part as ReasoningGroupUIPart
         partElements.push(
@@ -111,10 +115,23 @@ export const mountMessageParts = (
           />,
         )
         break
-      case 'tool':
-        // groupMessageParts only lifts render_html tool parts out of the group.
-        partElements.push(<ArtifactMessagePart part={part as ToolOrDynamicToolUIPart} />)
+      case 'tool': {
+        // groupMessageParts lifts only render_html parts and run_office_script parts with files out of the group.
+        const toolPart = part as ToolOrDynamicToolUIPart
+        const createdFiles = isOfficeScriptPart(toolPart) ? officeScriptFiles(toolPart) : undefined
+        partElements.push(
+          createdFiles ? (
+            <div className="my-2 flex flex-wrap gap-2 px-4">
+              {createdFiles.map((file) => (
+                <CreatedFileCard key={file.id} file={file} />
+              ))}
+            </div>
+          ) : (
+            <ArtifactMessagePart part={toolPart} />
+          ),
+        )
         break
+      }
     }
   })
 

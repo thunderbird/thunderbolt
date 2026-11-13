@@ -7,6 +7,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { z } from 'zod'
 import { createFakeProvider, fakeProviderReply } from './fake-provider'
 import { miniAppToolsetName, miniAppTransferPrompt, protectedEmailBody, protectedEmailId } from './mini-app-fixture'
+import { officeScript, officeScriptPrompt } from './office-script-fixture'
 import { performanceStreamPrompt, performanceStreamReply } from './streaming-fixture'
 
 test('streams a complete reply over IPv4 loopback', async () => {
@@ -125,6 +126,32 @@ test('plays a model that reads an email and passes its body to the open Mini App
     }
     const unrelated = await send([ask, otherCall, toolResult('{"count":1}')])
     expect(unrelated.content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('plays a model that builds a Word document with run_office_script, then replies', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: `http://127.0.0.1:${port}`, maxRetries: 0 })
+    const send = (messages: Anthropic.MessageParam[]) =>
+      client.messages.stream({ model: 'test-model', max_tokens: 100, messages }).finalMessage()
+    const ask: Anthropic.MessageParam = { role: 'user', content: officeScriptPrompt }
+
+    const call = await send([ask])
+    expect(call.content).toMatchObject([
+      { type: 'tool_use', name: 'run_office_script', input: { script: officeScript } },
+    ])
+
+    const reply = await send([
+      ask,
+      { role: 'assistant', content: call.content },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_test', content: '{"ok":true}' }] },
+    ])
+    expect(reply.content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
   } finally {
     server.close()
     server.closeAllConnections()

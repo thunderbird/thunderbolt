@@ -16,6 +16,7 @@ import type { WebToolApi } from '@/integrations/thunderbolt-pro/tools'
 import { getSearchConnectionApi } from '@/integrations/standalone-search/connection'
 import { resolveSearchSelection } from '@/integrations/standalone-search/selection'
 import { hasServerAuthentication } from '@/lib/provider-mode'
+import { officeScriptTool } from '@/office/office-script-tool'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { toolCallKey } from '@/lib/stable-stringify'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
@@ -65,7 +66,11 @@ export const getAvailableTools = async (
     searchApi,
     searchConnectionId,
   } = context ?? (await loadToolAvailabilityContext())
-  const baseTools: ToolConfig[] = [renderHtmlTool, ...(experimentalFeatureTasks ? Object.values(tasksTools) : [])]
+  const baseTools: ToolConfig[] = [
+    renderHtmlTool,
+    officeScriptTool,
+    ...(experimentalFeatureTasks ? Object.values(tasksTools) : []),
+  ]
   const { selection, connectionId } = useSearchProviderStore.getState()
   const hasServer = hasServerAuthentication()
   const selected = resolveSearchSelection(selection, {

@@ -5,7 +5,9 @@
 import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
-import { FileText, X } from 'lucide-react'
+import { pptxMime } from '@/files/transformers'
+import { FileText, Presentation, X } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { DeferredPdfThumbnail } from './deferred-pdf-thumbnail'
 import { DocxThumbnail } from './docx-thumbnail'
 import { ImageThumbnail } from './image-thumbnail'
@@ -26,6 +28,10 @@ type FileCardProps = {
   resendTargets?: readonly ('text' | 'images')[]
   /** Re-deliver this file as the chosen mode and re-run the turn. */
   onResend?: (target: 'text' | 'images') => void
+  /** A control in the top-right corner, such as a download button. */
+  action?: ReactNode
+  /** A short line under the card, such as why the file can't be opened here. */
+  note?: ReactNode
 }
 
 /** Human label for a non-native delivery mode. */
@@ -66,9 +72,12 @@ export const FileCard = ({
   deliverAs,
   resendTargets,
   onResend,
+  action,
+  note,
 }: FileCardProps) => {
   const { i18n } = useLingui()
   const ext = filename.split('.').pop()?.toLowerCase()
+  const PlaceholderIcon = mimeType === pptxMime ? Presentation : FileText
   const isPdf = mimeType === 'application/pdf'
   const isImage = mimeType.startsWith('image/')
   const isMarkdown = mimeType === 'text/markdown' || ext === 'md' || ext === 'markdown'
@@ -79,7 +88,7 @@ export const FileCard = ({
   const preview = (
     <div className="relative flex h-36 w-28 items-center justify-center overflow-hidden rounded-xl border bg-muted [--thumb-scale:0.2333] sm:h-44 sm:w-36 sm:[--thumb-scale:0.3]">
       {/* Placeholder shown until (and unless) a real preview renders on top. */}
-      <FileText className="size-7 text-muted-foreground sm:size-8" aria-hidden="true" />
+      <PlaceholderIcon className="size-7 text-muted-foreground sm:size-8" aria-hidden="true" />
       {isPdf && <DeferredPdfThumbnail localFileId={localFileId} />}
       {isImage && <ImageThumbnail localFileId={localFileId} alt={filename} />}
       {isMarkdown && <MarkdownThumbnail localFileId={localFileId} />}
@@ -123,6 +132,8 @@ export const FileCard = ({
           <X className="size-3.5" />
         </button>
       )}
+      {action && <div className="absolute right-1.5 top-1.5">{action}</div>}
+      {note && <p className="mt-1 w-28 text-[length:var(--font-size-xs)] text-muted-foreground sm:w-36">{note}</p>}
       {onResend && resendTargets && resendTargets.length > 0 && (
         <div className="mt-1 flex flex-wrap items-center justify-end gap-1">
           {resendTargets.map((target) => (

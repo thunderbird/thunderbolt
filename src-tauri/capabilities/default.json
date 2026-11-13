@@ -61,22 +61,6 @@
           "path": "$APPDATA/*"
         }
       ]
-    },
-    {
-      "identifier": "fs:allow-write-text-file",
-      "allow": [
-        {
-          "path": "$DOWNLOAD/*"
-        }
-      ]
-    },
-    {
-      "identifier": "fs:allow-write-file",
-      "allow": [
-        {
-          "path": "$DOWNLOAD/*"
-        }
-      ]
     }
   ]
 }

@@ -199,6 +199,9 @@ test('a magic link switches accounts without redeeming its code twice', async ({
 
 // Without OPFS, Chromium and Firefox persist each slot in IndexedDB. WebKit keeps it in memory per tab.
 test.describe('without OPFS', () => {
+  // Three sign-ins with a second app tab open run close to the 60 s default on a CI runner.
+  test.describe.configure({ timeout: 120_000 })
+
   test.beforeEach(async ({ page }) => {
     // The persistent WebKit page fixture clears OPFS before this hook disables it.
     await page.context().addInitScript(() => {

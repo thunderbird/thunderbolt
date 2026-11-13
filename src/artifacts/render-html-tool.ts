@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { parseToolOutput } from '@/lib/tool-output'
 import type { ToolConfig } from '@/types'
 import { type DynamicToolUIPart, getToolName, isToolOrDynamicToolUIPart, type ToolUIPart, type UIMessage } from 'ai'
 import { z } from 'zod'
@@ -59,68 +60,15 @@ const renderHtmlOutputSchema = z.union([
  * The typed output of a `render_html` part once it has finished (`undefined`
  * before then).
  *
- * Parsed rather than cast, and tolerant of the MCP-style
- * `{ content: [{ type: 'text', text }], details }` envelope some providers wrap
- * a tool result in. This used to be a bare `as RenderHtmlOutput` cast, which
- * cannot fail: a wrapped result sailed through as an object whose `ok` was
- * `undefined`, so `ArtifactMessagePart` judged a perfectly good artifact
- * unverified and rendered nothing. The symptom was a card that flashed while
- * the input streamed and then vanished, on some models and not others, with
- * `{"ok":true}` sitting in the tool result the whole time.
- *
- * `details` is also where a **remote ACP agent**'s verdict lands: it returns a
- * pi `AgentToolResult`, which the ACP layer forwards verbatim as `rawOutput`
- * (`cli/src/acp/harness-to-acp.ts`). Reading only the top level left every
- * hosted agent's artifact rendering as an ordinary tool call.
+ * This used to be a bare `as RenderHtmlOutput` cast. A result wrapped in an
+ * envelope sailed through as an object whose `ok` was `undefined`, so
+ * `ArtifactMessagePart` judged a perfectly good artifact unverified and
+ * rendered nothing: a card that flashed while the input streamed and then
+ * vanished, on some models and not others. {@link parseToolOutput} explains the
+ * envelopes it unwraps.
  */
-export const renderHtmlOutput = (part: RenderHtmlPart): RenderHtmlOutput | undefined => {
-  const output = part.output
-  if (output === undefined || output === null) {
-    return undefined
-  }
-
-  const direct = renderHtmlOutputSchema.safeParse(output)
-  if (direct.success) {
-    return direct.data
-  }
-
-  const envelope = z
-    .object({
-      details: z.unknown().optional(),
-      content: z.array(z.object({ type: z.literal('text'), text: z.string() })).optional(),
-    })
-    .safeParse(output)
-  if (!envelope.success) {
-    return undefined
-  }
-
-  const fromDetails = renderHtmlOutputSchema.safeParse(envelope.data.details)
-  if (fromDetails.success) {
-    return fromDetails.data
-  }
-
-  // Last resort: the same object re-serialised into the text block.
-  const text = envelope.data.content?.find((entry) => entry.type === 'text')?.text
-  if (text === undefined) {
-    return undefined
-  }
-  // `JSON.parse` throws on anything that isn't JSON, and this runs during
-  // render — an unparseable text block must degrade to "not verified", not take
-  // the message down with it.
-  const parsedText = z
-    .string()
-    .transform((value, ctx) => {
-      try {
-        return JSON.parse(value) as unknown
-      } catch {
-        ctx.addIssue({ code: 'custom', message: 'not JSON' })
-        return z.NEVER
-      }
-    })
-    .pipe(renderHtmlOutputSchema)
-    .safeParse(text)
-  return parsedText.success ? parsedText.data : undefined
-}
+export const renderHtmlOutput = (part: RenderHtmlPart): RenderHtmlOutput | undefined =>
+  parseToolOutput(renderHtmlOutputSchema, part)
 
 const renderHtmlParameters = z.object({
   html: z

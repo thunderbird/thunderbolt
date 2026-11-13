@@ -1979,6 +1979,7 @@ msgid "Couldn't save the new order."
 msgstr "No se pudo guardar el nuevo orden."
 
 #: src/components/artifact/artifact-actions.tsx
+#: src/components/chat/created-file-card.tsx
 msgid "Couldn't save: {saveError}"
 msgstr ""
 
@@ -2508,6 +2509,10 @@ msgstr "Listo"
 #: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "Download"
 msgstr "Descargar"
+
+#: src/components/chat/created-file-card.tsx
+msgid "Download {filename}"
+msgstr ""
 
 #: src/search/commands/use-commands.ts
 msgid "Download app"
@@ -3949,6 +3954,10 @@ msgstr ""
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Not available in private chats."
 msgstr "No disponible en chats privados."
+
+#: src/components/chat/created-file-card.tsx
+msgid "Not available on this device"
+msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Not configured"

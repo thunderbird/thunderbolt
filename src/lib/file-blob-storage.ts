@@ -60,23 +60,34 @@ const openDB = (): Promise<IDBDatabase> =>
  */
 const detachBytes = async (blob: Blob): Promise<Blob> => new Blob([await blob.arrayBuffer()], { type: blob.type })
 
-/** Persist an uploaded attachment locally, as a copy of the bytes. */
-export const putAttachment = async (file: StoredFile): Promise<void> => {
-  const detached = { ...file, blob: await detachBytes(file.blob) }
+/** Persist attachments locally, as copies of the bytes, in one transaction: all of them are stored or none. */
+export const putAttachments = async (files: StoredFile[]): Promise<void> => {
+  const detached = await Promise.all(files.map(async (file) => ({ ...file, blob: await detachBytes(file.blob) })))
   const db = await openDB()
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, 'readwrite')
-    tx.objectStore(storeName).put(detached)
     tx.oncomplete = () => {
       db.close()
       resolve()
     }
-    tx.onerror = () => {
+    // A failed request aborts the transaction, and so does a full disk, so `abort` covers every failure.
+    tx.onabort = () => {
       db.close()
-      reject(new Error(`Failed to store attachment: ${file.id}`, { cause: tx.error }))
+      reject(new Error(`Failed to store attachments: ${files.map(({ id }) => id).join(', ')}`, { cause: tx.error }))
+    }
+    const store = tx.objectStore(storeName)
+    try {
+      detached.forEach((file) => store.put(file))
+    } catch (error) {
+      // A `put` that throws (e.g. a record missing its key) does not abort the transaction, so earlier puts would commit.
+      tx.abort()
+      reject(new Error('Failed to store attachments', { cause: error }))
     }
   })
 }
+
+/** Persist an uploaded attachment locally, as a copy of the bytes. */
+export const putAttachment = (file: StoredFile): Promise<void> => putAttachments([file])
 
 /** Read a locally-stored attachment, or `null` if it isn't on this device. */
 export const getAttachment = async (id: string): Promise<StoredFile | null> => {

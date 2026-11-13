@@ -591,3 +591,13 @@ describe('deriveMlKemAtRestKey', () => {
     )
   })
 })
+
+describe('uint8ArrayToBase64', () => {
+  it('encodes every byte value, across the chunks it encodes at a time', () => {
+    const bytes = Uint8Array.from({ length: 0x8000 * 2 + 3 }, (_, index) => (index * 7) % 256)
+
+    expect(uint8ArrayToBase64(bytes)).toBe(Buffer.from(bytes).toString('base64'))
+    expect(base64ToUint8Array(uint8ArrayToBase64(bytes))).toEqual(bytes)
+    expect(uint8ArrayToBase64(new Uint8Array(0))).toBe('')
+  })
+})

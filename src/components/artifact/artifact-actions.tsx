@@ -44,7 +44,7 @@ export const ArtifactActions = ({ html, title, buttonClassName }: ArtifactAction
    * The reason a failure is shown rather than only logged.
    *
    * The desktop path writes the bytes itself, so it can fail for reasons the
-   * user can act on: a build older than the `$DOWNLOAD` grant, a full disk, a
+   * user can act on: a build older than the desktop save command, a full disk, a
    * Downloads folder they don't own. Every one of those used to reach
    * `console.error` alone — which is indistinguishable, from the outside, from
    * the do-nothing bug this button already had. "Still not working" was the

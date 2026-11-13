@@ -4,6 +4,7 @@
 
 import type { AcpCompaction } from '@/acp/compaction'
 import { isRenderHtmlPart, renderHtmlOutput } from '@/artifacts/render-html-tool'
+import { isOfficeScriptPart, officeScriptFiles } from '@/office/office-script-tool'
 import {
   type DynamicToolUIPart,
   isToolOrDynamicToolUIPart,
@@ -68,7 +69,8 @@ export const artifactRendersStandalone = (part: ToolOrDynamicToolUIPart): boolea
  * **Context**: Called by `AssistantMessage` after filtering, to organize tool calls for display.
  * Reasoning and tool calls (like `read_file`, `grep`, etc.) are grouped into a compact panel rather
  * than scattered through the message. A streaming or verified `render_html` part is lifted out to
- * render as its own artifact instead of joining the group.
+ * render as its own artifact instead of joining the group, and so is a `run_office_script` part
+ * that created files, which renders as their chips.
  *
  * **Grouping logic**:
  * - Consecutive reasoning/tool parts → grouped into a single `ReasoningGroupUIPart`
@@ -108,6 +110,12 @@ export const groupMessageParts = (parts: GroupableUIPart[]): GroupedUIPart[] => 
       // verified result. Only a finished call that FAILED verification — or errored — stays in
       // the group as an ordinary tool call.
       if (isRenderHtmlPart(part) && artifactRendersStandalone(part)) {
+        flushGroup()
+        grouped.push(part)
+        return
+      }
+      // The files a successful run created render as chips; a run in progress or a failed one stays a tool call.
+      if (isOfficeScriptPart(part) && officeScriptFiles(part)) {
         flushGroup()
         grouped.push(part)
         return

@@ -23,6 +23,11 @@ export default defineConfig({
     baseURL: process.env.A11Y_BASE_URL ?? 'http://localhost:1420',
     ...devices['Desktop Chrome'],
     locale: 'en-US',
+    // Pin the OS-level preferences so the auditor's own accessibility settings don't change what's measured.
+    contrast: 'no-preference',
+    reducedMotion: 'no-preference',
+    // A stuck click or fill fails in seconds instead of eating the whole test budget.
+    actionTimeout: 15_000,
     launchOptions: getChromeLaunchOptions(),
     viewport: { width: 1440, height: 900 },
     trace: 'retain-on-failure',

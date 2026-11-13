@@ -61,7 +61,23 @@ export const skipOnboarding = async (page: Page) => {
     const next = wizard.getByRole('button', { name: /^(Skip|Continue)$/ })
     const enabled = await next.evaluateAll((buttons) => buttons.findIndex((b) => !(b as HTMLButtonElement).disabled))
     const before = await wizard.textContent()
-    await next.nth(Math.max(enabled, 0)).click()
+    // The last Continue closes the wizard, which animates out: a click that fails because the wizard is
+    // gone means onboarding is done, not that it's stuck.
+    const clicked = await next
+      .nth(Math.max(enabled, 0))
+      .click()
+      .then(
+        () => true,
+        async (error: unknown) => {
+          if (await wizard.isVisible()) {
+            throw error
+          }
+          return false
+        },
+      )
+    if (!clicked) {
+      return
+    }
     // Wait for the next step to render (or the wizard to close) rather than sleeping.
     await expect(wizard)
       .not.toHaveText(before ?? '')

@@ -27,20 +27,41 @@ export const followSystemTheme = (context: BrowserContext) =>
     [localSettingsKey, appOrigin],
   )
 
+/** The id of the style element `disableTransitions` installs. */
+const noTransitionsId = 'a11y-no-transitions'
+
 /**
  * Turn off CSS transitions and animations in every page of this context. About 45 components use
  * `transition-colors`, so right after a theme flip axe could read colors mid-transition. Runs before the
  * app's own scripts and applies to every origin, including the Keycloak login.
  */
 export const disableTransitions = (context: BrowserContext) =>
-  context.addInitScript(() => {
-    const style = document.createElement('style')
-    style.textContent = '*, *::before, *::after { transition: none !important; animation: none !important; }'
-    document.documentElement.append(style)
-  })
+  context.addInitScript((id) => {
+    const install = () => {
+      if (document.getElementById(id)) {
+        return
+      }
+      const style = document.createElement('style')
+      style.id = id
+      style.textContent = '*, *::before, *::after { transition: none !important; animation: none !important; }'
+      document.documentElement.append(style)
+    }
+    // Init scripts can run before the root element exists; install the style as soon as it does.
+    if (document.documentElement) {
+      install()
+      return
+    }
+    new MutationObserver((_records, observer) => {
+      if (document.documentElement) {
+        install()
+        observer.disconnect()
+      }
+    }).observe(document, { childList: true })
+  }, noTransitionsId)
 
-/** Switch the OS color scheme and wait for the app's root class to follow. */
+/** Switch the OS color scheme and wait for the app's root class to follow, with transitions confirmed off. */
 export const setColorScheme = async (page: Page, scheme: 'light' | 'dark') => {
+  await expect(page.locator(`#${noTransitionsId}`)).toHaveCount(1)
   await page.emulateMedia({ colorScheme: scheme })
   await expect(page.locator('html')).toHaveClass(new RegExp(`\\b${scheme}\\b`))
 }

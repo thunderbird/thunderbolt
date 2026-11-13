@@ -2,7 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { act, fireEvent, render, screen } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { useChat as useChat_default } from '@ai-sdk/react'
 import { useConfigStore } from '@/api/config-store'
@@ -32,6 +34,31 @@ const chatListItemWithProviders = (props: ChatListItemProps) => (
 
 const renderWithProviders = (props: ChatListItemProps) => render(chatListItemWithProviders(props))
 
+const DragHost = ({ onDragStart, children }: { onDragStart: () => void; children: ReactNode }) => {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+  return (
+    <DndContext sensors={sensors} onDragStart={onDragStart}>
+      {children}
+    </DndContext>
+  )
+}
+
+/** Presses on the row and moves past the activation distance; reports whether a drag began. */
+const dragRowStarts = async (props: ChatListItemProps) => {
+  const onDragStart = mock()
+  render(<DragHost onDragStart={onDragStart}>{chatListItemWithProviders(props)}</DragHost>)
+  const row = document.querySelector('[data-sidebar="menu-item"]')!
+  fireEvent.pointerDown(row, { button: 0, isPrimary: true, pointerId: 1, clientX: 0, clientY: 0 })
+  fireEvent.pointerMove(document, { isPrimary: true, pointerId: 1, clientX: 40, clientY: 0 })
+  const started = onDragStart.mock.calls.length > 0
+  // Finish the gesture so dnd-kit's click suppression and listeners don't leak into later tests.
+  fireEvent.pointerUp(document, { isPrimary: true, pointerId: 1 })
+  await act(async () => {
+    await getClock().runAllAsync()
+  })
+  return started
+}
+
 const createProps = (overrides?: Partial<ChatListItemProps>): ChatListItemProps => ({
   thread: { id: 'thread-1', title: 'My Chat', isEncrypted: 0, projectId: null, miniAppId: null },
   isActive: false,
@@ -58,7 +85,7 @@ describe('ChatListItem in minimal mode', () => {
   const dragRow = () => document.querySelector('[data-sidebar="menu-item"]')
 
   it('offers Move and a live drag handle by default', async () => {
-    renderWithProviders(createProps())
+    expect(await dragRowStarts(createProps())).toBe(true)
     expect(dragRow()).not.toHaveAttribute('role')
     expect(dragRow()).not.toHaveAttribute('tabindex')
 
@@ -69,8 +96,7 @@ describe('ChatListItem in minimal mode', () => {
 
   it('drops Move from the context menu and disables dragging', async () => {
     useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
-    renderWithProviders(createProps())
-    expect(dragRow()).not.toHaveAttribute('role')
+    expect(await dragRowStarts(createProps())).toBe(false)
 
     fireEvent.contextMenu(screen.getByText('My Chat'))
     await waitForElement(() => screen.queryByText('Rename'))

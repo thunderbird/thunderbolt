@@ -201,6 +201,7 @@ const TaskItem = memo(({ task, isCompleting, isPending = false, onComplete, onEd
             onKeyDown={handleKeyDown}
             className={cn(
               'w-full bg-transparent text-sm leading-5',
+              'max-md:text-[length:var(--font-size-body)]',
               'border-0 border-b border-primary',
               'p-0 m-0',
               'focus:outline-none focus:ring-0',
@@ -301,7 +302,7 @@ const NewTaskInput = ({ onAdd, onCancel }: NewTaskInputProps) => {
           onBlur={handleSubmit}
           onKeyDown={handleKeyDown}
           placeholder={t`Add a new task…`}
-          className="w-full bg-transparent text-sm leading-5 p-0 m-0 focus:outline-none"
+          className="w-full bg-transparent text-sm max-md:text-[length:var(--font-size-body)] leading-5 p-0 m-0 focus:outline-none"
           style={{ height: '20px' }}
         />
       </div>

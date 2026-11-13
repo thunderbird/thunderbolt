@@ -3,9 +3,53 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
-import { deriveSiteName, sourceToCitation } from './source-utils'
+import { collectThreadSources, deriveSiteName, findSourceByIndex, sourceToCitation } from './source-utils'
+import type { ThunderboltUIMessage } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import { decodeCitationSources } from './citation-utils'
+
+const makeSource = (index: number, url = `https://example.com/${index}`): SourceMetadata => ({
+  index,
+  url,
+  title: `Source ${index}`,
+  toolName: 'search',
+})
+
+describe('findSourceByIndex', () => {
+  test('matches on the index field, not array position', () => {
+    const sources = [makeSource(4), makeSource(5)]
+
+    expect(findSourceByIndex(sources, 5)).toBe(sources[1])
+    expect(findSourceByIndex(sources, 1)).toBeUndefined()
+  })
+
+  test('prefers the latest entry when two turns reused a number', () => {
+    const older = makeSource(2, 'https://older.test')
+    const newer = makeSource(2, 'https://newer.test')
+
+    expect(findSourceByIndex([older, newer], 2)).toBe(newer)
+  })
+})
+
+describe('collectThreadSources', () => {
+  test('gathers assistant sources in thread order and skips messages without any', () => {
+    const first = makeSource(1)
+    const second = makeSource(2)
+    const messages = [
+      { id: 'u1', role: 'user', parts: [] },
+      { id: 'a1', role: 'assistant', parts: [], metadata: { sources: [first] } },
+      { id: 'u2', role: 'user', parts: [], metadata: { sources: [makeSource(9)] } },
+      { id: 'a2', role: 'assistant', parts: [] },
+      { id: 'a3', role: 'assistant', parts: [], metadata: { sources: [second] } },
+    ] as ThunderboltUIMessage[]
+
+    expect(collectThreadSources(messages)).toEqual([first, second])
+  })
+
+  test('returns an empty list for a fresh thread', () => {
+    expect(collectThreadSources([])).toEqual([])
+  })
+})
 
 describe('sourceToCitation', () => {
   test('preserves private media policy through citation serialization', () => {

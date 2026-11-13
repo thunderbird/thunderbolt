@@ -446,6 +446,87 @@ describe('createConfigs source collector', () => {
     expect(sources).toHaveLength(1)
     expect(sources[0].index).toBe(1)
   })
+
+  describe('prior turns', () => {
+    const priorSources: SourceMetadata[] = [
+      { index: 1, url: 'https://earlier.com/one', title: 'Earlier 1', toolName: 'search' },
+      { index: 2, url: 'https://earlier.com/two', title: 'Earlier 2', toolName: 'search' },
+      { index: 3, url: 'https://a.com/article', title: 'Earlier A', toolName: 'search' },
+    ]
+
+    it('continues numbering after the sources earlier turns registered', async () => {
+      searchSpy.mockResolvedValue([mockSearchResults[1]])
+      const sourceCollector: SourceMetadata[] = []
+      const configs = createConfigs(dummyHttpClient, sourceCollector, undefined, priorSources)
+
+      const result = await getSearchTool(configs).execute({ query: 'test', max_results: 10 })
+
+      expect(result[0].sourceIndex).toBe(4)
+      expect(result[0].sourceLabel).toBe('[Source 4] (cite as [4])')
+      expect(sourceCollector).toEqual([expect.objectContaining({ index: 4, url: 'https://b.com/article' })])
+    })
+
+    it('keeps the number an earlier turn gave a URL and records it under that number', async () => {
+      searchSpy.mockResolvedValue(mockSearchResults)
+      const sourceCollector: SourceMetadata[] = []
+      const configs = createConfigs(dummyHttpClient, sourceCollector, undefined, priorSources)
+
+      const result = await getSearchTool(configs).execute({ query: 'test', max_results: 10 })
+
+      expect(result[0].sourceIndex).toBe(3)
+      expect(result[1].sourceIndex).toBe(4)
+      expect(sourceCollector.map((s) => [s.index, s.url])).toEqual([
+        [3, 'https://a.com/article'],
+        [4, 'https://b.com/article'],
+      ])
+    })
+
+    it('numbers after the highest index when earlier turns are not contiguous', async () => {
+      searchSpy.mockResolvedValue([mockSearchResults[1]])
+      const sparse: SourceMetadata[] = [
+        { index: 1, url: 'https://x.com', title: 'X', toolName: 'search' },
+        { index: 7, url: 'https://y.com', title: 'Y', toolName: 'search' },
+      ]
+      const configs = createConfigs(dummyHttpClient, [], undefined, sparse)
+
+      const result = await getSearchTool(configs).execute({ query: 'test', max_results: 10 })
+
+      expect(result[0].sourceIndex).toBe(8)
+    })
+
+    it('gives a fresh number when an older chat reused a URL’s number for another page', async () => {
+      searchSpy.mockResolvedValue(mockSearchResults)
+      const restarted: SourceMetadata[] = [
+        { index: 1, url: 'https://a.com/article', title: 'A', toolName: 'search' },
+        { index: 1, url: 'https://b.com/article', title: 'B', toolName: 'search' },
+      ]
+      const configs = createConfigs(dummyHttpClient, [], undefined, restarted)
+
+      const result = await getSearchTool(configs).execute({ query: 'test', max_results: 10 })
+
+      expect(result.map((r: { sourceIndex: number }) => r.sourceIndex)).toEqual([2, 1])
+    })
+
+    it('fetch_content reuses an earlier turn’s number without mutating that turn’s entry', async () => {
+      fetchContentSpy.mockResolvedValue({
+        url: 'https://earlier.com/two',
+        title: 'Fresh Title',
+        text: 'Body',
+        favicon: null,
+        image: null,
+        author: null,
+        publishedDate: null,
+      })
+      const sourceCollector: SourceMetadata[] = []
+      const configs = createConfigs(dummyHttpClient, sourceCollector, undefined, priorSources)
+
+      const result = await getFetchTool(configs).execute({ url: 'https://earlier.com/two' })
+
+      expect(result.sourceIndex).toBe(2)
+      expect(priorSources[1].title).toBe('Earlier 2')
+      expect(sourceCollector).toEqual([expect.objectContaining({ index: 2, title: 'Fresh Title' })])
+    })
+  })
 })
 
 it('passes search snippets and canonical publication dates from the API to model results and sources', async () => {

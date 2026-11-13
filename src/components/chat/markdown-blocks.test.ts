@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import {
+  blankNonProse,
   type IncrementalMarkdownState,
   parseMarkdownIntoBlocks,
   parseMarkdownIntoBlocksIncremental,
@@ -183,5 +184,66 @@ describe('parseMarkdownIntoBlocksIncremental', () => {
         })
       }
     }
+  })
+})
+
+describe('blankNonProse', () => {
+  /** The prose left after blanking, whitespace collapsed — what a citation rewrite may touch. */
+  const prose = (markdown: string) => blankNonProse(markdown).replace(/\s+/g, ' ').trim()
+
+  it('blanks fenced code, inline code and every math delimiter, keeping length and newlines', () => {
+    const markdown = 'Prose [1].\n\n```ts\nx[1]\n```\n\nInline `a[1]` and $b_1$, $$c$$, \\(d\\) and \\[e\\].'
+    const blanked = blankNonProse(markdown)
+
+    expect(prose(markdown)).toBe('Prose [1]. Inline and , , and .')
+    expect(blanked).toHaveLength(markdown.length)
+    expect(blanked.split('\n')).toHaveLength(markdown.split('\n').length)
+  })
+
+  it('runs an unclosed fence to the end', () => {
+    expect(prose('Intro\n~~~\nstill [1] streaming')).toBe('Intro')
+  })
+
+  it('closes a fence only on the same character, at least as long', () => {
+    expect(prose('````\n```\ninner\n```\n````\nafter')).toBe('after')
+    expect(prose('~~~\n```\nx\n```\nstill code')).toBe('')
+  })
+
+  it('reads a backtick "fence" whose info string holds a backtick as inline code', () => {
+    expect(prose('```pip install x``` is how [1].\n\nMore [2].')).toBe('is how [1]. More [2].')
+  })
+
+  it('never pairs inline-code backticks across a blank line', () => {
+    expect(prose('Press the ` key [1].\n\nThen run `ls` [2].')).toBe('Press the ` key [1]. Then run [2].')
+    expect(prose('Use `a\nb[1]` here')).toBe('Use here')
+  })
+
+  it('recognizes a fence opened on a list-item line', () => {
+    expect(prose('- ```js\n  a[1]\n  ```\n\nText [3]')).toBe('Text [3]')
+    expect(prose('1. ```bash\n   pip install x[1]\n   ```\n2. Then [2]')).toBe('2. Then [2]')
+  })
+
+  it('never pairs math delimiters across a blank line', () => {
+    expect(prose('Arrays use the \\[ operator [1].\n\nSee also [2] and the \\] token.')).toBe(
+      'Arrays use the \\[ operator [1]. See also [2] and the \\] token.',
+    )
+    expect(prose('Type \\( to open [1].\n \nThen \\) closes [2].')).toBe('Type \\( to open [1]. Then \\) closes [2].')
+  })
+
+  it('treats a CRLF blank line as a paragraph break', () => {
+    expect(prose('Press ` key [1].\r\n\r\nThen `ls` [2].')).toBe('Press ` key [1]. Then [2].')
+  })
+
+  it('closes inline code only on a backtick run of the same length', () => {
+    expect(prose('Use ``obj[1]` x`` here [1].')).toBe('Use here [1].')
+    expect(prose('Use ``` [1] ` and more')).toBe('Use ``` [1] ` and more')
+  })
+
+  it('ignores backticks and dollars inside a fence', () => {
+    expect(prose('```\n`$x\n```\nprose $5 and `ok`')).toBe('prose $5 and')
+  })
+
+  it('treats currency as prose', () => {
+    expect(prose('Costs $5 and $10 [1].')).toBe('Costs $5 and $10 [1].')
   })
 })

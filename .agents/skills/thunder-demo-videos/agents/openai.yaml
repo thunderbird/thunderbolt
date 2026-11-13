@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Thunderbolt Demo Videos'
+  short_description: 'Capture and refresh real Thunderbolt product demos'
+  default_prompt: 'Use $thunder-demo-videos to capture, edit, and integrate a new Thunderbolt feature demo.'

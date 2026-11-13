@@ -1,0 +1,30 @@
+---
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+import { SparkBurst } from '../marketing/spark/spark-burst';
+type Props = { image?: string; eager?: boolean };
+const { image, eager = false } = Astro.props;
+---
+
+<div class:list={['artwork', { 'artwork-graphic': !image }]} aria-hidden="true">
+  {image ? (
+    <img src={image} alt="" loading={eager ? 'eager' : 'lazy'} />
+  ) : (
+    <>
+      <div class="orbit orbit-outer"></div>
+      <div class="orbit orbit-inner"></div>
+      <SparkBurst className="blog-burst" />
+    </>
+  )}
+</div>
+
+<style>
+  .artwork { position: relative; display: grid; place-items: center; aspect-ratio: 3 / 2; overflow: hidden; border-radius: 18px; background: #e9e1d3; isolation: isolate; }
+  .artwork img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .artwork-graphic { background: #8f264c; }
+  .artwork-graphic::after { content: ''; position: absolute; inset: 0; background: url('/images/marketing/paper-grain.svg'); opacity: .4; pointer-events: none; }
+  .orbit { position: absolute; width: 82%; aspect-ratio: 1; border: 1px solid #f5c65c55; border-radius: 50%; }
+  .orbit-inner { width: 62%; background: #a43a5c; }
+  :global(.blog-burst) { position: relative; display: block; width: 37%; }
+</style>

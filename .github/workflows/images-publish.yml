@@ -43,6 +43,9 @@ on:
     branches: [main]
     paths:
       - 'deploy/**'
+      - 'web/**'
+      - 'docs/**'
+      - '.github/workflows/images-publish.yml'
       - 'backend/**'
       - 'src/**'
       - 'shared/defaults/models.ts'
@@ -205,6 +208,20 @@ jobs:
             ${{ steps.version.outputs.publish_latest == 'true' && format('{0}/thunderbolt-powersync:latest', env.IMAGE_PREFIX) || '' }}
           labels: |
             org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
+
+      # Keep credentials on the runner; only the public answer enters the Docker context.
+      # An unavailable GitHub API must not block an otherwise valid image build.
+      - name: Look up the latest desktop release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RELEASE_RESPONSE=$(mktemp)
+          if gh api repos/thunderbird/thunderbolt/releases/latest > "$RELEASE_RESPONSE"; then
+            mv "$RELEASE_RESPONSE" web/release-snapshot.json
+          else
+            rm -f "$RELEASE_RESPONSE"
+            echo "::warning::Release lookup failed; building with the last-known-good snapshot."
+          fi
 
       - name: Build and push marketing
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0

@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "thunderbolt-contact",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-12",
+  "workers_dev": true,
+  "preview_urls": false,
+  "vars": {
+    "ALLOWED_ORIGINS": "https://www.thunderbolt.io,https://thunderbolt.io",
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "CONTACT_LIMITER", "class_name": "ContactRateLimiter" }],
+  },
+  "exports": {
+    "ContactRateLimiter": { "type": "durable-object", "storage": "sqlite" },
+  },
+  "ratelimits": [{ "name": "IP_LIMITER", "namespace_id": "150801", "simple": { "limit": 3, "period": 60 } }],
+}

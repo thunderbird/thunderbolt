@@ -96,3 +96,21 @@ describe('createApp hosted-agent wiring', () => {
     expect(fetchFn.mock.calls.map(([input]) => String(input))).toContain('https://anthropic.test/v1/messages')
   })
 })
+
+it('does not expose the marketing contact endpoint on AI deployments', async () => {
+  const { db: database, cleanup } = await createTestDb()
+  try {
+    const app = await createApp({ database })
+    expect(app.routes.some((route) => route.path === '/v1/contact')).toBe(false)
+    const response = await app.handle(
+      new Request('http://localhost/v1/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'person@example.org' }),
+      }),
+    )
+    expect(response.status).toBe(404)
+  } finally {
+    await cleanup()
+  }
+})

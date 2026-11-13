@@ -17,6 +17,7 @@ import { widgetSkeletons, type WidgetName } from '@/widgets'
 import { type TextUIPart } from 'ai'
 import { memo, useMemo, useRef } from 'react'
 import { CitationPopoverProvider } from './citation-popover'
+import { blankNonProse } from './markdown-blocks'
 import {
   CitationContext,
   citationMarkdownComponents,
@@ -43,6 +44,20 @@ const groupedCitationRegex = /\[\d+\](?!\()(?:\s*\[\d+\](?!\())*/g
 
 /** Extracts individual [N] numbers from a matched group */
 const individualCitationRegex = /\[(\d+)\]/g
+
+/**
+ * Applies `replaceGroup` to each citation group in prose, leaving groups inside code
+ * and math verbatim — `arr[1]` in a code block is an index, not a citation.
+ */
+const replaceCitationGroups = (text: string, replaceGroup: (group: string) => string): string => {
+  if (!text.includes('[')) {
+    return text
+  }
+  const prose = blankNonProse(text)
+  return text.replace(groupedCitationRegex, (group, offset: number) =>
+    prose.startsWith(group, offset) ? replaceGroup(group) : group,
+  )
+}
 
 /** Normalize URL for dedup: lowercase host, strip trailing slash */
 const normalizeUrl = (url: string): string => {
@@ -92,7 +107,7 @@ export const buildSourceCitationPlaceholders = (
   const citations: CitationMap = new Map()
   let nextKey = startKey
 
-  const fullText = text.replace(groupedCitationRegex, (match) => {
+  const fullText = replaceCitationGroups(text, (match) => {
     const validSources: CitationSource[] = []
     for (const m of match.matchAll(individualCitationRegex)) {
       const source = findSourceByIndex(sources, parseInt(m[1], 10))
@@ -127,7 +142,7 @@ export const buildDocumentCitationPlaceholders = (
 
   const refsByPosition = new Map(references.map((r) => [r.position, r]))
 
-  const fullText = text.replace(groupedCitationRegex, (match) => {
+  const fullText = replaceCitationGroups(text, (match) => {
     const validSources: CitationSource[] = []
     for (const m of match.matchAll(individualCitationRegex)) {
       const n = parseInt(m[1], 10)

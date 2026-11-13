@@ -86,6 +86,42 @@ describe('buildSourceCitationPlaceholders', () => {
     expect(citations.get(0)?.[0].title).toBe('Newer')
   })
 
+  test('leaves [N] inside code and math verbatim', () => {
+    const text = [
+      'Fixed in 1.2 [1].',
+      '```py\nx = arr[1]\n```',
+      '~~~\ny = m[2][3]\n~~~',
+      'Use `arr[1]` or ``a[2]``, and $v_{[3]}$.',
+      '$$\nM[1]\n$$',
+      'Also \\(x_{[1]}\\) and \\[M[2]\\].',
+    ].join('\n\n')
+    const { fullText, citations } = buildSourceCitationPlaceholders(text, sources)
+
+    expect(fullText).toBe(text.replace('1.2 [1]', '1.2 {{CITE:0}}'))
+    expect(citations.size).toBe(1)
+  })
+
+  test('leaves [N] inside a fence that is still streaming verbatim', () => {
+    const { fullText } = buildSourceCitationPlaceholders('Here [2]:\n\n```js\nconst a = b[1]', sources)
+
+    expect(fullText).toBe('Here {{CITE:0}}:\n\n```js\nconst a = b[1]')
+  })
+
+  test('still replaces prose [N] after a stray backtick or a line of inline triple-backtick code', () => {
+    const { fullText } = buildSourceCitationPlaceholders(
+      'Press the ` key [1].\n\n```pip install x``` then [2].\n\nRun `ls` [3].',
+      sources,
+    )
+
+    expect(fullText).toBe('Press the ` key {{CITE:0}}.\n\n```pip install x``` then {{CITE:1}}.\n\nRun `ls` {{CITE:2}}.')
+  })
+
+  test('replaces [N] right after inline code and after a closed fence', () => {
+    const { fullText } = buildSourceCitationPlaceholders('Run `npm i` [1].\n\n```\nx[2]\n```\n\nDone [3].', sources)
+
+    expect(fullText).toBe('Run `npm i` {{CITE:0}}.\n\n```\nx[2]\n```\n\nDone {{CITE:1}}.')
+  })
+
   test('leaves [0] as-is (sources are 1-based)', () => {
     const { fullText, citations } = buildSourceCitationPlaceholders('See [0].', sources)
 
@@ -423,6 +459,12 @@ describe('buildDocumentCitationPlaceholders', () => {
     const entry = citations.get(0)!
     expect(entry).toHaveLength(2)
     expect((entry[1] as DocumentCitationSource).documentMeta.pageNumber).toBe(4)
+  })
+
+  test('leaves [N] inside code verbatim', () => {
+    const { fullText } = buildDocumentCitationPlaceholders('Per [1]:\n\n```\nrows[1]\n```', [makeRef(1)])
+
+    expect(fullText).toBe('Per {{CITE:0}}:\n\n```\nrows[1]\n```')
   })
 
   test('leaves [N] unchanged when reference is missing', () => {

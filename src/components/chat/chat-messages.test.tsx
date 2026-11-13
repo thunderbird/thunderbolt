@@ -191,6 +191,43 @@ describe('ChatMessages', () => {
       expect(container.textContent).toContain('Hello')
       expect(container.textContent).toContain('Hi there')
     })
+
+    it('resolves a follow-up’s citation against an earlier turn’s sources without touching its code', () => {
+      const source = { index: 1, url: 'https://earlier.test', title: 'Earlier Page', toolName: 'search' as const }
+      const messages: ThunderboltUIMessage[] = [
+        createTestMessage({ id: 'u1' }),
+        createTestMessage({
+          id: 'a1',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'First answer.' }],
+          metadata: { sources: [source] },
+        }),
+        createTestMessage({ id: 'u2', parts: [{ type: 'text', text: 'Show me code' }] }),
+        createTestMessage({
+          id: 'a2',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'As noted before [1]:\n\n```py\nx = arr[1]\n```' }],
+        }),
+      ]
+      const mockChatInstance = createMockChatInstance(messages)
+      hydrateStore({
+        chatInstance: mockChatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        models: [],
+        selectedModel: null,
+        triggerData: null,
+      })
+
+      const { container } = render(<ChatMessages useChat={createMockUseChat(mockChatInstance)} />, {
+        wrapper: createTestWrapper(),
+      })
+
+      expect(screen.getByRole('button', { name: 'View source: Earlier Page' })).toBeInTheDocument()
+      expect(container.querySelector('pre')?.textContent).toContain('x = arr[1]')
+      expect(container.textContent).not.toContain('CITE')
+    })
   })
 
   it.each([false, true])(

@@ -18,4 +18,5 @@ MAESTRO_CLI_NO_ANALYTICS=1 MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED=true maest
   --udid "$device_id" \
   --debug-output /tmp/native-smoke/maestro-debug \
   -e "EMAIL=native-$(date +%s)-$$@thunderbolt.test" \
+  -e "PROVIDER_URL=${PROVIDER_URL:-http://127.0.0.1:9878/v1}" \
   e2e/native-smoke/ios.yaml

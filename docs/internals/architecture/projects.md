@@ -129,10 +129,10 @@ Rules and frontend shipped in one PR: safe, but not instant. The backend's uploa
 validator derives from `shared/powersync-tables.ts`, so writes persisted in
 Postgres from merge and no data could be lost. But sync rules are baked into
 `ghcr.io/thunderbird/thunderbolt/thunderbolt-powersync` (built by
-`images-publish.yml` on merge) and the Render `powersync` service does **not**
-auto-deploy, so until that roll the table had no buckets and a second device saw
+`images-publish.yml` on merge) and the Render `powersync` service was then rolled
+by hand, so until that roll the table had no buckets and a second device saw
 nothing. Once the image is live PowerSync re-processes and the gap self-heals,
-with no migration or manual repair. Procedure, including the manual Render roll:
+with no migration or manual repair. The service now deploys automatically; procedure:
 [powersync-account-devices.md](powersync-account-devices.md#pr-flow-for-adding-tables).
 
 `chat_threads.project_id` needs no sync-rule change; those rules are `SELECT *`.

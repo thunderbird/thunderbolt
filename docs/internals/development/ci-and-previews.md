@@ -220,10 +220,15 @@ Configured in the Render dashboard, not in this repo. Two code paths know about 
   [src/contexts/sign-in-modal-context.tsx](../../../src/contexts/sign-in-modal-context.tsx)
   bypasses the waitlist there. Test waitlist flows on the Pulumi stack instead.
 
-Render also hosts the production `powersync` service, which does **not** auto-deploy:
-after a sync-rule change merges and `images-publish.yml` publishes a new
-`thunderbolt-powersync` image, roll it by hand
-([two-PR sequence](../architecture/powersync-account-devices.md)).
+Render also hosts the production `powersync` service. On a push to `main` that changes
+`deploy/config/powersync-config.yaml`, `deploy/docker/powersync.Dockerfile` or `package.json`,
+the `deploy-powersync` job in `images-publish.yml` points the service at the new
+`thunderbolt-powersync:<version>` image and deploys it with the Render CLI
+([two-PR sequence](../architecture/powersync-account-devices.md)). It runs in the `render`
+environment, which must allow only `main` and holds the `RENDER_API_KEY` secret, and reads the
+service ID from the `RENDER_POWERSYNC_SERVICE_ID` variable. If `publish` fails, the deploy is
+skipped. Re-run the failed jobs only while that run is the newest on `main`; an older run would pin
+its older version on the service.
 
 ### Pulumi preview
 

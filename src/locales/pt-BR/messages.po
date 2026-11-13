@@ -7272,11 +7272,11 @@ msgstr ""
 
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "Your recovery phrase was replaced on another of your devices. Use the new phrase you saved there; the old one no longer works. If this wasn't you, review your devices from an approved device."
-msgstr ""
+msgstr "Sua frase de recuperação foi substituída em outro dos seus dispositivos. Use a nova frase que você salvou lá; a antiga não funciona mais. Se não foi você, revise seus dispositivos a partir de um dispositivo aprovado."
 
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "Your recovery phrase was replaced on another of your devices. Use the new phrase you saved there; the old one no longer works. If this wasn't you, review your devices."
-msgstr ""
+msgstr "Sua frase de recuperação foi substituída em outro dos seus dispositivos. Use a nova frase que você salvou lá; a antiga não funciona mais. Se não foi você, revise seus dispositivos."
 
 #: src/components/recovery-continuity/recovery-continuity-banner.tsx
 msgid "Your recovery phrase was updated on another device."

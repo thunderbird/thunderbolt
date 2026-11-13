@@ -7248,11 +7248,11 @@ msgstr ""
 
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "Your recovery phrase was replaced on another of your devices. Use the new phrase you saved there; the old one no longer works. If this wasn't you, review your devices from an approved device."
-msgstr ""
+msgstr "リカバリーフレーズがお使いの別のデバイスで置き換えられました。そのデバイスで保存した新しいフレーズを使用してください。古いフレーズは使用できなくなりました。心当たりがない場合は、承認済みのデバイスからデバイスを確認してください。"
 
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "Your recovery phrase was replaced on another of your devices. Use the new phrase you saved there; the old one no longer works. If this wasn't you, review your devices."
-msgstr ""
+msgstr "リカバリーフレーズがお使いの別のデバイスで置き換えられました。そのデバイスで保存した新しいフレーズを使用してください。古いフレーズは使用できなくなりました。心当たりがない場合は、デバイスを確認してください。"
 
 #: src/components/recovery-continuity/recovery-continuity-banner.tsx
 msgid "Your recovery phrase was updated on another device."

@@ -191,7 +191,7 @@ export const installWorkbooks = (
     }
     if (bytes.byteLength > limits.maxWorkbookBytes) {
       throw new Error(
-        `This workbook is larger than the ${mib(limits.maxWorkbookBytes)} excelize can open here. Tell the user, or edit its XML parts directly with fflate.`,
+        `This workbook is larger than the ${mib(limits.maxWorkbookBytes)} excelize can open here. Stop and tell the user it is too large to edit here; do not rebuild or unzip it.`,
       )
     }
     const file = excelize.OpenReader(bytes, {
@@ -202,7 +202,7 @@ export const installWorkbooks = (
     })
     if (/unzip size exceeds/.test(file.error ?? '')) {
       throw new Error(
-        `This workbook unzips to more than ${mib(limits.workbookUnzipBytes)}, the most excelize can open here. Tell the user, or edit its XML parts directly with fflate.`,
+        `This workbook unzips to more than ${mib(limits.workbookUnzipBytes)}, the most excelize can open here. Stop and tell the user it is too large to edit here; do not rebuild or unzip it.`,
       )
     }
     return handleOf(settle('OpenReader', file), bytes)

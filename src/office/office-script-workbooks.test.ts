@@ -470,7 +470,9 @@ saveFile('budget.xlsx', f.WriteToBuffer().buffer)
   it('refuses to open a workbook over 2 MiB', async () => {
     storeAttachment('big.xlsx', new Uint8Array(2 * mib + 1))
     const error = await errorOf(`excelize.OpenReader(readFile('big.xlsx'))`, ['big.xlsx'])
-    expect(error).toContain('This workbook is larger than the 2 MiB excelize can open here.')
+    expect(error).toContain(
+      'This workbook is larger than the 2 MiB excelize can open here. Stop and tell the user it is too large to edit here',
+    )
   })
 
   it('refuses a workbook that unzips past the limit', async () => {

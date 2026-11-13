@@ -4,8 +4,6 @@
 
 import type { WorkspaceFileRead } from '@shared/agent-core'
 import type { StoredFile } from '@/lib/file-blob-storage'
-import { safeFileName } from '@/lib/safe-file-name'
-import { maxFilenameLength } from './constants'
 import type { SandboxInput } from './sandbox'
 
 /** Reads a file from the agent's workspace by its workspace-relative path, refusing one over `maxBytes` unread. */
@@ -16,21 +14,19 @@ export type ResolvedInputs = { ok: true; inputs: SandboxInput[]; filenames: stri
 /** Newest first; between two files stored at the same moment, the later one in the thread comes first. */
 const newestFirst = (files: StoredFile[]) => [...files].reverse().sort((a, b) => b.createdAt - a.createdAt)
 
-/** A name as the tool stores a file saved under it. A workspace path and a name too long to clean stay as they are. */
-const asStored = (name: string) => {
-  if (name.length > maxFilenameLength || /[/\\]/.test(name)) {
-    return name
-  }
-  const { stem, extension } = safeFileName(name)
-  return `${stem}.${extension}`
+/** `name` with its extension in lowercase, as the tool stores a file saved under it. */
+const withLowercaseExtension = (name: string) => {
+  const dot = name.lastIndexOf('.')
+  return dot > 0 ? name.slice(0, dot) + name.slice(dot).toLowerCase() : name
 }
 
 /**
- * The file with this id, else the newest file with this name or with the name a copy saved under it is stored
- * under, so `REPORT.DOCX` also finds the `REPORT.docx` edited from it.
+ * The file with this id, else the newest file with this name, so `REPORT.DOCX` also finds the `REPORT.docx` edited
+ * from it. Only the extension's case is ignored: the tool cleans other characters too, but ignoring those would let
+ * an unrelated upload such as `a b.docx` stand in for `a:b.docx`.
  */
 const findStored = (files: StoredFile[], reference: string) => {
-  const savedAs = asStored(reference)
+  const savedAs = withLowercaseExtension(reference)
   return (
     files.find(({ id }) => id === reference) ??
     newestFirst(files).find(({ filename }) => filename === reference || filename === savedAs)

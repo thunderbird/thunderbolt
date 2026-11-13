@@ -43,12 +43,12 @@ describe('resolveInputs', () => {
     expect(result.ok && result.inputs.map(({ bytes }) => textOf(bytes))).toEqual(['second'])
   })
 
-  it('gives a name the copy stored under its cleaned name, but not another file whose name cleans the same', async () => {
+  it('gives a name the newer copy whose extension differs only in case, but no other file whose name cleans the same', async () => {
     const stored = [
       file('attached', 'REPORT.DOCX', 1),
       file('edited', 'REPORT.docx', 2),
       file('colon', 'a:b.docx', 3),
-      file('question', 'a?b.docx', 4),
+      file('space', 'a b.docx', 4),
     ]
 
     const result = await resolveInputs(['REPORT.DOCX', 'a:b.docx'], stored, undefined, 1024)

@@ -9,7 +9,7 @@ import { parseToolOutput } from '@/lib/tool-output'
 import type { ToolConfig } from '@/types'
 import { type DynamicToolUIPart, getToolName, isToolOrDynamicToolUIPart, type ToolUIPart, type UIMessage } from 'ai'
 import { z } from 'zod'
-import { maxFilenameLength, officeScriptToolName, sandboxLimits } from './constants'
+import { officeScriptToolName, sandboxLimits } from './constants'
 import { runInSandboxWorker } from './run-in-worker'
 import type { SandboxJob, SandboxResult, SavedFile } from './sandbox'
 import { type ReadWorkspaceFile, resolveInputs } from './script-inputs'
@@ -46,6 +46,9 @@ const fileTypes = [
   { extension: 'docx', mimeType: docxMime },
   { extension: 'pptx', mimeType: pptxMime },
 ]
+
+// Checked before `safeFileName`, whose trimming backtracks on a long run of dots.
+const maxFilenameLength = 200
 
 type DeliverableFile = SavedFile & { mimeType: string }
 

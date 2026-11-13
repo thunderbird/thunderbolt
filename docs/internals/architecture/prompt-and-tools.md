@@ -134,10 +134,11 @@ own context.
   reads each with `readFile(name)`. The host loads them before the run (`src/office/script-inputs.ts`). It
   looks first in the thread's stored files: the user's attachments and the files this tool made earlier in
   the thread (`src/office/thread-files.ts`). On the harness only, it then looks in the agent's workspace.
-  A name gets the newest stored file under it, and an id gets that exact file. Names compare as the tool
-  stores them, so `REPORT.DOCX` also finds the `REPORT.docx` saved from it. A script cannot reach
+  A name gets the newest stored file under it, and an id gets that exact file. A name ignores the case of
+  its extension, so `REPORT.DOCX` also finds the `REPORT.docx` saved from it. A script cannot reach
   another chat's files. A saved file of the same type as an input is marked as edited, and its chip says
-  so. The type decides because models often rename the copy they edit.
+  so. The type decides because models often rename the copy they edit. The cost is that a new file built
+  by a script that read one of its type, such as a filled-in template, is marked as edited too.
   The original entry is never changed, so each chip opens the file as it was when the chip was made.
 - The VM also has `fflate` and `@xmldom/xmldom`, for edits `docx` and `pptxgenjs` cannot make. xmldom ships
   only CommonJS files, so `?sandbox-script` (`scripts/office-sandbox-script.ts`) bundles

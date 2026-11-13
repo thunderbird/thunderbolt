@@ -11,34 +11,26 @@ export type ReadWorkspaceFile = (path: string, maxBytes: number) => Promise<Work
 
 export type ResolvedInputs = { ok: true; inputs: SandboxInput[]; filenames: string[] } | { ok: false; error: string }
 
-/** Newest first; between two files stored at the same moment, the later one in the thread comes first. */
-const newestFirst = (files: StoredFile[]) => [...files].reverse().sort((a, b) => b.createdAt - a.createdAt)
+/** A stored file of a chat thread. For a file this tool made, `savedAs` is the name the script gave it. */
+export type ThreadFile = StoredFile & { savedAs?: string }
 
-/** `name` with its extension in lowercase, as the tool stores a file saved under it. */
-const withLowercaseExtension = (name: string) => {
-  const dot = name.lastIndexOf('.')
-  return dot > 0 ? name.slice(0, dot) + name.slice(dot).toLowerCase() : name
-}
+/** Newest first; between two files stored at the same moment, the later one in the thread comes first. */
+const newestFirst = (files: ThreadFile[]) => [...files].reverse().sort((a, b) => b.createdAt - a.createdAt)
 
 /**
- * The file with this id, else the newest file with this name, so `REPORT.DOCX` also finds the `REPORT.docx` edited
- * from it. Only the extension's case is ignored: the tool cleans other characters too, but ignoring those would let
- * an unrelated upload such as `a b.docx` stand in for `a:b.docx`.
+ * The file with this id, else the newest file with this name. A file this tool made also answers to the name the
+ * script gave it, which the tool may have cleaned: `Q1  report.docx` finds the `Q1 report.docx` edited from it.
  */
-const findStored = (files: StoredFile[], reference: string) => {
-  const savedAs = withLowercaseExtension(reference)
-  return (
-    files.find(({ id }) => id === reference) ??
-    newestFirst(files).find(({ filename }) => filename === reference || filename === savedAs)
-  )
-}
+const findStored = (files: ThreadFile[], reference: string) =>
+  files.find(({ id }) => id === reference) ??
+  newestFirst(files).find(({ filename, savedAs }) => filename === reference || savedAs === reference)
 
 const readStored = async (file: StoredFile, maxBytes: number): Promise<WorkspaceFileRead> =>
   file.blob.size > maxBytes
     ? { status: 'too-large' }
     : { status: 'read', bytes: new Uint8Array(await file.blob.arrayBuffer()) }
 
-const notFound = (name: string, files: StoredFile[], hasWorkspace: boolean) => {
+const notFound = (name: string, files: ThreadFile[], hasWorkspace: boolean) => {
   const listed = newestFirst(files)
     .map(({ filename, id }) => `"${filename}" (id ${id})`)
     .join(', ')
@@ -56,7 +48,7 @@ const notFound = (name: string, files: StoredFile[], hasWorkspace: boolean) => {
  */
 export const resolveInputs = async (
   references: string[],
-  files: StoredFile[],
+  files: ThreadFile[],
   readWorkspaceFile: ReadWorkspaceFile | undefined,
   maxBytes: number,
 ): Promise<ResolvedInputs> => {

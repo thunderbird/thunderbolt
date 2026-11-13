@@ -12,13 +12,14 @@ import { z } from 'zod'
 import { officeScriptToolName, sandboxLimits } from './constants'
 import { runInSandboxWorker } from './run-in-worker'
 import type { SandboxJob, SandboxResult, SavedFile } from './sandbox'
-import { type ReadWorkspaceFile, resolveInputs } from './script-inputs'
+import { type ReadWorkspaceFile, resolveInputs, type ThreadFile } from './script-inputs'
 
 /**
  * A file the tool added to the attachment store, as listed in its result. The chips are built from this list.
- * `edited` is true when the script read a file of the same type, whatever name it saved this one under.
+ * `edited` is true when the script read a file of the same type, whatever name it saved this one under. `savedAs`
+ * is the name the script gave it before cleaning, so a later run asking for that name finds this file.
  */
-export type CreatedFile = { id: string; filename: string; mimeType: string; edited: boolean }
+export type CreatedFile = { id: string; filename: string; mimeType: string; edited: boolean; savedAs?: string }
 
 export type OfficeScriptOutput =
   | { ok: true; files: CreatedFile[]; logs: string }
@@ -33,8 +34,14 @@ export const isOfficeScriptPart = (part: UIMessage['parts'][number]): part is Of
 const createdFilesSchema = z.object({
   ok: z.literal(true),
   files: z.array(
-    // Results stored before the tool could edit files have no `edited`.
-    z.object({ id: z.string(), filename: z.string(), mimeType: z.string(), edited: z.boolean().default(false) }),
+    // Results stored before the tool could edit files have no `edited` or `savedAs`.
+    z.object({
+      id: z.string(),
+      filename: z.string(),
+      mimeType: z.string(),
+      edited: z.boolean().default(false),
+      savedAs: z.string().optional(),
+    }),
   ),
 })
 
@@ -50,7 +57,7 @@ const fileTypes = [
 // Checked before `safeFileName`, whose trimming backtracks on a long run of dots.
 const maxFilenameLength = 200
 
-type DeliverableFile = SavedFile & { mimeType: string }
+type DeliverableFile = SavedFile & { mimeType: string; savedAs: string }
 
 /**
  * Sanitize each saved file's name and pair it with its type, or say (to the model) why the files cannot be
@@ -94,7 +101,7 @@ const toDeliverableFiles = (
       }
     }
     seen.set(filename, file.filename)
-    deliverable.push({ ...file, filename, mimeType: type.mimeType })
+    deliverable.push({ ...file, filename, mimeType: type.mimeType, savedAs: file.filename })
   }
   return { ok: true, files: deliverable }
 }
@@ -118,8 +125,8 @@ export type OfficeScriptInput = z.infer<typeof officeScriptParameters>
 export type OfficeScriptToolDeps = {
   runScript?: (job: SandboxJob, signal?: AbortSignal) => Promise<SandboxResult>
   storeFiles?: (files: StoredFile[]) => Promise<void>
-  /** The stored files of the chat thread: its attachments and the files this tool made in it. */
-  listThreadFiles?: () => Promise<StoredFile[]>
+  /** The stored files of the chat thread: its attachments and the files this tool made in it, with their `savedAs`. */
+  listThreadFiles?: () => Promise<ThreadFile[]>
   /** The built-in agent's workspace. The legacy pipeline has none. */
   readWorkspaceFile?: ReadWorkspaceFile
 }
@@ -148,7 +155,7 @@ export const createOfficeScriptTool = ({
   listThreadFiles = async () => [],
   readWorkspaceFile,
 }: OfficeScriptToolDeps = {}): ToolConfig => {
-  const madeThisSend: StoredFile[] = []
+  const madeThisSend: ThreadFile[] = []
   return {
     name: officeScriptToolName,
     description: describeTool(readWorkspaceFile !== undefined),
@@ -171,26 +178,30 @@ export const createOfficeScriptTool = ({
       if (!deliverable.ok) {
         return { ok: false, error: deliverable.error, logs: result.logs }
       }
-      const records = deliverable.files.map(({ filename, mimeType, bytes }) => ({
-        id: crypto.randomUUID(),
-        filename,
-        mimeType,
-        size: bytes.byteLength,
-        createdAt: Date.now(),
-        blob: new Blob([bytes], { type: mimeType }),
+      const saved = deliverable.files.map(({ filename, mimeType, bytes, savedAs }) => ({
+        record: {
+          id: crypto.randomUUID(),
+          filename,
+          mimeType,
+          size: bytes.byteLength,
+          createdAt: Date.now(),
+          blob: new Blob([bytes], { type: mimeType }),
+        },
+        savedAs,
       }))
-      await storeFiles(records)
-      madeThisSend.push(...records)
+      await storeFiles(saved.map(({ record }) => record))
+      madeThisSend.push(...saved.map(({ record, savedAs }) => ({ ...record, savedAs })))
       // Models often rename the copy they edit, so the file type decides, not the name. The extension is at the
       // end, so the end of a long name is enough.
       const inputExtensions = new Set(
         resolved.filenames.map((name) => safeFileName(name.slice(-maxFilenameLength)).extension),
       )
-      const files = records.map(({ id, filename, mimeType }) => ({
+      const files = saved.map(({ record: { id, filename, mimeType }, savedAs }) => ({
         id,
         filename,
         mimeType,
         edited: inputExtensions.has(safeFileName(filename).extension),
+        savedAs,
       }))
       return { ok: true, files, logs: result.logs }
     },

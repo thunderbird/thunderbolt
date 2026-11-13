@@ -5,22 +5,24 @@
 import { describe, expect, it } from 'bun:test'
 import type { UIMessage } from 'ai'
 import { docxMime } from '@/files/transformers'
-import { threadFileIds } from './thread-files'
+import { threadFileRefs } from './thread-files'
 
 const created = (ids: string[]) => ({
   ok: true,
-  files: ids.map((id) => ({ id, filename: `${id}.docx`, mimeType: docxMime, edited: false })),
+  files: ids.map((id) => ({ id, filename: `${id}.docx`, mimeType: docxMime, edited: false, savedAs: `${id}.docx` })),
   logs: '',
 })
 
-describe('threadFileIds', () => {
-  it("lists the user's attachments and the tool's files in thread order, once each", () => {
+describe('threadFileRefs', () => {
+  it("lists the user's attachments and the tool's files in thread order, once each, with the tool's saved names", () => {
     const messages: UIMessage[] = [
       {
         id: 'm1',
         role: 'user',
         parts: [
           { type: 'text', text: 'Edit this' },
+          { type: 'data-attachment', data: { localFileId: 'notes', filename: 'notes.docx', mimeType: docxMime } },
+          // A file the tool made, attached again.
           { type: 'data-attachment', data: { localFileId: 'upload', filename: 'brief.docx', mimeType: docxMime } },
         ],
       },
@@ -48,7 +50,12 @@ describe('threadFileIds', () => {
       },
     ]
 
-    expect(threadFileIds(messages)).toEqual(['upload', 'first', 'second'])
+    expect(threadFileRefs(messages)).toEqual([
+      { id: 'notes', savedAs: undefined },
+      { id: 'upload', savedAs: 'upload.docx' },
+      { id: 'first', savedAs: 'first.docx' },
+      { id: 'second', savedAs: 'second.docx' },
+    ])
   })
 
   it('skips failed runs, runs still going and other tools', () => {
@@ -70,6 +77,6 @@ describe('threadFileIds', () => {
       },
     ]
 
-    expect(threadFileIds(messages)).toEqual([])
+    expect(threadFileRefs(messages)).toEqual([])
   })
 })

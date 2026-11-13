@@ -14,7 +14,7 @@ import { type SandboxLimits, sandboxLimits } from './constants'
 import { createOfficeScriptTool, type OfficeScriptOutput, type OfficeScriptToolDeps } from './office-script-tool'
 import { runSandboxedScript, type SandboxJob, type SandboxResult } from './sandbox'
 import { loadTestSandboxRuntime } from './sandbox-test-runtime'
-import type { ReadWorkspaceFile } from './script-inputs'
+import type { ReadWorkspaceFile, ThreadFile } from './script-inputs'
 
 type Runner = (job: SandboxJob, limits: SandboxLimits) => Promise<SandboxResult>
 
@@ -185,7 +185,9 @@ describe.each([
   it('saves a DOCX that a second reader opens', async () => {
     const { files } = await runOk(docxScript('report.docx'))
 
-    expect(files).toEqual([{ id: expect.any(String), filename: 'report.docx', mimeType: docxMime, edited: false }])
+    expect(files).toEqual([
+      { id: expect.any(String), filename: 'report.docx', mimeType: docxMime, edited: false, savedAs: 'report.docx' },
+    ])
     const file = stored(files[0].id)
     expect(file).toMatchObject({ filename: 'report.docx', mimeType: docxMime })
     expect(file.size).toBeGreaterThan(0)
@@ -197,7 +199,9 @@ describe.each([
   it('saves a PPTX whose slide and chart parts unzip', async () => {
     const { files } = await runOk(pptxScript)
 
-    expect(files).toEqual([{ id: expect.any(String), filename: 'deck.pptx', mimeType: pptxMime, edited: false }])
+    expect(files).toEqual([
+      { id: expect.any(String), filename: 'deck.pptx', mimeType: pptxMime, edited: false, savedAs: 'deck.pptx' },
+    ])
     const zip = await zipOf(stored(files[0].id))
     expect(await zip.file('ppt/slides/slide1.xml')?.async('string')).toContain('Hello deck')
     expect(zip.file('ppt/charts/chart1.xml')).not.toBeNull()
@@ -222,6 +226,7 @@ describe.each([
     const saved = ['invoice xcod.docx', 'a b.docx', '_CON.docx']
     expect(files.map(({ filename }) => filename)).toEqual(saved)
     expect(files.map(({ id }) => stored(id).filename)).toEqual(saved)
+    expect(files.map(({ savedAs }) => savedAs)).toEqual(names)
   })
 
   it('reads an attached Word file by name and saves an edited copy, leaving the original as it was', async () => {
@@ -236,7 +241,9 @@ describe.each([
       ),
     )
 
-    expect(files).toEqual([{ id: expect.any(String), filename: 'contract.docx', mimeType: docxMime, edited: true }])
+    expect(files).toEqual([
+      { id: expect.any(String), filename: 'contract.docx', mimeType: docxMime, edited: true, savedAs: 'contract.docx' },
+    ])
     expect(files[0].id).not.toBe(attached.id)
     expect(await textOf(stored(files[0].id))).toContain('Reviewed copy')
     expect(new Uint8Array(await stored(attached.id).blob.arrayBuffer())).toEqual(original)
@@ -563,17 +570,17 @@ describe.each([
   })
 
   it('reads the newest edit by the name the user gave, though the edit is stored under a cleaned name', async () => {
-    const threadFiles = [storeAttachment('REPORT.DOCX', await fixture('testComment.docx'), 1000)]
+    const threadFiles: ThreadFile[] = [storeAttachment('REPORT.DOCX', await fixture('testComment.docx'), 1000)]
     const edit = (from: string, to: string) =>
       okFiles(
         call({ listThreadFiles: async () => threadFiles }, replaceTextScript('REPORT.DOCX', from, to), ['REPORT.DOCX']),
       )
 
     const first = await edit('paragraph!', 'reviewed!')
-    threadFiles.push(stored(first.files[0].id))
+    threadFiles.push({ ...stored(first.files[0].id), savedAs: first.files[0].savedAs })
     const second = await edit('reviewed!', 'final!')
 
-    expect(first.files[0].filename).toBe('REPORT.docx')
+    expect(first.files[0]).toMatchObject({ filename: 'REPORT.docx', savedAs: 'REPORT.DOCX' })
     expect(await textOf(stored(second.files[0].id))).toContain('this is a comment final!')
   })
 

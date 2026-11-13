@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { test, type Page } from '@playwright/test'
+import { test, type Locator, type Page } from '@playwright/test'
 import { addNote, inAppOrOnboarding, markScreen, signedInPage } from './support/auth'
 import { checkDuplicateNames, checkFocusReturn, checkKeyboardFocus, checkReflow, scanAxe } from './support/checks'
 import { canSetTheme, followSystemTheme, setColorScheme } from './support/theme'
@@ -64,13 +64,51 @@ const ask = async (page: Page, prompt: string) => {
   await test.expect(copyButtons.last()).toBeVisible()
 }
 
-const settingsScreens = [
-  ['Settings: Preferences', '/settings/preferences'],
-  ['Settings: Models', '/settings/models'],
-  ['Settings: Connections', '/settings/connections'],
-  ['Settings: Skills', '/settings/skills'],
-  ['Settings: Devices', '/settings/devices'],
-] as const
+type SettingsScreen = {
+  state: string
+  path: string
+  /** A control or empty-state message that only shows once the page's data has loaded. */
+  content: (main: Locator) => Locator
+}
+
+const settingsScreens: SettingsScreen[] = [
+  {
+    state: 'Settings: Preferences',
+    path: '/settings/preferences',
+    content: (main) => main.getByText('User Experience', { exact: true }),
+  },
+  {
+    state: 'Settings: Models',
+    path: '/settings/models',
+    content: (main) => main.getByRole('switch').or(main.getByText('No models configured')),
+  },
+  {
+    state: 'Settings: Connections',
+    path: '/settings/connections',
+    content: (main) => main.getByRole('listitem').or(main.getByText('No connections yet')),
+  },
+  {
+    state: 'Settings: Skills',
+    path: '/settings/skills',
+    content: (main) => main.getByRole('listitem').or(main.getByText('No skills yet')),
+  },
+  {
+    state: 'Settings: Devices',
+    path: '/settings/devices',
+    content: (main) => main.getByRole('listitem').or(main.getByText(/^No devices yet/)),
+  },
+]
+
+/**
+ * A settings page is ready when its heading shows, no "Loading…" placeholder is left, and its own content
+ * (a list row or the empty state) is there. Pages render the heading before their data arrives.
+ */
+const settingsReady = async (page: Page, { content }: SettingsScreen) => {
+  const main = page.getByRole('main')
+  await main.getByRole('heading').first().waitFor({ timeout: 60_000 })
+  await test.expect(main.getByText(/^Loading\b/)).toHaveCount(0, { timeout: 60_000 })
+  await content(main).first().waitFor({ timeout: 60_000 })
+}
 
 test('signed-out entry screen', async ({ page }) => {
   await followSystemTheme(page.context())
@@ -99,11 +137,9 @@ test('signed in: chat and settings', async ({ browser }) => {
   }
   await checkFocusReturn(page, 'Chat home', page.getByRole('button', { name: 'Search' }).first(), 'the search palette')
 
-  for (const [state, path] of settingsScreens) {
-    await page.goto(path)
-    const heading = () => page.getByRole('heading').first().waitFor({ timeout: 60_000 })
-    await heading()
-    await auditScreen(page, state, heading)
+  for (const screen of settingsScreens) {
+    await page.goto(screen.path)
+    await auditScreen(page, screen.state, () => settingsReady(page, screen))
   }
 
   if (process.env.A11Y_PROMPTS === '1') {

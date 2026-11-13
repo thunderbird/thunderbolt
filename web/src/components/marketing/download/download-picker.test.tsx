@@ -5,6 +5,7 @@
 import { expect, test } from 'bun:test'
 import { render } from '../../../../test/render'
 import { DownloadPicker } from './download-picker'
+import { SparkHeader } from '../spark/spark-header'
 import { latestReleasePage, type DetectedPlatform, type DownloadRelease } from './downloads'
 
 const release: DownloadRelease = {
@@ -137,18 +138,28 @@ test('opens installers in a new tab only where the page continues to the downloa
   )
 })
 
-test('the homepage offers the web app alongside a desktop download', () => {
-  const { container } = render(<DownloadPicker detectedPlatform="macos" release={release} showWebLink />)
+test('offers the web app in the header and keeps the desktop download in the hero', () => {
+  const { container } = render(
+    <>
+      <SparkHeader />
+      <DownloadPicker detectedPlatform="macos" release={release} />
+    </>,
+  )
   const actions = container.querySelector('.download-primary-action')!
   expect([...actions.querySelectorAll('a')].map((link) => link.getAttribute('href'))).toEqual([
     'https://example.test/arm.dmg',
-    'https://app.thunderbolt.io/',
   ])
-  expect(actions.querySelector('.spark-text-link')?.textContent).toContain('Try it on the web')
+  expect(actions.textContent).not.toContain('Try it on the web')
+  const webLink = container.querySelector('header .spark-nav-cta')
+  expect(webLink?.textContent).toContain('Try it on the web')
+  expect(webLink?.getAttribute('href')).toBe('https://app.thunderbolt.io/')
+  const mobileWebLink = container.querySelector('.spark-nav-panel .spark-nav-mobile-web')
+  expect(mobileWebLink?.textContent).toContain('Login')
+  expect(mobileWebLink?.getAttribute('href')).toBe('https://app.thunderbolt.io/')
 })
 
 test.each(['ios', 'android', 'unknown'] as const)('does not duplicate the web action for %s visitors', (platform) => {
-  const { container } = render(<DownloadPicker detectedPlatform={platform} release={release} showWebLink />)
+  const { container } = render(<DownloadPicker detectedPlatform={platform} release={release} />)
   expect(container.querySelectorAll('.download-primary-action a')).toHaveLength(1)
   expect(container.querySelector('.download-primary-action a')?.getAttribute('href')).toBe(
     'https://app.thunderbolt.io/',

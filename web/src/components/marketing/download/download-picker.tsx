@@ -18,7 +18,6 @@ type PickerProps = {
   detectedPlatform: DetectedPlatform | undefined
   release: DownloadRelease
   continueToDownloadPage?: boolean
-  showWebLink?: boolean
 }
 
 type DesktopPlatform = (typeof desktopPlatforms)[number]
@@ -39,20 +38,18 @@ export const DownloadPicker = ({
   detectedPlatform,
   release,
   continueToDownloadPage = false,
-  showWebLink = false,
 }: PickerProps) => {
   const platform = desktopPlatforms.find((item) => item.id === detectedPlatform)
   const recommended = platform?.installers[0]
   const href = recommended && release.downloads[recommended.id]
   const primary = primaryAction(detectedPlatform, platform, href)
-  const showSecondaryLink = showWebLink && primary.href !== productLinks.web
   // Mac and Windows installers differ by chip, which their label names. The Linux ones share
   // a chip and differ by package, so naming the recommended one takes both parts.
   const variant =
     recommended && (detectedPlatform === 'linux' ? `${recommended.label} · ${recommended.format}` : recommended.label)
 
   return (
-    <div className={`download-picker${showSecondaryLink ? ' download-picker-with-web' : ''}`}>
+    <div className="download-picker">
       <div className="download-primary-action">
         <InstallerLink
           className="spark-button"
@@ -62,11 +59,6 @@ export const DownloadPicker = ({
         >
           {primary.text} <span aria-hidden="true">{primary.arrow}</span>
         </InstallerLink>
-        {showSecondaryLink && (
-          <a className="spark-text-link" href={productLinks.web}>
-            <span className="spark-text-link-label">Try it on the web</span> <span aria-hidden="true">↗</span>
-          </a>
-        )}
       </div>
       {(detectedPlatform === 'ios' || detectedPlatform === 'android') && (
         <p className="download-mobile-note">iOS and Android apps are coming soon.</p>

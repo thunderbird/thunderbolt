@@ -2,20 +2,18 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
-import { getReleaseSnapshot } from '../../server/release-snapshot';
 import config from 'virtual:starlight/user-config';
 import Search from 'virtual:starlight/components/Search';
 import MobileTableOfContents from 'virtual:starlight/components/MobileTableOfContents';
-import { SiteHeader } from '../marketing/spark/site-header';
+import { SparkHeader } from '../marketing/spark/spark-header';
 
 const { entry, toc } = Astro.locals.starlightRoute;
 const isHome = entry.id === 'docs';
 const shouldRenderSearch = config.pagefind ||
   config.components.Search !== '@astrojs/starlight/components/Search.astro';
-const { release } = await getReleaseSnapshot();
 ---
 
-<SiteHeader release={release} currentPage="Docs" as="div" client:load />
+<SparkHeader currentPage="Docs" as="div" client:load />
 <div class="docs-toolbar print:hidden">
   <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
     <a href="/docs/" aria-current={isHome ? 'page' : undefined}>Docs</a>

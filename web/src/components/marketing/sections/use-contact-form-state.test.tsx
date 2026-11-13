@@ -7,8 +7,6 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ContactPage } from './contact-page'
 import { submitContactForm } from './use-contact-form-state'
-import releaseSnapshot from '../../../data/download-release.json'
-import { parseRelease } from '../download/downloads'
 
 let request: ReturnType<typeof spyOn<typeof globalThis, 'fetch'>>
 
@@ -91,8 +89,7 @@ test.each(['http', 'timeout'] as const)(
     })
     request.mockImplementation(
       Object.assign(
-        async (url: string | URL | Request) =>
-          url === '/downloads/release.json' ? Response.json(releaseSnapshot) : contactResponse,
+        async () => contactResponse,
         { preconnect: fetch.preconnect },
       ),
     )
@@ -103,7 +100,7 @@ test.each(['http', 'timeout'] as const)(
     try {
       await act(async () =>
         root.render(
-          <ContactPage release={parseRelease(releaseSnapshot)} endpoint="https://contact.example.com/api/contact" />,
+          <ContactPage endpoint="https://contact.example.com/api/contact" />,
         ),
       )
       const form = container.querySelector('form')!

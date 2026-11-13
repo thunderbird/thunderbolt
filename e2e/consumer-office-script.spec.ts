@@ -22,6 +22,15 @@ import {
 } from './office-script-fixture'
 import { expect, test } from './test'
 
+/**
+ * The Excelize file itself. The dev server also answers `excelize.wasm.gz?import&url` with a small module that only
+ * names the file's URL, which every Office run loads.
+ */
+const isExcelizeDownload = (url: string) => {
+  const { pathname, searchParams } = new URL(url)
+  return /excelize[^/]*\.gz$/.test(pathname) && !searchParams.has('import')
+}
+
 const chooseFakeModel = async (page: Page) => {
   await page.getByTestId('model-selector-trigger').click()
   await page.getByRole('button', { name: `${defaultModelOpus55.name} Thunderbolt`, exact: true }).click()
@@ -38,7 +47,7 @@ test('the agent builds a Word document in the sandbox Worker and the user downlo
   const workerUrls: string[] = []
   page.on('worker', (worker) => workerUrls.push(worker.url()))
   const excelizeRequests: string[] = []
-  page.on('request', (request) => request.url().includes('excelize') && excelizeRequests.push(request.url()))
+  page.on('request', (request) => isExcelizeDownload(request.url()) && excelizeRequests.push(request.url()))
   await loginViaEmailCode(page)
   await chooseFakeModel(page)
 
@@ -62,7 +71,7 @@ test('the agent builds a Word document in the sandbox Worker and the user downlo
 test('the agent builds a workbook with Excelize and the downloaded file holds the computed total', async ({ page }) => {
   const errors = collectPageErrors(page)
   const excelizeRequests: string[] = []
-  page.on('request', (request) => request.url().includes('excelize') && excelizeRequests.push(request.url()))
+  page.on('request', (request) => isExcelizeDownload(request.url()) && excelizeRequests.push(request.url()))
   await loginViaEmailCode(page)
   await chooseFakeModel(page)
 

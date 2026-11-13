@@ -109,6 +109,8 @@ if inventory main > /dev/null 2>&1; then fail 'inventory accepted the default br
   fail 'shared compose project was claimed'
 [ -n "$(export THUNDER_CLEANUP_SOURCE=1; set +e; source "$here/inventory.sh"; worktrees=$(printf '%s\tb\n%s\tc\n' "$wt" "$wt/nested"); nested_worktrees "$wt")" ] ||
   fail 'nested worktree not detected'
+[ -z "$(export THUNDER_CLEANUP_SOURCE=1; set +e; source "$here/inventory.sh"; worktrees=$(printf '%s\tb\n%s\tc\n' "$wt" "$wt/nested"); roots="$wt"$'\n'; collect_others "$wt"; under_roots "$wt/nested/src" && echo nested; under_roots "$wt/src" || echo own)" ] ||
+  fail 'processes or caches of a nested worktree counted as part of the task'
 (export THUNDER_CLEANUP_SOURCE=1; set +e; source "$here/inventory.sh"; roots="$wt"$'\n'
   is_task_default_project "$(default_project "$wt")") || fail "the task's Makefile default project was not claimable"
 if (export THUNDER_CLEANUP_SOURCE=1; set +e; source "$here/inventory.sh"; roots="$wt"$'\n'; is_task_default_project powersync-service); then
@@ -182,7 +184,15 @@ mkdir -p "$tmp/scratch-gone" "$tmp/scratch-new"
 git -C "$repo" worktree add -q -b "$branch-gone" "$wt2" HEAD
 rec "$wt2" scratch "$tmp/scratch-gone"
 old_ledger=$(bash "$here/record.sh" --ledger "$wt2")
+# A merged PR head may precede local-only commits even after the worktree is removed.
+gone_tip=$(git -C "$wt2" commit-tree "$(git -C "$wt2" rev-parse 'HEAD^{tree}')" -p "$tip" -m 'local-only follow-up')
+git -C "$repo" update-ref "refs/heads/$branch-gone" "$gone_tip"
 git -C "$repo" worktree remove --force "$wt2"
+gone_check=$(export THUNDER_CLEANUP_SOURCE=1; set +e; source "$here/inventory.sh"
+  pr_lines() { printf '7\tMERGED\tu7\t%s\tfalse\n' "$tip"; }
+  self_pids=$$; self_pgids=''; proc_cwds=''; docker_ok=true; compose_dirs=''; derived=''
+  inventory_task '' "$branch-gone")
+grep -qF "info	unpushed	1 commits" <<< "$gone_check" || fail 'removed worktree lost its unpushed-commit warning'
 git -C "$repo" worktree add -q -b "$branch-new" "$wt2" HEAD
 rec "$wt2" scratch "$tmp/scratch-new"
 new_ledger=$(bash "$here/record.sh" --ledger "$wt2")

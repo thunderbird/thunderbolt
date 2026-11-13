@@ -42,9 +42,13 @@ row() { # status kind id size_kb proof command
 }
 
 roots='' # newline-separated paths (raw and physical) whose contents belong to the task
+others='' # other registered worktrees inside those roots; their contents belong to their own task
 add_root() { roots="$roots$1"$'\n'"$(physical "$1")"$'\n'; }
 under_roots() {
   local r
+  while IFS= read -r r; do
+    [ -n "$r" ] && inside "$1" "$r" && return 1
+  done <<< "$others"
   while IFS= read -r r; do
     [ -n "$r" ] && inside "$1" "$r" && return 0
   done <<< "$roots"
@@ -175,9 +179,19 @@ nested_worktrees() {
   done <<< "$worktrees" | paste -sd, -
 }
 
+# Other registered worktrees inside the task's roots, so their processes and caches stay out.
+collect_others() { # task worktree (may be empty)
+  local o
+  others=''
+  while IFS=$'\t' read -r o _; do
+    [ -n "$o" ] && [ "$(physical "$o")" != "$(physical "${1:-/nonexistent}")" ] && under_roots "$o" &&
+      others="$others$o"$'\n'"$(physical "$o")"$'\n'
+  done <<< "$worktrees"
+}
+
 inventory_task() { # worktree-path (may be empty) branch
   local wt=$1 branch=$2 own='' ledgers='' entries='' e f mode pr kind value skill pid cwd cmd seen='' project dir wp path rel reason nested
-  local pr_number pr_state pr_url pr_oid='' skipped=0
+  local pr_number pr_state pr_url pr_oid='' skipped=0 up
   # The worktree's own ledger, plus this branch's rows in every other ledger: a worktree removed
   # outside thunder-cleanup leaves its ledger behind under an id nothing points at any more.
   # shortcut: rows recorded under a branch's old name are found only through the worktree's own ledger, so they are missed once that worktree is gone.
@@ -197,6 +211,7 @@ inventory_task() { # worktree-path (may be empty) branch
   while IFS=$'\t' read -r kind value skill _; do
     [ "$kind" = snapshot ] && [ -z "$(refuse_reason "$value" "$wt")" ] && add_root "$value"
   done <<< "$entries"
+  collect_others "$wt"
 
   printf '# task\tbranch=%s\tworktree=%s\tmain=%s\n' "$branch" "${wt:-none}" "$main"
   printf 'status\tkind\tid\tsize\tproof\tcommand\n'
@@ -209,12 +224,14 @@ inventory_task() { # worktree-path (may be empty) branch
     row info pr none - "no same-repo PR found for $branch (gh missing, offline, or never opened)" ''
   fi
 
-  if [ -n "$wt" ]; then
-    row info uncommitted "$(git -C "$wt" status --porcelain | wc -l | tr -d ' ') files" - 'git status --porcelain' ''
-    if git -C "$wt" rev-parse '@{upstream}' >/dev/null 2>&1; then
-      row info unpushed "$(git -C "$wt" rev-list --count '@{upstream}..HEAD') commits" - 'ahead of upstream' ''
-    elif [ -n "$pr_oid" ] && git -C "$wt" cat-file -e "$pr_oid^{commit}" 2>/dev/null; then
-      row info unpushed "$(git -C "$wt" rev-list --count "$pr_oid..HEAD") commits" - 'ahead of the PR head (upstream is gone)' ''
+  [ -n "$wt" ] && row info uncommitted "$(git -C "$wt" status --porcelain | wc -l | tr -d ' ') files" - 'git status --porcelain' ''
+  # Commits live on the branch, so check it even when its worktree is already gone.
+  if git -C "$main" show-ref --verify --quiet "refs/heads/$branch"; then
+    up=$(git -C "$main" for-each-ref --format='%(upstream)' "refs/heads/$branch")
+    if [ -n "$up" ] && git -C "$main" show-ref --verify --quiet "$up"; then
+      row info unpushed "$(git -C "$main" rev-list --count "$up..refs/heads/$branch") commits" - 'ahead of upstream' ''
+    elif [ -n "$pr_oid" ] && git -C "$main" cat-file -e "$pr_oid^{commit}" 2>/dev/null; then
+      row info unpushed "$(git -C "$main" rev-list --count "$pr_oid..refs/heads/$branch") commits" - 'ahead of the PR head (upstream is gone)' ''
     else
       row info unpushed unknown - 'no upstream and no local copy of the PR head; compare by hand' ''
     fi

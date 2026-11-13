@@ -1,0 +1,132 @@
+{
+  "originHash" : "fef03cfecb2d2753fb8c9d54c9e6ee5518d44c3bbcb1e125dad4d057a7435fee",
+  "pins" : [
+    {
+      "identity" : "csqlite",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/powersync-ja/CSQLite.git",
+      "state" : {
+        "revision" : "3e71dedbdeab0d797ead0e864adbc69b659543a1",
+        "version" : "3.53.4"
+      }
+    },
+    {
+      "identity" : "encrypted-http-body-protocol",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/tinfoilsh/encrypted-http-body-protocol.git",
+      "state" : {
+        "revision" : "4a42bea81a80fae21afb9d80fdf0614e82d40f4f",
+        "version" : "0.4.2"
+      }
+    },
+    {
+      "identity" : "grdb.swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/groue/GRDB.swift.git",
+      "state" : {
+        "revision" : "92a554cd0d5e8d67cb18993c6054e73fe42c066c",
+        "version" : "7.12.0"
+      }
+    },
+    {
+      "identity" : "openai-swift-fork",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/tinfoilsh/openai-swift-fork.git",
+      "state" : {
+        "revision" : "c8f838386296a0c47925f0cb833aef3031cffa45",
+        "version" : "0.0.15"
+      }
+    },
+    {
+      "identity" : "powersync-sqlite-core-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/powersync-ja/powersync-sqlite-core-swift.git",
+      "state" : {
+        "revision" : "a41d0f52aa5fac82d12b842ce140ce206fbfcba3",
+        "version" : "0.5.4"
+      }
+    },
+    {
+      "identity" : "powersync-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/powersync-ja/powersync-swift",
+      "state" : {
+        "revision" : "04a26e6388ca60ba4105573ac0cf2f087f6c142d",
+        "version" : "1.17.0"
+      }
+    },
+    {
+      "identity" : "swift-asn1",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-asn1.git",
+      "state" : {
+        "revision" : "917b472dbe53ba699cbb0495f9a95a084bc6364d",
+        "version" : "1.7.4"
+      }
+    },
+    {
+      "identity" : "swift-async-algorithms",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-async-algorithms.git",
+      "state" : {
+        "revision" : "13713a4ffdee8abd929f92568ee9462a46ae26e0",
+        "version" : "1.1.7"
+      }
+    },
+    {
+      "identity" : "swift-collections",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-collections.git",
+      "state" : {
+        "revision" : "88754449ab766a739610b660e117762115fabc9c",
+        "version" : "1.7.6"
+      }
+    },
+    {
+      "identity" : "swift-crypto",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-crypto.git",
+      "state" : {
+        "revision" : "95ba0316a9b733e92bb6b071255ff46263bbe7dc",
+        "version" : "3.15.1"
+      }
+    },
+    {
+      "identity" : "swift-http-types",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-http-types",
+      "state" : {
+        "revision" : "bff4b6903cdc99dda49649dd52f46c11cfd3ed50",
+        "version" : "1.8.0"
+      }
+    },
+    {
+      "identity" : "swift-openapi-runtime",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-openapi-runtime",
+      "state" : {
+        "revision" : "b9ebb3f06f1dac717156a04f0919ad444cbcf8f5",
+        "version" : "1.13.4"
+      }
+    },
+    {
+      "identity" : "swiftmath",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/mgriebling/SwiftMath.git",
+      "state" : {
+        "revision" : "fa8244ed032f4a1ade4cb0571bf87d2f1a9fd2d7",
+        "version" : "1.7.3"
+      }
+    },
+    {
+      "identity" : "tinfoil-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/tinfoilsh/tinfoil-swift",
+      "state" : {
+        "revision" : "e49a0a4b22e3b500759e4997381ca031c894aeae",
+        "version" : "0.9.0-rc.4"
+      }
+    }
+  ],
+  "version" : 3
+}

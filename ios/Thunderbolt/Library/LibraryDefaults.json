@@ -1,0 +1,578 @@
+[
+  {
+    "table": "skills",
+    "version": 9,
+    "rows": [
+      {
+        "id": "01996330-0000-7000-8000-000000000001",
+        "values": {
+          "name": "daily-brief",
+          "label": "Daily Brief",
+          "description": "Use this skill when the user asks for a daily brief, a morning rundown, or a summary of weather, news, inbox, and calendar.",
+          "instruction": "Create a daily brief with the following sections. Do not ask the user for any missing information — just skip sections for which you are missing information or tools.\n\n1. If you know the user's location, show the 7-day forecast. If not, skip this section.\n\n2. Today's top news stories. Use the fetch_content tool to get the content of apnews.com. Provide the top 10 headlines in an ordered list. Do not include link previews.\n\n3. If you have access to email tools, check the inbox and summarize what has come in over the last 24 hours, focusing on what looks most important. If not, skip this section.\n\n4. If you have access to calendar tools, check the calendar and give a summary of what is coming up for the current day. Provide this as a personal assistant might. If not, skip this section.\n\nFormat the brief as follows:\n\nGood <morning/afternoon/evening> <user's name if available>,\n\nSome friendly, witty variation of \"I've put together a daily brief for you!\" with an emoji.\n\n# Weather\n\nToday's forecast is ____.\n\n# News\n\n1. <headline>\n2. <headline>\n3. <headline>\n\n# Inbox\n\nThis is what's in your inbox that you should be aware of...\n\n# Calendar\n\nThis is what you've got on your calendar today...\n\nDo not show skipped sections at all, even placeholders — just skip them entirely.",
+          "enabled": 1,
+          "pinned_order": null,
+          "deleted_at": null
+        },
+        "hash": "mfmi05",
+        "hashColumns": [
+          "name",
+          "label",
+          "description",
+          "instruction",
+          "enabled",
+          "pinned_order",
+          "deleted_at"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": false
+      },
+      {
+        "id": "01996330-0000-7000-8000-000000000002",
+        "values": {
+          "name": "important-emails",
+          "label": "Important Emails",
+          "description": "Use this skill when the user wants to triage their inbox, see what needs attention, or surface the most important emails of the day.",
+          "instruction": "Review the user's inbox and summarize the 5 most important emails that need attention today. Include sender, subject, and why each is important.",
+          "enabled": 0,
+          "pinned_order": null,
+          "deleted_at": null
+        },
+        "hash": "-669lkj",
+        "hashColumns": [
+          "name",
+          "label",
+          "description",
+          "instruction",
+          "enabled",
+          "pinned_order",
+          "deleted_at"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": false
+      },
+      {
+        "id": "01996330-0000-7000-8000-000000000003",
+        "values": {
+          "name": "search",
+          "label": "Search",
+          "description": "Use this skill when the user wants web search results as link previews — current events, products, places, or anything best answered with a list of sources.",
+          "instruction": "SEARCH MODE: ALWAYS search the web and return link previews. Never answer from memory.\n\nFor ANY query—even simple facts you know—you MUST:\n1. Search the web\n2. Evaluate the search results:\n   - If results are already individual pages (articles, products, places, etc), use them directly\n   - If results are homepages or aggregate pages (/, /hub/, /sections/, listicles), follow the Link Preview Workflow to discover individual URLs\n3. Return each result as: <widget:link-preview source=\"N\" url=\"https://...\" />\n4. Target ~10 link previews (fewer if irrelevant, up to 20 if many good)\n5. No prose, no explanations, no summaries\n\nCRITICAL QUALITY RULES:\n- Every link-preview URL must be unique — never repeat the same URL\n- Every URL must point to a specific page (deep path), not a homepage or section page\n- If search results are all homepages (common for broad news queries), you MUST fetch them to find individual article URLs\n\nDo NOT answer questions directly. Do NOT write paragraphs. Just search and show links.",
+          "enabled": 1,
+          "pinned_order": 0,
+          "deleted_at": null
+        },
+        "hash": "-30vmih",
+        "hashColumns": [
+          "name",
+          "label",
+          "description",
+          "instruction",
+          "enabled",
+          "pinned_order",
+          "deleted_at"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": false
+      },
+      {
+        "id": "01996330-0000-7000-8000-000000000004",
+        "values": {
+          "name": "research",
+          "label": "Research",
+          "description": "Use this skill when the user wants an exhaustive, multi-source deep dive on a topic rather than a quick answer.",
+          "instruction": "You are **Deep Research**. Investigate the requested question thoroughly using primary evidence.\n\n## Current-turn budget\nThe web budget counts combined search and fetch_content calls, not sources. Research has an absolute ceiling of 30 web calls; the available cap may be smaller and calls already used still count. Repeated skill loads do not add another allowance. Plan within the remaining budget rather than trying to satisfy a fixed search or page-fetch quota.\n\nIf the current turn reports exhaustion, stop web calls and synthesize from available evidence and remaining non-web tools. A later explicit capacity-restored instruction supersedes that stop. Historical exhaustion from an earlier turn does not exhaust a new turn. Disclose uncovered requirements and unsupported claims; never invent evidence or claim exhaustive coverage merely because the budget ran out.\n\nA new user turn starts with a fresh ordinary budget. If that new request needs research, load this skill again; instructions inherited from conversation history alone neither grant more web calls nor forbid another load.\n\n## Plan and investigate\n- Identify the requested dimensions and break them into focused sub-questions.\n- Allocate the available calls across all requested entities and dimensions before deep-diving into any one; use varied queries and primary sources.\n- Use a sufficient search snippet directly. Fetch a page when its full text is needed to support a claim, resolve a conflict, or fill a material gap.\n- Reuse cached results and their source IDs instead of repeating identical calls.\n- Continue until the requested coverage is supported or the available budget is exhausted; do not add calls merely to fill a quota.\n\n## Output\nVerify each material number and quote against its cited source, preserve qualifiers, and omit unsupported asides.\n1. **Executive Summary** — Direct answer with an appropriate confidence level.\n2. **Detailed Findings** — Organized by sub-question, with inline [N] citations for sourced claims.\n3. **Conflicts & Gaps** — Explain disagreements, missing evidence and what could not be verified.\nDo not add a Sources or References section; inline citations are sufficient.",
+          "enabled": 1,
+          "pinned_order": 1,
+          "deleted_at": null
+        },
+        "hash": "-ypyizk",
+        "hashColumns": [
+          "name",
+          "label",
+          "description",
+          "instruction",
+          "enabled",
+          "pinned_order",
+          "deleted_at"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": false
+      },
+      {
+        "id": "01996330-0000-7000-8000-000000000005",
+        "values": {
+          "name": "weather",
+          "label": "Weather",
+          "description": "Use this skill when the user asks about the weather or wants a forecast for a location.",
+          "instruction": "## Weather Forecast\n<widget:weather-forecast location=\"City\" region=\"State\" country=\"Country\" />\nShows today + the next 5 days (***fetches data automatically—no search needed***)\nExample: <widget:weather-forecast location=\"Seattle\" region=\"Washington\" country=\"United States\" />\n\n### Forecast Limitations\nThe forecast covers today and the next 5 days (6 days total).\n• If asked for forecasts beyond 6 days: \"I can only show the forecast for the next 6 days.\"\n• If asked for a time period that is a few days from now: \"I can't forecast that far in advance, but here's the next 6 days.\" + show component",
+          "enabled": 1,
+          "pinned_order": 2,
+          "deleted_at": null
+        },
+        "hash": "-hc6mv3",
+        "hashColumns": [
+          "name",
+          "label",
+          "description",
+          "instruction"
+        ],
+        "frozenColumns": [
+          "enabled",
+          "pinned_order"
+        ],
+        "skipWhenMissing": false
+      },
+      {
+        "id": "01996330-0000-7000-8000-000000000006",
+        "values": {
+          "name": "link-preview",
+          "label": "Link Preview",
+          "description": "Use this skill when the user wants web results, news, products, recommendations, or other fetched pages shown as rich link previews.",
+          "instruction": "## Link Preview\n<widget:link-preview source=\"N\" url=\"https://example.com\" />\n\nWhen the page was fetched via search or fetch_content, include the sourceIndex as the source attribute. Always include the url attribute as well.\n\n### CRITICAL: Only Link to Individual Item Pages\nNEVER show link previews for aggregate/list/index pages. Each preview must be ONE specific item.\n\nWRONG - These are aggregate pages:\n• \"Best Robot Vacuums of 2025\" article\n• \"Top 10 Laptops\" listicle\n• Category pages (amazon.com/laptops, apnews.com/hub/business)\n• Any page that lists multiple products/articles\n\nCORRECT - These are individual item pages:\n• One specific news article: apnews.com/article/abc123\n• One specific product: roborock.com/products/s8-pro\n• One specific movie: imdb.com/title/tt15239678/\n\n### Link Preview Workflow\nFor requests like \"top 3 news stories\" or \"best laptops\":\n1. Search → may return aggregate sites ← OK to fetch these\n2. Fetch aggregate pages to discover individual items\n3. Extract specific article/product URLs from the content\n4. Fetch EACH individual URL separately\n5. Show <widget:link-preview> ONLY for individual pages from step 4\n\nREMEMBER: Aggregate pages are for discovery only—never show them in previews.\n\nPrefer reputable sources when choosing from search results:\n• News: AP News, Reuters, BBC, NPR over lesser-known outlets\n• Movies: IMDb, Rotten Tomatoes over fan wikis\n• Products: official manufacturer pages over third-party retailers\n• Restaurants/places: Yelp, Google Maps, official restaurant sites\n\nExample 1: \"show me today's top 3 news\"\n→ Search for today's top news\n→ Pick 3 individual article URLs from reputable sources in the search results\n→ Fetch each article URL\n→ Show: <widget:link-preview source=\"N\" url=\"...\" /> for each\n\nExample 2: \"best robot vacuums\"\n→ Search \"best robot vacuums 2025\"\n→ May find wirecutter.com article \"The 3 Best Robot Vacuums\" ← OK to fetch this\n→ Fetch that article, extract product names: \"Roborock S8 Pro\", \"iRobot Roomba j7+\", \"Eufy X10\"\n→ Search for each: \"Roborock S8 Pro official site\", \"iRobot Roomba j7+ official page\", etc.\n→ Fetch each manufacturer page: roborock.com/products/s8-pro, irobot.com/roomba-j7-plus, etc.\n→ Show: <widget:link-preview source=\"N\" url=\"roborock.com/products/s8-pro\" /> (NOT the wirecutter article)\n\nExample 3: \"top movies out right now\"\n→ Search \"top movies 2025 imdb\" or \"top box office movies\"\n→ Fetch an aggregate page with movie listings\n→ Extract 3-5 specific movie names\n→ Search for each movie's IMDb page and fetch it\n→ Show: <widget:link-preview source=\"N\" url=\"imdb.com/title/tt12345678/\" /> for each\nStop after fetching good results—don't search for multiple sources or verify rankings\n\n### Search Mode: Broad vs Specific Queries\nWhen operating in Search mode, classify the query before choosing your workflow:\n\nSPECIFIC queries (restaurants, products, trails, local businesses):\nSearch results usually link directly to individual pages. Use the URLs as-is.\nExample: \"pizza in Brooklyn\" → search results have yelp.com/biz/di-fara-pizza → use directly\n\nBROAD queries (top news, latest headlines, what happened today):\nSearch results often link to homepages or section pages. You MUST discover individual articles.\nExample: \"top news today\" → search results have apnews.com/ → fetch the homepage → extract article URLs → fetch each → show link previews\n\nThe key signal: if a search result URL has NO path or only a short section path (/, /news, /us, /hub/..., /sections/...), it is an aggregate page. Fetch it to find individual articles.\n\n### Rules for Link Previews\n\n1. SPECIFIC PAGES ONLY — URLs must have deep paths pointing to specific content\nCORRECT: URLs with paths like /article/..., /products/..., /title/..., /recipe/...\nAvoid showing homepages (just /), hub pages (/hub/...), or category listings (/laptops, /business)\nIt's OK to fetch aggregate pages for discovery—just don't show them in link previews.\n\n2. PRODUCTS: MUST LINK TO OFFICIAL MANUFACTURER PAGES\nWhen showing products (electronics, appliances, gadgets, etc.):\n\nCORRECT - ALWAYS link to manufacturer's official product page:\n  • roborock.com/products/roborock-s8-pro (manufacturer page)\n  • apple.com/iphone-15-pro (manufacturer page)\n  • dyson.com/vacuum-cleaners/cordless/v15 (manufacturer page)\n\nWRONG - NEVER link to these (even if they appear in search results):\n  • Review sites: wirecutter.com, pcmag.com, techradar.com, cnet.com, rtings.com\n  • Listicles: \"Best Robot Vacuums of 2025\", \"Top 10 Laptops\"\n  • Comparison pages: \"Roborock vs iRobot\"\n  • Generic retailers: amazon.com, walmart.com (unless the manufacturer sells exclusively there)\n\nRequired workflow for products:\n1. Discover product names (may use review sites for this)\n2. For EACH product: search \"[product name] official site\" or \"[product name] [manufacturer name]\"\n3. Fetch the manufacturer's official product page\n4. Show <widget:link-preview> ONLY for official manufacturer pages\n\nIf you cannot find an official manufacturer page, skip that product—never substitute a review site.\n\n3. NO DUPLICATES\nEach <widget:link-preview> must have a unique URL. Before outputting, deduplicate by domain+path.\nWRONG: showing apnews.com/ three times\nWRONG: showing cnn.com/us and cnn.com/us (same URL repeated)\nCORRECT: each link-preview points to a different specific article\nThe preview card already shows title, description, and image — do not repeat that in prose.\n\nWRONG:\n\"Top stories:\n1. **Climate Summit** - Leaders met...\n<widget:link-preview source=\"N\" url=\"...\" />\"\n\nCORRECT:\n\"Here are today's top stories:\n\n<widget:link-preview source=\"1\" url=\"...\" />\n<widget:link-preview source=\"2\" url=\"...\" />\n<widget:link-preview source=\"3\" url=\"...\" />\"\n\n4. ONLY SHOW FETCHED PAGES\nCall a tool to fetch content before adding <widget:link-preview>. Never guess URLs.\n\n5. BE EFFICIENT\nFor \"top X\" requests: 1 search + 1 aggregate fetch + X individual fetches = DONE\nDon't search for multiple sources, verify data, or optimize rankings—just get good results fast.",
+          "enabled": 1,
+          "pinned_order": null,
+          "deleted_at": null
+        },
+        "hash": "-o0c0ul",
+        "hashColumns": [
+          "name",
+          "label",
+          "description",
+          "instruction"
+        ],
+        "frozenColumns": [
+          "enabled",
+          "pinned_order"
+        ],
+        "skipWhenMissing": false
+      },
+      {
+        "id": "01996330-0000-7000-8000-000000000007",
+        "values": {
+          "name": "connect-integration",
+          "label": "Connect Integration",
+          "description": "Use this skill when the user asks to access email or calendar but required Google or Microsoft tools are unavailable.",
+          "instruction": "## Connect Integration Widget\n\n### Tools to check\n\n- Google: google_check_inbox, google_search_emails, google_get_email, google_draft_email, google_check_calendar\n- Microsoft: microsoft_list_messages, microsoft_get_message, microsoft_search_onedrive, microsoft_get_onedrive_file_content\n\nIf these tools are available, use them directly. Only show this widget when tools are missing AND user requests email/calendar.\n\n### Widget Syntax\n\n<widget:connect-integration provider=\"\" service=\"email\" reason=\"\" override=\"\" />\n\nAttributes (all required):\n- provider: \"google\", \"microsoft\", or \"\" (empty = user chooses)\n- service: \"email\", \"calendar\", or \"both\"\n- reason: \"\" or brief explanation\n- override: \"\" normally, \"true\" only after user agreed when status contained PROMPTS_DISABLED\n\n### Provider Selection\n\n- \"google\" → Gmail, Google Calendar, or when user mentions \"Google\", \"Gmail\"\n- \"microsoft\" → Outlook, or when user mentions \"Microsoft\", \"Outlook\", \"Office 365\"\n- \"\" (empty) → User didn't specify a provider\n\n### Service Selection\n\n- \"email\" → Check inbox, search emails, read/send emails\n- \"calendar\" → View events, check schedule\n- \"both\" → Only when request explicitly needs BOTH (rare)\n\n### BEFORE showing widget, check \"Integration status:\" in Context\n\nStatus may contain multiple values (e.g., \"GOOGLE_DISABLED, PROMPTS_DISABLED\"). Never mention status names to the user.\n\n**Check in this order:**\n\n1. **BOTH providers disabled** (status contains both GOOGLE_DISABLED and MICROSOFT_DISABLED):\n   - DO NOT show widget\n   - Say: \"Your integrations are disabled. You can enable them in Settings → Integrations.\"\n\n2. **Only GOOGLE_DISABLED** (status contains GOOGLE_DISABLED but NOT MICROSOFT_DISABLED):\n   - If user requested Google/Gmail or didn't specify provider → DO NOT show widget. Say: \"Your Google integration is disabled. You can enable it in Settings → Integrations.\"\n   - If user requested Microsoft/Outlook → If Microsoft is not connected, show widget with provider=\"microsoft\" (unaffected)\n\n3. **Only MICROSOFT_DISABLED** (status contains MICROSOFT_DISABLED but NOT GOOGLE_DISABLED):\n   - If user requested Microsoft/Outlook or didn't specify provider → DO NOT show widget. Say: \"Your Microsoft integration is disabled. You can enable it in Settings → Integrations.\"\n   - If user requested Google/Gmail → if Google is not connected, show widget with provider=\"google\" (unaffected)\n\n4. **PROMPTS_DISABLED** (after checking provider statuses above):\n   - If showing widget is blocked by provider status → follow that rule (don't show)\n   - Otherwise, DO NOT show widget immediately. Ask: \"I can't access your [email/calendar] right now. Would you like to connect your account?\"\n   - Only if user agrees → show widget with override=\"true\"\n\n5. **READY** (no special conditions):\n   - Show widget directly, no extra text\n\n### Display Rule\n\nWhen no blocking condition applies and PROMPTS_DISABLED is not set, output ONLY the widget tag. No text before or after.\n\n### Examples\n\n**Status: READY, tools missing:**\n- \"Summarize my emails\" → `<widget:connect-integration provider=\"\" service=\"email\" reason=\"\" override=\"\" />`\n- \"Check my Gmail\" → `<widget:connect-integration provider=\"google\" service=\"email\" reason=\"\" override=\"\" />`\n- \"What's on my Outlook calendar?\" → `<widget:connect-integration provider=\"microsoft\" service=\"calendar\" reason=\"\" override=\"\" />`\n\n**Status: GOOGLE_DISABLED (only Google disabled):**\n- \"Check my Gmail\" → \"Your Google integration is disabled. You can enable it in Settings → Integrations.\"\n- \"Check my emails\" → \"Your Google integration is disabled. You can enable it in Settings → Integrations.\"\n- \"Check my Outlook\" → `<widget:connect-integration provider=\"microsoft\" service=\"email\" reason=\"\" override=\"\" />`\n\n**Status: MICROSOFT_DISABLED (only Microsoft disabled):**\n- \"Check my Outlook\" → \"Your Microsoft integration is disabled. You can enable it in Settings → Integrations.\"\n- \"Check my emails\" → \"Your Microsoft integration is disabled. You can enable it in Settings → Integrations.\"\n- \"Check my Gmail\" → `<widget:connect-integration provider=\"google\" service=\"email\" reason=\"\" override=\"\" />`\n\n**Status: GOOGLE_DISABLED, MICROSOFT_DISABLED (both disabled):**\n- Any email/calendar request → \"Your integrations are disabled. You can enable them in Settings → Integrations.\"\n\n**Status: PROMPTS_DISABLED:**\n- User: \"Check my email\"\n- You: \"I can't access your emails right now. Would you like to connect your email account?\"\n- User: \"Yes\"\n- You: `<widget:connect-integration provider=\"\" service=\"email\" reason=\"\" override=\"true\" />`\n\n**Status: GOOGLE_DISABLED, PROMPTS_DISABLED:**\n- User: \"Check my Outlook\" → Follow PROMPTS_DISABLED flow, then show with provider=\"microsoft\" and override=\"true\"\n- User: \"Check my Gmail\" → \"Your Google integration is disabled. You can enable it in Settings → Integrations.\"\n\n**Tools available:**\n- \"Summarize my emails\" + google_check_inbox exists → Use the tool directly, don't show widget\n\n**WRONG:**\n- ❌ \"I don't have access to your email\" when you should show widget\n- ❌ Showing widget when tools are available\n- ❌ Blocking Microsoft widget because Google is disabled (or vice versa)\n- ❌ Mentioning status names like \"PROMPTS_DISABLED\" to the user\n",
+          "enabled": 1,
+          "pinned_order": null,
+          "deleted_at": null
+        },
+        "hash": "atrnpq",
+        "hashColumns": [
+          "name",
+          "label",
+          "description",
+          "instruction"
+        ],
+        "frozenColumns": [
+          "enabled",
+          "pinned_order"
+        ],
+        "skipWhenMissing": false
+      },
+      {
+        "id": "01996330-0000-7000-8000-000000000008",
+        "values": {
+          "name": "ask",
+          "label": "Ask",
+          "description": "Use this skill when asking the user to choose from options or answer an interactive quiz prompt.",
+          "instruction": "## Ask\n<widget:ask mode=\"MODE\" prompt=\"QUESTION\" options='JSON_ARRAY' explanation=\"WHY\" />\nAn interactive prompt the user can respond to inline. Prefer this over a markdown list whenever you ask the user to choose between options. For open-ended questions, just ask in text — the user replies in the normal chat input.\n- mode: \"single\" (one designated answer), \"multiple\" (one or more designated answers), \"choice\" (no designated answer, the user picks one — e.g. \"What do you want to do next?\"), or \"choices\" (no designated answer, the user picks one or more — a preference/opinion question, e.g. \"Which of these do you like?\")\n- prompt: the question or prompt text\n- options: a JSON array wrapped in SINGLE quotes. Each option is {\"id\":\"a\",\"text\":\"...\"}; for modes with a designated answer add \"isCorrect\":true to the intended option(s). Never set isCorrect in \"choice\" or \"choices\" mode.\n- explanation (optional): for modes with a designated answer, a short note shown after the user responds.\nEmit one widget per prompt. Do not also list the options in text — the widget shows them.\nExample (single): <widget:ask mode=\"single\" prompt=\"Which protocol sends outgoing mail?\" options='[{\"id\":\"a\",\"text\":\"SMTP\",\"isCorrect\":true},{\"id\":\"b\",\"text\":\"IMAP\"},{\"id\":\"c\",\"text\":\"POP3\"}]' explanation=\"SMTP handles sending; IMAP and POP3 retrieve mail.\" />\nExample (choices): <widget:ask mode=\"choices\" prompt=\"Which of these do you like?\" options='[{\"id\":\"a\",\"text\":\"Coffee\"},{\"id\":\"b\",\"text\":\"Tea\"},{\"id\":\"c\",\"text\":\"Neither\"}]' />",
+          "enabled": 1,
+          "pinned_order": null,
+          "deleted_at": null
+        },
+        "hash": "-ue9tpd",
+        "hashColumns": [
+          "name",
+          "label",
+          "description",
+          "instruction"
+        ],
+        "frozenColumns": [
+          "enabled",
+          "pinned_order"
+        ],
+        "skipWhenMissing": false
+      },
+      {
+        "id": "01996330-0000-7000-8000-000000000009",
+        "values": {
+          "name": "map",
+          "label": "Map",
+          "description": "Use this skill when the user asks to see locations, routes, regions, or other geographic results on an interactive map.",
+          "instruction": "## Map\n<widget:map data='<GeoJSON FeatureCollection as valid JSON>' title=\"Optional title\" />\nRenders locations on an interactive map. `data` MUST be a **valid GeoJSON FeatureCollection** — strict JSON with double-quoted keys and strings, wrapped in single quotes. Supports Point, LineString, and Polygon geometries (and their Multi* variants). Each feature's `properties` may include `label`, `name`, `title`, or `description`, which are shown in the popup.\nOptional per-feature styling follows the simplestyle-spec: `marker-color`, `marker-size` (small | medium | large), `stroke`, `stroke-width`, `fill`, `fill-opacity`.\nExample: <widget:map data='{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\",\"geometry\":{\"type\":\"Point\",\"coordinates\":[-122.3321,47.6062]},\"properties\":{\"label\":\"Seattle\",\"description\":\"Home office\"}}]}' />",
+          "enabled": 1,
+          "pinned_order": null,
+          "deleted_at": null
+        },
+        "hash": "o1nire",
+        "hashColumns": [
+          "name",
+          "label",
+          "description",
+          "instruction"
+        ],
+        "frozenColumns": [
+          "enabled",
+          "pinned_order"
+        ],
+        "skipWhenMissing": false
+      }
+    ]
+  },
+  {
+    "table": "settings",
+    "version": 8,
+    "rows": [
+      {
+        "id": "data_collection",
+        "values": {
+          "value": "true",
+          "updated_at": null
+        },
+        "hash": "bsmtz",
+        "hashColumns": [
+          "$id",
+          "value"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": false
+      },
+      {
+        "id": "is_triggers_enabled",
+        "values": {
+          "value": "false",
+          "updated_at": null
+        },
+        "hash": "eonvmh",
+        "hashColumns": [
+          "$id",
+          "value"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": false
+      },
+      {
+        "id": "experimental_feature_tasks",
+        "values": {
+          "value": "false",
+          "updated_at": null
+        },
+        "hash": "-zg8zmz",
+        "hashColumns": [
+          "$id",
+          "value"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": false
+      },
+      {
+        "id": "experimental_feature_voice",
+        "values": {
+          "value": "false",
+          "updated_at": null
+        },
+        "hash": "6l2ce1",
+        "hashColumns": [
+          "$id",
+          "value"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": false
+      },
+      {
+        "id": "preferred_name",
+        "values": {
+          "value": null,
+          "updated_at": null
+        },
+        "hash": "-5w6dil",
+        "hashColumns": [
+          "$id",
+          "value"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": true
+      },
+      {
+        "id": "location_name",
+        "values": {
+          "value": null,
+          "updated_at": null
+        },
+        "hash": "27rtqf",
+        "hashColumns": [
+          "$id",
+          "value"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": true
+      },
+      {
+        "id": "location_lat",
+        "values": {
+          "value": null,
+          "updated_at": null
+        },
+        "hash": "-tpss8p",
+        "hashColumns": [
+          "$id",
+          "value"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": true
+      },
+      {
+        "id": "location_lng",
+        "values": {
+          "value": null,
+          "updated_at": null
+        },
+        "hash": "-tpsiwv",
+        "hashColumns": [
+          "$id",
+          "value"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": true
+      },
+      {
+        "id": "location_country_code",
+        "values": {
+          "value": null,
+          "updated_at": null
+        },
+        "hash": "-ee3q2s",
+        "hashColumns": [
+          "$id",
+          "value"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": true
+      },
+      {
+        "id": "location_id",
+        "values": {
+          "value": null,
+          "updated_at": null
+        },
+        "hash": "-yieo9",
+        "hashColumns": [
+          "$id",
+          "value"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": true
+      },
+      {
+        "id": "location_name_display",
+        "values": {
+          "value": null,
+          "updated_at": null
+        },
+        "hash": "qbbf38",
+        "hashColumns": [
+          "$id",
+          "value"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": true
+      },
+      {
+        "id": "distance_unit",
+        "values": {
+          "value": null,
+          "updated_at": null
+        },
+        "hash": "-3esuvm",
+        "hashColumns": [
+          "$id",
+          "value"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": true
+      },
+      {
+        "id": "temperature_unit",
+        "values": {
+          "value": null,
+          "updated_at": null
+        },
+        "hash": "-dmzg9f",
+        "hashColumns": [
+          "$id",
+          "value"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": true
+      },
+      {
+        "id": "time_format",
+        "values": {
+          "value": null,
+          "updated_at": null
+        },
+        "hash": "we6fw3",
+        "hashColumns": [
+          "$id",
+          "value"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": true
+      },
+      {
+        "id": "currency",
+        "values": {
+          "value": null,
+          "updated_at": null
+        },
+        "hash": "avihzf",
+        "hashColumns": [
+          "$id",
+          "value"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": true
+      },
+      {
+        "id": "integrations_pro_is_enabled",
+        "values": {
+          "value": "true",
+          "updated_at": null
+        },
+        "hash": "bbnpv0",
+        "hashColumns": [
+          "$id",
+          "value"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": false
+      },
+      {
+        "id": "user_has_completed_onboarding",
+        "values": {
+          "value": "false",
+          "updated_at": null
+        },
+        "hash": "-hxwxxt",
+        "hashColumns": [
+          "$id",
+          "value"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": false
+      },
+      {
+        "id": "content_view_width",
+        "values": {
+          "value": "50",
+          "updated_at": null
+        },
+        "hash": "8pnzc5",
+        "hashColumns": [
+          "$id",
+          "value"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": false
+      },
+      {
+        "id": "integrations_do_not_ask_again",
+        "values": {
+          "value": "false",
+          "updated_at": null
+        },
+        "hash": "yv9tj5",
+        "hashColumns": [
+          "$id",
+          "value"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": false
+      },
+      {
+        "id": "language",
+        "values": {
+          "value": null,
+          "updated_at": null
+        },
+        "hash": "p3z19g",
+        "hashColumns": [
+          "$id",
+          "value"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": true
+      },
+      {
+        "id": "experimental_feature_otari",
+        "values": {
+          "value": "false",
+          "updated_at": null
+        },
+        "hash": "55gjoa",
+        "hashColumns": [
+          "$id",
+          "value"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": false
+      }
+    ]
+  },
+  {
+    "table": "tasks",
+    "version": 1,
+    "rows": [
+      {
+        "id": "0198ecc5-cc2b-735b-b478-93f8db7202ce",
+        "values": {
+          "item": "Connect your email account to get started",
+          "order": 100,
+          "is_complete": 0,
+          "deleted_at": null
+        },
+        "hash": "ewc0es",
+        "hashColumns": [
+          "item",
+          "is_complete"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": false
+      },
+      {
+        "id": "0198ecc5-cc2b-735b-b478-96071aa92f62",
+        "values": {
+          "item": "Set your name and location in preferences for better AI responses",
+          "order": 200,
+          "is_complete": 0,
+          "deleted_at": null
+        },
+        "hash": "-9v5tnk",
+        "hashColumns": [
+          "item",
+          "is_complete"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": false
+      },
+      {
+        "id": "0198ecc5-cc2b-735b-b478-99e9874d61ba",
+        "values": {
+          "item": "Explore Thunderbolt Pro tools to extend capabilities",
+          "order": 300,
+          "is_complete": 0,
+          "deleted_at": null
+        },
+        "hash": "-akftt5",
+        "hashColumns": [
+          "item",
+          "is_complete"
+        ],
+        "frozenColumns": [],
+        "skipWhenMissing": false
+      }
+    ]
+  }
+]

@@ -61,7 +61,10 @@ export class ZenBashFileSystem implements IFileSystem {
    * @param jailRoot - the thread's absolute workspace dir; every path this
    *   adapter touches is asserted to stay inside it (see file header).
    */
-  constructor(private readonly jailRoot: string) {}
+  constructor(
+    private readonly jailRoot: string,
+    private readonly markWorkspaceChanged: () => void = () => {},
+  ) {}
 
   /** Resolve `path` against the jail root and assert it stays in the workspace,
    *  throwing on escape so just-bash maps it to a non-zero exit. */
@@ -80,11 +83,13 @@ export class ZenBashFileSystem implements IFileSystem {
   async writeFile(path: string, content: FileContent, options?: WriteFileOptions | BufferEncoding): Promise<void> {
     const encoding = encodingOf(options)
     await fsp.writeFile(this.jailed(path), content, encoding ? { encoding } : undefined)
+    this.markWorkspaceChanged()
   }
 
   async appendFile(path: string, content: FileContent, options?: WriteFileOptions | BufferEncoding): Promise<void> {
     const encoding = encodingOf(options)
     await fsp.appendFile(this.jailed(path), content, encoding ? { encoding } : undefined)
+    this.markWorkspaceChanged()
   }
 
   async exists(path: string): Promise<boolean> {
@@ -104,6 +109,7 @@ export class ZenBashFileSystem implements IFileSystem {
 
   async mkdir(path: string, options?: MkdirOptions): Promise<void> {
     await fsp.mkdir(this.jailed(path), { recursive: options?.recursive ?? false })
+    this.markWorkspaceChanged()
   }
 
   async readdir(path: string): Promise<string[]> {
@@ -122,14 +128,17 @@ export class ZenBashFileSystem implements IFileSystem {
 
   async rm(path: string, options?: RmOptions): Promise<void> {
     await fsp.rm(this.jailed(path), { recursive: options?.recursive ?? false, force: options?.force ?? false })
+    this.markWorkspaceChanged()
   }
 
   async cp(src: string, dest: string, options?: CpOptions): Promise<void> {
     await fsp.cp(this.jailed(src), this.jailed(dest), { recursive: options?.recursive ?? false })
+    this.markWorkspaceChanged()
   }
 
   async mv(src: string, dest: string): Promise<void> {
     await fsp.rename(this.jailed(src), this.jailed(dest))
+    this.markWorkspaceChanged()
   }
 
   resolvePath(base: string, path: string): string {
@@ -142,6 +151,7 @@ export class ZenBashFileSystem implements IFileSystem {
 
   async chmod(path: string, mode: number): Promise<void> {
     await fsp.chmod(this.jailed(path), mode)
+    this.markWorkspaceChanged()
   }
 
   async symlink(_target: string, _linkPath: string): Promise<void> {
@@ -158,6 +168,7 @@ export class ZenBashFileSystem implements IFileSystem {
 
   async link(existingPath: string, newPath: string): Promise<void> {
     await fsp.link(this.jailed(existingPath), this.jailed(newPath))
+    this.markWorkspaceChanged()
   }
 
   async readlink(path: string): Promise<string> {
@@ -170,5 +181,6 @@ export class ZenBashFileSystem implements IFileSystem {
 
   async utimes(path: string, atime: Date, mtime: Date): Promise<void> {
     await fsp.utimes(this.jailed(path), atime, mtime)
+    this.markWorkspaceChanged()
   }
 }

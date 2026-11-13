@@ -12,7 +12,7 @@ import { performanceStreamOptions, performanceStreamPrompt } from './streaming-f
 
 export const fakeProviderReply = 'Hello from the fake provider, one word at a time.'
 
-type FakeProviderOptions = { delayMs?: number }
+type FakeProviderOptions = { delayMs?: number; performanceDelayMs?: number }
 
 const textPartSchema = z.object({ type: z.string(), text: z.string().optional() })
 type TextPart = z.infer<typeof textPartSchema>
@@ -84,7 +84,7 @@ export const createFakeProvider = async (port: number, options: FakeProviderOpti
       return
     }
     const selected = requestsPerformanceStream(request)
-      ? performanceStreamOptions
+      ? { ...performanceStreamOptions, delayMs: options.performanceDelayMs ?? performanceStreamOptions.delayMs }
       : { reply: fakeProviderReply, chunkSize: undefined, delayMs: 150 }
     const { reply, chunkSize } = selected
     const chunks = chunkSize

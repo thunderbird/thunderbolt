@@ -1,0 +1,5 @@
+# Generated JavaScript is committed so Xcode can build without a Node/Bun step.
+Thunderbolt/AgentRuntime/agent-runtime.js linguist-generated=true
+Thunderbolt/ChatContent/artifact-check.js linguist-generated=true
+Thunderbolt/Crypto/noble-bridge.js linguist-generated=true
+Thunderbolt/Library/search-plan.js linguist-generated=true

@@ -119,33 +119,37 @@ const buildBashTool = (env: BrowserExecutionEnv, cwd: string): AgentTool<typeof 
     // Mutates the shared ZenFS mount (redirects, file writes); serialize the batch.
     executionMode: 'sequential',
     async execute(_toolCallId, { command, timeout }, signal) {
-      const chunks: string[] = []
-      const onData = (data: Buffer): void => {
-        chunks.push(data.toString('utf-8'))
-      }
-      let exitCode: number | null
       try {
-        const result = await operations.exec(command, cwd, { onData, signal, timeout })
-        exitCode = result.exitCode
-      } catch (error) {
-        // operations.exec re-throws the env's ExecutionError, whose `.message`
-        // already carries Pi's `aborted` / `timeout:<seconds>` framing.
-        const text = await formatBashOutput(env, chunks.join(''), '')
-        if (error instanceof Error && error.message === 'aborted') {
-          throw new Error(appendStatus(text, 'Command aborted'), { cause: error })
+        const chunks: string[] = []
+        const onData = (data: Buffer): void => {
+          chunks.push(data.toString('utf-8'))
         }
-        if (error instanceof Error && error.message.startsWith('timeout:')) {
-          throw new Error(appendStatus(text, `Command timed out after ${error.message.split(':')[1]} seconds`), {
-            cause: error,
-          })
+        let exitCode: number | null
+        try {
+          const result = await operations.exec(command, cwd, { onData, signal, timeout })
+          exitCode = result.exitCode
+        } catch (error) {
+          // operations.exec re-throws the env's ExecutionError, whose `.message`
+          // already carries Pi's `aborted` / `timeout:<seconds>` framing.
+          const text = await formatBashOutput(env, chunks.join(''), '')
+          if (error instanceof Error && error.message === 'aborted') {
+            throw new Error(appendStatus(text, 'Command aborted'), { cause: error })
+          }
+          if (error instanceof Error && error.message.startsWith('timeout:')) {
+            throw new Error(appendStatus(text, `Command timed out after ${error.message.split(':')[1]} seconds`), {
+              cause: error,
+            })
+          }
+          throw error
         }
-        throw error
+        const text = await formatBashOutput(env, chunks.join(''), '(no output)')
+        if (exitCode !== 0 && exitCode !== null) {
+          throw new Error(appendStatus(text, `Command exited with code ${exitCode}`))
+        }
+        return textResult(text)
+      } finally {
+        await env.persistWorkspaceChanges()
       }
-      const text = await formatBashOutput(env, chunks.join(''), '(no output)')
-      if (exitCode !== 0 && exitCode !== null) {
-        throw new Error(appendStatus(text, `Command exited with code ${exitCode}`))
-      }
-      return textResult(text)
     },
   }
 }
@@ -226,7 +230,7 @@ const writeSchema = Type.Object({
   content: Type.String({ description: 'Content to write to the file' }),
 })
 
-const buildWriteTool = (cwd: string): AgentTool<typeof writeSchema> => {
+const buildWriteTool = (env: BrowserExecutionEnv, cwd: string): AgentTool<typeof writeSchema> => {
   const operations = createWriteOperations()
   return {
     name: 'write',
@@ -242,6 +246,8 @@ const buildWriteTool = (cwd: string): AgentTool<typeof writeSchema> => {
       await operations.mkdir(dirname(absolutePath))
       throwIfAborted(signal)
       await operations.writeFile(absolutePath, content)
+      env.markWorkspaceChanged()
+      await env.persistWorkspaceChanges()
       return textResult(`Successfully wrote ${Buffer.byteLength(content, 'utf-8')} bytes to ${path}`)
     },
   }
@@ -323,7 +329,7 @@ const validateEditInput = (input: EditInput): { path: string; edits: EditReplace
   return { path: input.path, edits: input.edits }
 }
 
-const buildEditTool = (cwd: string): AgentTool<typeof editSchema> => {
+const buildEditTool = (env: BrowserExecutionEnv, cwd: string): AgentTool<typeof editSchema> => {
   const operations = createEditOperations()
   return {
     name: 'edit',
@@ -351,6 +357,8 @@ const buildEditTool = (cwd: string): AgentTool<typeof editSchema> => {
       const { newContent } = applyEditsToNormalizedContent(normalizeToLF(content), edits, path)
       throwIfAborted(signal)
       await operations.writeFile(absolutePath, bom + restoreLineEndings(newContent, originalEnding))
+      env.markWorkspaceChanged()
+      await env.persistWorkspaceChanges()
       return textResult(`Successfully replaced ${edits.length} block(s) in ${path}.`)
     },
   }
@@ -366,5 +374,5 @@ const buildEditTool = (cwd: string): AgentTool<typeof editSchema> => {
  */
 export const createBrowserCodingTools = (env: BrowserExecutionEnv, options: { cwd: string }): AgentTool[] => {
   const { cwd } = options
-  return [buildBashTool(env, cwd), buildReadTool(cwd), buildWriteTool(cwd), buildEditTool(cwd)]
+  return [buildBashTool(env, cwd), buildReadTool(cwd), buildWriteTool(env, cwd), buildEditTool(env, cwd)]
 }

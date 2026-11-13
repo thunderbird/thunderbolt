@@ -17,6 +17,7 @@ import {
   workspaceDirFor,
   writeAgentWorkspaceFiles,
 } from './build-app-harness.ts'
+import type { WorkspaceSnapshot } from './workspace-store.ts'
 
 describe('workspaceDirFor', () => {
   it('roots a UUID-shaped thread under /workspace', () => {
@@ -116,5 +117,81 @@ describe('buildAppHarness confidential model', () => {
     })
 
     expect((await harness.prompt('hello')).stopReason).toBe('stop')
+  })
+})
+
+describe('buildAppHarness workspace store', () => {
+  it('restores a thread snapshot and saves it through the returned persistence boundary', async () => {
+    const threadId = crypto.randomUUID()
+    const saved: WorkspaceSnapshot[] = []
+    const snapshot: WorkspaceSnapshot = {
+      version: 1,
+      entries: [
+        { path: 'nested', kind: 'directory' },
+        { path: 'nested/seed.txt', kind: 'file', base64: Buffer.from('seed').toString('base64'), byteCount: 4 },
+      ],
+    }
+    const harness = await buildAppHarness({
+      model: {
+        kind: 'confidential',
+        providerId: 'thunderbolt',
+        modelId: 'glm-5-2',
+        vendor: 'zhipu',
+        baseURL: 'https://cloud.example/v1/tinfoil',
+        apiKey: 'placeholder',
+        fetch: async () => new Response('', { status: 500 }),
+        reasoning: true,
+        contextWindow: 131_072,
+        supportsImages: false,
+      },
+      systemPrompt: 'Answer briefly.',
+      thinkingLevel: 'high',
+      threadId,
+      workspaceStore: {
+        load: async (loadedThreadId) => (loadedThreadId === threadId ? snapshot : undefined),
+        save: async (savedThreadId, value) => {
+          expect(savedThreadId).toBe(threadId)
+          saved.push(value)
+        },
+      },
+    })
+
+    expect(await fsp.readFile(`${workspaceDirFor(threadId)}/nested/seed.txt`, 'utf-8')).toBe('seed')
+    await harness.persistWorkspace()
+    expect(saved).toHaveLength(1)
+    expect(saved[0]?.entries).toContainEqual({
+      path: 'nested/seed.txt',
+      kind: 'file',
+      base64: Buffer.from('seed').toString('base64'),
+      byteCount: 4,
+    })
+    await removeAgentWorkspace(threadId)
+  })
+})
+
+describe('buildAppHarness coding tools', () => {
+  it('can disable the jailed coding tools while keeping the canonical harness', async () => {
+    const threadId = crypto.randomUUID()
+    const harness = await buildAppHarness({
+      model: {
+        kind: 'confidential',
+        providerId: 'thunderbolt',
+        modelId: 'glm-5-2',
+        vendor: 'zhipu',
+        baseURL: 'https://cloud.example/v1/tinfoil',
+        apiKey: 'placeholder',
+        fetch: async () => new Response('', { status: 500 }),
+        reasoning: true,
+        contextWindow: 131_072,
+        supportsImages: false,
+      },
+      systemPrompt: 'Answer briefly.',
+      thinkingLevel: 'high',
+      threadId,
+      codingToolsEnabled: false,
+    })
+
+    expect(harness.getTools()).toEqual([])
+    await removeAgentWorkspace(threadId)
   })
 })

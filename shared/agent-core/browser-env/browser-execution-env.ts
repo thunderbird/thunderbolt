@@ -57,20 +57,58 @@ export class BrowserExecutionEnv implements ExecutionEnv {
   private readonly createBash: (options: ConstructorParameters<typeof Bash>[0]) => Pick<Bash, 'exec'>
   /** Absolute temp root for this env, inside its (jailed) workspace root. */
   private readonly tempRoot: string
+  private readonly persistWorkspace?: () => Promise<void>
+  private workspaceChanged = false
+  private workspacePersistence: Promise<void> | undefined
 
   constructor(options: {
     cwd: string
     env?: Record<string, string>
+    /** Persist workspace mutations at a tool boundary, before its result returns. */
+    persistWorkspace?: () => Promise<void>
     /** Test seam for controlling shell completion around timeout boundaries. */
     createBash?: (options: ConstructorParameters<typeof Bash>[0]) => Pick<Bash, 'exec'>
   }) {
     this.cwd = options.cwd
     this.env = options.env ?? {}
+    this.persistWorkspace = options.persistWorkspace
     this.tempRoot = join(options.cwd, tempSubdir)
     this.createBash = options.createBash ?? ((bashOptions) => new Bash(bashOptions))
     // The shell is jailed to the env's root (the thread's workspace) so bash
     // commands can't read or write a sibling thread's files on the shared mount.
-    this.bashFs = new ZenBashFileSystem(options.cwd)
+    this.bashFs = new ZenBashFileSystem(options.cwd, () => this.markWorkspaceChanged())
+  }
+
+  /** Mark a successful workspace mutation performed by a coding tool. */
+  markWorkspaceChanged(): void {
+    this.workspaceChanged = true
+  }
+
+  /** Persist dirty changes once, after a complete coding-tool operation. */
+  async persistWorkspaceChanges(): Promise<void> {
+    if (!this.persistWorkspace || !this.workspaceChanged) {
+      return
+    }
+    if (this.workspacePersistence) {
+      await this.workspacePersistence
+      return this.persistWorkspaceChanges()
+    }
+    this.workspacePersistence = (async () => {
+      while (this.workspaceChanged) {
+        this.workspaceChanged = false
+        try {
+          await this.persistWorkspace?.()
+        } catch (error) {
+          this.workspaceChanged = true
+          throw error
+        }
+      }
+    })()
+    try {
+      await this.workspacePersistence
+    } finally {
+      this.workspacePersistence = undefined
+    }
   }
 
   /**
@@ -251,6 +289,7 @@ export class BrowserExecutionEnv implements ExecutionEnv {
         return afterMkdir
       }
       await fsp.writeFile(resolved.value, content)
+      this.markWorkspaceChanged()
       return ok(undefined)
     } catch (error) {
       return err(toFileError(error, resolved.value))
@@ -265,6 +304,7 @@ export class BrowserExecutionEnv implements ExecutionEnv {
     try {
       await fsp.mkdir(dirname(resolved.value), { recursive: true })
       await fsp.appendFile(resolved.value, content)
+      this.markWorkspaceChanged()
       return ok(undefined)
     } catch (error) {
       return err(toFileError(error, resolved.value))
@@ -350,6 +390,7 @@ export class BrowserExecutionEnv implements ExecutionEnv {
     }
     try {
       await fsp.mkdir(resolved.value, { recursive: options?.recursive ?? true })
+      this.markWorkspaceChanged()
       return ok(undefined)
     } catch (error) {
       return err(toFileError(error, resolved.value))
@@ -363,6 +404,7 @@ export class BrowserExecutionEnv implements ExecutionEnv {
     }
     try {
       await fsp.rm(resolved.value, { recursive: options?.recursive ?? false, force: options?.force ?? false })
+      this.markWorkspaceChanged()
       return ok(undefined)
     } catch (error) {
       return err(toFileError(error, resolved.value))
@@ -377,6 +419,7 @@ export class BrowserExecutionEnv implements ExecutionEnv {
       const dir = join(this.tempRoot, `${prefix}${crypto.randomUUID()}`)
       await fsp.mkdir(this.tempRoot, { recursive: true })
       await fsp.mkdir(dir)
+      this.markWorkspaceChanged()
       return ok(dir)
     } catch (error) {
       return err(toFileError(error, this.tempRoot))
@@ -391,6 +434,7 @@ export class BrowserExecutionEnv implements ExecutionEnv {
     try {
       const filePath = join(dir.value, `${options?.prefix ?? ''}${crypto.randomUUID()}${options?.suffix ?? ''}`)
       await fsp.writeFile(filePath, '')
+      this.markWorkspaceChanged()
       return ok(filePath)
     } catch (error) {
       return err(toFileError(error, dir.value))

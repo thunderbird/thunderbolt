@@ -38,6 +38,7 @@ import { mountAgentFs } from './browser-env/mount.ts'
 import { createBrowserCodingTools } from './coding-tools/index.ts'
 import { ensureBufferPolyfill } from './ensure-buffer.ts'
 import { buildSeedMessages, type SeedTurn } from './seed-history.ts'
+import { readWorkspaceSnapshot, restoreWorkspaceSnapshot, type WorkspaceStore } from './workspace-store.ts'
 import {
   createHarnessCompaction,
   restoreCompaction,
@@ -48,6 +49,7 @@ import {
 export type AppHarness = AgentHarness & {
   compaction: HarnessCompaction
   setReasoningEffort: (effort: ReasoningEffort | undefined, defaultLevel: ThinkingLevel) => Promise<void>
+  persistWorkspace: () => Promise<void>
 }
 
 /** Mount-relative root under which every thread carves its isolated workspace. */
@@ -145,10 +147,14 @@ export type BuildAppHarnessOptions = {
   readonly threadId: string
   /** Extra tools to register and activate alongside the four coding tools. */
   readonly tools?: AgentTool[]
+  /** Whether to expose the four jailed workspace tools. Defaults to true. */
+  readonly codingToolsEnabled?: boolean
   /** Prior conversation turns to seed into the session before the first prompt,
    *  so the agent has multi-turn context. Omitted/empty starts a blank session. */
   readonly history?: readonly SeedTurn[]
   readonly compaction?: CompactionCheckpoint
+  /** Optional durable backing store for this thread's jailed virtual workspace. */
+  readonly workspaceStore?: WorkspaceStore
 }
 
 /** Remove the isolated browser workspace owned by a thread. */
@@ -213,10 +219,28 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
   ensureBufferPolyfill()
   await mountAgentFs()
   const workspaceDir = workspaceDirFor(options.threadId)
-  const env = new BrowserExecutionEnv({ cwd: workspaceDir })
+  const env: BrowserExecutionEnv = new BrowserExecutionEnv({
+    cwd: workspaceDir,
+    persistWorkspace: async () => {
+      if (!options.workspaceStore) {
+        return
+      }
+      await options.workspaceStore.save(options.threadId, await readWorkspaceSnapshot(env, workspaceDir))
+    },
+  })
+  const storedWorkspace = await options.workspaceStore?.load(options.threadId)
+  if (options.workspaceStore) {
+    const removed = await env.remove(workspaceDir, { recursive: true, force: true })
+    if (!removed.ok) {
+      throw removed.error
+    }
+  }
   const created = await env.createDir(workspaceDir)
   if (!created.ok) {
     throw created.error
+  }
+  if (storedWorkspace) {
+    await restoreWorkspaceSnapshot(env, workspaceDir, storedWorkspace)
   }
   const session = await new InMemorySessionRepo().create({})
   const effortState: { current: ReasoningEffort | undefined } = { current: undefined }
@@ -246,7 +270,10 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
             supportsImages: options.model.supportsImages,
           })
 
-  const tools: AgentTool[] = [...createBrowserCodingTools(env, { cwd: workspaceDir }), ...(options.tools ?? [])]
+  const tools: AgentTool[] = [
+    ...(options.codingToolsEnabled === false ? [] : createBrowserCodingTools(env, { cwd: workspaceDir })),
+    ...(options.tools ?? []),
+  ]
 
   const harness = new AgentHarness({
     session,
@@ -277,5 +304,9 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
       effortState.current = effort
     },
     compaction: createHarnessCompaction(harness, session, options.compaction),
+    persistWorkspace: async () => {
+      env.markWorkspaceChanged()
+      await env.persistWorkspaceChanges()
+    },
   })
 }

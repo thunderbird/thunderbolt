@@ -5,8 +5,9 @@
 import { Slot } from '@radix-ui/react-slot'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { Loader2 } from 'lucide-react'
-import { type MouseEvent, useCallback, type ComponentProps } from 'react'
+import { type MouseEvent, useCallback, useState, type ComponentProps } from 'react'
 
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 
@@ -99,6 +100,22 @@ type ButtonProps = ComponentProps<'button'> &
     loadingLabel?: string
   }
 
+const iconSizes = new Set(['icon', 'icon-sm', 'icon-lg', 'icon-xs'])
+
+/** How long the pointer rests on a button before its tooltip shows. */
+const tooltipDelayMs = 400
+
+/**
+ * A `title` is shown as the app's tooltip rather than the browser's: the native
+ * one never appears for keyboard focus and can't be styled. The tooltip opens on
+ * hover and keyboard focus (Radix ignores touch pointers). An icon-only button
+ * whose `title` was its only name keeps it as `aria-label`.
+ * A disabled button can't be hovered or focused, so it keeps the native `title`,
+ * which still describes it to assistive tech (e.g. why it's disabled).
+ *
+ * Whether `title` is set must stay stable for a mounted button: adding or
+ * removing it swaps the tree and remounts the button, dropping keyboard focus.
+ */
 const Button = ({
   className,
   variant,
@@ -109,11 +126,14 @@ const Button = ({
   disabled,
   children,
   onClick,
+  title,
   ...props
 }: ButtonProps) => {
   const Comp = asChild ? Slot : 'button'
   const { triggerSelection } = useHaptics()
   const isDisabled = disabled || isLoading
+  const [tooltipOpen, setTooltipOpen] = useState(false)
+  const ariaLabel = props['aria-label'] ?? (size && iconSizes.has(size) ? title : undefined)
 
   const handleClick = useCallback(
     (e: MouseEvent<HTMLButtonElement>) => {
@@ -130,9 +150,14 @@ const Button = ({
     [isDisabled, onClick, triggerSelection],
   )
 
-  return (
+  const button = (
     <Comp
       {...props}
+      aria-label={ariaLabel}
+      // Radix would describe the trigger with the tooltip while open; when the name already
+      // equals the title that reads twice, so an explicit value overrides Radix's id (Slot merges child props last).
+      {...(title && ariaLabel === title ? { 'aria-describedby': props['aria-describedby'] } : {})}
+      title={isDisabled ? title : undefined}
       data-slot="button"
       className={cn(buttonVariants({ variant, size, loading: isLoading, className }))}
       onClick={handleClick}
@@ -153,6 +178,17 @@ const Button = ({
         </>
       )}
     </Comp>
+  )
+
+  if (!title) {
+    return button
+  }
+  // Wrapped even while disabled, so enabling the button doesn't remount it (and drop focus).
+  return (
+    <Tooltip delayDuration={tooltipDelayMs} open={tooltipOpen && !isDisabled} onOpenChange={setTooltipOpen}>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent>{title}</TooltipContent>
+    </Tooltip>
   )
 }
 

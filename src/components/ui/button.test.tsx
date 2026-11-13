@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import '@testing-library/jest-dom'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 
 import { Button } from './button'
@@ -83,5 +83,69 @@ describe('Button', () => {
     expect(link).toHaveAttribute('aria-busy', 'true')
     expect(link).toHaveAttribute('tabindex', '-1')
     expect(onClick).not.toHaveBeenCalled()
+  })
+
+  it('shows its title as a tooltip on keyboard focus, not as a native title', async () => {
+    render(<Button title="Save draft">Save</Button>)
+    const button = screen.getByRole('button', { name: 'Save' })
+
+    expect(button).not.toHaveAttribute('title')
+    fireEvent.focus(button)
+    expect((await screen.findByRole('tooltip')).textContent).toBe('Save draft')
+  })
+
+  it('dismisses the tooltip with Escape', async () => {
+    render(<Button title="Save draft">Save</Button>)
+    const button = screen.getByRole('button', { name: 'Save' })
+
+    fireEvent.focus(button)
+    await screen.findByRole('tooltip')
+    fireEvent.keyDown(button, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('tooltip')).toBeNull())
+  })
+
+  it('names an icon-only button from its title', () => {
+    render(
+      <Button size="icon" title="Copy message">
+        <svg />
+      </Button>,
+    )
+    const button = screen.getByRole('button', { name: 'Copy message' })
+    expect(button).toHaveAttribute('aria-label', 'Copy message')
+    expect(button).not.toHaveAttribute('title')
+  })
+
+  it('does not describe a button by its tooltip when the title already names it', async () => {
+    render(
+      <Button size="icon" title="Copy message">
+        <svg />
+      </Button>,
+    )
+    const button = screen.getByRole('button', { name: 'Copy message' })
+
+    fireEvent.focus(button)
+    await screen.findByRole('tooltip')
+    expect(button).not.toHaveAttribute('aria-describedby')
+  })
+
+  it('describes a button by its tooltip when the title adds to its text name', async () => {
+    render(<Button title="Save draft">Save</Button>)
+    const button = screen.getByRole('button', { name: 'Save' })
+
+    fireEvent.focus(button)
+    await screen.findByRole('tooltip')
+    expect(button).toHaveAttribute('aria-describedby')
+  })
+
+  it('keeps the native title on a disabled button, which cannot show a tooltip', () => {
+    render(
+      <Button size="icon" title="Wait for the response to finish" disabled>
+        <svg />
+      </Button>,
+    )
+    const button = screen.getByRole('button')
+    expect(button).toHaveAttribute('title', 'Wait for the response to finish')
+    fireEvent.focus(button)
+    expect(screen.queryByRole('tooltip')).toBeNull()
   })
 })

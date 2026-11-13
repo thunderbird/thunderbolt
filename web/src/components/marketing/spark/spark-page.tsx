@@ -66,7 +66,7 @@ export const SparkPage = ({ release }: { release: DownloadRelease }) => {
             <p>
               <span>An open-source AI workspace for chat, research, code, and getting things done.</span>
             </p>
-            <DownloadPicker {...downloads} continueToDownloadPage showWebLink />
+            <DownloadPicker {...downloads} continueToDownloadPage />
           </div>
           <ProductPreview />
         </section>

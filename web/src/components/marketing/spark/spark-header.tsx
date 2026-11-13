@@ -70,6 +70,9 @@ export const SparkHeader = ({ currentPage, as: Element = 'header' }: SparkHeader
           </button>
           <div className="spark-nav-panel" id={panelId} hidden={!isOpen}>
             <div className="spark-nav-pages">
+              <a className="spark-nav-mobile-web" href={productLinks.web} onClick={closeNavigation}>
+                Login <span aria-hidden="true">↗</span>
+              </a>
               {[...primaryPages, ...morePages].map((page) => (
                 <a
                   key={page.href}
@@ -104,8 +107,8 @@ export const SparkHeader = ({ currentPage, as: Element = 'header' }: SparkHeader
       </nav>
       <div className="spark-header-actions">
         <SiteThemeToggle />
-        <a className="spark-nav-cta" href={productLinks.download}>
-          Download <span aria-hidden="true">↓</span>
+        <a className="spark-nav-cta" href={productLinks.web}>
+          Try it on the web <span aria-hidden="true">↗</span>
         </a>
       </div>
     </Element>

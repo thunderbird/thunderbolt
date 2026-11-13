@@ -8,6 +8,7 @@ import { describe, expect, it } from 'bun:test'
 import { xlsxMime } from '@/files/transformers'
 import type { StoredFile } from '@/lib/file-blob-storage'
 import type { ThunderboltUIMessage } from '@/types'
+import type { SeedTurn } from '@shared/agent-core'
 import {
   prepareBuiltInConversation,
   prepareBuiltInHistory,
@@ -63,8 +64,11 @@ describe('prepareBuiltInConversation', () => {
       contextTokens: 100,
       retainedTail: [],
     }
+    // A failed read becomes a note and would not fail this test, so record reads to prove none happen.
+    const opened: string[] = []
     const deps: BuiltInConversationDeps = {
-      getAttachment: async () => {
+      getAttachment: async (id) => {
+        opened.push(id)
         throw new Error('Compacted attachment must not be read')
       },
       getTransformer: async () => {
@@ -102,6 +106,7 @@ describe('prepareBuiltInConversation', () => {
     )
     expect(conversation.history).toEqual(prepared.history)
     expect(conversation.prompt.text).toBe('Continue')
+    expect(opened).toEqual([])
   })
   it('flattens quotes/text attachments and maps current images to Pi image content', async () => {
     const files = new Map([
@@ -188,6 +193,107 @@ describe('prepareBuiltInConversation', () => {
     const prepared = await prepareBuiltInConversation(messages, undefined, inline, deps)
 
     expect(prepared.prompt.text).toBe('[Attachment: missing.bin] (file unavailable on this device)')
+  })
+
+  describe('with an attachment that cannot be read', () => {
+    const tooBig = new Error('This spreadsheet unpacks to 180 MiB, over the 32 MiB limit for reading it.')
+    const note = `[Attachment "budget.xlsx" could not be read: ${tooBig.message}]`
+    const rejectSpreadsheet = async (): Promise<never> => {
+      throw tooBig
+    }
+    const deps: BuiltInConversationDeps = {
+      getAttachment: async (id) => storedFile(id, id === 'budget' ? xlsxMime : 'text/plain'),
+      getTransformer: async (mimeType) =>
+        mimeType === xlsxMime ? rejectSpreadsheet : async () => ({ text: 'note contents' }),
+      blobToBase64: async () => '',
+      readXlsxSheets: rejectSpreadsheet,
+    }
+    const budget: ThunderboltUIMessage['parts'][number] = {
+      type: 'data-attachment',
+      data: { localFileId: 'budget', filename: 'budget.xlsx', mimeType: xlsxMime },
+    }
+    const notes: ThunderboltUIMessage['parts'][number] = {
+      type: 'data-attachment',
+      data: { localFileId: 'notes', filename: 'notes.txt', mimeType: 'text/plain' },
+    }
+
+    it.each([
+      ['off', inline, '[Attachment: notes.txt]\n\nnote contents', []],
+      [
+        'on',
+        workspace,
+        '[Attachment: notes.txt — saved as attachments/notes/notes.txt]\n\nnote contents',
+        [{ path: 'attachments/notes/notes.txt', content: 'note contents' }],
+      ],
+    ])('inlines a note and keeps the rest of the message with tools %s', async (_tools, options, notesText, files) => {
+      const prepared = await prepareBuiltInConversation(
+        [message('user', [{ type: 'text', text: 'Compare these' }, budget, notes])],
+        undefined,
+        options,
+        deps,
+      )
+
+      expect(prepared.prompt.text).toBe(`Compare these\n${note}\n${notesText}`)
+      expect(prepared.files).toEqual(files)
+    })
+
+    it.each([
+      ['off', inline],
+      ['on', workspace],
+    ])('still prepares a later turn and compaction with tools %s', async (_tools, options) => {
+      const earlier = [
+        message('user', [budget, { type: 'text', text: 'Totals?' }]),
+        message('assistant', [{ type: 'text', text: 'I could not read it.' }]),
+      ]
+      const history: SeedTurn[] = [
+        { role: 'user', text: `${note}\nTotals?` },
+        { role: 'assistant', text: 'I could not read it.' },
+      ]
+
+      const prepared = await prepareBuiltInConversation(
+        [...earlier, message('user', [{ type: 'text', text: 'Use the CSV instead' }])],
+        undefined,
+        options,
+        deps,
+      )
+
+      expect(prepared.history).toEqual(history)
+      expect(prepared.prompt.text).toBe('Use the CSV instead')
+      expect(prepared.files).toEqual([])
+      expect(await prepareBuiltInHistory(earlier, options, deps)).toEqual({ compaction: undefined, history, files: [] })
+    })
+
+    it.each([
+      ['fails to read', deps, note],
+      [
+        'is not on this device',
+        { ...deps, getAttachment: async () => null },
+        '[Attachment: budget.xlsx] (file unavailable on this device)',
+      ],
+    ])('keeps the note for a file from before a checkpoint that %s', async (_case, caseDeps, caseNote) => {
+      const checkpoint = {
+        version: 1 as const,
+        summary: 'Use attachments/budget/Sheet1.tsv for the totals.',
+        tokensBefore: 9_000,
+        contextTokens: 100,
+        retainedTail: [],
+      }
+      const messages = [
+        message('user', [budget, { type: 'text', text: 'Totals?' }]),
+        { ...message('assistant', [{ type: 'text', text: 'Done' }]), metadata: { contextCompaction: checkpoint } },
+        message('user', [{ type: 'text', text: 'Follow-up' }]),
+        message('assistant', [{ type: 'text', text: 'Answer' }]),
+      ]
+
+      expect(await prepareBuiltInHistory(messages, workspace, caseDeps)).toEqual({
+        compaction: checkpoint,
+        history: [
+          { role: 'user', text: `${caseNote}\n\nFollow-up` },
+          { role: 'assistant', text: 'Answer' },
+        ],
+        files: [],
+      })
+    })
   })
 
   describe('with a workspace', () => {

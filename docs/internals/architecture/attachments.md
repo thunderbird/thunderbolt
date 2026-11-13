@@ -5,11 +5,12 @@ Users attach PDFs, images, Word documents, spreadsheets, and plain-text files to
 
 ## Limits and accepted types
 
-| Limit                        | Value | Where                                                                                                                          |
-| ---------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Files per message            | 10    | `maxAttachmentCount`, `chat-prompt-input.tsx`                                                                                  |
-| Bytes per file (post-shrink) | 25 MB | `maxAttachmentBytes`, `chat-prompt-input.tsx`                                                                                  |
-| Compression threshold        | 10 MB | `compressionThresholdBytes`, [`src/files/compress/compress-attachment.ts`](../../../src/files/compress/compress-attachment.ts) |
+| Limit                        | Value  | Where                                                                                                                          |
+| ---------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| Files per message            | 10     | `maxAttachmentCount`, `chat-prompt-input.tsx`                                                                                  |
+| Bytes per file (post-shrink) | 25 MB  | `maxAttachmentBytes`, `chat-prompt-input.tsx`                                                                                  |
+| Compression threshold        | 10 MB  | `compressionThresholdBytes`, [`src/files/compress/compress-attachment.ts`](../../../src/files/compress/compress-attachment.ts) |
+| Unpacked size per XLSX       | 32 MiB | `maxUnpackedMib`, [`src/files/transformers/xlsx-to-text.ts`](../../../src/files/transformers/xlsx-to-text.ts)                  |
 
 Accepted types: PDF, PNG/JPEG/WebP/GIF, DOCX, XLSX, and Markdown/plain text/CSV/JSON.
 
@@ -101,6 +102,12 @@ poison the thread if one historical attachment became undeliverable: the bad par
 send fails, including a plain-text follow-up. For the same reason a missing attachment is not an error, the reference part stays (dropped from model
 input by `convertToModelMessages`) and the turn goes without it.
 
+An attachment whose read or text extraction throws is not an error either. The AI SDK path, the built-in agent and
+ACP all put `[Attachment "<name>" could not be read: <reason>]`
+([`unreadableAttachmentNote`](../../../src/lib/attachments.ts)) in its place, so the model can tell the user why, and
+send the rest of the message. The built-in agent re-prepares the whole history every turn, so there one throw would
+otherwise break every later turn and manual compaction.
+
 ### The built-in agent queries text attachments from its workspace
 
 When the turn's tools are on, every attachment the built-in agent receives as text is also written into the thread's
@@ -140,21 +147,31 @@ on the embedded path.
 [`src/files/transformers/index.ts`](../../../src/files/transformers/index.ts) maps lazy loaders keyed
 `"<source-mime>-><target>"`, where target is `'text'` or `'images'`:
 
-| Key                       | Module                                                                 | Dependency |
-| ------------------------- | ---------------------------------------------------------------------- | ---------- |
-| `application/pdf->text`   | [`pdf-to-text.ts`](../../../src/files/transformers/pdf-to-text.ts)     | pdfjs-dist |
-| `application/pdf->images` | [`pdf-to-images.ts`](../../../src/files/transformers/pdf-to-images.ts) | pdfjs-dist |
-| `<docx mime>->text`       | [`docx-to-text.ts`](../../../src/files/transformers/docx-to-text.ts)   | mammoth    |
-| `<xlsx mime>->text`       | [`xlsx-to-text.ts`](../../../src/files/transformers/xlsx-to-text.ts)   | xlsx       |
+| Key                       | Module                                                                 | Dependency              |
+| ------------------------- | ---------------------------------------------------------------------- | ----------------------- |
+| `application/pdf->text`   | [`pdf-to-text.ts`](../../../src/files/transformers/pdf-to-text.ts)     | pdfjs-dist              |
+| `application/pdf->images` | [`pdf-to-images.ts`](../../../src/files/transformers/pdf-to-images.ts) | pdfjs-dist              |
+| `<docx mime>->text`       | [`docx-to-text.ts`](../../../src/files/transformers/docx-to-text.ts)   | mammoth                 |
+| `<xlsx mime>->text`       | [`xlsx-to-text.ts`](../../../src/files/transformers/xlsx-to-text.ts)   | read-excel-file, fflate |
 
 Text-ish types (`text/*`, `application/json`) resolve to
 [`text-passthrough.ts`](../../../src/files/transformers/text-passthrough.ts) with no entry.
 [`docx-to-html.ts`](../../../src/files/transformers/docx-to-html.ts) is in the folder but not the registry: it serves
 the preview pane, and lives here so the viewer and the delivery pipeline share one mammoth dependency.
 
-Loaders are dynamic imports, keeping pdfjs and mammoth out of the entry bundle. `pdf-to-images` caps at
-`maxPages = 10`, `renderScale = 2`: legible to a vision model, bounded so a long scan does not fire hundreds of
-images at a provider.
+Loaders are dynamic imports, keeping pdfjs, mammoth, read-excel-file and fflate out of the entry bundle.
+`pdf-to-images` caps at `maxPages = 10`, `renderScale = 2`: legible to a vision model, bounded so a long scan does not
+fire hundreds of images at a provider.
+
+`xlsx-to-text` starts no Worker. read-excel-file starts `blob:` Workers to inflate large compressed sheets, and the
+desktop and mobile app's CSP blocks them, so fflate first rewrites the workbook's zip with every entry stored
+uncompressed. Before unpacking anything, `xlsx-to-text` reads the zip's directory and refuses a workbook over 32 MiB
+unpacked, one with more parts than a rewritten zip can list (65,535), one with two files of the same name, or one with
+a part named `__proto__`, which unpacking would turn into the prototype of its result. Each
+refusal reaches the model as a could-not-be-read note. A deflated entry inflates to at most the size it declares, but a
+stored entry is copied at its stored size, so each entry counts at the larger of the two and the total bounds memory
+use. WebKit's memory peaks at about 16 times the unpacked size while reading, so the 32 MiB limit keeps it near
+0.5 GiB.
 
 ### Adding a file type
 

@@ -425,7 +425,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
           <button
             ref={accountTriggerRef}
             type="button"
-            aria-label={t`Account menu`}
+            aria-label={showLabel ? t`${accountLabel}, account menu` : t`Account menu`}
             className={cn(controlClass, collapsed && menuOpen && 'bg-sidebar-accent')}
           >
             {stateIcon}

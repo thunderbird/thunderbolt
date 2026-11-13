@@ -60,6 +60,10 @@ msgstr[2] "# outils"
 msgid "{0} is only available on desktop"
 msgstr ""
 
+#: src/components/sidebar-footer.tsx
+msgid "{accountLabel}, account menu"
+msgstr "{accountLabel}, menu du compte"
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "{agentName} can't take attachments. Remove the attached files to send."
 msgstr "{agentName} n'accepte pas les pièces jointes. Retirez les fichiers joints pour envoyer."
@@ -123,6 +127,14 @@ msgid_plural "# skills reference this. If you disable it, they may no longer res
 msgstr[0] "Une compétence y fait référence. Si vous le désactivez, cette compétence risque de ne plus être résolue."
 msgstr[1] "# compétences y font référence. Si vous le désactivez, elles risquent de ne plus être résolues."
 msgstr[2] "# compétences y font référence. Si vous le désactivez, elles risquent de ne plus être résolues."
+
+#: src/components/chat/citation-badge.tsx
+msgid "{displayName} {additionalCount}, view all sources"
+msgstr "{displayName} {additionalCount}, afficher toutes les sources"
+
+#: src/components/chat/citation-badge.tsx
+msgid "{displayName}, view source"
+msgstr "{displayName}, afficher la source"
 
 #. js-lingui:icu=%7BenabledSkills%2C+plural%2C+one+%7B%23+skill%7D+other+%7B%23+skills%7D%7D&pluralize_on=enabledSkills
 #: src/components/settings/agents/agent-detail.tsx
@@ -752,13 +764,17 @@ msgstr "Outils disponibles :"
 
 #: src/components/onboarding/onboarding-action-buttons.tsx
 msgid "Back"
-msgstr ""
+msgstr "Retour"
 
 #: src/components/account-deleted.tsx
 #: src/components/device-revoked.tsx
 #: src/components/not-found.tsx
 msgid "Back to App"
 msgstr "Retour à l'application"
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "Back to providers"
+msgstr "Retour aux fournisseurs"
 
 #: src/settings/voice.tsx
 msgid "Base URL"
@@ -879,9 +895,10 @@ msgstr ""
 msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr "Les modifications ont été enregistrées, mais la reconnexion a échoué. Veuillez réessayer."
 
+#: src/components/chat/chat-ui.tsx
 #: src/mini-apps/mini-app-page.tsx
 msgid "Chat"
-msgstr ""
+msgstr "Chat"
 
 #: src/layout/sidebar/chat-list-item.tsx
 msgid "Chat actions"
@@ -1665,6 +1682,10 @@ msgstr "Copier le HTML"
 #: src/components/chat/copy-message-button.tsx
 msgid "Copy message"
 msgstr "Copier le message"
+
+#: src/components/chat/copy-message-button.tsx
+msgid "Copy message: {excerpt}"
+msgstr "Copier le message : {excerpt}"
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Copy PATH command"
@@ -4741,6 +4762,10 @@ msgstr "Rétablir la valeur par défaut"
 msgid "Resetting…"
 msgstr "Réinitialisation…"
 
+#: src/components/ui/resizable.tsx
+msgid "Resize panels"
+msgstr "Redimensionner les panneaux"
+
 #: src/components/update-notification.tsx
 msgid "Restart Now"
 msgstr "Redémarrer maintenant"
@@ -5267,6 +5292,7 @@ msgid "Showing 50 of {totalCount} tasks"
 msgstr "Affichage de 50 tâches sur {totalCount}"
 
 #: src/components/external-link-toggle-group.tsx
+#: src/layout/sidebar/index.tsx
 msgid "Sidebar"
 msgstr "Barre latérale"
 

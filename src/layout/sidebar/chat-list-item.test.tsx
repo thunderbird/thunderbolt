@@ -59,7 +59,8 @@ describe('ChatListItem in minimal mode', () => {
 
   it('offers Move and a live drag handle by default', async () => {
     renderWithProviders(createProps())
-    expect(dragRow()).toHaveAttribute('aria-disabled', 'false')
+    expect(dragRow()).not.toHaveAttribute('role')
+    expect(dragRow()).not.toHaveAttribute('tabindex')
 
     fireEvent.contextMenu(screen.getByText('My Chat'))
     await waitForElement(() => screen.queryByText('Rename'))
@@ -69,7 +70,7 @@ describe('ChatListItem in minimal mode', () => {
   it('drops Move from the context menu and disables dragging', async () => {
     useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
     renderWithProviders(createProps())
-    expect(dragRow()).toHaveAttribute('aria-disabled', 'true')
+    expect(dragRow()).not.toHaveAttribute('role')
 
     fireEvent.contextMenu(screen.getByText('My Chat'))
     await waitForElement(() => screen.queryByText('Rename'))

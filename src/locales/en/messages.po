@@ -58,6 +58,10 @@ msgstr[1] "# tools"
 msgid "{0} is only available on desktop"
 msgstr "{0} is only available on desktop"
 
+#: src/components/sidebar-footer.tsx
+msgid "{accountLabel}, account menu"
+msgstr "{accountLabel}, account menu"
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "{agentName} can't take attachments. Remove the attached files to send."
 msgstr "{agentName} can't take attachments. Remove the attached files to send."
@@ -118,6 +122,14 @@ msgid "One skill references this. If you disable it, that skill may no longer re
 msgid_plural "# skills reference this. If you disable it, they may no longer resolve."
 msgstr[0] "One skill references this. If you disable it, that skill may no longer resolve."
 msgstr[1] "# skills reference this. If you disable it, they may no longer resolve."
+
+#: src/components/chat/citation-badge.tsx
+msgid "{displayName} {additionalCount}, view all sources"
+msgstr "{displayName} {additionalCount}, view all sources"
+
+#: src/components/chat/citation-badge.tsx
+msgid "{displayName}, view source"
+msgstr "{displayName}, view source"
 
 #. js-lingui:icu=%7BenabledSkills%2C+plural%2C+one+%7B%23+skill%7D+other+%7B%23+skills%7D%7D&pluralize_on=enabledSkills
 #: src/components/settings/agents/agent-detail.tsx
@@ -748,6 +760,10 @@ msgstr "Back"
 msgid "Back to App"
 msgstr "Back to App"
 
+#: src/widgets/connect-integration/widget.tsx
+msgid "Back to providers"
+msgstr "Back to providers"
+
 #: src/settings/voice.tsx
 msgid "Base URL"
 msgstr "Base URL"
@@ -867,6 +883,7 @@ msgstr "Change your recovery phrase?"
 msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr "Changes were saved, but reconnecting failed. Please retry."
 
+#: src/components/chat/chat-ui.tsx
 #: src/mini-apps/mini-app-page.tsx
 msgid "Chat"
 msgstr "Chat"
@@ -1653,6 +1670,10 @@ msgstr "Copy HTML"
 #: src/components/chat/copy-message-button.tsx
 msgid "Copy message"
 msgstr "Copy message"
+
+#: src/components/chat/copy-message-button.tsx
+msgid "Copy message: {excerpt}"
+msgstr "Copy message: {excerpt}"
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Copy PATH command"
@@ -4729,6 +4750,10 @@ msgstr "Reset to Default"
 msgid "Resetting…"
 msgstr "Resetting…"
 
+#: src/components/ui/resizable.tsx
+msgid "Resize panels"
+msgstr "Resize panels"
+
 #: src/components/update-notification.tsx
 msgid "Restart Now"
 msgstr "Restart Now"
@@ -5255,6 +5280,7 @@ msgid "Showing 50 of {totalCount} tasks"
 msgstr "Showing 50 of {totalCount} tasks"
 
 #: src/components/external-link-toggle-group.tsx
+#: src/layout/sidebar/index.tsx
 msgid "Sidebar"
 msgstr "Sidebar"
 

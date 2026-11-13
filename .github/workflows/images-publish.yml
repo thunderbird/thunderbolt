@@ -61,11 +61,18 @@ env:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # A run that publishes the shared tags (`:<version>`, `:latest`) cancels an older one still running:
+    # the newer run builds the tip of its branch, which already holds the older run's changes. Preview
+    # builds publish their own tag, so each gets a group of its own and is never cancelled from here.
+    concurrency:
+      group: ${{ inputs.tag_override && format('images-publish-{0}', github.run_id) || format('images-publish-{0}', github.ref) }}
+      cancel-in-progress: true
     permissions:
       contents: read
       packages: write
     outputs:
       version: ${{ steps.version.outputs.version }}
+      powersync_config: ${{ steps.version.outputs.powersync_config }}
 
     steps:
       # Note: when invoked from preview-deploy.yml under pull_request_target, this
@@ -87,6 +94,9 @@ jobs:
         env:
           TAG_OVERRIDE: ${{ inputs.tag_override }}
         run: |
+          set -o pipefail
+          POWERSYNC_CONFIG=$(cat deploy/docker/powersync.Dockerfile deploy/config/powersync-config.yaml | sha256sum | cut -d ' ' -f 1)
+          echo "powersync_config=$POWERSYNC_CONFIG" >> $GITHUB_OUTPUT
           if [ -n "$TAG_OVERRIDE" ]; then
             echo "version=$TAG_OVERRIDE" >> $GITHUB_OUTPUT
             echo "publish_latest=false" >> $GITHUB_OUTPUT
@@ -206,8 +216,11 @@ jobs:
           tags: |
             ${{ env.IMAGE_PREFIX }}/thunderbolt-powersync:${{ steps.version.outputs.version }}
             ${{ steps.version.outputs.publish_latest == 'true' && format('{0}/thunderbolt-powersync:latest', env.IMAGE_PREFIX) || '' }}
+          # deploy-powersync compares this with the live image's label to tell whether the sync config
+          # changed.
           labels: |
             org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
+            io.thunderbolt.powersync-config=${{ steps.version.outputs.powersync_config }}
 
       # Keep credentials on the runner; only the public answer enters the Docker context.
       # An unavailable GitHub API must not block an otherwise valid image build.
@@ -261,51 +274,27 @@ jobs:
           helm package deploy/k8s/ --destination .
           helm push "thunderbolt-${VERSION}.tgz" "oci://${REGISTRY}/${REPO_OWNER}/charts"
 
-  # Whether this push changes what the PowerSync image serves: the sync config, its Dockerfile, or
-  # package.json, whose version is the image tag (dependency edits also count; an unchanged redeploy
-  # costs clients a reconnect, not a re-download). A job of its own, so a push with nothing to deploy
-  # never queues behind a deploy and evicts one waiting there.
+  # Rolls the production Render `powersync` service onto the image just published, when the live image
+  # has a different version or sync config. Any other merge leaves it running, so clients don't
+  # reconnect; a release does redeploy it, which costs a reconnect but no re-download (PowerSync
+  # rebuilds its storage only when the sync config content or `version_label` changes). Comparing with
+  # what is live, rather than with what one push changed, means a cancelled or failed run is made up by
+  # the next run on main, including the nightly rebuild.
   #
-  # Only a push to main reaches this job and the deploy. That `if` is the only barrier: as a called
-  # workflow this sees its caller's event (preview-deploy.yml and nightly-images.yml never push), and a
-  # job's environment secrets reach it whatever the caller passes in `secrets:`.
-  powersync-changes:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    outputs:
-      changed: ${{ steps.filter.outputs.powersync }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Detect PowerSync changes
-        id: filter
-        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
-        with:
-          filters: |
-            powersync:
-              - 'deploy/config/powersync-config.yaml'
-              - 'deploy/docker/powersync.Dockerfile'
-              - 'package.json'
-
-  # Rolls the production Render `powersync` service onto the image just published. PowerSync rebuilds
-  # its storage, and every device downloads its data again, only when the sync config content or
-  # `version_label` changes. A failed publish skips this too. Re-run the failed jobs only while this is
-  # the newest run on main: an older run would pin its older version on the service.
+  # Only runs on main that publish the shared tags reach it. That `if` is the only barrier: as a called
+  # workflow this sees its caller's event and ref (preview-deploy.yml runs on main under
+  # pull_request_target and workflow_dispatch, always with a `tag_override`), and a job's environment
+  # secrets reach it whatever the caller passes in `secrets:`.
   deploy-powersync:
-    needs: [publish, powersync-changes]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.powersync-changes.outputs.changed == 'true'
+    needs: publish
+    if: (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && !inputs.tag_override
     runs-on: ubuntu-latest
     environment: render
     timeout-minutes: 20
-    # One at a time, never cancelling a running deploy mid-way. A deploy that GitHub drops from the queue
-    # is replaced by a later one, whose image is built from a main that already includes its changes.
+    # A newer run supersedes an older one; it compares with what is live, so nothing is lost.
     concurrency:
-      group: powersync-deploy
-      cancel-in-progress: false
+      group: deploy-powersync
+      cancel-in-progress: true
     permissions:
       contents: read
     env:
@@ -327,8 +316,34 @@ jobs:
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           SERVICE_ID: ${{ vars.RENDER_POWERSYNC_SERVICE_ID }}
+          REPOSITORY: ${{ github.repository }}/thunderbolt-powersync
           IMAGE: ${{ env.IMAGE_PREFIX }}/thunderbolt-powersync:${{ needs.publish.outputs.version }}
+          VERSION: ${{ needs.publish.outputs.version }}
+          POWERSYNC_CONFIG: ${{ needs.publish.outputs.powersync_config }}
         run: |
+          # A failed read must fail the job, not look like "nothing is live" and restart PowerSync.
+          set -euo pipefail
+          live=$(render deploys list "$SERVICE_ID" --output json | jq -c '[.[] | select(.status == "live")][0].image // {}')
+          live_image=$(jq -r '.ref // ""' <<< "$live")
+          live_digest=$(jq -r '.sha // ""' <<< "$live")
+          # Re-running an older run's deploy must not roll a newer release back.
+          if [ -n "$live_image" ] && [ "$(printf '%s\n' "${live_image##*:}" "$VERSION" | sort -V | tail -n 1)" != "$VERSION" ]; then
+            echo "PowerSync already runs a newer version ($live_image); not deploying $IMAGE."
+            exit 0
+          fi
+          live_config=""
+          if [ -n "$live_digest" ]; then
+            token=$(curl -fsS "https://ghcr.io/token?scope=repository:${REPOSITORY}:pull" | jq -r .token)
+            config_blob=$(curl -fsS -H "Authorization: Bearer $token" \
+              -H 'Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
+              "https://ghcr.io/v2/${REPOSITORY}/manifests/${live_digest}" | jq -r .config.digest)
+            live_config=$(curl -fsSL -H "Authorization: Bearer $token" "https://ghcr.io/v2/${REPOSITORY}/blobs/${config_blob}" \
+              | jq -r '.config.Labels["io.thunderbolt.powersync-config"] // ""')
+          fi
+          if [ "$live_image" = "$IMAGE" ] && [ "$live_config" = "$POWERSYNC_CONFIG" ]; then
+            echo "PowerSync already runs $IMAGE with this sync config; nothing to deploy."
+            exit 0
+          fi
           # Set the tag on the service rather than on one deploy, so a later restart or manual deploy
           # can't roll back to the previous sync rules.
           render services update "$SERVICE_ID" --image "$IMAGE" --confirm --output text

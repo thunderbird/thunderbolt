@@ -646,11 +646,12 @@ export const prepareAiRequestConfig = async ({
   const sourceCollector = webToolBudget?.sourceCollector ?? []
   const toolCallCache: ToolCallCache = new Map()
   const availableTools = supportsTools
-    ? await getAvailableTools(httpClient, sourceCollector, {
-        settings,
-        integrationStatus,
-        ...(await loadConnectedSearchApis(db)),
-      })
+    ? await getAvailableTools(
+        httpClient,
+        sourceCollector,
+        { settings, integrationStatus, ...(await loadConnectedSearchApis(db)) },
+        webToolBudget?.priorSources,
+      )
     : []
   const appToolset = addSkillTool(
     createToolset(availableTools, toolCallCache, webToolBudget),

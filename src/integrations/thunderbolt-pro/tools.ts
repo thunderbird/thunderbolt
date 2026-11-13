@@ -37,17 +37,27 @@ export type WebToolApi = {
   fetchLinkPreview?: typeof fetchLinkPreview
 }
 
+const highestIndex = (sources: readonly SourceMetadata[]): number =>
+  sources.reduce((highest, { index }) => Math.max(highest, index), 0)
+
 /**
  * Thunderbolt Pro Tools Configuration Factory
  * @param httpClient - HTTP client for making requests (injected for dependency injection)
  * @param sourceCollector - Optional shared array to accumulate source metadata during tool execution
+ * @param priorSources - Sources earlier turns of the thread registered. The model still sees their
+ *   `[Source N]` labels in the history, so numbering continues after them and a URL seen before
+ *   keeps its number instead of getting a second label.
  */
 export const createConfigs = (
   httpClient: HttpClient,
   sourceCollector?: SourceMetadata[],
   api: WebToolApi = { search, fetchContent, fetchLinkPreview },
+  priorSources: readonly SourceMetadata[] = [],
 ): ToolConfig[] => {
   const sources = sourceCollector ?? []
+  const indexFor = (url: string): number =>
+    priorSources.findLast((prior) => prior.url === url)?.index ??
+    Math.max(highestIndex(priorSources), highestIndex(sources)) + 1
 
   /** Deduplicates against the live collector, including when tool configs share a logical turn. */
   const collectSource = (source: Omit<SourceMetadata, 'index'>): SourceMetadata | undefined => {
@@ -63,7 +73,7 @@ export const createConfigs = (
     }
     const registered = {
       ...source,
-      index: sources.length + 1,
+      index: indexFor(source.url),
       ...(api.allowRemoteImages === false && { allowRemoteImages: false }),
     }
     sources.push(registered)

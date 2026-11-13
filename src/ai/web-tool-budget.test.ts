@@ -33,6 +33,14 @@ describe('createWebToolBudget', () => {
     expect(webToolCaps.search).toBeGreaterThanOrEqual(11)
   })
 
+  it('carries earlier turns’ sources separately from the turn’s own collector', () => {
+    const prior = [{ index: 1, url: 'https://earlier.test', title: 'Earlier', toolName: 'search' as const }]
+    const budget = createWebToolBudget('auto', true, undefined, prior)
+    expect(budget.priorSources).toBe(prior)
+    expect(budget.sourceCollector).toEqual([])
+    expect(createWebToolBudget('auto').priorSources).toEqual([])
+  })
+
   it('returns the supplied exhaustion message without executing a denied call', async () => {
     const budget = createWebToolBudget('auto', true, 'custom denial')
     for (let call = 0; call < 5; call++) {

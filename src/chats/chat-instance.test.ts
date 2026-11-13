@@ -565,6 +565,36 @@ describe('createAgentRoutingFetch — connection status', () => {
     })
   })
 
+  it('seeds the turn budget with the sources earlier assistant messages registered', async () => {
+    const adapter: AgentAdapter = {
+      ...makeAdapter(builtInAgent),
+      fetch: async (_init, context) =>
+        Response.json({
+          priorSources: context.webToolBudget!.priorSources,
+          sourceCollector: context.webToolBudget!.sourceCollector,
+        }),
+    }
+    const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      isAgentActive,
+      getChatReasoningEffort: async () => undefined,
+      getOrConnectAdapter: async () => adapter,
+    })
+    const first = { index: 1, url: 'https://one.test', title: 'One', toolName: 'search' }
+    const second = { index: 2, url: 'https://two.test', title: 'Two', toolName: 'fetch_content' }
+    const response = await fetch('https://backend.test', {
+      body: JSON.stringify({
+        messages: [
+          { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'first' }] },
+          { id: 'a1', role: 'assistant', parts: [], metadata: { sources: [first] } },
+          { id: 'u2', role: 'user', parts: [{ type: 'text', text: 'second' }] },
+          { id: 'a2', role: 'assistant', parts: [], metadata: { sources: [second] } },
+          { id: 'u3', role: 'user', parts: [{ type: 'text', text: 'tell me more' }] },
+        ],
+      }),
+    })
+    expect(await response.json()).toEqual({ priorSources: [first, second], sourceCollector: [] })
+  })
+
   it.each([
     [false, ['WEATHER_BODY']],
     [true, []],

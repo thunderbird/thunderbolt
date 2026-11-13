@@ -4,6 +4,7 @@
 
 import './symbol-dispose-polyfill'
 import { type ExtensionDescriptor, type JSValueHandle, QuickJS } from 'quickjs-wasi'
+import { findBrokenFile } from './check-output'
 import { type SandboxLimits, sandboxLimits } from './constants'
 
 /** Everything a run needs: the QuickJS module, its extensions, and the library scripts evaluated before the script. */
@@ -11,9 +12,17 @@ export type SandboxRuntime = {
   wasm: WebAssembly.Module
   extensions: ExtensionDescriptor[]
   libraries: string[]
+  /** The `fflate` and `xmldom` script. The script's VM evaluates it after `libraries`; the check VM evaluates only it. */
+  ooxmlLibrary: string
 }
 
 export type SavedFile = { filename: string; bytes: Uint8Array<ArrayBuffer> }
+
+/** A file the script reads with `readFile(name)`, under the name it gave in the tool call's `inputs`. */
+export type SandboxInput = { name: string; bytes: Uint8Array<ArrayBuffer> }
+
+/** What one run executes: the script and the files it may read. */
+export type SandboxJob = { script: string; inputs: SandboxInput[] }
 
 export type SandboxResult = { ok: true; files: SavedFile[]; logs: string } | { ok: false; error: string; logs: string }
 
@@ -52,6 +61,13 @@ const prelude = `(() => {
     }
     __saveFile(String(filename), data instanceof Uint8Array ? data : new Uint8Array(data))
   }
+  globalThis.readFile = (name) => {
+    const bytes = __readFile(String(name))
+    if (bytes === undefined) {
+      throw new Error('"' + name + '" is not one of this run\\'s inputs. Add it to inputs and call the tool again.')
+    }
+    return bytes
+  }
 })()`
 
 const shownCharacters = 20_000
@@ -62,16 +78,18 @@ const clip = (text: string) =>
 
 /**
  * Run `script` (the body of an async function) in a fresh QuickJS VM with no network, no DOM and no app
- * state. The script hands files back with `saveFile(filename, bytes)`. Every failure, including each limit,
+ * state. The script reads its inputs with `readFile(name)` and hands files back with `saveFile(filename,
+ * bytes)`; a saved file whose zip or XML would not open fails the run. Every failure, including each limit,
  * returns an error worded for the model to act on. `onReady` runs once the libraries are loaded, right before
  * the script starts, which is also when the script's time starts.
  */
 export const runSandboxedScript = async (
   runtime: SandboxRuntime,
-  script: string,
+  { script, inputs }: SandboxJob,
   limits: SandboxLimits = sandboxLimits,
   onReady: () => void = () => {},
 ): Promise<SandboxResult> => {
+  const inputBytes = new Map(inputs.map(({ name, bytes }) => [name, bytes]))
   // Loading the libraries is the app's own work, so it does not count against the script's time.
   let deadline = Infinity
   const encoder = new TextEncoder()
@@ -94,11 +112,8 @@ export const runSandboxedScript = async (
     },
   })
   try {
-    const define = (name: string, fn: (...args: JSValueHandle[]) => void) => {
-      const handle = vm.newFunction(name, (...args) => {
-        fn(...args)
-        return vm.undefined
-      })
+    const define = (name: string, fn: (...args: JSValueHandle[]) => JSValueHandle | undefined) => {
+      const handle = vm.newFunction(name, (...args) => fn(...args) ?? vm.undefined)
       vm.setProp(vm.global, name, handle)
       handle.dispose()
     }
@@ -127,12 +142,22 @@ export const runSandboxedScript = async (
       }
       files.push({ filename: name, bytes: copy })
     })
+    // A fresh copy per call, made inside the VM, so its memory limit counts it. The VM takes its own reference to
+    // a returned handle, so each call releases the previous one, or every copy would live until the run ends.
+    let lastRead: JSValueHandle | undefined
+    define('__readFile', (name) => {
+      const bytes = inputBytes.get(name.toString())
+      lastRead?.dispose()
+      lastRead = bytes && vm.newUint8Array(bytes)
+      return lastRead
+    })
     define('__finish', (error) => {
       finished = error ? { error: error.toString() } : {}
     })
 
     vm.evalCode(prelude, 'prelude.js').dispose()
     runtime.libraries.forEach((code, index) => vm.evalCode(code, `library-${index}.js`).dispose())
+    vm.evalCode(runtime.ooxmlLibrary, 'ooxml.js').dispose()
     deadline = performance.now() + limits.timeoutMs
     onReady()
     // Same line as the script's first line, so line numbers in its errors match what the model wrote.
@@ -159,7 +184,8 @@ export const runSandboxedScript = async (
   }
 
   const shownLogs = clip(logs)
-  const error = stopped ?? finished?.error
+  // Checked only after the script's VM is gone, so the two never hold memory at the same time.
+  const error = stopped ?? finished?.error ?? (await findBrokenFile(runtime, files, limits, deadline))
   if (error === undefined) {
     return { ok: true, files, logs: shownLogs }
   }

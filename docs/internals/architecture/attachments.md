@@ -119,6 +119,9 @@ aggregates it with `bash`.
 - **History turns use the same shape**, so a harness rebuilt from history cannot overflow on an old attachment either.
 - **IndexedDB stays the source of truth.** The full set is rewritten every send, so a model edit, a reload, the
   in-memory fallback, or a removed workspace all recover on the next send. A failed write is logged, not fatal.
+- **Office edits read the original bytes.** The workspace holds only the extracted text, so `run_office_script` reads
+  an attached `.docx` or `.pptx` from IndexedDB by its file name or id. It looks in the workspace only for a name
+  that none of the thread's stored files has ([prompt and tools](prompt-and-tools.md)).
 - **Tools off means inline.** With no `bash` to query with (`toolUsage === 0`), attachments are inlined whole, as on
   the AI SDK path.
 

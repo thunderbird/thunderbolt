@@ -2577,6 +2577,10 @@ msgstr "スキルを編集"
 msgid "Edit Skill"
 msgstr "スキルを編集"
 
+#: src/components/chat/created-file-card.tsx
+msgid "Edited"
+msgstr ""
+
 #: src/lib/tool-metadata.ts
 msgid "Editing {fileName}…"
 msgstr "{fileName} を編集中…"

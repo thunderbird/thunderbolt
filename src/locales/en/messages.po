@@ -2589,6 +2589,10 @@ msgstr "Edit skill"
 msgid "Edit Skill"
 msgstr "Edit Skill"
 
+#: src/components/chat/created-file-card.tsx
+msgid "Edited"
+msgstr "Edited"
+
 #: src/lib/tool-metadata.ts
 msgid "Editing {fileName}…"
 msgstr "Editing {fileName}…"

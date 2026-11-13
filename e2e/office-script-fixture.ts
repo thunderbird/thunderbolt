@@ -15,3 +15,23 @@ export const officeScript = `
 const doc = new docx.Document({ sections: [{ children: [new docx.Paragraph(${JSON.stringify(officeScriptMarker)})] }] })
 saveFile(${JSON.stringify(officeScriptFilename)}, await docx.Packer.toArrayBuffer(doc))
 `
+
+/** Sent with an attached document; the fake provider answers it by calling `run_office_script` to edit that file. */
+export const officeEditPrompt = 'Mark the attached brief as final.'
+
+export const officeEditFilename = 'e2e-brief.docx'
+
+/** The attached document holds this placeholder; the edited copy holds {@link officeEditMarker} in its place. */
+export const officeEditPlaceholder = '{{status}}'
+
+export const officeEditMarker = 'Final OFFICE-EDIT-3K9P'
+
+/** What a model would write to edit the attachment: read it, patch its placeholder, save it under its own name. */
+export const officeEditScript = `
+const patched = await docx.patchDocument({
+  outputType: 'uint8array',
+  data: readFile(${JSON.stringify(officeEditFilename)}),
+  patches: { status: { type: docx.PatchType.PARAGRAPH, children: [new docx.TextRun(${JSON.stringify(officeEditMarker)})] } },
+})
+saveFile(${JSON.stringify(officeEditFilename)}, patched)
+`

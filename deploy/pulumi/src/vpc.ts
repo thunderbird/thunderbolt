@@ -3,9 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import * as aws from '@pulumi/aws'
+import * as cloudflare from '@pulumi/cloudflare'
 import * as pulumi from '@pulumi/pulumi'
+import { albIngress } from './alb-ingress'
 
-export const createVpc = (name: string): {
+export const createVpc = (
+  name: string,
+  behindCloudflare = false,
+): {
   vpc: aws.ec2.Vpc
   publicSubnets: aws.ec2.Subnet[]
   privateSubnets: aws.ec2.Subnet[]
@@ -87,10 +92,10 @@ export const createVpc = (name: string): {
   // Security groups
   const albSg = new aws.ec2.SecurityGroup(`${name}-alb-sg`, {
     vpcId: vpc.id,
-    ingress: [
-      { protocol: 'tcp', fromPort: 80, toPort: 80, cidrBlocks: ['0.0.0.0/0'] },
-      { protocol: 'tcp', fromPort: 443, toPort: 443, cidrBlocks: ['0.0.0.0/0'] },
-    ],
+    // The ALB is IPv4-only. Refresh ranges on every Pulumi run; a failed lookup aborts the deploy.
+    ingress: behindCloudflare
+      ? cloudflare.getIpRangesOutput({}).apply(({ ipv4Cidrs }) => albIngress(true, ipv4Cidrs))
+      : albIngress(false, []),
     egress: [{ protocol: '-1', fromPort: 0, toPort: 0, cidrBlocks: ['0.0.0.0/0'] }],
     tags: { Name: `${name}-alb-sg` },
   })

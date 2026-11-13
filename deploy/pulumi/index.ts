@@ -14,6 +14,12 @@ import { createServices } from './src/services'
 import { createDns } from './src/dns'
 import { createSharedStack, loadSharedStackOutputs } from './src/shared'
 import { createPerPrStack } from './src/per-pr-stack'
+import {
+  cloudflareOnlyStack,
+  cloudflareProxiedStack,
+  requireCompleteServiceHostnames,
+  requirePreviewCloudflareConfig,
+} from './src/alb-ingress'
 
 const config = new pulumi.Config()
 const stackName = pulumi.getStack()
@@ -52,6 +58,9 @@ if (isSharedStack) {
   // Keycloak, PowerSync, AI provider secrets. Per-PR stacks consume these via
   // StackReference.
   const imagePrefix = 'ghcr.io/thunderbird/thunderbolt'
+  const cloudflareZoneId = config.get('cloudflareZoneId')
+  const cloudflareApiToken = config.getSecret('cloudflareApiToken')
+  requirePreviewCloudflareConfig(cloudflareZoneId, cloudflareApiToken)
 
   // Random secrets for the shared stack — persisted in Pulumi state.
   const postgresPassword =
@@ -73,8 +82,8 @@ if (isSharedStack) {
     imagePrefix,
     ghcrToken: config.getSecret('ghcrToken'),
     authHostname: config.require('authHostname'),
-    cloudflareZoneId: config.get('cloudflareZoneId'),
-    cloudflareApiToken: config.getSecret('cloudflareApiToken'),
+    cloudflareZoneId: cloudflareZoneId!,
+    cloudflareApiToken: cloudflareApiToken!,
     aiSecrets: {
       anthropicApiKey: config.getSecret('anthropicApiKey') ?? pulumi.output(''),
       fireworksApiKey: config.getSecret('fireworksApiKey') ?? pulumi.output(''),
@@ -200,6 +209,9 @@ if (isSharedStack) {
     auth: authHostname || legacyHostnames[0],
     powersync: powersyncHostname || legacyHostnames[0],
   } as const
+  requireCompleteServiceHostnames(platform, hasSubdomainRouting, resolvedHostnames)
+  const cloudflareOnly = cloudflareOnlyStack(platform, Object.values(resolvedHostnames))
+  const behindCloudflareProxy = cloudflareProxiedStack(platform, hasSubdomainRouting)
 
   // Dedupe for DNS creation (legacy mode may reuse the same hostname for multiple services)
   const uniqueHostnamesForDns = hasSubdomainRouting
@@ -259,7 +271,7 @@ if (isSharedStack) {
   const tinfoilEnclaveUrl = config.get('tinfoilEnclaveUrl') ?? ''
 
   // Shared: VPC (both platforms need this)
-  const { vpc, publicSubnets, privateSubnets, albSg, servicesSg } = createVpc(name)
+  const { vpc, publicSubnets, privateSubnets, albSg, servicesSg } = createVpc(name, behindCloudflareProxy)
 
   if (platform === 'k8s') {
     // ---------- Kubernetes (EKS) ----------
@@ -304,6 +316,7 @@ if (isSharedStack) {
       publicSubnetIds: publicSubnets.map((s) => s.id),
       albSgId: albSg.id,
       hostnames: hasSubdomainRouting ? resolvedHostnames : undefined,
+      cloudflareOnly,
     })
 
     // Create Cloudflare CNAMEs for each unique hostname, all pointing at the ALB.
@@ -322,11 +335,21 @@ if (isSharedStack) {
     // raw ALB URL and routing falls back to path-based (enterprise stacks).
     const albFallback = pulumi.interpolate`http://${alb.dnsName}`
     const publicUrls = {
-      marketing: resolvedHostnames.marketing ? (pulumi.interpolate`https://${resolvedHostnames.marketing}` as pulumi.Input<string>) : albFallback,
-      app: resolvedHostnames.app ? (pulumi.interpolate`https://${resolvedHostnames.app}` as pulumi.Input<string>) : albFallback,
-      api: resolvedHostnames.api ? (pulumi.interpolate`https://${resolvedHostnames.api}` as pulumi.Input<string>) : albFallback,
-      auth: resolvedHostnames.auth ? (pulumi.interpolate`https://${resolvedHostnames.auth}` as pulumi.Input<string>) : albFallback,
-      powersync: resolvedHostnames.powersync ? (pulumi.interpolate`https://${resolvedHostnames.powersync}` as pulumi.Input<string>) : albFallback,
+      marketing: resolvedHostnames.marketing
+        ? (pulumi.interpolate`https://${resolvedHostnames.marketing}` as pulumi.Input<string>)
+        : albFallback,
+      app: resolvedHostnames.app
+        ? (pulumi.interpolate`https://${resolvedHostnames.app}` as pulumi.Input<string>)
+        : albFallback,
+      api: resolvedHostnames.api
+        ? (pulumi.interpolate`https://${resolvedHostnames.api}` as pulumi.Input<string>)
+        : albFallback,
+      auth: resolvedHostnames.auth
+        ? (pulumi.interpolate`https://${resolvedHostnames.auth}` as pulumi.Input<string>)
+        : albFallback,
+      powersync: resolvedHostnames.powersync
+        ? (pulumi.interpolate`https://${resolvedHostnames.powersync}` as pulumi.Input<string>)
+        : albFallback,
     }
 
     createServices({
@@ -348,7 +371,7 @@ if (isSharedStack) {
       confidentialApiKeysEnabled,
       branding,
       email,
-      behindCloudflareProxy: hasSubdomainRouting,
+      behindCloudflareProxy,
       albListener: listener,
       targetGroups: {
         frontend: frontendTg,

@@ -10,6 +10,7 @@ import type { PluggableList } from 'unified'
 
 import { blockHasMath, type IncrementalMarkdownState, parseMarkdownIntoBlocksIncremental } from './markdown-blocks'
 import { markdownComponents, markdownUrlTransform } from './markdown-utils'
+import { markdownImageComponents } from './markdown-image'
 
 // remark-gfm is small and used by every block, so it stays statically imported.
 // remark-math + rehype-katex + the KaTeX stylesheet (~70KB gzip) are lazy-loaded
@@ -118,7 +119,10 @@ export const MemoizedMarkdown = memo(({ content, id, components }: MemoizedMarkd
     parseStateRef.current = state
     return blocks
   }, [content])
-  const resolvedComponents = components ?? markdownComponents
+  const resolvedComponents = useMemo(
+    () => ({ ...(components ?? markdownComponents), ...markdownImageComponents }),
+    [components],
+  )
 
   return (
     <div

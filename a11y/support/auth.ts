@@ -11,6 +11,10 @@ export const notesPath = join(import.meta.dirname, '..', 'notes.jsonl')
 /** Record a line for the "Coverage" section of the report. */
 export const addNote = (note: string) => appendFileSync(notesPath, `${JSON.stringify({ note })}\n`)
 
+/** Record that a screen's audit began or finished, so the report can tell a finished run from a cut-off one. */
+export const markScreen = (progress: 'started' | 'completed', screen: string) =>
+  appendFileSync(notesPath, `${JSON.stringify({ [progress]: screen })}\n`)
+
 const baseUrl = new URL(process.env.A11Y_BASE_URL ?? 'http://localhost:1420')
 const isLocal = ['localhost', '127.0.0.1'].includes(baseUrl.hostname)
 

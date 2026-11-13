@@ -70,32 +70,47 @@ export const checkReflow = async (page: Page, state: string, width: 320 | 640) =
     // Screen-reader-only text is 1px and clipped on purpose.
     const isVisuallyHidden = (element: HTMLElement, rect: DOMRect) =>
       rect.width <= 1 || rect.height <= 1 || getComputedStyle(element).clipPath === 'inset(50%)'
-    // Content inside its own horizontal scroller (a data table) is a 1.4.10 exception.
+    // 1.4.10 exempts content that needs two-dimensional layout (data tables, code blocks, grids) when it
+    // sits in its own horizontal scroller. A page-wide `overflow-auto` wrapper doesn't qualify.
+    const twoDimensional = 'table, pre, [role="grid"], [role="table"], [role="treegrid"]'
+    const exemptScrollers = new Set<HTMLElement>()
     const inScroller = (element: HTMLElement) => {
-      for (let node = element.parentElement; node && node !== document.body; node = node.parentElement) {
-        if (['auto', 'scroll'].includes(getComputedStyle(node).overflowX)) {
-          return true
+      let outermost: HTMLElement | null = null
+      for (let node: HTMLElement | null = element; node && node !== document.body; node = node.parentElement) {
+        if (node.matches(twoDimensional)) {
+          outermost = node
+        }
+        if (node !== element && ['auto', 'scroll'].includes(getComputedStyle(node).overflowX)) {
+          const qualifies = node.matches(twoDimensional) || outermost?.parentElement === node
+          if (qualifies) {
+            exemptScrollers.add(node)
+          }
+          return qualifies
         }
       }
       return false
     }
-    const clipped = [...document.querySelectorAll<HTMLElement>('body *')]
-      .filter((element) => {
-        const rect = element.getBoundingClientRect()
-        const style = getComputedStyle(element)
-        const hasText = [...element.childNodes].some((node) => node.nodeType === 3 && node.textContent?.trim())
-        return (
-          hasText &&
-          rect.width > 0 &&
-          style.visibility !== 'hidden' &&
-          !isVisuallyHidden(element, rect) &&
-          !inScroller(element) &&
-          (rect.right > viewport + 1 || (element.scrollWidth > element.clientWidth + 1 && style.overflowX === 'hidden'))
-        )
-      })
-      .slice(0, 5)
-      .map((element) => `<${element.tagName.toLowerCase()}> "${element.textContent?.trim().slice(0, 60)}"`)
-    return { overflowX, clipped }
+    const clipped = [...document.querySelectorAll<HTMLElement>('body *')].filter((element) => {
+      const rect = element.getBoundingClientRect()
+      const style = getComputedStyle(element)
+      const hasText = [...element.childNodes].some((node) => node.nodeType === 3 && node.textContent?.trim())
+      return (
+        hasText &&
+        rect.width > 0 &&
+        style.visibility !== 'hidden' &&
+        !isVisuallyHidden(element, rect) &&
+        !inScroller(element) &&
+        (rect.right > viewport + 1 || (element.scrollWidth > element.clientWidth + 1 && style.overflowX === 'hidden'))
+      )
+    })
+    // The exempt containers must themselves fit the viewport, or the exemption hides a real overflow.
+    const wideScrollers = [...exemptScrollers].filter((node) => node.getBoundingClientRect().right > viewport + 1)
+    return {
+      overflowX,
+      clipped: [...clipped, ...wideScrollers]
+        .slice(0, 5)
+        .map((element) => `<${element.tagName.toLowerCase()}> "${element.textContent?.trim().slice(0, 60)}"`),
+    }
   })
   if (original) {
     await page.setViewportSize(original)
@@ -222,7 +237,24 @@ export const checkFocusReturn = async (page: Page, state: string, trigger: Locat
   await trigger.focus()
   await page.keyboard.press('Enter')
   const opened = page.getByRole('menu').or(page.getByRole('dialog')).first()
-  await opened.waitFor({ timeout: 5_000 }).catch(() => undefined)
+  const didOpen = await opened.waitFor({ timeout: 5_000 }).then(
+    () => true,
+    () => false,
+  )
+  if (!didOpen) {
+    // Nothing to close, so a focus check would trivially "pass" on the untouched trigger.
+    record({
+      state,
+      source: 'focus-return',
+      rule: 'focus-return-not-opened',
+      criteria: ['2.1.1'],
+      impact: 'moderate',
+      summary: `Pressing Enter on ${label} didn't open a menu or dialog, so focus return couldn't be checked`,
+      count: 1,
+      examples: ['no element with role menu or dialog appeared within 5s'],
+    })
+    return
+  }
   await page.keyboard.press('Escape')
   await opened.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => undefined)
   const returned = await trigger.evaluate((element) => element === document.activeElement)

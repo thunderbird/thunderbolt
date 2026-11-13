@@ -3,29 +3,21 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { test, type Page } from '@playwright/test'
-import { rmSync } from 'node:fs'
-import { addNote, inAppOrOnboarding, notesPath, signedInPage } from './support/auth'
-import {
-  checkDuplicateNames,
-  checkFocusReturn,
-  checkKeyboardFocus,
-  checkReflow,
-  resultsPath,
-  scanAxe,
-} from './support/checks'
+import { addNote, inAppOrOnboarding, markScreen, signedInPage } from './support/auth'
+import { checkDuplicateNames, checkFocusReturn, checkKeyboardFocus, checkReflow, scanAxe } from './support/checks'
+import { canSetTheme, setAppTheme } from './support/theme'
 
-test.beforeAll(() => {
-  rmSync(resultsPath, { force: true })
-  rmSync(notesPath, { force: true })
-})
-
-/** axe in light and dark, plus the keyboard, reflow and naming checks. */
+/** axe under each app theme, plus the keyboard, reflow and naming checks (run in light). */
 const auditScreen = async (page: Page, state: string, options: { reflow?: boolean; keyboard?: boolean } = {}) => {
-  await scanAxe(page, `${state} (light)`)
-  await page.emulateMedia({ colorScheme: 'dark' })
-  await page.waitForTimeout(300)
-  await scanAxe(page, `${state} (dark)`)
-  await page.emulateMedia({ colorScheme: 'light' })
+  markScreen('started', state)
+  if (canSetTheme(page)) {
+    await setAppTheme(page, 'dark')
+    await scanAxe(page, `${state} (dark)`)
+    await setAppTheme(page, 'light')
+    await scanAxe(page, `${state} (light)`)
+  } else {
+    await scanAxe(page, `${state} (default theme)`)
+  }
   await checkDuplicateNames(page, state)
   if (options.keyboard !== false) {
     await checkKeyboardFocus(page, state)
@@ -34,11 +26,13 @@ const auditScreen = async (page: Page, state: string, options: { reflow?: boolea
     await checkReflow(page, state, 640)
     await checkReflow(page, state, 320)
   }
+  markScreen('completed', state)
 }
 
 /** Send a prompt and wait for the answer to finish streaming. */
 const ask = async (page: Page, prompt: string) => {
-  const copyButtons = page.getByRole('button', { name: /^Copy message/ })
+  // Only the assistant's message root carries `data-quotable-message-id`; user messages also have a copy button.
+  const copyButtons = page.locator('[data-quotable-message-id]').getByRole('button', { name: /^Copy message/ })
   const before = await copyButtons.count()
   await page.getByPlaceholder('Ask me anything…').fill(prompt)
   await page.getByRole('button', { name: 'Send message' }).click()

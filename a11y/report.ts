@@ -20,20 +20,29 @@ const findings: Finding[] = existsSync(resultsFile)
   : []
 
 const notesFile = join(dir, 'notes.jsonl')
-const notes: string[] = existsSync(notesFile)
+type NoteLine = { note?: string; started?: string; completed?: string }
+const noteLines: NoteLine[] = existsSync(notesFile)
   ? readFileSync(notesFile, 'utf8')
       .split('\n')
       .filter(Boolean)
-      .map((line) => JSON.parse(line).note)
+      .map((line) => JSON.parse(line))
   : []
+const notes = noteLines.flatMap((line) => (line.note ? [line.note] : []))
+const started = new Set(noteLines.flatMap((line) => (line.started ? [line.started] : [])))
+const completed = new Set(noteLines.flatMap((line) => (line.completed ? [line.completed] : [])))
+const unfinished = [...started].filter((screen) => !completed.has(screen))
+// An unreachable target or a crash before the first scan leaves nothing recorded, which must not read as clean.
+const runFailed = (process.env.A11Y_EXIT_STATUS ?? '0') !== '0'
+const incomplete = runFailed || completed.size === 0 || unfinished.length > 0
 
 const impactOrder = ['critical', 'serious', 'moderate', 'minor', 'unknown']
-const screenOf = (state: string) => state.replace(/ \((light|dark)\)$/, '')
+const screenOf = (state: string) => state.replace(/ \((light|dark|default theme)\)$/, '')
 
 type Row = { finding: Finding; screens: Set<string>; instances: number; examples: Set<string> }
 const rows = new Map<string, Row>()
 for (const finding of findings) {
-  const key = `${finding.source}:${finding.rule}`
+  // The summary names the control for focus-return findings, so each affected control stays its own row.
+  const key = `${finding.source}:${finding.rule}:${finding.summary}`
   const row = rows.get(key) ?? { finding, screens: new Set(), instances: 0, examples: new Set() }
   row.screens.add(screenOf(finding.state))
   row.instances += finding.count
@@ -55,10 +64,24 @@ const lines = [
   'plus scripted checks: keyboard focus visibility, focus return after closing dialogs, reflow at',
   '200% and 400% zoom (640px and 320px wide), and controls sharing one name.',
   '',
+  ...(incomplete
+    ? [
+        '**Incomplete: the audit did not finish.** Findings below are partial and the absence of a problem proves nothing.',
+        '',
+        `- Screens completed: ${[...completed].join(', ') || 'none'}`,
+        ...(unfinished.length ? [`- Screens cut off: ${unfinished.join(', ')}`] : []),
+        ...(runFailed ? ['- The Playwright run failed; see its output.'] : []),
+        '',
+      ]
+    : []),
   ...(notes.length ? ['## Coverage', '', ...notes.map((note) => `- ${note}`), ''] : []),
   `Screens: ${[...new Set(findings.map((finding) => screenOf(finding.state)))].sort().join(', ') || 'none with findings'}`,
   '',
-  sorted.length === 0 ? 'No problems found.' : `${sorted.length} distinct problems.`,
+  sorted.length === 0
+    ? incomplete
+      ? 'No problems found so far.'
+      : 'No problems found.'
+    : `${sorted.length} distinct problems.`,
   '',
   '| Impact | WCAG | Problem | Screens | Instances | Check |',
   '| --- | --- | --- | --- | --- | --- |',

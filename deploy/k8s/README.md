@@ -304,7 +304,7 @@ The suites live in [`tests/`](tests/) and run in CI whenever the chart changes. 
 
 | Template          | Resources             | Purpose                                                                          |
 | ----------------- | --------------------- | -------------------------------------------------------------------------------- |
-| `secrets.yaml`    | Secret                | OIDC, PowerSync JWT, Postgres, Better Auth credentials                           |
+| `secrets.yaml`    | Secret                | OIDC, Keycloak, PowerSync JWT, Postgres, Better Auth credentials                 |
 | `configmaps.yaml` | ConfigMaps            | PowerSync config, Keycloak realm, Postgres init SQL                              |
 | `postgres.yaml`   | StatefulSet + Service | PostgreSQL with WAL replication + PVC; hosts app DB and PowerSync bucket storage |
 | `backend.yaml`    | Deployment + Service  | Bun API with health probes                                                       |

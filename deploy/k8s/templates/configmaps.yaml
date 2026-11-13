@@ -109,7 +109,7 @@ data:
           "clientId": "{{ .Values.keycloak.oidc.clientId }}",
           "enabled": true,
           "clientAuthenticatorType": "client-secret",
-          "secret": "{{ .Values.keycloak.oidc.clientSecretBase64 | b64dec }}",
+          "secret": "${THUNDERBOLT_OIDC_CLIENT_SECRET}",
           "redirectUris": ["{{ .Values.appUrl }}/v1/api/auth/sso/callback/sso"],
           "webOrigins": ["{{ .Values.appUrl }}"],
           "standardFlowEnabled": true,

@@ -232,6 +232,9 @@ keycloak:
     port: 8080
   admin:
     username: admin
+    # -- Kept in the `thunderbolt-secrets` Secret. Keycloak reads it only at
+    # startup, so a new value takes effect after
+    # `kubectl rollout restart deployment/keycloak` (see README.md).
     password: admin
   oidc:
     clientId: thunderbolt-app

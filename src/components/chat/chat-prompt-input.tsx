@@ -1115,7 +1115,7 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
             // Voice mode covers the composer with an overlay; make the underlying
             // input non-interactive so Tab/Enter can't reach the hidden textarea.
             inert={voice.active}
-            className="composer-surface relative z-10 flex flex-col w-full gap-0 rounded-3xl border border-transparent focus-within:border-foreground focus-within:ring-1 focus-within:ring-foreground p-2 shadow-glow dark:shadow-none transition-[color,border-color,box-shadow]"
+            className="composer-surface relative z-10 flex flex-col w-full gap-0 rounded-3xl border border-border focus-within:border-foreground focus-within:ring-1 focus-within:ring-foreground p-2 shadow-glow dark:shadow-none transition-[color,border-color,box-shadow]"
             footerStartElements={footerStartElements}
             footerEndElements={footerEndElements}
             // Empty + idle composer shows the voice-mode trigger in the send slot (swaps back to Send

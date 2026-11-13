@@ -234,6 +234,11 @@ describe('blankNonProse', () => {
     expect(prose('Press ` key [1].\r\n\r\nThen `ls` [2].')).toBe('Press ` key [1]. Then [2].')
   })
 
+  it('closes inline code only on a backtick run of the same length', () => {
+    expect(prose('Use ``obj[1]` x`` here [1].')).toBe('Use here [1].')
+    expect(prose('Use ``` [1] ` and more')).toBe('Use ``` [1] ` and more')
+  })
+
   it('ignores backticks and dollars inside a fence', () => {
     expect(prose('```\n`$x\n```\nprose $5 and `ok`')).toBe('prose $5 and')
   })

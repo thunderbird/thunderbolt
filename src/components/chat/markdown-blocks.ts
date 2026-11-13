@@ -112,9 +112,10 @@ const rewriteMath = (text: string): string =>
   )
 
 // An inline code span (`` `…` ``, `` ``…`` ``, …). Left verbatim so a message
-// that shows `$$…$$` / `\(…\)` *as inline code* keeps its literal text. It may
-// wrap a line but never crosses a blank one — a code span can't leave its paragraph.
-const inlineCodeSpan = /(`+)(?:[^`\n]|\n(?![ \t]*\r?\n))*?\1/g
+// that shows `$$…$$` / `\(…\)` *as inline code* keeps its literal text. It closes on a
+// backtick run of the same length, so ``a`b`` holds a backtick, and may wrap a line but
+// never crosses a blank one — a code span can't leave its paragraph.
+const inlineCodeSpan = /(?<!`)(`+)(?!`)(?:[^\n]|\n(?![ \t]*\r?\n))*?(?<!`)\1(?!`)/g
 
 // A fenced code block, through a closing run of the same character at least as long,
 // or to the end of the text when unclosed (the normal state mid-stream). The opener may
@@ -137,6 +138,7 @@ const inlineNonProseSpans = [
 // block at a time, so a stray `\(` must not pair with a `\)` paragraphs later.
 const paragraphBreak = /(\r?\n[ \t]*\r?\n)/
 
+/** `text` with every match of `span` overwritten by spaces, newlines kept, so offsets don't move. */
 const blankSpan = (text: string, span: RegExp): string => text.replace(span, (match) => match.replace(/[^\n]/g, ' '))
 
 /**

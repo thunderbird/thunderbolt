@@ -4,7 +4,7 @@
 
 import type { HttpClient } from '@/contexts'
 import { http } from '@/lib/http'
-import { deriveSiteName } from '@/lib/source-utils'
+import { deriveSiteName, findSourceByIndex } from '@/lib/source-utils'
 import type { ToolConfig } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import { fetchContent, fetchLinkPreview, search } from './api'
@@ -37,6 +37,7 @@ export type WebToolApi = {
   fetchLinkPreview?: typeof fetchLinkPreview
 }
 
+/** The highest citation number in `sources`, or 0 when there are none. */
 const highestIndex = (sources: readonly SourceMetadata[]): number =>
   sources.reduce((highest, { index }) => Math.max(highest, index), 0)
 
@@ -55,9 +56,15 @@ export const createConfigs = (
   priorSources: readonly SourceMetadata[] = [],
 ): ToolConfig[] => {
   const sources = sourceCollector ?? []
-  const indexFor = (url: string): number =>
-    priorSources.findLast((prior) => prior.url === url)?.index ??
-    Math.max(highestIndex(priorSources), highestIndex(sources)) + 1
+  /** An earlier turn's number for `url` — unless, in a chat from before numbering spanned the
+   *  thread, a later turn gave that number to another page — or else the next free number. */
+  const indexFor = (url: string): number => {
+    const earlier = priorSources.findLast((prior) => prior.url === url)?.index
+    if (earlier !== undefined && findSourceByIndex(priorSources, earlier)?.url === url) {
+      return earlier
+    }
+    return Math.max(highestIndex(priorSources), highestIndex(sources)) + 1
+  }
 
   /** Deduplicates against the live collector, including when tool configs share a logical turn. */
   const collectSource = (source: Omit<SourceMetadata, 'index'>): SourceMetadata | undefined => {

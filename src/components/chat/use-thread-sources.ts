@@ -12,6 +12,8 @@ type ThreadSourcesEntry = {
   result: SourceMetadata[] | undefined
 }
 
+/** `inherited` followed by `own`, returning either input itself when the other is empty so a
+ *  message's entry keeps its reference while its sources don't change. */
 const mergeSources = (
   inherited: SourceMetadata[] | undefined,
   own: SourceMetadata[] | undefined,

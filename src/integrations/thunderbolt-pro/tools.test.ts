@@ -494,6 +494,19 @@ describe('createConfigs source collector', () => {
       expect(result[0].sourceIndex).toBe(8)
     })
 
+    it('gives a fresh number when an older chat reused a URL’s number for another page', async () => {
+      searchSpy.mockResolvedValue(mockSearchResults)
+      const restarted: SourceMetadata[] = [
+        { index: 1, url: 'https://a.com/article', title: 'A', toolName: 'search' },
+        { index: 1, url: 'https://b.com/article', title: 'B', toolName: 'search' },
+      ]
+      const configs = createConfigs(dummyHttpClient, [], undefined, restarted)
+
+      const result = await getSearchTool(configs).execute({ query: 'test', max_results: 10 })
+
+      expect(result.map((r: { sourceIndex: number }) => r.sourceIndex)).toEqual([2, 1])
+    })
+
     it('fetch_content reuses an earlier turn’s number without mutating that turn’s entry', async () => {
       fetchContentSpy.mockResolvedValue({
         url: 'https://earlier.com/two',

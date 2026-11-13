@@ -5,6 +5,7 @@
 import { expect, type Browser, type Page } from '@playwright/test'
 import { appendFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { followSystemTheme } from './theme'
 
 export const notesPath = join(import.meta.dirname, '..', 'notes.jsonl')
 
@@ -109,6 +110,7 @@ export const signedInPage = async (browser: Browser): Promise<Page | null> => {
     return null
   }
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } })
+  await followSystemTheme(context)
   const page = await context.newPage()
   const entry = await detectEntryScreen(page)
 

@@ -178,13 +178,14 @@ const ShownStatusCard = ({ continuity, header }: { continuity: RecoveryContinuit
             <Trans>Update passkey</Trans>
           </Button>
         )}
-        {/* Not for `untrusted`: an unapproved device gets no sync token, so its device list is always empty. */}
+        {/* No device-list link on an unapproved device: it gets no sync token, so its list is always empty. */}
         {status === 'unverified' && (
           <Button variant="outline" onClick={goToDevices}>
             <Trans>View devices</Trans>
           </Button>
         )}
-        {notice === 'updatedElsewhere' && (
+        {/* `deviceTrusted` is also false on an unverified device, which already has View devices. */}
+        {notice === 'updatedElsewhere' && deviceTrusted && (
           <Button variant="outline" onClick={goToDevices}>
             <Trans>Review devices</Trans>
           </Button>

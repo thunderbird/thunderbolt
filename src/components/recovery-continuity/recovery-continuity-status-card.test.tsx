@@ -130,6 +130,20 @@ describe('RecoveryContinuityStatusCard', () => {
     expect(screen.getByRole('button', { name: 'Review devices' })).toBeInTheDocument()
   })
 
+  it('announces an update elsewhere on an unapproved device without a device list it cannot load', () => {
+    renderCard({ notice: 'updatedElsewhere', deviceTrusted: false })
+    expect(screen.getByText('Updated on another device')).toBeInTheDocument()
+    expect(fact('This device')).toHaveTextContent('Not approved yet')
+    expect(screen.getByRole('button', { name: 'Got it' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Review devices' })).toBeNull()
+  })
+
+  it('links an unverified device to its devices once after an update elsewhere', () => {
+    renderCard({ status: 'unverified', notice: 'updatedElsewhere', deviceTrusted: false })
+    expect(screen.getByRole('button', { name: 'View devices' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Review devices' })).toBeNull()
+  })
+
   it('focuses its title from the deep link, clear of the floating header', () => {
     renderCard(phraseWarning, '/settings/preferences#recovery-phrase-status')
     expect(document.activeElement).toHaveTextContent('Recovery phrase needs an update')

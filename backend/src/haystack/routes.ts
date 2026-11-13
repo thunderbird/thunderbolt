@@ -8,7 +8,8 @@ import { createWsSessionGuard, wsCloseUnauthorized } from '@/auth/ws-bearer-auth
 import { createStandaloneLogger } from '@/config/logger'
 import type { Settings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
-import { overflowsPreConnectQueue, wsCloseCodes } from '@/proxy/ws'
+import { overflowsPreConnectQueue, preConnectQueueBytes, wsCloseCodes } from '@/proxy/ws'
+import { isBoundedWsJson } from '@/utils/ws-message'
 import type { User } from '@shared/types/auth'
 import { wsCarrierSubprotocol } from '@shared/ws-bearer'
 import { Elysia, t } from 'elysia'
@@ -233,6 +234,21 @@ export const createHaystackRoutes = (settings: Settings, auth: Auth, deps?: Hays
       async message(ws, message) {
         const state = haystackSocketData(ws).__haystack
         if (!state || state.closing) {
+          return
+        }
+        // ACP uses text frames; serializing native binary can expand it beyond the byte budget.
+        if (
+          typeof message === 'object' &&
+          (message instanceof ArrayBuffer ||
+            ArrayBuffer.isView(message) ||
+            !isBoundedWsJson(message, state.server ? undefined : preConnectQueueBytes - state.pendingBytes))
+        ) {
+          refuse(
+            ws,
+            state,
+            state.server ? wsCloseCodes.messageTooLarge : wsCloseCodes.queueOverflow,
+            'JSON message limit exceeded',
+          )
           return
         }
         const text = typeof message === 'string' ? message : JSON.stringify(message)

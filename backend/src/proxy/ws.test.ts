@@ -113,6 +113,10 @@ describe('classifyWsCloseCode', () => {
     expect(classifyWsCloseCode(wsCloseCodes.queueOverflow)).toBe('cap_exceeded')
   })
 
+  it('maps an established connection JSON limit (1009) to cap_exceeded', () => {
+    expect(classifyWsCloseCode(wsCloseCodes.messageTooLarge)).toBe('cap_exceeded')
+  })
+
   it('maps internalError (1011) to upstream_5xx', () => {
     expect(classifyWsCloseCode(wsCloseCodes.internalError)).toBe('upstream_5xx')
   })

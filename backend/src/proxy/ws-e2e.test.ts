@@ -771,6 +771,41 @@ describe('Universal proxy WS relay — frames during auth and unsendable close c
     }
   })
 
+  it.each([false, true])(
+    'bounds JSON before serialization (upstream ready: %s)',
+    async (ready) => {
+      const upstream = await startUpstreamServer({ open: (ws) => ws.send('ready') })
+      const relay = await startRelay(upstream.port)
+      servers.push(relay, upstream)
+      const client = new WebSocket(relay.url, relayProtocols)
+      await new Promise<void>((resolve) => client.addEventListener('open', () => resolve()))
+      if (ready) {
+        const opened = nextMessageEvent(client)
+        relay.releaseAuth()
+        await opened
+      }
+      const stringify = spyOn(JSON, 'stringify')
+      const flat = '{"pad":"' + 'x'.repeat(503) + '"}'
+      client.send(flat)
+      await pingRoundTrip(client)
+      expect(stringify.mock.calls.some(([value]) => typeof value === 'object' && value?.pad)).toBe(true)
+      stringify.mockClear()
+
+      const closed = waitForClose(client)
+      client.send('['.repeat(256) + '0' + ']'.repeat(256))
+      await waitFor(
+        () => client.readyState === WebSocket.CLOSED || stringify.mock.calls.some(([v]) => Array.isArray(v)),
+        {
+          label: 'bounded JSON rejection or serialization',
+        },
+      )
+      expect(stringify.mock.calls.some(([value]) => Array.isArray(value))).toBe(false)
+      expect((await closed).code).toBe(ready ? 1009 : wsCloseCodes.queueOverflow)
+      relay.releaseAuth()
+    },
+    15000,
+  )
+
   it('forwards a frame the client sends before the bearer check finishes', async () => {
     const received: string[] = []
     const upstream = await startUpstreamServer({ message: (_ws, msg) => received.push(msg.toString()) })

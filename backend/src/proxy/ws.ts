@@ -5,17 +5,20 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import { createWsSessionGuard } from '@/auth/ws-bearer-auth'
 import { isPrivateAddress } from '@/utils/url-validation'
+import { isBoundedWsJson } from '@/utils/ws-message'
 import { wsCarrierSubprotocol } from '@shared/ws-bearer'
 import { Elysia, type AnyElysia } from 'elysia'
 import { noopObservability, type ObservabilityRecorder, type ProxyErrorType } from './observability'
 
 const targetPrefix = 'tbproxy.target.'
 
-const queueBytes = 256 * 1024
+export const preConnectQueueBytes = 256 * 1024
 const queueMessages = 64
 
 /** Close codes used by the relay. */
 export const wsCloseCodes = {
+  /** Parsed JSON exceeded the serialization depth or work budget. */
+  messageTooLarge: 1009,
   /** Internal upstream error or upstream connection failed unexpectedly. */
   internalError: 1011,
   /** Subprotocol parsing/encoding error or non-wss target. */
@@ -34,7 +37,7 @@ export const classifyWsCloseCode = (code: number): ProxyErrorType | undefined =>
   if (code === wsCloseCodes.invalidSubprotocol || code === wsCloseCodes.schemeRejected) {
     return 'invalid_target'
   }
-  if (code === wsCloseCodes.queueOverflow) {
+  if (code === wsCloseCodes.queueOverflow || code === wsCloseCodes.messageTooLarge) {
     return 'cap_exceeded'
   }
   if (code === wsCloseCodes.internalError) {
@@ -140,7 +143,7 @@ type RelayState = {
 /** Whether one more frame of `bytes` would push a pre-connect queue past its message or byte cap
  *  (shared with the Haystack route, which queues frames while its bearer check runs). */
 export const overflowsPreConnectQueue = (queue: { pending: { length: number }; pendingBytes: number }, bytes: number) =>
-  queue.pending.length + 1 > queueMessages || queue.pendingBytes + bytes > queueBytes
+  queue.pending.length + 1 > queueMessages || queue.pendingBytes + bytes > preConnectQueueBytes
 
 const messageByteLength = (msg: string | ArrayBuffer | Uint8Array): number => {
   if (typeof msg === 'string') {
@@ -439,6 +442,24 @@ export const createUniversalProxyWsRoutes = (options: {
         return
       }
       if (state.closing) {
+        return
+      }
+
+      if (
+        typeof message === 'object' &&
+        !isBoundedWsJson(message, state.upstreamReady ? undefined : preConnectQueueBytes - state.pendingBytes)
+      ) {
+        state.closing = true
+        state.pending = []
+        state.pendingBytes = 0
+        if (state.upstream) {
+          safeWsClose(state.upstream, 1000)
+        }
+        safeWsClose(
+          ws,
+          state.upstreamReady ? wsCloseCodes.messageTooLarge : wsCloseCodes.queueOverflow,
+          'JSON message limit exceeded',
+        )
         return
       }
 

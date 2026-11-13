@@ -382,6 +382,35 @@ describe('WS /v1/haystack/ws — auth gating', () => {
     client.close()
   }, 15000)
 
+  it.each([false, true])(
+    'bounds JSON before serialization (authenticated: %s)',
+    async (authenticated) => {
+      const gated = await startGatedHaystack()
+      cleanups.push(gated.stop)
+      const client = await openGatedClient(gated.url)
+      if (authenticated) {
+        const reply = nextMessage(client)
+        gated.releaseAuth()
+        client.send(initializeFrame(1))
+        await reply
+      }
+      const stringify = spyOn(JSON, 'stringify')
+      client.send('{"pad":"' + 'x'.repeat(503) + '"}')
+      await pingRoundTrip(client)
+      expect(stringify.mock.calls.some(([value]) => typeof value === 'object' && value?.pad)).toBe(true)
+      stringify.mockClear()
+
+      const term = observeWsTermination(client)
+      client.send('['.repeat(256) + '0' + ']'.repeat(256))
+      // The pong fences the synchronous handler on the vulnerable version; rejection can close before it.
+      await Promise.race([pingRoundTrip(client), term])
+      expect(stringify.mock.calls.some(([value]) => Array.isArray(value))).toBe(false)
+      expect((await term).code).toBe(authenticated ? 1009 : wsCloseCodes.queueOverflow)
+      gated.releaseAuth()
+    },
+    15000,
+  )
+
   it('closes 4008 when the frames sent during the bearer check overflow the queue', async () => {
     const gated = await startGatedHaystack()
     cleanups.push(gated.stop)

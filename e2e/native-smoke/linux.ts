@@ -148,7 +148,8 @@ try {
     await standardModel.click()
     await browser.keys(Key.Escape)
   }
-  await composer.setValue('Please greet me briefly.')
+  const previewUrl = 'https://example.invalid/native-preview-check'
+  await composer.setValue(`Please greet me briefly. [Preview safety check](${previewUrl})`)
   await (await browser.$('button[aria-label="Send message"]')).click()
   await browser.waitUntil(async () => (await (await browser.$('body')).getText()).includes(fakeProviderReply), {
     timeout: 60_000,
@@ -157,6 +158,33 @@ try {
   await browser.pause(1000) // Keep the complete reply visible in the recording.
   await browser.waitUntil(() => Date.now() - appReadyAt >= 6000, { timeout: 10_000 })
   assert.equal((await (await browser.$('body')).getText()).includes('Update failed'), false)
+
+  // Linux must never put an external page in a native sidebar webview (THU-1042).
+  await (await browser.$(`a[href="${previewUrl}"]`)).click()
+  const linkDialog = await browser.$('[role="alertdialog"]')
+  await linkDialog.waitForDisplayed({ timeout: 10_000 })
+  assert.equal(
+    await (await linkDialog.$('//button[normalize-space()="Open in Sidebar"]')).isExisting(),
+    false,
+    'Linux link confirmation must not offer a native sidebar',
+  )
+  assert.ok(
+    await (await linkDialog.$('//button[normalize-space()="Open Link"]')).isDisplayed(),
+    'Linux link confirmation must offer external opening',
+  )
+  await (await linkDialog.$('//button[normalize-space()="Cancel"]')).click()
+  await browser.url(new URL('/settings/preferences', await browser.getUrl()).href)
+  const ask = await browser.$('[role="radio"][aria-label="Always ask"]')
+  await ask.waitForDisplayed({ timeout: 30_000 })
+  assert.equal(
+    await (await browser.$('[role="radio"][aria-label="Open in sidebar"]')).isExisting(),
+    false,
+    'Linux must not offer external sidebar webviews',
+  )
+  const openInBrowser = await browser.$('[role="radio"][aria-label="Open in browser"]')
+  await openInBrowser.click()
+  assert.equal(await openInBrowser.getAttribute('data-state'), 'on', 'The Linux browser preference was not selected')
+  await ask.click()
   // eslint-disable-next-line no-console -- Report successful completion in the smoke-test runner output.
   console.log(`Linux desktop smoke passed (${setup})`)
 } finally {

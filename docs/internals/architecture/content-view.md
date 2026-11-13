@@ -108,7 +108,8 @@ trade-offs (incognito by default, IP exposure, no extensions): [webview.md](../.
 | `useShowPreview`, `useShowSideview`, `useSetPreviewHidden` | return `undefined`   |
 
 Callers branch on `undefined` so chat components render where there is no panel: link handling
-computes `desktop = isDesktopPlatform() && !!showPreview` and falls back to the confirmation dialog,
+computes `desktop = isDesktopPlatform() && getPlatform() !== 'linux' && !!showPreview` and falls back
+to the confirmation dialog (Linux never gets a native preview, see [webview.md](../../features/webview.md)),
 and attachment cards drop the open affordance
 ([`message-bubbles.tsx:66`](../../../src/components/chat/message-bubbles.tsx)). Regression test: "works
 without ContentViewProvider" in

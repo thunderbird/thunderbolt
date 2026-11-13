@@ -4,7 +4,7 @@
 
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { isExternalLinkBehavior, type ExternalLinkBehavior } from '@/lib/external-link-behavior'
-import { isDesktop, isTauri } from '@/lib/platform'
+import { getPlatform, isDesktop, isTauri } from '@/lib/platform'
 import { trackEvent } from '@/lib/posthog'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { MessageDescriptor } from '@lingui/core'
@@ -53,9 +53,9 @@ const newTab: BehaviorOption = {
  * only the desktop app has; the external option is a new tab on web, the OS
  * browser everywhere else.
  */
-export const getBehaviorOptions = (deps = { isDesktop, isTauri }): BehaviorOption[] => [
+export const getBehaviorOptions = (deps = { isDesktop, isTauri, getPlatform }): BehaviorOption[] => [
   ask,
-  ...(deps.isDesktop() ? [sidebar] : []),
+  ...(deps.isDesktop() && deps.getPlatform() !== 'linux' ? [sidebar] : []),
   deps.isTauri() ? browser : newTab,
 ]
 

@@ -7,6 +7,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ContactPage } from './contact-page'
 import { submitContactForm } from './use-contact-form-state'
+import releaseSnapshot from '../../../data/download-release.json'
 
 let request: ReturnType<typeof spyOn<typeof globalThis, 'fetch'>>
 
@@ -83,12 +84,18 @@ test.each(['http', 'timeout'] as const)(
       .mockImplementation(() => new AbortController().signal)
       .mockReturnValueOnce(controller.signal)
     let resolveResponse!: (response: Response) => void
-    request.mockReturnValue(
-      new Promise<Response>((resolve, reject) => {
-        resolveResponse = resolve
-        controller.signal.addEventListener('abort', () => reject(controller.signal.reason), { once: true })
-      }),
+    let contactResponse = new Promise<Response>((resolve, reject) => {
+      resolveResponse = resolve
+      controller.signal.addEventListener('abort', () => reject(controller.signal.reason), { once: true })
+    })
+    request.mockImplementation(
+      Object.assign(
+        async (url: string | URL | Request) =>
+          url === '/downloads/release.json' ? Response.json(releaseSnapshot) : contactResponse,
+        { preconnect: fetch.preconnect },
+      ),
     )
+    const submissions = () => request.mock.calls.filter(([url]) => url === 'https://contact.example.com/api/contact')
     const container = document.createElement('div')
     document.body.append(container)
     const root = createRoot(container)
@@ -103,7 +110,7 @@ test.each(['http', 'timeout'] as const)(
       })
       expect(container.querySelector<HTMLButtonElement>('button[type=submit]')!.disabled).toBe(true)
       expect(timeout).toHaveBeenCalledWith(15_000)
-      expect(request.mock.calls[0][1]?.signal).toBe(controller.signal)
+      expect(submissions()[0][1]?.signal === controller.signal).toBe(true)
       await act(async () => {
         if (failure === 'timeout') controller.abort(new DOMException('Timed out', 'TimeoutError'))
         else resolveResponse(new Response('', { status: 502 }))
@@ -111,14 +118,14 @@ test.each(['http', 'timeout'] as const)(
       expect(container.querySelector<HTMLButtonElement>('button[type=submit]')!.disabled).toBe(false)
       expect(container.querySelector('[role=alert]')!.textContent).toContain('couldn’t confirm')
       expect(container.querySelector('textarea')!.value).toBe('Keep this message if sending fails.')
-      request.mockResolvedValue(Response.json({ success: true }))
+      contactResponse = Promise.resolve(Response.json({ success: true }))
       await act(async () => {
         submit()
       })
       expect(container.querySelector('h1')!.textContent).toBe('Thank you!')
       expect(document.activeElement).toBe(container.querySelector('h1'))
       expect(container.querySelector('form')).toBeNull()
-      expect(JSON.parse(request.mock.calls[1][1]?.body as string)).toEqual({
+      expect(JSON.parse(submissions()[1][1]?.body as string)).toEqual({
         email: 'person@example.org',
         firstName: '',
         lastName: '',
@@ -128,7 +135,7 @@ test.each(['http', 'timeout'] as const)(
         help: 'Keep this message if sending fails.',
         website: '',
       })
-      expect(request).toHaveBeenCalledTimes(2)
+      expect(submissions()).toHaveLength(2)
     } finally {
       timeout.mockRestore()
       await act(async () => root.unmount())

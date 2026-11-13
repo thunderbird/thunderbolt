@@ -7,6 +7,7 @@ import './spark-chrome.css'
 import { productLinks } from '../../../data/website-product'
 import { useSparkHeaderState } from './use-spark-header-state'
 import { SiteThemeToggle } from '../../site-theme/site-theme-toggle'
+import { HeaderDownload } from '../download/header-download'
 
 const primaryPages = [
   { label: 'Privacy', href: '/privacy/' },
@@ -104,9 +105,7 @@ export const SparkHeader = ({ currentPage, as: Element = 'header' }: SparkHeader
       </nav>
       <div className="spark-header-actions">
         <SiteThemeToggle />
-        <a className="spark-nav-cta" href={productLinks.download}>
-          Download <span aria-hidden="true">↓</span>
-        </a>
+        <HeaderDownload />
       </div>
     </Element>
   )

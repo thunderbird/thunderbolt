@@ -193,6 +193,8 @@ test('the composer edge darkens while its textbox is focused', async ({ page }) 
   const textarea = page.locator('textarea')
   const surface = page.locator('.composer-surface')
   const edgeColor = () => surface.evaluate((element) => getComputedStyle(element).borderTopColor)
+  // The edge animates border-color, so a reading right after blur or focus could catch a halfway colour.
+  await page.addStyleTag({ content: '.composer-surface { transition: none !important; }' })
 
   await textarea.blur()
   await expect(textarea).not.toBeFocused()

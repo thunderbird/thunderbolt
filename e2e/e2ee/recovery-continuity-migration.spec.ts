@@ -129,7 +129,8 @@ test.describe('Recovery continuity migration', () => {
       const card = recoveryStatusCard(pending.page)
       await expect(card.getByText('Recovery phrase needs an update')).toBeVisible({ timeout: 30_000 })
       await expect(card.getByText('Not approved yet')).toBeVisible()
-      await expect(card.getByRole('button', { name: 'View devices' })).toBeVisible()
+      // An unapproved device gets no sync token, so a device list here would always be empty.
+      await expect(card.getByRole('button', { name: 'View devices' })).toBeHidden()
       await expect(card.getByRole('button', { name: 'Update recovery phrase' })).toBeHidden()
       await expect(securityNotice(pending.page)).toBeHidden()
     } finally {

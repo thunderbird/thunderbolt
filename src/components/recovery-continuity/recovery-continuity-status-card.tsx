@@ -178,7 +178,8 @@ const ShownStatusCard = ({ continuity, header }: { continuity: RecoveryContinuit
             <Trans>Update passkey</Trans>
           </Button>
         )}
-        {(status === 'untrusted' || status === 'unverified') && (
+        {/* Not for `untrusted`: an unapproved device gets no sync token, so its device list is always empty. */}
+        {status === 'unverified' && (
           <Button variant="outline" onClick={goToDevices}>
             <Trans>View devices</Trans>
           </Button>

@@ -59,11 +59,12 @@ describe('RecoveryContinuityStatusCard', () => {
     expect(screen.getByRole('button', { name: 'Update recovery phrase' })).toBeDisabled()
   })
 
-  it('points an untrusted device to its approved devices', () => {
+  it('sends an untrusted device to an approved one, without a device list it cannot load', () => {
     renderCard({ status: 'untrusted', phraseUpdateRequired: true, deviceTrusted: false })
     expect(fact('This device')).toHaveTextContent('Not approved yet')
+    expect(screen.getByText(/Open Thunderbolt on an approved device/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Update recovery phrase' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'View devices' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'View devices' })).toBeNull()
   })
 
   it('explains re-verification on an unverified device, even once the phrase is sealed', () => {

@@ -83,10 +83,11 @@ server {
     }
 
     # Astro emits one .html file per route. Serve the file if it exists, then
-    # try the same path with .html appended (so `/blog/foo` serves `/blog/foo.html`),
-    # then fall back to the custom 404 page. No SPA-style index.html fallback —
-    # this is a multi-page static site.
+    # try the same path with .html appended (so `/blog/foo` serves `/blog/foo.html`).
+    # Anything else gets the custom 404 page with a 404 status. No SPA-style index.html
+    # fallback — this is a multi-page static site.
+    error_page 404 /404.html;
     location / {
-        try_files $uri $uri/index.html $uri.html /404.html =404;
+        try_files $uri $uri/index.html $uri.html =404;
     }
 }

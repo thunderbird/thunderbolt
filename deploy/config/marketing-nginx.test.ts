@@ -111,7 +111,7 @@ afterEach(() => {
 })
 
 /**
- * Serve a site holding a home page and the build's copy of the release. The stand-in for
+ * Serve a site holding a home page, a 404 page and the build's copy of the release. The stand-in for
  * GitHub answers 503 until a test gives it something else to say.
  */
 const startSite = async (config: string) => {
@@ -122,6 +122,7 @@ const startSite = async (config: string) => {
   const [site, gitHub, configFile] = ['site', 'github', 'default.conf.template'].map((name) => join(directory, name))
   mkdirSync(join(site, 'downloads'), { recursive: true })
   writeFileSync(join(site, 'index.html'), '<!doctype html><title>Home</title>')
+  writeFileSync(join(site, '404.html'), '<!doctype html><title>Not found</title>')
   writeFileSync(join(site, 'downloads', 'release.json'), JSON.stringify(buildRelease))
   mkdirSync(gitHub)
   // The stand-in writes its request log here.
@@ -201,6 +202,15 @@ describe('marketing site', () => {
     expect(response.status).toBe(200)
     expectSiteHeaders(response)
     expect(await response.json()).toEqual(buildRelease)
+  })
+
+  test('answers a path with no page with its 404 page and a 404 status', async () => {
+    const site = await startSite(productionConfig)
+
+    const response = await fetch(`${site.origin}/no-such-page`)
+
+    expect(response.status).toBe(404)
+    expect(await response.text()).toContain('Not found')
   })
 
   test("resolves GitHub through the container's own DNS server, whichever runtime supplies it", async () => {

@@ -24,6 +24,11 @@ const minAppVersion = config.get('minAppVersion') ?? ''
 const cliDeviceRegistrationEnabled = config.getBoolean('cliDeviceRegistrationEnabled') ?? false
 const confidentialApiKeysEnabled = config.getBoolean('confidentialApiKeysEnabled') ?? false
 const branding = config.get('branding') ?? ''
+const email = {
+  from: config.get('emailFrom'),
+  contactEmailTo: config.get('contactEmailTo'),
+  resendApiKey: config.getSecret('resendApiKey'),
+}
 
 // --- Shared-stack architecture (Phase 1 scaffolding) ---
 //
@@ -137,6 +142,7 @@ if (isSharedStack) {
     cliDeviceRegistrationEnabled,
     confidentialApiKeysEnabled,
     branding,
+    email,
   })
 
   module.exports = {
@@ -342,6 +348,7 @@ if (isSharedStack) {
       cliDeviceRegistrationEnabled,
       confidentialApiKeysEnabled,
       branding,
+      email,
       behindCloudflareProxy: hasSubdomainRouting,
       albListener: listener,
       targetGroups: {

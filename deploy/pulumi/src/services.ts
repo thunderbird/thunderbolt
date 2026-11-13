@@ -4,6 +4,7 @@
 
 import * as aws from '@pulumi/aws'
 import * as pulumi from '@pulumi/pulumi'
+import { createBackendEmail, type EmailConfig } from './email'
 
 type Images = {
   frontend: string
@@ -70,6 +71,8 @@ type ServiceArgs = {
   confidentialApiKeysEnabled: boolean
   /** Operator branding JSON (env: BRANDING). Empty ships the default look. */
   branding: string
+  /** Optional Resend delivery and contact-form recipient, configured per stack. */
+  email?: EmailConfig
   /**
    * When true, backend runs behind a proxy whose X-Forwarded-* headers we trust
    * for client IP extraction (Cloudflare edge for preview stacks).
@@ -466,6 +469,7 @@ export const createServices = (args: ServiceArgs) => {
   })
 
   // --- Backend ---
+  const email = createBackendEmail(name, execRoleInstance.name, args.email)
   const beTaskDef = new aws.ecs.TaskDefinition(`${name}-be-task`, {
     family: `${name}-backend`,
     requiresCompatibilities: ['FARGATE'],
@@ -480,6 +484,7 @@ export const createServices = (args: ServiceArgs) => {
         image: args.images.backend,
         essential: true,
         environment: [
+          ...email.environment,
           { name: 'NODE_ENV', value: 'production' },
           { name: 'PORT', value: '8000' },
           { name: 'AUTH_MODE', value: 'oidc' },
@@ -514,6 +519,7 @@ export const createServices = (args: ServiceArgs) => {
           { name: 'TRUSTED_PROXY', value: args.behindCloudflareProxy ? 'cloudflare' : '1' },
         ],
         secrets: [
+          ...email.secrets,
           { name: 'DATABASE_URL', valueFrom: backendSecrets.databaseUrl.arn },
           { name: 'OIDC_CLIENT_SECRET', valueFrom: backendSecrets.oidcClientSecret.arn },
           { name: 'BETTER_AUTH_SECRET', valueFrom: backendSecrets.betterAuthSecret.arn },
@@ -529,7 +535,7 @@ export const createServices = (args: ServiceArgs) => {
         ...(repositoryCredentials && { repositoryCredentials }),
       },
     ]),
-  })
+  }, { dependsOn: email.dependencies })
 
   const beService = new aws.ecs.Service(`${name}-be-svc`, {
     cluster: cluster.arn,

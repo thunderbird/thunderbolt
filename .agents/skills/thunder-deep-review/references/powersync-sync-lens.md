@@ -29,7 +29,7 @@ Read these before reviewing; they change, so never review from memory:
 
 **3. Sync-rule and schema parity**
 - The table and its columns agree across the backend Drizzle schema, the frontend Drizzle schema (PR 2), `shared/powersync-tables.ts`, and all three sync-rule configs (`powersync-service/config/config.yaml`, `deploy/config/powersync-config.yaml`, `deploy/k8s/templates/configmaps.yaml`). Flag any column or table present in one and missing in another.
-- Note for the reviewer: PR 2 merges only after PR 1's backend deploy and its `deploy-powersync` job in `images-publish.yml` have rolled the new `thunderbolt-powersync` image onto the Render `powersync` service. A skipped job deploys nothing.
+- Note for the reviewer: after PR 1 merges, the new `ghcr.io/thunderbird/thunderbolt/thunderbolt-powersync` image must be rolled onto the Render `powersync` service before PR 2 merges. CI rebuilds the image; the Render service does not auto-deploy.
 
 **4. Encryption**
 - A table carrying sensitive data has encrypted-column configuration matching `docs/internals/architecture/e2e-encryption.md`. Flag plaintext storage of data that should be end-to-end encrypted.

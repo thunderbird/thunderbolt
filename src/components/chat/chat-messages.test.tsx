@@ -268,7 +268,8 @@ describe('ChatMessages', () => {
         'https://images.example/before.png',
       ])
       expect(container.textContent).toContain('Follow-up image')
-      expect(container.textContent).toContain('private.example')
+      // The follow-up's preview resolves the earlier private source by URL, still without its image.
+      expect(container.textContent).toContain('Private source')
       expect(container.textContent).toContain('New source')
       // The new turn's [1] still refers to its own source, and a portal inherits the policy.
       fireEvent.click(getByRole('button', { name: 'View source: Public site' }))

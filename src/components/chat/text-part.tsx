@@ -4,7 +4,7 @@
 
 import { type ContentPart, type ContentPartsState, parseContentPartsIncremental } from '@/ai/widget-parser'
 import { useSmoothText } from '@/hooks/use-smooth-text'
-import { sourceToCitation } from '@/lib/source-utils'
+import { findSourceByIndex, sourceToCitation } from '@/lib/source-utils'
 import {
   buildDocumentSideviewId,
   type CitationMap,
@@ -79,8 +79,8 @@ export const deduplicateLinkPreviews = (parts: ContentPart[]): ContentPart[] => 
 
 /**
  * Detects `[N]` citation patterns in text and builds a CitationMap from SourceMetadata[].
- * Each `[N]` where `N-1` is a valid index into `sources` becomes a `{{CITE:mapKey}}` placeholder.
- * Out-of-range references are left as-is in the text.
+ * Each `[N]` matching a source's `index` becomes a `{{CITE:mapKey}}` placeholder.
+ * Unknown references are left as-is in the text.
  * @param startKey - Initial key value for the citation map (default 0). Use to avoid key collisions when processing multiple segments.
  * @returns fullText with placeholders, and the corresponding CitationMap
  */
@@ -95,8 +95,7 @@ export const buildSourceCitationPlaceholders = (
   const fullText = text.replace(groupedCitationRegex, (match) => {
     const validSources: CitationSource[] = []
     for (const m of match.matchAll(individualCitationRegex)) {
-      const n = parseInt(m[1], 10)
-      const source = sources[n - 1]
+      const source = findSourceByIndex(sources, parseInt(m[1], 10))
       if (source) {
         validSources.push(sourceToCitation(source, validSources.length === 0))
       }

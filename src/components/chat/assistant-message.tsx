@@ -26,6 +26,9 @@ import { TextPart } from './text-part'
 
 type AssistantMessageProps = {
   message: ThunderboltUIMessage
+  /** Sources this message's `[N]` citations may refer to — its own plus earlier turns'
+   *  (see `useThreadSources`). Defaults to the message's own `metadata.sources`. */
+  sources?: SourceMetadata[]
   isStreaming: boolean
   isLastMessage?: boolean
   isLastAssistantMessage?: boolean
@@ -124,6 +127,7 @@ export const mountMessageParts = (
 export const AssistantMessage = memo(
   ({
     message,
+    sources: threadSources,
     isStreaming,
     isLastMessage = false,
     isLastAssistantMessage = false,
@@ -142,7 +146,7 @@ export const AssistantMessage = memo(
     const metadata = message.metadata
     const reasoningTime = metadata?.reasoningTime ?? emptyReasoningTime
     const reasoningStartTimes = metadata?.reasoningStartTimes
-    const sources = metadata?.sources
+    const sources = threadSources ?? metadata?.sources
     const haystackReferences = metadata?.haystackReferences
     const mcpTools = metadata?.mcpTools
 
@@ -235,6 +239,7 @@ export const AssistantMessage = memo(
       prevProps.message.id === nextProps.message.id &&
       prevProps.message.parts === nextProps.message.parts &&
       prevProps.message.metadata === nextProps.message.metadata &&
+      prevProps.sources === nextProps.sources &&
       prevProps.isStreaming === nextProps.isStreaming &&
       prevProps.isLastMessage === nextProps.isLastMessage &&
       prevProps.isLastAssistantMessage === nextProps.isLastAssistantMessage &&

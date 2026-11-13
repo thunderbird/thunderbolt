@@ -62,6 +62,30 @@ describe('buildSourceCitationPlaceholders', () => {
     expect(citations.size).toBe(1)
   })
 
+  test('resolves [N] by source index rather than array position', () => {
+    // A follow-up turn's pool: earlier turns' sources first, this turn's (numbered after them) last.
+    const pool = [makeSource(1), makeSource(2), makeSource(3), makeSource(4, 'This turn')]
+    const { fullText, citations } = buildSourceCitationPlaceholders('Old [2] and new [4].', pool)
+
+    expect(fullText).toBe('Old {{CITE:0}} and new {{CITE:1}}.')
+    expect(citations.get(0)?.[0].title).toBe('Source 2')
+    expect(citations.get(1)?.[0].title).toBe('This turn')
+  })
+
+  test('resolves [N] in a pool that only holds later numbers', () => {
+    const { fullText, citations } = buildSourceCitationPlaceholders('See [5].', [makeSource(4), makeSource(5)])
+
+    expect(fullText).toBe('See {{CITE:0}}.')
+    expect(citations.get(0)?.[0].id).toBe('5')
+  })
+
+  test('prefers the latest entry when two turns reused a number', () => {
+    const pool = [makeSource(1, 'Older'), makeSource(1, 'Newer')]
+    const { citations } = buildSourceCitationPlaceholders('See [1].', pool)
+
+    expect(citations.get(0)?.[0].title).toBe('Newer')
+  })
+
   test('leaves [0] as-is (sources are 1-based)', () => {
     const { fullText, citations } = buildSourceCitationPlaceholders('See [0].', sources)
 

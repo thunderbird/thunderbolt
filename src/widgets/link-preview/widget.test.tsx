@@ -114,18 +114,15 @@ describe('LinkPreviewWidget', () => {
       expect(getByText('A great article about testing')).toBeTruthy()
     })
 
-    it('resolves the recorded source number', () => {
-      const sources = [
-        makeSource({ index: 1, title: 'First' }),
-        makeSource({ index: 2, title: 'Second' }),
-        makeSource({ index: 3, title: 'Third' }),
-      ]
+    it('looks the source up by its index, not its array position', () => {
+      // A follow-up turn's pool: numbering continued from an earlier turn, so position ≠ index.
+      const sources = [makeSource({ index: 4, title: 'Fourth' }), makeSource({ index: 5, title: 'Fifth' })]
 
       const { getByText } = renderWithProviders(
-        <LinkPreviewWidget url="https://example.com" source="3" sourceMetadata={sources} messageId="msg-1" />,
+        <LinkPreviewWidget url="https://example.com" source="5" sourceMetadata={sources} messageId="msg-1" />,
       )
 
-      expect(getByText('Third')).toBeTruthy()
+      expect(getByText('Fifth')).toBeTruthy()
     })
 
     it('loads preview image directly from upstream (no proxy in the path)', () => {

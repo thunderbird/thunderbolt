@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { docxMime, pptxMime } from '@/files/transformers'
+import { docxMime, pptxMime, xlsmMime, xlsxMime } from '@/files/transformers'
 import { putAttachments, type StoredFile } from '@/lib/file-blob-storage'
 import { safeFileName } from '@/lib/safe-file-name'
 import { parseToolOutput } from '@/lib/tool-output'
@@ -11,7 +11,7 @@ import { type DynamicToolUIPart, getToolName, isToolOrDynamicToolUIPart, type To
 import { z } from 'zod'
 import { officeScriptToolName, sandboxLimits } from './constants'
 import { runInSandboxWorker } from './run-in-worker'
-import type { SandboxJob, SandboxResult, SavedFile } from './sandbox'
+import { type FileFormulaError, maxFormulaErrors, type SandboxJob, type SandboxResult, type SavedFile } from './sandbox'
 import { type ReadWorkspaceFile, resolveInputs, type ThreadFile } from './script-inputs'
 
 /**
@@ -22,7 +22,7 @@ import { type ReadWorkspaceFile, resolveInputs, type ThreadFile } from './script
 export type CreatedFile = { id: string; filename: string; mimeType: string; edited: boolean; savedAs?: string }
 
 export type OfficeScriptOutput =
-  | { ok: true; files: CreatedFile[]; logs: string }
+  | { ok: true; files: CreatedFile[]; logs: string; formulaErrors?: FileFormulaError[] }
   | { ok: false; error: string; logs: string }
 
 /** A `run_office_script` tool call, whether emitted as a typed `tool-<name>` or a `dynamic-tool` part. */
@@ -51,6 +51,8 @@ export const officeScriptFiles = (part: OfficeScriptPart): CreatedFile[] | undef
 
 const fileTypes = [
   { extension: 'docx', mimeType: docxMime },
+  { extension: 'xlsx', mimeType: xlsxMime },
+  { extension: 'xlsm', mimeType: xlsmMime },
   { extension: 'pptx', mimeType: pptxMime },
 ]
 
@@ -86,7 +88,7 @@ const toDeliverableFiles = (
     if (!type || /[/\\]/.test(file.filename)) {
       return {
         ok: false,
-        error: `"${file.filename}" is not a valid file name. Use a name without folders that ends in .docx or .pptx.`,
+        error: `"${file.filename}" is not a valid file name. Use a name without folders that ends in .docx, .xlsx, .xlsm or .pptx.`,
       }
     }
     const filename = `${stem}.${extension}`
@@ -131,17 +133,20 @@ export type OfficeScriptToolDeps = {
   readWorkspaceFile?: ReadWorkspaceFile
 }
 
+const mib = (bytes: number) => bytes / 1024 / 1024
+
 const describeTool = (hasWorkspace: boolean) =>
   [
-    'Create or edit a Word document (.docx) or a PowerPoint presentation (.pptx) that the user can download.',
-    'Write a short JavaScript script. It runs in a sandbox where these libraries are already loaded: `docx` (global `docx`), `pptxgenjs` (global `PptxGenJS`), `fflate` (global `fflate`) and `@xmldom/xmldom` (global `xmldom`).',
-    'Pass each finished file to `saveFile(filename, bytes)`. The name must end in .docx or .pptx. Get the bytes from `await docx.Packer.toArrayBuffer(doc)` or `await pres.write({ outputType: "uint8array" })`; `Packer.toBuffer`, `Packer.toBlob` and `pres.writeFile` do not work here.',
+    'Create or edit a Word document (.docx), an Excel workbook (.xlsx, or .xlsm when it has macros) or a PowerPoint presentation (.pptx) that the user can download.',
+    'Write a short JavaScript script. It runs in a sandbox where these libraries are already loaded: `docx` (global `docx`), `pptxgenjs` (global `PptxGenJS`), `excelize-wasm` (global `excelize`), `fflate` (global `fflate`) and `@xmldom/xmldom` (global `xmldom`).',
+    'Pass each finished file to `saveFile(filename, bytes)`. The name must end in .docx, .xlsx, .xlsm or .pptx. Get the bytes from `await docx.Packer.toArrayBuffer(doc)`, `await pres.write({ outputType: "uint8array" })` or `f.WriteToBuffer().buffer`; `Packer.toBuffer`, `Packer.toBlob` and `pres.writeFile` do not work here.',
+    `For a workbook, start with \`const f = excelize.NewFile()\` or \`const f = excelize.OpenReader(readFile(name))\`, then call its methods, such as \`f.SetCellValue("Sheet1", "B2", 1200)\`, \`f.SetCellFormula("Sheet1", "B5", "SUM(B2:B4)")\`, \`f.SetCellStyle("Sheet1", "B2", "B5", f.NewStyle({ NumFmt: 4 }).style)\` and \`f.AddChart(...)\`. They are synchronous and return what excelize-wasm returns; a call that fails throws an Error with the reason. Opening a workbook keeps what the script does not change, including styles, charts, images, pivot tables and macros. When the workbook is saved, every formula is computed and its result stored, so the file shows numbers even where nothing recalculates. A formula that could not be computed is listed in \`formulaErrors\` of the result with its file, sheet and cell (at most ${maxFormulaErrors}), and the file is saved anyway. \`WriteToBuffer\` takes no options, so a workbook cannot get a password. Save a workbook that has macros as .xlsm, and one without as .xlsx. excelize opens workbooks of up to ${mib(sandboxLimits.maxWorkbookBytes)} MiB.`,
     `To read a file, list it in \`inputs\` and call \`readFile(name)\`, which returns its bytes as a Uint8Array. The files you can read are the ones attached in this chat and the ones this tool made earlier in it. Name a file by its file name to get the newest file with that name, or by its id to get that exact file, such as an older version.${hasWorkspace ? ' A name that matches none of them is read from your workspace, as a path relative to it, so a script can use data you prepared there.' : ''}`,
     'To edit a file, read it, change it, and save the result under exactly the same name, without a suffix such as "_edited" or "_v2": the user gets an edited copy, the original stays as it was, and the next edit finds the newest version by that name. `await docx.patchDocument({ outputType: "uint8array", data: readFile(name), patches })` replaces `{{key}}` placeholders and keeps everything else, including comments and tracked changes. For changes docx and PptxGenJS cannot make, such as adding a tracked change or copying a slide, unzip the file with `fflate.unzipSync`, edit its XML parts with `xmldom.DOMParser` and `xmldom.XMLSerializer` (`fflate.strFromU8` and `fflate.strToU8` convert the bytes), and zip it again with `fflate.zipSync`. Only the sync fflate functions work here.',
     'Every saved file is checked before it is stored. If a zip does not open or an XML part does not parse, nothing is saved, and the error names the file and, for XML, the part.',
     'The sandbox has no network, no DOM, no fetch and no imports, so write all new content into the script.',
     'Each saved file appears in the chat for the user to download, so do not paste its contents into your reply.',
-    `Limits per run: ${sandboxLimits.timeoutMs / 1000} seconds of script time (loading the libraries does not count), ${sandboxLimits.memoryBytes / 1024 / 1024} MiB of memory, ${sandboxLimits.textOutputBytes / 1024 / 1024} MiB of console output and ${sandboxLimits.maxFiles} files. If the result is { ok: false }, read the error: fix the script when the error is about it, then call the tool again.`,
+    `Limits per run: ${sandboxLimits.timeoutMs / 1000} seconds of script time (loading the libraries does not count), ${mib(sandboxLimits.memoryBytes)} MiB of memory, ${mib(sandboxLimits.workbookMemoryBytes)} MiB of memory for excelize, ${mib(sandboxLimits.textOutputBytes)} MiB of console output and ${sandboxLimits.maxFiles} files. If the result is { ok: false }, read the error: fix the script when the error is about it, then call the tool again.`,
   ].join(' ')
 
 /**
@@ -203,7 +208,7 @@ export const createOfficeScriptTool = ({
         edited: inputExtensions.has(safeFileName(filename).extension),
         savedAs,
       }))
-      return { ok: true, files, logs: result.logs }
+      return { ok: true, files, logs: result.logs, formulaErrors: result.formulaErrors }
     },
   }
 }

@@ -63,6 +63,7 @@ Two skills run only when you name them, because they act without supervision or 
 | Skill | What it does | Needs |
 | --- | --- | --- |
 | `thunder-update-model` | Replaces a built-in model in the catalog end to end and hands back a branch ready for `thunderpush`. | gh, git |
+| `thunder-demo-videos` | Records real desktop, mobile and CLI demos of the app, cuts them to pace and exports them for the website (`web/demo-edits.json`, `web/public`). | macOS window capture, Python, bun |
 
 ## Cleanup ledger
 

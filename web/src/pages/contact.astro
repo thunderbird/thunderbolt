@@ -4,6 +4,8 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 import MarketingLayout from '../layouts/MarketingLayout.astro';
 import { ContactPage } from '../components/marketing/sections/contact-page';
+import { getReleaseSnapshot } from '../server/release-snapshot';
+const { release } = await getReleaseSnapshot();
 ---
 
 <MarketingLayout
@@ -11,5 +13,5 @@ import { ContactPage } from '../components/marketing/sections/contact-page';
 	description="Get in touch with the Thunderbolt team for enterprise inquiries and partnerships."
 	canonical="https://thunderbolt.io/contact"
 >
-	<ContactPage client:load />
+	<ContactPage release={release} client:load />
 </MarketingLayout>

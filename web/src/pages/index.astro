@@ -2,10 +2,16 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
+import { getReleaseSnapshot } from '../server/release-snapshot';
 import MarketingLayout from '../layouts/MarketingLayout.astro';
-import { EnterprisePage } from '../components/marketing/sections/enterprise-page';
+import { SparkPage } from '../components/marketing/spark';
+const { release } = await getReleaseSnapshot();
 ---
 
-<MarketingLayout canonical="https://thunderbolt.io/">
-	<EnterprisePage client:load />
+<MarketingLayout
+  title="Thunderbolt — AI that feels like yours"
+  description="An open-source AI workspace for chat, research, code, and getting things done."
+  canonical="https://thunderbolt.io/"
+>
+  <SparkPage release={release} client:load />
 </MarketingLayout>

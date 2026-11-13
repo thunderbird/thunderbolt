@@ -1,0 +1,67 @@
+{
+  "assets": [
+    {
+      "name": "SHA256SUMS",
+      "state": "uploaded"
+    },
+    {
+      "name": "Thunderbolt-0.1.165-1.x86_64.rpm",
+      "state": "uploaded"
+    },
+    {
+      "name": "thunderbolt-cli-darwin-arm64",
+      "state": "uploaded"
+    },
+    {
+      "name": "thunderbolt-cli-linux-arm64",
+      "state": "uploaded"
+    },
+    {
+      "name": "thunderbolt-cli-linux-x64",
+      "state": "uploaded"
+    },
+    {
+      "name": "Thunderbolt.app.tar.gz",
+      "state": "uploaded"
+    },
+    {
+      "name": "Thunderbolt.app.tar.gz.sig",
+      "state": "uploaded"
+    },
+    {
+      "name": "Thunderbolt_0.1.165_aarch64.dmg",
+      "state": "uploaded"
+    },
+    {
+      "name": "Thunderbolt_0.1.165_amd64.AppImage",
+      "state": "uploaded"
+    },
+    {
+      "name": "Thunderbolt_0.1.165_amd64.deb",
+      "state": "uploaded"
+    },
+    {
+      "name": "Thunderbolt_0.1.165_arm64-setup.exe",
+      "state": "uploaded"
+    },
+    {
+      "name": "Thunderbolt_0.1.165_arm64_en-US.msi",
+      "state": "uploaded"
+    },
+    {
+      "name": "Thunderbolt_0.1.165_x64-setup.exe",
+      "state": "uploaded"
+    },
+    {
+      "name": "Thunderbolt_0.1.165_x64.dmg",
+      "state": "uploaded"
+    },
+    {
+      "name": "Thunderbolt_0.1.165_x64_en-US.msi",
+      "state": "uploaded"
+    }
+  ],
+  "draft": false,
+  "prerelease": false,
+  "tag_name": "v0.1.165"
+}

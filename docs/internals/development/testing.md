@@ -17,6 +17,12 @@ bun run test:agent-core:browser
 # Run frontend tests in watch mode (src/ only)
 bun run test:watch
 
+# Run website tests and type checks (separate workspace)
+(cd web && bun run test && bun run typecheck)
+
+# Run demo recording/export tests (Python dependencies and FFmpeg required)
+DEMO_PYTHON=/path/to/video-env/bin/python bun run test:demo-videos
+
 # Run backend tests
 bun run test:backend
 
@@ -34,6 +40,18 @@ helm unittest deploy/k8s
 **Never run `bun test` from the project root.** [`bunfig.toml`](../../../bunfig.toml)'s `pathIgnorePatterns = ["backend/**", "e2e/**"]` keeps root discovery off the backend suite and the Playwright specs, but is a silent no-op on Bun below 1.3.11, and a root run has no per-test timeout, no `--randomize`, and walks `shared/agent-core/` (own runner).
 
 `bun run test` is `bun test --cwd=src` plus explicit paths: `shared/*.test.ts`, `shared/defaults/`, `shared/i18n/`, `scripts/create-release.test.ts`, `scripts/release-workflows.test.ts`, `scripts/preview-workflows.test.ts`, `scripts/chrome.test.ts`, `scripts/install-chrome.test.ts`, `scripts/check-e2e-specs-collected.test.ts`, `scripts/notify-on-failure.test.ts`, `scripts/sanitize-nightly-artifacts.test.ts`, `scripts/copy-powersync-assets.test.ts`, and selected `.github/scripts/*.test.*`. They must be explicit: `shared/` is outside `--cwd=src`, and Bun skips hidden dirs. `bun test --cwd=e2e db-diagnostic.test.ts fake-provider.test.ts helpers.test.ts` runs as a separate step, because root `bunfig.toml` excludes `e2e/**` from discovery and Playwright collects only `*.spec.ts`.
+
+### AWS deployment routing
+
+`cd deploy/pulumi && bun run test && bun run typecheck` checks the Pulumi stack with mocked cloud resources; it does not deploy anything or need AWS credentials. CI runs this suite when `deploy/pulumi/**` changes. The ALB test verifies marketing stays separate from API hosts, including the retired contact path, and checks path-based fallback. The root suite's release-workflow checks ensure preview marketing images do not send inquiries to the AI backend.
+
+### Website and demo tooling
+
+The public site has its own dependencies, DOM test setup, and commands in `web/`:
+`bun run test`, `bun run test:coverage`, `bun run typecheck`, and `bun run build`.
+These tests are intentionally outside the app's root suite. `web.yml` runs them for website changes.
+The `demo-videos.yml` workflow separately installs FFmpeg and the skill's Python requirements,
+then runs `bun run test:demo-videos`; see the [editing guide](../../../.agents/skills/thunder-demo-videos/references/editing.md#helper-checks).
 
 ### Browser security updates
 
@@ -288,20 +306,21 @@ For a German browser, use `deTest` from `e2e/test.ts` instead of `test.use({ loc
 
 `oidc` project:
 
-| Spec                                                                                    | What it verifies                                                                                                                                      |
-| --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`oidc-login.spec.ts`](../../../e2e/oidc-login.spec.ts)                                 | Anonymous user completes the full OIDC redirect loop and lands in the chat UI, with no critical JS errors                                             |
-| [`oidc-logout.spec.ts`](../../../e2e/oidc-logout.spec.ts)                               | Sign-out lands on the signed-out page, can sign back in, and does not auto-reauthenticate                                                             |
-| [`oidc-session.spec.ts`](../../../e2e/oidc-session.spec.ts)                             | Chat UI and sidebar navigation stay functional and signed in after login                                                                              |
-| [`oidc-language-picker.spec.ts`](../../../e2e/oidc-language-picker.spec.ts)             | Picking a language flips `X-App-Language` without a reload, survives a reload, resets to the negotiated language, and clears on a data-wipe sign-out  |
-| [`oidc-localization.spec.ts`](../../../e2e/oidc-localization.spec.ts)                   | Unit defaults seed from the browser region (never falling back to US), the date-format row is retired, and unit labels re-render on a language switch |
-| [`acp-built-in.spec.ts`](../../../e2e/acp-built-in.spec.ts)                             | The built-in ACP adapter exposes the prompt input without errors                                                                                      |
-| [`acp-add-custom-agent.spec.ts`](../../../e2e/acp-add-custom-agent.spec.ts)             | Submitting the add-agent form persists a new row to the list                                                                                          |
-| [`acp-system-agent-discovery.spec.ts`](../../../e2e/acp-system-agent-discovery.spec.ts) | A discovered system agent appears in the System section and is not removable                                                                          |
-| [`proxy-fetch.spec.ts`](../../../e2e/proxy-fetch.spec.ts)                               | A GET through `/v1/proxy` carries `X-Proxy-Target-Url` and unwraps passthrough response headers                                                       |
-| [`proxy-passthrough-headers.spec.ts`](../../../e2e/proxy-passthrough-headers.spec.ts)   | Caller headers are wrapped as passthrough headers and the body is forwarded verbatim                                                                  |
-| [`proxy-websocket.spec.ts`](../../../e2e/proxy-websocket.spec.ts)                       | `createProxyWebSocket` carries the target URL as `tbproxy.target.<base64url>` on `/proxy/ws`                                                          |
-| [`proxy-mcp.spec.ts`](../../../e2e/proxy-mcp.spec.ts)                                   | MCP traffic routes through `/v1/proxy` with target URL and passthrough headers intact                                                                 |
+| Spec                                                                                        | What it verifies                                                                                                                                      |
+| ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`oidc-login.spec.ts`](../../../e2e/oidc-login.spec.ts)                                     | Anonymous user completes the full OIDC redirect loop and lands in the chat UI, with no critical JS errors                                             |
+| [`oidc-logout.spec.ts`](../../../e2e/oidc-logout.spec.ts)                                   | Sign-out lands on the signed-out page, can sign back in, and does not auto-reauthenticate                                                             |
+| [`oidc-session.spec.ts`](../../../e2e/oidc-session.spec.ts)                                 | Chat UI and sidebar navigation stay functional and signed in after login                                                                              |
+| [`oidc-language-picker.spec.ts`](../../../e2e/oidc-language-picker.spec.ts)                 | Picking a language flips `X-App-Language` without a reload, survives a reload, resets to the negotiated language, and clears on a data-wipe sign-out  |
+| [`oidc-localization.spec.ts`](../../../e2e/oidc-localization.spec.ts)                       | Unit defaults seed from the browser region (never falling back to US), the date-format row is retired, and unit labels re-render on a language switch |
+| [`acp-built-in.spec.ts`](../../../e2e/acp-built-in.spec.ts)                                 | The built-in ACP adapter exposes the prompt input without errors                                                                                      |
+| [`acp-add-custom-agent.spec.ts`](../../../e2e/acp-add-custom-agent.spec.ts)                 | Submitting the add-agent form persists a new row to the list                                                                                          |
+| [`acp-system-agent-discovery.spec.ts`](../../../e2e/acp-system-agent-discovery.spec.ts)     | A discovered system agent appears in the System section and is not removable                                                                          |
+| [`proxy-fetch.spec.ts`](../../../e2e/proxy-fetch.spec.ts)                                   | A GET through `/v1/proxy` carries `X-Proxy-Target-Url` and unwraps passthrough response headers                                                       |
+| [`proxy-credential-destination.spec.ts`](../../../e2e/proxy-credential-destination.spec.ts) | A saved MCP credential or model key is only sent to the URL it was saved for; an edited, imported or left-behind URL gets no credential               |
+| [`proxy-passthrough-headers.spec.ts`](../../../e2e/proxy-passthrough-headers.spec.ts)       | Caller headers are wrapped as passthrough headers and the body is forwarded verbatim                                                                  |
+| [`proxy-websocket.spec.ts`](../../../e2e/proxy-websocket.spec.ts)                           | `createProxyWebSocket` carries the target URL as `tbproxy.target.<base64url>` on `/proxy/ws`                                                          |
+| [`proxy-mcp.spec.ts`](../../../e2e/proxy-mcp.spec.ts)                                       | MCP traffic routes through `/v1/proxy` with target URL and passthrough headers intact                                                                 |
 
 `saml` project:
 
@@ -433,11 +452,20 @@ Then run `helm unittest deploy/k8s`.
 
 ## Frontend HTTP serving
 
-The `Frontend Serving` workflow runs the deployed nginx configuration in an isolated container. It checks missing-chunk recovery, immutable asset caching, app-shell revalidation, cross-origin isolation headers, and source-map blocking. Run it locally with Docker available:
+The `Frontend Serving` workflow runs the deployed nginx configurations in isolated containers:
+
+- `nginx.test.ts` covers the app: missing-chunk recovery, immutable asset caching, app-shell revalidation, cross-origin isolation headers, and source-map blocking. It is also part of `bun run test`.
+- `marketing-nginx.test.ts` covers the website's release endpoint against a stand-in for GitHub: starting without DNS, one shared lookup, what reaches GitHub and what comes back, background refresh, and each way a lookup can fail. It takes about half a minute, so it runs only here.
+
+Run both locally with Docker available:
 
 ```sh
 docker pull nginxinc/nginx-unprivileged:alpine
-bun test --cwd=deploy/config nginx.test.ts --timeout 5000
+bun test --cwd=deploy/config --timeout 5000
 ```
 
-Use this working directory so the frontend's Happy DOM preload does not replace the HTTP client. The test creates and removes its own container and temporary files; it does not need the backend or the real frontend build.
+Use this working directory so the frontend's Happy DOM preload does not replace the HTTP client. The tests create and remove their own containers and temporary files; they do not need the backend or a real build.
+
+## Marketing contact Worker
+
+From `web/contact-worker`, run `bun run test`, `bun run check`, and `bun run build`. The build is a local Wrangler dry run; it does not deploy. Tests mock Resend and the rate-limit bindings, covering input limits, origin checks, throttling, provider failures, and acknowledgements without sending email. The Contact Worker workflow runs these checks independently of Astro. See [deployment and runtime verification](https://github.com/thunderbird/thunderbolt/tree/main/web/contact-worker).

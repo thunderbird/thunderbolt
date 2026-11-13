@@ -5799,6 +5799,18 @@ msgstr "The provider rejected the model request (HTTP {status}). Check model acc
 msgid "The request was denied. You can safely close this page."
 msgstr "The request was denied. You can safely close this page."
 
+#: src/settings/models/edit-model-form.tsx
+msgid "The saved API key is only sent to the URL it was saved for. Enter it again to use this URL."
+msgstr "The saved API key is only sent to the URL it was saved for. Enter it again to use this URL."
+
+#: src/settings/connections/mcp-server-form.tsx
+msgid "The saved authorization only works with the previous URL. Authorize again after saving."
+msgstr "The saved authorization only works with the previous URL. Authorize again after saving."
+
+#: src/settings/connections/mcp-server-form.tsx
+msgid "The saved credential is only sent to the URL it was saved for. Enter it again to use this URL."
+msgstr "The saved credential is only sent to the URL it was saved for. Enter it again to use this URL."
+
 #: src/integrations/standalone-search/content.ts
 #~ msgid "The search provider could not retrieve this page."
 #~ msgstr "The search provider could not retrieve this page."

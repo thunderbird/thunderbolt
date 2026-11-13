@@ -3,6 +3,8 @@
 The public web surfaces for Thunderbolt, unified as a single Astro project:
 
 - **Landing** — `/` (`src/pages/index.astro`), the marketing home
+- **Privacy** — `/privacy`, privacy choices and confidential inference
+- **Enterprise** — `/enterprise`, the organization and self-hosting overview
 - **Contact** — `/contact` (a React island wrapped in an Astro page). `/announcing-thunderbolt` is a redirect to `/blog/mozilla-introduces-thunderbolt`, configured in `redirects` in `astro.config.mjs`
 - **Blog** — `/blog/*` (`src/content/blog/`)
 - **Docs** — `/docs/*` (Starlight). The content is not in this directory: `src/loaders/repo-docs-loader.ts` walks the repo-root `/docs/` tree so GitHub and the docs site share one source of truth
@@ -11,8 +13,11 @@ The public web surfaces for Thunderbolt, unified as a single Astro project:
 
 - Astro 7 (with `@astrojs/react` for marketing islands, `@astrojs/starlight` for docs)
 - Tailwind 4 via `@tailwindcss/vite`
-- Docs styling is hand-rolled: `src/styles/starlight.css` plus `Head`, `Header` and `ThemeSelect` overrides in `src/components/starlight/`, wired up in `astro.config.mjs`
-- Fontsource for self-hosted fonts (Mona Sans, Inter, Space Mono, Mozilla Text), imported in `src/styles/tokens.css` and `src/styles/marketing.css`
+- Docs styling is hand-rolled: `src/styles/starlight.css` plus `Head`, `Header`, `PageTitle`, `PageSidebar`, `MobileMenuToggle`, and `ThemeSelect` overrides in `src/components/starlight/`, wired up in `astro.config.mjs`
+- Blog and docs share Spark’s palette (`src/styles/spark-palette.css`), editorial styles (`src/styles/spark-editorial.css`), and navigation (`SparkHeader` and `spark-chrome.css`). Docs retain Starlight search and sidebar navigation. Blog posts retain their canonical Markdown content and use `BlogPost.astro` for the reading layout.
+- Spark, blog, docs, enterprise, and contact share system-based light/dark mode through `src/components/site-theme/`. `ThemeProvider.astro` applies the OS palette before first paint and follows OS changes. Only development builds show a theme toggle and honor the saved `starlight-theme` preview preference; production ignores saved overrides. New themed layouts must include this provider, and colors belong in `spark-palette.css`.
+- Spark’s product demos use `ProductDemo`, backed by `product-demos.ts`. H.264 videos live in `public/videos/marketing/`; WebP posters in `public/images/marketing/screenshots/`. Only the selected client and theme loads a video. Playback pauses outside the viewport or in a background tab, respects reduced motion, and offers a keyboard-accessible play/pause button. Posters use `<picture>` for production OS themes and CSS for development overrides.
+- Fontsource for self-hosted fonts (Lora for marketing and blog headings, Mozilla Headline for the wordmark, Inter for body text and docs), imported in `src/styles/tokens.css`. The shared tokens mirror the app’s warm palette and amber-to-raspberry brand gradient
 
 ## Commands
 
@@ -21,15 +26,87 @@ Run from this directory:
 ```bash
 bun install
 bun run dev          # http://localhost:4321
+bun run test         # isolated website tests
+bun run test:coverage
+bun run typecheck    # Astro types + TypeScript
 bun run build        # static output in ./dist
 bun run preview      # serve the build locally
 ```
 
+## Spark design
+
+Spark is the production homepage at `/`, with shared components in `src/components/marketing/spark/`. The old `/designs/spark` preview redirects to `/`; the alternate concepts and font explorer are excluded from the production site.
+
+The shared header shows Privacy, Enterprise, and Docs directly when space permits. Links progressively move into More on narrower screens; Blog and Contact always live there. Add destinations to `primaryPages` or `morePages` in `spark-header.tsx`, with paired visibility rules in `spark-chrome.css` for any new primary link. Download and community destinations live in `src/data/website-product.ts`; public mobile store URLs are still pending.
+
 ## Deploys
 
-The site ships as a container image, not a hosted static-site service. `deploy/docker/marketing.Dockerfile` builds it and **must run with the repo root as its build context** — the docs loader reads `../docs`, so the Dockerfile copies both `web/` and the root `docs/` into the build. `.github/workflows/images-publish.yml` publishes the result as `ghcr.io/thunderbird/thunderbolt/thunderbolt-marketing`; the final stage is nginx-unprivileged listening on 8080 with `deploy/config/marketing-nginx.conf`, deployed by `deploy/k8s/templates/marketing.yaml`. All three surfaces (landing, blog, docs) are served from one origin at `thunderbolt.io` under subpaths.
+The production marketing site is a Render Static Site. Set build-time variables such as `PUBLIC_CONTACT_ENDPOINT` on that service and rebuild to apply changes. Its contact delivery runs separately in the Cloudflare Worker described below.
+
+A container image is also available for Kubernetes and preview deployments. `deploy/docker/marketing.Dockerfile` builds it and **must run with the repo root as its build context** — the docs loader reads `../docs`, so the Dockerfile copies both `web/` and the root `docs/` into the build. `.github/workflows/images-publish.yml` publishes the result as `ghcr.io/thunderbird/thunderbolt/thunderbolt-marketing`; the final stage is nginx-unprivileged listening on 8080 with `deploy/config/marketing-nginx.conf.template`, deployed by `deploy/k8s/templates/marketing.yaml`. Container builds can set `PUBLIC_CONTACT_ENDPOINT` as a Docker build argument. All surfaces (landing, enterprise, contact, blog, docs) share one origin under subpaths.
 
 ## Content
 
 - **New blog post:** add a markdown file under `src/content/blog/`. Frontmatter requires `title`, `description`, `date`, `author`; `tags`, `image`, `draft` are optional.
 - **New doc:** add a markdown file under the repo-root `docs/` directory, then register its slug in `astro.config.mjs` under `starlight({ sidebar })` — a doc with no sidebar entry still builds, but nothing links to it. Slugs are `docs/<path-without-.md>`, and a `README.md` or `index.md` collapses to its directory's slug (`docs/using/README.md` → `docs/using`); see `computeSlug` in `src/loaders/repo-docs-loader.ts`. `docs/internals/` is the exception: the loader skips that whole tree (`unpublishedDirs`), so a page added there is contributor documentation and never reaches the site.
+
+## Demo capture provenance
+
+The selected desktop recordings are the Night School poster conversation (light) and the curious-niece conversation (dark), recorded continuously from the native macOS app with [Kottke’s Webb photo story](https://kottke.org/24/02/spectacular-jwst-photos-adorn-new-usps-stamps) opening in the side browser. Source imagery includes NASA/ESA/CSA/STScI photography reproduced on USPS stamps. The mobile pair is the rainy-day conversation (light) and neighborhood seed-sharing app (dark), recorded from the real responsive web app in a phone viewport, not a native iOS/Android build. Their genuine local Qwen replies predate the takes; the dark take ends with an unsent follow-up. The light reply retains its generated `[N]` marker.
+
+The terminal demo is a 30 fps replay of an actual Thunderbolt CLI PTY session building and running a focus-planning tool, with idle waits shortened. Its gallery headings, border, and footer are cropped out; the website supplies the terminal chrome. All selected videos are silent and retain recorded frame timing within each kept segment. Desktop edits cut long waits between the response and opening the side browser and remove the small native recording control at the top left using localized pixel interpolation. The full desktop frame is preserved; a proportional corner mask matches the native window without cropping sidebar spacing or controls. Mobile edits shorten repeated reading holds. No prompts, replies, commands, or results are rewritten. Full review originals remain outside the repository.
+
+## Refreshing product videos
+
+Use [$thunder-demo-videos](../.agents/skills/thunder-demo-videos/SKILL.md) to capture a new feature or revise the existing demos. The skill includes a window-only macOS recorder, native terminal-window recording and genuine CLI PTY logs, and an FFmpeg editor with source hashes and cadence reports. The Claude skill path links to the same repository source.
+
+`demo-edits.json` stores the current source-relative keep ranges, cosmetic cleanup, terminal crop, output paths, and poster timestamps. Run the skill's editor from a prepared Python environment:
+
+```sh
+python ../.agents/skills/thunder-demo-videos/scripts/demo.py edit demo-edits.json \
+  --source-dir /absolute/path/to/product-demo-videos --output-dir public \
+  --report /absolute/path/to/session/exports.json
+```
+
+The current source directory contains the `smooth/` GUI recordings and `cli-natural-02-focus.mp4`. Choose new source files and inspect their timelines when a feature changes; old timestamps are specific to the recorded session. The editor derives posters from the edited videos, so playback, fallback frames, and cleanup stay consistent. Update `product-demos.ts` if the dimensions, filenames, or story change.
+
+## Contact form delivery
+
+Marketing inquiries are handled by the independent Cloudflare Worker in
+[`contact-worker/`](contact-worker/README.md). The website stays static on Render;
+no contact endpoint, credentials, or recipient configuration belong on the Thunderbolt AI backend.
+
+Set `PUBLIC_CONTACT_ENDPOINT` on the **Render marketing static site**, then rebuild:
+`https://thunderbolt-contact.<your-workers-subdomain>.workers.dev/api/contact`.
+This is a public URL, not a secret. Unconfigured development/preview builds report
+that contact is unavailable without sending a request. Preview origins are not
+allowed by the production Worker; use a separate Worker for preview delivery.
+
+See the [deployment walkthrough](contact-worker/README.md) for Cloudflare setup,
+Resend secrets, automated deployments, local testing, and the migration order.
+
+## Desktop download metadata
+
+The homepage and download page embed the latest stable release during the Astro build, so the download button does not wait for a network request. The build shares one GitHub lookup across both pages and `/downloads/release.json`, and uses `src/data/download-release.json` as a last-known-good fallback if GitHub is unavailable or returns invalid metadata. This lets unrelated website fixes and local development continue during an outage. The fallback is build-only; container deployments also have the runtime cache described below. Refresh the bundled snapshot periodically when updating the website.
+
+To build without asking GitHub (offline, or from an address it is rate limiting), save its answer first. The build reads `release-snapshot.json` in this directory when the file exists; it is git-ignored:
+
+```bash
+gh api repos/thunderbird/thunderbolt/releases/latest > release-snapshot.json
+```
+
+CI attempts an authenticated lookup before every build, in `web.yml` and `images-publish.yml`, because hosted runners share the addresses GitHub rate limits anonymous lookups by. If that lookup fails, the build can still use the bundled snapshot. An explicitly supplied malformed snapshot fails validation rather than hiding a broken build input.
+
+Browsers refresh from **`/downloads/release.json` on the website origin**, never directly from GitHub.
+
+**Render Static Site (production):** this URL serves the metadata generated by the latest website build. New app releases require a website rebuild to refresh it; a release-triggered build or a shared proxy would be needed for automatic updates between builds. Astro dev and other static-only hosts behave the same way.
+
+**Optional container hosting:** the marketing nginx container (`deploy/config/marketing-nginx.conf.template`) caches the fixed public GitHub latest-release response for five minutes, coalesces concurrent cache misses, and refreshes expired entries in the background. Each marketing instance has its own cache. No release webhook or website redeployment is needed for routine release updates.
+
+In container deployments, the lookup is optional at run time. The container starts without DNS, and whenever GitHub cannot answer, visitors get the build's snapshot from the same URL:
+
+- If GitHub is unreachable or returns a server error, a release the instance has already cached stays in use, and each request retries in the background.
+- Any other failure is remembered for a minute and answered with the build's snapshot, which can be one release behind: a rate limit, a missing release, or an outage before anything was cached. A rate-limited instance therefore asks GitHub once a minute rather than on every page view.
+- Nothing of a visitor's request reaches GitHub: no headers, cookies, or query string. GitHub's own caching and transport headers are not passed back.
+
+`deploy/config/marketing-nginx.test.ts` runs the real config in Docker against a stand-in for GitHub; the `Frontend Serving` workflow runs it. See [Frontend HTTP serving](../docs/internals/development/testing.md#frontend-http-serving).

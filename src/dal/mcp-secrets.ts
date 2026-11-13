@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { and, eq, exists, isNull, sql } from 'drizzle-orm'
+import { and, eq, exists, isNotNull, isNull, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { mcpSecretsTable, mcpServersTable } from '../db/tables'
+import { isSameCredentialDestination } from '../lib/credential-destination'
 import type { DrizzleQueryWithPromise } from '@/types'
 
 export type McpCredentialSummary = {
@@ -17,6 +18,8 @@ type McpCredentialSummaryRow = {
   id: string
   type: string | null
   bearerToken: string | null
+  approvedUrl: string | null
+  serverUrl: string | null
 }
 
 /**
@@ -32,21 +35,36 @@ export const getMcpServerCredentialRows = (db: AnyDrizzleDatabase) => {
       bearerToken: sql<
         string | null
       >`CASE WHEN json_extract(${mcpSecretsTable.credentials}, '$.type') = 'bearer' THEN json_extract(${mcpSecretsTable.credentials}, '$.token') END`,
+      approvedUrl: sql<string | null>`json_extract(${mcpSecretsTable.credentials}, '$.approvedUrl')`,
+      serverUrl: mcpServersTable.url,
     })
     .from(mcpSecretsTable)
+    .leftJoin(mcpServersTable, eq(mcpServersTable.id, mcpSecretsTable.id))
   return query as typeof query & DrizzleQueryWithPromise<McpCredentialSummaryRow>
 }
 
-/** Narrows a projected credential row to the tagged summary shape, dropping malformed rows. */
+/**
+ * Narrows a projected credential row to the tagged summary shape. Drops
+ * malformed rows and credentials saved for another URL than the server's
+ * current one, so the UI never offers them for a probe.
+ */
 export const parseMcpCredentialSummary = (row: McpCredentialSummaryRow): McpCredentialSummary | null => {
+  if (!isSameCredentialDestination(row.approvedUrl, row.serverUrl)) {
+    return null
+  }
   if (row.type === 'bearer') {
     return { id: row.id, type: 'bearer', bearerToken: row.bearerToken ?? undefined }
   }
   return row.type === 'oauth' ? { id: row.id, type: 'oauth' } : null
 }
 
-/** Credential blob stored on-device for an MCP server. Forward-supports OAuth token sets. */
-export type McpServerCredentials =
+/**
+ * Credential blob stored on-device for an MCP server. Forward-supports OAuth
+ * token sets. `approvedUrl` is the server URL the credential was saved or
+ * authorized for, and the only place it is sent. A blob without it (saved by
+ * an older version) is sent nowhere until {@link bindUnboundMcpCredentials} runs.
+ */
+export type McpServerCredentials = (
   | { type: 'bearer'; token: string }
   | {
       type: 'oauth'
@@ -58,6 +76,7 @@ export type McpServerCredentials =
       tokenEndpoint?: string // discovered token endpoint (for refresh)
       scope?: string
     }
+) & { approvedUrl?: string }
 
 export type McpCredentialSnapshot = { serialized: string; credentials: McpServerCredentials }
 
@@ -123,6 +142,23 @@ export const updateMcpServerCredentialsIfCurrent = async (
   })
 }
 
+/** The stored credential snapshot for a server, only when it was saved for `url`: a credential never follows a server to another destination. */
+export const getMcpServerCredentialSnapshotFor = async (
+  db: AnyDrizzleDatabase,
+  id: string,
+  url: string,
+): Promise<McpCredentialSnapshot | null> => {
+  const snapshot = await getMcpServerCredentialSnapshot(db, id)
+  return isSameCredentialDestination(snapshot?.credentials.approvedUrl, url) ? snapshot : null
+}
+
+/** The stored credential for a server, only when it was saved for `url`. */
+export const getMcpServerCredentialsFor = async (
+  db: AnyDrizzleDatabase,
+  id: string,
+  url: string,
+): Promise<McpServerCredentials | null> => (await getMcpServerCredentialSnapshotFor(db, id, url))?.credentials ?? null
+
 /**
  * Save credentials for an MCP server (insert or update).
  * Uses SELECT-then-INSERT-or-UPDATE because PowerSync local-only tables are views that don't support UPSERT.
@@ -145,4 +181,33 @@ export const setMcpServerCredentials = async (
 /** Delete credentials for an MCP server. */
 export const deleteMcpServerCredentials = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
   await db.delete(mcpSecretsTable).where(eq(mcpSecretsTable.id, id))
+}
+
+/**
+ * Binds credentials that have no destination yet (saved by an older version, or
+ * restored from an older backup) to their server's current URL. A credential
+ * without a live server has nothing to bind to and is dropped, so it can never
+ * attach to a server added later under its id.
+ */
+export const bindUnboundMcpCredentials = async (db: AnyDrizzleDatabase): Promise<void> => {
+  const rows = await db
+    .select({ id: mcpSecretsTable.id, url: mcpServersTable.url })
+    .from(mcpSecretsTable)
+    .leftJoin(mcpServersTable, and(eq(mcpServersTable.id, mcpSecretsTable.id), isNull(mcpServersTable.deletedAt)))
+    .where(
+      and(
+        isNotNull(mcpSecretsTable.credentials),
+        sql`json_extract(${mcpSecretsTable.credentials}, '$.approvedUrl') IS NULL`,
+      ),
+    )
+  for (const { id, url } of rows) {
+    if (url === null) {
+      await deleteMcpServerCredentials(db, id)
+    } else {
+      await db
+        .update(mcpSecretsTable)
+        .set({ credentials: sql`json_set(${mcpSecretsTable.credentials}, '$.approvedUrl', ${url})` })
+        .where(eq(mcpSecretsTable.id, id))
+    }
+  }
 }

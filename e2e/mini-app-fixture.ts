@@ -10,8 +10,12 @@ import {
   type MiniAppTool,
 } from '../shared/mini-app-protocol'
 
-/** A different origin from the frontend, so the frame is cross-origin as it is in production. */
-export const miniAppOrigin = 'http://127.0.0.1:4599'
+/**
+ * A different origin from the frontend (another port), so the frame is cross-origin as it is in production. It stays
+ * on the frontend's site on purpose: the dev server sends `Cross-Origin-Embedder-Policy: credentialless`, and
+ * Playwright's Firefox cannot see a frame from another site under that header, so the spec could not read it.
+ */
+export const miniAppOrigin = 'http://localhost:4599'
 
 /** Sent to the composer; the fake provider answers it by reading an email and handing its body to the app. */
 export const miniAppTransferPrompt = 'Show my latest email in the open app.'

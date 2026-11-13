@@ -131,7 +131,10 @@ carrying a credential may join `syncedTables`" invariant is in
 
 - **Models.** `selectModelsWithSecrets` ([`src/dal/models.ts`](../../../src/dal/models.ts)) `LEFT JOIN`s
   `models_secrets` at read time, so a `Model` carries `apiKey` without the column syncing, and every
-  write path strips `apiKey` before touching `modelsTable`. `createModel` writes both halves in one
+  write path strips `apiKey` before touching `modelsTable`. The join also requires the provider and
+  URL the key was saved for, so a row that a sync, an import or a raw update moves elsewhere reads no
+  key. `updateModel` rebinds a kept key when the new URL is the same destination spelled differently;
+  `bindModelKeyDestinations` does the same for spellings that arrive by sync or import. `createModel` writes both halves in one
   transaction, so no caller observes a config row without its credential.
 - **Agents.** Same split without the atomicity: `createAgent` writes only the synced row, and
   `setAgentSecrets` is separate (no production caller today).

@@ -34,6 +34,10 @@ const test = baseTest.extend({
   ],
 })
 
+// Most tests here sign in three times, and signing the same address in again waits out the backend's OTP
+// cooldown, so a slow runner (macOS WebKit) takes 51 to 59 s of the 60 s default.
+test.describe.configure({ timeout: 120_000 })
+
 const isOffMachine = (url: URL) => !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
 
 /**

@@ -12,7 +12,9 @@ import {
   providerConnectionsTable,
   providerConnectionSecretsTable,
 } from '@/db/tables'
+import { bindCredentialDestinations } from '@/dal/credential-destinations'
 import { normalizeProviderConnectionUrl, saveProviderConnectionInTransaction } from '@/dal/provider-connections'
+import { isSameModelKeyDestination } from '@/lib/credential-destination'
 import { getProviderDefinition } from '@/providers/registry'
 import { credentialBinding, writeProviderCredentials } from '@/providers/credentials'
 import type { ProviderAuthMethod, ProviderCredentials, ProviderType } from '@/providers/types'
@@ -76,7 +78,11 @@ export const migrateLegacyProviderCredential = async (
   return true
 }
 
-/** Move each legacy model's local key once, preserving its identity across independently upgraded devices. */
+/**
+ * Move each legacy model's local key once, preserving its identity across independently upgraded devices.
+ * A key moves only while its model still has the provider and URL it was saved for; a key left behind
+ * by a changed endpoint stays unread in `models_secrets`.
+ */
 export const migrateProviderConnections = async (db: AnyDrizzleDatabase): Promise<void> =>
   db.transaction(async (tx) => {
     const tinfoil = await tx
@@ -137,9 +143,13 @@ export const migrateProviderConnections = async (db: AnyDrizzleDatabase): Promis
     if (rows.length === 0) {
       return
     }
+    // Keys saved by an older version belong to the URL their model has now; bind them before
+    // deciding which keys may follow their model.
+    await bindCredentialDestinations(tx)
     const legacySecrets = new Map((await tx.select().from(modelsSecretsTable)).map((row) => [row.modelId, row]))
     for (const model of rows) {
-      const secret = legacySecrets.get(model.id)
+      const stored = legacySecrets.get(model.id)
+      const secret = stored && isSameModelKeyDestination(stored, model) ? stored : undefined
       if (
         !model.provider ||
         model.provider === 'thunderbolt' ||

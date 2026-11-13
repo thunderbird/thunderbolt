@@ -16,6 +16,9 @@ __pycache__
 .team/
 *.local
 
+# GitHub's latest-release answer, saved for a website build (see web/README.md)
+web/release-snapshot.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -60,6 +63,7 @@ mise.toml
 # Listed one by one so personal skills in .claude/skills stay untracked.
 !.claude/skills/thunder-cleanup
 !.claude/skills/thunder-deep-review
+!.claude/skills/thunder-demo-videos
 !.claude/skills/thunder-performance
 !.claude/skills/thunder-red-team
 !.claude/skills/thunder-update-model

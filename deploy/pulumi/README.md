@@ -74,7 +74,8 @@ pulumi up
 Use a bare sender address from a domain verified in Resend. The secret command
 prompts for the key without placing it in shell history. Pulumi stores the key as a
 secret and provisions it in AWS Secrets Manager; ECS receives a secret reference,
-with read access scoped to that secret. The recipient and sender are ordinary
+with read access scoped to that secret. The task reference includes the version ID,
+so changing the key with Pulumi rolls out new backend tasks. The recipient and sender are ordinary
 configuration. Preview stacks do not inherit production email credentials.
 
 For Kubernetes deployments, configure `backend.email` in the Helm values instead.

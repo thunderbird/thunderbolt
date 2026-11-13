@@ -9,7 +9,14 @@ import { createBackendEmail } from './email'
 
 pulumi.runtime.setMocks(
   {
-    newResource: ({ name, inputs }) => ({ id: name, state: { ...inputs, arn: `arn:aws:secretsmanager:test:${name}` } }),
+    newResource: ({ name, inputs }) => ({
+      id: name,
+      state: {
+        ...inputs,
+        arn: `arn:aws:secretsmanager:test:${name.startsWith('rotation-') ? 'email-secret' : name}`,
+        versionId: name.startsWith('rotation-after') ? 'version-two' : 'version-one',
+      },
+    }),
     call: ({ inputs }) => inputs,
   },
   'email-test',
@@ -50,7 +57,7 @@ test('configured email injects a secret reference and grants only the execution 
     { name: 'CONTACT_EMAIL_TO', value: 'team@example.com' },
   ])
   expect(await resolve(email.secrets)).toEqual([
-    { name: 'RESEND_API_KEY', valueFrom: 'arn:aws:secretsmanager:test:configured-resend-api-key' },
+    { name: 'RESEND_API_KEY', valueFrom: 'arn:aws:secretsmanager:test:configured-resend-api-key:::version-one' },
   ])
   const policy = email.dependencies.find((resource) => resource instanceof aws.iam.RolePolicy)!
   const version = email.dependencies.find((resource) => resource instanceof aws.secretsmanager.SecretVersion)!
@@ -67,4 +74,15 @@ test('configured email injects a secret reference and grants only the execution 
   })
   expect(await resolve(version.secretString)).toBe('re_test_not_a_real_key')
   expect(await pulumi.isSecret(version.secretString)).toBe(true)
+})
+
+test('rotating the key changes the task secret reference even when its ARN is unchanged', async () => {
+  const before = createBackendEmail('rotation-before', 'exec-role', { resendApiKey: pulumi.secret('re_original_test') })
+  const after = createBackendEmail('rotation-after', 'exec-role', { resendApiKey: pulumi.secret('re_rotated_test') })
+  expect(await resolve(before.secrets)).toEqual([
+    { name: 'RESEND_API_KEY', valueFrom: 'arn:aws:secretsmanager:test:email-secret:::version-one' },
+  ])
+  expect(await resolve(after.secrets)).toEqual([
+    { name: 'RESEND_API_KEY', valueFrom: 'arn:aws:secretsmanager:test:email-secret:::version-two' },
+  ])
 })

@@ -11,7 +11,7 @@ export type EmailConfig = {
   resendApiKey?: pulumi.Output<string>
 }
 
-/** Configure backend email without putting the sending key in the ECS environment. */
+/** Configure backend email without putting the sending key in the task definition. */
 export const createBackendEmail = (name: string, role: pulumi.Input<string>, config: EmailConfig = {}) => {
   const environment = [
     ...(config.from ? [{ name: 'EMAIL_FROM', value: config.from }] : []),
@@ -35,7 +35,8 @@ export const createBackendEmail = (name: string, role: pulumi.Input<string>, con
   })
   return {
     environment,
-    secrets: [{ name: 'RESEND_API_KEY', valueFrom: version.secretId }],
+    // Pin the version so rotating the key revises the task definition and rolls out fresh tasks.
+    secrets: [{ name: 'RESEND_API_KEY', valueFrom: pulumi.interpolate`${secret.arn}:::${version.versionId}` }],
     dependencies: [policy, version],
   }
 }

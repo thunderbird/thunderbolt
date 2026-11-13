@@ -56,7 +56,7 @@ export const reconnectSync = async (): Promise<void> => {
 /**
  * Check if sync is enabled by user preference
  */
-export const isSyncEnabled = (): boolean => getLocalSetting('syncEnabled')
+export const isSyncEnabled = (): boolean => !!getLocalSetting('cloudUrl') && getLocalSetting('syncEnabled')
 
 /** The part of PowerSync that {@link waitForSyncCatchUp} reads. */
 type SyncStatusSource = {
@@ -89,6 +89,9 @@ export const waitForSyncCatchUp = (
  * Set sync enabled preference, connect/disconnect from PowerSync, and dispatch change event
  */
 export const setSyncEnabled = async (enabled: boolean): Promise<void> => {
+  if (enabled && !getLocalSetting('cloudUrl')) {
+    throw new Error('Select a Thunderbolt server before enabling sync')
+  }
   // Update store and dispatch event
   useLocalSettingsStore.getState().setLocalSetting('syncEnabled', enabled)
   window.dispatchEvent(new CustomEvent(syncEnabledChangeEvent, { detail: enabled }))

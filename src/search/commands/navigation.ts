@@ -9,6 +9,7 @@ import {
   Bot,
   CheckSquare,
   Cpu,
+  Globe,
   Plug,
   SlidersHorizontal,
   Smartphone,
@@ -55,6 +56,13 @@ export const navigationCommands: NavigationCommand[] = [
     keywords: ['mcp', 'servers', 'integrations', 'plugins'],
   },
   { id: 'models', title: msg`Models`, icon: Cpu, to: '/settings/models', keywords: ['llm'] },
+  {
+    id: 'search',
+    title: msg`Search`,
+    icon: Globe,
+    to: '/settings/search',
+    keywords: ['web', 'exa', 'brave', 'tinfoil'],
+  },
   {
     id: 'voice',
     title: msg`Voice`,

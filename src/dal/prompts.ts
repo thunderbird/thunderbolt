@@ -11,7 +11,7 @@ import type { AutomationRun, Prompt } from '../types'
 import { clearNullableColumns, convertUIMessageToDbChatMessage, nowIso } from '../lib/utils'
 import { getModel } from './models'
 import { createChatThread } from './chat-threads'
-import { deleteTriggersForPrompt, deleteTriggersForPrompts } from './triggers'
+import { deleteTriggersForPrompt } from './triggers'
 import type { DrizzleQueryWithPromise } from '@/types'
 
 /**
@@ -110,27 +110,6 @@ export const deleteAutomation = async (db: AnyDrizzleDatabase, id: string): Prom
       .set({ ...clearNullableColumns(promptsTable), deletedAt: nowIso() })
       .where(and(eq(promptsTable.id, id), isNull(promptsTable.deletedAt)))
   })
-}
-
-/**
- * Soft deletes all prompts that reference a model (sets deletedAt datetime)
- * Also soft-deletes all associated triggers for each prompt
- * Scrubs all nullable columns for privacy
- * This replaces the cascade behavior that no longer fires with soft deletes
- */
-export const deletePromptsForModel = async (db: AnyDrizzleDatabase, modelId: string): Promise<void> => {
-  const prompts = await db
-    .select({ id: promptsTable.id })
-    .from(promptsTable)
-    .where(and(eq(promptsTable.modelId, modelId), isNull(promptsTable.deletedAt)))
-
-  const promptIds = prompts.map((p) => p.id)
-
-  await deleteTriggersForPrompts(db, promptIds)
-  await db
-    .update(promptsTable)
-    .set({ ...clearNullableColumns(promptsTable), deletedAt: nowIso() })
-    .where(and(eq(promptsTable.modelId, modelId), isNull(promptsTable.deletedAt)))
 }
 
 export const getPrompt = async (db: AnyDrizzleDatabase, id: string): Promise<Prompt | null> => {

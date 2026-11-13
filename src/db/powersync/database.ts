@@ -11,6 +11,7 @@ import type { PowerSyncDatabase, WebPowerSyncDatabaseOptions } from '@powersync/
 import { wrapPowerSyncWithDrizzle } from '@powersync/drizzle-driver'
 import type { DatabaseInterface, AnyDrizzleDatabase, InitialSyncOutcome } from '../database-interface'
 import { isSyncEnabled } from './sync-state'
+import { bindCredentialDestinations } from '@/dal/credential-destinations'
 import { getDeviceId } from '@/lib/auth-token'
 import { AppSchema, drizzleSchema } from './schema'
 import { ThunderboltConnector } from './connector'
@@ -77,6 +78,9 @@ export const waitForOwnDeviceRow = async (powerSync: CommonPowerSyncDatabase, si
   }
 }
 
+/** Without OPFS `getDatabasePath` returns the bare filename, unique to its slot. */
+const isWithoutOpfs = (path: string) => !path.includes('/')
+
 /** The database filename PowerSync opens: the OPFS file, or the IndexedDB database name. */
 const toDbFilename = (path: string) => (path.includes('/') ? path.split('/').pop() || 'thunderbolt.db' : path)
 
@@ -91,8 +95,7 @@ export const shouldUseOpfs = async (
   config: PowerSyncDatabaseConfig,
   storage: { opfsRoot?: Pick<FileSystemDirectoryHandle, 'getFileHandle'>; idb?: Pick<IDBFactory, 'databases'> } = {},
 ): Promise<boolean> => {
-  // `getDatabasePath` returns this sentinel when OPFS is unavailable.
-  if (path === ':memory:') {
+  if (isWithoutOpfs(path)) {
     return false
   }
   const dbFilename = toDbFilename(path)
@@ -103,13 +106,25 @@ export const shouldUseOpfs = async (
 }
 
 /**
+ * Without OPFS the default config keeps each slot's database in IndexedDB under its own name, so
+ * data left on the device outlives the tabs that held it. Safari and Tauri keep it in memory: they
+ * avoid the IndexedDB VFS, and they lost the data on every reload before slots too.
+ */
+const pickVfs = (config: PowerSyncDatabaseConfig, useOpfs: boolean): WASQLiteVFS => {
+  if (useOpfs) {
+    return WASQLiteVFS.OPFSCoopSyncVFS
+  }
+  return config === 'default' ? WASQLiteVFS.IDBBatchAtomicVFS : WASQLiteVFS.InMemoryVfs
+}
+
+/**
  * @internal Exported for testing
- * @param useOpfs - `OPFSCoopSyncVFS` rather than `IDBBatchAtomicVFS` (see `shouldUseOpfs`). On
- * 'safari-tauri' it also decides whether sync runs in a worker or in the tab.
+ * @param useOpfs - Whether the database lives on OPFS (see `shouldUseOpfs`); otherwise see `pickVfs`.
+ * On 'safari-tauri' it also decides whether sync runs in a worker or in the tab.
  */
 export const getPowerSyncOptions = (path: string, config: PowerSyncDatabaseConfig, useOpfs: boolean) => {
   const dbFilename = toDbFilename(path)
-  const vfs = useOpfs ? WASQLiteVFS.OPFSCoopSyncVFS : WASQLiteVFS.IDBBatchAtomicVFS
+  const vfs = pickVfs(config, useOpfs)
 
   if (config === 'default') {
     return {
@@ -133,7 +148,7 @@ export const getPowerSyncOptions = (path: string, config: PowerSyncDatabaseConfi
    * Safari (web) + Tauri (iOS/Desktop).
    * OPFSCoopSyncVFS avoids IDBBatchAtomicVFS + Asyncify ("Maximum call stack size exceeded"
    * on Safari/iOS) and SharedArrayBuffer + SharedWorker (iOS WKWebView black-screen crash).
-   * Falls back to IDBBatchAtomicVFS when OPFS is unavailable (e.g. WebKitGTK on Tauri Linux).
+   * Without OPFS (e.g. WebKitGTK on Tauri Linux) the database stays in memory (`pickVfs`).
    *
    * `enableMultiTabs: true` selects SharedWebStreamingSyncImplementation, which drives the sync
    * worker over Comlink — a dedicated Worker (valid under tauri://) stands in for the SharedWorker,
@@ -142,9 +157,9 @@ export const getPowerSyncOptions = (path: string, config: PowerSyncDatabaseConfi
    * The DB worker is PowerSync's prebuilt worker, loaded from an absolute path because
    * `import.meta.url` fails under tauri:// for node_modules workers. It must be a URL, not a
    * factory: PowerSync posts the DB options to the sync worker, and a function can't be cloned.
-   * With a URL PowerSync opens OPFS in a dedicated worker, but the IndexedDB fallback in a
-   * SharedWorker whenever `enableMultiTabs` is on — so the fallback turns it off and syncs in
-   * the tab instead.
+   * With a URL PowerSync opens OPFS in a dedicated worker, but the in-memory fallback in a
+   * SharedWorker whenever `enableMultiTabs` is on. So the fallback turns it off and syncs in the
+   * tab instead.
    *
    * Docs: https://docs.powersync.com/debugging/troubleshooting#common-issues
    */
@@ -223,11 +238,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     const config = getPowerSyncDatabaseConfig()
     const options = getPowerSyncOptions(path, config, await shouldUseOpfs(path, config))
     this.vfs = options.database.vfs
-    console.info(
-      this.vfs === WASQLiteVFS.OPFSCoopSyncVFS
-        ? `[PowerSync] Storage: OPFS /${options.database.dbFilename}`
-        : `[PowerSync] Storage: IndexedDB database "${options.database.dbFilename}"`,
-    )
+    console.info(`[PowerSync] Storage: ${options.database.dbFilename} (${this.vfs})`)
     // A reset deletes the IndexedDB database, but another tab holding it open can delay that.
     if (
       this.vfs === WASQLiteVFS.OPFSCoopSyncVFS &&
@@ -259,8 +270,22 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     // Registered before the background connect so a 426 arriving mid-connect is caught.
     this.startVersionBlockListener()
 
+    void this.connectAfterBindingCredentials()
+  }
+
+  /**
+   * Binds stored credentials to their destinations, then connects sync when it is
+   * enabled. Credentials saved by an older version take the URL their row has as this
+   * device left it, so a row moved by the next sync download never gets them.
+   */
+  async connectAfterBindingCredentials(): Promise<void> {
+    try {
+      await bindCredentialDestinations(this.db)
+    } catch (error) {
+      console.error('[PowerSync] Failed to bind credential destinations:', error)
+    }
     if (isSyncEnabled()) {
-      void this.connectToSync()
+      await this.connectToSync()
     }
   }
 

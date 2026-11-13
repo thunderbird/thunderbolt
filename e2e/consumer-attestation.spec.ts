@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { defaultModelOpus55 } from '../shared/defaults/models'
+import { isTinfoilAttestationRequest } from './tinfoil-isolation'
+import { defaultModelDeepSeekV41Flash, defaultModelOpus55 } from '../shared/defaults/models'
 import { collectPageErrors, loginViaEmailCode } from './helpers'
 import { expect, test } from './test'
 
@@ -18,7 +19,7 @@ for (const viewport of [
     }) => {
       const errors = collectPageErrors(page)
       let attestationRequests = 0
-      await page.route('https://atc.tinfoil.sh/attestation', async (route) => {
+      await page.route(isTinfoilAttestationRequest, async (route) => {
         attestationRequests += 1
         await route.fulfill({ status: 503, json: { error: 'Test attestation unavailable' } })
       })
@@ -26,6 +27,13 @@ for (const viewport of [
 
       const selector = page.getByTestId('model-selector-trigger')
       await selector.click()
+      const privateModel = page.getByRole('button', {
+        name: `${defaultModelDeepSeekV41Flash.name} Thunderbolt`,
+        exact: true,
+      })
+      await expect(privateModel.getByRole('img', { name: 'Thunderbolt', exact: true })).toBeVisible()
+      await expect(privateModel.getByLabel('Private', { exact: true })).toHaveCount(0)
+      await expect(privateModel.getByText('Private', { exact: true })).toHaveCount(0)
       const privacyRow = page.getByRole('button', { name: 'Verification failed', exact: true })
       await expect(privacyRow).toBeVisible()
       const requestsAfterPrewarm = attestationRequests
@@ -51,7 +59,9 @@ for (const viewport of [
       }
 
       await selector.click()
-      await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
+      const standardModel = page.getByRole('button', { name: `${defaultModelOpus55.name} Thunderbolt`, exact: true })
+      await expect(standardModel.getByRole('img', { name: 'Thunderbolt', exact: true })).toBeVisible()
+      await standardModel.click()
       await expect(
         page.getByRole('button', { name: /Verification failed|Connection verified|Private inference/ }),
       ).toHaveCount(0)

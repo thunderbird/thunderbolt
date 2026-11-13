@@ -5,6 +5,7 @@
 import { updateSettings } from '@/dal'
 import { getDb } from '@/db/database'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
+import { deferOnboardedMark, isLocalDataOwnedBy, takeDeferredOnboardedMark } from '@/lib/local-data-owner'
 
 /** Better Auth includes `isNew` on the signed-in user at runtime but not in its types. */
 export const isNewAuthUser = (user: unknown): boolean =>
@@ -34,16 +35,23 @@ export const isNewAuthUser = (user: unknown): boolean =>
  * same OTP endpoint, and the response describes the *real* account, so an
  * anonymous session promoted into an existing account is correctly treated as
  * returning.
+ *
+ * Call it once the sign-in bound `user` (`bindSignedInAccount`). While the
+ * device switches to that account's slot, the mark is deferred to that slot.
  */
 export const markOnboardedForReturningUser = async (
-  user: unknown,
+  user: { id: string; isNew?: boolean } | undefined,
   // Resolved through the singleton rather than taken from React context: two
   // of the three call sites are hooks whose tests render without a provider,
   // and the lookup belongs inside the catch below anyway. Named for what it
   // returns — `getDatabaseInstance` means the PowerSync instance elsewhere.
   getDrizzle: () => AnyDrizzleDatabase = getDb,
 ): Promise<void> => {
-  if (isNewAuthUser(user)) {
+  if (!user || isNewAuthUser(user)) {
+    return
+  }
+  if (!isLocalDataOwnedBy(user.id)) {
+    deferOnboardedMark()
     return
   }
 
@@ -57,3 +65,7 @@ export const markOnboardedForReturningUser = async (
     console.error('Failed to mark onboarding complete after sign-in:', error)
   }
 }
+
+/** Apply a returning-user mark that sign-in deferred while switching to this account's slot. */
+export const applyDeferredOnboardedMark = (db: AnyDrizzleDatabase): Promise<void> =>
+  takeDeferredOnboardedMark(() => updateSettings(db, { user_has_completed_onboarding: true }))

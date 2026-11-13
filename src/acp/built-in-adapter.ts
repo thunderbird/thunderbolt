@@ -42,6 +42,7 @@
  * adapter's teardown (agent delete / config edit / sign-out).
  */
 
+import { bindModelProvider, type ModelProviderBinding } from '@/providers/model-connection'
 import { readProfileThinkingLevel } from '@/ai/profile-thinking-level'
 import {
   aiFetchStreamingResponse,
@@ -59,6 +60,8 @@ import {
   supersededAppContextOutput,
 } from '@/mini-apps/mini-app-context-note'
 import { webToolNames } from '@/lib/tools'
+import { tinfoilSession } from '@/lib/tinfoil-session'
+import { createLiveProxyFetch } from '@/lib/proxy-fetch'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { appVersionHeader } from '@/lib/app-version'
@@ -74,13 +77,13 @@ import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prom
 import { inferenceModelHeader } from '@shared/inference-usage'
 import type { AgentHarness, AgentHarnessTool, AgentMessage, ThinkingLevel } from '@earendil-works/pi-agent-core'
 import { z } from 'zod'
-import type { SecureClient } from 'tinfoil'
+import type { AttestedTinfoilClient } from '@/attestation/tinfoil'
 import {
   evictSystemTinfoilClient,
   evictUserTinfoilClient,
   getSystemTinfoilClient,
   getTinfoilClient,
-  isTinfoilTransportWedgedError,
+  isTinfoilAttestationFailure,
 } from '@/ai/tinfoil-client'
 import { prepareBuiltInConversation, prepareBuiltInHistory } from './built-in-conversation'
 import { isPiModelCandidate } from './built-in-model-support'
@@ -197,8 +200,9 @@ const parseMessages = (init: RequestInit): ThunderboltUIMessage[] => {
 export type ResolvedPiModel = {
   readonly descriptor: PiModelDescriptor
   readonly thinkingLevel: ThinkingLevel
+  readonly providerBinding?: ModelProviderBinding
   /** Attested transport identity used only to invalidate the local harness cache. */
-  readonly tinfoilClient?: SecureClient
+  readonly tinfoilClient?: AttestedTinfoilClient
 }
 
 /** Time a Tinfoil client acquisition without changing its error behavior. */
@@ -216,15 +220,15 @@ const acquireTinfoilClient = async <Client>(
 
 /** Run one request through an attested client and evict only wedged transports. */
 const fetchTinfoil = async (
-  client: SecureClient,
+  client: AttestedTinfoilClient,
   input: RequestInfo | URL,
   init: RequestInit | undefined,
-  evictClient: (client: SecureClient) => void,
+  evictClient: (client: AttestedTinfoilClient) => void,
 ): Promise<Response> => {
   try {
     return await client.fetch(input, init)
   } catch (error) {
-    if (isTinfoilTransportWedgedError(error)) {
+    if (isTinfoilAttestationFailure(error)) {
       evictClient(client)
     }
     throw error
@@ -241,7 +245,7 @@ export const resolvePiModel = async (
   profile: ModelProfile | null,
   options: TinfoilClientOptions = {},
 ): Promise<ResolvedPiModel | null> => {
-  const model = context.selectedModel
+  const { model, wrapFetch, api, binding: providerBinding } = await bindModelProvider(context.selectedModel)
   const thinkingLevel = deriveThinkingLevel(profile)
   // Pi strips image blocks from text-only descriptors. Only models known not to
   // read images are text-only: the composer checks an unknown model before an
@@ -289,7 +293,7 @@ export const resolvePiModel = async (
           providerId: 'tinfoil',
           modelId: model.model,
           vendor: model.vendor,
-          baseURL: client.getBaseURL()!,
+          baseURL: client.baseURL,
           apiKey: 'thunderbolt-managed',
           fetch,
           reasoning: true,
@@ -297,10 +301,13 @@ export const resolvePiModel = async (
           supportsImages,
         },
         thinkingLevel,
+        providerBinding,
         tinfoilClient: client,
       }
     }
-    if (!model.apiKey) {
+    const usesLegacySession = !model.providerConnectionId && model.oauthProvider === 'tinfoil'
+    const apiKey = usesLegacySession ? await tinfoilSession.getAccessToken() : model.apiKey
+    if (!apiKey) {
       throw new Error('No API key provided for Tinfoil provider')
     }
     const acquireUserClient = options.getTinfoilClient ?? getTinfoilClient
@@ -315,20 +322,30 @@ export const resolvePiModel = async (
       context.telemetry,
     )
     const evictClient = options.evictUserTinfoilClient ?? evictUserTinfoilClient
-    const fetch: PiModelDescriptor['fetch'] = (input, init) => fetchTinfoil(client, input, init, evictClient)
+    const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      // Long-running agent turns can outlive an access token. Refresh before each
+      // encrypted request, not just when building the harness at turn start.
+      const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined))
+      if (usesLegacySession) {
+        headers.set('Authorization', `Bearer ${await tinfoilSession.getAccessToken()}`)
+      }
+      const request = { ...init, headers }
+      return fetchTinfoil(client, input, request, evictClient)
+    }
     return {
       descriptor: {
         kind: 'openai-compat',
         providerId: 'tinfoil',
         modelId: model.model,
-        baseURL: client.getBaseURL()!,
-        apiKey: model.apiKey,
-        fetch,
+        baseURL: client.baseURL,
+        apiKey,
+        fetch: wrapFetch(Object.assign(fetch, { preconnect: async () => false })),
         reasoning: hasExplicitReasoning(profile),
         contextWindow: model.contextWindow ?? undefined,
         supportsImages,
       },
       thinkingLevel,
+      providerBinding,
       tinfoilClient: client,
     }
   }
@@ -342,9 +359,10 @@ export const resolvePiModel = async (
         modelId: model.model,
         apiKey: model.apiKey ?? '',
         contextWindow: model.contextWindow ?? undefined,
-        fetch: context.getProxyFetch(),
+        fetch: wrapFetch(createLiveProxyFetch(context.getProxyFetch)),
       },
       thinkingLevel,
+      providerBinding,
     }
   }
   if (model.provider === 'thunderbolt' && model.vendor === 'anthropic') {
@@ -364,6 +382,7 @@ export const resolvePiModel = async (
         fetch: connection.fetch,
       },
       thinkingLevel,
+      providerBinding,
     }
   }
   const connection = resolveOpenAiCompatConnection(model, context.getProxyFetch)
@@ -377,23 +396,25 @@ export const resolvePiModel = async (
   return {
     descriptor: {
       kind: 'openai-compat',
+      api,
       providerId: model.provider,
       modelId: model.model,
       baseURL: connection.baseURL,
       apiKey: connection.apiKey,
-      fetch: connection.fetch,
+      fetch: wrapFetch(connection.fetch),
       reasoning: hasExplicitReasoning(profile),
       contextWindow: model.contextWindow ?? undefined,
       supportsImages,
     },
     thinkingLevel,
+    providerBinding,
   }
 }
 
-const tinfoilClientIds = new WeakMap<SecureClient, string>()
+const tinfoilClientIds = new WeakMap<AttestedTinfoilClient, string>()
 
 /** Return a short process-local identity for one attested client instance. */
-const tinfoilClientId = (client: SecureClient): string => {
+const tinfoilClientId = (client: AttestedTinfoilClient): string => {
   const existing = tinfoilClientIds.get(client)
   if (existing) {
     return existing
@@ -415,8 +436,8 @@ const hashSecret = (value: string): string => {
 
 /** Fingerprint every input baked into a thread's harness at build time — the
  *  descriptor (provider / model id / api key / base url / reasoning / context
- *  window), thinking level, stable system prompt, regeneration revision, and
- *  durable checkpoint. Another device can replace that checkpoint without
+ *  window), provider connection generation, thinking level, stable system prompt,
+ *  regeneration revision, and durable checkpoint. Another device can replace that checkpoint without
  *  adding a user turn, so the local harness must notice that change too.
  *  When it changes mid-thread (a model, provider, key, system-prompt,
  *  thinking, or MCP-server switch) the cached harness is stale and
@@ -436,7 +457,14 @@ export const harnessSignature = (
     d.kind === 'anthropic'
       ? `anthropic|${d.modelId}|${d.catalogModelId ?? ''}|${d.baseURL ?? ''}|${d.contextWindow ?? ''}|${hashSecret(d.apiKey)}`
       : `${d.kind}|${d.providerId}|${d.modelId}|${vendor}|${d.baseURL}|${hashSecret(d.apiKey)}|${d.reasoning}|${d.contextWindow ?? ''}|${d.supportsImages}|${clientId}`
-  return JSON.stringify([model, resolved.thinkingLevel, stableSystemPrompt, regenerationRevision, compaction])
+  return JSON.stringify([
+    model,
+    resolved.providerBinding,
+    resolved.thinkingLevel,
+    stableSystemPrompt,
+    regenerationRevision,
+    compaction,
+  ])
 }
 
 /** Compose Pi's cacheable prompt prefix while keeping the per-send timestamp last. */

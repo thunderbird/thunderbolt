@@ -5,10 +5,14 @@
 import { Trans } from '@lingui/react/macro'
 import type { Agent } from '@/types/acp'
 import { SettingsSectionLabel } from '@/components/settings/settings-list'
+import { canManageAgent } from './agent-permissions'
 import { AgentRow } from './agent-row'
 
 type AgentListProps = {
   /** Unified list from `useAllAgents` (built-in first, then system, then customs). */
+  currentUserId?: string | null
+  onEditAgent?: (id: string) => void
+  onRemoveAgent?: (id: string) => void
   agents: Agent[]
   /** The agent id whose detail is currently open — brightens that row. */
   selectedId?: string | null
@@ -23,14 +27,34 @@ type AgentListProps = {
  * agents) and "System agents" (provided by the deployment). With no system
  * agents the labels are noise, so the rows render as one flat list.
  */
-export const AgentList = ({ agents, selectedId, onOpenAgent }: AgentListProps) => {
+export const AgentList = ({
+  agents,
+  selectedId,
+  onOpenAgent,
+  currentUserId = null,
+  onEditAgent,
+  onRemoveAgent,
+}: AgentListProps) => {
   const systemAgents = agents.filter((a) => a.type !== 'built-in' && a.isSystem === 1)
   const yourAgents = agents.filter((a) => a.type === 'built-in' || a.isSystem !== 1)
   const showSections = systemAgents.length > 0 && yourAgents.length > 0
 
   const rows = (list: Agent[]) =>
     list.map((agent) => (
-      <AgentRow key={agent.id} agent={agent} isSelected={selectedId === agent.id} onOpen={onOpenAgent} />
+      <AgentRow
+        contextMenu={
+          canManageAgent(agent, currentUserId)
+            ? {
+                onEdit: onEditAgent && (() => onEditAgent(agent.id)),
+                onRemove: onRemoveAgent && (() => onRemoveAgent(agent.id)),
+              }
+            : {}
+        }
+        key={agent.id}
+        agent={agent}
+        isSelected={selectedId === agent.id}
+        onOpen={onOpenAgent}
+      />
     ))
 
   // gap-4 between rows — same rhythm as the models page's card list.

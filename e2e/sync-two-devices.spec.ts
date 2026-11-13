@@ -50,7 +50,7 @@ test('chats and model reasoning preferences sync between devices without reloadi
 
     for (const devicePage of [page, secondPage]) {
       await devicePage.getByTestId('model-selector-trigger').click()
-      await devicePage.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
+      await devicePage.getByRole('button', { name: `${defaultModelOpus55.name} Thunderbolt`, exact: true }).click()
       await devicePage.keyboard.press('Escape')
     }
 

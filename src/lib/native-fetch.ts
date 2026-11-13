@@ -45,12 +45,20 @@ export const nativeFetch = async (
     try {
       let current = target
       const method = (init?.method ?? (target instanceof Request ? target.method : 'GET')).toUpperCase()
+      const redirect = init?.redirect ?? (target instanceof Request ? target.redirect : 'follow')
       for (let hop = 0; ; hop++) {
         signal?.throwIfAborted()
         const response = await fetchImpl(current, { ...init, headers, signal: child.signal, maxRedirections: 0 })
         if (signal?.aborted) {
           await response.body?.cancel(signal.reason)
           throw signal.reason
+        }
+        if (redirectStatuses.has(response.status) && redirect === 'error') {
+          await response.body?.cancel()
+          throw new Error('Redirects are not allowed for this request')
+        }
+        if (redirect === 'manual') {
+          return response
         }
         const location = response.headers.get('location')
         if ((method !== 'GET' && method !== 'HEAD') || !redirectStatuses.has(response.status) || !location) {

@@ -21,6 +21,7 @@ import { encodeAAD, encPrefix, encV2Prefix, legacyKeyId, type KeyId } from '@sha
 import { formatWireValue, isV2EncryptedValue, parseWireValue } from './wire-format'
 import {
   codec,
+  dropCachedPrimary,
   invalidateAdoptedKeyring,
   invalidateKeyringCache,
   resetCodecState,
@@ -77,7 +78,7 @@ const installFakeChannel = (): FakeChannel => {
 
 const setupKeyring = async (keyIds: KeyId[], primary: KeyId) => {
   const ak = await generateAK()
-  await storeAK(ak)
+  await storeAK(ak, { keyVersion: null, primaryKeyId: '0' })
   const deks = new Map<KeyId, { dek: CryptoKey; wrappedKey: string }>()
   for (const keyId of keyIds) {
     const minted = await mintDEK(ak, keyId)
@@ -102,6 +103,17 @@ const waitFor = async (predicate: () => boolean): Promise<void> => {
     await flushAsync()
   }
   throw new Error('waitFor timed out')
+}
+
+/** Whether `promise` settles within `flushes` turns of the fake-indexeddb event loop. */
+const settlesWithinFlushes = async (promise: Promise<unknown>, flushes: number): Promise<boolean> => {
+  const flushed = async (): Promise<false> => {
+    for (const _ of Array.from({ length: flushes })) {
+      await flushAsync()
+    }
+    return false
+  }
+  return Promise.race([promise.then(() => true), flushed()])
 }
 
 let fakeChannel: FakeChannel
@@ -160,7 +172,7 @@ describe('encode', () => {
     // account is set up: encode fails CLOSED (refuses plaintext) rather than
     // encrypting under "v1" or leaking cleartext.
     const ak = await generateAK()
-    await storeAK(ak)
+    await storeAK(ak, { keyVersion: null, primaryKeyId: '0' })
     const minted = await mintDEK(ak, legacyKeyId)
     await storeDEK(legacyKeyId, minted.wrappedKey)
     await expect(codec.encode('x', ctx)).rejects.toThrow('refusing to upload plaintext')
@@ -174,7 +186,7 @@ describe('encode', () => {
     // pointer is durable, so without this guard one transient write steers
     // every future write onto the decrypt-only legacy CK.
     const ak = await generateAK()
-    await storeAK(ak)
+    await storeAK(ak, { keyVersion: null, primaryKeyId: '0' })
     await storeDEK('0', (await mintDEK(ak, '0')).wrappedKey)
     await storeDEK(legacyKeyId, (await mintDEK(ak, legacyKeyId)).wrappedKey)
     await plantRawPrimaryKeyId(legacyKeyId)
@@ -192,7 +204,8 @@ describe('encode', () => {
     // yet" — silently sealing under "0" was a downgrade primitive. An AK is
     // present, so encode must fail closed rather than pass plaintext through.
     const ak = await generateAK()
-    await storeAK(ak)
+    // A non-mintable sealed pointer is never stored, so this leaves an AK with no pointer.
+    await storeAK(ak, { keyVersion: null, primaryKeyId: 'v1' })
     const minted = await mintDEK(ak, '0')
     await storeDEK('0', minted.wrappedKey)
 
@@ -280,7 +293,7 @@ describe('decode — AAD tamper negatives', () => {
 
   it('fails GCM when the wire key_id is swapped (key_id AAD dimension)', async () => {
     const ak = await generateAK()
-    await storeAK(ak)
+    await storeAK(ak, { keyVersion: null, primaryKeyId: '0' })
     // The SAME DEK material staged under both ids isolates the wire key_id's
     // data-AAD dimension from a plain key mismatch. Each id gets its own wrap
     // (the wrap itself binds key_id since THU-893, so one blob cannot serve two
@@ -331,6 +344,37 @@ describe('keys-sync channel protocol', () => {
     // which keeps the warm pointer and would still encode under 0 here).
     expect(parseWireValue(await codec.encode('b', ctx))?.keyId).toBe('1')
     expect(fakeChannel.posted).toContainEqual({ type: 'primary-adopted' })
+  })
+
+  it('dropCachedPrimary drops the primary pointer and broadcasts primary-dropped', async () => {
+    await setupKeyring(['0', '1'], '0')
+    expect(parseWireValue(await codec.encode('a', ctx))?.keyId).toBe('0')
+
+    await storePrimaryKeyId('1')
+    dropCachedPrimary()
+    expect(parseWireValue(await codec.encode('b', ctx))?.keyId).toBe('1')
+    expect(fakeChannel.posted).toContainEqual({ type: 'primary-dropped' })
+  })
+
+  it('dropCachedPrimary and a primary-dropped message leave a pending key request waiting for the staging', async () => {
+    // A new AK is stored before the DEKs wrapped under it are staged. Settling a
+    // waiting decode at that point would retry it against an empty slot and
+    // keep the raw ciphertext.
+    const { ak } = await setupKeyring(['0'], '0')
+    const minted = await mintDEK(ak, '1')
+    const aad = encodeAAD(ctx.table, ctx.column, ctx.rowId, '1')
+    const { iv, ciphertext } = await encrypt('post-revocation row', minted.dek, aad)
+
+    const decodePromise = codec.decode(formatWireValue('1', iv, ciphertext), ctx)
+    await waitFor(() => fakeChannel.posted.some((message) => message.type === 'key-request'))
+
+    dropCachedPrimary()
+    fakeChannel.deliver({ type: 'primary-dropped' })
+    expect(await settlesWithinFlushes(decodePromise, 50)).toBe(false)
+
+    await storeDEK('1', minted.wrappedKey)
+    fakeChannel.deliver({ type: 'key-staged', keyId: '1' })
+    expect(await decodePromise).toBe('post-revocation row')
   })
 
   it("a 'primary-adopted' message re-reads the pointer without clearing the setup flag", async () => {
@@ -420,7 +464,7 @@ describe('keys-sync channel protocol', () => {
     expect(fakeChannel.posted).toContainEqual({ type: 'key-request', keyId: '1', reason: 'unwrap-failed' })
 
     // Main thread (D2) refreshes the AK envelope, stores the new AK, then signals.
-    await storeAK(newAK)
+    await storeAK(newAK, { keyVersion: null, primaryKeyId: '0' })
     fakeChannel.deliver({ type: 'ak-refreshed' })
 
     expect(await decodePromise).toBe('post-revocation')

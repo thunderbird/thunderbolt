@@ -13,6 +13,8 @@ type CreateAnthropicSSEStreamOptions = {
   onUsage?: (snapshot: InferenceTokenCounts) => Promise<void>
   onUsageError?: (error: unknown) => void
   onUsageMissing?: () => void
+  /** Runs once the provider stream is over, after its usage or failure, and before the client's stream ends. */
+  onEnd?: () => Promise<void>
 }
 
 /** Convert native Anthropic usage into the managed-inference accounting shape. */
@@ -31,7 +33,11 @@ const usageSnapshot = (usage: Usage): InferenceTokenCounts => {
   }
 }
 
-/** Re-encode Anthropic SDK events as SSE while observing the latest reported usage and errors. */
+/**
+ * Re-encode Anthropic SDK events as SSE while observing the latest reported usage and errors. A client that leaves
+ * does not end the upstream request: the final output count arrives in the last `message_delta`, so the stream is
+ * read to the end and the request is charged what it used.
+ */
 export const createAnthropicSSEStream = (
   upstream: AnthropicEventStream,
   options: CreateAnthropicSSEStreamOptions = {},
@@ -55,17 +61,19 @@ export const createAnthropicSSEStream = (
               cache_read_input_tokens: event.usage.cache_read_input_tokens ?? usage.cache_read_input_tokens,
             }
           }
-          if (isCancelled) {
-            break
+          if (!isCancelled) {
+            controller.enqueue(encoder.encode(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`))
           }
-          controller.enqueue(encoder.encode(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`))
         }
       } catch (error) {
+        // The final usage never arrived, so the usage seen so far would undercount, and the hold stays charged.
+        // The error is reported even after the client left, since it is the only record of why.
+        invokeObserverSafely(() => options.onError?.(error))
+        await options.onEnd?.()
         if (!isCancelled) {
-          invokeObserverSafely(() => options.onError?.(error))
           controller.error(error)
-          return
         }
+        return
       }
       if (!usage) {
         invokeObserverSafely(options.onUsageMissing)
@@ -76,13 +84,13 @@ export const createAnthropicSSEStream = (
           invokeObserverSafely(() => options.onUsageError?.(error))
         }
       }
+      await options.onEnd?.()
       if (!isCancelled) {
         controller.close()
       }
     },
     cancel() {
       isCancelled = true
-      upstream.controller.abort()
     },
   })
 }

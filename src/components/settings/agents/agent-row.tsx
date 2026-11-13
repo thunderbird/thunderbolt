@@ -10,6 +10,7 @@ import { AgentListRow } from './agent-list-row'
 import { agentProvenanceLine } from './agent-provenance'
 
 type AgentRowProps = {
+  contextMenu?: { onEdit?: () => void; onRemove?: () => void }
   agent: Agent
   /** Whether this row's detail panel is open — brightens the row like other
    *  selected list items across the app. */
@@ -26,17 +27,18 @@ type AgentRowProps = {
  * a disabled custom agent renders dimmed with a "Disabled" suffix so its
  * state stays visible without a switch on the row.
  */
-export const AgentRow = ({ agent, isSelected, onOpen }: AgentRowProps) => {
+export const AgentRow = ({ agent, isSelected, onOpen, contextMenu }: AgentRowProps) => {
   const { t } = useLingui()
   const Icon = iconForAgent(agent)
   const disabled = agent.enabled !== 1
 
   return (
     <AgentListRow
+      contextMenu={contextMenu}
       testId={`agent-row-${agent.id}`}
       isSelected={isSelected}
       onOpen={() => onOpen(agent)}
-      ariaLabel={`Open ${agent.name}`}
+      ariaLabel={t`Open ${agent.name}`}
       isDimmed={disabled}
       icon={
         // The logo reads slightly smaller than the lucide glyphs at equal

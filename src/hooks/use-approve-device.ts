@@ -4,7 +4,7 @@
 
 import { useHttpClient } from '@/contexts'
 import type { Device } from '@/dal'
-import { approveDevice } from '@/services/encryption'
+import { approveDevice, type DeviceApprovalConfirmation } from '@/services/encryption'
 import { useMutation } from '@tanstack/react-query'
 
 /**
@@ -15,11 +15,11 @@ export const useApproveDevice = () => {
   const httpClient = useHttpClient()
 
   return useMutation({
-    mutationFn: async ({ device, fingerprint }: { device: Device; fingerprint: string }) => {
+    mutationFn: async ({ device, confirmation }: { device: Device; confirmation: DeviceApprovalConfirmation }) => {
       if (!device?.publicKey || !device?.mlkemPublicKey) {
         throw new Error('Device is missing public key(s)')
       }
-      await approveDevice(httpClient, device.id, device.publicKey, device.mlkemPublicKey, fingerprint)
+      await approveDevice(httpClient, device.id, device.publicKey, device.mlkemPublicKey, confirmation)
     },
   })
 }

@@ -2,8 +2,6 @@
 
 Thunderbolt runs entirely on infrastructure you control, with no vendor control plane to call home to. Traffic leaves your network to reach the AI providers you configure and a short list of feature endpoints, every one of which is listed in [Requirements](./requirements.md).
 
-> **Evaluation.** Thunderbolt has not completed a security audit. Deploy it for evaluation and internal testing, not yet for production.
-
 ## Pick a deployment path
 
 | Path                                  | What it takes                                                                                                            | How it scales                                                             | Good for                                                                |
@@ -40,7 +38,7 @@ Each user's device keeps its own local database and reads and writes there first
 | Identity realm        | `thunderbolt`, imported the first time Keycloak boots.                                                                                                                                                                                                       |
 | Demo user             | `demo@thunderbolt.io` / `demo`                                                                                                                                                                                                                               |
 | Keycloak admin        | `admin` / `admin` on every path, AWS included. Set `keycloakAdminPassword` before anyone can reach the deployment.                                                                                                                                           |
-| Analytics             | Off. Nothing is sent unless you configure an analytics service, and each user can still turn it off.                                                                                                                                                         |
+| Analytics             | Off unless configured. Users can turn off app analytics; backend inference analytics remain enabled when PostHog is configured.                                                                                                                              |
 | End-to-end encryption | Always on, with no setting. The covered content columns are encrypted on the device, so your servers hold ciphertext for those; accounts, sessions and uncovered columns stay readable. Each new device has to be approved from one the user already trusts. |
 
 > Every credential in the table above is published in this repository. Rotate all of them and delete the demo user before anyone outside your team can reach the deployment.

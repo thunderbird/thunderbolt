@@ -22,11 +22,11 @@ export const OnboardingNameStep = ({ state, actions }: OnboardingNameStepProps) 
         title={<Trans>What should we call you?</Trans>}
         description={<Trans>Your AI assistant will use this name to address you personally.</Trans>}
       />
-      <div className="mt-10 space-y-6">
+      <div className="mt-10">
         <Input
           name="preferredName"
+          aria-label={t`Name`}
           placeholder={t`Enter your name`}
-          aria-label={t`Enter your name`}
           value={state.nameValue}
           disabled={state.isSubmittingName}
           onChange={(event) => actions.setNameValue(event.target.value)}

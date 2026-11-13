@@ -15,6 +15,7 @@ type ConnectionTestSectionProps = {
   provider: Model['provider']
   model: string
   apiKey: string | undefined
+  hasOAuth?: boolean
   connection: Pick<ModelConnectionTest, 'isTesting' | 'isLoadingModel' | 'status' | 'error' | 'toolSupport'>
   onTest: () => void
 }
@@ -28,10 +29,17 @@ const canTestModelConnection = (provider: Model['provider'], model?: string, api
 }
 
 /** Shared connection test controls and result presentation for model forms. */
-export const ConnectionTestSection = ({ provider, model, apiKey, connection, onTest }: ConnectionTestSectionProps) => {
+export const ConnectionTestSection = ({
+  provider,
+  model,
+  apiKey,
+  hasOAuth = false,
+  connection,
+  onTest,
+}: ConnectionTestSectionProps) => {
   const { t } = useLingui()
   const { isTesting, isLoadingModel, status, error, toolSupport } = connection
-  const canTest = canTestModelConnection(provider, model, apiKey)
+  const canTest = (hasOAuth && Boolean(model)) || canTestModelConnection(provider, model, apiKey)
   const showApiKeyHint = !canTest && Boolean(model) && providerRequiresApiKey(provider)
 
   return (

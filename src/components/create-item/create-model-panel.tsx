@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { AddModelForm } from '@/settings/models/add-model-form'
-import { useAddModelForm } from '@/settings/models/use-add-model-form'
+import { AddProviderModels } from '@/settings/models/add-provider-models'
+import { useAddProviderModels } from '@/settings/models/use-add-provider-models'
 import { CreateItemPanelShell } from './create-item-panel-shell'
 
 type CreateModelPanelProps = {
@@ -14,11 +14,17 @@ type CreateModelPanelProps = {
 
 /** Adds a model over the current screen without changing routes. */
 export const CreateModelPanel = ({ open, onClose, onCloseComplete }: CreateModelPanelProps) => {
-  const addForm = useAddModelForm({ isOpen: open, onClose })
+  const addForm = useAddProviderModels({ isOpen: open, onClose })
 
   return (
-    <CreateItemPanelShell kind="model" open={open} onClose={addForm.onCancel} onCloseComplete={onCloseComplete}>
-      <AddModelForm {...addForm} />
+    <CreateItemPanelShell
+      kind="model"
+      open={open}
+      onClose={addForm.onCancel}
+      onCloseComplete={onCloseComplete}
+      bodyLayout="fill"
+    >
+      <AddProviderModels {...addForm} />
     </CreateItemPanelShell>
   )
 }

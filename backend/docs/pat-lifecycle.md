@@ -39,7 +39,7 @@ The CLI still requires `thunderbolt login` for confidential models regardless of
 
 The backend meters these calls itself, so a service caller has nothing to submit. The proxy cannot read the ciphertext it forwards, so it asks the enclave for a usage report and writes the account's ledger row at the price loaded at admission. Closing the stream early does not lower the charge, because the backend reads the response to the end to get the report.
 
-Send `X-Inference-Model` with the model you call. The backend prices the call as that model and has the enclave reject, with 400, a body that names another one. Without the header the call is priced as `glm-5-3`, so the body must name `glm-5-3`. An unrecognised value is rejected with 400 before anything reaches the enclave. Only `POST /v1/tinfoil/v1/chat/completions` is metered; other paths, such as audio, are forwarded without a charge. If the enclave's report never arrives, the call is not charged.
+Send `X-Inference-Model` with the model you call. The backend prices the call as that model and has the enclave reject, with 400, a body that names another one. Without the header the call is priced as `glm-5-3`, so the body must name `glm-5-3`. An unrecognised value is rejected with 400 before anything reaches the enclave. Only `POST /v1/tinfoil/v1/chat/completions` is metered; other paths, such as audio, are forwarded without a charge. If the enclave's report never arrives, the call stays charged at its hold: the most it could cost, capped at what was left of the limit.
 
 ## List
 

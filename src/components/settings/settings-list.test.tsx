@@ -55,3 +55,30 @@ describe('settings scroll clearance', () => {
     expect(container).toBeInTheDocument()
   })
 })
+
+it('opens Edit and Remove without selecting the row and respects protected items', async () => {
+  const onEdit = mock(() => {})
+  const onRemove = mock(() => {})
+  const onSelect = mock(() => {})
+  render(
+    <SettingsSelectableRow
+      title="Account"
+      ariaLabel="Open account"
+      onSelect={onSelect}
+      contextMenu={{ onEdit, onRemove }}
+    />,
+  )
+  fireEvent.contextMenu(screen.getByRole('button', { name: 'Open account' }))
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }))
+  expect(onEdit).toHaveBeenCalledTimes(1)
+  expect(onSelect).not.toHaveBeenCalled()
+  fireEvent.contextMenu(screen.getByRole('button', { name: 'Open account' }))
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Remove' }))
+  expect(onRemove).toHaveBeenCalledTimes(1)
+  expect(onSelect).not.toHaveBeenCalled()
+  cleanup()
+  render(<SettingsSelectableRow title="Built in" ariaLabel="Open built in" onSelect={onSelect} contextMenu={{}} />)
+  fireEvent.contextMenu(screen.getByRole('button', { name: 'Open built in' }))
+  expect(await screen.findByRole('menuitem', { name: 'Edit' })).toHaveAttribute('aria-disabled', 'true')
+  expect(screen.getByRole('menuitem', { name: 'Remove' })).toHaveAttribute('aria-disabled', 'true')
+})

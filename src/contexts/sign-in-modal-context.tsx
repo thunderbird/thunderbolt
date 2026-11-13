@@ -14,6 +14,7 @@ import { isSsoMode } from '@/lib/auth-mode'
 import { createHandleError } from '@/lib/error-utils'
 import { isPrPreview } from '@/lib/platform'
 import { trackError, trackEvent } from '@/lib/posthog'
+import { getLocalSetting } from '@/stores/local-settings-store'
 
 type SignInModalContextValue = {
   openSignInModal: () => void
@@ -128,7 +129,7 @@ export const SignInModalProvider = ({ children }: SignInModalProviderProps) => {
     }
     dismissRedirectsToLoggedOutRef.current = false
     const shouldBypassWaitlist = import.meta.env.VITE_BYPASS_WAITLIST === 'true' || isPrPreview()
-    if (shouldBypassWaitlist) {
+    if (shouldBypassWaitlist || getLocalSetting('localMode')) {
       return
     }
     window.location.replace(isSsoMode() ? '/sso-redirect' : '/waitlist')

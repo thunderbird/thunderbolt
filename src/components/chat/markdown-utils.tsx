@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import {
   createContext,
   Fragment,
@@ -364,4 +365,21 @@ export const citationMarkdownComponents: Components = {
   td: CitationTableData,
   th: CitationTableHeader,
   li: CitationListItem,
+}
+
+/** Private search evidence may suggest images, but loading a remote image requires an explicit action. */
+const PrivateSourceImage = (props: ComponentProps<'img'> & { node?: unknown }) => {
+  const { src, alt, node: _node, ...rest } = props
+  const value = src?.trim()
+  const target = value?.startsWith('//') ? `https:${value}` : value
+  if (target && isSafeUrl(target)) {
+    return <SafeLink href={new URL(target).href}>{alt || <Trans>View image</Trans>}</SafeLink>
+  }
+  return <img {...rest} src={src} alt={alt} />
+}
+
+export const privateSourceMarkdownComponents: Components = { ...markdownComponents, img: PrivateSourceImage }
+export const privateSourceCitationMarkdownComponents: Components = {
+  ...citationMarkdownComponents,
+  img: PrivateSourceImage,
 }

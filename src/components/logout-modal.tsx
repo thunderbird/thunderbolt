@@ -18,8 +18,8 @@ import {
 } from '@/components/ui/responsive-modal'
 import { SelectableCard, type DataOption } from '@/components/ui/selectable-card'
 import { useAuth } from '@/contexts'
-import { isSsoMode } from '@/lib/auth-mode'
 import { clearLocalData as defaultClearLocalData } from '@/lib/cleanup'
+import { signOutAndLeave } from '@/lib/sign-out'
 
 type LogoutModalProps = {
   open: boolean
@@ -48,29 +48,11 @@ export const LogoutModal = ({
 
   const handleLogout = async () => {
     setStatus('pending')
-
-    try {
-      const result = await authClient.signOut({ fetchOptions: { disableSignal: true } })
-      if (result.error || !result.data?.success) {
-        setStatus('error')
-        return
-      }
-    } catch (error) {
-      console.error('Failed to sign out:', error)
+    const hasSignedOut = await signOutAndLeave(authClient, () =>
+      clearLocalData({ clearDatabase: selectedOption === 'delete' }),
+    )
+    if (!hasSignedOut) {
       setStatus('error')
-      return
-    }
-
-    try {
-      await clearLocalData({ clearDatabase: selectedOption === 'delete' })
-    } catch (error) {
-      console.error('Failed to clear local data:', error)
-    }
-
-    if (isSsoMode()) {
-      window.location.replace('/signed-out')
-    } else {
-      window.location.reload()
     }
   }
 

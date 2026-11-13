@@ -5,7 +5,7 @@
 import type { SessionState, VoiceSession, VoiceSessionOptions } from '@/voice/session'
 
 type SessionCallbacks = Pick<VoiceSessionOptions, 'onState' | 'onError' | 'onLevel'>
-type SessionOwner = { session: VoiceSession | null }
+type SessionOwner = { session: VoiceSession | null; controller: AbortController }
 
 type LifecycleOptions = {
   onStarting: () => void
@@ -23,39 +23,49 @@ export const createSessionLifecycle = (options: LifecycleOptions) => {
   const stop = async () => {
     const owner = active
     active = null
+    owner?.controller.abort()
     options.onActiveChange(false)
     options.onStopped()
     await owner?.session?.stop()
   }
 
-  const start = async (prepare: (callbacks: SessionCallbacks) => Promise<VoiceSession>) => {
+  const start = async (prepare: (callbacks: SessionCallbacks, signal: AbortSignal) => Promise<VoiceSession | null>) => {
     if (active) {
       return
     }
-    const owner: SessionOwner = { session: null }
+    const owner: SessionOwner = { session: null, controller: new AbortController() }
     active = owner
     options.onActiveChange(true)
     options.onStarting()
     try {
-      const session = await prepare({
-        onState: (state) => {
-          if (active === owner) {
-            options.onState(state)
-          }
+      const session = await prepare(
+        {
+          onState: (state) => {
+            if (active === owner) {
+              options.onState(state)
+            }
+          },
+          onError: (error) => {
+            if (active === owner) {
+              options.onError(error, false)
+            }
+          },
+          onLevel: (level) => {
+            if (active === owner) {
+              options.onLevel(level)
+            }
+          },
         },
-        onError: (error) => {
-          if (active === owner) {
-            options.onError(error, false)
-          }
-        },
-        onLevel: (level) => {
-          if (active === owner) {
-            options.onLevel(level)
-          }
-        },
-      })
+        owner.controller.signal,
+      )
       if (active !== owner) {
-        await session.stop()
+        await session?.stop()
+        return
+      }
+      if (!session) {
+        active = null
+        options.onActiveChange(false)
+        options.onStopped()
         return
       }
       owner.session = session

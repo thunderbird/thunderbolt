@@ -173,7 +173,7 @@ describe('effort selector state', () => {
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
   })
 
-  it('shows the lock beside the model name and opens connection privacy from above effort', async () => {
+  it('shows the provider beside the model name and opens connection privacy from above effort', async () => {
     await loadReasoningCapabilities(model)
     useChatStore.getState().updateSession('effort-chat', {
       selectedModel: { ...model, name: 'Private model', isConfidential: 1, isSystem: 1, apiKey: null },
@@ -183,7 +183,8 @@ describe('effort selector state', () => {
     })
 
     const trigger = screen.getByRole('button', { name: 'Private model' })
-    expect(trigger.querySelector('linearGradient')).not.toBeNull()
+    expect(trigger.querySelector('img')).not.toBeNull()
+    expect(trigger.querySelector('linearGradient')).toBeNull()
     expect(trigger).toHaveTextContent('Private model')
     await act(async () => {
       fireEvent.click(trigger)
@@ -417,11 +418,11 @@ describe('effort selector state', () => {
     await modelsDal.createModel(getDb(), { ...other, reasoningEffort: 'max' })
     renderWithReactivity(<Probe />, { tables: ['settings', 'models'] })
     await waitForElement(() => screen.queryByRole('button', { name: 'High' }))
-    const getModelQuery = modelsDal.getModelQuery
-    const saved = [(await modelsDal.getModel(getDb(), other.id))!]
+    const getModelReasoningEffortQuery = modelsDal.getModelReasoningEffortQuery
+    const saved = await getModelReasoningEffortQuery(getDb(), other.id)
     const loaded = Promise.withResolvers<typeof saved>()
-    const read = spyOn(modelsDal, 'getModelQuery').mockImplementation((db, id) => {
-      const query = getModelQuery(db, id)
+    const read = spyOn(modelsDal, 'getModelReasoningEffortQuery').mockImplementation((db, id) => {
+      const query = getModelReasoningEffortQuery(db, id)
       if (id === other.id) {
         spyOn(query, 'execute').mockImplementation(() => loaded.promise)
       }
@@ -459,7 +460,7 @@ describe('effort selector state', () => {
       tables: ['settings', 'models'],
     })
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: `API key not configured ${model.name}` }))
+      fireEvent.click(screen.getByRole('button', { name: model.name }))
     })
     await act(async () => {
       fireEvent.change(screen.getByRole('slider'), { target: { value: '1' } })
@@ -518,14 +519,11 @@ describe('effort selector state', () => {
       tables: ['settings', 'models'],
     })
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: `API key not configured ${model.name}` }))
+      fireEvent.click(screen.getByRole('button', { name: model.name }))
     })
     expect(screen.getByRole('button', { name: 'Choose model' })).toBeDefined()
     expect(screen.queryByRole('slider')).toBeNull()
-    expect(screen.getByRole('button', { name: `API key not configured ${model.name}` })).toHaveAttribute(
-      'aria-description',
-      `Model: ${model.name}`,
-    )
+    expect(screen.getByRole('button', { name: model.name })).toHaveAttribute('aria-description', `Model: ${model.name}`)
   })
 
   it('starts with a supported default, then previews and commits real effort levels', async () => {
@@ -597,6 +595,11 @@ describe('effort selector state', () => {
     })
     await waitForElement(() => screen.queryByText('low', { selector: 'output' }))
     expect(await getChatReasoningEffort('effort-chat', model)).toBe('low')
+    await act(async () => {
+      await modelsDal.updateModel(getDb(), model.id, { deletedAt: new Date().toISOString() })
+      triggerChange(['models'])
+    })
+    await waitForElement(() => screen.queryByText('max', { selector: 'output' }))
   })
 
   it('preselects the profile effort and follows synced changes until the user chooses a model preference', async () => {

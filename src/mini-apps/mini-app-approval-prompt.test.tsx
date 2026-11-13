@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { PendingMiniAppApproval } from '@/chats/chat-store'
+import type { MiniAppApprovalChoice } from './approval-outcome'
 import { MiniAppApprovalPrompt } from './mini-app-approval-prompt'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'bun:test'
@@ -23,7 +24,7 @@ const pending = (overrides: Partial<PendingMiniAppApproval['tool']> = {}, args: 
     args,
   }) as PendingMiniAppApproval
 
-const renderPrompt = (approval: PendingMiniAppApproval, onDecide: (approved: boolean) => void = () => {}) =>
+const renderPrompt = (approval: PendingMiniAppApproval, onDecide: (choice: MiniAppApprovalChoice) => void = () => {}) =>
   render(<MiniAppApprovalPrompt pending={approval} appName="Order Book" onDecide={onDecide} />)
 
 describe('MiniAppApprovalPrompt decisions', () => {
@@ -31,36 +32,54 @@ describe('MiniAppApprovalPrompt decisions', () => {
    * The component exists to call `onDecide`, and nothing here pressed a button
    * until now: eleven tests asserted structure, ordering, ARIA and focus, all of
    * which would have passed with both buttons wired to the same handler, or with
-   * the booleans swapped, or with `onClick` dropped entirely.
+   * the choices swapped, or with `onClick` dropped entirely.
    */
   it('approves when Approve is pressed', () => {
-    const decisions: boolean[] = []
-    renderPrompt(pending(), (approved) => decisions.push(approved))
+    const decisions: MiniAppApprovalChoice[] = []
+    renderPrompt(pending(), (choice) => decisions.push(choice))
 
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
 
-    expect(decisions).toEqual([true])
+    expect(decisions).toEqual(['approved'])
   })
 
   it('denies when Deny is pressed', () => {
-    const decisions: boolean[] = []
-    renderPrompt(pending(), (approved) => decisions.push(approved))
+    const decisions: MiniAppApprovalChoice[] = []
+    renderPrompt(pending(), (choice) => decisions.push(choice))
 
     fireEvent.click(screen.getByRole('button', { name: 'Deny' }))
 
-    expect(decisions).toEqual([false])
+    expect(decisions).toEqual(['denied'])
   })
 
-  /** Pressing one must not report the other — the two labels sit side by side
-   *  and a swapped handler is invisible to a structural assertion. */
+  it('approves for good when Always approve is pressed', () => {
+    const decisions: MiniAppApprovalChoice[] = []
+    renderPrompt(pending(), (choice) => decisions.push(choice))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Always approve this action' }))
+
+    expect(decisions).toEqual(['approved-always'])
+  })
+
+  /** Pressing one must not report another — the labels sit side by side and a
+   *  swapped handler is invisible to a structural assertion. */
   it('reports exactly one decision per press', () => {
-    const decisions: boolean[] = []
-    renderPrompt(pending(), (approved) => decisions.push(approved))
+    const decisions: MiniAppApprovalChoice[] = []
+    renderPrompt(pending(), (choice) => decisions.push(choice))
 
     fireEvent.click(screen.getByRole('button', { name: 'Deny' }))
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Always approve this action' }))
 
-    expect(decisions).toEqual([false, true])
+    expect(decisions).toEqual(['denied', 'approved', 'approved-always'])
+  })
+
+  /** Described by the warning, so a screen reader that tabs to the button hears it too. */
+  it('says what always approving gives up', () => {
+    renderPrompt(pending())
+    expect(screen.getByRole('button', { name: 'Always approve this action' })).toHaveAccessibleDescription(
+      'Later calls run without asking, with whatever details the model sends, until Thunderbolt reloads.',
+    )
   })
 })
 
@@ -68,6 +87,11 @@ describe('MiniAppApprovalPrompt', () => {
   it('leads with the author-written title, not the tool identifier', () => {
     renderPrompt(pending())
     expect(screen.getByText('Change an order status')).toBeTruthy()
+  })
+
+  it('says in its own words that approving sends the details to the app, whatever the app titles it', () => {
+    renderPrompt(pending({ annotations: { readOnlyHint: true, title: 'Keep this email private in Thunderbolt' } }))
+    expect(screen.getByText('Approving sends this request, with the details shown, to Order Book.')).toBeTruthy()
   })
 
   it('falls back to the tool name when no title was declared', () => {
@@ -132,12 +156,14 @@ describe('MiniAppApprovalPrompt', () => {
   })
 
   /** Deny first in DOM order: a stray Enter or a rushed Tab should land on the
-   *  harmless one. The model can ask again; an unwanted write cannot be undone. */
-  it('puts Deny before Approve', () => {
+   *  harmless one. The model can ask again; an unwanted write cannot be undone.
+   *  The broadest grant comes last for the same reason. */
+  it('puts Deny before Approve, and Always approve last', () => {
     renderPrompt(pending())
     const buttons = screen.getAllByRole('button').map((button) => button.textContent)
 
     expect(buttons.indexOf('Deny')).toBeLessThan(buttons.indexOf('Approve'))
+    expect(buttons.at(-1)).toBe('Always approve this action')
   })
 
   /*

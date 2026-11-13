@@ -4,6 +4,8 @@
 
 import type { ComponentProps, ReactNode } from 'react'
 
+import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
+import { EditDeleteContextMenuContent } from './edit-delete-context-menu'
 import { Card } from '@/components/ui/card'
 import { pageCreateActionClearanceClass } from '@/components/ui/page-create-action'
 import { cn } from '@/lib/utils'
@@ -57,7 +59,8 @@ export const SettingsSectionLabel = ({ className, ...props }: ComponentProps<'h2
   />
 )
 
-type SettingsSelectableRowProps = Omit<ComponentProps<typeof Card>, 'onSelect' | 'title'> & {
+type SettingsSelectableRowProps = Omit<ComponentProps<typeof Card>, 'onSelect' | 'title' | 'contextMenu'> & {
+  contextMenu?: { onEdit?: () => void; onRemove?: () => void }
   title: ReactNode
   subtitle?: ReactNode
   leading?: ReactNode
@@ -73,6 +76,7 @@ type SettingsSelectableRowProps = Omit<ComponentProps<typeof Card>, 'onSelect' |
 
 /** Shared settings row with a full-height trailing-control lane. */
 export const SettingsSelectableRow = ({
+  contextMenu,
   title,
   subtitle,
   leading,
@@ -84,34 +88,48 @@ export const SettingsSelectableRow = ({
   ariaLabel,
   className,
   ...props
-}: SettingsSelectableRowProps) => (
-  <Card
-    className={cn(
-      'flex-row items-stretch gap-0 border-border p-0 transition-colors',
-      isSelected ? 'bg-accent' : 'hover:bg-secondary/50',
-      className,
-    )}
-    {...props}
-  >
-    <button
-      type="button"
-      aria-label={ariaLabel}
-      aria-pressed={isSelected}
-      onClick={onSelect}
+}: SettingsSelectableRowProps) => {
+  const row = (
+    <Card
       className={cn(
-        'flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-l-[inherit] px-4 py-3 text-left',
-        !trailing && 'rounded-r-[inherit] pr-4',
+        'flex-row items-stretch gap-0 border-border p-0 transition-colors',
+        isSelected ? 'bg-accent' : 'hover:bg-secondary/50',
+        className,
       )}
+      {...props}
     >
-      {leading && <span className="flex shrink-0 items-center justify-center">{leading}</span>}
-      <span className="min-w-0 flex-1">
-        <span className={cn('block truncate text-base font-medium', isDimmed && 'text-muted-foreground')}>{title}</span>
-        {subtitle && (
-          <span className="block truncate text-[length:var(--font-size-sm)] text-muted-foreground">{subtitle}</span>
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        aria-pressed={isSelected}
+        onClick={onSelect}
+        className={cn(
+          'flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-l-[inherit] px-4 py-3 text-left',
+          !trailing && 'rounded-r-[inherit] pr-4',
         )}
-      </span>
-      {trailingIcon && <span className="flex shrink-0 items-center">{trailingIcon}</span>}
-    </button>
-    {trailing && <div className="flex shrink-0 items-center rounded-r-[inherit] pr-4">{trailing}</div>}
-  </Card>
-)
+      >
+        {leading && <span className="flex shrink-0 items-center justify-center">{leading}</span>}
+        <span className="min-w-0 flex-1">
+          <span className={cn('block truncate text-base font-medium', isDimmed && 'text-muted-foreground')}>
+            {title}
+          </span>
+          {subtitle && (
+            <span className="block truncate text-[length:var(--font-size-sm)] text-muted-foreground">{subtitle}</span>
+          )}
+        </span>
+        {trailingIcon && <span className="flex shrink-0 items-center">{trailingIcon}</span>}
+      </button>
+      {trailing && <div className="flex shrink-0 items-center rounded-r-[inherit] pr-4">{trailing}</div>}
+    </Card>
+  )
+  return contextMenu ? (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div>{row}</div>
+      </ContextMenuTrigger>
+      <EditDeleteContextMenuContent onEdit={contextMenu.onEdit} onDelete={contextMenu.onRemove} />
+    </ContextMenu>
+  ) : (
+    row
+  )
+}

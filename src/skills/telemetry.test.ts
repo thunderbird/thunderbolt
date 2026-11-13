@@ -2,27 +2,23 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it, spyOn } from 'bun:test'
+import * as analytics from '@/lib/posthog'
+import { trackSkillEvent } from './telemetry'
 
-import { hashSkillId } from './telemetry'
-
-describe('hashSkillId', () => {
-  it('returns a deterministic 16-char hex string', async () => {
-    const a = await hashSkillId('user-1', 'skill-1')
-    const b = await hashSkillId('user-1', 'skill-1')
-    expect(a).toBe(b)
-    expect(a).toMatch(/^[0-9a-f]{16}$/)
+describe('skill telemetry', () => {
+  afterEach(() => {
+    trackSpy.mockRestore()
   })
+  let trackSpy: ReturnType<typeof spyOn<typeof analytics, 'trackEvent'>>
 
-  it('produces different hashes for different user_ids on the same skill (unlinkability)', async () => {
-    const a = await hashSkillId('user-1', 'shared-skill')
-    const b = await hashSkillId('user-2', 'shared-skill')
-    expect(a).not.toBe(b)
-  })
-
-  it('produces different hashes for different skill_ids under the same user', async () => {
-    const a = await hashSkillId('user-1', 'skill-a')
-    const b = await hashSkillId('user-1', 'skill-b')
-    expect(a).not.toBe(b)
+  it('records usage without needing an auth session or a skill identity', () => {
+    trackSpy = spyOn(analytics, 'trackEvent').mockImplementation(() => {})
+    trackSkillEvent('skill_used', { via: 'chip' })
+    trackSkillEvent('skill_created', { instruction_length: 100 })
+    expect(trackSpy.mock.calls).toEqual([
+      ['skill_used', { via: 'chip' }],
+      ['skill_created', { instruction_length: 100 }],
+    ])
   })
 })

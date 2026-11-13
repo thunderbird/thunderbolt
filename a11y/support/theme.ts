@@ -27,6 +27,18 @@ export const followSystemTheme = (context: BrowserContext) =>
     [localSettingsKey, appOrigin],
   )
 
+/**
+ * Turn off CSS transitions and animations in every page of this context. About 45 components use
+ * `transition-colors`, so right after a theme flip axe could read colors mid-transition. Runs before the
+ * app's own scripts and applies to every origin, including the Keycloak login.
+ */
+export const disableTransitions = (context: BrowserContext) =>
+  context.addInitScript(() => {
+    const style = document.createElement('style')
+    style.textContent = '*, *::before, *::after { transition: none !important; animation: none !important; }'
+    document.documentElement.append(style)
+  })
+
 /** Switch the OS color scheme and wait for the app's root class to follow. */
 export const setColorScheme = async (page: Page, scheme: 'light' | 'dark') => {
   await page.emulateMedia({ colorScheme: scheme })

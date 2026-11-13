@@ -5,7 +5,7 @@
 import { expect, type Browser, type Page } from '@playwright/test'
 import { appendFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { followSystemTheme } from './theme'
+import { disableTransitions, followSystemTheme } from './theme'
 
 export const notesPath = join(import.meta.dirname, '..', 'notes.jsonl')
 
@@ -63,19 +63,12 @@ export const skipOnboarding = async (page: Page) => {
     const before = await wizard.textContent()
     // The last Continue closes the wizard, which animates out: a click that fails because the wizard is
     // gone means onboarding is done, not that it's stuck.
-    const clicked = await next
-      .nth(Math.max(enabled, 0))
-      .click()
-      .then(
-        () => true,
-        async (error: unknown) => {
-          if (await wizard.isVisible()) {
-            throw error
-          }
-          return false
-        },
-      )
-    if (!clicked) {
+    try {
+      await next.nth(Math.max(enabled, 0)).click()
+    } catch (error) {
+      if (await wizard.isVisible()) {
+        throw error
+      }
       return
     }
     // Wait for the next step to render (or the wizard to close) rather than sleeping.
@@ -127,6 +120,7 @@ export const signedInPage = async (browser: Browser): Promise<Page | null> => {
   }
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } })
   await followSystemTheme(context)
+  await disableTransitions(context)
   const page = await context.newPage()
   const entry = await detectEntryScreen(page)
 

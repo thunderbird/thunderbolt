@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { expect, mock, test } from 'bun:test'
+import { expect, mock, spyOn, test } from 'bun:test'
 import worker, { handleContact, type Env } from './index'
 
 const origin = 'https://www.thunderbolt.io'
@@ -186,9 +186,15 @@ test.each(['IP_LIMITER', 'EMAIL_LIMITER'] as const)('stops delivery when %s reje
 test.each([400, 401, 403, 422, 429, 500])('rejects Resend HTTP %s without exposing diagnostics', async (status) => {
   const { run, send } = setup()
   send.mockImplementation(async () => new Response('Sensitive provider details', { status }))
-  const response = await run()
-  expect(response.status).toBe(502)
-  expect(await response.text()).not.toContain('Sensitive')
+  const log = spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    const response = await run()
+    expect(response.status).toBe(502)
+    expect(await response.text()).not.toContain('Sensitive')
+    expect(log.mock.calls).toEqual([['[contact] Resend did not acknowledge delivery; HTTP status:', status]])
+  } finally {
+    log.mockRestore()
+  }
 })
 
 test.each([{}, { id: '' }, { error: 'bad request' }])('requires provider email ID: %j', async (body) => {

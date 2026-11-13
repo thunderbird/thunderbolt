@@ -41,7 +41,9 @@ The shared header shows Privacy, Enterprise, and Docs directly when space permit
 
 ## Deploys
 
-The site ships as a container image, not a hosted static-site service. `deploy/docker/marketing.Dockerfile` builds it and **must run with the repo root as its build context** — the docs loader reads `../docs`, so the Dockerfile copies both `web/` and the root `docs/` into the build. `.github/workflows/images-publish.yml` publishes the result as `ghcr.io/thunderbird/thunderbolt/thunderbolt-marketing`; the final stage is nginx-unprivileged listening on 8080 with `deploy/config/marketing-nginx.conf.template`, deployed by `deploy/k8s/templates/marketing.yaml`. All surfaces (landing, enterprise, contact, blog, docs) are served from one origin at `thunderbolt.io` under subpaths.
+The production marketing site is a Render Static Site. Set build-time variables such as `PUBLIC_CONTACT_ENDPOINT` on that service and rebuild to apply changes. Its contact delivery runs separately in the Cloudflare Worker described below.
+
+A container image is also available for Kubernetes and preview deployments. `deploy/docker/marketing.Dockerfile` builds it and **must run with the repo root as its build context** — the docs loader reads `../docs`, so the Dockerfile copies both `web/` and the root `docs/` into the build. `.github/workflows/images-publish.yml` publishes the result as `ghcr.io/thunderbird/thunderbolt/thunderbolt-marketing`; the final stage is nginx-unprivileged listening on 8080 with `deploy/config/marketing-nginx.conf.template`, deployed by `deploy/k8s/templates/marketing.yaml`. Container builds can set `PUBLIC_CONTACT_ENDPOINT` as a Docker build argument. All surfaces (landing, enterprise, contact, blog, docs) share one origin under subpaths.
 
 ## Content
 

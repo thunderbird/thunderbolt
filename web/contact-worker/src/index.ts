@@ -100,6 +100,7 @@ export const handleContact = async (
       }),
     })
     if (!response.ok || !acceptedEmail.safeParse(await response.json()).success) {
+      console.error('[contact] Resend did not acknowledge delivery; HTTP status:', response.status)
       return json(502, { error: 'Your message could not be sent. Please try again later.' })
     }
     return json(200, { success: true })

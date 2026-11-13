@@ -371,6 +371,9 @@ test('the harness holds the compiled gate and hook, and its MCP config points on
   const browser = mcp.mcpServers.playwright_b
   expect(browser.command).toBe(join(harness, 'playwright-mcp/node_modules/.bin/playwright-mcp'))
   expect(browser.args).toContain(join(harness, 'layout-probe.js'))
+  expect(browser.args.indexOf(join(harness, 'axe.min.js'))).toBe(
+    browser.args.indexOf(join(harness, 'layout-probe.js')) - 2,
+  )
   expect(browser.args).not.toContain('-y')
   expect(JSON.stringify(mcp)).not.toContain(repoRoot)
   expect(await Bun.file(npmLog).text()).toBe(

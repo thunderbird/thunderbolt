@@ -224,6 +224,7 @@
     "@vitejs/plugin-react": "^6.0.2",
     "@vitest/browser": "^4.1.4",
     "@vitest/coverage-v8": "^4.1.4",
+    "axe-core": "4.14.0",
     "babel-plugin-macros": "^3.1.0",
     "bun-types": "^1.4.4",
     "dotenv": "^17.2.1",

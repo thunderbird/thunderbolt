@@ -266,14 +266,24 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    prompt `explore.sh prompt` builds: `prompt.md`, the same for every session so they share its prompt cache, then
    the platform's driver block (`drivers/playwright.md` or `drivers/maestro.md`; a native c7 gets both), the
    session's own block, and the charter with its functions. Attempts, findings and repro specs are written as they happen, so a cut session
-   keeps its work. `mcp.json` loads `layout-probe.js` into every page (`--init-script`, a path relative to the repo
-   root, where the session runs). The probe writes `[qa-layout] ready` once per page load and one
+   keeps its work. `mcp.json` loads axe-core (`node_modules/axe-core/axe.min.js`) and then `layout-probe.js` into
+   every page (`--init-script`, paths relative to the repo root, where the session runs). Without axe-core the probe
+   throws before its ready line, so the page counts as unmeasured. The probe writes `[qa-layout] ready` once per page load and one
    `[qa-layout] <kind> <target>` line per layout problem (kinds `overflow-page`, `overflow-text`, `offscreen`,
    `covered`, `behind-keyboard`, `focus-covered`, a fixed or sticky box over part of the focused text field,
    `focused-clipped`, a scroll box or the screen edge cutting off the focused field while the keyboard is open, and
    `unnamed-control`, a control a screen reader cannot name),
    all with `console.error`, so they pass the MCP's `--console-level error`. A problem line is a `layout` finding.
-   An `unnamed-control` line has no name to quote, so it quotes which control it is: the control's own `id` as
+   The name check is axe-core's name rules (`button-name`, `link-name`, `label`, `select-name`,
+   `input-button-name` and the `aria-*-name` rules for ARIA buttons, links, menu items, fields, toggles and
+   options). They cover every control a screen reader reaches, whatever its `pointer-events` or opacity (a disabled
+   button, a hover-only action, a placeholder in a wrapper that stops clicks), and leave out a hidden, `aria-hidden`
+   or `inert` one. A control axe cannot settle (an `incomplete` result) is never a line: it goes to
+   `window.__qaLayout.review()` for a person to check. axe checks no `contenteditable` without a role (the app has
+   none), treats a closed shadow root's text and CSS-generated text as no name, and takes about 5 to 30 ms a run
+   on the app's screens. `axe-core` is a pinned dev dependency for this alone; the
+   name a geometry line quotes still comes from the probe's own approximation. The geometry kinds also skip a control that inherits
+   `pointer-events: none`, as the page behind a modal does. An `unnamed-control` line has no name to quote, so it quotes which control it is: the control's own `id` as
    `#<id>`, its `data-testid` as `[data-testid=<value>]` or its `name` attribute as `[name=<value>]`. React's and
    Radix's generated ids (`:r3:`, `«r3»`, `_r_3_`, `radix-…`) change between renders and do not count. Without
    one, it quotes the lucide icon the control draws and the nearest text a screen reader reads before it
@@ -795,8 +805,9 @@ PowerSync's 18081, to the emulator.
 `config <platform> <out-json> [control]` is the Tauri config `build` uses: `tauri.dev.conf.json` with the
 stack's two extra `connect-src` origins (`http://localhost:8005` and `http://127.0.0.1:9880` by default, read from
 `stack.sh`), and without the dev `identifier` on Android, whose Gradle project has no `.dev` package directory. Its
-`beforeBuildCommand` puts `layout-probe.js` into `dist/index.html` as an inline script, so every native QA build
-logs the probe's `[qa-layout]` lines to the WebView console, where the Maestro gate reads them. The Maestro tree
+`beforeBuildCommand` puts axe-core and `layout-probe.js` into `dist/index.html` as inline scripts, so every native
+QA build logs the probe's `[qa-layout]` lines to the WebView console, where the Maestro gate reads them. axe-core
+runs under the app's `script-src`, which forbids `eval`: the name rules never need it. The Maestro tree
 cannot measure layout itself: it has no stacking order and leaves out unlabelled boxes. `build` takes the
 `VITE_*` settings from `stack.sh` too. The app ids are `net.thunderbird.thunderbolt.dev` (iOS, "Thunderbolt Dev")
 and `net.thunderbird.thunderbolt` (Android). `build` puts back the tracked files under `src-tauri/gen` that Tauri

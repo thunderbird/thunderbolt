@@ -123,7 +123,28 @@ test('the reasoning panel restores mouse and keyboard resize widths after closin
   await prepare(page, { uniqueIds: true })
   await openLongChat(page)
   const answer = page.locator('[data-quotable-message-id]').last()
-  await answer.getByRole('button', { name: /^Thought for / }).click()
+  const thoughtFor = answer.getByRole('button', { name: /^Thought for / })
+  // Reach the header by keyboard so :focus-visible applies, then check the ring is inset and so
+  // cannot be clipped by the card's overflow-hidden.
+  await thoughtFor.focus()
+  await page.keyboard.press('Shift+Tab')
+  await page.keyboard.press('Tab')
+  await expect(thoughtFor).toBeFocused()
+  const ring = await thoughtFor.evaluate((trigger) => {
+    const clip = [...document.querySelectorAll('*')].filter(
+      (element) => element.contains(trigger) && element !== trigger && getComputedStyle(element).overflow !== 'visible',
+    )
+    const card = clip.at(-1)?.getBoundingClientRect()
+    const box = trigger.getBoundingClientRect()
+    return {
+      boxShadow: getComputedStyle(trigger).boxShadow,
+      insideCard: card ? box.left >= card.left && box.right <= card.right && box.top >= card.top : true,
+    }
+  })
+  expect(ring.boxShadow).not.toBe('none')
+  expect(ring.boxShadow).toContain('inset')
+  expect(ring.insideCard).toBe(true)
+  await thoughtFor.click()
   const thinking = answer.getByRole('button', { name: /^Thinking/ })
   await thinking.click()
   const panel = page.getByTestId('content-view')

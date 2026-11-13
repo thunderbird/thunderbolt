@@ -119,6 +119,7 @@ const ModelsPage = () => {
           ) : (
             <ModelsList
               models={filteredModels}
+              isLoading={page.isLoading}
               activeModelId={page.activeModelId}
               onSelect={page.selectActiveModel}
               onToggle={page.toggleModel}

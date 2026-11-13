@@ -51,3 +51,5 @@ It can't check how a screen reader actually reads things (VoiceOver or NVDA brow
 Spot-check those by hand.
 
 The script runs the report even when a test fails, and exits with the test run's status.
+
+The audit runs with CSS transitions and animations switched off, so axe never reads colors mid-fade after a theme flip.

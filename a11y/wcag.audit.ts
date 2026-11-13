@@ -5,7 +5,7 @@
 import { test, type Locator, type Page } from '@playwright/test'
 import { addNote, inAppOrOnboarding, markScreen, signedInPage } from './support/auth'
 import { checkDuplicateNames, checkFocusReturn, checkKeyboardFocus, checkReflow, scanAxe } from './support/checks'
-import { canSetTheme, followSystemTheme, setColorScheme } from './support/theme'
+import { canSetTheme, disableTransitions, followSystemTheme, setColorScheme } from './support/theme'
 
 /** Waits until a screen has finished rendering, before it is scanned. */
 type Ready = () => Promise<unknown>
@@ -106,12 +106,15 @@ const settingsScreens: SettingsScreen[] = [
 const settingsReady = async (page: Page, { content }: SettingsScreen) => {
   const main = page.getByRole('main')
   await main.getByRole('heading').first().waitFor({ timeout: 60_000 })
+  // Pages mark their content `aria-busy` while their queries load.
+  await test.expect(main.locator('[aria-busy="true"]')).toHaveCount(0, { timeout: 60_000 })
   await test.expect(main.getByText(/^Loading\b/)).toHaveCount(0, { timeout: 60_000 })
   await content(main).first().waitFor({ timeout: 60_000 })
 }
 
 test('signed-out entry screen', async ({ page }) => {
   await followSystemTheme(page.context())
+  await disableTransitions(page.context())
   await page.goto('/')
   // Depending on the target, the first screen is a Keycloak page, the email step, or (anonymous
   // deployments such as production) the chat behind the onboarding wizard. Loading an anonymous

@@ -57,6 +57,7 @@
     "build-storybook": "storybook build",
     "prepare": "husky",
     "size": "size-limit",
+    "a11y": "bunx playwright test -c a11y/playwright.config.ts; status=$?; bun a11y/report.ts; exit $status",
     "e2e": "bunx playwright test",
     "e2e:check-collected": "bun scripts/check-e2e-specs-collected.ts",
     "e2e:preview": "bunx playwright test --config playwright.preview.config.ts",
@@ -189,6 +190,7 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@chromatic-com/storybook": "^5.1.2",
     "@emotion/is-prop-valid": "^1.4.0",
     "@eslint/js": "^10.0.1",

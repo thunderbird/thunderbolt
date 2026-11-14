@@ -227,25 +227,44 @@ const parseXml = (xml: Uint8Array) => {
   return new DOMParser().parseFromString(strFromU8(xml), 'text/xml').documentElement ?? undefined
 }
 
+/** Comments, CDATA sections, processing instructions and a DOCTYPE: what a raw scan must not read as elements. */
+const markupPattern = /<(?:!--|!\[CDATA\[|\?|!DOCTYPE)/g
+
+const escapeText = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
 /**
- * A part's text with its XML comments taken out, in one forward pass, so no raw scan counts a tag inside one. A
- * comment left open runs to the end of the part, as in XML.
+ * A part's text as the raw scans may read it, in one forward pass that stays linear: comments and processing
+ * instructions taken out, and each CDATA section's body turned into escaped text, so a `<!--` or a `<row>` written
+ * inside one is the text Excelize reads, not markup. A section left open runs to the end of the part, as in XML. A
+ * DOCTYPE is refused: the preview reads no DTD, so it could not tell what Excelize would make of one.
  */
-export const withoutComments = (xml: string) => {
-  if (!xml.includes('<!--')) {
+export const scannableXml = (xml: string) => {
+  if (!xml.includes('<!') && !xml.includes('<?')) {
     return xml
   }
   const kept: string[] = []
+  const pattern = new RegExp(markupPattern)
   let at = 0
   while (at < xml.length) {
-    const open = xml.indexOf('<!--', at)
-    if (open === -1) {
+    pattern.lastIndex = at
+    const found = pattern.exec(xml)
+    if (!found) {
       kept.push(xml.slice(at))
       break
     }
-    kept.push(xml.slice(at, open))
-    const close = xml.indexOf('-->', open + 4)
-    at = close === -1 ? xml.length : close + 3
+    kept.push(xml.slice(at, found.index))
+    const [opener] = found
+    if (opener === '<!DOCTYPE') {
+      throw new Error('A part of the workbook declares a DOCTYPE, which the preview does not read.')
+    }
+    const closer = opener === '<!--' ? '-->' : opener === '<?' ? '?>' : ']]>'
+    const bodyStart = found.index + opener.length
+    const close = xml.indexOf(closer, bodyStart)
+    const end = close === -1 ? xml.length : close
+    if (opener === '<![CDATA[') {
+      kept.push(escapeText(xml.slice(bodyStart, end)))
+    }
+    at = close === -1 ? xml.length : close + closer.length
   }
   return kept.join('')
 }
@@ -268,7 +287,7 @@ const attributeIn = (attributes: string, name: string) => {
 export const relationshipsOf = (parts: WorkbookParts, part: string) => {
   const slash = part.lastIndexOf('/') + 1
   const rels = parts[`${part.slice(0, slash)}_rels/${part.slice(slash)}.rels`]
-  return tagsIn(rels ? withoutComments(strFromU8(rels)) : '', 'Relationship').map((attributes) => ({
+  return tagsIn(rels ? scannableXml(strFromU8(rels)) : '', 'Relationship').map((attributes) => ({
     id: attributeIn(attributes, 'Id'),
     type: attributeIn(attributes, 'Type') ?? '',
     target: resolvePart(part, attributeIn(attributes, 'Target') ?? ''),
@@ -288,12 +307,10 @@ export const workbookParts = (parts: WorkbookParts) => {
   if (byId.size < rels.length) {
     throw new Error('The workbook gives one relationship Id to two parts.')
   }
-  const tabs = tagsIn(withoutComments(strFromU8(parts[workbookPart] ?? new Uint8Array())), 'sheet').map(
-    (attributes) => ({
-      name: attributeIn(attributes, 'name') ?? '',
-      rel: byId.get(attributeIn(attributes, '[\\w.-]+:id')),
-    }),
-  )
+  const tabs = tagsIn(scannableXml(strFromU8(parts[workbookPart] ?? new Uint8Array())), 'sheet').map((attributes) => ({
+    name: attributeIn(attributes, 'name') ?? '',
+    rel: byId.get(attributeIn(attributes, '[\\w.-]+:id')),
+  }))
   const names = tabs.map(({ name }) => name)
   if (new Set(names.map((name) => name.toLowerCase())).size < names.length) {
     throw new Error('The workbook gives two sheets one name.')

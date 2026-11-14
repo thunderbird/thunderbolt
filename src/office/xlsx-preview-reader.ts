@@ -16,7 +16,7 @@ import {
   type PlaceholderKind,
   type SeriesData,
   type Stacking,
-  withoutComments,
+  scannableXml,
   workbookParts,
 } from './xlsx-drawings'
 import { WorkbookTooLargeError } from './xlsx-preview-client'
@@ -365,8 +365,8 @@ export const openPreviewWorkbook = (
   // Every worksheet, hidden ones too, since a chart can read any of them.
   const scans = workbook.sheets.map(({ name, part }) => {
     const visible = file.GetSheetVisible(name).visible
-    // Every scan of the part below reads it without its comments: a tag inside one is no tag to Excelize.
-    const xml = withoutComments(strFromU8(parts[part]))
+    // Every scan of the part below reads it as Excelize does: no tag inside a comment, CDATA or instruction counts.
+    const xml = scannableXml(strFromU8(parts[part]))
     const { cells, ...size } = scanCells(xml, maxCells)
     const tooMany = cells > maxCells || countMerges(xml) > limits.merges
     const objects = visible && !tooMany ? drawingObjects(parts, part) : []
@@ -539,7 +539,7 @@ export const openPreviewWorkbook = (
       ends.reduce((most, { col }) => Math.max(most, col + 1), Math.max(usedCols + 1, 10)),
       limits.columns,
     )
-    const fonts = largestFonts(withoutComments(strFromU8(parts[part])), fontSizeOf)
+    const fonts = largestFonts(scannableXml(strFromU8(parts[part])), fontSizeOf)
     const rowHeights = range(rowCount).map((r) => {
       const stored = Math.round((settle(file.GetRowHeight(name, r + 1)).height * 4) / 3)
       const font = fonts.get(r)
@@ -665,7 +665,7 @@ export const openPreviewWorkbook = (
       drawings: objects.some(({ type }) => type === 'shape'),
       sparklines: shown.some((scan) => scan.sparklines),
       longText:
-        shown.some((scan) => scan.longText) || hasLongText(withoutComments(strFromU8(sharedStrings)), limits.cellChars),
+        shown.some((scan) => scan.longText) || hasLongText(scannableXml(strFromU8(sharedStrings)), limits.cellChars),
     },
   } satisfies WorkbookOverview
   return { overview, sheet, rows }

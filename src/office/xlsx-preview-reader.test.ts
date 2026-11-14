@@ -872,4 +872,47 @@ describe('the spreadsheet preview reader on adversarial workbooks', () => {
     expect(layout.rows).not.toContain(4)
     expect(layout.rows).toEqual(expect.arrayContaining([1, 2, 3, 5, 29]))
   })
+
+  it('reads a CDATA section as the text Excelize reads, not as the start of a comment', () => {
+    const long = `<c r="B1" t="inlineStr"><is><t><![CDATA[${'x'.repeat(1_001)}]]></t></is></c>`
+    const a1 = `<row r="1"><c r="A1" t="inlineStr"><is><t><![CDATA[<!--]]></t></is></c>${long}</row>`
+    const workbook = openPreviewWorkbook(excelize, withSheetData(`${a1}<row r="40"><c r="A40"><v>40</v></c></row>`))
+    const cellAt = (row: number) => workbook.rows(0, row, row + 1).rows[0]?.cells[0]?.text
+
+    expect(workbook.overview.sheets[0]).toMatchObject({ rows: 40, tooLarge: false })
+    // The long text inside the CDATA is still noted.
+    expect(workbook.overview.leftOut.longText).toBe(true)
+    expect(cellAt(0)).toBe('<!--')
+    expect(cellAt(39)).toBe('40')
+  })
+
+  it('counts the cells after a CDATA or processing-instruction marker, and none written inside a CDATA', () => {
+    const limits = { ...xlsxPreviewLimits, rows: 10, columns: 10 }
+    const tooLargeOf = (sheetData: string) =>
+      openPreviewWorkbook(excelize, withSheetData(sheetData), limits).overview.sheets[0].tooLarge
+    // Past twice 10 × 10: 201 rows of one cell each.
+    const many = '<row><c><v>1</v></c></row>'.repeat(201)
+    const cdata = '<row r="1"><c r="A1" t="inlineStr"><is><t><![CDATA[<!--]]></t></is></c></row>'
+
+    expect(tooLargeOf(`${cdata}${many}`)).toBe(true)
+    expect(tooLargeOf(`<?probe <!-- ?>${many}`)).toBe(true)
+    // A cell at XFD1048576 written as text inside a CDATA is text, not a cell.
+    expect(tooLargeOf(cdata.replace('<!--', '<row r="1048576"><c r="XFD1048576"/></row>'))).toBe(false)
+  })
+
+  it('refuses as damaged a sheet that carries a DOCTYPE, since the preview reads no DTD', () => {
+    const bytes = patched(excelize.NewFile(), 'xl/worksheets/sheet1.xml', (xml) =>
+      xml.replace('?>', '?><!DOCTYPE worksheet [<!ENTITY ignored "<!--">]>'),
+    )
+    const error = (() => {
+      try {
+        openPreviewWorkbook(excelize, bytes)
+      } catch (thrown) {
+        return thrown
+      }
+    })()
+
+    expect(error).toBeInstanceOf(Error)
+    expect(error).not.toBeInstanceOf(WorkbookTooLargeError)
+  })
 })

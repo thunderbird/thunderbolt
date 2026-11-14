@@ -67,6 +67,12 @@ The waitlist integrates with Better Auth's email OTP flow in `backend/src/auth/a
 
 `resolveApproval` (`routes.ts`) and the `sendVerificationOTP` callback on Better Auth's `emailOTP` plugin (`backend/src/auth/auth.ts`) reach the same decisions independently — Better Auth's own send-OTP endpoint is reachable directly, so the branch has to exist in both places rather than only on `/join`.
 
+## Membership at first sign-in
+
+The user row, and its organization membership, are created at the address's first sign-in, after the approval. The identity plugin's sign-in step turns the approved row into a membership with source `waitlist`, so an address approved at any time can sign in ([identity-and-access.md](../../../docs/internals/architecture/identity-and-access.md#admission-at-sign-in)).
+
+An address listed in `BOOTSTRAP_ADMIN_EMAILS` skips the waitlist: `admitsWithoutWaitlist` (`backend/src/identity/admission.ts`) lets it through in `resolveApproval`, `sendVerificationOTP` and the OTP before-hook, and no waitlist row is written.
+
 ## Email Templates
 
 Three email types are sent by this module via Resend:

@@ -198,6 +198,7 @@ Both run the transformer in a worker and end with decrypted data in local SQLite
 - [Operator Branding](branding.md): shadcn-format theme tokens, shadows, radius, fonts, logo, links, default theme, app name and debug-transcript recipient from `/config`; follow-ups.
 - [Client Auth and Session](client-auth-and-session.md): credential storage; reload, offline boot, second tab.
 - [Sign-in and the Waitlist](sign-in-and-waitlist.md): one endpoint signs a user up, in, or onto the queue.
+- [Identity and Access](identity-and-access.md): organization membership, how each member got in, the access check, roles, the audit log and the first admin.
 - [Widgets](../widgets.md): assistant output as interactive components.
 - [Mini Apps](mini-apps.md): customer web apps beside the chat, the bridge protocol, and the security posture.
 

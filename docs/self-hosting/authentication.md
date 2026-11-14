@@ -124,7 +124,9 @@ With one identity provider there is no Thunderbolt login form: opening the app w
 
 The provider you configure here is the deployment's first SSO connection. It is saved to the database at startup, and the environment stays its source: change a value and restart to apply it. Further providers are added by an administrator, never by users. Each provider's callback URL names it (`/v1/api/auth/sso/callback/<id>`; this one keeps `sso`), and each provider's origin must be in `TRUSTED_ORIGINS`. Client secrets are stored in plain text in the `sso_provider` table, so protect database backups like the environment file.
 
-When a provider is paired with active SCIM provisioning, only the people it provisioned can sign in through it: a first sign-in from anyone else creates no account. Once that SCIM provisioning starts retiring, the provider behaves like one without SCIM. A provider without SCIM creates the account at first sign-in.
+When a provider is paired with active SCIM provisioning, only the people it provisioned can sign in through it: a first sign-in from anyone else creates no account. Once that SCIM provisioning starts retiring, the provider behaves like one without SCIM. A provider without SCIM creates the account at first sign-in, and can't offboard anyone automatically: see [Provisioning](./provisioning.md).
+
+People a provider with SCIM manages sign in through it only, so switching `AUTH_MODE` to `consumer` while such connections remain locks them out: their email codes are refused, and there is no SSO left to use. Don't leave SSO while those connections are in use.
 
 When someone signs in through a provider without SCIM with an identity Thunderbolt has not seen before, and a Thunderbolt account with the same email address already exists, they land in that account instead of getting a second one. Accounts a SCIM provider manages are never linked by email. Otherwise it happens when either of these is true:
 
@@ -132,6 +134,8 @@ When someone signs in through a provider without SCIM with an identity Thunderbo
 - The account already has an identity from that provider. This covers the same person arriving with a new identity: you switched `AUTH_MODE` between `oidc` and `saml`, or the provider changed their subject (OIDC) or NameID (SAML).
 
 An account that meets neither condition is not linked, and that sign-in fails with "account not linked". An address with no account gets a new one.
+
+An account that already signs in through another SSO provider is the exception: email never moves it to a second one. It links only when this provider's connection claims the account's domain. Otherwise the sign-in fails with `LINK_REVIEW_PENDING`, and an admin approves or rejects the link in `GET /v1/admin/link-reviews`; after an approval, the next sign-in links.
 
 Automatic linking trusts the email address your provider assigns, so your provider must not let users change their own email to someone else's address.
 

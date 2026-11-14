@@ -117,6 +117,9 @@ The probe exercises only the models your deployment is configured to serve; mode
 | A sustained rise in `429` responses          | ticket                                | The limits themselves are not configurable. A steady stream means a client is misbehaving or your team has outgrown them.                                           |
 | A sustained rise in `5xx` responses          | ticket                                | Check the API log for the failing route.                                                                                                                            |
 | `426` responses appearing                    | ticket                                | You set `MIN_APP_VERSION` and clients below it are locked out. Expected during a forced upgrade, a bug otherwise.                                                   |
+| Failed `scim.request` audit events          | ticket                                | Your identity provider sends changes Thunderbolt refuses. `GET /v1/admin/audit-events?action=scim.request&outcome=failure` names the connection and the error. It never holds `401`s or rate-limit refusals, and stops at 60 per token an hour, so a token that stopped working shows only as a stale last use. |
+| A SCIM token's last use going stale          | ticket                                | Your identity provider stopped sending. Check its provisioning logs; see [Provisioning](./provisioning.md#outages).                                               |
+| A SCIM token close to its expiry             | ticket                                | Tokens last 365 days. Issue the next one and update the provider before it lapses.                                                                                |
 
 ## Logs
 

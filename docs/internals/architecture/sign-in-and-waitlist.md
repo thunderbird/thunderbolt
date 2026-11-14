@@ -136,11 +136,11 @@ Localizing either means giving the backend a code the client can map, not transl
 
 ## Which switches actually change the flow
 
-| Switch                          | Where                                                                     | Effect                                                                                                       |
-| ------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `WAITLIST_AUTO_APPROVE_DOMAINS` | Backend env, read through `getSettings()`                                 | The only server-side way to let addresses through without touching rows                                      |
-| `VITE_BYPASS_WAITLIST`          | Build-time flag, [src/lib/auth-mode.ts:16](../../../src/lib/auth-mode.ts) | Drops the `/waitlist` route, but not on its own the redirect to it (below). UI only; the backend still gates |
-| `VITE_AUTH_MODE=sso`            | Build-time flag, [src/lib/auth-mode.ts:5](../../../src/lib/auth-mode.ts)  | Replaces the whole flow with an IdP redirect; SSO sign-in never reaches the waitlist code                    |
+| Switch                          | Where                                                                     | Effect                                                                                                                     |
+| ------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `WAITLIST_AUTO_APPROVE_DOMAINS` | Backend env, read through `getSettings()`                                 | The only server-side way to let addresses through without touching rows                                                    |
+| `VITE_BYPASS_WAITLIST`          | Build-time flag, [src/lib/auth-mode.ts:16](../../../src/lib/auth-mode.ts) | Drops the `/waitlist` route, but not on its own the redirect to it (below). UI only; the backend still gates               |
+| `VITE_AUTH_MODE=sso`            | Build-time flag, [src/lib/auth-mode.ts:5](../../../src/lib/auth-mode.ts)  | Replaces the sign-in screen with an IdP redirect. Email-code sign-in at `/sign-in/email-code` still runs the waitlist code |
 
 `getSettings()` memoizes per process, so an auto-approve-domain change needs a backend restart; the `VITE_`
 flags are baked into the bundle and need a rebuild.

@@ -11,6 +11,7 @@ import { createScimClient, keycloakUser, type ScimClient, scimGroupSchema, uniqu
 import { beforeAll, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { Elysia } from 'elysia'
+import { listAdmins } from '../admin/members'
 import { getMemberAuthorization, loadRoleSources } from '../roles'
 import { createScimConnection } from './connections'
 import { createScimGroupRoleMapping, deleteScimGroupRoleMapping } from './role-mappings'
@@ -131,6 +132,8 @@ describe('SCIM group role mappings', () => {
     return { ...setup, mappingId }
   }
 
+  const isListedAdmin = async (userId: string) => (await listAdmins(db)).some((admin) => admin.userId === userId)
+
   it('grants nothing from a stored grant whose mapping is gone, even before a replay removes it', async () => {
     const { mappingId, userId } = await setUpAdmin()
 
@@ -139,6 +142,7 @@ describe('SCIM group role mappings', () => {
 
     expect(await db.$count(scimProjectionGrant, eq(scimProjectionGrant.userId, userId))).toBe(1)
     expect(await rolesOf(userId)).toEqual(['member'])
+    expect(await isListedAdmin(userId)).toBe(false)
   })
 
   it('grants nothing from a connection whose SCIM side is retiring', async () => {

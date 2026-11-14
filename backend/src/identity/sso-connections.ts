@@ -13,6 +13,7 @@ import {
 } from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
 import { computeDiscoveryUrl } from '@better-auth/sso'
+import { APIError } from 'better-auth'
 import { and, asc, eq, isNull, ne } from 'drizzle-orm'
 import type { AuthAdapter } from './access'
 import { insertAuditEvent } from './audit/write'
@@ -247,7 +248,10 @@ export const createSsoConnection = async (
   { name, providerId, protocol, matchClaim, identityConnectionId, createdBy = null }: CreateSsoConnectionInput,
 ) => {
   if (!new RegExp(ssoProviderIdPattern).test(providerId) || providerId === envSsoProviderId) {
-    throw new Error(`Invalid SSO provider id "${providerId}"`)
+    throw new APIError('BAD_REQUEST', {
+      message: `Invalid SSO provider id "${providerId}"`,
+      code: 'SSO_PROVIDER_ID_INVALID',
+    })
   }
   const orgId = getCurrentOrganizationId()
   const row = 'oidc' in protocol ? oidcProviderRow(protocol.oidc) : samlProviderRow(protocol.saml)
@@ -255,7 +259,10 @@ export const createSsoConnection = async (
   return database.transaction(async (tx) => {
     const taken = await tx.$count(ssoProvider, eq(ssoProvider.providerId, providerId))
     if (taken > 0) {
-      throw new Error(`SSO provider id "${providerId}" is already in use`)
+      throw new APIError('CONFLICT', {
+        message: `SSO provider id "${providerId}" is already in use`,
+        code: 'SSO_PROVIDER_ID_TAKEN',
+      })
     }
     const [{ id: ssoProviderId }] = await tx
       .insert(ssoProvider)
@@ -305,10 +312,61 @@ const attachSsoSide = async (
     )
     .returning()
   if (attached.length === 0) {
-    throw new Error(`Connection "${identityConnectionId}" cannot take an SSO side`)
+    throw new APIError('CONFLICT', {
+      message: `Connection "${identityConnectionId}" cannot take an SSO side`,
+      code: 'SSO_CONNECTION_UNAVAILABLE',
+    })
   }
   return identityConnectionId
 }
+
+/**
+ * Retire a connection: its SSO side stops signing anyone in, and the access check stops counting
+ * the `sso` sources it admitted, so members it alone let in lose access. The env connection is
+ * refused (the server's settings own it), and so is a row whose SCIM side isn't retired yet:
+ * retiring it outright would stop counting that side's sources while its credentials still work.
+ */
+export const retireSsoConnection = async (
+  database: typeof DbType,
+  { identityConnectionId, actorId }: { identityConnectionId: string; actorId: string },
+) =>
+  database.transaction(async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(identityConnection)
+      .where(
+        and(eq(identityConnection.id, identityConnectionId), eq(identityConnection.orgId, getCurrentOrganizationId())),
+      )
+    if (!row?.ssoProviderId || row.status === 'retired') {
+      throw new APIError('NOT_FOUND', { message: 'SSO connection not found', code: 'SSO_CONNECTION_NOT_FOUND' })
+    }
+    if (row.id === envSsoConnectionId) {
+      throw new APIError('CONFLICT', {
+        message: "This connection comes from the server's OIDC or SAML settings; change them there",
+        code: 'SSO_CONNECTION_ENV_OWNED',
+      })
+    }
+    if (row.scimConnectionId && row.status !== 'scim_retired') {
+      throw new APIError('CONFLICT', {
+        message: 'Retire the SCIM side of this connection first',
+        code: 'SCIM_SIDE_NOT_RETIRED',
+      })
+    }
+    const [retired] = await tx
+      .update(identityConnection)
+      .set({ status: 'retired', retiredAt: new Date(), retiredBy: actorId })
+      .where(eq(identityConnection.id, row.id))
+      .returning()
+    await insertAuditEvent(tx, {
+      action: 'connection.retired',
+      outcome: 'success',
+      actor: { type: 'user', id: actorId },
+      target: { type: 'identity_connection', id: row.id },
+      connectionId: row.id,
+      metadata: { side: 'sso' },
+    })
+    return retired
+  })
 
 export type SsoConnection = {
   id: string

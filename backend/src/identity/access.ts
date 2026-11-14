@@ -23,9 +23,9 @@ export type MembershipSourceRow = {
 export type AccessState = {
   membership: MembershipRow | null
   sources: MembershipSourceRow[]
-  /** Status of each connection a `scim` source names. */
+  /** Status of each connection a `scim` or `sso` source names. */
   connectionStatusById: ReadonlyMap<string, (typeof identityConnectionStatuses)[number]>
-  /** The connections a `scim` source names that also have an SSO side. */
+  /** The connections a `scim` or `sso` source names that also have an SSO side. */
   ssoConnectionIds: ReadonlySet<string>
 }
 
@@ -42,10 +42,17 @@ export const accessRefusalCodes: Record<AccessRefusal, string> = {
   sso_required: 'ACCESS_SSO_REQUIRED',
 }
 
-/** Whether a source counts: every non-SCIM source, and a SCIM source only while its connection's SCIM side is active. */
-const isCountedSource = (source: MembershipSourceRow, connectionStatusById: AccessState['connectionStatusById']) =>
-  source.kind !== 'scim' ||
-  (source.identityConnectionId !== null && connectionStatusById.get(source.identityConnectionId) === 'active')
+/**
+ * Whether a source counts: a SCIM source only while its connection's SCIM side is active, an SSO
+ * source unless its connection is retired, and every other source.
+ */
+const isCountedSource = (source: MembershipSourceRow, connectionStatusById: AccessState['connectionStatusById']) => {
+  const connectionStatus = source.identityConnectionId ? connectionStatusById.get(source.identityConnectionId) : null
+  if (source.kind === 'scim') {
+    return connectionStatus === 'active'
+  }
+  return source.kind !== 'sso' || connectionStatus !== 'retired'
+}
 
 /** The member's `scim` sources that count, in any status: while there is one, an IdP manages them. */
 export const idpManagingSources = ({ sources, connectionStatusById }: AccessState) =>
@@ -74,8 +81,8 @@ export const requiresSso = (state: AccessState) =>
  *    one must be active, and invitations, domains and other local grants don't count
  * 3. otherwise any active source admits
  *
- * A `scim` source on a connection whose SCIM side is retiring or retired is ignored entirely: it
- * neither keeps the member in nor deprovisions them.
+ * A `scim` source on a connection whose SCIM side is retiring or retired, or an `sso` source on a
+ * retired connection, is ignored entirely: it neither keeps the member in nor deprovisions them.
  */
 export const computeAccess = (state: AccessState): AccessDecision => {
   const { membership, sources, connectionStatusById } = state
@@ -125,7 +132,11 @@ export const loadAccessState = async (
     where: [{ field: 'membershipId', value: membership.id }],
   })
   const connectionIds = [
-    ...new Set(sources.flatMap((source) => (source.kind === 'scim' && source.identityConnectionId) || [])),
+    ...new Set(
+      sources.flatMap(
+        (source) => ((source.kind === 'scim' || source.kind === 'sso') && source.identityConnectionId) || [],
+      ),
+    ),
   ]
   const connections =
     connectionIds.length === 0

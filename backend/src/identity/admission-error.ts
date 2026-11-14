@@ -14,6 +14,7 @@ export type AdmissionErrorCode =
   | 'LINK_REVIEW_SELF'
   | 'LINK_REVIEW_RECORD_EXISTS'
   | 'LINK_REVIEW_INVALID_CURSOR'
+  | 'CONNECTION_NOT_FOUND'
 
 /** A refused invitation, domain change or link review. Admin routes map `code` to their response. */
 export class AdmissionError extends Error {

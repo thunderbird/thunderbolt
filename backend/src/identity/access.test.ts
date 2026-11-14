@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { identityConnectionStatuses } from '@/db/schema'
 import { describe, expect, it } from 'bun:test'
 import { type AccessState, computeAccess, isIdpManaged, type MembershipSourceRow, requiresSso } from './access'
 
@@ -83,6 +84,18 @@ describe('computeAccess', () => {
       allowed: false,
       reason: 'no_live_source',
     })
+  })
+
+  it('ignores the SSO sources of a retired connection, so only another live source keeps the member in', () => {
+    const okta = (status: (typeof identityConnectionStatuses)[number]) => new Map([['okta', status]])
+    const ssoSource = source({ kind: 'sso', identityConnectionId: 'okta' })
+
+    expect(computeAccess(state([ssoSource], {}, okta('retired')))).toEqual({ allowed: false, reason: 'no_live_source' })
+    expect(computeAccess(state([ssoSource, source({ kind: 'invitation' })], {}, okta('retired')))).toEqual({
+      allowed: true,
+    })
+    expect(computeAccess(state([ssoSource], {}, okta('active')))).toEqual({ allowed: true })
+    expect(computeAccess(state([source({ kind: 'sso' })], {}, new Map()))).toEqual({ allowed: true })
   })
 })
 

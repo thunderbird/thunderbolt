@@ -3,10 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { db as DbType, QueryableDatabase } from '@/db/client'
-import { orgDomain } from '@/db/schema'
+import { identityConnection, orgDomain } from '@/db/schema'
 import { Resolver } from 'node:dns/promises'
 import { domainToASCII } from 'node:url'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull, ne } from 'drizzle-orm'
 import type { AuthAdapter } from './access'
 import { AdmissionError } from './admission-error'
 import { insertAuditEvent, recordFailedAttempt } from './audit/write'
@@ -231,5 +231,112 @@ export const setDomainEnrollment = async (
       changes: { enrollmentEnabled: { from: row.enrollmentEnabled, to: enabled } },
     })
     return updated
+  })
+}
+
+/**
+ * Claim a verified domain for an IdP connection. A claimed domain is closed to enrollment and to
+ * plain invitations, and its addresses link automatically on that connection. Claiming also turns
+ * enrollment off, so an unclaim never reopens it on its own. Claiming a domain another connection
+ * holds is refused, a concurrent claim included: the admin unclaims it first, so a claim never
+ * moves silently.
+ */
+export const claimOrgDomain = async (
+  database: typeof DbType,
+  { domainId, identityConnectionId, actorId }: { domainId: string; identityConnectionId: string; actorId: string },
+) => {
+  const row = await getOrgDomain(database, domainId)
+  if (!row.verifiedAt) {
+    throw new AdmissionError('DOMAIN_NOT_VERIFIED')
+  }
+  if (row.claimedByConnectionId === identityConnectionId) {
+    return row
+  }
+  if (row.claimedByConnectionId) {
+    throw new AdmissionError('DOMAIN_CLAIMED_BY_IDP')
+  }
+  return database.transaction(async (tx) => {
+    const [connection] = await tx
+      .select({ id: identityConnection.id })
+      .from(identityConnection)
+      .where(
+        and(
+          eq(identityConnection.id, identityConnectionId),
+          eq(identityConnection.orgId, getCurrentOrganizationId()),
+          ne(identityConnection.status, 'retired'),
+        ),
+      )
+    if (!connection) {
+      throw new AdmissionError('CONNECTION_NOT_FOUND')
+    }
+    const [updated] = await tx
+      .update(orgDomain)
+      .set({ claimedByConnectionId: identityConnectionId, enrollmentEnabled: false })
+      .where(and(eq(orgDomain.id, row.id), isNull(orgDomain.claimedByConnectionId)))
+      .returning()
+    if (!updated) {
+      throw new AdmissionError('DOMAIN_CLAIMED_BY_IDP')
+    }
+    await insertAuditEvent(tx, {
+      action: 'domain.claimed',
+      outcome: 'success',
+      actor: { type: 'user', id: actorId },
+      target: { type: 'org_domain', id: row.id },
+      connectionId: identityConnectionId,
+      metadata: { domain: row.domain },
+      ...(row.enrollmentEnabled ? { changes: { enrollmentEnabled: { from: true, to: false } } } : {}),
+    })
+    return updated
+  })
+}
+
+/** Release a domain from its connection's claim. It stays closed to enrollment until an admin opens it: claiming turned enrollment off. */
+export const unclaimOrgDomain = async (
+  database: typeof DbType,
+  { domainId, actorId }: { domainId: string; actorId: string },
+) => {
+  const row = await getOrgDomain(database, domainId)
+  if (!row.claimedByConnectionId) {
+    return row
+  }
+  return database.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(orgDomain)
+      .set({ claimedByConnectionId: null })
+      .where(eq(orgDomain.id, row.id))
+      .returning()
+    await insertAuditEvent(tx, {
+      action: 'domain.unclaimed',
+      outcome: 'success',
+      actor: { type: 'user', id: actorId },
+      target: { type: 'org_domain', id: row.id },
+      connectionId: row.claimedByConnectionId,
+      metadata: { domain: row.domain },
+    })
+    return updated
+  })
+}
+
+/**
+ * Remove a domain. A hard delete: the row is configuration, and `domain.removed` keeps its history.
+ * Refused while a connection claims it. Members who joined through it keep their `domain` source.
+ */
+export const removeOrgDomain = async (
+  database: typeof DbType,
+  { domainId, actorId }: { domainId: string; actorId: string },
+) => {
+  const row = await getOrgDomain(database, domainId)
+  if (isClaimedDomain(row)) {
+    throw new AdmissionError('DOMAIN_CLAIMED_BY_IDP')
+  }
+  await database.transaction(async (tx) => {
+    await tx.delete(orgDomain).where(eq(orgDomain.id, row.id))
+    await insertAuditEvent(tx, {
+      action: 'domain.removed',
+      outcome: 'success',
+      actor: { type: 'user', id: actorId },
+      target: { type: 'org_domain', id: row.id },
+      metadata: { domain: row.domain },
+    })
   })
 }

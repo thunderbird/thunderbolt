@@ -15,6 +15,7 @@ import { createStandaloneLogger } from '@/config/logger'
 import { createCorsMiddleware } from '@/config/cors'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { runMigrations } from '@/db/client'
+import { ensureImplicitOrganization } from '@/identity/organization'
 import { releaseOpenHolds } from '@/inference/managed-request'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createAppVersionMiddleware } from '@/middleware/app-version'
@@ -264,6 +265,10 @@ const startServer = async () => {
   try {
     // Run PGLite migrations before creating the app (no-op for Postgres)
     await runMigrations()
+    // The access check refuses users without a membership, so the implicit org and the
+    // existing users' memberships must exist before the first request.
+    const { db: bootDb } = await import('@/db/client')
+    await ensureImplicitOrganization(bootDb)
 
     // Downloads the operator's fonts and logos before the server takes traffic, so
     // a pod that joins a rolling deploy serves them from its first /config: a

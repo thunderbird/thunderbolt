@@ -28,6 +28,7 @@ import { resolveEmailLocale } from '@/emails/i18n'
 import { verifyChallengeSignature } from '@/lib/canary'
 import { securityNotifications, type SecurityNotifications } from '@/lib/security-notifications'
 import type { StepUpAction } from '@/lib/step-up-otp'
+import { hasAccess } from '@/identity/access'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { challengeOperations } from '@shared/e2ee-types'
 import { eq } from 'drizzle-orm'
@@ -144,7 +145,8 @@ export const createAccountRoutes = (
       }
 
       const initialSession = await getActivePersistedSession(database, rawToken)
-      if (!initialSession) {
+      // This route reads the session row itself, so it skips the access check `getSession` runs.
+      if (!initialSession || !(await hasAccess(auth, initialSession.userId))) {
         set.status = 401
         return { error: 'Unauthorized' }
       }

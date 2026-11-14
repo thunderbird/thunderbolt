@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { insertTestUsers } from '@/test-utils/identity'
 import { createAuth } from '@/auth/auth'
 import { passkey as passkeyTable, session as sessionTable, user as userTable, verification } from '@/db/auth-schema'
 import {
@@ -106,7 +107,7 @@ describe('Encryption API (v2)', () => {
    * unbound form is itself a case worth exercising (403, fail-closed).
    */
   const createUserAndSession = async (userId: string, token: string, deviceId?: string) => {
-    await db.insert(userTable).values({
+    await insertTestUsers(db, {
       id: userId,
       name: 'Test User',
       email: `${userId}@test.com`,

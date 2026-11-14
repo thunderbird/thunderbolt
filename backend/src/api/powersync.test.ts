@@ -46,6 +46,7 @@ const powersyncSettings: Settings = {
   corsExposeHeaders: '',
   waitlistEnabled: false,
   waitlistAutoApproveDomains: '',
+  bootstrapAdminEmails: '',
   powersyncUrl: 'https://powersync.example.com',
   powersyncInternalUrl: '',
   powersyncJwtKid: 'test-kid',

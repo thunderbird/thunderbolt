@@ -12,7 +12,7 @@ import { exportJWK, generateKeyPair, SignJWT, type JWK } from 'jose'
 import { getSharedIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
 import { account, user } from '@/db/auth-schema'
 import { createSessionCookie } from '@/test-utils/session-cookie'
-import { ssoProvider } from '@/db/schema'
+import { memberRoleGrant, orgMembership, ssoProvider } from '@/db/schema'
 import { sso } from '@better-auth/sso'
 
 const oidcIssuerUrl = 'https://oidc.test'
@@ -413,6 +413,27 @@ describe('OIDC Integration', () => {
         const { location } = await signInThroughIdp(existing.email, { claims: { email_verified: emailVerified } })
         expect(location).toContain('error=account+not+linked')
         expect(await ssoAccountCount(existing.id)).toBe(0)
+      },
+    )
+
+    it.each([
+      { emailVerified: true, granted: true },
+      { emailVerified: false, granted: false },
+    ])(
+      'grants a bootstrap admin email admin at its first SSO sign-in only when the IdP does not deny email_verified (%p)',
+      async ({ emailVerified, granted }) => {
+        const email = `bootstrap-${crypto.randomUUID()}@example.com`
+        getSettingsSpy.mockReturnValue({ ...baseSettings, oidcIssuer: oidcIssuerUrl, bootstrapAdminEmails: email })
+
+        const { sessionUserId } = await signInThroughIdp(email, { claims: { email_verified: emailVerified } })
+
+        expect(sessionUserId).toBeString()
+        const grants = await db
+          .select({ role: memberRoleGrant.role })
+          .from(memberRoleGrant)
+          .innerJoin(orgMembership, eq(orgMembership.id, memberRoleGrant.membershipId))
+          .where(eq(orgMembership.userId, sessionUserId!))
+        expect(grants).toEqual(granted ? [{ role: 'admin' }] : [])
       },
     )
 

@@ -37,7 +37,9 @@ import {
   sendWaitlistJoinedEmail as defaultSendWaitlistJoinedEmail,
   sendWaitlistNotReadyEmail as defaultSendWaitlistNotReadyEmail,
 } from '@/waitlist/utils'
+import { admitsWithoutWaitlist } from '@/identity/admission'
 import { apiKeyOwnerHasAccess } from '@/identity/api-key-access'
+import { recordIdpDeniedEmailVerified } from '@/identity/sign-in'
 import { identity } from '@/identity/plugin'
 import { createCaptchaProvider } from './captcha'
 import { anonymousSignInPath, authBasePath, configuredSsoProviderId, getSessionPath } from './paths'
@@ -141,7 +143,12 @@ const linkSsoToKnownEmailOwner: NonNullable<SSOOptions['resolveUser']> = async (
       ],
     })) !== null
   // This runs on every sign-in, before Better Auth finds a known identity's own user.
-  if (idpDeniesEmailVerified(input) || (await hasSsoAccount('accountId', input.accountKey.accountId))) {
+  const emailUnverified = idpDeniesEmailVerified(input)
+  if (emailUnverified) {
+    // The bootstrap admin grant needs it later in this sign-in; the user row can't carry it.
+    await recordIdpDeniedEmailVerified()
+  }
+  if (emailUnverified || (await hasSsoAccount('accountId', input.accountKey.accountId))) {
     return { action: 'continue' }
   }
   const existing = await database.findOne<User>({
@@ -494,7 +501,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         // Block sign-in for non-approved waitlist users (defense-in-depth).
         // Even if a challenge token was somehow obtained, pending users cannot sign in.
         const existingUser = await getUserByEmail(database, normalizedEmail)
-        if (!existingUser) {
+        if (!existingUser && !(await admitsWithoutWaitlist(database, normalizedEmail))) {
           const waitlistEntry = await getWaitlistByEmail(database, normalizedEmail)
           if (!waitlistEntry || waitlistEntry.status !== 'approved') {
             throw ctx.error('UNAUTHORIZED', { message: 'Sign-in not available' })
@@ -600,10 +607,11 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
           // `@/waitlist/routes`.
           const locale = resolveEmailLocale(ctx?.getHeader('X-App-Language'))
 
-          // Existing users bypass waitlist entirely
+          // Existing users bypass waitlist entirely, and so does an address another admission
+          // path will let in at sign-in.
           const existingUser = await getUserByEmail(database, normalizedEmail)
 
-          if (!existingUser) {
+          if (!existingUser && !(await admitsWithoutWaitlist(database, normalizedEmail))) {
             const waitlistEntry = await getWaitlistByEmail(database, normalizedEmail)
             const autoApproved = isAutoApprovedDomain(normalizedEmail)
 

@@ -8,9 +8,10 @@ import { getCurrentAdapter, runWithTransaction } from '@better-auth/core/context
 import { APIError, type BetterAuthPlugin, type DBAdapter } from 'better-auth'
 import { createAuthMiddleware, isAPIError } from 'better-auth/api'
 import { type AccessRefusal, accessRefusalCodes, computeAccess, getAccess, loadAccessState } from './access'
-import { admitAtSignIn, otpSignInPath, type SignInUser, ssoSignInPaths } from './admission'
+import { admitAtSignIn } from './admission'
 import { createAuditEvent } from './audit/write'
 import { identityPluginSchema } from './plugin-schema'
+import { didIdpDenyEmailVerified, otpSignInPath, type SignInUser, ssoSignInPaths } from './sign-in'
 
 const getSessionPath = '/get-session'
 
@@ -63,7 +64,11 @@ export const identity = () => {
                   // or rolls back with the user and session; opens one otherwise.
                   const access = await runWithTransaction(adapter, async () => {
                     const tx = await getCurrentAdapter(adapter)
-                    await admitAtSignIn(tx, { user, path: context?.path })
+                    await admitAtSignIn(tx, {
+                      user,
+                      path: context?.path,
+                      idpDeniedEmailVerified: await didIdpDenyEmailVerified(),
+                    })
                     return computeAccess(await loadAccessState(tx, user.id))
                   })
                   if (access.allowed) {

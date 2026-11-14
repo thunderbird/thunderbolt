@@ -176,6 +176,8 @@ const settingsSchema = z
     // Waitlist settings
     waitlistEnabled: z.boolean().default(false),
     waitlistAutoApproveDomains: z.string().default(''),
+    // Addresses that get the admin role once, at their first verified sign-in
+    bootstrapAdminEmails: z.string().default(''),
 
     // PowerSync settings
     powersyncUrl: z.string().default(''),
@@ -605,6 +607,7 @@ const parseSettings = (): Settings => {
     posthogApiKey: process.env.POSTHOG_API_KEY || '',
     waitlistEnabled: process.env.WAITLIST_ENABLED === 'true',
     waitlistAutoApproveDomains: process.env.WAITLIST_AUTO_APPROVE_DOMAINS || '',
+    bootstrapAdminEmails: process.env.BOOTSTRAP_ADMIN_EMAILS || '',
     // Localhost defaults apply only in development. In any other NODE_ENV the
     // value defaults to '' so the schema's superRefine guard correctly rejects
     // an empty JWT secret whenever POWERSYNC_URL is set explicitly.
@@ -822,6 +825,13 @@ export const isAgentAllowed = (settings: Pick<Settings, 'enabledAgents'>, id: st
   const enabledIds = getEnabledAgentsList(settings)
   return enabledIds.length === 0 || enabledIds.includes(id)
 }
+
+/** Parse the comma-separated bootstrap admin addresses into a list of normalized emails. */
+export const getBootstrapAdminEmails = (settings: Pick<Settings, 'bootstrapAdminEmails'>): string[] =>
+  settings.bootstrapAdminEmails
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter((email) => email.length > 0)
 
 /** Parse comma-separated auto-approved domains into a list */
 export const getWaitlistAutoApproveDomains = (settings: Settings): string[] => {

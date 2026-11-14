@@ -83,7 +83,7 @@ const SetNodeIdDialog = ({ open, onOpenChange, deviceName, onConfirm, isPending 
             placeholder="thunderbolt-pair:…"
             rows={3}
             spellCheck={false}
-            className="font-mono text-[length:var(--font-size-xs)]"
+            className="font-mono text-[length:var(--font-size-xs)] max-md:text-[length:var(--font-size-body)]"
           />
 
           <input

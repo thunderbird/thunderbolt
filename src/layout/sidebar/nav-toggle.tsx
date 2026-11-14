@@ -99,14 +99,14 @@ export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: S
 
   if (vertical) {
     return (
-      <nav aria-label={t`Sidebar sections`} className="flex justify-center">
+      <div role="group" aria-label={t`Sidebar sections`} className="flex justify-center">
         <div className="flex w-fit flex-col items-center">{sections.map(renderSegment)}</div>
-      </nav>
+      </div>
     )
   }
 
   return (
-    <nav aria-label={t`Sidebar sections`}>
+    <div role="group" aria-label={t`Sidebar sections`}>
       {/* Same height as the footer's New Chat and account controls so
           the row reads as one line. Mobile is full-bleed so the thumb's
           diameter matches those controls exactly; desktop keeps a 2px
@@ -116,6 +116,6 @@ export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: S
       <div className="flex h-[var(--touch-height-lg)] w-fit items-center gap-0.5 md:h-[var(--touch-height-default)] md:p-0.5">
         {sections.map(renderSegment)}
       </div>
-    </nav>
+    </div>
   )
 }

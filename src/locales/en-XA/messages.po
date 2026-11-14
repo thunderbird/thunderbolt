@@ -58,6 +58,10 @@ msgstr[1] ""
 msgid "{0} is only available on desktop"
 msgstr ""
 
+#: src/components/sidebar-footer.tsx
+msgid "{accountLabel}, account menu"
+msgstr ""
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "{agentName} can't take attachments. Remove the attached files to send."
 msgstr ""
@@ -118,6 +122,14 @@ msgid "One skill references this. If you disable it, that skill may no longer re
 msgid_plural "# skills reference this. If you disable it, they may no longer resolve."
 msgstr[0] ""
 msgstr[1] ""
+
+#: src/components/chat/citation-badge.tsx
+msgid "{displayName} {additionalCount}, view all sources"
+msgstr ""
+
+#: src/components/chat/citation-badge.tsx
+msgid "{displayName}, view source"
+msgstr ""
 
 #. js-lingui:icu=%7BenabledSkills%2C+plural%2C+one+%7B%23+skill%7D+other+%7B%23+skills%7D%7D&pluralize_on=enabledSkills
 #: src/components/settings/agents/agent-detail.tsx
@@ -748,6 +760,10 @@ msgstr ""
 msgid "Back to App"
 msgstr ""
 
+#: src/widgets/connect-integration/widget.tsx
+msgid "Back to providers"
+msgstr ""
+
 #: src/settings/voice.tsx
 msgid "Base URL"
 msgstr ""
@@ -867,6 +883,7 @@ msgstr ""
 msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr ""
 
+#: src/components/chat/chat-ui.tsx
 #: src/mini-apps/mini-app-page.tsx
 msgid "Chat"
 msgstr ""
@@ -1652,6 +1669,10 @@ msgstr ""
 
 #: src/components/chat/copy-message-button.tsx
 msgid "Copy message"
+msgstr ""
+
+#: src/components/chat/copy-message-button.tsx
+msgid "Copy message: {excerpt}"
 msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
@@ -4729,6 +4750,10 @@ msgstr ""
 msgid "Resetting…"
 msgstr ""
 
+#: src/components/ui/resizable.tsx
+msgid "Resize panels"
+msgstr ""
+
 #: src/components/update-notification.tsx
 msgid "Restart Now"
 msgstr ""
@@ -5255,6 +5280,7 @@ msgid "Showing 50 of {totalCount} tasks"
 msgstr ""
 
 #: src/components/external-link-toggle-group.tsx
+#: src/layout/sidebar/index.tsx
 msgid "Sidebar"
 msgstr ""
 

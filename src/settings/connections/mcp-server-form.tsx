@@ -413,7 +413,7 @@ export const McpServerForm = ({
               </Label>
               <Textarea
                 id="json-config"
-                className="font-mono text-[length:var(--font-size-xs)] min-h-48 max-h-[40vh] overflow-y-auto resize-none"
+                className="font-mono text-[length:var(--font-size-xs)] max-md:text-[length:var(--font-size-body)] min-h-48 max-h-[40vh] overflow-y-auto resize-none"
                 placeholder={
                   '{\n  "mcpServers": {\n    "example": {\n      "url": "https://example.com/mcp"\n    }\n  }\n}'
                 }

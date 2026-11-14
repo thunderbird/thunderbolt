@@ -25,7 +25,7 @@ import { useEnabledSkills, useLibrarySkills, usePinnedSkills } from './use-skill
 
 export const SkillsView = () => {
   const { t } = useLingui()
-  const { skills, updateSkill, softDeleteSkill } = useLibrarySkills()
+  const { skills, isLoading, updateSkill, softDeleteSkill } = useLibrarySkills()
   const createSkillTracked = useCreateSkillTracked()
   // Pinning is managed entirely from the chat composer; we only read
   // `pinnedSet` here to auto-unpin on disable (a disabled skill can't be
@@ -297,6 +297,7 @@ export const SkillsView = () => {
       <div className="min-w-0 flex-1 overflow-hidden">
         <SkillsList
           skills={skills}
+          isLoading={isLoading}
           activeSkillId={panelOpen && mode === 'detail' && activeSkill ? activeSkill.id : null}
           isEnabled={isEnabled}
           onToggleEnabled={handleToggleEnabled}

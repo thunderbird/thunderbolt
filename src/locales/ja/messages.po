@@ -56,6 +56,10 @@ msgstr[0] "# 個のツール"
 msgid "{0} is only available on desktop"
 msgstr ""
 
+#: src/components/sidebar-footer.tsx
+msgid "{accountLabel}, account menu"
+msgstr "{accountLabel}、アカウントメニュー"
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "{agentName} can't take attachments. Remove the attached files to send."
 msgstr "{agentName} は添付ファイルを受け付けません。送信するには添付ファイルを削除してください。"
@@ -113,6 +117,14 @@ msgstr[0] "# 件のスキルがこれを参照しています。削除すると�
 msgid "One skill references this. If you disable it, that skill may no longer resolve."
 msgid_plural "# skills reference this. If you disable it, they may no longer resolve."
 msgstr[0] "# 件のスキルがこれを参照しています。無効にすると、それらのスキルが解決できなくなる可能性があります。"
+
+#: src/components/chat/citation-badge.tsx
+msgid "{displayName} {additionalCount}, view all sources"
+msgstr "{displayName} {additionalCount}、すべてのソースを表示"
+
+#: src/components/chat/citation-badge.tsx
+msgid "{displayName}, view source"
+msgstr "{displayName}、ソースを表示"
 
 #. js-lingui:icu=%7BenabledSkills%2C+plural%2C+one+%7B%23+skill%7D+other+%7B%23+skills%7D%7D&pluralize_on=enabledSkills
 #: src/components/settings/agents/agent-detail.tsx
@@ -728,13 +740,17 @@ msgstr "利用できるツール:"
 
 #: src/components/onboarding/onboarding-action-buttons.tsx
 msgid "Back"
-msgstr ""
+msgstr "戻る"
 
 #: src/components/account-deleted.tsx
 #: src/components/device-revoked.tsx
 #: src/components/not-found.tsx
 msgid "Back to App"
 msgstr "アプリに戻る"
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "Back to providers"
+msgstr "プロバイダー一覧に戻る"
 
 #: src/settings/voice.tsx
 msgid "Base URL"
@@ -855,9 +871,10 @@ msgstr ""
 msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr "変更は保存されましたが、再接続に失敗しました。もう一度お試しください。"
 
+#: src/components/chat/chat-ui.tsx
 #: src/mini-apps/mini-app-page.tsx
 msgid "Chat"
-msgstr ""
+msgstr "チャット"
 
 #: src/layout/sidebar/chat-list-item.tsx
 msgid "Chat actions"
@@ -1641,6 +1658,10 @@ msgstr "HTML をコピー"
 #: src/components/chat/copy-message-button.tsx
 msgid "Copy message"
 msgstr "メッセージをコピー"
+
+#: src/components/chat/copy-message-button.tsx
+msgid "Copy message: {excerpt}"
+msgstr "メッセージをコピー: {excerpt}"
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Copy PATH command"
@@ -4717,6 +4738,10 @@ msgstr "既定値に戻す"
 msgid "Resetting…"
 msgstr "リセットしています…"
 
+#: src/components/ui/resizable.tsx
+msgid "Resize panels"
+msgstr "パネルのサイズを変更"
+
 #: src/components/update-notification.tsx
 msgid "Restart Now"
 msgstr "今すぐ再起動"
@@ -5243,6 +5268,7 @@ msgid "Showing 50 of {totalCount} tasks"
 msgstr "{totalCount} 件のタスクのうち 50 件を表示中"
 
 #: src/components/external-link-toggle-group.tsx
+#: src/layout/sidebar/index.tsx
 msgid "Sidebar"
 msgstr "サイドバー"
 

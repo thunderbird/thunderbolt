@@ -5,6 +5,7 @@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useIsMobile } from '@/hooks/use-mobile'
 import type { CitationSource } from '@/types/citation'
+import { useLingui } from '@lingui/react/macro'
 import { memo, useState } from 'react'
 import { CitationSourcesDrawer } from './citation-sources-drawer'
 import { useCitationPopover } from './citation-popover'
@@ -44,10 +45,6 @@ const getBadgeLabel = (sources: CitationSource[]) => {
   return {
     displayName: primary.siteName || primary.title,
     additionalCount: sources.length > 1 ? `+${sources.length - 1}` : null,
-    ariaLabel:
-      sources.length === 1
-        ? `View source: ${primary.siteName || primary.title}`
-        : `View ${sources.length} sources: ${primary.siteName || primary.title} and ${sources.length - 1} more`,
   }
 }
 
@@ -58,7 +55,12 @@ type BadgeButtonProps = {
 }
 
 const BadgeButton = ({ sources, isOpen, onToggle }: BadgeButtonProps) => {
-  const { displayName, additionalCount, ariaLabel } = getBadgeLabel(sources)
+  const { t } = useLingui()
+  const { displayName, additionalCount } = getBadgeLabel(sources)
+  // Starts with the visible text so voice control can target the chip (WCAG 2.5.3).
+  const ariaLabel = additionalCount
+    ? t`${displayName} ${additionalCount}, view all sources`
+    : t`${displayName}, view source`
   return (
     <button
       onClick={(e) => onToggle(e.currentTarget)}

@@ -63,8 +63,10 @@ export const Expandable = ({
           <AccordionPrimitive.Trigger
             className={cn(
               'flex flex-1 cursor-pointer items-center justify-between gap-2 px-4 py-2 text-left transition-all outline-none min-h-[var(--min-touch-height)]',
-              'hover:bg-secondary focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-              'rounded-md data-[state=open]:rounded-b-none',
+              // Inset, so the ring survives a parent card's overflow-hidden (the reasoning group clips an outset one).
+              'hover:bg-secondary focus-visible:bg-secondary focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+              // Same tier as the card it fills, so the inset ring and hover tint follow its corners instead of being clipped.
+              'rounded-xl data-[state=open]:rounded-b-none',
               'disabled:pointer-events-none disabled:opacity-50',
             )}
           >

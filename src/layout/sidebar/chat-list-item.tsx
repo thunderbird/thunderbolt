@@ -152,7 +152,6 @@ export const ChatListItem = memo(
     })
 
     const {
-      attributes: dragAttributes,
       listeners: dragListeners,
       setNodeRef: setDragRef,
       isDragging,
@@ -308,7 +307,6 @@ export const ChatListItem = memo(
               // long-press all keep working.
               ref={setDragRef}
               {...dragListeners}
-              {...dragAttributes}
               className={cn('group/menu-item group/item relative', isDragging && 'opacity-50')}
             >
               <ContextMenuTrigger asChild>
@@ -340,7 +338,7 @@ export const ChatListItem = memo(
                     !anyMenuOpen && 'opacity-0 group-hover/item:opacity-100 group-focus-within/item:opacity-100',
                   )}
                 >
-                  <MoreVertical />
+                  <MoreVertical aria-hidden />
                 </Button>
               </DropdownMenuTrigger>
 

@@ -50,7 +50,7 @@ export const mobileHeaderControlFillDescendantClass =
  * modal whose body has no other tabbable element, e.g. a read-only agent
  * detail — leaving a touch-opened modal looking keyboard-focused.
  */
-export const modalCloseClass = `${mobileHeaderControlFillClass} absolute z-10 flex size-[var(--touch-height-lg)] md:size-[var(--touch-height-sm)] cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:pointer-events-none`
+export const modalCloseClass = `${mobileHeaderControlFillClass} absolute z-10 flex size-[var(--touch-height-lg)] md:size-[var(--touch-height-sm)] cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground outline-none focus-visible:border-ring focus-visible:ring-ring focus-visible:ring-[3px] disabled:pointer-events-none`
 
 export const centeredModalSurfaceClass = `${modalAnimationClass} data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] overflow-hidden rounded-2xl bg-background shadow-lg duration-200 dark:bg-card`
 

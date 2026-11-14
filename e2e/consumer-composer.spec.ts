@@ -187,3 +187,26 @@ for (const { width, desktopSizing } of [
     })
   })
 }
+
+test('the composer edge darkens while its textbox is focused', async ({ page }) => {
+  await loginViaEmailCode(page)
+  const textarea = page.locator('textarea')
+  const surface = page.locator('.composer-surface')
+  const edgeColor = () => surface.evaluate((element) => getComputedStyle(element).borderTopColor)
+  // The edge animates border-color, so a reading right after blur or focus could catch a halfway colour.
+  await page.addStyleTag({ content: '.composer-surface { transition: none !important; }' })
+
+  await textarea.blur()
+  await expect(textarea).not.toBeFocused()
+  const resting = await edgeColor()
+
+  // Focus swaps the faint resting edge for the stronger border colour (WCAG 2.4.7), with no ring.
+  await textarea.focus()
+  await expect(textarea).toBeFocused()
+  await expect.poll(edgeColor).not.toBe(resting)
+  const focused = await edgeColor()
+  expect(focused).not.toMatch(/^rgba\(.*, 0\)$|^transparent$/)
+
+  await textarea.blur()
+  await expect.poll(edgeColor).toBe(resting)
+})

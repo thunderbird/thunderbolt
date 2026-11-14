@@ -88,6 +88,21 @@ const renderList = (overrides: Partial<ComponentProps<typeof ConnectionsList>> =
 
 afterEach(cleanup)
 
+describe('ConnectionsList busy state', () => {
+  it.each(['areProvidersReady', 'areIntegrationsReady', 'areServersReady'] as const)(
+    'is aria-busy while %s is false',
+    (ready) => {
+      const { container } = renderList({ [ready]: false })
+      expect(container.querySelector('[aria-busy="true"]')).toBeInTheDocument()
+    },
+  )
+
+  it('drops aria-busy once every source is ready', () => {
+    const { container } = renderList()
+    expect(container.querySelector('[aria-busy]')).toBeNull()
+  })
+})
+
 describe('ConnectionsList empty state', () => {
   it('offers the general add flow only when all connection sources are loaded and empty', () => {
     const { props } = renderList()

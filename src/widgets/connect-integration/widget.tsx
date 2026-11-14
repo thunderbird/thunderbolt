@@ -360,6 +360,7 @@ export const ConnectIntegrationWidget = memo(
               disabled={isConnecting}
               variant="ghost"
               size="icon"
+              aria-label={t`Back to providers`}
               className="absolute top-2 left-2"
             >
               <ArrowLeft className="h-4 w-4" />

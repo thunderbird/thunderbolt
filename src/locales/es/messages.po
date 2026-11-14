@@ -1035,6 +1035,10 @@ msgstr "Revisa tu conexión y vuelve a abrir el archivo, o descárgalo para abri
 msgid "Check your connection and open the file again, or download it to open it in a word processor."
 msgstr "Revisa tu conexión y vuelve a abrir el archivo, o descárgalo para abrirlo en un procesador de textos."
 
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "Check your connection and try again."
+msgstr "Comprueba tu conexión e inténtalo de nuevo."
+
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/waitlist/waitlist-content.tsx
 msgid "Check your email"
@@ -1725,6 +1729,7 @@ msgid "Context Window Exceeded"
 msgstr "Ventana de contexto excedida"
 
 #: src/components/device-approval.tsx
+#: src/components/invite-accept/invite-accept-page.tsx
 #: src/components/magic-link-verify.tsx
 #: src/components/onboarding/onboarding-action-buttons.tsx
 #: src/components/onboarding/onboarding-dialog.tsx
@@ -2074,6 +2079,10 @@ msgstr "No se pudo cargar la lista de emojis. Cierra y vuelve a abrir el selecto
 #: src/components/settings/iroh-pairing-panel.tsx
 msgid "Couldn't load this app's pairing identity: {error}"
 msgstr "No se pudo cargar la identidad de emparejamiento de esta app: {error}"
+
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "Couldn't load this invitation"
+msgstr "No se pudo cargar esta invitación"
 
 #: src/mini-apps/mini-app-page.tsx
 msgid "Couldn't load your apps. Check your connection and reload."
@@ -3481,6 +3490,10 @@ msgstr "Puede que esté dañada. Descarga el archivo para abrirlo en una app de 
 msgid "It may be damaged. Download the file to open it in a word processor."
 msgstr "Puede que esté dañado. Descarga el archivo para abrirlo en un procesador de textos."
 
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "It may have expired, been used already, or been withdrawn. Ask for a new invitation."
+msgstr "Puede que haya caducado, que ya se haya usado o que se haya retirado. Pide una nueva invitación."
+
 #: src/components/recovery-continuity/recovery-continuity-banner.tsx
 msgid "It was created before a security update. A new phrase lets recovery confirm your keys are yours."
 msgstr ""
@@ -3647,6 +3660,10 @@ msgstr "Cargando el libro"
 #: src/components/settings/iroh-pairing-panel.tsx
 msgid "Loading this app's pairing identity…"
 msgstr "Cargando la identidad de emparejamiento de esta app…"
+
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "Loading your invitation…"
+msgstr "Cargando tu invitación…"
 
 #: src/components/chat/chat-ui.tsx
 #: src/components/device-approval.tsx
@@ -5587,6 +5604,7 @@ msgstr "Volver a iniciar sesión"
 msgid "Sign in"
 msgstr "Iniciar sesión"
 
+#: src/components/invite-accept/invite-accept-page.tsx
 #: src/components/onboarding/onboarding-server-step.tsx
 #: src/components/sign-in-modal.tsx
 #: src/settings/preferences.tsx
@@ -5650,6 +5668,10 @@ msgstr ""
 #: src/components/device-approval.tsx
 msgid "Sign in to the CLI"
 msgstr "Iniciar sesión en la CLI"
+
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "Sign in with {email} to accept the invitation."
+msgstr "Inicia sesión con {email} para aceptar la invitación."
 
 #: src/components/sso-sign-in/sso-email-code-page.tsx
 msgid "Sign in with an email code"
@@ -6365,6 +6387,10 @@ msgstr "Este archivo no parece ser una exportación de {appName}."
 msgid "This helps us personalize your experience with local settings and features."
 msgstr "Esto nos ayuda a personalizar tu experiencia con ajustes y funciones locales."
 
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "This invitation is no longer valid"
+msgstr "Esta invitación ya no es válida"
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "This is the first device on your account. We'll create an encryption key to protect your data and give you a recovery key to keep safe."
 msgstr "Este es el primer dispositivo de tu cuenta. Crearemos una clave de cifrado para proteger tus datos y te daremos una clave de recuperación para que la guardes a salvo."
@@ -6795,6 +6821,7 @@ msgstr "Dispositivos de confianza"
 #: src/components/auth-gate/browser-check.tsx
 #: src/components/chat/attestation/attestation-panel.tsx
 #: src/components/embedded/surface-status.tsx
+#: src/components/invite-accept/invite-accept-page.tsx
 #: src/components/recovery-phrase-change-dialogs.tsx
 #: src/components/sso-error.tsx
 #: src/components/sso-sign-in/sso-redirect.tsx
@@ -7527,6 +7554,10 @@ msgstr "¡Todo listo!"
 msgid "You're all set! 🎉"
 msgstr "¡Todo listo! 🎉"
 
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "You're already signed in"
+msgstr "Ya has iniciado sesión"
+
 #: src/components/magic-link-verify.tsx
 #: src/components/sign-in/sign-in-success-step.tsx
 msgid "You're now signed in."
@@ -7544,6 +7575,14 @@ msgstr "Tienes la última versión."
 #: src/components/provider-authorization-result.tsx
 #~ msgid "You're ready for the next step. Return to Thunderbolt to finish connecting your account."
 #~ msgstr ""
+
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "You're signed in as {email}."
+msgstr "Has iniciado sesión como {email}."
+
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "You've been invited to {appName}"
+msgstr "Te han invitado a {appName}"
 
 #: src/settings/models/model-detail.tsx
 msgid "You've customized this model."

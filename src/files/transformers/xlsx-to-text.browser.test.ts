@@ -3,36 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { strToU8, unzipSync, zipSync } from 'fflate'
-import { build, type Rolldown } from 'vite'
 import type { StoredFile } from '@/lib/file-blob-storage'
+import { bundleForBrowser } from '@/test-utils/bundle-for-browser'
 import type * as XlsxToText from './xlsx-to-text'
 
 const mib = 1024 * 1024
-
-/**
- * Bundles xlsx-to-text.ts into one ES module, as the app's build does. Under Bun the zip library resolves to a build
- * that never starts a Worker, while its browser build inflates large compressed entries in `blob:` Workers.
- */
-const bundleForBrowser = async (dir: string): Promise<typeof XlsxToText> => {
-  const result = await build({
-    configFile: false,
-    logLevel: 'silent',
-    build: {
-      write: false,
-      lib: { entry: join(import.meta.dir, 'xlsx-to-text.ts'), formats: ['es'] },
-      rolldownOptions: { output: { codeSplitting: false } },
-    },
-  })
-  // `write: false` without `watch` resolves to one output.
-  const [{ output }] = [result].flat() as Rolldown.RolldownOutput[]
-  const path = join(dir, 'xlsx-to-text.mjs')
-  writeFileSync(path, output[0].code)
-  return import(path)
-}
 
 /** `A` for column 0, `AX` for column 49. */
 const columnName = (index: number): string =>
@@ -167,18 +144,18 @@ const settleWithin = async <T>(promise: Promise<T>, ms: number): Promise<T> => {
 }
 
 describe('xlsx-to-text in the browser build, with Workers blocked', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'xlsx-to-text-'))
   const realWorker = globalThis.Worker
   let xlsx: typeof XlsxToText
 
   beforeAll(async () => {
-    xlsx = await bundleForBrowser(dir)
+    // Under Bun the zip library resolves to a build that never starts a Worker; its browser build inflates large
+    // compressed entries in `blob:` Workers.
+    xlsx = await bundleForBrowser<typeof XlsxToText>(join(import.meta.dir, 'xlsx-to-text.ts'))
     Object.defineProperty(globalThis, 'Worker', { configurable: true, writable: true, value: BlockedWorker })
   })
 
   afterAll(() => {
     Object.defineProperty(globalThis, 'Worker', { configurable: true, writable: true, value: realWorker })
-    rmSync(dir, { recursive: true, force: true })
   })
 
   test('reads a 5,000-row, 50-column workbook without starting a Worker', async () => {

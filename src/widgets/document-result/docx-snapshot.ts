@@ -13,10 +13,12 @@ export const docxPreviewLimits = {
   /** What `word/document.xml` unpacks to. 3.5 MB is about 1,000 pages. */
   documentXmlBytes: 3_500_000,
   /**
-   * What all the parts together unpack to, as the zip declares it. Pictures barely compress, so a document at the
-   * file limit unpacks to little more than its size; this stops a small file that would unpack to gigabytes.
+   * What all the parts together unpack to. Pictures barely compress, so a document at the file limit unpacks to
+   * little more than its size; this stops a small file that would unpack to gigabytes.
    */
   unzipBytes: 32 * mib,
+  /** The most parts a classic zip lists. A ZIP64 directory can claim more than it holds. */
+  parts: 65_535,
 }
 
 /** A document's pages as markup for the sandboxed frame, with their width in CSS pixels, or why there are none. */
@@ -47,32 +49,37 @@ const resolvePartName = (name: string) => {
   return segments.join('/')
 }
 
+/** Thrown for a file past one of {@link docxPreviewLimits}. */
+class PastLimitsError extends Error {}
+
 /**
- * The file's parts, unpacked within the limits and stored again without compression, or null past a limit. The
- * renderer's zip reader (JSZip) unpacks a part in full before it compares it with the size the zip declares, so it
- * only gets parts unpacked here first, where unpacking stops at the declared size.
+ * The file's parts, unpacked within the limits and stored again without compression. The renderer's zip reader
+ * (JSZip) unpacks a part in full before it compares it with the size the zip declares, so it only gets parts unpacked
+ * here first, each into a buffer no larger than counted.
  */
 const unpackWithinLimits = async (blob: Blob) => {
   if (blob.size > docxPreviewLimits.fileBytes) {
-    return null
+    throw new PastLimitsError()
   }
-  const declared = { bytes: 0 }
+  const unpacked = { parts: 0, bytes: 0 }
   const entries = unzipSync(new Uint8Array(await blob.arrayBuffer()), {
-    // Once the total passes the limit, no further part is unpacked.
-    filter: ({ originalSize }) => {
-      declared.bytes += originalSize
-      return declared.bytes <= docxPreviewLimits.unzipBytes
+    // fflate copies a stored part at its packed size and inflates one into a buffer of its declared size, so each
+    // part counts at the larger of the two. Throwing ends the scan, which a forged ZIP64 entry count can stretch.
+    filter: ({ size, originalSize }) => {
+      unpacked.parts += 1
+      unpacked.bytes += Math.max(size, originalSize)
+      if (unpacked.parts > docxPreviewLimits.parts || unpacked.bytes > docxPreviewLimits.unzipBytes) {
+        throw new PastLimitsError()
+      }
+      return true
     },
   })
-  if (declared.bytes > docxPreviewLimits.unzipBytes) {
-    return null
-  }
   // A later part with the same resolved name replaces an earlier one, as in the zip reader.
   const parts = Object.fromEntries(Object.entries(entries).map(([name, data]) => [resolvePartName(name), data]))
   // The renderer also looks a part up by its name with backslashes.
   const body = parts['word/document.xml'] ?? parts['word\\document.xml']
   if ((body?.length ?? 0) > docxPreviewLimits.documentXmlBytes) {
-    return null
+    throw new PastLimitsError()
   }
   return zipSync(parts, { level: 0 })
 }
@@ -139,11 +146,7 @@ const prepareForMarkup = (wrapper: HTMLDivElement) => {
  */
 export const renderDocxSnapshot = async (blob: Blob): Promise<DocxSnapshot> => {
   try {
-    const parts = await unpackWithinLimits(blob)
-    if (!parts) {
-      return { kind: 'tooLarge' }
-    }
-    const { styles, wrapper } = await renderPages(parts)
+    const { styles, wrapper } = await renderPages(await unpackWithinLimits(blob))
     prepareForMarkup(wrapper)
     const html =
       `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="${snapshotPolicy}">` +
@@ -151,6 +154,9 @@ export const renderDocxSnapshot = async (blob: Blob): Promise<DocxSnapshot> => {
       `${styles.map(styleMarkup).join('')}</head><body>${wrapper.outerHTML}</body></html>`
     return { kind: 'pages', html, width: pagesWidth(wrapper) }
   } catch (error) {
+    if (error instanceof PastLimitsError) {
+      return { kind: 'tooLarge' }
+    }
     console.error('[docx preview] Could not render the document', error)
     return { kind: 'unreadable' }
   }

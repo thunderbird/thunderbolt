@@ -238,12 +238,12 @@ for a document opened from a search result. The file is untrusted, so:
   measures for them, which is 0 with no layout.
 - CSS that carries text from the file, such as a font name, has its `<` escaped, so it cannot close the style
   element.
-- A file over 10 MiB, one whose `word/document.xml` unpacks to over 3.5 MB (about 1,000 pages), or one whose parts
-  unpack to over 32 MiB in all gets a refusal, and Download still works. The app unpacks the parts itself, within
-  those limits, and gives the library a copy stored without compression, because the library's zip reader unpacks a
-  part in full before it checks the size the file declares. Part names resolve as that reader resolves them, so
-  `word/x/../document.xml` counts as `word/document.xml`. A main part under another name is held to the 32 MiB total
-  only.
+- A file over 10 MiB, one whose `word/document.xml` unpacks to over 3.5 MB (about 1,000 pages), one whose parts unpack
+  to over 32 MiB in all, or one that lists more than 65,535 parts gets a refusal, and Download still works. The app
+  unpacks the parts itself, within those limits, and gives the library a copy stored without compression, because the
+  library's zip reader unpacks a part in full before it checks the size the file declares. Part names resolve as that
+  reader resolves them, so `word/x/../document.xml` counts as `word/document.xml`. A main part under another name is
+  held to the 32 MiB total only.
 - A file the library cannot read, damaged or using something it does not handle (a delimiter equation with no
   properties, for one), shows that it can't be previewed, and Download still works.
 - Pages wider than the panel, as on a phone, scale down to its width

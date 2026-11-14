@@ -9,6 +9,7 @@ import { expectSampleDocxPreview } from '@/test-utils/docx-preview'
 import { hostileAltChunkText, hostileDocx, hostileDocxProbeOrigin, hostileLinkText } from '@/test-utils/hostile-docx'
 import { pixelPng, sampleDocx } from '@/test-utils/sample-docx'
 import { parseXmlWithXmlDom } from '@/test-utils/xml-dom-parser'
+import { overlappingStoredEntries, withZip64Count } from '@/test-utils/zip-fixtures'
 import { docxPreviewLimits, renderDocxSnapshot } from './docx-snapshot'
 
 parseXmlWithXmlDom()
@@ -141,6 +142,20 @@ describe('renderDocxSnapshot', () => {
     })
 
     expect(zip.byteLength).toBeLessThan(docxPreviewLimits.fileBytes)
+    expect(await renderDocxSnapshot(new Blob([zip]))).toEqual({ kind: 'tooLarge' })
+  })
+
+  it('refuses a small file whose stored parts all point at one payload while declaring nothing unpacked', async () => {
+    // 40 entries of 1 MiB each: past the total limit, from a file of about 1 MiB.
+    const zip = overlappingStoredEntries(40)
+
+    expect(zip.byteLength).toBeLessThan(docxPreviewLimits.fileBytes)
+    expect(await renderDocxSnapshot(new Blob([zip]))).toEqual({ kind: 'tooLarge' })
+  })
+
+  it('refuses a zip whose directory claims more parts than a classic zip can list, without scanning them all', async () => {
+    const zip = withZip64Count(docx({ 'word/document.xml': body('<w:p/>') }), 1_000_000)
+
     expect(await renderDocxSnapshot(new Blob([zip]))).toEqual({ kind: 'tooLarge' })
   })
 

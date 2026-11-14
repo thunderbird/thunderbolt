@@ -62,6 +62,20 @@ for a refused member: a key created that way is refused at use.
 Anonymous users are not members. Every step above skips them, so anonymous sign-in, where enabled,
 bypasses the organization entirely.
 
+### SSO only for IdP-managed members
+
+A member is **IdP-managed** (`isIdpManaged`) while they have a SCIM source on a connection whose SCIM
+side is active, in any status: a `removed` source counts until an admin detaches the link. When one of
+those connections also has an SSO side (`requiresSso`), the sign-in check refuses email code and
+passkey sign-in with `ACCESS_SSO_REQUIRED`, so the IdP's MFA and conditional access always apply. The
+code is still sent: refusing at send time would tell anyone who typed the address that an IdP manages
+it. A passkey still unlocks E2EE keys after an SSO sign-in, which never reaches the server. Members of
+a connection with only a SCIM side keep email code and passkeys, as they have no SSO to use.
+
+IdP-managed members can't delete their own account (`DELETE /v1/account` and its step-up code answer
+403 `ACCOUNT_IDP_MANAGED`): the account goes when the IdP removes it, and a self-delete would drop the
+SCIM tombstone the IdP reprovisions through.
+
 ## Admission at sign-in
 
 `admitAtSignIn` ([admission.ts](../../../backend/src/identity/admission.ts)) runs in the sign-in's
@@ -153,8 +167,12 @@ releases let users register can't sign anyone in.
   exception: the bootstrap grant admits it before SCIM provisions it.
 - **Email linking** happens only on a connection without SCIM, and never to a user a SCIM connection
   manages, on any connection.
-- **The match claim** (`match_claim`: `oid` for Entra, `sub` for Okta and Keycloak) is stored per
-  connection for the SCIM lifecycle to match a sign-in to its SCIM record.
+- **The match claim** (`match_claim`: `oid` for Entra, `sub` for Okta and Keycloak, or a SAML attribute)
+  names the claim whose value is the subject's SCIM `externalId`. On a connection whose SCIM side is
+  active, the SSO `resolveUser` hook signs the subject into the user of that SCIM record
+  (`acquireActiveSCIMUserLink`), never by email. A deactivated or deleted record refuses the sign-in
+  with `ACCESS_DEPROVISIONED`; a sign-in without the claim is refused with `SSO_MATCH_CLAIM_MISSING`.
+  Entra's `sub` is pairwise per app, so Entra connections match on `oid`.
 - **The login screen** asks `POST /v1/sso/discover` which connections to offer: the only one, else the
   one whose `org_domain` claims the email's domain, else all of them, one button each. It answers from
   the domain alone, so it never reveals whether an address is a member.
@@ -170,6 +188,23 @@ releases let users register can't sign anyone in.
 grants, the roles mapped to the member's local groups, and the roles the SCIM plugin projected from
 their IdP groups, plus `member`. Roles are usable only with access: a refused member has none, even
 with a stored grant. Access and roles are separate, so a local grant stays until an admin removes it.
+
+A SCIM group grants the roles `group_role_mapping` maps to its id, never its name
+([projection.ts](../../../backend/src/identity/scim/projection.ts)), so renaming a group to "Admins"
+grants nothing. The plugin stores the result in `scimProjectionGrant` and keeps it in step with group
+membership; a deactivated or deleted SCIM user holds none. `createScimGroupRoleMapping` and
+`deleteScimGroupRoleMapping` ([role-mappings.ts](../../../backend/src/identity/scim/role-mappings.ts))
+change a mapping with its audit event, then replay the projection for the whole org
+(`reconcileSCIMProjection`), so members' roles change at once rather than at the IdP's next change.
+
+## Permanent purge
+
+`purgeMember` ([purge.ts](../../../backend/src/identity/purge.ts)), for the admin routes, hard-deletes a
+member who has lost access: the user row cascades to their data, devices, `org_envelopes` and SCIM
+records, the tombstone included. It is allowed for a member an IdP removed with `DELETE`, one an admin
+blocked, or a local member with no live source. It is refused while the member has access, while an
+IdP has only suspended them (`active:false` can be reversed), and for the admin themselves. The
+`member.purged` event has no foreign key, so it outlives the user.
 
 ## Bootstrap admin
 
@@ -237,6 +272,8 @@ plugin sees it:
 
 1. **Rate limits.** A per-credential budget, plus a per-IP budget spent only by 401s. SCIM skips the
    `auth` tier and Better Auth's limiter. See [rate-limiting.md](../../../backend/docs/rate-limiting.md#scim).
+   A request the pipeline refuses before the plugin authenticates it is answered with the 401 when
+   the caller isn't authenticated, so made-up tokens spend the per-IP budget like any other.
 2. **One write at a time per user or group** within the process. On Postgres, a user PATCH also
    holds an advisory lock every backend instance shares, because it writes an `emails` list built
    from its own read (step 3), which a write on another instance in between would undo.
@@ -257,6 +294,48 @@ PATCH and PUT on a user first read the stored user through the plugin with the c
 so the checks in step 3 see the connection's own data and nothing else.
 
 Users the IdP provisions have `emailVerified` set: the IdP vouches for the address.
+
+Each request the backend rejects, once it knows the connection, writes a failed `scim.request` audit
+event with that connection and credential, the method, the resource and the plugin's error
+([failures.ts](../../../backend/src/identity/scim/failures.ts)), never the body. A refusal the
+pipeline makes itself first asks the plugin who the token belongs to. A 401 can't be attributed, and
+rate-limit refusals and conflicts a retry fixed are not recorded. A credential leaves at most 60 of
+these an hour (`scim-failure-record`); past that they go unrecorded. An admin reads them with
+`GET /v1/admin/audit-events?connectionId=…&action=scim.request&outcome=failure`.
+
+### Lifecycle
+
+The plugin's `identity` callbacks ([lifecycle.ts](../../../backend/src/identity/scim/lifecycle.ts)) run
+inside every SCIM user transaction. The plugin passes the user's resulting SCIM users, not the
+operation, so the change is read off the member's `scim` sources, one per connection, whose `ref` is the
+plugin's SCIM user id:
+
+| SCIM                   | Membership source                    | Devices, sessions, API keys                                                                                 |
+| ---------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| create                 | added (the membership too, if none)  | untouched                                                                                                   |
+| `active:false`         | `suspended`                          | kept; the plugin signs them out, and API keys, sync and WebSockets are refused                              |
+| `active:true`          | `active`                             | the same devices sync again after sign-in                                                                   |
+| `DELETE`               | `removed`; the user and data stay    | if that ends their access: devices revoked, sessions and API keys deleted; envelopes right after the commit |
+| re-POST after `DELETE` | `active` again, with the new SCIM id | the same user, with no trusted device: their recovery phrase or passkey restores it                         |
+
+The revocation commits with the membership change. Envelopes have no `id` column, so Better Auth's
+adapter can't reach them inside the plugin's transaction; they are deleted with `deleteEnvelope` as
+soon as it commits, and a failure is logged with the user id without failing the request. Until then
+every envelope route already refuses the revoked device.
+
+Another IdP that still vouches for the member keeps their devices through one IdP's `DELETE`. A source
+on a connection whose SCIM side is retiring or retired is left alone, so the decommission walk changes
+nothing.
+
+Every SCIM resource change writes its audit event (`scim.user_*`, `scim.group_*`) in the same
+transaction, attributed to the connection, from the plugin's identity and projection callbacks, and
+only when something changed, so a replay writes nothing. `getScimActor()`
+([actor.ts](../../../backend/src/identity/scim/actor.ts)) gives the request's
+`{ identityConnectionId, scimConnectionId, credentialId }`; the audit `connectionId` is always the
+`identity_connection` id. A change to a group with no members reaches no callback, so the pipeline
+records it after the commit; a memberless group grants nothing. Sessions the revocation deletes write
+one `auth.session_revoked` each; the ones the plugin signs out go through Better Auth's session hooks. Revocation is not a remote wipe: a revoked device clears
+its data only when it next reaches the server. `identity.resolveUser` always creates a new user for now.
 
 Not supported yet: groups with duplicate names (Entra allows them) and users without an email.
 The plugin refuses both.

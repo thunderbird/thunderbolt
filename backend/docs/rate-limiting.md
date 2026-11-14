@@ -15,6 +15,7 @@ Hardcoded per-tier budgets, enforced by a Postgres-backed limiter in [backend/sr
 | `debug-transcript-intake`  | 600 / hour    | intake client, and IP    | `POST /v1/debug-transcripts/intake`                                                      |
 | `scim`                     | 1200 / minute | SCIM bearer token        | `/v1/api/auth/scim/v2/*`                                                                 |
 | `scim-auth-failure`        | 20 / minute   | client IP, 401s only     | `/v1/api/auth/scim/v2/*`                                                                 |
+| `scim-failure-record`      | 60 / hour     | SCIM credential          | audit rows for rejected SCIM requests; never refuses a request                           |
 
 Limits are hardcoded in `tierConfigs` ([rate-limit.ts:48](../src/middleware/rate-limit.ts)), not configurable, so every deployment enforces a known floor and no env var can quietly raise it. The exceptions are `anonymous-sign-in` and `captcha-challenge`, whose budgets both come from `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX` / `_WINDOW_SECS` (with ALTCHA, every anonymous sign-in fetches one challenge first) and cannot be raised without a captcha while anonymous auth is on, and `anonymous-sign-in-global`, sized by `ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX` / `_WINDOW_SECS`. That last one is a single `anonymous-sign-in-global:all` bucket every client shares, and it is the cap on scripted anonymous sign-up. It counts only sign-ins that passed the captcha (all of them with `CAPTCHA_PROVIDER=none`): `createAuth` charges it through `createRateLimitConsumer` in the Better Auth before-hook, after captcha verification and the session-fixation guard, so the per-IP bucket runs first and an unsolved request never spends a point. Its 429 comes from Better Auth (`{ message }` with `Retry-After` and `RateLimit-*` headers), not from the Elysia limiter.
 
@@ -24,12 +25,14 @@ Operator configuration (`RATE_LIMIT_ENABLED`, `TRUSTED_PROXY`) is in [docs/self-
 
 ### SCIM
 
-An IdP's sync sends several requests per user (a Keycloak full sync is about 9), so SCIM can't share the `auth` tier. `createAuthPluginIpRateLimit` exempts `/v1/api/auth/scim/v2`, Better Auth's limiter skips it (`'/scim/v2/**': false`), and `createScimRequestHandler` ([identity/scim/request.ts](../src/identity/scim/request.ts)) applies two tiers of its own, sized there rather than in `tierConfigs`:
+An IdP's sync sends several requests per user (a Keycloak full sync is about 9), so SCIM can't share the `auth` tier. `createAuthPluginIpRateLimit` exempts `/v1/api/auth/scim/v2`, Better Auth's limiter skips it (`'/scim/v2/**': false`), and `createScimRequestHandler` ([identity/scim/request.ts](../src/identity/scim/request.ts)) applies three tiers of its own, sized there rather than in `tierConfigs`:
 
 - `scim` is keyed on a SHA-256 of the bearer token, so a connection's budget is its credential's. Only `/Users` and `/Groups` are charged: discovery answers without a token, so charging it would let anyone write a row per made-up token without ever earning a 401. The connection itself is only known inside the plugin, after every hook we can attach to. A garbage token gets a bucket of its own, never a real connection's.
 - `scim-auth-failure` is keyed on the client IP and spent only by 401s, so token spraying has a ceiling and a working IdP never meets it.
 
-Both answer with SCIM's error body (`application/scim+json`, `status: "429"`) and `Retry-After`.
+- `scim-failure-record` is keyed on the credential a rejected request authenticated as, and bounds the failed `scim.request` audit events it can leave. Past it the event is dropped and the request is answered as usual.
+
+The first two answer with SCIM's error body (`application/scim+json`, `status: "429"`) and `Retry-After`.
 
 ## How tiers map to buckets
 

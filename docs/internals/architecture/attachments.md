@@ -164,12 +164,19 @@ mammoth only extracts text. The DOCX preview is not a transformer: see [DOCX pre
 slide's other text follows, with each table row on one line and its cells separated by tabs, and then its speaker
 notes. Slides come in the order the deck shows them. A deck made by `pptxgenjs`, as the agent makes one, has no
 placeholders, so its titles are plain lines. The slide number, date, header and footer are left out. Content a file
-gives twice, as a choice and as a fallback for older apps, counts once, as the choice the slide shows. Each slide and
-notes page is read once, however many times the deck lists it, so the text is never longer than the XML it comes
-from. Only the XML parts are unpacked, so pictures and video cost nothing. The model gets a message in place of the
-text when the deck's XML unpacks to over 32 MiB, when it lists more than 65,535 parts, when a part unpacks to more
-than it declares ([zip limits](#zip-limits)), or when it has no slide that can be read. Charts, pictures and
-diagrams, SmartArt among them, contribute no text.
+gives twice, as a choice and as a fallback for older apps, counts once, as the choice the slide shows.
+
+The text is never longer than the XML it comes from. Each slide and notes page is read once, however many times the
+deck lists it. One walk over each page gives every piece of text a single owner, the outermost paragraph or table
+row around it, so text a crafted file nests in many paragraphs, runs or rows is not copied once per level; 256
+nested paragraphs around 4 MiB of text had made a gigabyte. The walk keeps its own stack, and a part nested more
+than 256 levels deep is refused before xmldom parses it, because xmldom slows with the square of the depth when each
+level declares a namespace. Only the XML parts are unpacked, so pictures and video cost nothing.
+
+The model gets a message in place of the text when the deck's XML unpacks to over 32 MiB, when it lists more than
+65,535 parts, when a part unpacks to more than it declares ([zip limits](#zip-limits)), when a part nests too deep,
+or when the deck has no slide that can be read. Charts, pictures and diagrams, SmartArt among them, contribute no
+text.
 
 Loaders are dynamic imports, keeping pdfjs, mammoth, read-excel-file, fflate and xmldom out of the entry bundle.
 `pdf-to-images` caps at `maxPages = 10`, `renderScale = 2`: legible to a vision model, bounded so a long scan does not
@@ -291,6 +298,12 @@ deck icon rather than a slide, because a thumbnail would render the whole deck f
 - The DOCX limits on size, unpacking and parts apply, and so does a limit of 200 slides, counted as the renderer
   counts them. A snapshot renders every slide, and 200 painted in about a second in Chromium and WebKit. Past a
   limit, or for a file the renderer cannot read, the panel shows a refusal and Download still works.
+- A picture on a master or layout, such as a logo or a background photo, is written into the markup of every slide
+  that shows it. A 2 MB background on 200 slides came to half a billion characters and gigabytes of memory, so the
+  slides' markup is limited to 32 Mi characters. It is counted from each element's tag, attributes and text as each
+  slide renders, and again once the charts are pictures, so a deck past the limit stops early and its markup is
+  never built. Writing each picture once, as a CSS variable, does not work: Chromium drops a custom property that
+  long, and SVG pictures and video posters cannot use one.
 - Video, audio and chart tooltips do not work in a snapshot. Theme table styles are ignored, so white header text
   can become invisible.
 

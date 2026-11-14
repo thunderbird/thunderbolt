@@ -41,6 +41,7 @@ import { admitsWithoutWaitlist } from '@/identity/admission'
 import { apiKeyOwnerHasAccess } from '@/identity/api-key-access'
 import { recordIdpDeniedEmailVerified } from '@/identity/sign-in'
 import { identity } from '@/identity/plugin'
+import { buildScimPlugins } from '@/identity/scim/plugin'
 import { createCaptchaProvider } from './captcha'
 import { anonymousSignInPath, authBasePath, configuredSsoProviderId, getSessionPath } from './paths'
 import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds, testSignInOtp } from './otp-constants'
@@ -323,6 +324,8 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         // Better Auth's limiter resets only after a full idle window and falls back to
         // x-forwarded-for, so steady venue traffic would be refused well under the limit.
         [anonymousSignInPath]: false,
+        // SCIM has its own per-connection budget in createScimRequestHandler.
+        '/scim/v2/**': false,
       },
     },
     advanced: {
@@ -709,6 +712,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
           ]
         : []),
       ...buildSsoPlugins(),
+      ...buildScimPlugins(settings),
     ],
   })
 

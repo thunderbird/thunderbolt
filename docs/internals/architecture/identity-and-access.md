@@ -112,3 +112,71 @@ The action list is in [audit/events.ts](../../../backend/src/identity/audit/even
 - `GET /v1/admin/audit-events` pages admins through the log, newest first, at most 100 a page.
   Viewing a page is not audited. Every admin route goes through `createAdminMacro`, which re-checks the
   admin role on each request and records a denied attempt as `admin.access_denied`.
+
+## SCIM
+
+The IdPs provision into `/v1/api/auth/scim/v2`, served by `@better-auth/scim` behind our own
+request pipeline ([identity/scim/](../../../backend/src/identity/scim)). The URL sits under Better
+Auth's mount because the plugin builds `meta.location` from it. It is exempt from the app-version gate.
+
+### Connections
+
+A SCIM connection is the SCIM side of an `identity_connection` row, one row per IdP with its SSO
+side beside it. `scim_connection_id` names the plugin's managed connection, and only
+[connections.ts](../../../backend/src/identity/scim/connections.ts) writes it. The functions there are
+server-only, for the admin routes to wrap, and each writes its audit event in the same transaction:
+
+| Function               | Does                                                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `createScimConnection` | a new SCIM-only row, or the SCIM side of an existing one. Only an `active` row with no SCIM side can take one |
+| `rotateScimCredential` | another credential; the old one works until revoked or expired, so the IdP switches over without a gap        |
+| `revokeScimCredential` | stops one credential at once                                                                                  |
+| `getScimConnection`    | the row and its credentials (status, `expiresAt`, last use)                                                   |
+| `retireScimConnection` | revokes its credentials and moves `active` → `scim_retiring` at once, then `scim_retired` in the background   |
+
+- Create and rotate return the token. It is shown only then, and never stored or audited: the
+  plugin keeps an HMAC digest.
+- Credentials expire after 365 days by default; the plugin requires an expiry.
+- The digest key is derived from `BETTER_AUTH_SECRET` with HKDF, so **rotating `BETTER_AUTH_SECRET`
+  invalidates every SCIM token**: issue new ones and update each IdP.
+- A row whose SCIM side is retiring or retired never gets a new one. That would make the access
+  check count the retired connection's sources again.
+
+Retiring: one transaction revokes the connection's credentials and moves the row to
+`scim_retiring`, so from that commit on its tokens are refused and the access check ignores its
+sources. A background job then runs the plugin's decommission, which walks every SCIM user in the org
+in leased batches. When it completes the row is `scim_retired`,
+and its `scim_connection_id` stays, because the membership sources still name it. The plugin's lease
+makes runs on several workers safe, and a run a restart interrupted resumes at boot and on the
+hourly sweep.
+
+### The request pipeline
+
+[request.ts](../../../backend/src/identity/scim/request.ts) handles every SCIM request before the
+plugin sees it:
+
+1. **Rate limits.** A per-credential budget, plus a per-IP budget spent only by 401s. SCIM skips the
+   `auth` tier and Better Auth's limiter. See [rate-limiting.md](../../../backend/docs/rate-limiting.md#scim).
+2. **One write at a time per user or group** within the process. On Postgres, a user PATCH also
+   holds an advisory lock every backend instance shares, because it writes an `emails` list built
+   from its own read (step 3), which a write on another instance in between would undo.
+3. **Provider requests normalized** ([normalize.ts](../../../backend/src/identity/scim/normalize.ts)):
+   - Unknown extension schemas (Entra directory extensions) are dropped from bodies and PATCHes, rather
+     than answered with 400.
+   - `emails[value eq "…"].value`, the Keycloak extension's only form of email change, becomes a
+     replace of the whole `emails` list.
+   - `externalId` is required on create, and can't change once set. A PUT that leaves it out keeps the
+     stored value. It is the IdP's stable id; without it a user can't be linked to SSO or
+     reprovisioned after `DELETE`, and changing it hands the account to whoever the new id names.
+4. **Retry on "changed concurrently".** On Postgres, parallel writes to one user or group lose the
+   plugin's optimistic-lock check with a 409. The plugin's transaction rolled back, so the pipeline
+   sends the request again, up to 5 times with jittered backoff. This covers what the in-process lock
+   can't: other workers, and a group change racing a user change.
+
+PATCH and PUT on a user first read the stored user through the plugin with the caller's own token,
+so the checks in step 3 see the connection's own data and nothing else.
+
+Users the IdP provisions have `emailVerified` set: the IdP vouches for the address.
+
+Not supported yet: groups with duplicate names (Entra allows them) and users without an email.
+The plugin refuses both.

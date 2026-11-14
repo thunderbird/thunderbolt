@@ -9,7 +9,7 @@ import { domainToASCII } from 'node:url'
 import { and, eq } from 'drizzle-orm'
 import type { AuthAdapter } from './access'
 import { AdmissionError } from './admission-error'
-import { insertAuditEvent } from './audit/write'
+import { insertAuditEvent, recordFailedAttempt } from './audit/write'
 import { getCurrentOrganizationId } from './current-organization'
 
 /** What admission reads from an `org_domain` row. */
@@ -186,20 +186,36 @@ export const verifyOrgDomain = async (
   })
 }
 
+/** Why a domain can't be opened to enrollment, or null when it can. */
+const enrollmentRefusal = (row: OrgDomainRow) => {
+  if (!row.verifiedAt) {
+    return 'DOMAIN_NOT_VERIFIED'
+  }
+  return isClaimedDomain(row) ? 'DOMAIN_CLAIMED_BY_IDP' : null
+}
+
 /**
  * Open or close a domain to enrollment. Only a verified domain that no IdP connection claims can
- * be opened. Members who join by domain always get the ordinary member role.
+ * be opened; refusing either is audited. Members who join by domain always get the ordinary
+ * member role.
  */
 export const setDomainEnrollment = async (
   database: typeof DbType,
   { domainId, enabled, actorId }: { domainId: string; enabled: boolean; actorId: string },
 ) => {
   const row = await getOrgDomain(database, domainId)
-  if (enabled && !row.verifiedAt) {
-    throw new AdmissionError('DOMAIN_NOT_VERIFIED')
-  }
-  if (enabled && isClaimedDomain(row)) {
-    throw new AdmissionError('DOMAIN_CLAIMED_BY_IDP')
+  const refusal = enabled ? enrollmentRefusal(row) : null
+  if (refusal) {
+    await recordFailedAttempt(database, {
+      action: 'admission_policy.updated',
+      outcome: 'denied',
+      reason: refusal,
+      actor: { type: 'user', id: actorId },
+      target: { type: 'org_domain', id: row.id },
+      connectionId: row.claimedByConnectionId,
+      changes: { enrollmentEnabled: { from: row.enrollmentEnabled, to: enabled } },
+    })
+    throw new AdmissionError(refusal)
   }
   return database.transaction(async (tx) => {
     const [updated] = await tx

@@ -141,7 +141,7 @@ describe('org domain service', () => {
     await db.update(orgDomain).set({ verifiedAt: new Date() }).where(eq(orgDomain.id, row.id))
     const opened = await setDomainEnrollment(db, { domainId: row.id, enabled: true, actorId })
     expect(opened.enrollmentEnabled).toBe(true)
-    expect(await auditOf('admission_policy.updated')).toMatchObject([
+    expect((await auditOf('admission_policy.updated')).filter((event) => event.outcome === 'success')).toMatchObject([
       { targetId: row.id, changes: { enrollmentEnabled: { from: false, to: true } } },
     ])
 
@@ -151,6 +151,10 @@ describe('org domain service', () => {
       code: 'DOMAIN_CLAIMED_BY_IDP',
     })
     expect((await setDomainEnrollment(db, { domainId: row.id, enabled: false, actorId })).enrollmentEnabled).toBe(false)
+    expect((await auditOf('admission_policy.updated')).filter((event) => event.outcome === 'denied')).toMatchObject([
+      { reason: 'DOMAIN_NOT_VERIFIED', actorId, targetId: row.id },
+      { reason: 'DOMAIN_CLAIMED_BY_IDP', actorId, targetId: row.id, connectionId: 'entra' },
+    ])
   })
 
   it('does not find a domain of another id', async () => {

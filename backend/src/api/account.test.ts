@@ -6,7 +6,7 @@ import { insertTestUsers } from '@/test-utils/identity'
 import { createAuth } from '@/auth/auth'
 import { session as sessionTable, user } from '@/db/auth-schema'
 import { challengeNoncesTable, encryptionMetadataTable, envelopesTable } from '@/db/encryption-schema'
-import { chatThreadsTable, devicesTable, orgMembership, settingsTable, tasksTable } from '@/db/schema'
+import { auditEvent, chatThreadsTable, devicesTable, orgMembership, settingsTable, tasksTable } from '@/db/schema'
 import { linkCliSessionToDevice } from '@/dal/sessions'
 import { verification } from '@/db/auth-schema'
 import type { SecurityNotifications } from '@/lib/security-notifications'
@@ -17,7 +17,7 @@ import { createTestSettings } from '@/test-utils/settings'
 import { exportSigningPublicKey, generateSigningKeypair, signChallenge } from '@/test-utils/e2ee'
 import type { ChallengeProof } from '@shared/e2ee-types'
 import { createHmac } from 'crypto'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createAccountRoutes } from './account'
@@ -704,6 +704,9 @@ describe('Account API', () => {
       expect(persistedDevice.revokedAt).not.toBeNull()
       expect(persistedDevice.trusted).toBe(false)
       expect(await db.select().from(sessionTable).where(eq(sessionTable.deviceId, deviceId))).toHaveLength(0)
+      expect(await db.select().from(auditEvent).where(eq(auditEvent.targetId, deviceId))).toMatchObject([
+        { action: 'auth.sign_out', outcome: 'success', actorId: userId, targetType: 'device' },
+      ])
     })
 
     it('does not log out or revoke a session bound to a non-CLI device', async () => {
@@ -760,6 +763,9 @@ describe('Account API', () => {
       const [persistedDevice] = await db.select().from(devicesTable).where(eq(devicesTable.id, targetDeviceId))
       expect(persistedDevice.revokedAt).not.toBeNull()
       expect(await db.select().from(sessionTable).where(eq(sessionTable.deviceId, targetDeviceId))).toHaveLength(0)
+      expect(await db.select().from(auditEvent).where(eq(auditEvent.targetId, targetDeviceId))).toMatchObject([
+        { action: 'auth.session_revoked', outcome: 'success', actorId: userId, targetType: 'device' },
+      ])
     })
 
     it('rejects a trusted CLI caller for E2EE remote revoke', async () => {
@@ -1087,6 +1093,13 @@ describe('Account API', () => {
 
       const settingsLeft = await db.select().from(settingsTable).where(eq(settingsTable.userId, userId))
       expect(settingsLeft).toHaveLength(0)
+      // The event outlives the user it names.
+      expect(
+        await db
+          .select()
+          .from(auditEvent)
+          .where(and(eq(auditEvent.action, 'account.deleted'), eq(auditEvent.targetId, userId))),
+      ).toMatchObject([{ outcome: 'success', actorId: userId }])
     })
 
     it('cascade deletes all PowerSync rows when user is deleted (user_id foreign keys)', async () => {

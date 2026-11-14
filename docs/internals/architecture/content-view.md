@@ -69,10 +69,10 @@ the same `contentView` fragment into two containers:
 shared chrome: title, optional actions, close button. `object-view`, `artifact` and `preview` render
 it themselves.
 
-**A sideview does not.** The viewer supplies its own header and calls `close()`
-([`pdf-sidebar-viewer.tsx:87`](../../../src/widgets/document-result/pdf-sidebar-viewer.tsx)). A new
-sideview kind that forgets this has no close affordance on desktop; the mobile dialog supplies its
-own.
+**A sideview does not.** The viewer supplies its own header and calls `close()`. The PDF/DOCX viewer
+and the spreadsheet preview both get that header from
+[`document-preview-frame.tsx`](../../../src/widgets/document-result/document-preview-frame.tsx). A new
+sideview kind that forgets this has no close affordance on desktop; the mobile dialog supplies its own.
 
 The header's padding is window-chrome clearance: at mobile width the panel fills the window and the
 header lands under the macOS traffic lights; open on desktop it occupies the top-right corner where

@@ -5,6 +5,7 @@
 import { lazy, Suspense } from 'react'
 import { Loader2 } from 'lucide-react'
 import { parseDocumentSideviewId } from '@/types/citation'
+import { getFileType } from '@/widgets/document-result/file-type'
 import { useSideview } from './context'
 
 // Lazy-load the PDF viewer so its react-pdf + pdfjs payload only ships when a
@@ -16,6 +17,11 @@ const PdfSidebarViewer = lazy(() =>
 
 const LocalPdfSidebarViewer = lazy(() =>
   import('@/widgets/document-result/pdf-sidebar-viewer').then((m) => ({ default: m.LocalPdfSidebarViewer })),
+)
+
+// A chunk apart from react-pdf, so the grid and the Worker that downloads Excelize load only when a workbook opens.
+const LocalXlsxSidebarViewer = lazy(() =>
+  import('@/components/xlsx-preview').then((m) => ({ default: m.LocalXlsxSidebarViewer })),
 )
 
 const loadingFallback = (
@@ -31,11 +37,13 @@ const loadingFallback = (
 export const Sideview = () => {
   const { sideviewType, sideviewId } = useSideview()
 
+  // Each viewer is keyed by its file id, so switching files starts fresh: a failed save, or one still pending, for
+  // one file never shows on the next. Not by page, which only scrolls the same file.
   if (sideviewType === 'document' && sideviewId) {
     const { fileId, fileName, pageNumber } = parseDocumentSideviewId(sideviewId)
     return (
       <Suspense fallback={loadingFallback}>
-        <PdfSidebarViewer fileId={fileId} fileName={fileName} initialPage={pageNumber} />
+        <PdfSidebarViewer key={fileId} fileId={fileId} fileName={fileName} initialPage={pageNumber} />
       </Suspense>
     )
   }
@@ -45,7 +53,11 @@ export const Sideview = () => {
     const { fileId, fileName, pageNumber } = parseDocumentSideviewId(sideviewId)
     return (
       <Suspense fallback={loadingFallback}>
-        <LocalPdfSidebarViewer localFileId={fileId} fileName={fileName} initialPage={pageNumber} />
+        {getFileType(fileName) === 'xlsx' ? (
+          <LocalXlsxSidebarViewer key={fileId} localFileId={fileId} fileName={fileName} />
+        ) : (
+          <LocalPdfSidebarViewer key={fileId} localFileId={fileId} fileName={fileName} initialPage={pageNumber} />
+        )}
       </Suspense>
     )
   }

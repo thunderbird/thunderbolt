@@ -26,6 +26,7 @@ jobs:
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       agent-core: ${{ steps.filter.outputs.agent-core }}
+      office: ${{ steps.filter.outputs.office }}
       cli: ${{ steps.filter.outputs.cli }}
       wasm-artifact: ${{ steps.filter.outputs.wasm-artifact }}
       wasm-provenance: ${{ steps.filter.outputs.wasm-provenance }}
@@ -54,6 +55,48 @@ jobs:
               - 'src-tauri/.cargo/**'
               - 'src-tauri/capabilities/**'
               - 'crates/**'
+            # The Office sources, every file the two suites and their preload load eagerly, and the
+            # build and test configuration. Lazy imports that reach the rest of the app are left out,
+            # so update the list when the suites' imports change; main runs the job on every push.
+            office:
+              - 'src/office/**'
+              - 'src/files/transformers/**'
+              - 'src/api/config-store.ts'
+              - 'src/stores/local-settings-store.ts'
+              - 'src/i18n/active-locale.ts'
+              - 'src/i18n/resolve-locale.ts'
+              - 'src/i18n/identity-macros.tsx'
+              - 'src/lib/app-version-unsupported.ts'
+              - 'src/lib/app-version.ts'
+              - 'src/lib/auth-mode.ts'
+              - 'src/lib/auth-token.ts'
+              - 'src/lib/file-blob-storage.ts'
+              - 'src/lib/install-webkit-own-property.ts'
+              - 'src/lib/local-data-owner.ts'
+              - 'src/lib/memoize.ts'
+              - 'src/lib/platform.ts'
+              - 'src/lib/provider-mode.ts'
+              - 'src/lib/safe-file-name.ts'
+              - 'src/lib/session-cache.ts'
+              - 'src/lib/tool-output.ts'
+              - 'shared/agent-core/client-identity.ts'
+              - 'shared/compare-semver.ts'
+              - 'shared/i18n/locales.ts'
+              - 'shared/lib/hash.ts'
+              - 'shared/lib/is-record.ts'
+              - 'src/test-utils/fake-timers.ts'
+              - 'src/test-utils/web-locks.ts'
+              - 'src/bunfig.toml'
+              - 'happydom.ts'
+              - 'src/testing-library.ts'
+              - 'scripts/office-sandbox-script.ts'
+              - 'vite.config.ts'
+              - 'tsconfig.json'
+              - 'shared/tsconfig.base.json'
+              - 'package.json'
+              - 'bun.lock'
+              - 'bunfig.toml'
+              - '.github/workflows/ci.yml'
             agent-core:
               - 'shared/agent-core/**'
               - 'shared/reasoning-effort*.ts'
@@ -222,6 +265,41 @@ jobs:
         with:
           path: .metrics-baseline
           key: pr-metrics-main-${{ github.sha }}
+
+  # The Office script suites run real WebAssembly (QuickJS, Excelize, IronCalc) and take about
+  # two thirds of the frontend tests' time, so they run five times here, in parallel with the
+  # typescript job, which leaves them out of `test:5x`. Path-gated on pull requests like
+  # agent-core/cli; every push runs it, so a change the filter misses still fails on main.
+  office:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.office == 'true' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run Office script tests (5x)
+        run: bun run test:office:5x
 
   # Localization gates (THU-806).
   #  1. Extraction check — re-runs `lingui extract` (idempotent; Lingui v6

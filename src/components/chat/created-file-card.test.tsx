@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { ContentViewProvider } from '@/content-view/context'
+import { ContentViewProvider, useSideview } from '@/content-view/context'
 import { docxMime, pptxMime, xlsxMime } from '@/files/transformers'
 import * as download from '@/lib/download'
 import * as attachmentStorage from '@/lib/file-blob-storage'
@@ -99,6 +99,36 @@ describe('the chip for a file the agent created', () => {
 
     expect(screen.getByRole('button', { name: 'Download budget.xlsx' })).toBeDefined()
     expect(container.querySelectorAll('.lucide-file-spreadsheet')).toHaveLength(1)
+  })
+
+  it('opens a workbook in the side view, like an attached file', async () => {
+    const OpenSideview = () => {
+      const { sideviewType, sideviewId } = useSideview()
+      return <p data-testid="sideview">{`${sideviewType}|${sideviewId}`}</p>
+    }
+    const message: ThunderboltUIMessage = {
+      id: 'm1',
+      role: 'assistant',
+      parts: [finishedCall({ ok: true, files: [budget], logs: '' })],
+    }
+    render(
+      <ContentViewProvider>
+        <AssistantMessage message={message} isStreaming={false} />
+        <OpenSideview />
+      </ContentViewProvider>,
+    )
+    await act(async () => void (await getClock().runAllAsync()))
+
+    fireEvent.click(screen.getByTitle('budget.xlsx'))
+
+    expect(screen.getByTestId('sideview').textContent).toBe('local-file|file-3:budget.xlsx')
+  })
+
+  it('does not open a file that is not on this device', async () => {
+    getAttachment.mockResolvedValue(null)
+    await renderMessage(finishedCall({ ok: true, files: [budget], logs: '' }))
+
+    expect(screen.queryByTitle('budget.xlsx')).toBeNull()
   })
 
   it('marks an edited copy, and only that one', async () => {

@@ -11,6 +11,7 @@ import excelizeUrl from 'excelize-wasm/excelize.wasm.gz?url'
 import pptxgenjsUrl from 'office-sandbox-pptxgenjs/pptxgen.bundle.js?url'
 import encodingUrl from 'quickjs-wasi/encoding.so?url'
 import quickjsUrl from 'quickjs-wasi/quickjs.wasm?url'
+import { fetchAsset, loadBytes } from './app-asset'
 import { sandboxLimits } from './constants'
 // Bundled into the Worker's own chunk as one script: xmldom ships only CommonJS files, which the VM cannot load.
 // The script VM and the output check both evaluate it; the Worker never imports the libraries itself.
@@ -18,20 +19,9 @@ import ooxmlScript from './ooxml-globals.ts?sandbox-script'
 import type { SandboxMessage } from './run-in-worker'
 import { type InstallWorkbooks, runSandboxedScript, type SandboxJob, type SandboxResult } from './sandbox'
 
-/** One of the app's own files. A missing one fails with its status, rather than as a module that does not compile. */
-const fetchAsset = async (url: string) => {
-  const response = await fetch(url)
-  if (!response.ok) {
-    throw new Error(`${url} answered ${response.status}`)
-  }
-  return response
-}
-
 const compile = async (url: string) => WebAssembly.compile(await (await fetchAsset(url)).arrayBuffer())
 
 const loadText = async (url: string) => (await fetchAsset(url)).text()
-
-const loadBytes = async (url: string) => new Uint8Array(await (await fetchAsset(url)).arrayBuffer())
 
 /** Excelize, IronCalc and the code around them load only for a script that uses a workbook. */
 const loadWorkbooks = async (): Promise<InstallWorkbooks> => {

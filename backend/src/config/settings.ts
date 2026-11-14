@@ -178,6 +178,8 @@ const settingsSchema = z
     waitlistAutoApproveDomains: z.string().default(''),
     // Addresses that get the admin role once, at their first verified sign-in
     bootstrapAdminEmails: z.string().default(''),
+    // Lets any address that verifies its email in, without the waitlist
+    openSignupEnabled: z.boolean().default(false),
 
     // PowerSync settings
     powersyncUrl: z.string().default(''),
@@ -608,6 +610,7 @@ const parseSettings = (): Settings => {
     waitlistEnabled: process.env.WAITLIST_ENABLED === 'true',
     waitlistAutoApproveDomains: process.env.WAITLIST_AUTO_APPROVE_DOMAINS || '',
     bootstrapAdminEmails: process.env.BOOTSTRAP_ADMIN_EMAILS || '',
+    openSignupEnabled: process.env.OPEN_SIGNUP_ENABLED === 'true',
     // Localhost defaults apply only in development. In any other NODE_ENV the
     // value defaults to '' so the schema's superRefine guard correctly rejects
     // an empty JWT secret whenever POWERSYNC_URL is set explicitly.

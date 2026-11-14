@@ -47,6 +47,7 @@ const powersyncSettings: Settings = {
   waitlistEnabled: false,
   waitlistAutoApproveDomains: '',
   bootstrapAdminEmails: '',
+  openSignupEnabled: false,
   powersyncUrl: 'https://powersync.example.com',
   powersyncInternalUrl: '',
   powersyncJwtKid: 'test-kid',

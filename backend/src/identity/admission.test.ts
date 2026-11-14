@@ -28,6 +28,7 @@ describe('native admission', () => {
 
   afterEach(async () => {
     delete process.env.OPEN_SIGNUP_ENABLED
+    delete process.env.WAITLIST_AUTO_APPROVE_DOMAINS
     clearSettingsCache()
     await cleanup()
   })
@@ -76,6 +77,13 @@ describe('native admission', () => {
   const addConnection = async (id = 'entra') => {
     await db.insert(identityConnection).values({ id, orgId, name: id })
     return id
+  }
+
+  /** Restart with these settings: they are read fresh and a new auth is built. */
+  const restartWith = (env: Record<string, string>) => {
+    Object.assign(process.env, env)
+    clearSettingsCache()
+    auth = createAuth(db)
   }
 
   const approveOnWaitlist = (email: string) =>
@@ -139,6 +147,47 @@ describe('native admission', () => {
 
       expect((await signIn('a@corp.com')).status).toBe(200)
       expect(await sourcesOf('a@corp.com')).toMatchObject([{ kind: 'waitlist' }])
+    })
+  })
+
+  describe('open sign-up', () => {
+    it('is off by default: an address nothing admits joins the waitlist and cannot sign in', async () => {
+      expect(await admitsWithoutWaitlist(db, 'new@example.com')).toBe(false)
+
+      await expect(signIn('new@example.com')).rejects.toMatchObject({ statusCode: 401 })
+      expect(
+        await db.select({ status: waitlist.status }).from(waitlist).where(eq(waitlist.email, 'new@example.com')),
+      ).toEqual([{ status: 'pending' }])
+      expect(await userIdOf('new@example.com')).toBeUndefined()
+    })
+
+    it('admits any address that verifies its email, as `open`, without a waitlist row', async () => {
+      restartWith({ OPEN_SIGNUP_ENABLED: 'true' })
+      expect(await admitsWithoutWaitlist(db, 'new@example.com')).toBe(true)
+
+      expect((await signIn('new@example.com')).status).toBe(200)
+      expect(await sourcesOf('new@example.com')).toEqual([{ kind: 'open', ref: null }])
+      expect(await db.$count(waitlist, eq(waitlist.email, 'new@example.com'))).toBe(0)
+    })
+
+    it('does not open a domain an IdP claims', async () => {
+      restartWith({ OPEN_SIGNUP_ENABLED: 'true' })
+      await addConnection()
+      await addDomain('corp.com', { claimedBy: 'entra', enrollment: false })
+
+      expect(await admitsWithoutWaitlist(db, 'a@corp.com')).toBe(false)
+      await expect(signIn('a@corp.com')).rejects.toMatchObject({ statusCode: 401 })
+    })
+  })
+
+  describe('WAITLIST_AUTO_APPROVE_DOMAINS', () => {
+    it('still skips the waitlist, and creates no org domain', async () => {
+      restartWith({ WAITLIST_AUTO_APPROVE_DOMAINS: 'auto.example' })
+      expect(await admitsWithoutWaitlist(db, 'a@auto.example')).toBe(false)
+
+      expect((await signIn('a@auto.example')).status).toBe(200)
+      expect(await sourcesOf('a@auto.example')).toMatchObject([{ kind: 'waitlist' }])
+      expect(await db.$count(orgDomain)).toBe(0)
     })
   })
 })

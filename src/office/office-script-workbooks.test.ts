@@ -309,7 +309,8 @@ saveFile('first.xlsx', first)
   })
 
   it('makes the script pay for building the arguments it passes', async () => {
-    const error = await errorOf(`excelize.ColumnNumberToName(new Array(2 ** 31))`)
+    // A smaller VM reaches its limit sooner; the charge is the same at any size.
+    const error = await errorOf(`excelize.ColumnNumberToName(new Array(2 ** 31))`, undefined, { memoryBytes: 16 * mib })
     expect(error).toContain('MiB of memory and was stopped')
   })
 

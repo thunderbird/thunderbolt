@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { getSettings } from '@/config/settings'
 import type { db as DbType } from '@/db/client'
 import { type AuthAdapter, findMembership, type MembershipRow } from './access'
 import { createAuditEvent } from './audit/write'
@@ -42,6 +43,14 @@ const waitlistRule: AdmissionRule = async (adapter, { user, path }) => {
   return approval ? { kind: 'waitlist', ref: approval.id } : null
 }
 
+/** With open sign-up on, any email-code sign-up, except on a domain an IdP claims. */
+const openRule: AdmissionRule = async (adapter, { user, path }) =>
+  path === otpSignInPath &&
+  getSettings().openSignupEnabled &&
+  !isClaimedDomain(await findOrgDomainForEmail(adapter, user.email))
+    ? { kind: 'open' }
+    : null
+
 /**
  * A subject of a connection without SCIM. A connection with SCIM admits only the subjects SCIM
  * provisioned ("require a SCIM record before first login"), so it admits nobody here.
@@ -50,7 +59,7 @@ const ssoRule: AdmissionRule = async (_adapter, { ssoConnection }) =>
   ssoConnection && !ssoConnection.requiresScimRecord ? { kind: 'sso', identityConnectionId: ssoConnection.id } : null
 
 /** Tried in order for a signing-in user with no membership; the first match admits them. */
-const admissionRules: AdmissionRule[] = [domainRule, waitlistRule, ssoRule]
+const admissionRules: AdmissionRule[] = [domainRule, waitlistRule, openRule, ssoRule]
 
 /**
  * The membership of a user who is signing in: the existing one, or a new one from the first
@@ -113,5 +122,10 @@ const admitByRule = async (adapter: AuthAdapter, signIn: SignIn) => {
  * place this is decided: `/waitlist/join`, the OTP send and the OTP sign-in check all ask it.
  * Each case it allows has an admission rule that admits the address at sign-in.
  */
-export const admitsWithoutWaitlist = async (database: typeof DbType, email: string) =>
-  isBootstrapAdminEmail(email) || isEnrollableDomain(await getOrgDomainForEmail(database, email))
+export const admitsWithoutWaitlist = async (database: typeof DbType, email: string) => {
+  if (isBootstrapAdminEmail(email)) {
+    return true
+  }
+  const orgDomain = await getOrgDomainForEmail(database, email)
+  return isEnrollableDomain(orgDomain) || (getSettings().openSignupEnabled && !isClaimedDomain(orgDomain))
+}

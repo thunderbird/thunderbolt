@@ -50,6 +50,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   waitlistEnabled: false,
   waitlistAutoApproveDomains: '',
   bootstrapAdminEmails: '',
+  openSignupEnabled: false,
   powersyncUrl: '',
   miniApps: '',
   miniAppTokenExpirySeconds: 300,

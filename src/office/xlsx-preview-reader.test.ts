@@ -991,6 +991,27 @@ describe('the spreadsheet preview reader on adversarial workbooks', () => {
     expect(tooLargeOf(decoyed)).toBe(true)
   })
 
+  it('routes a sheet whose id prefix is declared on `<sheets>` rather than on the root', () => {
+    const declaration = /\s(xmlns:r="[^"]*")/
+    const onSheets = routed((xml) => {
+      const [, binding] = declaration.exec(xml) ?? []
+      return xml.replace(declaration, '').replace('<sheets>', `<sheets ${binding}>`)
+    })
+
+    expect(tooLargeOf(onSheets)).toBe(true)
+  })
+
+  it('refuses a workbook with two `<sheets>` lists, whose declarations could route a sheet to a decoy', () => {
+    const r = relationshipType.replace('/worksheet', '')
+    const twoLists = routed((xml) =>
+      xml
+        .replace('<sheets>', `<sheets xmlns:r="${r}" xmlns:q="urn:wrong"/><sheets xmlns:r="urn:wrong" xmlns:q="${r}">`)
+        .replace(/r:id="([^"]*)"/, (_, id) => `r:id="rIdFake" q:id="${id}"`),
+    )
+
+    expect(() => openPreviewWorkbook(excelize, twoLists)).toThrow('more than once')
+  })
+
   it('refuses a sheet whose id prefix the workbook does not declare, or that names its part twice', () => {
     const undeclared = routed((xml) => xml.replace(/r:id="[^"]*"/, (id) => `${id} y:id="rIdFake"`))
     const twice = routed((xml) =>

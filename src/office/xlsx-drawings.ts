@@ -414,9 +414,9 @@ const bindingsOf = (attributes: XmlAttribute[]) =>
   attributes.filter(({ prefix }) => prefix === 'xmlns').map(({ local, value }): [string, string] => [local, value])
 
 /**
- * A sheet's relationship id, read by namespace as Excelize reads it: the `id` whose prefix the sheet's tag or the
- * workbook's root binds to the relationships namespace. An `id` whose prefix neither binds, or two that qualify, make
- * the workbook refused: the preview could not tell which part Excelize reads.
+ * A sheet's relationship id, read by namespace as Excelize reads it: the `id` whose prefix the sheet's tag, the
+ * `<sheets>` list or the workbook's root binds to the relationships namespace. An `id` whose prefix none of them
+ * binds, or two that qualify, make the workbook refused: the preview could not tell which part Excelize reads.
  */
 const relationshipIdOf = (attributes: XmlAttribute[], rootBindings: [string, string][]) => {
   const bindings = new Map([...rootBindings, ...bindingsOf(attributes)])
@@ -445,8 +445,14 @@ export const workbookParts = (parts: WorkbookParts) => {
     throw new Error('The workbook gives one relationship Id to two parts.')
   }
   const workbookXml = scannableXml(strFromU8(parts[workbookPart] ?? new Uint8Array()))
+  // A `<sheet>` sits inside `<sheets>` inside `<workbook>`, and either may declare the prefix its id uses. Excelize
+  // also reads a second `<sheets>` list with its own declarations, which one set of bindings cannot follow.
   const [root = []] = tagsIn(workbookXml, 'workbook')
-  const rootBindings = bindingsOf(root)
+  const sheetLists = tagsIn(workbookXml, 'sheets')
+  if (sheetLists.length > 1) {
+    throw new Error('The workbook lists its sheets more than once.')
+  }
+  const rootBindings = [...bindingsOf(root), ...bindingsOf(sheetLists[0] ?? [])]
   const tabs = tagsIn(workbookXml, 'sheet').map((attributes) => ({
     name: lastValue(attributes, 'name') ?? '',
     rel: byId.get(relationshipIdOf(attributes, rootBindings)),

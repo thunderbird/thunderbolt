@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { type AccessState, computeAccess, type MembershipSourceRow } from './access'
+import { type AccessState, computeAccess, isIdpManaged, type MembershipSourceRow, requiresSso } from './access'
 
 const membership = { id: 'm1', orgId: 'default', userId: 'u1', blockedAt: null }
 
@@ -23,7 +23,7 @@ const state = (
     ['entra', 'active'],
     ['keycloak', 'active'],
   ]),
-): AccessState => ({ membership, sources, connectionStatusById, ...overrides })
+): AccessState => ({ membership, sources, connectionStatusById, ssoConnectionIds: new Set(), ...overrides })
 
 describe('computeAccess', () => {
   it('refuses a user with no membership', () => {
@@ -83,5 +83,28 @@ describe('computeAccess', () => {
       allowed: false,
       reason: 'no_live_source',
     })
+  })
+})
+
+describe('isIdpManaged and requiresSso', () => {
+  const entra = (status: MembershipSourceRow['status']) =>
+    source({ kind: 'scim', identityConnectionId: 'entra', status })
+
+  it('treats a member as IdP-managed through a counted SCIM source in any status', () => {
+    for (const status of ['active', 'suspended', 'removed'] as const) {
+      expect(isIdpManaged(state([entra(status)]))).toBe(true)
+    }
+    expect(isIdpManaged(state([source({ kind: 'invitation' })]))).toBe(false)
+    expect(isIdpManaged(state([entra('active')], {}, new Map([['entra', 'scim_retired']])))).toBe(false)
+  })
+
+  it('requires SSO only when a managing connection has an SSO side', () => {
+    expect(requiresSso(state([entra('active')]))).toBe(false)
+    expect(requiresSso(state([entra('active')], { ssoConnectionIds: new Set(['entra']) }))).toBe(true)
+    expect(
+      requiresSso(
+        state([entra('active')], { ssoConnectionIds: new Set(['entra']) }, new Map([['entra', 'scim_retiring']])),
+      ),
+    ).toBe(false)
   })
 })

@@ -10,9 +10,9 @@ import { deleteUser } from '@/dal/users'
 import { clearSettingsCache } from '@/config/settings'
 import { passkey as passkeyTable, session as sessionTable, user as userTable } from '@/db/auth-schema'
 import { encryptionMetadataTable } from '@/db/encryption-schema'
-import { orgMembership } from '@/db/schema'
+import { auditEvent, orgMembership } from '@/db/schema'
 import { createTestDb } from '@/test-utils/db'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { createHmac } from 'node:crypto'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
@@ -110,6 +110,32 @@ describe('passkey rules (one per account, slot-safe delete)', () => {
 
   afterEach(async () => {
     await cleanup()
+  })
+
+  it('audits a failed passkey sign-in against the user whose passkey it names, and an unknown one against none', async () => {
+    await insertPasskey('known-credential')
+    const verify = (credentialId: string) =>
+      auth.handler(
+        new Request(`${authUrl}/passkey/verify-authentication`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            response: { id: credentialId, rawId: credentialId, type: 'public-key', response: {} },
+          }),
+        }),
+      )
+
+    expect((await verify('known-credential')).ok).toBe(false)
+    expect((await verify('unknown-credential')).ok).toBe(false)
+
+    const events = await db
+      .select()
+      .from(auditEvent)
+      .where(and(eq(auditEvent.action, 'auth.sign_in'), eq(auditEvent.outcome, 'failure')))
+    expect(events.map((event) => [event.actorId, (event.metadata as { method: string }).method])).toEqual([
+      [userId, 'passkey'],
+      [null, 'passkey'],
+    ])
   })
 
   it('lets an account without a passkey start registration', async () => {

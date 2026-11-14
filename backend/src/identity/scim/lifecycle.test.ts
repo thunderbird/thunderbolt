@@ -257,7 +257,12 @@ describe('SCIM lifecycle', () => {
     // A PowerSync token issued before the DELETE outlives it by at most this long.
     expect(settings.powersyncTokenExpirySeconds).toBeLessThanOrEqual(300)
 
-    expect(await actionsFor(userId)).toEqual(['member.admitted', 'scim.user_created', 'scim.user_deleted'])
+    expect(await actionsFor(userId)).toEqual([
+      'auth.sign_in',
+      'member.admitted',
+      'scim.user_created',
+      'scim.user_deleted',
+    ])
     // The envelopes go right after the SCIM transaction commits.
     expect(await db.$count(envelopesTable, eq(envelopesTable.userId, userId))).toBe(0)
     // One revocation event per session this deleted, attributed to the connection and credential.

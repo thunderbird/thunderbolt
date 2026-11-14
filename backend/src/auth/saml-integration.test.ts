@@ -32,7 +32,7 @@ import { getSharedIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
 import { account, user } from '@/db/auth-schema'
 import { and, eq } from 'drizzle-orm'
 import { createSessionCookie } from '@/test-utils/session-cookie'
-import { ssoProvider } from '@/db/schema'
+import { auditEvent, ssoProvider } from '@/db/schema'
 import { ensureEnvSsoConnection } from '@/identity/sso-connections'
 
 const realFetch = (globalThis as Record<string, unknown>).__originalFetch as typeof fetch
@@ -291,6 +291,32 @@ describe('SAML Integration', () => {
 
       expect(await signInThroughIdp(email)).toContain('error=account_not_linked')
       expect(await ssoAccountCount(local.id)).toBe(0)
+    })
+
+    const signInEvents = (userId: string) =>
+      db
+        .select()
+        .from(auditEvent)
+        .where(and(eq(auditEvent.action, 'auth.sign_in'), eq(auditEvent.actorId, userId)))
+
+    it('audits a SAML sign-in, and a refused one by its error code with no user', async () => {
+      const existing = await existingUser()
+      await signInThroughIdp(existing.email)
+
+      const [success] = (await signInEvents(existing.id)).filter((event) => event.outcome === 'success').slice(-1)
+      expect(success).toMatchObject({ connectionId: 'sso', metadata: { method: 'saml' } })
+      expect((success.metadata as { sessionId?: string }).sessionId).toBeString()
+
+      const attacker = await attackerLogin()
+      const before = new Date()
+      await postToAcs(attacker, { relayState: attacker.relayState })
+      const failures = await db
+        .select()
+        .from(auditEvent)
+        .where(and(eq(auditEvent.action, 'auth.sign_in'), eq(auditEvent.reason, 'unsolicited_response')))
+      expect(failures.filter((event) => event.occurredAt >= before)).toMatchObject([
+        { outcome: 'failure', actorId: null, connectionId: 'sso', metadata: { method: 'saml' } },
+      ])
     })
 
     const attackerLogin = () => startLogin(`attacker-${crypto.randomUUID()}@example.com`)

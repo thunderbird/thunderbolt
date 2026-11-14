@@ -2,11 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getSettings } from '@/config/settings'
-import { extractClientIp } from '@/utils/request'
 import { getCurrentAdapter, runWithTransaction } from '@better-auth/core/context'
+import { generateId } from '@better-auth/core/utils/id'
 import { APIError, type BetterAuthPlugin, type DBAdapter } from 'better-auth'
-import { createAuthMiddleware, isAPIError } from 'better-auth/api'
+import { createAuthMiddleware } from 'better-auth/api'
 import {
   type AccessDecision,
   type AccessRefusal,
@@ -20,14 +19,10 @@ import {
 import { admitAtSignIn } from './admission'
 import { createAuditEvent } from './audit/write'
 import { identityPluginSchema } from './plugin-schema'
-import { didIdpDenyEmailVerified, getSsoConnection, otpSignInPath, type SignInUser, ssoSignInPaths } from './sign-in'
+import { didIdpDenyEmailVerified, getSsoConnection, otpSignInPath, passkeySignInPath, type SignInUser } from './sign-in'
+import { recordFailedSignIn, signInEvent, signInFailureReason, signInPaths } from './sign-in-audit'
 
 const getSessionPath = '/get-session'
-
-export const passkeySignInPath = '/passkey/verify-authentication'
-
-/** Paths that mint a session for a sign-in, where a refusal is recorded as a failed sign-in. */
-const signInPaths = new Set([otpSignInPath, ...ssoSignInPaths, passkeySignInPath, '/device/token'])
 
 /** Sign-in methods that skip the IdP, refused to a member who must sign in through SSO. */
 const nonSsoSignInPaths = new Set([otpSignInPath, passkeySignInPath])
@@ -100,7 +95,25 @@ export const identity = () => {
                     return decideSignIn(await loadAccessState(tx, user.id), context?.path)
                   })
                   if (access.allowed) {
-                    return
+                    if (!context?.path || !signInPaths.has(context.path)) {
+                      return
+                    }
+                    // The success is written here, before the session, so no session ever exists
+                    // without it; inside an SSO sign-in's transaction the two commit together. The
+                    // session gets its id now so the event can name it.
+                    const sessionId = context.context.generateId({ model: 'session' }) || generateId()
+                    await createAuditEvent(
+                      await getCurrentAdapter(adapter),
+                      signInEvent({
+                        outcome: 'success',
+                        path: context.path,
+                        headers: context.headers,
+                        userId: user.id,
+                        connectionId: (await getSsoConnection())?.id,
+                        sessionId,
+                      }),
+                    )
+                    return { data: { ...session, id: sessionId } }
                   }
                   if (context) {
                     refusedSignIns.set(context.context, { userId: user.id, reason: access.reason })
@@ -130,24 +143,21 @@ export const identity = () => {
           }),
         },
         {
+          // Every failed sign-in. A refusal thrown by a before-hook never reaches here:
+          // `refuseSignIn` records those.
           matcher: (ctx) => ctx.path !== undefined && signInPaths.has(ctx.path),
           handler: createAuthMiddleware(async (ctx) => {
-            const refusal = refusedSignIns.get(ctx.context)
-            if (!refusal || !isAPIError(ctx.context.returned)) {
+            // A success was recorded by the session hook, before the session was written.
+            if (ctx.context.newSession) {
               return
             }
-            const headers = ctx.headers ?? new Headers()
-            const clientIp = extractClientIp(headers, '', getSettings().trustedProxy)
-            await createAuditEvent(rootAdapter, {
-              action: 'auth.sign_in',
-              outcome: 'failure',
-              reason: accessRefusalCodes[refusal.reason],
-              actor: { type: 'user', id: refusal.userId },
-              target: { type: 'user', id: refusal.userId },
-              metadata: { path: ctx.path },
-              ipAddress: clientIp || null,
-              userAgent: headers.get('user-agent'),
-            })
+            const refusal = refusedSignIns.get(ctx.context)
+            const reason = refusal
+              ? accessRefusalCodes[refusal.reason]
+              : signInFailureReason(ctx.path, ctx.context.returned)
+            if (reason) {
+              await recordFailedSignIn(rootAdapter, ctx, reason, refusal?.userId)
+            }
           }),
         },
       ],

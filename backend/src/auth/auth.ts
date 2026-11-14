@@ -39,6 +39,7 @@ import {
 import { admitsWithoutWaitlist } from '@/identity/admission'
 import { apiKeyOwnerHasAccess } from '@/identity/api-key-access'
 import { identity } from '@/identity/plugin'
+import { refuseSignIn } from '@/identity/sign-in-audit'
 import { buildScimPlugins } from '@/identity/scim/plugin'
 import { buildSsoPlugins, isForeignSsoRequest } from '@/identity/sso'
 import { isSsoAuthMode } from '@/identity/sso-connections'
@@ -234,7 +235,14 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       before: createAuthMiddleware(async (ctx) => {
         if (ssoEnabled && (await isForeignSsoRequest(ctx.context.adapter, ctx.path, ctx))) {
           console.warn(`Refused ${ctx.path}: it names no SSO connection of this deployment`)
-          throw ctx.error('FORBIDDEN', { message: 'This SSO connection is not available' })
+          throw await refuseSignIn(
+            ctx.context.adapter,
+            ctx,
+            ctx.error('FORBIDDEN', {
+              message: 'This SSO connection is not available',
+              code: 'SSO_CONNECTION_UNAVAILABLE',
+            }),
+          )
         }
 
         // Better Auth checks RelayState and InResponseTo against rows shared by all browsers. Require this
@@ -251,7 +259,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
             // Use the plugin's existing landing for an unsolicited response.
             const landing = new URL(settings.appUrl)
             landing.searchParams.set('error', 'unsolicited_response')
-            throw ctx.redirect(landing.toString())
+            throw await refuseSignIn(ctx.context.adapter, ctx, ctx.redirect(landing.toString()))
           }
         }
 
@@ -344,14 +352,22 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         const rawEmail = (ctx.body as { email?: string })?.email
 
         if (!challengeToken || !rawEmail) {
-          throw ctx.error('UNAUTHORIZED', { message: 'Challenge token required' })
+          throw await refuseSignIn(
+            ctx.context.adapter,
+            ctx,
+            ctx.error('UNAUTHORIZED', { message: 'Challenge token required', code: 'CHALLENGE_TOKEN_REQUIRED' }),
+          )
         }
 
         const normalizedEmail = normalizeEmail(rawEmail)
 
         const valid = await validateOtpChallenge(database, normalizedEmail, challengeToken)
         if (!valid) {
-          throw ctx.error('UNAUTHORIZED', { message: 'Invalid challenge token' })
+          throw await refuseSignIn(
+            ctx.context.adapter,
+            ctx,
+            ctx.error('UNAUTHORIZED', { message: 'Invalid challenge token', code: 'CHALLENGE_TOKEN_INVALID' }),
+          )
         }
 
         // Block sign-in for non-approved waitlist users (defense-in-depth).
@@ -360,7 +376,11 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         if (!existingUser && !(await admitsWithoutWaitlist(database, normalizedEmail))) {
           const waitlistEntry = await getWaitlistByEmail(database, normalizedEmail)
           if (!waitlistEntry || waitlistEntry.status !== 'approved') {
-            throw ctx.error('UNAUTHORIZED', { message: 'Sign-in not available' })
+            throw await refuseSignIn(
+              ctx.context.adapter,
+              ctx,
+              ctx.error('UNAUTHORIZED', { message: 'Sign-in not available', code: 'SIGN_IN_NOT_AVAILABLE' }),
+            )
           }
         }
 

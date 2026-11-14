@@ -68,13 +68,18 @@ bypasses the organization entirely.
 transaction. A user with no membership is admitted by the first rule that matches:
 
 - `waitlist`: an email-code sign-in whose address has an approved waitlist row
-- `sso`: a sign-in through the SSO callback or SAML ACS
+- `sso`: a sign-in through a connection without SCIM (see below)
 
 Admission waits for the session rather than user creation because Better Auth runs
 `user.create.after` only after the transaction commits, too late for the SSO callback's session.
 
 A new email address gets a sign-in code without an approved waitlist row only when
 `admitsWithoutWaitlist` says so. All three places that gate codes ask it, so a new way in is added once.
+
+An existing member who signs in through a connection without SCIM, and has no `sso` source for it,
+gets one (`member.source_added`) before the access check. Without it, the members a connection's
+SCIM side provisioned would be locked out of its SSO side once that SCIM side starts retiring. A block, or
+another IdP deprovisioning them, still wins, because the check runs after.
 
 ### Existing users
 
@@ -83,6 +88,37 @@ creates the org and, in the same transaction, gives every non-anonymous user an 
 The source records how they most likely got in: `sso`, `waitlist`, or `open` for accounts older than
 the waitlist. The backfill runs only on the call that creates the org; repeating it on every boot would
 admit users that some path forgot to admit.
+
+## SSO connections
+
+An SSO connection is a Better Auth `sso_provider` row named by an `identity_connection`'s
+`sso_provider_id`; the same row's `scim_connection_id` pairs it with a SCIM connection. One row per
+IdP holds both sides, and only server-side admin code creates them
+([sso-connections.ts](../../../backend/src/identity/sso-connections.ts)). A request naming a provider
+with no live connection is refused ([sso.ts](../../../backend/src/identity/sso.ts)), so rows older
+releases let users register can't sign anyone in.
+
+- **The env provider** (`OIDC_*` or `SAML_*`) is written at boot as provider and connection `sso`, after
+  the implicit org. The env stays authoritative for that row; connections an admin created are never
+  touched. The first run fills that connection into the `sso` sources of members who signed in before.
+- **Require a SCIM record before first login** is on only while the connection's SCIM side is
+  `active` (`requiresScimRecord`). From `scim_retiring` on, the access check ignores that side's
+  sources, so the connection admits at sign-in like one without SCIM. Then the `sso` rule admits nobody, so an unprovisioned
+  subject is refused with `ACCESS_NOT_MEMBER` and, since the SSO callback runs user creation and
+  admission in one transaction, no user is created. A `BOOTSTRAP_ADMIN_EMAILS` address is the one
+  exception: the bootstrap grant admits it before SCIM provisions it.
+- **Email linking** happens only on a connection without SCIM, and never to a user a SCIM connection
+  manages, on any connection.
+- **The match claim** (`match_claim`: `oid` for Entra, `sub` for Okta and Keycloak) is stored per
+  connection for the SCIM lifecycle to match a sign-in to its SCIM record.
+- **The login screen** asks `POST /v1/sso/discover` which connections to offer: the only one, else the
+  one whose `org_domain` claims the email's domain, else all of them, one button each. It answers from
+  the domain alone, so it never reveals whether an address is a member.
+- **Email code in SSO mode** lives at `/sign-in/email-code`, for people no IdP manages (an invitee, a
+  break-glass admin); the email-code gates decide who may use it. It is linked from the email step,
+  the connection list and `/sso-error`. With one connection the app goes straight to the IdP, so a
+  break-glass admin must know the URL in advance: an IdP that is down never redirects back to
+  `/sso-error`.
 
 ## Roles
 

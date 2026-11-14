@@ -18,6 +18,7 @@ One Elysia app, `prefix: '/v1'` (`backend/src/index.ts:72`). Route groups are pl
 | `GET /v1/config/branding/:file` (downloaded branding fonts and logos, `immutable`)                     | `api/config.ts`                         | public                                    | none                                              | exempt  |
 | `GET /v1/config/branding/email-logo` (light logo if PNG/JPEG, else 302 to `${APP_URL}/email-logo.png`) | `api/config.ts`                         | public                                    | none                                              | exempt  |
 | `POST /v1/waitlist/join`                                                                               | `waitlist/routes.ts`                    | public                                    | `auth` (IP) + 15s per-email cooldown              | gated   |
+| `POST /v1/sso/discover`                                                                                | `identity/sso-routes.ts`                | public                                    | `auth` (IP)                                       | gated   |
 | `GET /v1/posthog/config`, `ALL /v1/posthog/*`                                                          | `posthog/routes.ts`                     | public                                    | none                                              | exempt  |
 | `GET /v1/auth/oidc/config`                                                                             | `auth/oidc.ts`                          | public                                    | none                                              | gated   |
 | `GET /v1/auth/{google,microsoft}/config`, `POST …/exchange`, `POST …/refresh`                          | `auth/google.ts`, `auth/microsoft.ts`   | session                                   | none                                              | gated   |
@@ -57,6 +58,7 @@ Re-derive from `app.routes` on a `createApp()` app (pattern: `backend/src/index.
 | PowerSync routes              | empty plugin without `POWERSYNC_JWT_SECRET`                                                         |
 | SSO desktop callbacks         | mounted only when `AUTH_MODE` is not `consumer`                                                     |
 | `GET /v1/auth/oidc/config`    | only under `AUTH_MODE=oidc` with an `OIDC_ISSUER`                                                   |
+| `POST /v1/sso/discover`       | mounted only when `AUTH_MODE` is `oidc` or `saml`                                                   |
 | Transcript intake             | only under `DEBUG_TRANSCRIPT_INTAKE_ENABLED`                                                        |
 | Hosted agent                  | only under `AGENT_ENABLED`                                                                          |
 | Transcript relay              | 403 stub when `DEBUG_TRANSCRIPT_UPSTREAM_URL` is unset                                              |

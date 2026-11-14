@@ -120,12 +120,16 @@ If your provider cannot do that, set `SAML_ALLOW_IDP_INITIATED=true` and restart
 
 ## What single sign-on looks like to the user
 
-There is no Thunderbolt login form. Opening the app with no session sends the browser straight to your identity provider.
+With one identity provider there is no Thunderbolt login form: opening the app with no session sends the browser straight to it. With several, the app asks for a work email. An email whose domain an administrator assigned to one provider goes straight there; any other gets one button per provider. The email step, the provider buttons and the sign-in error page also offer an email code for people no provider manages, such as an invited contractor or a break-glass admin listed in `BOOTSTRAP_ADMIN_EMAILS`; the server refuses it to everyone else. With one provider nothing links to it before the redirect, so give break-glass admins its address in advance: `<APP_URL>/sign-in/email-code`. When the provider is down, the browser never comes back to the error page that links to it.
 
-When someone signs in through your provider with an identity Thunderbolt has not seen before, and a Thunderbolt account with the same email address already exists, they land in that account instead of getting a second one. This happens when either of these is true:
+The provider you configure here is the deployment's first SSO connection. It is saved to the database at startup, and the environment stays its source: change a value and restart to apply it. Further providers are added by an administrator, never by users. Each provider's callback URL names it (`/v1/api/auth/sso/callback/<id>`; this one keeps `sso`), and each provider's origin must be in `TRUSTED_ORIGINS`. Client secrets are stored in plain text in the `sso_provider` table, so protect database backups like the environment file.
+
+When a provider is paired with active SCIM provisioning, only the people it provisioned can sign in through it: a first sign-in from anyone else creates no account. Once that SCIM provisioning starts retiring, the provider behaves like one without SCIM. A provider without SCIM creates the account at first sign-in.
+
+When someone signs in through a provider without SCIM with an identity Thunderbolt has not seen before, and a Thunderbolt account with the same email address already exists, they land in that account instead of getting a second one. Accounts a SCIM provider manages are never linked by email. Otherwise it happens when either of these is true:
 
 - The account's email is verified in Thunderbolt, which means its owner signed in with an emailed code.
-- The account already has an identity from your provider. This covers the same person arriving with a new identity: you switched `AUTH_MODE` between `oidc` and `saml`, moved to a different provider, or the provider changed their subject (OIDC) or NameID (SAML).
+- The account already has an identity from that provider. This covers the same person arriving with a new identity: you switched `AUTH_MODE` between `oidc` and `saml`, or the provider changed their subject (OIDC) or NameID (SAML).
 
 An account that meets neither condition is not linked, and that sign-in fails with "account not linked". An address with no account gets a new one.
 
@@ -133,7 +137,7 @@ Automatic linking trusts the email address your provider assigns, so your provid
 
 Under OIDC, a user is also never linked when the provider reports `email_verified` as false for them. The sign-in fails with "account not linked" until you mark the address as verified at the provider. Keycloak marks an address verified only when the realm makes users confirm it ("Verify email") or an admin ticks "Email verified". When Keycloak loads users from LDAP, it sends `email_verified` false unless "Trust Email" is turned on in the LDAP user federation settings, so turn it on. SAML has no such claim, so this does not apply to it.
 
-If a sign-in fails or the user cancels at the provider, they come back to the app with a message and a "Try again" button, which starts the login again. Only a few failures, such as a login attempt that expired before the provider answered, still end on the API's own plain error page.
+If a sign-in fails or the user cancels at the provider, they come back to the app with a message and a "Try again" button, which starts the login again. A person your organization blocked, deactivated or never provisioned gets a message saying so. Only a few failures, such as a login attempt that expired before the provider answered, still end on the API's own plain error page.
 
 Signing out of Thunderbolt ends the Thunderbolt session and leaves the one your identity provider holds in place, so the next visit may re-authenticate silently. That session ends at the provider.
 

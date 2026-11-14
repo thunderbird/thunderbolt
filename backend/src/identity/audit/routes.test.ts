@@ -6,6 +6,7 @@ import { auditEvent, memberRoleGrant, orgMembership, organization, user } from '
 import { authHeaders, createTestApp, type TestAppHandle } from '@/test-utils/e2e'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { and, eq } from 'drizzle-orm'
+import { adminDenialAuditBudget } from '../admin-macro'
 import { getCurrentOrganizationId } from '../current-organization'
 import { insertAuditEvent } from './write'
 
@@ -67,6 +68,45 @@ describe('GET /v1/admin/audit-events', () => {
       .from(auditEvent)
       .where(and(eq(auditEvent.action, 'admin.access_denied'), eq(auditEvent.actorId, userId)))
     expect(denials).toMatchObject([{ outcome: 'denied', metadata: { method: 'GET', path: '/v1/admin/audit-events' } }])
+  })
+
+  const denialsBy = (actorId: string) =>
+    harness.db
+      .select()
+      .from(auditEvent)
+      .where(and(eq(auditEvent.action, 'admin.access_denied'), eq(auditEvent.actorId, actorId)))
+
+  it("caps one caller's recorded denials, while every request still gets its 403", async () => {
+    const statuses = []
+    for (let attempt = 0; attempt <= adminDenialAuditBudget.max; attempt++) {
+      statuses.push((await list()).status)
+    }
+
+    expect(statuses.every((status) => status === 403)).toBe(true)
+    expect(await denialsBy(userId)).toHaveLength(adminDenialAuditBudget.max)
+  })
+
+  it('records no denial for an anonymous caller', async () => {
+    await harness.db.update(user).set({ isAnonymous: true }).where(eq(user.id, userId))
+
+    expect((await list()).status).toBe(403)
+    expect(await denialsBy(userId)).toEqual([])
+  })
+
+  it('names the API key, and its owner, when a key is refused', async () => {
+    const created = await harness.app.handle(
+      new Request('http://localhost/v1/api/auth/api-key/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders(harness.bearerToken) },
+        body: JSON.stringify({}),
+      }),
+    )
+    const { id, key } = (await created.json()) as { id: string; key: string }
+
+    expect((await list('', { 'x-api-key': key })).status).toBe(403)
+    const denials = await denialsBy(id)
+    expect(denials).toMatchObject([{ actorType: 'api_key', metadata: { userId } }])
+    expect(JSON.stringify(denials)).not.toContain(key)
   })
 
   it('pages an admin through the current org’s events, newest first', async () => {

@@ -3,7 +3,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { db as DbType } from '@/db/client'
-import { identityConnection, membershipSource, orgDomain, orgMembership, ssoProvider, user } from '@/db/schema'
+import {
+  auditEvent,
+  identityConnection,
+  membershipSource,
+  orgDomain,
+  orgMembership,
+  ssoProvider,
+  user,
+} from '@/db/schema'
 import { createTestDb } from '@/test-utils/db'
 import { createTestSettings } from '@/test-utils/settings'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -82,6 +90,22 @@ describe('SSO connections', () => {
       await ensureEnvSsoConnection(db, { ...oidcSettings, oidcClientSecret: 'rotated-secret' })
 
       expect(JSON.parse((await envProvider()).oidcConfig!).clientSecret).toBe('rotated-secret')
+      const updates = await db.select().from(auditEvent).where(eq(auditEvent.action, 'connection.updated'))
+      expect(updates).toMatchObject([
+        {
+          actorType: 'system',
+          connectionId: envSsoConnectionId,
+          metadata: { source: 'env', changedFields: ['oidcConfig.clientSecret'] },
+        },
+      ])
+      expect(JSON.stringify(updates)).not.toContain('rotated-secret')
+    })
+
+    it('records no update for a boot that changes nothing', async () => {
+      await ensureEnvSsoConnection(db, oidcSettings)
+      await ensureEnvSsoConnection(db, oidcSettings)
+
+      expect(await db.$count(auditEvent, eq(auditEvent.action, 'connection.updated'))).toBe(0)
     })
 
     it('writes the env SAML provider', async () => {

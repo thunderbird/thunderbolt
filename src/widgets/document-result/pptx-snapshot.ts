@@ -21,7 +21,40 @@ import {
 } from './snapshot'
 
 /** Past any limit the preview is refused. A snapshot renders every slide: 200 painted in about a second. */
-export const pptxPreviewLimits = { ...snapshotLimits, slides: 200 }
+export const pptxPreviewLimits = {
+  ...snapshotLimits,
+  slides: 200,
+  /**
+   * The characters the slides' markup may hold. A picture on the master or layout is copied into every slide's
+   * markup, so a 2 MB background on 200 slides came to half a billion characters and gigabytes of memory.
+   */
+  markupChars: 32 * 1024 * 1024,
+}
+
+/**
+ * A counter of the slides' markup, made from each element's tag, attributes and text without building the markup.
+ * The count is a floor of the markup's length, and the counter refuses the deck as soon as it passes
+ * {@link pptxPreviewLimits.markupChars}.
+ */
+const markupCounter = () => {
+  const left = { chars: pptxPreviewLimits.markupChars }
+  const spend = (chars: number) => {
+    left.chars -= chars
+    if (left.chars < 0) {
+      throw new PastLimitsError()
+    }
+  }
+  return (slide: HTMLElement) => {
+    spend(slide.textContent?.length ?? 0)
+    for (const element of [slide, ...slide.querySelectorAll('*')]) {
+      // `<tag>` and `</tag>`, then ` name="value"` for each attribute.
+      spend(element.tagName.length * 2 + 5)
+      for (const { name, value } of element.attributes) {
+        spend(name.length + value.length + 4)
+      }
+    }
+  }
+}
 
 /** The space around and between slides, in CSS pixels. */
 const gap = 16
@@ -133,10 +166,13 @@ export const renderPptxSnapshot = (blob: Blob): Promise<DocumentSnapshot> =>
     const frame = await openRenderFrame(presentation.width)
     try {
       const host = frame.contentDocument!.body
+      // Counted as each slide renders, so a deck far past the limit stops early.
+      const countRendered = markupCounter()
       for (const slide of presentation.slides) {
         const handle = withBody(host, () => renderSlide(presentation, slide, options))
         handles.push(handle)
         host.append(handle.element)
+        countRendered(handle.element)
       }
       await Promise.all(handles.map(({ ready }) => ready))
       // Charts start in the next frame. Without animation each draws its final state at once.
@@ -145,11 +181,14 @@ export const renderPptxSnapshot = (blob: Blob): Promise<DocumentSnapshot> =>
         chart.setOption({ animation: false })
       }
       await nextFrame()
-      const slides = handles.map(({ element }) => {
+      const elements = handles.map(({ element }) => element)
+      for (const element of elements) {
         canvasesToPictures(element)
         prepareForMarkup(element)
-        return element.outerHTML
-      })
+      }
+      // Counted again once charts are pictures, before any markup is built.
+      elements.forEach(markupCounter())
+      const slides = elements.map((element) => element.outerHTML)
       return {
         head: `<style>body { margin: 0; padding: ${gap}px; background: gray; } body > * { margin: 0 auto ${gap}px; }</style>`,
         body: slides.join(''),

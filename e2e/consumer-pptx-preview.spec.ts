@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { randomBytes } from 'node:crypto'
 import type { FrameLocator, Page } from '@playwright/test'
 import PptxGenJS from 'pptxgenjs'
 import { hostileLinkText, hostileMarkupText, hostilePptx, hostilePptxProbeOrigin } from '../src/test-utils/hostile-pptx'
@@ -20,6 +21,17 @@ const deckOfSlides = async (count: number) => {
   const deck = new PptxGenJS()
   for (let index = 1; index <= count; index++) {
     deck.addSlide().addText(`Slide ${index}`, { x: 0.5, y: 0.5, w: 9, h: 1 })
+  }
+  return (await deck.write({ outputType: 'uint8array' })) as Uint8Array
+}
+
+/** A deck of `count` slides whose master carries a background picture of `bytes` random bytes. */
+const deckWithBackground = async (count: number, bytes: number) => {
+  const deck = new PptxGenJS()
+  const picture = `image/png;base64,${randomBytes(bytes).toString('base64')}`
+  deck.defineSlideMaster({ title: 'Branded', background: { data: picture } })
+  for (let index = 1; index <= count; index++) {
+    deck.addSlide({ masterName: 'Branded' }).addText(`Slide ${index}`, { x: 0.5, y: 0.5, w: 9, h: 1 })
   }
   return (await deck.write({ outputType: 'uint8array' })) as Uint8Array
 }
@@ -76,6 +88,16 @@ test('a deck over 200 slides gets a refusal in place of the preview, and Downloa
     contentView(page).getByRole('button', { name: 'Download' }).click(),
   ])
   expect(download.suggestedFilename()).toBe(name)
+})
+
+test('a deck whose master picture would be copied into every slide past the limit gets a refusal', async ({ page }) => {
+  // A 1.5 MB background on 30 slides is about 60 million characters of markup, over the 32 Mi limit.
+  const name = 'e2e-branded.pptx'
+  await sendDeck(page, name, await deckWithBackground(30, 1_500_000))
+
+  await page.locator(`button[title="${name}"]`).click()
+  await expect(contentView(page).getByText('This presentation is too large to preview')).toBeVisible()
+  await expect(contentView(page).locator('iframe')).toHaveCount(0)
 })
 
 test('a hostile PPTX loads nothing from outside and runs no script, with the web headers and the app policy', async ({

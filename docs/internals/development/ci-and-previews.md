@@ -66,7 +66,7 @@ local set (type-check, lint, format-check, license-check).
 - `bun run test` is not what CI runs: `--randomize` plus the 5x repeat catches
   order-dependent and one-in-fifty failures. Reproduce with the `:5x` script.
 - The disabled timeout (Bun's `--timeout 0` hangs async tests) leans on step and job caps:
-  5 minutes per Backend WS attempt, 10 on the backend test step, 15 on the `backend` job and 30 on
+  5 minutes per Backend WS attempt, 10 on the backend test step, 15 on the `backend` job and 20 on
   `typescript`. Local `test` and `test:backend` keep the 5-second timeout.
 
 ### Why the WebSocket suite is excluded

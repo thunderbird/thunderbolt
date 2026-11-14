@@ -130,15 +130,19 @@ provider's job.
   dashboard icon at your app's address, or read the risk of `SAML_ALLOW_IDP_INITIATED` in
   [Authentication](../self-hosting/authentication.md#logging-in-from-the-providers-dashboard).
 
-There is no SCIM endpoint and no provisioning ahead of first use; an account exists once the person
-signs in for the first time.
+Your provider can also provision accounts ahead of first use over SCIM 2.0, at
+`/v1/api/auth/scim/v2`. An admin creates the SCIM connection and its token through the admin API
+(`POST /v1/admin/connections/scim`); the token is shown once. On a connection with SCIM, only people
+the provider has provisioned can sign in, and deactivating or deleting them there cuts their access.
+Without SCIM, an account exists once the person signs in for the first time.
 
 ## Removing access
 
 | Goal                             | How                                                                                                                           |
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Offboard someone (SSO)           | Disable or remove them in your identity provider                                                                              |
-| Offboard someone (email codes)   | Delete their rows from the `user` and `waitlist` tables. An address at an auto-approved domain can still sign up again        |
+| Offboard someone (SSO)           | Disable or remove them in your identity provider. Without SCIM that stops new sign-ins only; block them too to end sessions   |
+| Offboard someone (any sign-in)   | Block them through the admin API (`POST /v1/admin/members/:userId/block`). It outranks every identity provider grant          |
+| Remove a blocked member for good | Purge them through the admin API (`DELETE /v1/admin/members/:userId`), which deletes their account and data                   |
 | Cut off one lost laptop or phone | The user revokes it under **Settings → Devices**                                                                              |
 | Remove a person's data entirely  | The user does it under **Settings → Preferences → Data**, or you delete their `user` row, which cascades to their synced data |
 
@@ -172,8 +176,10 @@ already have a real account.
 
 ## What Thunderbolt does not have
 
-- **No administrator console:** every lever on this page is an environment variable or a database row.
-- **No roles, groups, or permissions:** every account can do the same things.
+- **No administrator screens yet:** the admin API under `/v1/admin` covers members, blocking, roles,
+  local groups, connections, invitations and domains, but the app has no screens for it.
+- **One role:** `admin`, granted to a member directly or mapped from a group by its id. Every other
+  account can do the same things.
 - **No bulk invite or import**, and no directory sync.
 - **No central model policy:** a user can add their own model provider and key inside the app, so the
   providers you configure on the API are a default, not a restriction.

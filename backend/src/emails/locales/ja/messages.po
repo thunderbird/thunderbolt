@@ -149,6 +149,26 @@ msgid "You can reply to this email"
 msgstr "このメールに返信いただけます"
 
 #. js-lingui-explicit-id
+#: src/emails/invitation.tsx
+msgid "You're invited to {appName}"
+msgstr "{appName} への招待が届きました"
+
+#. js-lingui-explicit-id
+#: src/emails/invitation.tsx
+msgid "You've been invited to join {appName}. Accept the invitation to sign in with this email address."
+msgstr "{appName} に招待されました。招待を承諾して、このメールアドレスでサインインしてください。"
+
+#. js-lingui-explicit-id
+#: src/emails/invitation.tsx
+msgid "Accept invitation"
+msgstr "招待を承諾"
+
+#. js-lingui-explicit-id
+#: src/emails/invitation.tsx
+msgid "This invitation expires in one week. If you weren't expecting it, you can ignore this email."
+msgstr "この招待は 1 週間で期限切れになります。心当たりがない場合は、このメールを無視してください。"
+
+#. js-lingui-explicit-id
 #: src/emails/magic-link.tsx
 msgid "Your {appName} verification code"
 msgstr "{appName} の確認コード"

@@ -8,10 +8,23 @@ import { type AuthAdapter, findMembership, type MembershipRow } from './access'
 import { createAuditEvent } from './audit/write'
 import { applyBootstrapAdmin, isBootstrapAdminEmail } from './bootstrap-admin'
 import { findOrgDomainForEmail, getOrgDomainForEmail, isClaimedDomain, isEnrollableDomain } from './domains'
+import { consumeInvitation, hasUsableInvitation } from './invitations/invitations'
 import { type Admission, addMembershipSource, createMembership } from './membership'
 import { otpSignInPath, type SignIn } from './sign-in'
 
 type AdmissionRule = (adapter: AuthAdapter, signIn: SignIn) => Promise<Admission | null>
+
+/**
+ * An email-code sign-up whose address holds a usable invitation, which the sign-in consumes. The
+ * code proves the address; the invitation link's token only opens the accept screen.
+ */
+const invitationRule: AdmissionRule = async (adapter, { user, path }) => {
+  if (path !== otpSignInPath) {
+    return null
+  }
+  const invitationId = await consumeInvitation(adapter, user)
+  return invitationId ? { kind: 'invitation', ref: invitationId } : null
+}
 
 /**
  * An email-code sign-up on a domain the org verified and opened to enrollment. Never a role grant:
@@ -59,7 +72,7 @@ const ssoRule: AdmissionRule = async (_adapter, { ssoConnection }) =>
   ssoConnection && !ssoConnection.requiresScimRecord ? { kind: 'sso', identityConnectionId: ssoConnection.id } : null
 
 /** Tried in order for a signing-in user with no membership; the first match admits them. */
-const admissionRules: AdmissionRule[] = [domainRule, waitlistRule, openRule, ssoRule]
+const admissionRules: AdmissionRule[] = [invitationRule, domainRule, waitlistRule, openRule, ssoRule]
 
 /**
  * The membership of a user who is signing in: the existing one, or a new one from the first
@@ -123,7 +136,7 @@ const admitByRule = async (adapter: AuthAdapter, signIn: SignIn) => {
  * Each case it allows has an admission rule that admits the address at sign-in.
  */
 export const admitsWithoutWaitlist = async (database: typeof DbType, email: string) => {
-  if (isBootstrapAdminEmail(email)) {
+  if (isBootstrapAdminEmail(email) || (await hasUsableInvitation(database, email))) {
     return true
   }
   const orgDomain = await getOrgDomainForEmail(database, email)

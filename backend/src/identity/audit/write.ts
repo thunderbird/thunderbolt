@@ -2,11 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { QueryableDatabase } from '@/db/client'
+import type { db as DbType, QueryableDatabase } from '@/db/client'
 import { auditEvent } from '@/db/schema'
+import { createRateLimitConsumer, type RateLimitTierConfig } from '@/middleware/rate-limit'
 import type { AuthAdapter } from '../access'
 import { getCurrentOrganizationId } from '../current-organization'
 import type { AuditAction, AuditActorType, AuditOutcome } from './events'
+import { getAuditRequestId } from './request-context'
 
 /** What an audit event records. Never put secrets here: credential and key ids, never their values. */
 export type AuditEventInput = {
@@ -17,6 +19,7 @@ export type AuditEventInput = {
   reason?: string | null
   connectionId?: string | null
   credentialId?: string | null
+  /** Defaults to the current request's id. */
   requestId?: string | null
   reportSource?: 'server' | 'client'
   changes?: Record<string, unknown> | null
@@ -39,7 +42,7 @@ const toAuditRow = (event: AuditEventInput) => ({
   targetId: event.target?.id ?? null,
   connectionId: event.connectionId ?? null,
   credentialId: event.credentialId ?? null,
-  requestId: event.requestId ?? null,
+  requestId: event.requestId ?? getAuditRequestId() ?? null,
   reportSource: event.reportSource ?? 'server',
   changes: event.changes ?? null,
   metadata: event.metadata ?? null,
@@ -71,3 +74,13 @@ export const recordFailedAttempt = async (
   database: QueryableDatabase,
   event: AuditEventInput & { outcome: 'failure' | 'denied' },
 ) => insertAuditEvent(database, event)
+
+/**
+ * A cap on how many events of one kind a single caller can write, for events any caller can
+ * trigger at will (a denied admin request). Returns whether `key` may write one more. It applies
+ * whatever `RATE_LIMIT_ENABLED` says: it protects the audit store, not the API.
+ */
+export const createAuditBudget = (database: typeof DbType, tier: 'audit-admin-denied', config: RateLimitTierConfig) => {
+  const consume = createRateLimitConsumer(database, { enabled: true }, tier, config)!
+  return async (key: string) => !(await consume(key, { headers: {} }))
+}

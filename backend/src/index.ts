@@ -15,6 +15,7 @@ import { createStandaloneLogger } from '@/config/logger'
 import { createCorsMiddleware } from '@/config/cors'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { runMigrations } from '@/db/client'
+import { createAuditRequestContext } from '@/identity/audit/request-context'
 import { createAuditRoutes } from '@/identity/audit/routes'
 import { createInvitationRoutes } from '@/identity/invitations/routes'
 import { ensureImplicitOrganization } from '@/identity/organization'
@@ -139,6 +140,7 @@ export const createApp = async (deps?: AppDeps) => {
     configuredApp
       .use(createCorsMiddleware(settings))
       .use(createHttpLoggingMiddleware(appLogger, settings.trustedProxy))
+      .use(createAuditRequestContext())
       .use(createAppVersionMiddleware(settings))
       .use(createErrorHandlingMiddleware())
       // Auth routes (mounted at /api/auth/*)

@@ -10,7 +10,14 @@ import { getCurrentAdapter, runWithTransaction } from '@better-auth/core/context
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { getCurrentOrganizationId } from '../current-organization'
-import { type AuditEventInput, createAuditEvent, insertAuditEvent, recordFailedAttempt } from './write'
+import { runWithAuditRequestId } from './request-context'
+import {
+  type AuditEventInput,
+  createAuditBudget,
+  createAuditEvent,
+  insertAuditEvent,
+  recordFailedAttempt,
+} from './write'
 
 const groupCreated = (groupId: string): AuditEventInput => ({
   action: 'local_group.created',
@@ -99,5 +106,24 @@ describe('audit writers', () => {
 
     expect(await groupExists(groupId)).toBe(false)
     expect(await eventsFor(groupId)).toMatchObject([{ outcome: 'failure', reason: 'change failed' }])
+  })
+
+  it("stamps events with the current request's id, and none outside a request", async () => {
+    const [inRequest, outside] = [crypto.randomUUID(), crypto.randomUUID()]
+    await runWithAuditRequestId(async () => {
+      await insertAuditEvent(db, groupCreated(inRequest))
+      await createAuditEvent((await createAuth(db).$context).adapter, groupCreated(inRequest))
+    }, 'request-1')
+    await insertAuditEvent(db, groupCreated(outside))
+
+    expect((await eventsFor(inRequest)).map((row) => row.requestId)).toEqual(['request-1', 'request-1'])
+    expect(await eventsFor(outside)).toMatchObject([{ requestId: null }])
+  })
+
+  it('lets a key write up to its budget, then refuses it alone', async () => {
+    const mayWrite = createAuditBudget(db, 'audit-admin-denied', { max: 2, durationSecs: 60 })
+
+    expect([await mayWrite('user:a'), await mayWrite('user:a'), await mayWrite('user:a')]).toEqual([true, true, false])
+    expect(await mayWrite('user:b')).toBe(true)
   })
 })

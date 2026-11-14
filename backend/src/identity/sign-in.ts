@@ -7,6 +7,12 @@ import { defineRequestState, hasRequestState } from '@better-auth/core/context'
 /** Better Auth path of an email-code sign-in. */
 export const otpSignInPath = '/sign-in/email-otp'
 
+/** Better Auth path of a passkey sign-in. */
+export const passkeySignInPath = '/passkey/verify-authentication'
+
+/** Better Auth path where the CLI's device grant collects its session. */
+export const deviceTokenPath = '/device/token'
+
 /** Better Auth paths that finish an SSO sign-in, including the shared OIDC callback used with `redirectURI`. */
 export const ssoSignInPaths: readonly string[] = [
   '/sso/callback/:providerId',

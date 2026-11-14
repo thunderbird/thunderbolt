@@ -276,6 +276,8 @@ const attachSsoSide = async (
 export type SsoConnection = {
   id: string
   scimConnectionId: string | null
+  /** The claim whose value is the subject's SCIM `externalId`. */
+  matchClaim: string
   status: (typeof identityConnectionStatuses)[number]
 }
 

@@ -24,7 +24,7 @@ import { createHash } from 'node:crypto'
 import { eq, like } from 'drizzle-orm'
 import { Elysia } from 'elysia'
 import { createScimConnection } from './connections'
-import { createScimRequestHandler } from './request'
+import { createScimRequestHandler, defaultScimRateLimits } from './request'
 
 const directoryExtension = 'urn:ietf:params:scim:schemas:extension:CustomExtensionName:2.0:User'
 
@@ -282,7 +282,11 @@ describe('SCIM request pipeline', () => {
         handler: auth.handler,
         database: db,
         rateLimit: { enabled: true },
-        limits: { perCredential: { max: 3, durationSecs: 60 }, authFailuresPerIp: { max: 2, durationSecs: 60 } },
+        limits: {
+          ...defaultScimRateLimits,
+          perCredential: { max: 3, durationSecs: 60 },
+          authFailuresPerIp: { max: 2, durationSecs: 60 },
+        },
       })
 
     it('answers over the per-credential budget with a SCIM 429 and Retry-After, per token', async () => {
@@ -324,6 +328,33 @@ describe('SCIM request pipeline', () => {
       expect((await sprayer.call('GET', '/Users', { token })).status).toBe(429)
       const elsewhere = createScimClient((request) => handle(request, `elsewhere-${uniqueSuffix()}`), token)
       expect((await elsewhere.call('GET', '/Users')).status).toBe(200)
+    })
+
+    it('answers a refusal the pipeline makes before authentication with a 401 that spends the IP budget', async () => {
+      const handle = handlerWithLimits()
+      const ip = `pre-auth-${uniqueSuffix()}`
+      const noExternalId = { schemas: [scimUserSchema], userName: `no-external-id-${uniqueSuffix()}@example.com` }
+      const statuses = []
+      for (let index = 0; index < 3; index++) {
+        const madeUp = createScimClient((request) => handle(request, ip), `made-up-${uniqueSuffix()}`)
+        statuses.push((await madeUp.call('POST', '/Users', { body: noExternalId })).status)
+      }
+      expect(statuses).toEqual([401, 401, 429])
+      const withoutToken = createScimClient((request) => handle(request, `no-token-${uniqueSuffix()}`))
+      expect((await withoutToken.call('POST', '/Users', { body: noExternalId, token: null })).status).toBe(401)
+    })
+
+    it('still answers an authenticated caller with the refusal itself', async () => {
+      const handle = handlerWithLimits()
+      const client = createScimClient(
+        (request) => handle(request, `refused-${uniqueSuffix()}`),
+        (await connectionToken()).token,
+      )
+      const refused = await client.call('POST', '/Users', {
+        body: { schemas: [scimUserSchema], userName: `no-external-id-${uniqueSuffix()}@example.com` },
+      })
+      expect(refused.status).toBe(400)
+      expect(refused.body).toMatchObject({ scimType: 'invalidValue' })
     })
 
     const connectionToken = async () => {

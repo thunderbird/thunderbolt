@@ -28,7 +28,7 @@ import { resolveEmailLocale } from '@/emails/i18n'
 import { verifyChallengeSignature } from '@/lib/canary'
 import { securityNotifications, type SecurityNotifications } from '@/lib/security-notifications'
 import type { StepUpAction } from '@/lib/step-up-otp'
-import { hasAccess } from '@/identity/access'
+import { hasAccess, isIdpManagedUser } from '@/identity/access'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { challengeOperations } from '@shared/e2ee-types'
 import { eq } from 'drizzle-orm'
@@ -50,6 +50,13 @@ const isAnonymousUser = (user: { isAnonymous?: boolean | null }): boolean => use
 const anonymousRefusal = {
   status: 403,
   body: { error: 'Anonymous accounts cannot be deleted', code: 'anonymous_account' },
+} as const
+
+// The IdP removes an account it manages; deleting it here would also drop the SCIM record the
+// IdP reprovisions through.
+const idpManagedRefusal = {
+  status: 403,
+  body: { error: 'Your organization manages this account', code: 'ACCOUNT_IDP_MANAGED' },
 } as const
 
 const unknownDeviceName = 'Unknown device'
@@ -388,6 +395,10 @@ export const createAccountRoutes = (
           set.status = anonymousRefusal.status
           return anonymousRefusal.body
         }
+        if (await isIdpManagedUser(auth, user.id)) {
+          set.status = idpManagedRefusal.status
+          return idpManagedRefusal.body
+        }
         // Session-gated only. Trust is NOT required: `trusted` is granted when an
         // encryption envelope is stored, so an account that never set up E2EE has
         // no trusted device and would be unable to delete itself.
@@ -410,6 +421,10 @@ export const createAccountRoutes = (
         if (isAnonymousUser(user)) {
           set.status = anonymousRefusal.status
           return anonymousRefusal.body
+        }
+        if (await isIdpManagedUser(auth, user.id)) {
+          set.status = idpManagedRefusal.status
+          return idpManagedRefusal.body
         }
         const refusal = await database.transaction(async (tx) => {
           const refusal = await requireStepUpCode(tx, stepUpAction, user.email, body?.stepUpOtp)

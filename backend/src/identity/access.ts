@@ -25,9 +25,11 @@ export type AccessState = {
   sources: MembershipSourceRow[]
   /** Status of each connection a `scim` source names. */
   connectionStatusById: ReadonlyMap<string, (typeof identityConnectionStatuses)[number]>
+  /** The connections a `scim` source names that also have an SSO side. */
+  ssoConnectionIds: ReadonlySet<string>
 }
 
-export type AccessRefusal = 'not_member' | 'blocked' | 'deprovisioned' | 'no_live_source'
+export type AccessRefusal = 'not_member' | 'blocked' | 'deprovisioned' | 'no_live_source' | 'sso_required'
 
 export type AccessDecision = { allowed: true } | { allowed: false; reason: AccessRefusal }
 
@@ -37,7 +39,33 @@ export const accessRefusalCodes: Record<AccessRefusal, string> = {
   blocked: 'ACCESS_BLOCKED',
   deprovisioned: 'ACCESS_DEPROVISIONED',
   no_live_source: 'ACCESS_NO_LIVE_SOURCE',
+  sso_required: 'ACCESS_SSO_REQUIRED',
 }
+
+/** Whether a source counts: every non-SCIM source, and a SCIM source only while its connection's SCIM side is active. */
+const isCountedSource = (source: MembershipSourceRow, connectionStatusById: AccessState['connectionStatusById']) =>
+  source.kind !== 'scim' ||
+  (source.identityConnectionId !== null && connectionStatusById.get(source.identityConnectionId) === 'active')
+
+/** The member's `scim` sources that count, in any status: while there is one, an IdP manages them. */
+export const idpManagingSources = ({ sources, connectionStatusById }: AccessState) =>
+  sources.filter((source) => source.kind === 'scim' && isCountedSource(source, connectionStatusById))
+
+/**
+ * Whether an IdP manages the member: a SCIM source on a connection whose SCIM side is active, in any
+ * status. A removed source counts too, until an admin detaches the link.
+ */
+export const isIdpManaged = (state: AccessState) => idpManagingSources(state).length > 0
+
+/**
+ * Whether the member may sign in only through SSO: an IdP manages them through a connection that has
+ * an SSO side, so its MFA and conditional access apply. A connection with only a SCIM side has no
+ * sign-in to send them to, so its members keep email code and passkeys.
+ */
+export const requiresSso = (state: AccessState) =>
+  idpManagingSources(state).some(
+    (source) => source.identityConnectionId !== null && state.ssoConnectionIds.has(source.identityConnectionId),
+  )
 
 /**
  * Decide whether a member may get in, in this order:
@@ -49,19 +77,16 @@ export const accessRefusalCodes: Record<AccessRefusal, string> = {
  * A `scim` source on a connection whose SCIM side is retiring or retired is ignored entirely: it
  * neither keeps the member in nor deprovisions them.
  */
-export const computeAccess = ({ membership, sources, connectionStatusById }: AccessState): AccessDecision => {
+export const computeAccess = (state: AccessState): AccessDecision => {
+  const { membership, sources, connectionStatusById } = state
   if (!membership) {
     return { allowed: false, reason: 'not_member' }
   }
   if (membership.blockedAt) {
     return { allowed: false, reason: 'blocked' }
   }
-  const counted = sources.filter(
-    (source) =>
-      source.kind !== 'scim' ||
-      (source.identityConnectionId !== null && connectionStatusById.get(source.identityConnectionId) === 'active'),
-  )
-  const idpSources = counted.filter((source) => source.kind === 'scim')
+  const counted = sources.filter((source) => isCountedSource(source, connectionStatusById))
+  const idpSources = idpManagingSources(state)
   if (idpSources.length > 0) {
     return idpSources.some((source) => source.status === 'active')
       ? { allowed: true }
@@ -93,7 +118,7 @@ export const loadAccessState = async (
 ): Promise<AccessState> => {
   const membership = await findMembership(adapter, userId, orgId)
   if (!membership) {
-    return { membership: null, sources: [], connectionStatusById: new Map() }
+    return { membership: null, sources: [], connectionStatusById: new Map(), ssoConnectionIds: new Set() }
   }
   const sources = await adapter.findMany<MembershipSourceRow>({
     model: 'membershipSource',
@@ -105,7 +130,11 @@ export const loadAccessState = async (
   const connections =
     connectionIds.length === 0
       ? []
-      : await adapter.findMany<{ id: string; status: (typeof identityConnectionStatuses)[number] }>({
+      : await adapter.findMany<{
+          id: string
+          status: (typeof identityConnectionStatuses)[number]
+          ssoProviderId: string | null
+        }>({
           model: 'identityConnection',
           where: [{ field: 'id', value: connectionIds, operator: 'in' }],
         })
@@ -113,6 +142,7 @@ export const loadAccessState = async (
     membership,
     sources,
     connectionStatusById: new Map(connections.map((connection) => [connection.id, connection.status])),
+    ssoConnectionIds: new Set(connections.flatMap((connection) => (connection.ssoProviderId ? connection.id : []))),
   }
 }
 
@@ -126,3 +156,10 @@ export const getAccess = async (adapter: AuthAdapter, userId: string) =>
  */
 export const hasAccess = async (auth: Auth, userId: string) =>
   (await getAccess((await auth.$context).adapter, userId)).allowed
+
+/**
+ * For routes outside the auth hooks: true when an IdP manages the user, so the IdP, not the user,
+ * decides when their account goes.
+ */
+export const isIdpManagedUser = async (auth: Auth, userId: string) =>
+  isIdpManaged(await loadAccessState((await auth.$context).adapter, userId))

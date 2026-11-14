@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { membershipSourceKinds } from '@/db/schema'
+import type { membershipSourceKinds, membershipSourceStatuses } from '@/db/schema'
 import type { AuthAdapter, MembershipRow } from './access'
-import { createAuditEvent } from './audit/write'
+import { type AuditEventInput, createAuditEvent } from './audit/write'
 import { getCurrentOrganizationId } from './current-organization'
 
 /** How a member got in: one `membership_source` row. */
@@ -12,10 +12,20 @@ export type Admission = {
   kind: (typeof membershipSourceKinds)[number]
   ref?: string | null
   identityConnectionId?: string | null
+  /** `active` unless given: SCIM can provision a member already deactivated. */
+  status?: (typeof membershipSourceStatuses)[number]
 }
 
-/** Create a membership with its first source, and record the admission. */
-export const createMembership = async (adapter: AuthAdapter, userId: string, admission: Admission) => {
+/**
+ * Create a membership with its first source, and record the admission. The actor is the user
+ * signing in unless given (a SCIM connection provisioning them).
+ */
+export const createMembership = async (
+  adapter: AuthAdapter,
+  userId: string,
+  admission: Admission,
+  actor: AuditEventInput['actor'] = { type: 'user', id: userId },
+) => {
   const orgId = getCurrentOrganizationId()
   const membership = await adapter.create<Record<string, unknown>, MembershipRow>({
     model: 'orgMembership',
@@ -25,7 +35,7 @@ export const createMembership = async (adapter: AuthAdapter, userId: string, adm
   await createAuditEvent(adapter, {
     action: 'member.admitted',
     outcome: 'success',
-    actor: { type: 'user', id: userId },
+    actor,
     target: { type: 'user', id: userId },
     connectionId: admission.identityConnectionId ?? null,
     metadata: { kind: admission.kind },
@@ -43,5 +53,6 @@ export const addMembershipSource = (adapter: AuthAdapter, membershipId: string, 
       kind: admission.kind,
       ref: admission.ref ?? null,
       identityConnectionId: admission.identityConnectionId ?? null,
+      ...(admission.status ? { status: admission.status } : {}),
     },
   })

@@ -477,9 +477,11 @@ describe('Encryption API', () => {
       expect(body.error).toBe('Device not found')
     })
 
-    it('returns 403 when device is revoked', async () => {
+    it('returns 403 when device is revoked, even while its envelope still exists', async () => {
       await createUserAndSession(p('u-me4'), p('tok-me4'), undefined, p('d-me4'))
       await insertDevice(p('d-me4'), p('u-me4'), { revokedAt: now })
+      // A SCIM DELETE revokes the device in its transaction and deletes the envelope just after.
+      await insertEnvelope(p('d-me4'), p('u-me4'))
 
       const response = await app.handle(
         new Request(`${baseUrl}/devices/me/envelope`, {

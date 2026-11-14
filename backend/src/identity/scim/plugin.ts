@@ -3,9 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Settings } from '@/config/settings'
+import type { QueryableDatabase } from '@/db/client'
 import { scim } from '@better-auth/scim'
 import type { BetterAuthPlugin } from 'better-auth'
 import { hkdfSync } from 'node:crypto'
+import { createScimLifecycle } from './lifecycle'
+import { scimProjection } from './projection'
+import { scimRequestScope } from './request-scope'
 
 /** Better Auth's path prefix for every SCIM route, as hooks see it. */
 const scimEndpointPrefix = '/scim/v2/'
@@ -54,11 +58,14 @@ export const scimEmailVerified = () =>
  * creates (`connections.ts`), so without an active connection's token every resource route is a
  * 401. Requests reach the plugin through `createScimRequestHandler`, never directly.
  */
-export const buildScimPlugins = (settings: Pick<Settings, 'betterAuthSecret'>) => [
+export const buildScimPlugins = (settings: Pick<Settings, 'betterAuthSecret'>, database: QueryableDatabase) => [
   scim({
     connections: [],
     managedConnections: { credentialHashSecret: deriveScimCredentialHashSecret(settings.betterAuthSecret) },
     compatibility: { microsoftEntra: { acceptLegacyGroupSchema: true } },
+    identity: createScimLifecycle(database),
+    projection: scimProjection,
   }),
   scimEmailVerified(),
+  scimRequestScope(),
 ]

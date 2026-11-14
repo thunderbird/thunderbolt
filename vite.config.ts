@@ -280,7 +280,8 @@ export default defineConfig({
   },
   optimizeDeps: {
     // The Office sandbox Worker loads these on first use. Pre-bundling found them only then and reloaded the
-    // page mid-run, and it also wrapped the library files' `?url` imports as modules.
+    // page mid-run, and it also wrapped the library files' `?url` imports as modules. The PPTX preview's
+    // renderer is the same case: its browser build is one self-contained module, loaded when a deck opens.
     exclude: [
       '@journeyapps/wa-sqlite',
       '@powersync/web',
@@ -289,6 +290,7 @@ export default defineConfig({
       'office-sandbox-pptxgenjs',
       'excelize-wasm',
       '@ironcalc/wasm',
+      '@aiden0z/pptx-renderer',
     ],
   },
   worker: {

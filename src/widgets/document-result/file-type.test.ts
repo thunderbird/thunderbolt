@@ -38,4 +38,11 @@ describe('getFileType', () => {
     expect(getFileType('xlsm')).toBe('unsupported')
     expect(getFileType('legacy.xls')).toBe('unsupported')
   })
+
+  test('takes .pptx for decks, in any case, but not a bare name or an old .ppt', () => {
+    expect(getFileType('deck.pptx')).toBe('pptx')
+    expect(getFileType('DECK.PPTX')).toBe('pptx')
+    expect(getFileType('pptx')).toBe('unsupported')
+    expect(getFileType('legacy.ppt')).toBe('unsupported')
+  })
 })

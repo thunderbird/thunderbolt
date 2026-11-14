@@ -48,3 +48,22 @@ export const withZip64Count = (zip: Uint8Array<ArrayBuffer>, count: number) => {
   new DataView(classicEnd.buffer).setUint16(10, 0xffff, true)
   return new Uint8Array(Buffer.concat([zip.subarray(0, end), new Uint8Array(zip64.buffer), classicEnd]))
 }
+
+/**
+ * The zip with the central directory record of part `name` declaring `size` unpacked bytes, whatever the part really
+ * inflates to: a small declared size over a large deflated part is how a file hides how much work it costs.
+ */
+export const withDeclaredSize = (zip: Uint8Array<ArrayBuffer>, name: string, size: number) => {
+  const forged = zip.slice()
+  const view = new DataView(forged.buffer)
+  const target = strToU8(name)
+  for (let at = Buffer.from(forged).indexOf(centralSignature); at !== -1; ) {
+    const nameLength = view.getUint16(at + 28, true)
+    if (Buffer.from(forged.subarray(at + 46, at + 46 + nameLength)).equals(target)) {
+      view.setUint32(at + 24, size, true)
+      return forged
+    }
+    at = Buffer.from(forged).indexOf(centralSignature, at + 4)
+  }
+  throw new Error(`The zip has no part named ${name}`)
+}

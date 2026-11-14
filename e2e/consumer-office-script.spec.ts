@@ -6,10 +6,14 @@ import { readFile } from 'node:fs/promises'
 import type { Page } from '@playwright/test'
 import { Document, Packer, Paragraph } from 'docx'
 import JSZip from 'jszip'
+import PptxGenJS from 'pptxgenjs'
 import { defaultModelOpus55 } from '../shared/defaults/models'
 import { fakeProviderReply } from './fake-provider'
 import { collectPageErrors, loginViaEmailCode, sendChatPrompt } from './helpers'
 import {
+  officeDeckEditFilename,
+  officeDeckEditMarker,
+  officeDeckEditPrompt,
   officeEditFilename,
   officeEditMarker,
   officeEditPlaceholder,
@@ -120,6 +124,33 @@ test('the agent edits an attached Word document and the user downloads the edite
     ?.async('string')
   expect(documentXml).toContain(officeEditMarker)
   expect(documentXml).not.toContain(officeEditPlaceholder)
+
+  expect(errors).toEqual([])
+})
+
+test('the agent edits an attached deck, and the edited copy opens in the side panel', async ({ page }) => {
+  const errors = collectPageErrors(page)
+  await loginViaEmailCode(page)
+  await chooseFakeModel(page)
+  const deck = new PptxGenJS()
+  deck.addSlide().addText(`Status: ${officeEditPlaceholder}`, { x: 0.5, y: 0.5, w: 9, h: 1 })
+  await page.locator('input[type="file"]').setInputFiles({
+    name: officeDeckEditFilename,
+    mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    buffer: Buffer.from((await deck.write({ outputType: 'uint8array' })) as Uint8Array),
+  })
+  await expect(page.getByText(officeDeckEditFilename, { exact: true })).toBeVisible()
+
+  await sendChatPrompt(page, officeDeckEditPrompt)
+
+  const reply = page.locator('[data-quotable-message-id]').last()
+  await expect(reply.getByRole('button', { name: `Download ${officeDeckEditFilename}` })).toBeVisible({
+    timeout: 30_000,
+  })
+  await expect(reply.getByText('Edited', { exact: true })).toBeVisible()
+  await reply.locator(`button[title="${officeDeckEditFilename}"]`).click()
+  const slides = page.getByTestId('content-view').frameLocator(`iframe[title="${officeDeckEditFilename}"]`)
+  await expect(slides.getByText(`Status: ${officeDeckEditMarker}`)).toBeVisible()
 
   expect(errors).toEqual([])
 })

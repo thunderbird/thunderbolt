@@ -10,6 +10,7 @@ import { getClock } from '@/testing-library'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import * as docxSnapshot from './docx-snapshot'
+import type { DocumentSnapshot } from './snapshot'
 import { useDocumentBlob } from './use-document-blob'
 
 /** Use the real client with a local response so preview tests never access the network. */
@@ -25,7 +26,7 @@ const makeHttpClient = (resolve: { blob?: Blob; error?: Error }): HttpClient =>
   })
 
 /** What the renderer resolves to in these tests: one page of markup. */
-const pages: docxSnapshot.DocxSnapshot = { kind: 'pages', html: '<p>Document preview</p>', width: 854 }
+const pages: DocumentSnapshot = { kind: 'pages', html: '<p>Document preview</p>', width: 854 }
 
 /** Flushes the hook's async fetch + reducer dispatch. */
 const flush = async () => {
@@ -61,7 +62,7 @@ describe('useDocumentBlob', () => {
       throw new Error(`expected ready state, got ${result.current.status}`)
     }
     expect(result.current.blobUrl).toMatch(/^blob:/)
-    expect(result.current.docx).toBeNull()
+    expect(result.current.snapshot).toBeNull()
   })
 
   it('resolves an unsupported file to ready (download still works) without DOCX pages', async () => {
@@ -72,7 +73,7 @@ describe('useDocumentBlob', () => {
     if (result.current.status !== 'ready') {
       throw new Error(`expected ready state, got ${result.current.status}`)
     }
-    expect(result.current.docx).toBeNull()
+    expect(result.current.snapshot).toBeNull()
   })
 
   it('surfaces the error message when the fetch fails', async () => {
@@ -97,7 +98,7 @@ describe('useDocumentBlob', () => {
   })
 
   it('creates a DOCX download URL only after conversion succeeds', async () => {
-    const pending = Promise.withResolvers<docxSnapshot.DocxSnapshot>()
+    const pending = Promise.withResolvers<DocumentSnapshot>()
     const convert = spyOn(docxSnapshot, 'renderDocxSnapshot').mockReturnValue(pending.promise)
     const create = spyOn(URL, 'createObjectURL')
     try {
@@ -113,7 +114,7 @@ describe('useDocumentBlob', () => {
         status: 'ready',
         blob: expect.any(Blob),
         blobUrl: expect.stringMatching(/^blob:/),
-        docx: pages,
+        snapshot: pages,
       })
       expect(create).toHaveBeenCalledTimes(1)
       unmount()
@@ -140,7 +141,7 @@ describe('useDocumentBlob', () => {
   })
 
   it('does not create a URL if the preview unmounts during DOCX conversion', async () => {
-    const pending = Promise.withResolvers<docxSnapshot.DocxSnapshot>()
+    const pending = Promise.withResolvers<DocumentSnapshot>()
     const convert = spyOn(docxSnapshot, 'renderDocxSnapshot').mockReturnValue(pending.promise)
     const create = spyOn(URL, 'createObjectURL')
     try {
@@ -159,7 +160,7 @@ describe('useDocumentBlob', () => {
   })
 
   it('ignores a previous document conversion after a newer PDF has loaded', async () => {
-    const pending = Promise.withResolvers<docxSnapshot.DocxSnapshot>()
+    const pending = Promise.withResolvers<DocumentSnapshot>()
     const convert = spyOn(docxSnapshot, 'renderDocxSnapshot').mockReturnValue(pending.promise)
     const create = spyOn(URL, 'createObjectURL')
     try {

@@ -8,6 +8,9 @@ import { z } from 'zod'
 import { createFakeProvider, fakeProviderReply } from './fake-provider'
 import { miniAppToolsetName, miniAppTransferPrompt, protectedEmailBody, protectedEmailId } from './mini-app-fixture'
 import {
+  officeDeckEditFilename,
+  officeDeckEditPrompt,
+  officeDeckEditScript,
   officeEditFilename,
   officeEditPrompt,
   officeEditScript,
@@ -202,6 +205,35 @@ test('plays a model that edits the attached document with run_office_script', as
         type: 'tool_use',
         name: 'run_office_script',
         input: { script: officeEditScript, inputs: [officeEditFilename] },
+      },
+    ])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('plays a model that edits the attached deck with run_office_script', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: `http://127.0.0.1:${port}`, maxRetries: 0 })
+    const ask: Anthropic.MessageParam = {
+      role: 'user',
+      content: [
+        {
+          type: 'text',
+          text: `[Attachment: ${officeDeckEditFilename}]\n\n## Slide 1\nStatus: {{status}}\n${officeDeckEditPrompt}`,
+        },
+      ],
+    }
+
+    const call = await client.messages.stream({ model: 'test-model', max_tokens: 100, messages: [ask] }).finalMessage()
+    expect(call.content).toMatchObject([
+      {
+        type: 'tool_use',
+        name: 'run_office_script',
+        input: { script: officeDeckEditScript, inputs: [officeDeckEditFilename] },
       },
     ])
   } finally {

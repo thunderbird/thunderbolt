@@ -7,6 +7,7 @@ import {
   groupRoleMapping,
   identityConnection,
   invitation,
+  linkReview,
   localGroup,
   memberRoleGrant,
   membershipSource,
@@ -77,6 +78,9 @@ const adminRoutes: { method: string; path: string; body?: unknown }[] = [
   { method: 'PUT', path: '/v1/admin/domains/:domainId/claim', body: { identityConnectionId: 'connection' } },
   { method: 'DELETE', path: '/v1/admin/domains/:domainId/claim' },
   { method: 'DELETE', path: '/v1/admin/domains/:domainId' },
+  { method: 'GET', path: '/v1/admin/link-reviews' },
+  { method: 'POST', path: '/v1/admin/link-reviews/:reviewId/approve' },
+  { method: 'POST', path: '/v1/admin/link-reviews/:reviewId/reject' },
 ]
 
 /** A route template with each `:param` filled; `:role` gets a role the schema accepts. */
@@ -193,6 +197,7 @@ describe('admin API', () => {
             harness.db.$count(invitation),
             harness.db.$count(identityConnection),
             harness.db.$count(memberRoleGrant),
+            harness.db.$count(linkReview),
           ])
         const before = await configRows()
         const earlierEvents = await harness.db.$count(auditEvent)
@@ -680,6 +685,77 @@ describe('admin API', () => {
         const existing = await call('POST', '/v1/admin/invitations', { email: harness.email })
         expect(existing.status).toBe(409)
         expect(await existing.json()).toEqual({ code: 'ALREADY_MEMBER' })
+      })
+    })
+
+    describe('link reviews', () => {
+      const addReview = async (candidateUserId: string) => {
+        const [connection] = await harness.db
+          .insert(identityConnection)
+          .values({ id: crypto.randomUUID(), orgId, name: `Entra ${crypto.randomUUID()}` })
+          .returning()
+        const [review] = await harness.db
+          .insert(linkReview)
+          .values({
+            id: crypto.randomUUID(),
+            orgId,
+            identityConnectionId: connection.id,
+            trigger: 'scim_create_conflict',
+            externalId: crypto.randomUUID(),
+            incomingEmail: 'incoming@example.com',
+            candidateUserId,
+          })
+          .returning()
+        return review
+      }
+
+      it('lists reviews with the candidate and connection, and approves and rejects them', async () => {
+        const candidate = await addMember()
+        const toApprove = await addReview(candidate)
+        const toReject = await addReview(candidate)
+
+        const page = await json<{ reviews: { id: string; candidate: { id: string } }[]; nextCursor: string | null }>(
+          await call('GET', '/v1/admin/link-reviews?status=pending'),
+        )
+        expect(page.reviews.map((review) => review.id).sort()).toEqual([toApprove.id, toReject.id].sort())
+        expect(page.reviews[0].candidate.id).toBe(candidate)
+
+        expect(await json(await call('POST', `/v1/admin/link-reviews/${toApprove.id}/approve`))).toMatchObject({
+          status: 'approved',
+          resolvedBy: adminId,
+        })
+        expect(await json(await call('POST', `/v1/admin/link-reviews/${toReject.id}/reject`))).toMatchObject({
+          status: 'rejected',
+        })
+        expect(await events('link_review.approved')).toMatchObject([{ targetId: toApprove.id, actorId: adminId }])
+        expect(await events('link_review.rejected')).toMatchObject([{ targetId: toReject.id, actorId: adminId }])
+
+        const again = await call('POST', `/v1/admin/link-reviews/${toReject.id}/reject`)
+        expect(again.status).toBe(409)
+        expect(await events('link_review.rejected', 'denied')).toMatchObject([{ reason: 'LINK_REVIEW_RESOLVED' }])
+        expect((await call('POST', '/v1/admin/link-reviews/nope/approve')).status).toBe(404)
+      })
+
+      it('refuses an admin approving a link to their own account, and records the attempt', async () => {
+        const review = await addReview(adminId)
+
+        const response = await call('POST', `/v1/admin/link-reviews/${review.id}/approve`)
+
+        expect(response.status).toBe(409)
+        expect(await response.json()).toEqual({ code: 'LINK_REVIEW_SELF' })
+        expect(await events('link_review.approved', 'denied')).toMatchObject([
+          { reason: 'LINK_REVIEW_SELF', actorId: adminId, targetId: review.id },
+        ])
+        const [row] = await harness.db.select().from(linkReview).where(eq(linkReview.id, review.id))
+        expect(row.status).toBe('pending')
+      })
+
+      it('answers a malformed cursor with 400, and records nothing', async () => {
+        const response = await call('GET', '/v1/admin/link-reviews?cursor=nonsense')
+
+        expect(response.status).toBe(400)
+        expect(await response.json()).toEqual({ code: 'LINK_REVIEW_INVALID_CURSOR' })
+        expect(await harness.db.$count(auditEvent, ne(auditEvent.outcome, 'success'))).toBe(0)
       })
     })
 

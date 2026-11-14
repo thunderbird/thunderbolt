@@ -7,15 +7,29 @@ import { createTestSettings } from '@/test-utils/settings'
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { exportJWK, generateKeyPair, SignJWT, type JWK } from 'jose'
 import { getSharedIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
 import { account, user } from '@/db/auth-schema'
 import { createSessionCookie } from '@/test-utils/session-cookie'
-import { memberRoleGrant, orgMembership, ssoProvider } from '@/db/schema'
+import {
+  auditEvent,
+  identityConnection,
+  memberRoleGrant,
+  membershipSource,
+  orgMembership,
+  scimSubject,
+  scimUser,
+  ssoProvider,
+} from '@/db/schema'
 import { sso } from '@better-auth/sso'
+import { createSsoConnection, ensureEnvSsoConnection, envSsoConnectionId } from '@/identity/sso-connections'
+import { getCurrentOrganizationId } from '@/identity/current-organization'
 
 const oidcIssuerUrl = 'https://oidc.test'
+
+/** Issuer of a second connection, created as an admin would, next to the env one. */
+const secondIssuerUrl = 'https://keycloak.test'
 
 /** Issuer of a provider row left in `sso_provider` by an earlier self-registration. */
 const storedIssuerUrl = 'https://stored-idp.test'
@@ -85,7 +99,7 @@ const withOidcFetch = async <T>(fn: () => Promise<T>, idpFetch: typeof fetch = o
   const savedOrigins = process.env.TRUSTED_ORIGINS
   globalThis.fetch = idpFetch
   // Trusting both IdPs skips Better Auth's DNS check, which would otherwise resolve them for real.
-  process.env.TRUSTED_ORIGINS = `http://localhost:1420,${oidcIssuerUrl},${storedIssuerUrl}`
+  process.env.TRUSTED_ORIGINS = `http://localhost:1420,${oidcIssuerUrl},${secondIssuerUrl},${storedIssuerUrl}`
   requestedDiscoveryUrls.length = 0
 
   try {
@@ -115,6 +129,9 @@ describe('OIDC Integration', () => {
     getSettingsSpy?.mockRestore()
   })
 
+  /** Write the env provider and its connection, as boot does: SSO sign-in finds providers only through one. */
+  const seedEnvConnection = () => ensureEnvSsoConnection(db, settingsModule.getSettings())
+
   /** Sign a fresh verified user in by email code; returns them with their session cookie. */
   const signInByEmailCode = async (auth: Parameters<typeof createSessionCookie>[0]) => {
     const cookie = await createSessionCookie(auth, db)
@@ -123,11 +140,12 @@ describe('OIDC Integration', () => {
   }
 
   describe('OIDC sign-in endpoint', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
         ...baseSettings,
         oidcIssuer: oidcIssuerUrl,
       })
+      await seedEnvConnection()
     })
 
     it('should return a redirect URL pointing to the OIDC provider', async () => {
@@ -228,11 +246,12 @@ describe('OIDC Integration', () => {
       { preconnect: () => {} },
     ) as unknown as typeof fetch
 
-    beforeEach(() => {
+    beforeEach(async () => {
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
         ...baseSettings,
         oidcIssuer: `${oidcPathIssuerUrl}/`,
       })
+      await seedEnvConnection()
     })
 
     it('should derive a single-slash discovery URL and still sign in', async () => {
@@ -269,11 +288,12 @@ describe('OIDC Integration', () => {
       publicJwk = { ...(await exportJWK(keyPair.publicKey)), alg: 'RS256' }
     })
 
-    beforeEach(() => {
+    beforeEach(async () => {
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
         ...baseSettings,
         oidcIssuer: oidcIssuerUrl,
       })
+      await seedEnvConnection()
     })
 
     /**
@@ -481,6 +501,361 @@ describe('OIDC Integration', () => {
     })
   })
 
+  describe('several SSO connections', () => {
+    const callbackURL = 'http://localhost:1420/'
+    const secondProviderId = 'keycloak'
+    let signingKey: CryptoKey
+    let publicJwk: JWK
+    let secondConnectionId: string
+
+    beforeAll(async () => {
+      const keyPair = await generateKeyPair('RS256', { extractable: true })
+      signingKey = keyPair.privateKey
+      publicJwk = { ...(await exportJWK(keyPair.publicKey)), alg: 'RS256' }
+    })
+
+    beforeEach(async () => {
+      getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
+        ...baseSettings,
+        oidcIssuer: oidcIssuerUrl,
+      })
+      await seedEnvConnection()
+      secondConnectionId = await createSsoConnection(db, {
+        name: 'Keycloak',
+        providerId: secondProviderId,
+        protocol: {
+          oidc: { issuer: secondIssuerUrl, clientId: baseSettings.oidcClientId, clientSecret: 'keycloak-secret' },
+        },
+      })
+    })
+
+    afterEach(async () => {
+      const connectionIds = [secondConnectionId]
+      await db.delete(membershipSource).where(inArray(membershipSource.identityConnectionId, connectionIds))
+      await db.delete(identityConnection).where(inArray(identityConnection.id, connectionIds))
+      await db.delete(ssoProvider).where(eq(ssoProvider.providerId, secondProviderId))
+    })
+
+    /** Complete an OIDC sign-in through `providerId`, whose IdP vouches for `email`. */
+    const signIn = async (
+      providerId: string,
+      email: string,
+      { subject = crypto.randomUUID(), claims = { email_verified: true } as Record<string, unknown> } = {},
+    ) => {
+      const issuer = providerId === secondProviderId ? secondIssuerUrl : oidcIssuerUrl
+      const idToken = await new SignJWT({ email, name: 'SSO User', ...claims })
+        .setProtectedHeader({ alg: 'RS256' })
+        .setIssuer(issuer)
+        .setAudience(baseSettings.oidcClientId)
+        .setSubject(subject)
+        .setIssuedAt()
+        .setExpirationTime('5m')
+        .sign(signingKey)
+      const discovery = discoveryDocumentFor(issuer)
+      const idpFetch = async (...[input]: Parameters<typeof fetch>) => {
+        const url = input instanceof Request ? input.url : input.toString()
+        if (url === `${issuer}/.well-known/openid-configuration`) {
+          return Response.json(discovery)
+        }
+        if (url === discovery.token_endpoint) {
+          return Response.json({ access_token: 'idp-access-token', token_type: 'Bearer', id_token: idToken })
+        }
+        if (url === discovery.jwks_uri) {
+          return Response.json({ keys: [publicJwk] })
+        }
+        throw new Error(`Unexpected OIDC request: ${url}`)
+      }
+      const cookieOf = (response: Response) =>
+        response.headers
+          .getSetCookie()
+          .map((entry) => entry.split(';')[0])
+          .join('; ')
+
+      return withOidcFetch(
+        async () => {
+          const { createAuth } = await import('./auth')
+          const auth = createAuth(db)
+          const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
+          const start = await app.handle(
+            new Request('http://localhost/v1/api/auth/sign-in/sso', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ providerId, callbackURL }),
+            }),
+          )
+          if (!start.ok) {
+            return { status: start.status, authorizeUrl: null, location: null, sessionUserId: undefined }
+          }
+          const authorizeUrl = new URL(((await start.json()) as { url: string }).url)
+          const callback = await app.handle(
+            new Request(
+              `http://localhost/v1/api/auth/sso/callback/${providerId}?code=idp-code&state=${authorizeUrl.searchParams.get('state')}`,
+              { headers: { Cookie: cookieOf(start) } },
+            ),
+          )
+          const session = await auth.api.getSession({ headers: new Headers({ Cookie: cookieOf(callback) }) })
+          return {
+            status: callback.status,
+            authorizeUrl,
+            location: callback.headers.get('location'),
+            sessionUserId: session?.user.id,
+          }
+        },
+        Object.assign(idpFetch, { preconnect: globalThis.fetch.preconnect }),
+      )
+    }
+
+    const pairWithScim = (status: 'active' | 'scim_retiring' | 'scim_retired' = 'active') =>
+      db
+        .update(identityConnection)
+        .set({ scimConnectionId: `scim-${crypto.randomUUID()}`, status })
+        .where(eq(identityConnection.id, secondConnectionId))
+
+    const sourcesOf = (userId: string) =>
+      db
+        .select({ kind: membershipSource.kind, connectionId: membershipSource.identityConnectionId })
+        .from(membershipSource)
+        .innerJoin(orgMembership, eq(orgMembership.id, membershipSource.membershipId))
+        .where(eq(orgMembership.userId, userId))
+
+    const userCount = (email: string) => db.$count(user, eq(user.email, email))
+
+    /** A member SCIM provisioned on the second connection, who already signed in through it once. */
+    const insertScimMember = async (subject: string) => {
+      const email = `scim-${crypto.randomUUID()}@example.com`
+      const [member] = await db
+        .insert(user)
+        .values({ id: crypto.randomUUID(), name: 'SCIM User', email, emailVerified: true })
+        .returning()
+      const [membership] = await db
+        .insert(orgMembership)
+        .values({ id: crypto.randomUUID(), orgId: getCurrentOrganizationId(), userId: member.id })
+        .returning()
+      await db.insert(membershipSource).values({
+        id: crypto.randomUUID(),
+        orgId: getCurrentOrganizationId(),
+        membershipId: membership.id,
+        kind: 'scim',
+        identityConnectionId: secondConnectionId,
+      })
+      await db.insert(account).values({
+        id: crypto.randomUUID(),
+        accountId: subject,
+        providerId: secondProviderId,
+        userId: member.id,
+        updatedAt: new Date(),
+      })
+      return { member, membership }
+    }
+
+    it('sends each connection to its own IdP and admits each subject through its own connection', async () => {
+      const envEmail = `entra-${crypto.randomUUID()}@example.com`
+      const secondEmail = `keycloak-${crypto.randomUUID()}@example.com`
+
+      const viaEnv = await signIn('sso', envEmail)
+      const viaSecond = await signIn(secondProviderId, secondEmail)
+
+      expect(viaEnv.authorizeUrl?.origin).toBe(oidcIssuerUrl)
+      expect(viaSecond.authorizeUrl?.origin).toBe(secondIssuerUrl)
+      expect(viaEnv.location).toBe(callbackURL)
+      expect(viaSecond.location).toBe(callbackURL)
+      expect(await sourcesOf(viaEnv.sessionUserId!)).toEqual([{ kind: 'sso', connectionId: envSsoConnectionId }])
+      expect(await sourcesOf(viaSecond.sessionUserId!)).toEqual([{ kind: 'sso', connectionId: secondConnectionId }])
+      expect(
+        await db.$count(
+          account,
+          and(eq(account.userId, viaSecond.sessionUserId!), eq(account.providerId, secondProviderId)),
+        ),
+      ).toBe(1)
+    })
+
+    it('creates no user for an unprovisioned subject when the connection requires a SCIM record', async () => {
+      await pairWithScim()
+      const email = `unprovisioned-${crypto.randomUUID()}@example.com`
+
+      const { location, sessionUserId } = await signIn(secondProviderId, email)
+
+      expect(location).toContain('error=ACCESS_NOT_MEMBER')
+      expect(sessionUserId).toBeUndefined()
+      expect(await userCount(email)).toBe(0)
+    })
+
+    it('never links a SCIM connection subject to a verified user by email', async () => {
+      await pairWithScim()
+      const { createAuth } = await import('./auth')
+      const { user: existing } = await signInByEmailCode(createAuth(db))
+
+      const { sessionUserId } = await signIn(secondProviderId, existing.email)
+
+      expect(sessionUserId).toBeUndefined()
+      expect(
+        await db.$count(account, and(eq(account.userId, existing.id), eq(account.providerId, secondProviderId))),
+      ).toBe(0)
+    })
+
+    it.each([
+      { emailVerified: true, admitted: true },
+      { emailVerified: false, admitted: false },
+    ])(
+      'admits a bootstrap admin email on a SCIM connection before SCIM provisions it, only when verified (%p)',
+      async ({ emailVerified, admitted }) => {
+        await pairWithScim()
+        const email = `bootstrap-${crypto.randomUUID()}@example.com`
+        getSettingsSpy.mockReturnValue({ ...baseSettings, oidcIssuer: oidcIssuerUrl, bootstrapAdminEmails: email })
+
+        const { sessionUserId } = await signIn(secondProviderId, email, { claims: { email_verified: emailVerified } })
+
+        if (!admitted) {
+          expect(sessionUserId).toBeUndefined()
+          expect(await userCount(email)).toBe(0)
+          return
+        }
+        expect(await sourcesOf(sessionUserId!)).toEqual([{ kind: 'bootstrap', connectionId: null }])
+      },
+    )
+
+    it('refuses an unlisted address on a SCIM connection even with bootstrap admins configured', async () => {
+      await pairWithScim()
+      getSettingsSpy.mockReturnValue({
+        ...baseSettings,
+        oidcIssuer: oidcIssuerUrl,
+        bootstrapAdminEmails: 'someone-else@example.com',
+      })
+      const email = `unlisted-${crypto.randomUUID()}@example.com`
+
+      expect((await signIn(secondProviderId, email)).location).toContain('error=ACCESS_NOT_MEMBER')
+      expect(await userCount(email)).toBe(0)
+    })
+
+    it.each(['scim_retiring', 'scim_retired'] as const)(
+      'admits a first login once the SCIM side is %s',
+      async (status) => {
+        await pairWithScim(status)
+        const email = `after-retirement-${crypto.randomUUID()}@example.com`
+
+        const { sessionUserId } = await signIn(secondProviderId, email)
+
+        expect(await sourcesOf(sessionUserId!)).toEqual([{ kind: 'sso', connectionId: secondConnectionId }])
+      },
+    )
+
+    it.each(['scim_retiring', 'scim_retired'] as const)(
+      'lets a SCIM-provisioned member in through the SSO side once the SCIM side is %s',
+      async (status) => {
+        const subject = crypto.randomUUID()
+        const { member } = await insertScimMember(subject)
+        await pairWithScim(status)
+
+        const { location, sessionUserId } = await signIn(secondProviderId, member.email, { subject })
+
+        expect(location).toBe(callbackURL)
+        expect(sessionUserId).toBe(member.id)
+        expect(await sourcesOf(member.id)).toContainEqual({ kind: 'sso', connectionId: secondConnectionId })
+        expect(
+          await db.$count(
+            auditEvent,
+            and(eq(auditEvent.action, 'member.source_added'), eq(auditEvent.targetId, member.id)),
+          ),
+        ).toBe(1)
+      },
+    )
+
+    it('still refuses a blocked member after the SCIM side is retired', async () => {
+      const subject = crypto.randomUUID()
+      const { member, membership } = await insertScimMember(subject)
+      await db.update(orgMembership).set({ blockedAt: new Date() }).where(eq(orgMembership.id, membership.id))
+      await pairWithScim('scim_retired')
+
+      const { location, sessionUserId } = await signIn(secondProviderId, member.email, { subject })
+
+      expect(location).toContain('error=ACCESS_BLOCKED')
+      expect(sessionUserId).toBeUndefined()
+    })
+
+    it('never email-links an SSO-only connection subject to a user a SCIM connection manages', async () => {
+      const { member } = await insertScimMember(crypto.randomUUID())
+
+      const { sessionUserId } = await signIn('sso', member.email)
+
+      expect(sessionUserId).toBeUndefined()
+      expect(await db.$count(account, and(eq(account.userId, member.id), eq(account.providerId, 'sso')))).toBe(0)
+    })
+
+    it.each(['scimSubject', 'scimUser'] as const)(
+      'never email-links to a user the SCIM plugin linked (%s) before any membership source exists',
+      async (table) => {
+        const email = `scim-created-${crypto.randomUUID()}@example.com`
+        const [created] = await db
+          .insert(user)
+          .values({ id: crypto.randomUUID(), name: 'SCIM Created', email, emailVerified: true })
+          .returning()
+        const now = new Date()
+        if (table === 'scimSubject') {
+          await db
+            .insert(scimSubject)
+            .values({ id: crypto.randomUUID(), userId: created.id, revision: 1, createdAt: now, updatedAt: now })
+        } else {
+          const key = crypto.randomUUID()
+          await db.insert(scimUser).values({
+            id: crypto.randomUUID(),
+            connectionId: 'scim-entra',
+            provisioningDomainId: getCurrentOrganizationId(),
+            userId: created.id,
+            connectionUserKey: key,
+            userName: email,
+            userNameKey: `name-${key}`,
+            primaryEmail: email,
+            workEmailValueIndex: email,
+            emailValueIndex: email,
+            displayName: 'SCIM Created',
+            formattedName: 'SCIM Created',
+            serializedEmails: '[]',
+            active: true,
+            orderKey: `order-${key}`,
+            createdAt: now,
+            updatedAt: now,
+          })
+        }
+
+        try {
+          const { sessionUserId } = await signIn('sso', email)
+
+          expect(sessionUserId).toBeUndefined()
+          expect(await db.$count(account, and(eq(account.userId, created.id), eq(account.providerId, 'sso')))).toBe(0)
+        } finally {
+          // A half-built SCIM link left in the shared database breaks the SCIM suite's decommission walk.
+          await db.delete(user).where(eq(user.id, created.id))
+        }
+      },
+    )
+
+    it('refuses sign-in and callbacks on a retired connection', async () => {
+      await db
+        .update(identityConnection)
+        .set({ status: 'retired' })
+        .where(eq(identityConnection.id, secondConnectionId))
+
+      expect((await signIn(secondProviderId, `retired-${crypto.randomUUID()}@example.com`)).status).toBe(403)
+    })
+
+    it('refuses a sign-in that names no provider', async () => {
+      await withOidcFetch(async () => {
+        const { createAuth } = await import('./auth')
+        const app = new Elysia({ prefix: '/v1' }).mount(createAuth(db).handler)
+
+        const res = await app.handle(
+          new Request('http://localhost/v1/api/auth/sign-in/sso', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: 'someone@keycloak.test', callbackURL }),
+          }),
+        )
+
+        expect(res.status).toBe(403)
+      })
+    })
+  })
+
   describe('OIDC configuration validation', () => {
     it('should throw when OIDC_ISSUER is missing', async () => {
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
@@ -549,11 +924,12 @@ describe('OIDC Integration', () => {
   })
 
   describe('SSO provider self-registration', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
         ...baseSettings,
         oidcIssuer: oidcIssuerUrl,
       })
+      await seedEnvConnection()
     })
 
     afterEach(async () => {
@@ -587,7 +963,7 @@ describe('OIDC Integration', () => {
       )
 
       expect(res.status).toBe(403)
-      expect(await db.select().from(ssoProvider)).toHaveLength(0)
+      expect(await db.$count(ssoProvider, eq(ssoProvider.providerId, 'attacker-idp'))).toBe(0)
     })
 
     it('refuses the owner of a stored provider row an edit', async () => {

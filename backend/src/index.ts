@@ -19,6 +19,8 @@ import { createAuditRoutes } from '@/identity/audit/routes'
 import { ensureImplicitOrganization } from '@/identity/organization'
 import { resumeScimRetirements } from '@/identity/scim/connections'
 import { createAuth } from '@/auth/auth'
+import { ensureEnvSsoConnection } from '@/identity/sso-connections'
+import { createSsoRoutes } from '@/identity/sso-routes'
 import { releaseOpenHolds } from '@/inference/managed-request'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createAppVersionMiddleware } from '@/middleware/app-version'
@@ -155,6 +157,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createMicrosoftAuthRoutes(auth, fetchFn, integrationOAuthRateLimit))
       .use(createOidcConfigRoutes())
       .use(createSsoDesktopCallbackRoutes(settings, fetchFn))
+      .use(createSsoRoutes({ settings, database, ipRateLimit: createAuthIpRateLimit(database, ipRateLimitSettings) }))
       .use(createProToolsRoutes(auth, proRateLimit))
       .use(
         createUniversalProxyRoutes({
@@ -273,6 +276,7 @@ const startServer = async () => {
     // existing users' memberships must exist before the first request.
     const { db: bootDb } = await import('@/db/client')
     await ensureImplicitOrganization(bootDb)
+    await ensureEnvSsoConnection(bootDb, settings)
 
     // Downloads the operator's fonts and logos before the server takes traffic, so
     // a pod that joins a rolling deploy serves them from its first /config: a

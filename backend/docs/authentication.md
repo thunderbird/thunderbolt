@@ -100,7 +100,7 @@ Sign-in errors: `OTP_EXPIRED`, `INVALID_OTP`, `TOO_MANY_ATTEMPTS` (Better Auth),
 
 `sendVerificationOTP` runs the waitlist check regardless of `WAITLIST_ENABLED` ([configuration.md](../../docs/self-hosting/configuration.md)). A new address gets a `pending` entry and the "joined" email; a still-pending address gets the "not ready" email. Neither reply carries a code, and `deletePersistedSignInOtp` removes the one Better Auth already wrote to `verification`, which would otherwise exist for an account not allowed to use it.
 
-Addresses matching `isAutoApprovedDomain` skip straight to approved. Addresses `admitsWithoutWaitlist` allows (`BOOTSTRAP_ADMIN_EMAILS`) skip the waitlist entirely and get no waitlist row.
+Addresses matching `isAutoApprovedDomain` skip straight to approved. Addresses `admitsWithoutWaitlist` allows (`BOOTSTRAP_ADMIN_EMAILS`, a usable invitation, an enrollable org domain, or open sign-up) skip the waitlist entirely and get no waitlist row.
 
 Email locale comes from the `X-App-Language` header on the triggering request, never a stored column. Call-shape traps: [transactional email in AGENTS.md](../../AGENTS.md#transactional-email-backend).
 

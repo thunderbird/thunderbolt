@@ -6,9 +6,9 @@ Each install of Thunderbolt is a device on someone's account.
 
 ## Who does what
 
-Device management is self-service. Each person manages the devices on their own account under **Settings → Devices**, approving, denying, or revoking from another device on the same account that is already trusted. The account owner can also delete the account and its server-side data, from **Settings → Preferences → Data**.
+Device management is self-service. Each person manages the devices on their own account under **Settings → Devices**, approving, denying, or revoking from another device on the same account that is already trusted. The account owner can also delete the account and its server-side data, from **Settings → Preferences → Data**, unless your identity provider manages the account through SCIM: then only the provider removes it.
 
-There is no server-side admin console for browsing or revoking other people's devices. If an employee leaves and you need their access cut off, disable or delete the account in your identity provider. That stops new sign-ins; it does not by itself end existing sessions on devices already signed in.
+There is no server-side admin console for browsing or revoking other people's devices. If an employee leaves and you need their access cut off, disable or delete the account in your identity provider. With SCIM provisioning, disabling them ends their sessions and refuses their API keys and sync, and deleting them also revokes their devices, sessions and API keys. With SSO alone, that stops new sign-ins; it does not by itself end existing sessions on devices already signed in.
 
 ## What counts as a device
 

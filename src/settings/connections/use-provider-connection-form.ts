@@ -14,6 +14,7 @@ import {
 } from '@/dal/provider-connections'
 import { getAvailableModels } from '@/dal/models'
 import { createIdentityController } from '@/lib/identity-lifetime'
+import { useReportConnectionEvent } from '@/lib/report-connection-event'
 import { canConnectChatGPT } from '@/providers/chatgpt-auth'
 import { useChatStore } from '@/chats/chat-store'
 import { loadOtariSearchStatus } from '@/integrations/otari-search/capabilities'
@@ -46,6 +47,7 @@ export const useProviderConnectionForm = ({
   const { t } = useLingui()
   const db = useDatabase()
   const queryClient = useQueryClient()
+  const reportConnectionEvent = useReportConnectionEvent()
   const definition = getProviderDefinition(provider)
   const pending = useRef<ReturnType<typeof createIdentityController> | null>(null)
   useEffect(() => () => pending.current?.abort(), [])
@@ -71,6 +73,12 @@ export const useProviderConnectionForm = ({
       if (editing && !credentialsChanged) {
         controller.signal.throwIfAborted()
         await updateProviderConnection(db, connection!.id, { name: state.name.trim() })
+        reportConnectionEvent({
+          action: 'user_connection.updated',
+          target: { type: 'provider_connection', id: connection!.id },
+          provider,
+          authMethod: connection!.authMethod ?? undefined,
+        })
         return {
           id: connection!.id,
           revision: (await getProviderConnectionRevision(db, connection!.id))!,
@@ -87,6 +95,12 @@ export const useProviderConnectionForm = ({
         credentials: { apiKey: state.apiKey.trim() },
         enabled: connection ? connection.enabled === 1 : true,
         signal: controller.signal,
+      })
+      reportConnectionEvent({
+        action: connection ? 'user_connection.credential_replaced' : 'user_connection.added',
+        target: { type: 'provider_connection', id: saved.id },
+        provider,
+        authMethod: 'api_key',
       })
       return { ...saved, controller, credentialsChanged: true }
     },

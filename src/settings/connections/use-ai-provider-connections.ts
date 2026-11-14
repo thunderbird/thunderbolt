@@ -18,9 +18,16 @@ import {
   getModelProviderConnectionIds,
   updateProviderConnection,
 } from '@/dal/provider-connections'
+import { useReportConnectionEvent } from '@/lib/report-connection-event'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 
 type ConnectionChange = { kind: 'update'; id: string; enabled: boolean } | { kind: 'disconnect' | 'remove'; id: string }
+
+const auditActionByKind = {
+  update: 'user_connection.updated',
+  disconnect: 'user_connection.removed',
+  remove: 'user_connection.removed',
+} as const
 
 /** Owns provider metadata controls independently of model and search preferences. */
 export const useAiProviderConnections = () => {
@@ -28,6 +35,7 @@ export const useAiProviderConnections = () => {
   const db = useDatabase()
   const { isProviderVisible } = useProviderVisibility()
   const queryClient = useQueryClient()
+  const reportConnectionEvent = useReportConnectionEvent()
   const { data: allProviders = [], isSuccess: providersReady } = useQuery({
     queryKey: ['provider-connections'],
     query: toCompilableQuery(getProviderConnections(db)),
@@ -51,6 +59,13 @@ export const useAiProviderConnections = () => {
       } else {
         await disconnectProviderConnection(db, change.id)
       }
+      const connection = allProviders.find(({ id }) => id === change.id)
+      reportConnectionEvent({
+        action: auditActionByKind[change.kind],
+        target: { type: 'provider_connection', id: change.id },
+        provider: connection?.provider ?? undefined,
+        authMethod: connection?.authMethod ?? undefined,
+      })
       const [models] = await Promise.all([
         getAvailableModels(db),
         queryClient.invalidateQueries({ queryKey: ['provider-connections'] }),

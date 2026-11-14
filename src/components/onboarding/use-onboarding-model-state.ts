@@ -13,6 +13,7 @@ import { useChatStore } from '@/chats/chat-store'
 import type { OnboardingProvider } from './provider-default-model'
 import { isStandaloneModelReady } from '@/settings/models/model-policy'
 import type { Model } from '@/types'
+import { useReportConnectionEvent } from '@/lib/report-connection-event'
 
 /** Only configured, enabled user models can satisfy standalone onboarding. */
 export const isConfiguredStandaloneModel = (model: Model): boolean =>
@@ -23,6 +24,7 @@ export const useOnboardingModelState = () => {
   const db = useDatabase()
   const { isProviderVisible } = useProviderVisibility()
   const queryClient = useQueryClient()
+  const reportConnectionEvent = useReportConnectionEvent()
   const { data: models = [], isLoading: modelsLoading } = useQuery({
     queryKey: ['models', 'onboarding'],
     query: toCompilableQuery(getAllModels(db)),
@@ -48,6 +50,12 @@ export const useOnboardingModelState = () => {
       connections.find((connection) => connection.id === selected?.providerConnectionId)
     if (connection) {
       await disconnectProviderConnection(db, connection.id)
+      reportConnectionEvent({
+        action: 'user_connection.removed',
+        target: { type: 'provider_connection', id: connection.id },
+        provider: connection.provider,
+        authMethod: connection.authMethod ?? undefined,
+      })
     }
     useChatStore.getState().setModels(await getAvailableModels(db))
     await queryClient.invalidateQueries({ queryKey: ['models'] })

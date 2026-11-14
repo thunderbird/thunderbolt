@@ -31,6 +31,7 @@ import { OnboardingServerStep } from './onboarding-server-step'
 import { useOnboardingServerState } from './use-onboarding-server-state'
 import { useNeedsOwnModel } from '@/hooks/use-needs-own-model'
 import { preloadInBackground } from '@/lib/after-paint'
+import { useReportConnectionEvent } from '@/lib/report-connection-event'
 
 /** Share the AI setup bundle between lazy rendering and background preloading. */
 const loadOnboardingModelStep = () => import('./onboarding-model-step')
@@ -74,6 +75,7 @@ const OnboardingWizard = ({ isOpen, isMobile }: { isOpen: boolean; isMobile: boo
   const { hasBuiltInSearch } = useSearchProviderAvailability()
   const db = useDatabase()
   const queryClient = useQueryClient()
+  const reportConnectionEvent = useReportConnectionEvent()
   const { dataCollection } = useSettings({ data_collection: true })
   const { state, actions, stepIndex, totalSteps } = useOnboardingState({ isStandalone, hasBuiltInSearch })
   const accountPasskey = useAccountPasskey()
@@ -103,6 +105,12 @@ const OnboardingWizard = ({ isOpen, isMobile }: { isOpen: boolean; isMobile: boo
   // Owned here (the connected container) so the auth step stays presentational.
   const handleProviderDisconnect = async (provider: OAuthProvider) => {
     await deleteIntegrationCredentials(db, provider)
+    reportConnectionEvent({
+      action: 'user_connection.removed',
+      target: { type: 'integration', id: provider },
+      provider,
+      authMethod: 'oauth',
+    })
     await queryClient.invalidateQueries({ queryKey: ['integrationStatus'] })
   }
 

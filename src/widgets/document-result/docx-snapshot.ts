@@ -3,32 +3,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { defaultOptions, type Options, parseAsync, renderDocument } from 'docx-preview'
-import { unzipSync, zipSync } from 'fflate'
-
-const mib = 1024 * 1024
+import { zipSync } from 'fflate'
+import { type DocumentSnapshot, PastLimitsError, renderSnapshot, snapshotLimits, unpackWithinLimits } from './snapshot'
 
 /** Past any limit the preview is refused. At these limits every measured preview painted in under a second. */
 export const docxPreviewLimits = {
-  fileBytes: 10 * mib,
+  ...snapshotLimits,
   /** What `word/document.xml` unpacks to. 3.5 MB is about 1,000 pages. */
   documentXmlBytes: 3_500_000,
-  /**
-   * What all the parts together unpack to. Pictures barely compress, so a document at the file limit unpacks to
-   * little more than its size; this stops a small file that would unpack to gigabytes.
-   */
-  unzipBytes: 32 * mib,
-  /** The most parts a classic zip lists. A ZIP64 directory can claim more than it holds. */
-  parts: 65_535,
 }
-
-/** A document's pages as markup for the sandboxed frame, with their width in CSS pixels, or why there are none. */
-export type DocxSnapshot =
-  | { kind: 'pages'; html: string; width: number }
-  | { kind: 'tooLarge' }
-  | { kind: 'unreadable' }
-
-/** The snapshot's own policy: its styles, and pictures and fonts embedded as `data:` URLs. Nothing else loads. */
-const snapshotPolicy = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:"
 
 /** The padding the renderer's wrapper puts on each side of the pages. */
 const wrapperPadding = 30
@@ -36,46 +19,9 @@ const wrapperPadding = 30
 /** US Letter, for a document whose pages give no width: the thumbnail still needs one to scale to. */
 const letterWidthPt = 612
 
-/** A part's name as the renderer's zip reader resolves it, applying `.`, `..` and empty segments. */
-const resolvePartName = (name: string) => {
-  const segments: string[] = []
-  name.split('/').forEach((segment, index, all) => {
-    if (segment === '..') {
-      segments.pop()
-    } else if (segment !== '.' && (segment !== '' || index === 0 || index === all.length - 1)) {
-      segments.push(segment)
-    }
-  })
-  return segments.join('/')
-}
-
-/** Thrown for a file past one of {@link docxPreviewLimits}. */
-class PastLimitsError extends Error {}
-
-/**
- * The file's parts, unpacked within the limits and stored again without compression. The renderer's zip reader
- * (JSZip) unpacks a part in full before it compares it with the size the zip declares, so it only gets parts unpacked
- * here first, each into a buffer no larger than counted.
- */
-const unpackWithinLimits = async (blob: Blob) => {
-  if (blob.size > docxPreviewLimits.fileBytes) {
-    throw new PastLimitsError()
-  }
-  const unpacked = { parts: 0, bytes: 0 }
-  const entries = unzipSync(new Uint8Array(await blob.arrayBuffer()), {
-    // fflate copies a stored part at its packed size and inflates one into a buffer of its declared size, so each
-    // part counts at the larger of the two. Throwing ends the scan, which a forged ZIP64 entry count can stretch.
-    filter: ({ size, originalSize }) => {
-      unpacked.parts += 1
-      unpacked.bytes += Math.max(size, originalSize)
-      if (unpacked.parts > docxPreviewLimits.parts || unpacked.bytes > docxPreviewLimits.unzipBytes) {
-        throw new PastLimitsError()
-      }
-      return true
-    },
-  })
-  // A later part with the same resolved name replaces an earlier one, as in the zip reader.
-  const parts = Object.fromEntries(Object.entries(entries).map(([name, data]) => [resolvePartName(name), data]))
+/** The document's parts within the limits, stored again without compression for the renderer. */
+const partsWithinLimits = async (blob: Blob) => {
+  const parts = await unpackWithinLimits(blob)
   // The renderer also looks a part up by its name with backslashes.
   const body = parts['word/document.xml'] ?? parts['word\\document.xml']
   if ((body?.length ?? 0) > docxPreviewLimits.documentXmlBytes) {
@@ -161,23 +107,17 @@ const prepareForMarkup = (wrapper: HTMLDivElement) => {
 
 /**
  * Renders a DOCX into a static page for a frame with `sandbox=""`, whose policy loads nothing outside it. Links lose
- * their targets: a snapshot cannot follow them. A file the renderer cannot read, damaged or using something it does not
- * handle, gets a refusal like one past the limits, so Download still works.
+ * their targets: a snapshot cannot follow them.
  */
-export const renderDocxSnapshot = async (blob: Blob): Promise<DocxSnapshot> => {
-  try {
-    const { styles, wrapper } = await renderPages(await unpackWithinLimits(blob))
+export const renderDocxSnapshot = (blob: Blob): Promise<DocumentSnapshot> =>
+  renderSnapshot('docx preview', async () => {
+    const { styles, wrapper } = await renderPages(await partsWithinLimits(blob))
     prepareForMarkup(wrapper)
-    const html =
-      `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="${snapshotPolicy}">` +
-      '<style>body { margin: 0; background: gray; } svg { overflow: visible; }</style>' +
-      `${styles.map(styleMarkup).join('')}</head><body>${wrapper.outerHTML}</body></html>`
-    return { kind: 'pages', html, width: pagesWidth(wrapper) }
-  } catch (error) {
-    if (error instanceof PastLimitsError) {
-      return { kind: 'tooLarge' }
+    return {
+      head:
+        '<style>body { margin: 0; background: gray; } svg { overflow: visible; }</style>' +
+        styles.map(styleMarkup).join(''),
+      body: wrapper.outerHTML,
+      width: pagesWidth(wrapper),
     }
-    console.error('[docx preview] Could not render the document', error)
-    return { kind: 'unreadable' }
-  }
-}
+  })

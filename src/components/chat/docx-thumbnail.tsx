@@ -16,10 +16,10 @@ type DocxThumbnailProps = {
  */
 export const DocxThumbnail = ({ localFileId, title }: DocxThumbnailProps) => {
   const state = useLocalDocumentBlob(localFileId, 'docx')
-  if (state.status !== 'ready' || state.docx?.kind !== 'pages') {
+  if (state.status !== 'ready' || state.snapshot?.kind !== 'pages') {
     return null
   }
-  const { html, width } = state.docx
+  const { html, width } = state.snapshot
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden bg-white">
       <iframe

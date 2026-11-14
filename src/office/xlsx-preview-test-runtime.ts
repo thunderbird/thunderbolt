@@ -125,6 +125,7 @@ export const hostileWorkbook = (excelize: Excelize) => {
   const sheet = '<img src=x onerror=alert(1)>'
   settle(f.SetSheetName('Sheet1', sheet))
   settle(f.SetCellValue(sheet, 'A1', '<img src=x onerror="window.__xlsxProbe=1">'))
+  // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag -- a hostile cell on purpose; the preview must show it as text.
   settle(f.SetCellValue(sheet, 'B1', '<script>window.__xlsxProbe=1</script>'))
   settle(f.SetCellValue(sheet, 'A2', 'click me'))
   settle(f.SetCellHyperLink(sheet, 'A2', 'javascript:window.__xlsxProbe=1', 'External'))

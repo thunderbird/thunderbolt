@@ -281,6 +281,7 @@ describe('the spreadsheet preview', () => {
     const { container } = await showWorkbook(hostileWorkbook(excelize))
 
     const grid = screen.getByRole('grid', { name: '<img src=x onerror=alert(1)>' })
+    // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag -- the assertion queries literal text; it inserts no HTML.
     expect(within(grid).getByText('<script>window.__xlsxProbe=1</script>')).toBeDefined()
     expect(within(grid).getByText('<img src=x onerror="window.__xlsxProbe=1">')).toBeDefined()
     expect(container.querySelector('script')).toBeNull()

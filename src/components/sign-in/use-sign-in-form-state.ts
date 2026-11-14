@@ -9,7 +9,7 @@ import { msg } from '@lingui/core/macro'
 import { otpLength } from '@/lib/constants'
 import { useAnonymousPromotionAnalytics } from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { HttpError, type HttpClient } from '@/lib/http'
-import { getOtpErrorMessage } from '@/lib/otp-error-messages'
+import { getOtpErrorMessage, isSsoRequiredError, ssoRequired } from '@/lib/otp-error-messages'
 import { isPasskeyCancellation, signInWithPasskey } from '@/lib/passkey'
 import { isValidEmailFormat } from '@/lib/utils'
 import { useAuthAttempt } from '@/hooks/use-auth-attempt'
@@ -266,7 +266,11 @@ export const useSignInFormState = ({
         console.error('Passkey sign-in error:', error)
       }
       if (attempt.isCurrent()) {
-        dispatch(cancelled ? { type: 'PASSKEY_CANCEL' } : { type: 'PASSKEY_ERROR', payload: i18n._(passkeyFailed) })
+        dispatch(
+          cancelled
+            ? { type: 'PASSKEY_CANCEL' }
+            : { type: 'PASSKEY_ERROR', payload: i18n._(isSsoRequiredError(error) ? ssoRequired : passkeyFailed) },
+        )
       }
       attempt.finish('failed')
     } finally {

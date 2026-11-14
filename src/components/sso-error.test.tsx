@@ -54,6 +54,7 @@ describe('SsoError', () => {
     ['ACCESS_NOT_MEMBER', /Your organization hasn't given you access to Thunderbolt yet/],
     ['SSO_USER_RESOLUTION_FAILED', /We couldn't match this sign-in to an account/],
     ['SSO_CONNECTION_UNAVAILABLE', /This sign-in option is no longer available/],
+    ['SSO_MATCH_CLAIM_MISSING', /didn't send the identifier your organization matches accounts on/],
   ])('explains a sign-in the organization refused with %s', (code, message) => {
     renderAt(`?error=${code}`)
 

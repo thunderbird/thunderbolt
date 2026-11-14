@@ -9,6 +9,7 @@ import type { Excelize, ExcelizeEngine } from './excelize-engine'
 import { columnName, columnNumber, decodeXml, type WorkbookParts } from './formula-cache'
 import {
   type Anchor,
+  attributeText,
   type ChartKind,
   drawingObjects,
   type DrawingObject,
@@ -140,8 +141,8 @@ const range = (length: number) => Array.from({ length }, (_, i) => i)
 const clamp = (value: number, max: number) => Math.min(max, Math.max(0, value))
 
 // Each pattern stops at the next `<`, so a scan stays linear on any input. Attribute values may use single or double
-// quotes, as XML allows.
-const sheetTagPattern = /<(?:[\w.-]+:)?(row|c)\b([^<>]*)>/g
+// quotes, as XML allows, and may hold a `>`.
+const sheetTagPattern = new RegExp(String.raw`<(?:[\w.-]+:)?(row|c)\b(${attributeText})>`, 'g')
 
 const attributePattern = (name: string) => new RegExp(`(?:^|\\s)${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`)
 
@@ -214,7 +215,7 @@ const scanCells = (xml: string, maxCells: number) => {
  * self-closing one holds nothing.
  */
 const sheetDataOf = (xml: string) => {
-  const open = /<(?:[\w.-]+:)?sheetData\b[^<>]*>/.exec(xml)
+  const open = new RegExp(String.raw`<(?:[\w.-]+:)?sheetData\b${attributeText}>`).exec(xml)
   if (!open || open[0].endsWith('/>')) {
     return ''
   }
@@ -224,8 +225,12 @@ const sheetDataOf = (xml: string) => {
 
 /** Formulas saved with no result: a cell's `<f>` that no `<v>` follows. An empty `<v/>` is a saved empty text. */
 const missingResults = (xml: string) =>
-  sheetDataOf(xml).match(/<(?:[\w.-]+:)?f\b[^<>]*?(?:\/>|>[^<]*<\/(?:[\w.-]+:)?f>)(?!\s*<(?:[\w.-]+:)?v\b)/g)?.length ??
-  0
+  sheetDataOf(xml).match(
+    new RegExp(
+      String.raw`<(?:[\w.-]+:)?f\b${attributeText}(?:\/>|>[^<]*<\/(?:[\w.-]+:)?f>)(?!\s*<(?:[\w.-]+:)?v\b)`,
+      'g',
+    ),
+  )?.length ?? 0
 
 const countMerges = (xml: string) => xml.match(/<(?:[\w.-]+:)?mergeCell\b/g)?.length ?? 0
 
@@ -233,7 +238,7 @@ const hasElement = (xml: string, name: string) => new RegExp(`<(?:[\\w.-]+:)?${n
 
 /** True when an inline string or a saved result in a sheet part is longer than `limit` characters. */
 const hasLongText = (xml: string, limit: number) =>
-  [...xml.matchAll(new RegExp(`<(?:[\\w.-]+:)?[tv]\\b[^<>]*>([^<]{${limit + 1},})<`, 'g'))].some(
+  [...xml.matchAll(new RegExp(String.raw`<(?:[\w.-]+:)?[tv]\b${attributeText}>([^<]{${limit + 1},})<`, 'g'))].some(
     ([, text]) => decodeXml(text).length > limit,
   )
 

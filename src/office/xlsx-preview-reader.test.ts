@@ -898,12 +898,18 @@ describe('the spreadsheet preview reader on adversarial workbooks', () => {
     expect(tooLargeOf(`<?probe <!-- ?>${many}`)).toBe(true)
     // A cell at XFD1048576 written as text inside a CDATA is text, not a cell.
     expect(tooLargeOf(cdata.replace('<!--', '<row r="1048576"><c r="XFD1048576"/></row>'))).toBe(false)
+    // A quoted `>` does not end the tag, so the reference after it still counts: 12 rows reaching column T pass 200.
+    const quoted = (row: number) => `<row r="${row}"><c note="?>" r="T${row}"><v>1</v></c></row>`
+    expect(tooLargeOf(Array.from({ length: 12 }, (_, i) => quoted(i + 1)).join(''))).toBe(true)
   })
 
   it.each([
     ['a DOCTYPE', '<!DOCTYPE worksheet [<!ENTITY ignored "<!--">]>'],
     ['a lowercase doctype', '<!doctype worksheet [<!ENTITY ignored "<!--">]>'],
     ['an ENTITY with no DOCTYPE', '<!ENTITY ignored "<!--">'],
+    ['a directive that starts with an underscore', '<!_ ignored "<!--">'],
+    ['a directive that starts with a digit', '<!1 ignored "<!--">'],
+    ['a directive that starts with a space', '<! ignored "<!--">'],
   ])('refuses as damaged a sheet that carries %s, since the preview reads no directive', (_, directive) => {
     const bytes = patched(excelize.NewFile(), 'xl/worksheets/sheet1.xml', (xml) => xml.replace('?>', `?>${directive}`))
     const error = (() => {

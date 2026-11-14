@@ -228,10 +228,16 @@ const parseXml = (xml: Uint8Array) => {
 }
 
 /**
- * Comments, CDATA sections, processing instructions and directives (`<!` and a letter, such as `<!DOCTYPE` or
- * `<!ENTITY`): what a raw scan must not read as elements.
+ * Comments, CDATA sections, processing instructions and any other `<!` (a directive such as `<!DOCTYPE`,
+ * `<!ENTITY` or `<!_`): what a raw scan must not read as elements.
  */
-const markupPattern = /<(?:!--|!\[CDATA\[|\?|![A-Za-z])/g
+const markupPattern = /<(?:!--|!\[CDATA\[|\?|!)/g
+
+/**
+ * A tag's attribute text, read as an XML parser reads it: a `>` inside a quoted value does not end the tag. A value
+ * cannot hold `<`, so a pattern built on this never runs past the next tag and stays linear.
+ */
+export const attributeText = String.raw`(?:[^<>"']|"[^"<]*"|'[^'<]*')*`
 
 const escapeText = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
@@ -258,7 +264,7 @@ export const scannableXml = (xml: string) => {
     }
     kept.push(xml.slice(at, found.index))
     const [opener] = found
-    if (/^<![A-Za-z]$/.test(opener)) {
+    if (opener === '<!') {
       throw new Error('A part of the workbook holds a DOCTYPE or another directive, which the preview does not read.')
     }
     const closer = opener === '<!--' ? '-->' : opener === '<?' ? '?>' : ']]>'
@@ -273,9 +279,11 @@ export const scannableXml = (xml: string) => {
   return kept.join('')
 }
 
-/** The attribute text of each `name` tag in a part. A tag ends at the next `<`, so the scan stays linear. */
+/** The attribute text of each `name` tag in a part. */
 const tagsIn = (xml: string, name: string) =>
-  [...xml.matchAll(new RegExp(`<(?:[\\w.-]+:)?${name}\\b([^<>]*)>`, 'g'))].map(([, attributes]) => attributes)
+  [...xml.matchAll(new RegExp(String.raw`<(?:[\w.-]+:)?${name}\b(${attributeText})>`, 'g'))].map(
+    ([, attributes]) => attributes,
+  )
 
 /** An attribute's value in a tag's attribute text, in either quote style, its references resolved. */
 const attributeIn = (attributes: string, name: string) => {

@@ -9,6 +9,7 @@ import { fakeProviderReply } from './fake-provider'
 import { loginViaEmailCode, sendChatPrompt } from './helpers'
 import { expect } from './test'
 
+/** Picks the model the fake provider plays. */
 const chooseFakeModel = async (page: Page) => {
   await page.getByTestId('model-selector-trigger').click()
   await page.getByRole('button', { name: `${defaultModelOpus55.name} Thunderbolt`, exact: true }).click()
@@ -42,6 +43,7 @@ const appCsp = () => {
     .join('; ')
 }
 
+/** Text escaped for a double-quoted HTML attribute. */
 const escapeAttribute = (text: string) => text.replaceAll('&', '&amp;').replaceAll('"', '&quot;')
 
 /**

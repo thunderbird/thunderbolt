@@ -85,6 +85,7 @@ const pictureUrls = async (media: Map<string, Uint8Array>) => {
   return urls
 }
 
+/** Resolves on the page's next animation frame, when the renderer starts the charts it has queued. */
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
 
 /**

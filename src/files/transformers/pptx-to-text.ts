@@ -108,6 +108,7 @@ const checkDepth = (xml: string) => {
   }
 }
 
+/** A part's root element, once its depth has passed {@link checkDepth}, or `undefined` when the deck has no such part. */
 const parseXml = (parts: Parts, path: string) => {
   const bytes = parts.get(path)
   if (!bytes) {
@@ -129,6 +130,7 @@ const relationships = (parts: Parts, part: string) => {
   }))
 }
 
+/** Whether `node` is an element with the given namespace and local name. */
 const isElement = (node: Node, namespace: string, name: string): node is Element =>
   node instanceof Element && node.namespaceURI === namespace && node.localName === name
 
@@ -246,6 +248,7 @@ const lines = (root?: Element) => {
   return found.filter(({ text }) => text !== '')
 }
 
+/** Whether a placeholder type holds a slide's title. */
 const isTitle = (placeholder?: string) => placeholder === 'title' || placeholder === 'ctrTitle'
 
 /** Placeholders that repeat on every slide: its number, date, header and footer. */

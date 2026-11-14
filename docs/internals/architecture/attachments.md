@@ -156,8 +156,7 @@ on the embedded path.
 
 Text-ish types (`text/*`, `application/json`) resolve to
 [`text-passthrough.ts`](../../../src/files/transformers/text-passthrough.ts) with no entry.
-[`docx-to-html.ts`](../../../src/files/transformers/docx-to-html.ts) is in the folder but not the registry: it serves
-the preview pane, and lives here so the viewer and the delivery pipeline share one mammoth dependency.
+mammoth only extracts text. The DOCX preview is not a transformer: see [DOCX preview](#docx-preview).
 
 Loaders are dynamic imports, keeping pdfjs, mammoth, read-excel-file and fflate out of the entry bundle.
 `pdf-to-images` caps at `maxPages = 10`, `renderScale = 2`: legible to a vision model, bounded so a long scan does not
@@ -214,15 +213,41 @@ After a conversion the sent bubble offers the remaining modes as manual "Resend 
 
 ## Viewing
 
-| Card type            | Renders                                                                                                                                                                                              |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| PDF, image, DOCX     | Blob read through `useLocalDocumentBlob` ([`src/widgets/document-result/use-document-blob.ts`](../../../src/widgets/document-result/use-document-blob.ts)); the DOCX branch renders via `docxToHtml` |
-| Markdown, other text | A snippet read straight from the store ([`text-snippet.tsx`](../../../src/components/chat/text-snippet.tsx))                                                                                         |
+| Card type            | Renders                                                                                                                                                                                                                      |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PDF, image, DOCX     | Blob read through `useLocalDocumentBlob` ([`src/widgets/document-result/use-document-blob.ts`](../../../src/widgets/document-result/use-document-blob.ts)); the DOCX branch renders its pages as a [snapshot](#docx-preview) |
+| Markdown, other text | A snippet read straight from the store ([`text-snippet.tsx`](../../../src/components/chat/text-snippet.tsx))                                                                                                                 |
 
 The card ([`file-card.tsx`](../../../src/components/chat/file-card.tsx)) renders a thumbnail per type, with react-pdf
 lazily imported. Clicking a sent attachment, or the chip of a file the agent created, opens it in the side view as a
 `local-file` ([`src/content-view/sideview.tsx`](../../../src/content-view/sideview.tsx)). A non-native delivery mode
 shows as a badge on the card.
+
+### DOCX preview
+
+[`docx-snapshot.ts`](../../../src/widgets/document-result/docx-snapshot.ts) renders a DOCX's pages with
+`docx-preview`, loaded only when a DOCX opens. The same snapshot shows in the side panel, on the attachment card, and
+for a document opened from a search result. The file is untrusted, so:
+
+- The pages are built in a document with no window, so nothing in them loads or runs while they render. The
+  library's altChunk support is off: an altChunk is HTML from the file, which it would show in a frame with no
+  sandbox.
+- The result is a static page in an `<iframe sandbox="">`. Its policy loads only its inline styles and `data:`
+  pictures and fonts. Links lose their targets. So that the markup reads back as built, an inline picture's wrapper
+  becomes a `<span>` (a `<div>` would close its paragraph), and legacy VML drawings drop the size the library
+  measures for them, which is 0 with no layout.
+- CSS that carries text from the file, such as a font name, has its `<` escaped, so it cannot close the style
+  element.
+- A file over 10 MiB, one whose `word/document.xml` unpacks to over 3.5 MB (about 1,000 pages), or one whose parts
+  unpack to over 32 MiB in all gets a refusal, and Download still works. The app unpacks the parts itself, within
+  those limits, and gives the library a copy stored without compression, because the library's zip reader unpacks a
+  part in full before it checks the size the file declares. Part names resolve as that reader resolves them, so
+  `word/x/../document.xml` counts as `word/document.xml`. A main part under another name is held to the 32 MiB total
+  only.
+- A file the library cannot read, damaged or using something it does not handle (a delimiter equation with no
+  properties, for one), shows that it can't be previewed, and Download still works.
+- Pages wider than the panel, as on a phone, scale down to its width
+  ([`docx-pages.tsx`](../../../src/widgets/document-result/docx-pages.tsx)).
 
 ### Spreadsheet preview
 

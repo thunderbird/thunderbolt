@@ -128,8 +128,8 @@ PostHog client.
 [`sideview.tsx:31`](../../../src/content-view/sideview.tsx), lazy-load the viewer if it pulls in a heavy
 dependency, render a `ContentViewHeader` in it, and call `showSideview('<your-type>', id)` from the
 trigger. `sideviewType` is a plain string so a new kind needs no context change. (The PDF path
-defers react-pdf and pdfjs; its DOCX branch defers mammoth inside the shared
-[`docxToHtml`](../../../src/files/transformers/docx-to-html.ts) transformer.)
+defers react-pdf and pdfjs; its DOCX branch defers docx-preview until a DOCX opens, in
+[`docx-snapshot.ts`](../../../src/widgets/document-result/docx-snapshot.ts).)
 
 **A whole new kind:** extend the `ContentViewState` union and the context type, add a `showX` action
 that emits `content_view_open`, and add the render branch in `main-layout.tsx`. Only when the payload

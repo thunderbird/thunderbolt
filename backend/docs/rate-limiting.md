@@ -16,6 +16,8 @@ Hardcoded per-tier budgets, enforced by a Postgres-backed limiter in [backend/sr
 | `scim`                     | 1200 / minute | SCIM bearer token        | `/v1/api/auth/scim/v2/*`                                                                 |
 | `scim-auth-failure`        | 20 / minute   | client IP, 401s only     | `/v1/api/auth/scim/v2/*`                                                                 |
 | `scim-failure-record`      | 60 / hour     | SCIM credential          | audit rows for rejected SCIM requests; never refuses a request                           |
+| `audit-admin-denied`       | 10 / hour     | user                     | the `admin.access_denied` audit event, not the request. Always on.                       |
+| `audit-client-event`       | 60 / hour     | user                     | `POST /v1/audit/client-events`. Always on.                                               |
 
 Limits are hardcoded in `tierConfigs` ([rate-limit.ts:48](../src/middleware/rate-limit.ts)), not configurable, so every deployment enforces a known floor and no env var can quietly raise it. The exceptions are `anonymous-sign-in` and `captcha-challenge`, whose budgets both come from `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX` / `_WINDOW_SECS` (with ALTCHA, every anonymous sign-in fetches one challenge first) and cannot be raised without a captcha while anonymous auth is on, and `anonymous-sign-in-global`, sized by `ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX` / `_WINDOW_SECS`. That last one is a single `anonymous-sign-in-global:all` bucket every client shares, and it is the cap on scripted anonymous sign-up. It counts only sign-ins that passed the captcha (all of them with `CAPTCHA_PROVIDER=none`): `createAuth` charges it through `createRateLimitConsumer` in the Better Auth before-hook, after captcha verification and the session-fixation guard, so the per-IP bucket runs first and an unsolved request never spends a point. Its 429 comes from Better Auth (`{ message }` with `Retry-After` and `RateLimit-*` headers), not from the Elysia limiter.
 
@@ -33,6 +35,10 @@ An IdP's sync sends several requests per user (a Keycloak full sync is about 9),
 - `scim-failure-record` is keyed on the credential a rejected request authenticated as, and bounds the failed `scim.request` audit events it can leave. Past it the event is dropped and the request is answered as usual.
 
 The first two answer with SCIM's error body (`application/scim+json`, `status: "429"`) and `Retry-After`.
+
+### Audit budgets
+
+Two tiers bound the audit log rather than the API, so they ignore `RATE_LIMIT_ENABLED`. `audit-admin-denied` caps the `admin.access_denied` events one user can cause, through `createAuditBudget` ([identity/audit/write.ts](../src/identity/audit/write.ts)): past it the request still gets its 403, and only the event is skipped. `audit-client-event` caps the app's client-reported events at the route, with a 429.
 
 ## How tiers map to buckets
 

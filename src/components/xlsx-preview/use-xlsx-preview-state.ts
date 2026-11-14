@@ -18,7 +18,7 @@ type XlsxPreviewState =
   | { status: 'ready'; overview: WorkbookOverview; sheetIndex: number; sheet?: SheetView }
 
 type Action =
-  | { type: 'opened'; overview: WorkbookOverview }
+  | { type: 'opened'; overview: WorkbookOverview; sheetIndex: number }
   | { type: 'selected'; index: number }
   | { type: 'sheetLoaded'; sheet: SheetView }
   | { type: 'failed'; failure: PreviewFailure }
@@ -26,7 +26,7 @@ type Action =
 const reducer = (state: XlsxPreviewState, action: Action): XlsxPreviewState => {
   switch (action.type) {
     case 'opened':
-      return { status: 'ready', overview: action.overview, sheetIndex: 0 }
+      return { status: 'ready', overview: action.overview, sheetIndex: action.sheetIndex }
     case 'selected':
       return state.status === 'ready' ? { ...state, sheetIndex: action.index, sheet: undefined } : state
     case 'sheetLoaded':
@@ -38,6 +38,12 @@ const reducer = (state: XlsxPreviewState, action: Action): XlsxPreviewState => {
       return { status: 'error', failure: action.failure }
   }
 }
+
+/**
+ * The sheet the user last picked in each file, by file id, for this run of the app: the panel turns into a dialog at
+ * the mobile breakpoint and back, which mounts the preview again, and the file should reopen where the user left it.
+ */
+const selectedSheets = new Map<string, number>()
 
 /** One Worker, the workbook's styles as CSS and the sheet on show, for as long as the preview shows one file. */
 type Session = { client: PreviewClient; styles: Map<number, CSSProperties>; selected: number; closed: boolean }
@@ -88,9 +94,10 @@ const guard = async (session: Session, dispatch: Dispatch<Action>, read: () => P
 /**
  * The spreadsheet preview's state. A Worker starts when the preview opens a file. It is terminated when the preview
  * unmounts or the file changes, and as soon as nothing is left to read: an error, no visible sheet, or none small
- * enough to read. A sheet too large to read is never asked for.
+ * enough to read. A sheet too large to read is never asked for. The file opens on the sheet the user last picked in
+ * it, by `fileId`.
  */
-export const useXlsxPreviewState = (blob: Blob, createClient: () => PreviewClient) => {
+export const useXlsxPreviewState = (blob: Blob, createClient: () => PreviewClient, fileId: string) => {
   const [state, dispatch] = useReducer(reducer, { status: 'loading' })
   const sessionRef = useRef<Session | null>(null)
 
@@ -102,24 +109,28 @@ export const useXlsxPreviewState = (blob: Blob, createClient: () => PreviewClien
       if (session.closed) {
         return
       }
-      dispatch({ type: 'opened', overview })
+      const remembered = selectedSheets.get(fileId) ?? 0
+      const first = remembered < overview.sheets.length ? remembered : 0
+      session.selected = first
+      dispatch({ type: 'opened', overview, sheetIndex: first })
       if (overview.sheets.every(({ tooLarge }) => tooLarge)) {
         end(session)
         return
       }
-      if (!overview.sheets[0].tooLarge) {
-        void guard(session, dispatch, () => loadSheet(session, 0, dispatch), 0)
+      if (!overview.sheets[first].tooLarge) {
+        void guard(session, dispatch, () => loadSheet(session, first, dispatch), first)
       }
     }
     void guard(session, dispatch, open)
     return () => end(session)
-  }, [blob, createClient])
+  }, [blob, createClient, fileId])
 
   const selectSheet = (index: number) => {
     const session = sessionRef.current
     if (!session || state.status !== 'ready' || state.sheetIndex === index) {
       return
     }
+    selectedSheets.set(fileId, index)
     session.selected = index
     dispatch({ type: 'selected', index })
     if (!state.overview.sheets[index].tooLarge) {

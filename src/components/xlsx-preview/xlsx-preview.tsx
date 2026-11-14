@@ -16,6 +16,8 @@ import { useXlsxPreviewState } from './use-xlsx-preview-state'
 
 type XlsxPreviewProps = {
   blob: Blob
+  /** The file's id: a preview mounted again for it reopens on the sheet the user last picked. */
+  fileId: string
   /** Starts the Worker that reads the workbook. A test passes one that reads in process. */
   createClient?: () => PreviewClient
 }
@@ -29,9 +31,9 @@ const Loading = () => (
   </div>
 )
 
-const WorkbookPreview = ({ blob, createClient }: Required<XlsxPreviewProps>) => {
+const WorkbookPreview = ({ blob, fileId, createClient }: Required<XlsxPreviewProps>) => {
   const panelId = useId()
-  const { state, selectSheet } = useXlsxPreviewState(blob, createClient)
+  const { state, selectSheet } = useXlsxPreviewState(blob, createClient, fileId)
 
   if (state.status === 'loading') {
     return <Loading />
@@ -103,7 +105,7 @@ const WorkbookPreview = ({ blob, createClient }: Required<XlsxPreviewProps>) => 
  * A workbook as a read-only grid: the note on what it leaves out, the selected sheet and the sheet tabs. A file over
  * the size limit is refused before any Worker starts or Excelize downloads; the header's Download still works.
  */
-export const XlsxPreview = ({ blob, createClient = createPreviewClient }: XlsxPreviewProps) => {
+export const XlsxPreview = ({ blob, fileId, createClient = createPreviewClient }: XlsxPreviewProps) => {
   const formatters = useFormatters()
   if (blob.size > xlsxPreviewLimits.fileBytes) {
     const limit = formatters.number(xlsxPreviewLimits.fileBytes / 1024 / 1024)
@@ -113,5 +115,5 @@ export const XlsxPreview = ({ blob, createClient = createPreviewClient }: XlsxPr
       </PreviewNotice>
     )
   }
-  return <WorkbookPreview blob={blob} createClient={createClient} />
+  return <WorkbookPreview blob={blob} fileId={fileId} createClient={createClient} />
 }

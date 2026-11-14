@@ -41,8 +41,11 @@ const flush = async () => {
   }
 }
 
-const showWorkbook = async (bytes: Uint8Array<ArrayBuffer>, createClient = inProcessPreviewClient(engine)) => {
-  const id = crypto.randomUUID()
+const showWorkbook = async (
+  bytes: Uint8Array<ArrayBuffer>,
+  createClient = inProcessPreviewClient(engine),
+  id: string = crypto.randomUUID(),
+) => {
   storedFiles.set(id, {
     id,
     filename: 'budget.xlsx',
@@ -207,6 +210,21 @@ describe('the spreadsheet preview', () => {
     expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(
       screen.getByRole('tab', { name: 'Notes' }).id,
     )
+  })
+
+  it('reopens a file on the sheet the user left, as when the panel turns into a dialog, and another file on its first', async () => {
+    await showWorkbook(styled, undefined, 'remembered-file')
+    fireEvent.click(screen.getByRole('tab', { name: 'Notes' }))
+    await flush()
+    cleanup()
+
+    await showWorkbook(styled, undefined, 'remembered-file')
+    expect(screen.getByRole('tab', { name: 'Notes' }).getAttribute('aria-selected')).toBe('true')
+    expect(within(screen.getByRole('grid', { name: 'Notes' })).getByText('Second sheet')).toBeDefined()
+    cleanup()
+
+    await showWorkbook(styled, undefined, 'another-file')
+    expect(screen.getByRole('grid', { name: 'Budget' })).toBeDefined()
   })
 
   it('moves between sheet tabs with the arrow keys, one tab stop for them all', async () => {

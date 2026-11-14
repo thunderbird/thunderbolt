@@ -18,7 +18,7 @@ export const LocalXlsxSidebarViewer = ({ localFileId, fileName, createClient }: 
   const state = useLocalDocumentBlob(localFileId, 'unsupported')
   return (
     <DocumentPreviewFrame fileName={fileName} state={state}>
-      {({ blob }) => <XlsxPreview blob={blob} createClient={createClient} />}
+      {({ blob }) => <XlsxPreview blob={blob} fileId={localFileId} createClient={createClient} />}
     </DocumentPreviewFrame>
   )
 }

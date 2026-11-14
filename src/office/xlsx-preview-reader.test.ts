@@ -900,10 +900,12 @@ describe('the spreadsheet preview reader on adversarial workbooks', () => {
     expect(tooLargeOf(cdata.replace('<!--', '<row r="1048576"><c r="XFD1048576"/></row>'))).toBe(false)
   })
 
-  it('refuses as damaged a sheet that carries a DOCTYPE, since the preview reads no DTD', () => {
-    const bytes = patched(excelize.NewFile(), 'xl/worksheets/sheet1.xml', (xml) =>
-      xml.replace('?>', '?><!DOCTYPE worksheet [<!ENTITY ignored "<!--">]>'),
-    )
+  it.each([
+    ['a DOCTYPE', '<!DOCTYPE worksheet [<!ENTITY ignored "<!--">]>'],
+    ['a lowercase doctype', '<!doctype worksheet [<!ENTITY ignored "<!--">]>'],
+    ['an ENTITY with no DOCTYPE', '<!ENTITY ignored "<!--">'],
+  ])('refuses as damaged a sheet that carries %s, since the preview reads no directive', (_, directive) => {
+    const bytes = patched(excelize.NewFile(), 'xl/worksheets/sheet1.xml', (xml) => xml.replace('?>', `?>${directive}`))
     const error = (() => {
       try {
         openPreviewWorkbook(excelize, bytes)

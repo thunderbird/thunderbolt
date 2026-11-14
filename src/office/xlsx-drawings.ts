@@ -227,8 +227,11 @@ const parseXml = (xml: Uint8Array) => {
   return new DOMParser().parseFromString(strFromU8(xml), 'text/xml').documentElement ?? undefined
 }
 
-/** Comments, CDATA sections, processing instructions and a DOCTYPE: what a raw scan must not read as elements. */
-const markupPattern = /<(?:!--|!\[CDATA\[|\?|!DOCTYPE)/g
+/**
+ * Comments, CDATA sections, processing instructions and directives (`<!` and a letter, such as `<!DOCTYPE` or
+ * `<!ENTITY`): what a raw scan must not read as elements.
+ */
+const markupPattern = /<(?:!--|!\[CDATA\[|\?|![A-Za-z])/g
 
 const escapeText = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
@@ -236,7 +239,8 @@ const escapeText = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '
  * A part's text as the raw scans may read it, in one forward pass that stays linear: comments and processing
  * instructions taken out, and each CDATA section's body turned into escaped text, so a `<!--` or a `<row>` written
  * inside one is the text Excelize reads, not markup. A section left open runs to the end of the part, as in XML. A
- * DOCTYPE is refused: the preview reads no DTD, so it could not tell what Excelize would make of one.
+ * directive is refused, in any case: Excelize's XML parser skips one to its closing `>`, quotes included, and the
+ * preview reads no DTD, so it could not tell where Excelize would resume.
  */
 export const scannableXml = (xml: string) => {
   if (!xml.includes('<!') && !xml.includes('<?')) {
@@ -254,8 +258,8 @@ export const scannableXml = (xml: string) => {
     }
     kept.push(xml.slice(at, found.index))
     const [opener] = found
-    if (opener === '<!DOCTYPE') {
-      throw new Error('A part of the workbook declares a DOCTYPE, which the preview does not read.')
+    if (/^<![A-Za-z]$/.test(opener)) {
+      throw new Error('A part of the workbook holds a DOCTYPE or another directive, which the preview does not read.')
     }
     const closer = opener === '<!--' ? '-->' : opener === '<?' ? '?>' : ']]>'
     const bodyStart = found.index + opener.length

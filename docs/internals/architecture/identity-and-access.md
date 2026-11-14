@@ -218,15 +218,103 @@ permanent delete, so a still-listed email gets admin again at its next sign-in.
 ## Audit
 
 The action list is in [audit/events.ts](../../../backend/src/identity/audit/events.ts); the outcome
-(`success`, `failure`, `denied`) is a separate column. Events never hold secrets, only ids.
+(`success`, `failure`, `denied`) is a separate column. Events never hold secrets, only ids: a session
+id, never its token; an API key's or SCIM credential's id, never its value; no email code, invitation
+token, IdP assertion or IdP error description. `no-secrets.test.ts` runs each such flow with the
+secret known and checks no row holds it.
 
 - `insertAuditEvent(tx, event)` writes with the Drizzle transaction that makes the change;
   `createAuditEvent(adapter, event)` does the same through Better Auth's adapter inside hooks.
 - A failed attempt's transaction rolls back, taking any event in it along. `recordFailedAttempt` writes
   the failure after that transaction ends.
+- Every request runs under a server-generated id (`request-context.ts`), and each event it writes
+  carries it as `request_id`, so the several events one request causes correlate.
 - `GET /v1/admin/audit-events` pages admins through the log, newest first, at most 100 a page.
   Viewing a page is not audited. Every admin route goes through `createAdminMacro`, which re-checks the
   admin role on each request and records a denied attempt as `admin.access_denied`.
+
+### Actors
+
+The actor is the `user` who acted, an `api_key` when the request carried one (its owner in
+`metadata.userId`), a `scim_connection` for anything a SCIM request causes, or the `system`. A SCIM
+event names the identity connection and the credential the IdP authenticated with, never an upstream
+person: the IdP doesn't say who, so nothing is invented.
+
+### Sign-in
+
+Every sign-in writes `auth.sign_in` with its `metadata.method` (`email_code`, `passkey`, `oidc`,
+`saml`, `device_grant`) and, for SSO, the connection. Sign-in events are the only ones that store the
+client's IP address and user agent ([sign-in-audit.ts](../../../backend/src/identity/sign-in-audit.ts)).
+
+- **Success** is recorded when a session was created, with its id, so an SSO callback, which answers
+  success with a redirect too, records only real sign-ins. It is written just before the session, so
+  no session exists without it; an SSO sign-in writes both in one transaction.
+- **Failure** is recorded with the error code: Better Auth's (`INVALID_OTP`), the access refusal
+  (`ACCESS_BLOCKED`), or, on SSO, the `error` the callback redirects with (`account_not_linked`). The
+  device grant's `authorization_pending` and `slow_down` are polling, not failures.
+- A refusal thrown by a before-hook skips every after-hook, so the `auth.ts` before-hook records its
+  own through `refuseSignIn`: a missing or invalid challenge token, a new address with no approval, a
+  foreign SSO provider, and a SAML response this browser didn't start.
+- The actor of a failure is the user the attempt named, when one exists: the address's owner, or the
+  passkey's. An attempt on an unknown address stores nothing that identifies it.
+
+### Sessions
+
+A `session.delete.before` hook in the identity plugin sees every session Better Auth deletes, in the
+deleting transaction, and tells them apart. Expiry is checked first, on any route: a revocation
+route that finds its own caller expired records an expiry, not a revocation ([session-audit.ts](../../../backend/src/identity/session-audit.ts)):
+
+| Deleted by                                                               | Action                 | Actor                                        |
+| ------------------------------------------------------------------------ | ---------------------- | -------------------------------------------- |
+| `/sign-out`                                                              | `auth.sign_out`        | the user                                     |
+| `/revoke-session(s)`, `/revoke-other-sessions`                           | `auth.session_revoked` | the user                                     |
+| any route that finds a session past its expiry (usually `/get-session`)  | `auth.session_expired` | `system`                                     |
+| a SCIM request that leaves the member no active source (`active: false`) | `auth.session_revoked` | the SCIM connection, with the credential     |
+| the SCIM connection retirement walk, or the projection replay            | `auth.session_revoked` | `system`, the operation in `metadata.reason` |
+
+Anything else writes its own event. A SCIM `DELETE` deletes its sessions through the raw adapter,
+so the SCIM lifecycle records one `auth.session_revoked` per session itself. Device revocation and
+CLI logout delete sessions with Drizzle, so [account.ts](../../../backend/src/api/account.ts)
+records them as `auth.session_revoked` and `auth.sign_out` on the device. An admin revoking a member's sessions is `auth.session_revoked` with
+the admin as actor and the member as target. Closing a tab or the app is not observable, and neither
+is a session that expires unread.
+
+**IdP-initiated logout is not supported.** `@better-auth/sso` has no OIDC back-channel logout endpoint,
+and its SAML single logout (`saml.enableSingleLogout`) is off: turning it on changes the SP metadata
+and needs each IdP configured for it. An IdP ends a member's sessions through SCIM
+deprovisioning instead.
+
+### Connections
+
+A user's own connections change on the device: MCP servers and every credential stay local, and the
+synced `provider_connections` rows can't tell a user's change from a migration or a retry. So the app
+reports them itself, through `POST /v1/audit/client-events`
+([client-routes.ts](../../../backend/src/identity/audit/client-routes.ts)), as `user_connection.added`,
+`updated`, `removed` and `credential_replaced`. These rows have `report_source = 'client'`, which the
+audit screen labels client-reported: the device's word, not something the server saw.
+
+- The body holds only an action, a target type and id, a provider and an auth method, all id-shaped;
+  the server sets the actor, the bound device and the time.
+- Reports are best effort ([report-connection-event.ts](../../../src/lib/report-connection-event.ts)):
+  one that fails is dropped with a warning, never queued.
+- An OAuth authorization (a provider, an MCP server) reports once, when it completes; a token refresh
+  never reports.
+- Anonymous users' reports are dropped.
+
+### Flooding
+
+A caller who can trigger an event at will must not grow the log at will. `admin.access_denied` is
+capped at 10 per user an hour and never recorded for anonymous callers, whose every sign-in is a new
+user; client reports are capped at 60 per user an hour. Both caps ignore `RATE_LIMIT_ENABLED`
+([rate-limiting.md](../../../backend/docs/rate-limiting.md#audit-budgets)). Failed sign-ins are bounded
+by the `auth` IP tier instead, which a distributed attempt can spread across addresses.
+
+### Retention
+
+Audit events are kept indefinitely for now: nothing purges them. `audit_event` has no foreign key to
+`user`, so an event outlives the account it names. After an account is deleted, by the user or by an
+admin purge, its events keep `actor_id`, `target_id`, `ip_address` and `user_agent`. Removing them
+takes direct database access outside the app, which is not itself audited.
 
 ## SCIM
 

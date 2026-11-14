@@ -4,7 +4,7 @@
 
 import type { Model } from '@ironcalc/wasm'
 import { strFromU8, strToU8 } from 'fflate'
-import type { ExcelizeFile } from './spreadsheet-engines'
+import type { ExcelizeFile } from './excelize-engine'
 
 /** A formula the app could not compute. Its cell keeps the result it had, if it had one. */
 export type FormulaError = { sheet: string; cell: string; formula: string; error: string }
@@ -39,7 +39,7 @@ const entities = new Map([
 ])
 
 /** Text with its XML character and entity references resolved. */
-const decodeXml = (text: string) =>
+export const decodeXml = (text: string) =>
   text.replace(/&(?:#x([\da-f]+)|#(\d+)|(\w+));/gi, (match, hex?: string, decimal?: string, name?: string) => {
     if (hex) {
       return String.fromCodePoint(parseInt(hex, 16))
@@ -72,7 +72,7 @@ const richText = (xml: string) =>
  * `xl/workbook.xml`, and `target` its `Target`, relative to that part's folder unless it starts with `/`. Returns a
  * zip entry path, such as `xl/worksheets/sheet1.xml`.
  */
-const resolvePart = (from: string, target: string) => {
+export const resolvePart = (from: string, target: string) => {
   if (target.startsWith('/')) {
     return target.slice(1)
   }
@@ -99,10 +99,11 @@ const relationshipsOf = (parts: WorkbookParts, part: string) => {
 }
 
 /** A column's number from its letters: `A` is 1, `AA` is 27. */
-const columnNumber = (letters: string) => [...letters.toUpperCase()].reduce((n, c) => n * 26 + c.charCodeAt(0) - 64, 0)
+export const columnNumber = (letters: string) =>
+  [...letters.toUpperCase()].reduce((n, c) => n * 26 + c.charCodeAt(0) - 64, 0)
 
 /** A column's letters from its number: 1 is `A`, 27 is `AA`. */
-const columnName = (column: number): string =>
+export const columnName = (column: number): string =>
   column > 26
     ? columnName(Math.floor((column - 1) / 26)) + columnName(((column - 1) % 26) + 1)
     : String.fromCharCode(64 + column)

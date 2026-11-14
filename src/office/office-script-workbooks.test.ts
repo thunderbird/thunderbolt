@@ -223,6 +223,39 @@ saveFile('far.xlsx', f.WriteToBuffer().buffer)
     expect(sheet).toContain('<c r="Z200000"><f>A1*2</f><v>4</v></c>')
   })
 
+  // JavaScriptCore fails to match a part this long with a pattern that tests every character of it.
+  it('stores the results of a sheet part over 1 MiB', async () => {
+    const { output, file } = await runOk(`
+const parts = fflate.unzipSync(excelize.NewFile().WriteToBuffer().buffer)
+const rows = Array.from({ length: 1000 }, (_, i) => {
+  const r = i + 1
+  return '<row r="' + r + '"><c r="A' + r + '"><v>' + r + '</v></c><c r="B' + r + '" t="str"><v>' + 'x'.repeat(1100) + '</v></c><c r="C' + r + '"><f>A' + r + '*2</f></c></row>'
+})
+const sheet = fflate.strFromU8(parts['xl/worksheets/sheet1.xml'])
+parts['xl/worksheets/sheet1.xml'] = fflate.strToU8(sheet.replace('<sheetData></sheetData>', '<sheetData>' + rows.join('') + '</sheetData>'))
+saveFile('long.xlsx', excelize.OpenReader(fflate.zipSync(parts)).WriteToBuffer().buffer)
+`)
+    const sheet = textOf(await partsOf(file), 'xl/worksheets/sheet1.xml')
+    expect(sheet.length).toBeGreaterThan(mib)
+    expect(output.formulaErrors).toBeUndefined()
+    expect(count(sheet, /<f>A\d+\*2<\/f><v>\d+<\/v>/g)).toBe(1000)
+    expect(sheet).toContain('<c r="C1000"><f>A1000*2</f><v>2000</v></c>')
+  })
+
+  it('computes a cell whose XML holds a comment with a cell tag', async () => {
+    const { output, file } = await runOk(`
+const parts = fflate.unzipSync(excelize.NewFile().WriteToBuffer().buffer)
+const cells = '<row r="1"><c r="A1" t="str"><f>1+1</f><!-- <c> --></c><c r="B1" t="str"><f>A1+2</f></c></row>'
+const sheet = fflate.strFromU8(parts['xl/worksheets/sheet1.xml'])
+parts['xl/worksheets/sheet1.xml'] = fflate.strToU8(sheet.replace('<sheetData></sheetData>', '<sheetData>' + cells + '</sheetData>'))
+saveFile('comment.xlsx', excelize.OpenReader(fflate.zipSync(parts)).WriteToBuffer().buffer)
+`)
+    const sheet = textOf(await partsOf(file), 'xl/worksheets/sheet1.xml')
+    expect(output.formulaErrors).toBeUndefined()
+    expect(sheet).toContain('<f>1+1</f><v>2</v>')
+    expect(sheet).toContain('<f>A1+2</f><v>4</v>')
+  })
+
   it('stores a formula written with a leading = without it, and computes it', async () => {
     const { file } = await runOk(`
 const f = excelize.NewFile()

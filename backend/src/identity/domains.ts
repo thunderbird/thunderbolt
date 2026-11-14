@@ -55,7 +55,7 @@ export const isEnrollableDomain = (row: OrgDomainRow | null | undefined) =>
   Boolean(row?.verifiedAt && row.enrollmentEnabled && !isClaimedDomain(row))
 
 /** The current org's row for an email address's domain, through the auth adapter. Exact match: a subdomain never matches its parent. */
-export const findOrgDomainForEmail = async (adapter: AuthAdapter, email: string) => {
+export const findOrgDomainForEmail = async (adapter: Pick<AuthAdapter, 'findOne'>, email: string) => {
   const domain = emailDomain(email)
   if (!domain) {
     return null

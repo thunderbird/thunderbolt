@@ -133,7 +133,12 @@ aggregates it with `bash`.
   in-memory fallback, or a removed workspace all recover on the next send. A failed write is logged, not fatal.
 - **Office edits read the original bytes.** The workspace holds only the extracted text, so `run_office_script` reads
   an attached `.docx`, `.xlsx` or `.pptx` from IndexedDB by its file name or id. It looks in the workspace only for a name
-  that none of the thread's stored files has ([prompt and tools](prompt-and-tools.md)).
+  that none of the thread's stored files has ([prompt and tools](prompt-and-tools.md)). The attachment line of an
+  Office file says so: to edit the original, the tool reads it by its name (the newest file with that name) or by its
+  id (that exact file). Without it, a model that sees only the `.txt` copy can decide the original never arrived and
+  ask the user to attach it again. The line mentions edits only, because the tool fails a script that saves no file.
+  A compaction summary drops the line with the rest of its turn; the harness prompt and the tool description, which
+  compaction never touches, still say that an edit reads the original.
 - **Tools off means inline.** With no `bash` to query with (`toolUsage === 0`), attachments are inlined whole, as on
   the AI SDK path.
 

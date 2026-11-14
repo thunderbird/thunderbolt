@@ -5,7 +5,7 @@
 import '@/testing-library'
 
 import { describe, expect, it } from 'bun:test'
-import { getTransformer, pptxMime, xlsxMime } from '@/files/transformers'
+import { docxMime, getTransformer, pptxMime, xlsxMime } from '@/files/transformers'
 import type { StoredFile } from '@/lib/file-blob-storage'
 import { samplePptx } from '@/test-utils/sample-pptx'
 import type { ThunderboltUIMessage } from '@/types'
@@ -453,6 +453,21 @@ describe('prepareBuiltInConversation', () => {
       expect(prepared.files).toEqual([])
     })
 
+    it('still points at the original of an Office file with no text', async () => {
+      const file = textFile('e2', 'photos.docx', docxMime, '')
+
+      const prepared = await prepareBuiltInConversation(
+        [message('user', [attachment(file)])],
+        undefined,
+        workspace,
+        depsFor([file]),
+      )
+
+      expect(prepared.prompt.text).toBe(
+        '[Attachment: photos.docx — saved as attachments/e2/photos.docx.txt; to edit the original file, run_office_script reads it by its name, "photos.docx" (the newest file with that name), or by its id, "e2" (this exact file)]\n\n',
+      )
+    })
+
     it('cuts a single oversized line by characters', async () => {
       const file = textFile('j1', 'blob.json', 'application/json', `${'x'.repeat(20_000)}\nnext`)
 
@@ -516,7 +531,7 @@ describe('prepareBuiltInConversation', () => {
       ])
       expect(prepared.prompt.text).toBe(
         [
-          '[Attachment: budget.xlsx — saved as attachments/x1/Q1.tsv, attachments/x1/Q2_Q3.tsv]',
+          '[Attachment: budget.xlsx — saved as attachments/x1/Q1.tsv, attachments/x1/Q2_Q3.tsv; to edit the original file, run_office_script reads it by its name, "budget.xlsx" (the newest file with that name), or by its id, "x1" (this exact file)]',
           '',
           '## Sheet: Q1',
           'Row 1: Name, Cost',
@@ -559,6 +574,27 @@ describe('prepareBuiltInConversation', () => {
       )
 
       expect(prepared.files).toEqual([{ path: 'attachments/p1/report.pdf.txt', content: 'PDF contents' }])
+      expect(prepared.prompt.text).toBe(
+        '[Attachment: report.pdf — saved as attachments/p1/report.pdf.txt]\n\nPDF contents',
+      )
+    })
+
+    it.each([
+      ['notes.docx', docxMime],
+      ['deck.pptx', pptxMime],
+    ])('tells the model the Office script tool reads the original of %s', async (filename, mimeType) => {
+      const file = textFile('o1', filename, mimeType, 'Extracted text')
+      const messages = [
+        message('user', [attachment(file), { type: 'text', text: 'Summarize it' }]),
+        message('assistant', [{ type: 'text', text: 'Done' }]),
+        message('user', [{ type: 'text', text: 'Shorter' }]),
+      ]
+
+      const prepared = await prepareBuiltInConversation(messages, undefined, workspace, depsFor([file]))
+
+      expect(prepared.history[0].text).toBe(
+        `[Attachment: ${filename} — saved as attachments/o1/${filename}.txt; to edit the original file, run_office_script reads it by its name, "${filename}" (the newest file with that name), or by its id, "o1" (this exact file)]\n\nExtracted text\nSummarize it`,
+      )
     })
 
     it('keeps an unsafe filename inside its attachment directory', async () => {

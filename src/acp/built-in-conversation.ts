@@ -3,11 +3,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { csvToTsv, toTsv } from '@/files/tabular'
-import { defaultDeliveryMode, getTransformer, isPlainTextMime, xlsxMime } from '@/files/transformers'
+import {
+  defaultDeliveryMode,
+  docxMime,
+  getTransformer,
+  isPlainTextMime,
+  pptxMime,
+  xlsxMime,
+} from '@/files/transformers'
 import { readXlsxSheets, sheetsToText } from '@/files/transformers/xlsx-to-text'
 import { blobToBase64, isAttachmentPart, unreadableAttachmentNote } from '@/lib/attachments'
 import { getAttachment, type StoredFile } from '@/lib/file-blob-storage'
 import { hydrateQuotesAsText } from '@/lib/quotes'
+import { officeScriptToolName } from '@/office/constants'
 import type { ThunderboltUIMessage } from '@/types'
 import type { ImageContent } from '@earendil-works/pi-ai'
 import type { CompactionCheckpoint, SeedTurn, WorkspaceFile } from '@shared/agent-core'
@@ -142,12 +150,24 @@ const previewText = (text: string): string => {
   return `${lines.slice(0, budget.lines).join('\n')}\n\n[Showing lines 1-${budget.lines} of ${lines.length}. ${hint}]`
 }
 
-/** Label a workspace-backed attachment: where its files live, then its preview. */
-const workspaceAttachment = (filename: string, files: WorkspaceFile[], preview: string): PreparedPart => ({
-  text: `[Attachment: ${filename} — saved as ${files.map((file) => file.path).join(', ')}]\n\n${previewText(preview)}`,
-  images: [],
-  files,
-})
+const officeMimeTypes = new Set([docxMime, xlsxMime, pptxMime])
+
+/**
+ * Label a workspace-backed attachment: where its files live, then its preview. The workspace holds only an Office
+ * file's text, so its label also says how the Office script tool, which every turn with a workspace has, reads the
+ * original. The label offers it for edits only, because the tool fails a script that saves no file.
+ */
+const workspaceAttachment = (data: AttachmentData, files: WorkspaceFile[], preview: string): PreparedPart => {
+  const paths = files.map((file) => file.path).join(', ')
+  const original = officeMimeTypes.has(data.mimeType)
+    ? `; to edit the original file, ${officeScriptToolName} reads it by its name, "${data.filename}" (the newest file with that name), or by its id, "${data.localFileId}" (this exact file)`
+    : ''
+  return {
+    text: `[Attachment: ${data.filename} — saved as ${paths}${original}]\n\n${previewText(preview)}`,
+    images: [],
+    files,
+  }
+}
 
 /** Extract attachment text when a transformer supports its MIME type. */
 const extractAttachmentText = async (
@@ -169,7 +189,7 @@ const freeName = (name: string, used: ReadonlySet<string>, n = 1): string => {
 /** Write each sheet as its own TSV, parsing the workbook once for both files and preview. The preview labels each
  *  row with its number, as the text the model gets without a workspace does. */
 const xlsxAttachment = async (
-  filename: string,
+  data: AttachmentData,
   dir: string,
   file: StoredFile,
   deps: BuiltInConversationDeps,
@@ -181,7 +201,7 @@ const xlsxAttachment = async (
     used.add(name)
     return { path: `${dir}/${name}.tsv`, content: toTsv(sheet.rows) }
   })
-  return workspaceAttachment(filename, files, sheetsToText(sheets))
+  return workspaceAttachment(data, files, sheetsToText(sheets))
 }
 
 /**
@@ -199,22 +219,23 @@ const textAttachment = async (
   const { filename, localFileId, mimeType } = data
   const dir = `attachments/${safeSegment(localFileId)}`
   if (options.workspace && mimeType === xlsxMime) {
-    return xlsxAttachment(filename, dir, file, deps)
+    return xlsxAttachment(data, dir, file, deps)
   }
   const text = await extractAttachmentText(file, mimeType, deps)
   if (text === null) {
     return null
   }
-  if (!options.workspace || text === '') {
+  // An Office file with no text, such as a document of only images, still needs the label that points at its original.
+  if (!options.workspace || (text === '' && !officeMimeTypes.has(mimeType))) {
     return { text: attachmentText(filename, text), images: [], files: [] }
   }
   const name = safeSegment(filename)
   const tsv = mimeType === 'text/csv' || /\.csv$/i.test(filename) ? csvToTsv(text) : null
   if (tsv !== null) {
-    return workspaceAttachment(filename, [{ path: `${dir}/${name.replace(/\.csv$/i, '')}.tsv`, content: tsv }], tsv)
+    return workspaceAttachment(data, [{ path: `${dir}/${name.replace(/\.csv$/i, '')}.tsv`, content: tsv }], tsv)
   }
   const path = isPlainTextMime(mimeType) ? `${dir}/${name}` : `${dir}/${name}.txt`
-  return workspaceAttachment(filename, [{ path, content: text }], text)
+  return workspaceAttachment(data, [{ path, content: text }], text)
 }
 
 /** Map one attachment reference to Pi-supported prompt text, image blocks, and workspace files. */

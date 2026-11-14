@@ -1,0 +1,76 @@
+# Local multi-realm Keycloak for validating SSO and SCIM provisioning end to end.
+# Never a deployment: see docs/internals/development/keycloak-validation.md.
+#
+#   docker compose -f e2e/keycloak/docker-compose.yml --env-file e2e/keycloak/extension.lock up -d --build
+#
+# The backend runs on the host from the working tree (e2e/keycloak/backend.env).
+name: tb-keycloak-validation
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE}
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: thunderbolt
+    command: ['postgres', '-c', 'max_connections=300']
+    ports:
+      - '5435:5432'
+    volumes:
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  keycloak:
+    build:
+      context: ../..
+      dockerfile: e2e/keycloak/keycloak.Dockerfile
+      args:
+        KEYCLOAK_IMAGE: ${KEYCLOAK_IMAGE}
+        MAVEN_IMAGE: ${MAVEN_IMAGE}
+        EXTENSION_REPO: ${EXTENSION_REPO}
+        EXTENSION_COMMIT: ${EXTENSION_COMMIT}
+    command:
+      - start-dev
+      - --import-realm
+      - --spi-events-listener--keycloak-scim-outbound--background-retries=true
+      - --spi-events-listener--keycloak-scim-outbound--background-interval-seconds=10
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: postgres
+      KC_DB_PASSWORD: postgres
+      KC_HTTP_PORT: '8280'
+      KC_HOSTNAME: http://localhost:8280
+      KC_HEALTH_ENABLED: 'true'
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    ports:
+      - '8280:8280'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'exec 3<>/dev/tcp/localhost/9000 && printf "GET /health/ready HTTP/1.0\r\n\r\n" >&3 && grep -q UP <&3',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  # The extension refuses plain HTTP except on loopback. This shares Keycloak's network namespace
+  # and forwards its 127.0.0.1:18000 to the backend on the host, so every SCIM target is
+  # http://127.0.0.1:18000/v1/api/auth/scim/v2.
+  scim-loopback:
+    image: ${SOCAT_IMAGE}
+    network_mode: service:keycloak
+    command: ['TCP-LISTEN:18000,fork,reuseaddr,bind=127.0.0.1', 'TCP4:host.docker.internal:8000']
+    depends_on:
+      - keycloak

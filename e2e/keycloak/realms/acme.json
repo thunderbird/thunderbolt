@@ -1,0 +1,89 @@
+{
+  "realm": "acme",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "editUsernameAllowed": true,
+  "bruteForceProtected": false,
+  "eventsListeners": ["jboss-logging", "keycloak-scim-outbound"],
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": false,
+  "groups": [
+    {
+      "id": "00000000-0000-4000-8000-0000000a9100",
+      "name": "acme-admins"
+    },
+    {
+      "id": "00000000-0000-4000-8000-0000000a9200",
+      "name": "engineering"
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "thunderbolt-app",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "acme-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://localhost:8000/v1/api/auth/sso/callback/acme"],
+      "webOrigins": ["http://localhost:1420"],
+      "defaultClientScopes": ["profile", "email"]
+    }
+  ],
+  "users": [
+    {
+      "id": "00000000-0000-4000-8000-0000000a1100",
+      "username": "alice",
+      "email": "alice@acme.test",
+      "firstName": "Alice",
+      "lastName": "Acme",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-0000000a1300",
+      "username": "pat",
+      "email": "pat@contractor.test",
+      "firstName": "Pat",
+      "lastName": "Contractor",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-0000000a1400",
+      "username": "ada",
+      "email": "ada@acme.test",
+      "firstName": "Ada",
+      "lastName": "Admin",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "groups": ["/acme-admins"]
+    }
+  ]
+}

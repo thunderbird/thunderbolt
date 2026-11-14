@@ -16,11 +16,16 @@ export const ssoSignInPaths: readonly string[] = [
 
 export type SignInUser = { id: string; email: string; emailVerified: boolean }
 
+/** The connection an SSO sign-in came through. */
+export type SsoSignInConnection = { id: string; requiresScimRecord: boolean }
+
 export type SignIn = {
   user: SignInUser
   path: string | undefined
   /** The SSO provider said, on this sign-in, that the address is not verified. */
   idpDeniedEmailVerified: boolean
+  /** Set on an SSO sign-in. */
+  ssoConnection: SsoSignInConnection | null
 }
 
 const idpDeniedEmailVerifiedState = defineRequestState(() => false)
@@ -34,3 +39,11 @@ export const recordIdpDeniedEmailVerified = () => idpDeniedEmailVerifiedState.se
 /** Whether `recordIdpDeniedEmailVerified` ran during the current request. */
 export const didIdpDenyEmailVerified = async () =>
   (await hasRequestState()) && (await idpDeniedEmailVerifiedState.get())
+
+const ssoConnectionState = defineRequestState<SsoSignInConnection | null>(() => null)
+
+/** Record, from the SSO `resolveUser` hook, which connection the sign-in came through. */
+export const recordSsoConnection = (connection: SsoSignInConnection) => ssoConnectionState.set(connection)
+
+/** The connection `recordSsoConnection` recorded during the current request, if any. */
+export const getSsoConnection = async () => ((await hasRequestState()) ? ssoConnectionState.get() : null)

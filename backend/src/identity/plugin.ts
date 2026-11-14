@@ -11,7 +11,7 @@ import { type AccessRefusal, accessRefusalCodes, computeAccess, getAccess, loadA
 import { admitAtSignIn } from './admission'
 import { createAuditEvent } from './audit/write'
 import { identityPluginSchema } from './plugin-schema'
-import { didIdpDenyEmailVerified, otpSignInPath, type SignInUser, ssoSignInPaths } from './sign-in'
+import { didIdpDenyEmailVerified, getSsoConnection, otpSignInPath, type SignInUser, ssoSignInPaths } from './sign-in'
 
 const getSessionPath = '/get-session'
 
@@ -68,6 +68,7 @@ export const identity = () => {
                       user,
                       path: context?.path,
                       idpDeniedEmailVerified: await didIdpDenyEmailVerified(),
+                      ssoConnection: await getSsoConnection(),
                     })
                     return computeAccess(await loadAccessState(tx, user.id))
                   })

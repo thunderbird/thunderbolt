@@ -33,6 +33,7 @@ import { account, user } from '@/db/auth-schema'
 import { and, eq } from 'drizzle-orm'
 import { createSessionCookie } from '@/test-utils/session-cookie'
 import { ssoProvider } from '@/db/schema'
+import { ensureEnvSsoConnection } from '@/identity/sso-connections'
 
 const realFetch = (globalThis as Record<string, unknown>).__originalFetch as typeof fetch
 
@@ -75,8 +76,9 @@ describe('SAML Integration', () => {
   })
 
   describe('SAML sign-in endpoint', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue(baseSettings)
+      await ensureEnvSsoConnection(db, baseSettings)
     })
 
     it('should return a redirect URL pointing to the SAML IdP', async () => {
@@ -176,8 +178,9 @@ describe('SAML Integration', () => {
       })
     })
 
-    beforeEach(() => {
+    beforeEach(async () => {
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({ ...baseSettings, samlCert: idpCert })
+      await ensureEnvSsoConnection(db, { ...baseSettings, samlCert: idpCert })
     })
 
     /**
@@ -590,8 +593,9 @@ describe('SAML Integration', () => {
   })
 
   describe('SSO provider self-registration', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue(baseSettings)
+      await ensureEnvSsoConnection(db, baseSettings)
     })
 
     it('refuses an ordinary session and stores no provider', async () => {
@@ -620,7 +624,7 @@ describe('SAML Integration', () => {
       )
 
       expect(res.status).toBe(403)
-      expect(await db.select().from(ssoProvider)).toHaveLength(0)
+      expect(await db.$count(ssoProvider, eq(ssoProvider.providerId, 'attacker-idp'))).toBe(0)
     })
 
     it('serves SP metadata only for the configured provider', async () => {

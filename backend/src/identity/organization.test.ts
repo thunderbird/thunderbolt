@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { configuredSsoProviderId } from '@/auth/paths'
+import { envSsoProviderId } from './sso-connections'
 import { account, auditEvent, membershipSource, orgMembership, organization, user, waitlist } from '@/db/schema'
 import { createIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
@@ -54,7 +54,7 @@ describe('ensureImplicitOrganization', () => {
     await db.insert(account).values({
       id: crypto.randomUUID(),
       accountId: 'idp-subject',
-      providerId: configuredSsoProviderId,
+      providerId: envSsoProviderId,
       userId: ssoUser,
       updatedAt: new Date(),
     })

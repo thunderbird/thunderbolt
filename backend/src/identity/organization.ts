@@ -2,12 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { configuredSsoProviderId } from '@/auth/paths'
 import type { db as DbType } from '@/db/client'
 import { orgMembership, organization } from '@/db/schema'
 import { eq, sql } from 'drizzle-orm'
 import { insertAuditEvent } from './audit/write'
 import { implicitOrganizationId } from './current-organization'
+import { envSsoProviderId } from './sso-connections'
 
 /**
  * Create the implicit organization if it doesn't exist yet and, in the same transaction, give
@@ -42,13 +42,13 @@ export const ensureImplicitOrganization = async (database: typeof DbType) =>
         m.org_id,
         m.id,
         case
-          when exists (select 1 from account a where a.user_id = m.user_id and a.provider_id = ${configuredSsoProviderId})
+          when exists (select 1 from account a where a.user_id = m.user_id and a.provider_id = ${envSsoProviderId})
             then 'sso'
           when w.id is not null then 'waitlist'
           else 'open'
         end,
         case
-          when exists (select 1 from account a where a.user_id = m.user_id and a.provider_id = ${configuredSsoProviderId})
+          when exists (select 1 from account a where a.user_id = m.user_id and a.provider_id = ${envSsoProviderId})
             then null
           else w.id
         end

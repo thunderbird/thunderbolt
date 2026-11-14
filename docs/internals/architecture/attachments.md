@@ -220,9 +220,62 @@ After a conversion the sent bubble offers the remaining modes as manual "Resend 
 | Markdown, other text | A snippet read straight from the store ([`text-snippet.tsx`](../../../src/components/chat/text-snippet.tsx))                                                                                         |
 
 The card ([`file-card.tsx`](../../../src/components/chat/file-card.tsx)) renders a thumbnail per type, with react-pdf
-lazily imported. Clicking a sent attachment opens it in the side view as a `local-file`
-([`src/content-view/sideview.tsx`](../../../src/content-view/sideview.tsx)). A non-native delivery mode shows as a badge
-on the card.
+lazily imported. Clicking a sent attachment, or the chip of a file the agent created, opens it in the side view as a
+`local-file` ([`src/content-view/sideview.tsx`](../../../src/content-view/sideview.tsx)). A non-native delivery mode
+shows as a badge on the card.
+
+### Spreadsheet preview
+
+An `.xlsx` or `.xlsm` opens as a read-only grid ([`src/components/xlsx-preview/`](../../../src/components/xlsx-preview)),
+in its own lazy chunk. The grid starts a Worker ([`xlsx-preview.worker.ts`](../../../src/office/xlsx-preview.worker.ts))
+that loads Excelize alone, without IronCalc or the script sandbox. The Worker keeps the workbook open for as long as
+the preview is open. Closing the preview or opening another file terminates the Worker, and that is the only way to
+free Excelize's memory.
+
+Excelize reads values in their number formats, styles, sizes, merges, frozen panes and links, 50 rows at a time as
+the grid shows them ([`xlsx-preview-reader.ts`](../../../src/office/xlsx-preview-reader.ts)). It parses the whole
+sheet on its first call, about 1.6 s for 5,000 × 50 cells under Bun, and each cell after that costs microseconds.
+Reading in chunks shows the first rows in half the time it takes to read the whole sheet with `GetRows` up front. A
+row the file gives no height grows to fit its largest font, as Excel sizes it. Excelize saves no row heights.
+
+Excelize cannot read charts, so the Worker also unzips the file with fflate, under the script tool's 64 MiB ceiling,
+and parses the drawings with xmldom ([`xlsx-drawings.ts`](../../../src/office/xlsx-drawings.ts)). Bar, column, line, area,
+pie and doughnut charts are drawn as SVG from the values the chart saved, or else from the range it reads, and bars
+stack the way the file stacks them. Any other chart, including stacked lines and areas, is a placeholder that names
+its type. Outside the grid, a list names every chart and picture for screen readers. The same pass finds what the
+banner lists: hidden sheets, conditional formatting, formulas with no saved result, shapes and sparklines.
+
+The limits live in [`xlsxPreviewLimits`](../../../src/office/constants.ts). A file over 2 MiB is refused before a
+Worker starts, and Download still works. A sheet shows at most 5,000 rows, 50 columns, 50 charts and pictures,
+20,000 chart values across its charts, 50 frozen rows and 10 frozen columns. A cell shows at most 1,000 characters.
+The banner says what was cut.
+
+A 2 MiB file can still unzip into millions of cells, and the scan and Excelize must agree on what they read. Two
+bounds therefore hold whatever the file claims:
+
+1. Before Excelize opens the file, every part it could parse (every part except pictures) must unzip to at most
+   32 MiB in total. The largest ordinary workbook tested under the 2 MiB cap unzips to 11.7 MB.
+2. Every worksheet, hidden ones included, is counted the way Excelize fills it in: each row out to its last cell,
+   and the sheet out to its last row. A sheet past 500,000 cells (twice what the grid shows), with more than 10,000
+   merged ranges, or with a drawing over 2 MiB is reported as too large. A chart may read only from a sheet that
+   passed.
+
+A workbook that Excelize could read differently from the scan is refused as damaged. That covers two zip entries
+for one part (`\` counts as `/`), a relationship Id used twice, two sheets with the same name, and a sheet list
+that differs from Excelize's.
+
+Two runtime limits back these up. A call fails once Excelize's memory passes the script tool's ceiling, and a call
+with no answer within a minute stops the Worker. Both report the workbook as too large, not damaged. The minute
+starts only after the Worker has loaded Excelize. Loading has its own two minutes, and when they run out the
+preview says it couldn't load and suggests checking the connection.
+
+The preview reads relationships and the `<sheet>` tags of `workbook.xml` with a linear scan, and drawings and
+charts with xmldom. It does not use the pattern scan in `formula-cache.ts`, which stays with the script
+tool.
+
+The grid renders in the app DOM. Cell text is React text. Styles are rebuilt from checked parts
+([`cell-style.ts`](../../../src/components/xlsx-preview/cell-style.ts)). Links are styled text with no `href`. A
+picture shows only from bytes inside the file, only for raster types, through a `blob:` URL the grid makes.
 
 ## Known gaps
 

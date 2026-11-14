@@ -28,3 +28,9 @@ export * from './inference-usage-schema'
 
 // Re-export solved captcha challenges (server-only replay protection)
 export * from './captcha-schema'
+
+// Re-export organization identity and audit tables (server-only, not synced via PowerSync)
+export * from './identity-schema'
+
+// Re-export the SCIM plugin's tables (server-only, not synced via PowerSync)
+export * from './scim-schema'

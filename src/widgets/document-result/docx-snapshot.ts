@@ -92,8 +92,28 @@ const pagesWidth = (wrapper: Element) => {
   return Math.ceil(((Math.max(0, ...points) || letterWidthPt) * 96) / 72) + 2 * wrapperPadding
 }
 
-/** A style element's text, with `<` escaped as CSS reads it, so text from the file cannot close the element. */
-const styleMarkup = (style: HTMLStyleElement) => `<style>${(style.textContent ?? '').replaceAll('<', '\\3c ')}</style>`
+/**
+ * Word's bullets are private-use characters of the Symbol and Wingdings fonts, which only Windows draws; elsewhere
+ * they show as empty boxes. These are the Unicode characters that look the same.
+ */
+const fontBullets = new Map([
+  ['', '•'],
+  ['', '▪'],
+  ['', '■'],
+  ['', '❖'],
+  ['', '➢'],
+  ['', '✓'],
+])
+const fontBulletPattern = new RegExp(`[${[...fontBullets.keys()].join('')}]`, 'g')
+
+/**
+ * A style element's text, with `<` escaped as CSS reads it, so text from the file cannot close the element, and with
+ * Word's bullets as characters every platform draws.
+ */
+const styleMarkup = (style: HTMLStyleElement) => {
+  const css = (style.textContent ?? '').replaceAll('<', '\\3c ')
+  return `<style>${css.replace(fontBulletPattern, (bullet) => fontBullets.get(bullet) ?? bullet)}</style>`
+}
 
 /**
  * The pages the renderer builds from the parts: its style elements and the wrapper around the pages. It builds them

@@ -234,8 +234,9 @@ for a document opened from a search result. The file is untrusted, so:
   sandbox.
 - The result is a static page in an `<iframe sandbox="">`. Its policy loads only its inline styles and `data:`
   pictures and fonts. Links lose their targets. So that the markup reads back as built, an inline picture's wrapper
-  becomes a `<span>` (a `<div>` would close its paragraph), and legacy VML drawings drop the size the library
-  measures for them, which is 0 with no layout.
+  becomes a `<span>` (a `<div>` would close its paragraph), and legacy VML drawings drop the size the library measures
+  for them, which is 0 with no layout. Word's Symbol and Wingdings bullets are private-use characters only Windows
+  draws, so they become the Unicode characters that look the same.
 - CSS that carries text from the file, such as a font name, has its `<` escaped, so it cannot close the style
   element.
 - A file over 10 MiB, one whose `word/document.xml` unpacks to over 3.5 MB (about 1,000 pages), one whose parts unpack

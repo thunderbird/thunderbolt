@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, spyOn } from 'bun:test'
-import { Document, ImageRun, Packer, Paragraph, TextRun } from 'docx'
+import { Document, ImageRun, LevelFormat, Packer, Paragraph, TextRun } from 'docx'
 import { strToU8, zipSync } from 'fflate'
 import { expectSampleDocxPreview } from '@/test-utils/docx-preview'
 import { hostileAltChunkText, hostileDocx, hostileDocxProbeOrigin, hostileLinkText } from '@/test-utils/hostile-docx'
@@ -97,6 +97,25 @@ describe('renderDocxSnapshot', () => {
     const page = parse(html)
     expect(page.querySelectorAll('p div')).toHaveLength(0)
     expect(page.querySelector('img')?.closest('p')?.textContent).toBe('Beforeafter')
+  })
+
+  it("draws Word's Symbol bullet as a bullet, not as a private-use character only Windows draws", async () => {
+    const document = new Document({
+      numbering: {
+        config: [
+          {
+            reference: 'word-bullets',
+            levels: [{ level: 0, format: LevelFormat.BULLET, text: '\uF0B7', style: { run: { font: 'Symbol' } } }],
+          },
+        ],
+      },
+      sections: [{ children: [new Paragraph({ text: 'Item', numbering: { reference: 'word-bullets', level: 0 } })] }],
+    })
+    const { html } = await pagesOf(await Packer.toBlob(document))
+
+    const css = [...parse(html).querySelectorAll('style')].map((style) => style.textContent).join('')
+    expect(css).not.toContain('\uF0B7')
+    expect(css).toContain('content: "\u2022')
   })
 
   it.each([

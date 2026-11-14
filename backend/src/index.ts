@@ -15,6 +15,7 @@ import { createStandaloneLogger } from '@/config/logger'
 import { createCorsMiddleware } from '@/config/cors'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { runMigrations } from '@/db/client'
+import { createAuditRoutes } from '@/identity/audit/routes'
 import { ensureImplicitOrganization } from '@/identity/organization'
 import { releaseOpenHolds } from '@/inference/managed-request'
 import { createInferenceRoutes } from '@/inference/routes'
@@ -234,6 +235,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createEncryptionRoutes(auth, database, settings))
       .use(createDeviceApprovalSessionRoutes(auth, database))
       .use(createAccountRoutes(auth, settings, database))
+      .use(createAuditRoutes(auth, database))
       .use(createAgentsRoutes(auth))
       .use(createHaystackRoutes(settings, auth, { fetchFn }))
   )

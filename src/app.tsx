@@ -107,6 +107,8 @@ const routeChunkLoaders = {
   // The CLI device-authorization approval page is off the chat/landing
   // critical path (only reached via a QR/link).
   deviceApproval: () => import('@/components/device-approval'),
+  // Reached only from an invitation email's link.
+  inviteAccept: () => import('@/components/invite-accept'),
 }
 
 const TasksPage = lazy(routeChunkLoaders.tasks)
@@ -120,6 +122,7 @@ const ConnectionsPage = lazy(routeChunkLoaders.connections)
 const SkillsPage = lazy(routeChunkLoaders.skills)
 const AgentsSettingsPage = lazy(routeChunkLoaders.agents)
 const DeviceApproval = lazy(routeChunkLoaders.deviceApproval)
+const InviteAcceptPage = lazy(routeChunkLoaders.inviteAccept)
 
 // Voice settings is feature-flagged and hidden by default, so it's a
 // deliberately-cold chunk (outside routeChunkLoaders) — lazy but not warmed.
@@ -219,6 +222,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
         <Route path="/oauth/tinfoil" element={<TinfoilCallback />} />
         <Route path="/auth/verify" element={<MagicLinkVerify />} />
         <Route path="/device" element={<DeviceApproval />} />
+        <Route path="/invite/:token" element={<InviteAcceptPage />} />
 
         {/* SSO redirect route — no guard, only in OIDC/SAML mode */}
         {ssoMode && <Route path="/sso-redirect" element={<SsoRedirect />} />}

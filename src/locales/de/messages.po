@@ -917,6 +917,10 @@ msgstr "Jetzt prüfen"
 msgid "Check the backend logs"
 msgstr "Backend-Protokolle prüfen"
 
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "Check your connection and try again."
+msgstr "Prüfen Sie Ihre Verbindung und versuchen Sie es erneut."
+
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/waitlist/waitlist-content.tsx
 msgid "Check your email"
@@ -1589,6 +1593,7 @@ msgid "Context Window Exceeded"
 msgstr "Kontextfenster überschritten"
 
 #: src/components/device-approval.tsx
+#: src/components/invite-accept/invite-accept-page.tsx
 #: src/components/magic-link-verify.tsx
 #: src/components/onboarding/onboarding-action-buttons.tsx
 #: src/components/onboarding/onboarding-dialog.tsx
@@ -1938,6 +1943,10 @@ msgstr "Die Emoji-Liste konnte nicht geladen werden. Schließen Sie die Auswahl 
 #: src/components/settings/iroh-pairing-panel.tsx
 msgid "Couldn't load this app's pairing identity: {error}"
 msgstr "Die Kopplungsidentität dieser App konnte nicht geladen werden: {error}"
+
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "Couldn't load this invitation"
+msgstr "Diese Einladung konnte nicht geladen werden"
 
 #: src/mini-apps/mini-app-page.tsx
 msgid "Couldn't load your apps. Check your connection and reload."
@@ -3279,6 +3288,10 @@ msgstr "Ungültiger Bestätigungslink. Bitte fordern Sie einen neuen an."
 msgid "iOS requires a secure URL (wss://)"
 msgstr "iOS erfordert eine sichere URL (wss://)"
 
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "It may have expired, been used already, or been withdrawn. Ask for a new invitation."
+msgstr "Sie ist möglicherweise abgelaufen, wurde bereits verwendet oder zurückgezogen. Bitten Sie um eine neue Einladung."
+
 #: src/components/recovery-continuity/recovery-continuity-banner.tsx
 msgid "It was created before a security update. A new phrase lets recovery confirm your keys are yours."
 msgstr ""
@@ -3433,6 +3446,10 @@ msgstr "Vorschau wird geladen…"
 #: src/components/settings/iroh-pairing-panel.tsx
 msgid "Loading this app's pairing identity…"
 msgstr "Kopplungsidentität dieser App wird geladen…"
+
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "Loading your invitation…"
+msgstr "Ihre Einladung wird geladen…"
 
 #: src/components/chat/chat-ui.tsx
 #: src/components/device-approval.tsx
@@ -5293,6 +5310,7 @@ msgstr "Erneut anmelden"
 msgid "Sign in"
 msgstr "Anmelden"
 
+#: src/components/invite-accept/invite-accept-page.tsx
 #: src/components/onboarding/onboarding-server-step.tsx
 #: src/components/sign-in-modal.tsx
 #: src/settings/preferences.tsx
@@ -5356,6 +5374,10 @@ msgstr ""
 #: src/components/device-approval.tsx
 msgid "Sign in to the CLI"
 msgstr "Bei der CLI anmelden"
+
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "Sign in with {email} to accept the invitation."
+msgstr "Melden Sie sich mit {email} an, um die Einladung anzunehmen."
 
 #: src/components/sso-sign-in/sso-email-code-page.tsx
 msgid "Sign in with an email code"
@@ -5998,6 +6020,10 @@ msgstr "Diese Datei scheint kein {appName}-Export zu sein."
 msgid "This helps us personalize your experience with local settings and features."
 msgstr "So können wir Ihr Erlebnis mit lokalen Einstellungen und Funktionen personalisieren."
 
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "This invitation is no longer valid"
+msgstr "Diese Einladung ist nicht mehr gültig"
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "This is the first device on your account. We'll create an encryption key to protect your data and give you a recovery key to keep safe."
 msgstr "Das ist das erste Gerät in Ihrem Konto. Wir erstellen einen Verschlüsselungsschlüssel zum Schutz Ihrer Daten und geben Ihnen einen Wiederherstellungsschlüssel zum sicheren Aufbewahren."
@@ -6388,6 +6414,7 @@ msgstr "Vertrauenswürdige Geräte"
 #: src/components/auth-gate/browser-check.tsx
 #: src/components/chat/attestation/attestation-panel.tsx
 #: src/components/embedded/surface-status.tsx
+#: src/components/invite-accept/invite-accept-page.tsx
 #: src/components/recovery-phrase-change-dialogs.tsx
 #: src/components/sso-error.tsx
 #: src/components/sso-sign-in/sso-redirect.tsx
@@ -7110,6 +7137,10 @@ msgstr "Alles bereit!"
 msgid "You're all set! 🎉"
 msgstr "Alles bereit! 🎉"
 
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "You're already signed in"
+msgstr "Sie sind bereits angemeldet"
+
 #: src/components/magic-link-verify.tsx
 #: src/components/sign-in/sign-in-success-step.tsx
 msgid "You're now signed in."
@@ -7127,6 +7158,14 @@ msgstr "Sie nutzen die neueste Version."
 #: src/components/provider-authorization-result.tsx
 #~ msgid "You're ready for the next step. Return to Thunderbolt to finish connecting your account."
 #~ msgstr ""
+
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "You're signed in as {email}."
+msgstr "Sie sind als {email} angemeldet."
+
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "You've been invited to {appName}"
+msgstr "Sie wurden zu {appName} eingeladen"
 
 #: src/settings/models/model-detail.tsx
 msgid "You've customized this model."

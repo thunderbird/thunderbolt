@@ -3,15 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans } from '@lingui/react/macro'
-import { ContentViewHeader } from '@/content-view/header'
-import { useContentView } from '@/content-view/context'
-import { Button } from '@/components/ui/button'
 import { useHttpClient } from '@/contexts'
-import { Download, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
+import { DocumentPreviewFrame } from './document-preview-frame'
 import { useDocumentBlob, useLocalDocumentBlob, type DocumentBlobState, type FileType } from './use-document-blob'
 
 // Configure the pdfjs worker via Vite's `new URL(..., import.meta.url)` pattern
@@ -44,22 +41,7 @@ type DocumentPreviewProps = {
  * by the caller (Haystack-backed or local IndexedDB) and passed in as `state`.
  */
 const DocumentPreview = ({ fileName, fileType, state, initialPage }: DocumentPreviewProps) => {
-  const { close } = useContentView()
   const [numPages, setNumPages] = useState<number | null>(null)
-
-  const blobUrl = state.status === 'ready' ? state.blobUrl : null
-
-  const handleDownload = useCallback(() => {
-    if (!blobUrl) {
-      return
-    }
-    const a = document.createElement('a')
-    a.href = blobUrl
-    a.download = fileName
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-  }, [blobUrl, fileName])
 
   const onDocumentLoadSuccess = useCallback(({ numPages: pages }: { numPages: number }) => {
     setNumPages(pages)
@@ -76,35 +58,12 @@ const DocumentPreview = ({ fileName, fileType, state, initialPage }: DocumentPre
     return () => clearTimeout(timer)
   }, [initialPage, numPages])
 
-  const downloadAction = (
-    <Button onClick={handleDownload} disabled={!blobUrl} variant="ghost" size="icon" className="h-8 w-8 rounded-full">
-      <Download className="size-4" />
-      <span className="sr-only">
-        <Trans>Download</Trans>
-      </span>
-    </Button>
-  )
-
   return (
-    <div className="flex h-full flex-col">
-      <ContentViewHeader title={fileName} onClose={close} actions={downloadAction} />
-
-      {state.status === 'loading' && (
-        <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </div>
-      )}
-
-      {state.status === 'error' && (
-        <div className="flex flex-1 items-center justify-center">
-          <p className="text-sm text-destructive">{state.message}</p>
-        </div>
-      )}
-
-      {state.status === 'ready' && (
+    <DocumentPreviewFrame fileName={fileName} state={state}>
+      {(ready) => (
         <div className="flex-1 overflow-auto p-4">
           {fileType === 'pdf' && (
-            <Document file={state.blobUrl} onLoadSuccess={onDocumentLoadSuccess} loading={null}>
+            <Document file={ready.blobUrl} onLoadSuccess={onDocumentLoadSuccess} loading={null}>
               {numPages &&
                 Array.from({ length: numPages }, (_, i) => (
                   <div key={i + 1} data-page-number={i + 1}>
@@ -114,12 +73,12 @@ const DocumentPreview = ({ fileName, fileType, state, initialPage }: DocumentPre
             </Document>
           )}
 
-          {fileType === 'docx' && state.docxHtml && (
+          {fileType === 'docx' && ready.docxHtml && (
             <iframe
               title={fileName}
               className="prose prose-sm dark:prose-invert max-w-none w-full h-full border-0"
               sandbox=""
-              srcDoc={state.docxHtml}
+              srcDoc={ready.docxHtml}
             />
           )}
 
@@ -132,7 +91,7 @@ const DocumentPreview = ({ fileName, fileType, state, initialPage }: DocumentPre
           )}
         </div>
       )}
-    </div>
+    </DocumentPreviewFrame>
   )
 }
 

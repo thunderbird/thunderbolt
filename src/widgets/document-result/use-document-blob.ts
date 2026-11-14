@@ -14,12 +14,12 @@ export type FileType = 'pdf' | 'docx' | 'unsupported'
  *  so impossible combinations (e.g. "done but no url and no error") can't exist. */
 export type DocumentBlobState =
   | { status: 'loading' }
-  | { status: 'ready'; blobUrl: string; docxHtml: string | null }
+  | { status: 'ready'; blob: Blob; blobUrl: string; docxHtml: string | null }
   | { status: 'error'; message: string }
 
 type DocumentBlobAction =
   | { type: 'reset' }
-  | { type: 'loaded'; blobUrl: string; docxHtml: string | null }
+  | { type: 'loaded'; blob: Blob; blobUrl: string; docxHtml: string | null }
   | { type: 'failed'; message: string }
 
 const reducer = (_state: DocumentBlobState, action: DocumentBlobAction): DocumentBlobState => {
@@ -27,7 +27,7 @@ const reducer = (_state: DocumentBlobState, action: DocumentBlobAction): Documen
     case 'reset':
       return { status: 'loading' }
     case 'loaded':
-      return { status: 'ready', blobUrl: action.blobUrl, docxHtml: action.docxHtml }
+      return { status: 'ready', blob: action.blob, blobUrl: action.blobUrl, docxHtml: action.docxHtml }
     case 'failed':
       return { status: 'error', message: action.message }
   }
@@ -65,7 +65,7 @@ const useBlobDocument = (cacheKey: string, fileType: FileType, loadBlob: () => P
         return
       }
       objectUrl = URL.createObjectURL(blob)
-      dispatch({ type: 'loaded', blobUrl: objectUrl, docxHtml })
+      dispatch({ type: 'loaded', blob, blobUrl: objectUrl, docxHtml })
     }
 
     load().catch((err) => {

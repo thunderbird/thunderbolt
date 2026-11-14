@@ -21,6 +21,38 @@ msgstr ""
 msgid "\"{filename}\" isn't a supported file type."
 msgstr ""
 
+#. placeholder {0}: leftOut.unsupportedCharts
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+chart+of+a+type+the+preview+does+not+draw%7D+other+%7B%23+charts+of+types+the+preview+does+not+draw%7D%7D&pluralize_on=0
+#: src/components/xlsx-preview/left-out-banner.tsx
+msgid "# chart of a type the preview does not draw"
+msgid_plural "# charts of types the preview does not draw"
+msgstr[0] ""
+msgstr[1] ""
+
+#. placeholder {0}: leftOut.chartSheets
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+chart+sheet%7D+other+%7B%23+chart+sheets%7D%7D&pluralize_on=0
+#: src/components/xlsx-preview/left-out-banner.tsx
+msgid "# chart sheet"
+msgid_plural "# chart sheets"
+msgstr[0] ""
+msgstr[1] ""
+
+#. placeholder {0}: leftOut.missingResults
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+formula+with+no+saved+result%7D+other+%7B%23+formulas+with+no+saved+result%7D%7D&pluralize_on=0
+#: src/components/xlsx-preview/left-out-banner.tsx
+msgid "# formula with no saved result"
+msgid_plural "# formulas with no saved result"
+msgstr[0] ""
+msgstr[1] ""
+
+#. placeholder {0}: leftOut.hiddenSheets
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+hidden+sheet%7D+other+%7B%23+hidden+sheets%7D%7D&pluralize_on=0
+#: src/components/xlsx-preview/left-out-banner.tsx
+msgid "# hidden sheet"
+msgid_plural "# hidden sheets"
+msgstr[0] ""
+msgstr[1] ""
+
 #. placeholder {0}: items.length
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+item+selected%7D+other+%7B%23+items+selected%7D%7D&pluralize_on=0
 #: src/components/embedded/surface-selection-bar.tsx
@@ -130,6 +162,10 @@ msgstr[1] ""
 msgid "{fileName} will be saved to your Downloads folder."
 msgstr ""
 
+#: src/components/xlsx-preview/sheet-overlay.tsx
+msgid "{kindLabel}: {title}"
+msgstr ""
+
 #: src/layout/sidebar/project-drop-list.tsx
 #~ msgid "{label} — already in this project"
 #~ msgstr ""
@@ -137,6 +173,13 @@ msgstr ""
 #: src/layout/sidebar/sidebar-section-toggle.tsx
 #~ msgid "{label} options"
 #~ msgstr ""
+
+#. js-lingui:icu=%7BleftOutObjects%2C+plural%2C+one+%7B%23+chart+or+picture+not+shown+in+full%7D+other+%7B%23+charts+or+pictures+not+shown+in+full%7D%7D&pluralize_on=leftOutObjects
+#: src/components/xlsx-preview/left-out-banner.tsx
+msgid "# chart or picture not shown in full"
+msgid_plural "# charts or pictures not shown in full"
+msgstr[0] ""
+msgstr[1] ""
 
 #: src/components/chat/image-support-notice.tsx
 msgid "{modelName} can't read images. Switch to a model that can, or remove the image."
@@ -210,6 +253,10 @@ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "⚠ This export was made by a different account ({importSourceEmail}). Importing it here will mix that data into your account. Confirm only if you intend to."
+msgstr ""
+
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "3-D chart"
 msgstr ""
 
 #: src/settings/account/use-delete-account.ts
@@ -647,6 +694,10 @@ msgstr ""
 msgid "Are you sure? You will lose any changes that you made."
 msgstr ""
 
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "Area chart"
+msgstr ""
+
 #: src/components/chat/artifact-message-part.tsx
 msgid "Artifact"
 msgstr ""
@@ -748,12 +799,20 @@ msgstr ""
 msgid "Back to App"
 msgstr ""
 
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "Bar chart"
+msgstr ""
+
 #: src/settings/voice.tsx
 msgid "Base URL"
 msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Bearer token or API key"
+msgstr ""
+
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "Box and whisker chart"
 msgstr ""
 
 #: src/components/search-provider-setup/search-provider-setup.tsx
@@ -770,6 +829,10 @@ msgstr ""
 
 #: src/components/external-link-toggle-group.tsx
 msgid "Browser"
+msgstr ""
+
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "Bubble chart"
 msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
@@ -867,6 +930,14 @@ msgstr ""
 msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr ""
 
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "Chart"
+msgstr ""
+
+#: src/components/xlsx-preview/sheet-overlay.tsx
+msgid "Charts and pictures"
+msgstr ""
+
 #: src/mini-apps/mini-app-page.tsx
 msgid "Chat"
 msgstr ""
@@ -911,6 +982,10 @@ msgstr ""
 
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "Check the backend logs"
+msgstr ""
+
+#: src/components/xlsx-preview/xlsx-preview.tsx
+msgid "Check your connection and open the file again, or download it to open it in a spreadsheet app."
 msgstr ""
 
 #: src/components/sign-in/sign-in-otp-step.tsx
@@ -1159,6 +1234,20 @@ msgstr ""
 msgid "Collapse Sidebar"
 msgstr ""
 
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "Column chart"
+msgstr ""
+
+#. placeholder {0}: formatters.number(maxCols)
+#. placeholder {1}: formatters.number(cols)
+#: src/components/xlsx-preview/left-out-banner.tsx
+msgid "Columns after the first {0} in {name}, which has {1}"
+msgstr ""
+
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "Combination chart"
+msgstr ""
+
 #: src/components/chat/permission-dialog.tsx
 msgid "Command / arguments"
 msgstr ""
@@ -1225,6 +1314,10 @@ msgstr ""
 
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Completing…"
+msgstr ""
+
+#: src/components/xlsx-preview/left-out-banner.tsx
+msgid "Conditional formatting"
 msgstr ""
 
 #: src/components/chat/attestation/attestation-details.tsx
@@ -2492,9 +2585,13 @@ msgstr ""
 msgid "Done"
 msgstr ""
 
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "Doughnut chart"
+msgstr ""
+
 #: src/components/download-app-banner-mobile.tsx
 #: src/components/update-notification.tsx
-#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+#: src/widgets/document-result/document-preview-frame.tsx
 msgid "Download"
 msgstr ""
 
@@ -2513,6 +2610,10 @@ msgstr ""
 
 #: src/components/artifact/artifact-actions.tsx
 msgid "Download HTML"
+msgstr ""
+
+#: src/components/xlsx-preview/xlsx-preview.tsx
+msgid "Download the file to open it in a spreadsheet app."
 msgstr ""
 
 #: src/hooks/use-desktop-update.ts
@@ -2972,6 +3073,10 @@ msgstr ""
 msgid "From {0}"
 msgstr ""
 
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "Funnel chart"
+msgstr ""
+
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Generate a new 24-word recovery phrase for your encrypted data. Your current phrase will stop working."
 msgstr ""
@@ -3118,6 +3223,10 @@ msgstr ""
 #: src/components/chat/effort-selector/effort-selector.tsx
 #~ msgid "Higher effort can improve difficult answers but takes more time and tokens."
 #~ msgstr ""
+
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "Histogram chart"
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "How {appName} salutes you"
@@ -3275,6 +3384,10 @@ msgstr ""
 msgid "iOS requires a secure URL (wss://)"
 msgstr ""
 
+#: src/components/xlsx-preview/xlsx-preview.tsx
+msgid "It may be damaged or protected with a password. Download the file to open it in a spreadsheet app."
+msgstr ""
+
 #: src/components/recovery-continuity/recovery-continuity-banner.tsx
 msgid "It was created before a security update. A new phrase lets recovery confirm your keys are yours."
 msgstr ""
@@ -3389,6 +3502,10 @@ msgstr ""
 msgid "Light mode"
 msgstr ""
 
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "Line chart"
+msgstr ""
+
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Listening"
 msgstr ""
@@ -3424,6 +3541,10 @@ msgstr ""
 
 #: src/content-view/sidebar-webview.tsx
 msgid "Loading preview…"
+msgstr ""
+
+#: src/components/xlsx-preview/xlsx-preview.tsx
+msgid "Loading the workbook"
 msgstr ""
 
 #: src/components/settings/iroh-pairing-panel.tsx
@@ -3511,6 +3632,10 @@ msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Managed by your deployment — always available, no setup needed."
+msgstr ""
+
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "Map chart"
 msgstr ""
 
 #: src/widgets/map/widget.tsx
@@ -3966,6 +4091,10 @@ msgstr ""
 msgid "Not now"
 msgstr ""
 
+#: src/components/xlsx-preview/sheet-overlay.tsx
+msgid "Not shown in this preview"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Not tested"
 msgstr ""
@@ -4282,6 +4411,10 @@ msgstr ""
 msgid "Pairing identity"
 msgstr ""
 
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "Pareto chart"
+msgstr ""
+
 #: src/widgets/weather-forecast/lib.ts
 msgid "Partly cloudy"
 msgstr ""
@@ -4352,6 +4485,18 @@ msgstr ""
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Pick this code on your other device."
+msgstr ""
+
+#: src/components/xlsx-preview/sheet-overlay.tsx
+msgid "Picture"
+msgstr ""
+
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "Pie chart"
+msgstr ""
+
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "Pie of pie chart"
 msgstr ""
 
 #: src/projects/project-action-menu-items.tsx
@@ -4492,6 +4637,10 @@ msgstr ""
 
 #: src/lib/tray.ts
 msgid "Quit"
+msgstr ""
+
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "Radar chart"
 msgstr ""
 
 #: src/settings/connections/mcp-server-detail.tsx
@@ -4817,6 +4966,12 @@ msgstr ""
 msgid "Revoking…"
 msgstr ""
 
+#. placeholder {0}: formatters.number(maxRows)
+#. placeholder {1}: formatters.number(rows)
+#: src/components/xlsx-preview/left-out-banner.tsx
+msgid "Rows after the first {0} in {name}, which has {1}"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Rows that share an ID with existing data will be overwritten with the file's version and synced to your other devices. This can't be undone."
 msgstr ""
@@ -4886,6 +5041,10 @@ msgstr ""
 
 #: src/components/set-node-id-dialog.tsx
 msgid "Scan from image"
+msgstr ""
+
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "Scatter chart"
 msgstr ""
 
 #: src/components/chat/scroll-to-bottom-button.tsx
@@ -5130,6 +5289,11 @@ msgstr ""
 msgid "Sent as text"
 msgstr ""
 
+#. placeholder {0}: i + 1
+#: src/components/xlsx-preview/chart-svg.tsx
+msgid "Series {0}"
+msgstr ""
+
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Server name (used to prefix tools)"
 msgstr ""
@@ -5201,12 +5365,20 @@ msgstr ""
 msgid "Settings, action needed"
 msgstr ""
 
+#: src/components/xlsx-preview/left-out-banner.tsx
+msgid "Shapes and text boxes"
+msgstr ""
+
 #: src/components/share-debug-transcript/share-debug-transcript-button.tsx
 msgid "Share debug transcript"
 msgstr ""
 
 #: src/projects/project-form.tsx
 msgid "Shared instructions for project chats"
+msgstr ""
+
+#: src/components/xlsx-preview/sheet-tabs.tsx
+msgid "Sheets"
 msgstr ""
 
 #: src/lib/tray.ts
@@ -5488,12 +5660,24 @@ msgstr ""
 msgid "Source repository"
 msgstr ""
 
+#: src/components/xlsx-preview/left-out-banner.tsx
+msgid "Sparklines"
+msgstr ""
+
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Speaking"
 msgstr ""
 
 #: src/settings/voice.tsx
 msgid "Speech-to-text and text-to-speech run in Thunderbolt’s confidential enclave."
+msgstr ""
+
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "Stacked area chart"
+msgstr ""
+
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "Stacked line chart"
 msgstr ""
 
 #: src/components/onboarding/onboarding-dialog.tsx
@@ -5519,6 +5703,10 @@ msgstr ""
 
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Status"
+msgstr ""
+
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "Stock chart"
 msgstr ""
 
 #: src/components/ui/prompt-input.tsx
@@ -5558,8 +5746,16 @@ msgstr ""
 msgid "Summary"
 msgstr ""
 
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "Sunburst chart"
+msgstr ""
+
 #: src/settings/models/supports-tools-switch.tsx
 msgid "Supports tools"
+msgstr ""
+
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "Surface chart"
 msgstr ""
 
 #: src/components/ui/header.tsx
@@ -5673,6 +5869,11 @@ msgstr ""
 #: src/components/search-provider-setup/search-provider-setup.tsx
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Testing…"
+msgstr ""
+
+#. placeholder {0}: formatters.number(cellChars)
+#: src/components/xlsx-preview/left-out-banner.tsx
+msgid "Text past the first {0} characters of a cell"
 msgstr ""
 
 #: src/settings/account/use-delete-account.ts
@@ -5798,6 +5999,14 @@ msgstr ""
 
 #: src/settings/encryption/use-passkey-continuity-migration.ts
 msgid "The passkey check was cancelled. Try again when you're ready."
+msgstr ""
+
+#: src/components/xlsx-preview/xlsx-preview.tsx
+msgid "The preview couldn't load"
+msgstr ""
+
+#: src/components/xlsx-preview/xlsx-preview.tsx
+msgid "The preview opens workbooks up to {limit} MB. Download the file to open it in a spreadsheet app."
 msgstr ""
 
 #: src/components/local-data-switch-screen.tsx
@@ -6053,6 +6262,10 @@ msgstr ""
 msgid "This permanently removes the revoked bridge registration. The bridge can register again afterward."
 msgstr ""
 
+#: src/components/xlsx-preview/left-out-banner.tsx
+msgid "This preview leaves out"
+msgstr ""
+
 #: src/components/chat/chat-prompt-input.tsx
 #: src/voice/ui/use-voice-session.ts
 msgid "This private chat won't run on {agentName}."
@@ -6102,6 +6315,10 @@ msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "This server uses OAuth. Add it and authorize to connect."
+msgstr ""
+
+#: src/components/xlsx-preview/xlsx-preview.tsx
+msgid "This sheet is too large to preview"
 msgstr ""
 
 #: src/lib/sso-error-messages.ts
@@ -6175,6 +6392,18 @@ msgstr ""
 
 #: src/components/approve-device/fingerprint-confirmation.tsx
 msgid "This will share your encryption key with the device, allowing it to decrypt and sync your data."
+msgstr ""
+
+#: src/components/xlsx-preview/xlsx-preview.tsx
+msgid "This workbook can't be previewed"
+msgstr ""
+
+#: src/components/xlsx-preview/xlsx-preview.tsx
+msgid "This workbook has no visible sheets"
+msgstr ""
+
+#: src/components/xlsx-preview/xlsx-preview.tsx
+msgid "This workbook is too large to preview"
 msgstr ""
 
 #: src/components/chat/reasoning-group-title.tsx
@@ -6349,6 +6578,10 @@ msgstr ""
 
 #: src/projects/emoji-catalog.ts
 msgid "Travel & places"
+msgstr ""
+
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "Treemap chart"
 msgstr ""
 
 #: src/settings/devices.tsx
@@ -6825,6 +7058,10 @@ msgstr ""
 
 #: src/waitlist/waitlist-content.tsx
 msgid "Want early access?"
+msgstr ""
+
+#: src/components/xlsx-preview/chart-labels.ts
+msgid "Waterfall chart"
 msgstr ""
 
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts

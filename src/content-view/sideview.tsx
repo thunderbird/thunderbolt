@@ -18,6 +18,14 @@ const LocalPdfSidebarViewer = lazy(() =>
   import('@/widgets/document-result/pdf-sidebar-viewer').then((m) => ({ default: m.LocalPdfSidebarViewer })),
 )
 
+// A chunk apart from react-pdf, so the grid and the Worker that downloads Excelize load only when a workbook opens.
+const LocalXlsxSidebarViewer = lazy(() =>
+  import('@/components/xlsx-preview').then((m) => ({ default: m.LocalXlsxSidebarViewer })),
+)
+
+/** Workbooks the grid previews. An `.xlsm` previews too, because Excelize only reads it and never runs a macro. */
+const isWorkbookName = (fileName: string) => /\.xls[xm]$/i.test(fileName)
+
 const loadingFallback = (
   <div className="flex h-full items-center justify-center">
     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -45,7 +53,11 @@ export const Sideview = () => {
     const { fileId, fileName, pageNumber } = parseDocumentSideviewId(sideviewId)
     return (
       <Suspense fallback={loadingFallback}>
-        <LocalPdfSidebarViewer localFileId={fileId} fileName={fileName} initialPage={pageNumber} />
+        {isWorkbookName(fileName) ? (
+          <LocalXlsxSidebarViewer key={fileId} localFileId={fileId} fileName={fileName} />
+        ) : (
+          <LocalPdfSidebarViewer localFileId={fileId} fileName={fileName} initialPage={pageNumber} />
+        )}
       </Suspense>
     )
   }

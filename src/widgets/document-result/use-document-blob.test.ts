@@ -108,6 +108,7 @@ describe('useDocumentBlob', () => {
       await flush()
       expect(result.current).toEqual({
         status: 'ready',
+        blob: expect.any(Blob),
         blobUrl: expect.stringMatching(/^blob:/),
         docxHtml: '<p>Document preview</p>',
       })

@@ -10,6 +10,7 @@ One Elysia app, `prefix: '/v1'` (`backend/src/index.ts:72`). Route groups are pl
 | ------------------------------------------------------------------------------------------------------ | --------------------------------------- | ----------------------------------------- | ------------------------------------------------- | ------- |
 | `ALL /v1/*` (Better Auth: `/v1/api/auth/*`)                                                            | `auth/elysia-plugin.ts`, `auth/auth.ts` | the flow's own                            | `auth` (IP)                                       | gated\* |
 | `GET /v1/api/auth/sso/desktop-initiate`, `/desktop-callback`                                           | `auth/sso-desktop-callback.ts`          | browser redirect                          | none                                              | exempt  |
+| `ALL /v1/api/auth/scim/v2/*` (SCIM 2.0 provisioning)                                                   | `identity/scim/request.ts`              | SCIM connection bearer token              | `scim` (token), `scim-auth-failure` (IP)          | exempt  |
 | `GET /v1/captcha/challenge` (only with `CAPTCHA_PROVIDER=altcha`)                                      | `auth/captcha-routes.ts`                | public                                    | `captcha-challenge` (IP)                          | gated   |
 | `GET /v1/health`                                                                                       | `api/routes.ts`                         | public                                    | none                                              | exempt  |
 | `GET /v1/health/{database,powersync,email,models}`                                                     | `api/health.ts`                         | `MONITORING_TOKEN`                        | none                                              | exempt  |
@@ -41,7 +42,7 @@ One Elysia app, `prefix: '/v1'` (`backend/src/index.ts:72`). Route groups are pl
 | `WS /v1/haystack/ws`                                                                                   | `haystack/routes.ts`                    | subprotocol bearer                        | none                                              | gated   |
 | `GET /v1/swagger`, `/v1/swagger/json`                                                                  | `@elysiajs/swagger`, `SWAGGER_ENABLED`  | public                                    | none                                              | gated   |
 
-\* Exempt subtrees: `/v1/api/auth/sso` (browser redirects), `/v1/api/auth/error` (failed-SSO redirect) and `/v1/api/auth/device` (headless CLI device grant). The rest of `/v1/api/auth/*` is gated.
+\* Exempt subtrees: `/v1/api/auth/sso` (browser redirects), `/v1/api/auth/error` (failed-SSO redirect) `/v1/api/auth/device` (headless CLI device grant) and `/v1/api/auth/scim/v2` (IdP provisioning clients). The rest of `/v1/api/auth/*` is gated.
 
 † The `pro` limiter is mounted on the WebSocket plugin but keys on the macro-resolved `user`, while the bearer is authorized in `open()`, so the handshake is not user-limited ([rate-limiting.md](../../../backend/docs/rate-limiting.md)).
 

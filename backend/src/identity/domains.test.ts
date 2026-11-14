@@ -110,11 +110,12 @@ describe('org domain service', () => {
       expect(checked).toMatchObject({ verifiedAt: null, lastCheckError: error })
       expect(checked.lastCheckedAt).toBeInstanceOf(Date)
     }
-    expect((await auditOf('domain.verified')).map((event) => [event.outcome, event.reason])).toEqual([
-      ['failure', 'TXT_RECORD_MISMATCH'],
-      ['failure', 'TXT_RECORD_NOT_FOUND'],
-      ['failure', 'TXT_RECORD_NOT_FOUND'],
-      ['failure', 'DNS_LOOKUP_FAILED'],
+    // The four checks can land in one millisecond, so their events have no reliable order.
+    expect((await auditOf('domain.verified')).map((event) => `${event.outcome} ${event.reason}`).sort()).toEqual([
+      'failure DNS_LOOKUP_FAILED',
+      'failure TXT_RECORD_MISMATCH',
+      'failure TXT_RECORD_NOT_FOUND',
+      'failure TXT_RECORD_NOT_FOUND',
     ])
   })
 

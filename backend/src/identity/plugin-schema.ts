@@ -176,4 +176,18 @@ export const identityPluginSchema = {
   // Not an identity table: declared so the waitlist admission rule can read approvals in the
   // sign-in transaction.
   waitlist: { fields: { email: text(), status: text(false), batchId: text(false), ...timestamps } },
+  // Not identity tables either: a SCIM `DELETE` revokes the member's devices inside the SCIM
+  // transaction. Only the columns that revocation writes or filters on; the adapter finds a table
+  // by its Drizzle export name.
+  device: {
+    modelName: 'devicesTable',
+    fields: {
+      userId: ref('user'),
+      trusted: flag(false),
+      approvalPending: flag(false),
+      revokedAt: date(false),
+      nodeId: text(false),
+      nodeIdAttestedAt: date(false),
+    },
+  },
 } satisfies BetterAuthPluginDBSchema

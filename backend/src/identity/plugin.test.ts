@@ -9,8 +9,12 @@ import { authHeaders, createTestApp, type TestAppHandle } from '@/test-utils/e2e
 import { createTestChallenge } from '@/test-utils/otp-challenge'
 import { authorizeWsBearer, wsCloseUnauthorized } from '@/auth/ws-bearer-auth'
 import { encodeWsBearer, wsBearerSubprotocolPrefix } from '@shared/ws-bearer'
+import { passkey } from '@better-auth/passkey'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { and, eq } from 'drizzle-orm'
+import type { AccessState } from './access'
+import { decideSignIn, passkeySignInPath } from './plugin'
+import { otpSignInPath } from './sign-in'
 
 const authBase = 'http://localhost/v1/api/auth'
 
@@ -163,5 +167,26 @@ describe('identity plugin', () => {
 
     expect(res.status).toBe(403)
     expect(await res.json()).toMatchObject({ code: 'ACCESS_NOT_MEMBER' })
+  })
+})
+
+describe('SSO-only sign-in', () => {
+  const managed: AccessState = {
+    membership: { id: 'm1', orgId: 'default', userId: 'u1', blockedAt: null },
+    sources: [{ id: 's1', kind: 'scim', status: 'active', identityConnectionId: 'entra', ref: null }],
+    connectionStatusById: new Map([['entra', 'active']]),
+    ssoConnectionIds: new Set(['entra']),
+  }
+
+  it('names the path the passkey plugin signs in on', () => {
+    const plugin = passkey({ rpID: 'localhost', rpName: 'Thunderbolt', origin: 'http://localhost' })
+    expect(plugin.endpoints.verifyPasskeyAuthentication.path).toBe(passkeySignInPath)
+  })
+
+  it('refuses passkey and email-code sign-in to an IdP-managed member, and lets SSO through', () => {
+    expect(decideSignIn(managed, passkeySignInPath)).toEqual({ allowed: false, reason: 'sso_required' })
+    expect(decideSignIn(managed, otpSignInPath)).toEqual({ allowed: false, reason: 'sso_required' })
+    expect(decideSignIn(managed, '/sso/callback/:providerId')).toEqual({ allowed: true })
+    expect(decideSignIn({ ...managed, ssoConnectionIds: new Set() }, passkeySignInPath)).toEqual({ allowed: true })
   })
 })

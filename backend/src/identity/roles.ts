@@ -3,7 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { QueryableDatabase } from '@/db/client'
-import { groupRoleMapping, localGroupMember, memberRoleGrant, scimProjectionGrant } from '@/db/schema'
+import {
+  groupRoleMapping,
+  identityConnection,
+  localGroupMember,
+  memberRoleGrant,
+  scimProjectionGrant,
+} from '@/db/schema'
 import { and, eq } from 'drizzle-orm'
 import { type AccessDecision, type AuthAdapter, computeAccess, loadAccessState } from './access'
 import { getCurrentOrganizationId } from './current-organization'
@@ -27,6 +33,25 @@ export const computeRoles = ({ grants, localGroupRoles, scimRoles }: RoleSources
   new Set([memberRole, ...grants, ...localGroupRoles, ...scimRoles])
 
 /**
+ * The joins that keep only SCIM grants that still hold: the connection's SCIM side is active and the
+ * mapping that produced the grant still exists. The plugin's stored grants trail both until a replay
+ * or a retire walk reaches them, so a stored grant alone grants nothing.
+ */
+export const liveScimGrantJoins = (orgId = getCurrentOrganizationId()) => ({
+  connection: and(
+    eq(identityConnection.orgId, orgId),
+    eq(identityConnection.scimConnectionId, scimProjectionGrant.connectionId),
+    eq(identityConnection.status, 'active'),
+  ),
+  mapping: and(
+    eq(groupRoleMapping.orgId, orgId),
+    eq(groupRoleMapping.identityConnectionId, identityConnection.id),
+    eq(groupRoleMapping.scimGroupId, scimProjectionGrant.sourceId),
+    eq(groupRoleMapping.role, scimProjectionGrant.role),
+  ),
+})
+
+/**
  * Read a membership's role sources. Through Drizzle, not the auth adapter: the adapter only knows
  * the SCIM tables once the SCIM plugin is installed, and roles are never needed inside a hook.
  */
@@ -35,6 +60,7 @@ export const loadRoleSources = async (
   membership: { id: string; userId: string },
   orgId = getCurrentOrganizationId(),
 ): Promise<RoleSources> => {
+  const scimJoins = liveScimGrantJoins(orgId)
   const [grants, localGroupRoles, scimGrants] = await Promise.all([
     database
       .select({ role: memberRoleGrant.role })
@@ -48,6 +74,8 @@ export const loadRoleSources = async (
     database
       .select({ role: scimProjectionGrant.role })
       .from(scimProjectionGrant)
+      .innerJoin(identityConnection, scimJoins.connection)
+      .innerJoin(groupRoleMapping, scimJoins.mapping)
       .where(
         and(eq(scimProjectionGrant.userId, membership.userId), eq(scimProjectionGrant.provisioningDomainId, orgId)),
       ),

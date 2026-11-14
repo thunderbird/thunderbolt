@@ -7,7 +7,16 @@ import { extractClientIp } from '@/utils/request'
 import { getCurrentAdapter, runWithTransaction } from '@better-auth/core/context'
 import { APIError, type BetterAuthPlugin, type DBAdapter } from 'better-auth'
 import { createAuthMiddleware, isAPIError } from 'better-auth/api'
-import { type AccessRefusal, accessRefusalCodes, computeAccess, getAccess, loadAccessState } from './access'
+import {
+  type AccessDecision,
+  type AccessRefusal,
+  accessRefusalCodes,
+  type AccessState,
+  computeAccess,
+  getAccess,
+  loadAccessState,
+  requiresSso,
+} from './access'
 import { admitAtSignIn } from './admission'
 import { createAuditEvent } from './audit/write'
 import { identityPluginSchema } from './plugin-schema'
@@ -15,8 +24,25 @@ import { didIdpDenyEmailVerified, getSsoConnection, otpSignInPath, type SignInUs
 
 const getSessionPath = '/get-session'
 
+export const passkeySignInPath = '/passkey/verify-authentication'
+
 /** Paths that mint a session for a sign-in, where a refusal is recorded as a failed sign-in. */
-const signInPaths = new Set([otpSignInPath, ...ssoSignInPaths, '/passkey/verify-authentication', '/device/token'])
+const signInPaths = new Set([otpSignInPath, ...ssoSignInPaths, passkeySignInPath, '/device/token'])
+
+/** Sign-in methods that skip the IdP, refused to a member who must sign in through SSO. */
+const nonSsoSignInPaths = new Set([otpSignInPath, passkeySignInPath])
+
+/**
+ * The access check for a sign-in: `computeAccess`, then SSO only for a member an IdP with an SSO
+ * side manages, so its MFA and conditional access always apply. Passkeys still unlock E2EE keys
+ * after an SSO sign-in: that never reaches this check.
+ */
+export const decideSignIn = (state: AccessState, path: string | undefined): AccessDecision => {
+  const access = computeAccess(state)
+  return access.allowed && path !== undefined && nonSsoSignInPaths.has(path) && requiresSso(state)
+    ? { allowed: false, reason: 'sso_required' }
+    : access
+}
 
 type SignInUserRow = SignInUser & { isAnonymous: boolean | null }
 
@@ -26,7 +52,8 @@ type SessionResult = { user?: { id: string; isAnonymous?: boolean | null } } | n
  * Organization identity for Better Auth. Declares the identity tables to the adapter, and
  * enforces membership:
  * - at sign-in, before any session is created: admit the user if a rule allows, then refuse a
- *   member without access (blocked, deprovisioned by their IdP, or with no live source)
+ *   member without access (blocked, deprovisioned by their IdP, or with no live source), and an
+ *   IdP-managed member signing in by email code or passkey instead of SSO
  * - on every `getSession`, so a member who loses access reads as signed out on their next request
  *
  * Anonymous users are not members and pass through untouched. API keys skip the `getSession`
@@ -70,7 +97,7 @@ export const identity = () => {
                       idpDeniedEmailVerified: await didIdpDenyEmailVerified(),
                       ssoConnection: await getSsoConnection(),
                     })
-                    return computeAccess(await loadAccessState(tx, user.id))
+                    return decideSignIn(await loadAccessState(tx, user.id), context?.path)
                   })
                   if (access.allowed) {
                     return

@@ -24,6 +24,9 @@ import {
 } from '@/db/schema'
 import { sso } from '@better-auth/sso'
 import { createSsoConnection, ensureEnvSsoConnection, envSsoConnectionId } from '@/identity/sso-connections'
+import { createScimConnection } from '@/identity/scim/connections'
+import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
+import { createScimClient, keycloakUser, type ScimClient } from '@/test-utils/scim'
 import { getCurrentOrganizationId } from '@/identity/current-organization'
 
 const oidcIssuerUrl = 'https://oidc.test'
@@ -852,6 +855,87 @@ describe('OIDC Integration', () => {
         )
 
         expect(res.status).toBe(403)
+      })
+    })
+
+    describe('a connection paired with a real SCIM side', () => {
+      let scim: ScimClient
+
+      beforeEach(async () => {
+        const { createAuth } = await import('./auth')
+        const auth = createAuth(db)
+        const actorId = `scim-admin-${crypto.randomUUID()}`
+        await db
+          .insert(user)
+          .values({ id: actorId, name: 'Admin', email: `${actorId}@example.com`, emailVerified: true })
+        const { token } = await createScimConnection(auth, { actorId, identityConnectionId: secondConnectionId })
+        const app = new Elysia({ prefix: '/v1' }).use(createBetterAuthPlugin(db).plugin)
+        scim = createScimClient((request) => app.handle(request), token)
+      })
+
+      /** Provision a user whose `externalId` is `externalId`; returns their Better Auth user id. */
+      const provision = async (externalId: string) => {
+        const email = `provisioned-${crypto.randomUUID()}@example.com`
+        const created = await scim.call('POST', '/Users', { body: keycloakUser(email, email, externalId) })
+        expect(created.status).toBe(201)
+        const [row] = await db.select({ id: user.id }).from(user).where(eq(user.email, email))
+        return { userId: row.id, scimId: created.body.id! }
+      }
+
+      it('signs an Entra subject into its SCIM user by oid, whatever its sub and email', async () => {
+        await db
+          .update(identityConnection)
+          .set({ matchClaim: 'oid' })
+          .where(eq(identityConnection.id, secondConnectionId))
+        const oid = crypto.randomUUID()
+        const { userId } = await provision(oid)
+        const idpEmail = `entra-alias-${crypto.randomUUID()}@example.com`
+
+        const first = await signIn(secondProviderId, idpEmail, { claims: { oid } })
+        const second = await signIn(secondProviderId, idpEmail, { claims: { oid } })
+
+        expect(first.location).toBe(callbackURL)
+        expect(first.sessionUserId).toBe(userId)
+        expect(second.sessionUserId).toBe(userId)
+        expect(await userCount(idpEmail)).toBe(0)
+      })
+
+      it('signs an Okta or Keycloak subject into its SCIM user by sub', async () => {
+        const subject = crypto.randomUUID()
+        const { userId } = await provision(subject)
+
+        const { sessionUserId } = await signIn(secondProviderId, `kc-${crypto.randomUUID()}@example.com`, { subject })
+
+        expect(sessionUserId).toBe(userId)
+      })
+
+      it('refuses a sign-in that carries no match claim', async () => {
+        await db
+          .update(identityConnection)
+          .set({ matchClaim: 'oid' })
+          .where(eq(identityConnection.id, secondConnectionId))
+
+        const { location, sessionUserId } = await signIn(secondProviderId, `no-oid-${crypto.randomUUID()}@example.com`)
+
+        expect(location).toContain('error=SSO_MATCH_CLAIM_MISSING')
+        expect(sessionUserId).toBeUndefined()
+      })
+
+      it.each(['deactivated', 'deleted'] as const)('refuses a subject whose SCIM record was %s', async (change) => {
+        const subject = crypto.randomUUID()
+        const { scimId } = await provision(subject)
+        const changed =
+          change === 'deleted'
+            ? await scim.call('DELETE', `/Users/${scimId}`)
+            : await scim.patch(`/Users/${scimId}`, [{ op: 'replace', path: 'active', value: false }])
+        expect(changed.status).toBeLessThan(300)
+
+        const { location, sessionUserId } = await signIn(secondProviderId, `gone-${crypto.randomUUID()}@example.com`, {
+          subject,
+        })
+
+        expect(location).toContain('error=ACCESS_DEPROVISIONED')
+        expect(sessionUserId).toBeUndefined()
       })
     })
   })

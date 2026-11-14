@@ -26,6 +26,7 @@ type RateLimitTier =
   | 'debug-transcript-intake'
   | 'scim'
   | 'scim-auth-failure'
+  | 'scim-failure-record'
 /** Tiers whose limit the caller passes: operator-configured, or sized by the module that owns them. */
 type ConfiguredRateLimitTier =
   | 'anonymous-sign-in'
@@ -33,6 +34,7 @@ type ConfiguredRateLimitTier =
   | 'captcha-challenge'
   | 'scim'
   | 'scim-auth-failure'
+  | 'scim-failure-record'
 /** Tiers with a hardcoded limit. */
 type FixedRateLimitTier = Exclude<RateLimitTier, ConfiguredRateLimitTier>
 export type UserRateLimitTier = Exclude<FixedRateLimitTier, 'auth'>

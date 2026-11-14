@@ -105,7 +105,9 @@ describe('toTsv', () => {
   })
 
   test('replaces tabs and line breaks inside a field with a space', () => {
-    expect(toTsv([['one\ttwo', 'line\r\nbreak']])).toBe('one two\tline break\n')
+    expect(toTsv([['one\ttwo', 'line\r\nbreak', 'a\rb\vc\fd\u0085e\u2028f\u2029g']])).toBe(
+      'one two\tline break\ta b c d e f g\n',
+    )
   })
 
   test('returns empty text for no rows', () => {

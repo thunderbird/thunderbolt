@@ -58,13 +58,29 @@ describe('xlsxToText', () => {
     expect(await xlsxToText(asFile())).toEqual({ text: '## Sheet: Sheet1\nRow 1: A, , C' })
   })
 
-  test('quotes cells containing a comma, quote, or line break', async () => {
+  test('quotes cells containing a comma or quote', async () => {
     readXlsxFile.mockImplementationOnce(async () => [
-      { sheet: 'Sheet1', data: [['Stark, Inc.', 'The "Big" One', 'line one\nline two', 'plain']] },
+      { sheet: 'Sheet1', data: [['Stark, Inc.', 'The "Big" One', 'plain']] },
     ])
 
     expect(await xlsxToText(asFile())).toEqual({
-      text: '## Sheet: Sheet1\nRow 1: "Stark, Inc.", "The ""Big"" One", "line one\nline two", plain',
+      text: '## Sheet: Sheet1\nRow 1: "Stark, Inc.", "The ""Big"" One", plain',
+    })
+  })
+
+  test('keeps a row on one line when a cell holds line breaks', async () => {
+    readXlsxFile.mockImplementationOnce(async () => [
+      {
+        sheet: 'Sheet1',
+        data: [
+          ['a\r\nb\rc\nd\ve\ff\u0085g\u2028h\u2029i', 'two, "lines"\nhere'],
+          ['next', 1],
+        ],
+      },
+    ])
+
+    expect(await xlsxToText(asFile())).toEqual({
+      text: '## Sheet: Sheet1\nRow 1: a b c d e f g h i, "two, ""lines"" here"\nRow 2: next, 1',
     })
   })
 

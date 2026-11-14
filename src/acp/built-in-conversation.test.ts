@@ -499,7 +499,7 @@ describe('prepareBuiltInConversation', () => {
           name: 'Q1',
           rows: [['Name', 'Cost'], [], ['Rent', '10']],
         },
-        { name: 'Q2/Q3', rows: [['Name'], ['Tab\there']] },
+        { name: 'Q2/Q3', rows: [['Name'], ['Tab\there'], ['two\nlines']] },
       ]
 
       const prepared = await prepareBuiltInConversation(
@@ -512,7 +512,7 @@ describe('prepareBuiltInConversation', () => {
       expect(prepared.files).toEqual([
         // The blank row stays, so Rent is on line 3 of the file, as it is in row 3 of the sheet.
         { path: 'attachments/x1/Q1.tsv', content: 'Name\tCost\n\nRent\t10\n' },
-        { path: 'attachments/x1/Q2_Q3.tsv', content: 'Name\nTab here\n' },
+        { path: 'attachments/x1/Q2_Q3.tsv', content: 'Name\nTab here\ntwo lines\n' },
       ])
       expect(prepared.prompt.text).toBe(
         [
@@ -525,6 +525,7 @@ describe('prepareBuiltInConversation', () => {
           '## Sheet: Q2/Q3',
           'Row 1: Name',
           'Row 2: Tab\there',
+          'Row 3: two lines',
         ].join('\n'),
       )
     })

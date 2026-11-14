@@ -76,9 +76,13 @@ export const parseCsv = (text: string): string[][] | null => {
 /**
  * Renders rows as newline-terminated TSV. Tabs and line breaks inside a field
  * become spaces, so each line is one row and `awk -F'\t'` sees the original columns.
+ * The line breaks are the ones the spreadsheet text for the model also flattens, so a
+ * field reads the same in both.
  */
 export const toTsv = (rows: readonly (readonly string[])[]): string =>
-  rows.map((row) => `${row.map((field) => field.replace(/[\t\r\n]+/g, ' ')).join('\t')}\n`).join('')
+  rows
+    .map((row) => `${row.map((field) => field.replace(/[\t\r\n\v\f\u0085\u2028\u2029]+/g, ' ')).join('\t')}\n`)
+    .join('')
 
 /** Converts CSV to TSV, or null when it can't be done faithfully (empty, other delimiter, malformed quoting, ragged rows). */
 export const csvToTsv = (text: string): string | null => {

@@ -37,9 +37,13 @@ const cellText = (value: CellValue | null): string => {
   return String(value)
 }
 
-/** Quotes a field that contains a separator, quote, or line break, doubling any
- *  embedded quotes, so `Stark, Inc.` stays one cell instead of reading as two. */
-const csvField = (text: string): string => (/[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text)
+/** Puts a cell on one line and quotes it when it holds a comma or quote, doubling any embedded quotes, so `Stark, Inc.`
+ *  stays one cell. It flattens the same line breaks as `toTsv`, so a row is one labeled line that a preview cannot cut
+ *  in half, and a cell reads the same here as in the sheet's `.tsv`. */
+const csvField = (text: string): string => {
+  const line = text.replace(/[\r\n\v\f\u0085\u2028\u2029]+/g, ' ')
+  return /[",]/.test(line) ? `"${line.replaceAll('"', '""')}"` : line
+}
 
 /** One worksheet as text cells. `rows[i]` is row `i + 1` of the sheet: a blank row stays as an empty array, so a `.tsv`
  *  written from it keeps the sheet's row numbers as line numbers. */

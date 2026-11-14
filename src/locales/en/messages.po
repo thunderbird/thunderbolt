@@ -535,6 +535,10 @@ msgstr "An account with this email already exists but is not verified, so it can
 msgid "An encrypted agent connection alone does not verify the agent or its model provider."
 msgstr "An encrypted agent connection alone does not verify the agent or its model provider."
 
+#: src/lib/sso-error-messages.ts
+msgid "An existing {appName} account already uses this email. Your administrator needs to approve linking it to this sign-in."
+msgstr "An existing {appName} account already uses this email. Your administrator needs to approve linking it to this sign-in."
+
 #: src/lib/openrouter-auth.ts
 #~ msgid "An OpenRouter connection is already in progress."
 #~ msgstr "An OpenRouter connection is already in progress."
@@ -6158,6 +6162,10 @@ msgstr "This server uses OAuth. Add it and authorize to connect."
 #: src/lib/sso-error-messages.ts
 msgid "This sign-in did not start from {appName}. Open {appName} and sign in from there."
 msgstr "This sign-in did not start from {appName}. Open {appName} and sign in from there."
+
+#: src/lib/sso-error-messages.ts
+msgid "This sign-in is already linked to another {appName} account. Ask your administrator for help."
+msgstr "This sign-in is already linked to another {appName} account. Ask your administrator for help."
 
 #: src/lib/sso-error-messages.ts
 msgid "This sign-in option is no longer available. Try again, or ask your administrator."

@@ -7,7 +7,7 @@ import { createTestSettings } from '@/test-utils/settings'
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, like } from 'drizzle-orm'
 import { exportJWK, generateKeyPair, SignJWT, type JWK } from 'jose'
 import { getSharedIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
 import { account, session as sessionTable, user } from '@/db/auth-schema'
@@ -15,12 +15,15 @@ import { createSessionCookie } from '@/test-utils/session-cookie'
 import {
   auditEvent,
   identityConnection,
+  linkReview,
   memberRoleGrant,
   membershipSource,
   orgMembership,
+  orgDomain,
   scimSubject,
   scimUser,
   ssoProvider,
+  verification,
 } from '@/db/schema'
 import { sso } from '@better-auth/sso'
 import { createSsoConnection, ensureEnvSsoConnection, envSsoConnectionId } from '@/identity/sso-connections'
@@ -28,6 +31,9 @@ import { createScimConnection } from '@/identity/scim/connections'
 import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
 import { createScimClient, keycloakUser, type ScimClient } from '@/test-utils/scim'
 import { getCurrentOrganizationId } from '@/identity/current-organization'
+import { approveLinkReview, rejectLinkReview } from '@/identity/link-reviews'
+import { cliRegistrationPendingDeviceId } from '@/dal/sessions'
+import { linkIntentHeader } from '@/identity/sso-linking'
 
 const oidcIssuerUrl = 'https://oidc.test'
 
@@ -560,15 +566,31 @@ describe('OIDC Integration', () => {
     afterEach(async () => {
       const connectionIds = [secondConnectionId]
       await db.delete(membershipSource).where(inArray(membershipSource.identityConnectionId, connectionIds))
+      await db.delete(linkReview).where(inArray(linkReview.identityConnectionId, connectionIds))
       await db.delete(identityConnection).where(inArray(identityConnection.id, connectionIds))
       await db.delete(ssoProvider).where(eq(ssoProvider.providerId, secondProviderId))
     })
 
-    /** Complete an OIDC sign-in through `providerId`, whose IdP vouches for `email`. */
+    /**
+     * Complete an OIDC sign-in through `providerId`, whose IdP vouches for `email`. `sessionCookie`
+     * makes it the browser of a signed-in user; `linkIntent` asks to link the identity to them.
+     */
     const signIn = async (
       providerId: string,
       email: string,
-      { subject = crypto.randomUUID(), claims = { email_verified: true } as Record<string, unknown> } = {},
+      {
+        subject = crypto.randomUUID(),
+        claims = { email_verified: true } as Record<string, unknown>,
+        sessionCookie,
+        linkIntent = false,
+        startHeaders = {},
+      }: {
+        subject?: string
+        claims?: Record<string, unknown>
+        sessionCookie?: string
+        linkIntent?: boolean
+        startHeaders?: Record<string, string>
+      } = {},
     ) => {
       const issuer = providerId === secondProviderId ? secondIssuerUrl : oidcIssuerUrl
       const idToken = await new SignJWT({ email, name: 'SSO User', ...claims })
@@ -607,7 +629,12 @@ describe('OIDC Integration', () => {
           const start = await app.handle(
             new Request('http://localhost/v1/api/auth/sign-in/sso', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                ...(sessionCookie ? { Cookie: sessionCookie } : {}),
+                ...(linkIntent ? { [linkIntentHeader]: '1' } : {}),
+                ...startHeaders,
+              },
               body: JSON.stringify({ providerId, callbackURL }),
             }),
           )
@@ -615,10 +642,11 @@ describe('OIDC Integration', () => {
             return { status: start.status, authorizeUrl: null, location: null, sessionUserId: undefined }
           }
           const authorizeUrl = new URL(((await start.json()) as { url: string }).url)
+          const callbackCookie = [sessionCookie, cookieOf(start)].filter(Boolean).join('; ')
           const callback = await app.handle(
             new Request(
               `http://localhost/v1/api/auth/sso/callback/${providerId}?code=idp-code&state=${authorizeUrl.searchParams.get('state')}`,
-              { headers: { Cookie: cookieOf(start) } },
+              { headers: { Cookie: callbackCookie } },
             ),
           )
           const session = await auth.api.getSession({ headers: new Headers({ Cookie: cookieOf(callback) }) })
@@ -868,6 +896,200 @@ describe('OIDC Integration', () => {
       },
     )
 
+    describe('linking across connections', () => {
+      const accountsOn = (userId: string, providerId: string) =>
+        db.$count(account, and(eq(account.userId, userId), eq(account.providerId, providerId)))
+
+      const linkEvents = (userId: string) =>
+        db
+          .select()
+          .from(auditEvent)
+          .where(and(eq(auditEvent.action, 'link.created'), eq(auditEvent.targetId, userId)))
+
+      const intentCount = () => db.$count(verification, like(verification.identifier, 'sso-link:%'))
+
+      /** A user who signed up by email code, with a session cookie for their browser. */
+      const signedInUser = async () => {
+        const { createAuth } = await import('./auth')
+        return signInByEmailCode(createAuth(db))
+      }
+
+      /** A user who signs in through the env connection already. */
+      const envSsoUser = async () => {
+        const { user: existing, cookie } = await signedInUser()
+        expect((await signIn('sso', existing.email)).sessionUserId).toBe(existing.id)
+        return { existing, cookie }
+      }
+
+      it('still links an email-code user on the env provider by email, as before, with an audit event', async () => {
+        const { user: existing } = await signedInUser()
+
+        expect((await signIn('sso', existing.email)).sessionUserId).toBe(existing.id)
+        expect(await accountsOn(existing.id, 'sso')).toBe(1)
+        expect(await linkEvents(existing.id)).toEqual([
+          expect.objectContaining({
+            actorType: 'system',
+            connectionId: envSsoConnectionId,
+            metadata: { tier: 'email' },
+          }),
+        ])
+      })
+
+      it('refuses another connection into review instead of email-linking a user of the env provider', async () => {
+        const { existing } = await envSsoUser()
+        const subject = crypto.randomUUID()
+
+        const { location, sessionUserId } = await signIn(secondProviderId, existing.email, { subject })
+
+        expect(location).toContain('error=LINK_REVIEW_PENDING')
+        expect(sessionUserId).toBeUndefined()
+        expect(await accountsOn(existing.id, secondProviderId)).toBe(0)
+        const reviews = await db
+          .select()
+          .from(linkReview)
+          .where(eq(linkReview.identityConnectionId, secondConnectionId))
+        expect(reviews).toEqual([
+          expect.objectContaining({
+            trigger: 'sso_sign_in',
+            externalId: subject,
+            candidateUserId: existing.id,
+            status: 'pending',
+          }),
+        ])
+
+        const { user: admin } = await signedInUser()
+        await approveLinkReview(db, { reviewId: reviews[0].id, actorId: admin.id })
+        const approved = await signIn(secondProviderId, existing.email, { subject })
+
+        expect(approved.sessionUserId).toBe(existing.id)
+        expect(await accountsOn(existing.id, secondProviderId)).toBe(1)
+        const [linked] = await db.select().from(linkReview).where(eq(linkReview.id, reviews[0].id))
+        expect(linked.status).toBe('linked')
+        // Their env provider identity was linked by email first; this connection's link is the review.
+        expect((await linkEvents(existing.id)).filter((event) => event.connectionId === secondConnectionId)).toEqual([
+          expect.objectContaining({ metadata: { tier: 'review', reviewId: linked.id } }),
+        ])
+      })
+
+      it('links another connection automatically when it claims the verified domain', async () => {
+        const domain = `claimed-${crypto.randomUUID().slice(0, 8)}.example`
+        await db.insert(orgDomain).values({
+          id: crypto.randomUUID(),
+          orgId: getCurrentOrganizationId(),
+          domain,
+          verificationToken: crypto.randomUUID(),
+          verifiedAt: new Date(),
+          claimedByConnectionId: secondConnectionId,
+        })
+        const email = `ada@${domain}`
+        expect((await signIn('sso', email)).location).toBe(callbackURL)
+        const [existing] = await db.select().from(user).where(eq(user.email, email))
+
+        const { sessionUserId } = await signIn(secondProviderId, email)
+
+        expect(sessionUserId).toBe(existing.id)
+        expect(await linkEvents(existing.id)).toEqual([
+          expect.objectContaining({
+            actorType: 'system',
+            connectionId: secondConnectionId,
+            metadata: { tier: 'domain' },
+          }),
+        ])
+      })
+
+      it('links a signed-in user who asks for it, whatever email the IdP sends', async () => {
+        const { user: existing, cookie } = await signedInUser()
+        const idpEmail = `work-${crypto.randomUUID()}@example.com`
+        const intentsBefore = await intentCount()
+
+        const { location, sessionUserId } = await signIn(secondProviderId, idpEmail, {
+          sessionCookie: cookie,
+          linkIntent: true,
+        })
+
+        expect(location).toBe(callbackURL)
+        expect(sessionUserId).toBe(existing.id)
+        expect(await accountsOn(existing.id, secondProviderId)).toBe(1)
+        expect(await db.$count(user, eq(user.email, idpEmail))).toBe(0)
+        expect(await linkEvents(existing.id)).toEqual([
+          expect.objectContaining({ actorType: 'user', actorId: existing.id, metadata: { tier: 'self_service' } }),
+        ])
+        // Taken by the sign-in that used it, so a replay links nothing.
+        expect(await intentCount()).toBe(intentsBefore)
+      })
+
+      it('never links a signed-in user who did not ask, as on a shared machine', async () => {
+        const { user: existing, cookie } = await signedInUser()
+        const idpEmail = `someone-else-${crypto.randomUUID()}@example.com`
+        const intentsBefore = await intentCount()
+
+        const { sessionUserId } = await signIn(secondProviderId, idpEmail, { sessionCookie: cookie })
+
+        expect(sessionUserId).not.toBe(existing.id)
+        expect(await accountsOn(existing.id, secondProviderId)).toBe(0)
+        expect(await intentCount()).toBe(intentsBefore)
+      })
+
+      it('refuses a link request made with an API key, and records no intent', async () => {
+        const { createAuth } = await import('./auth')
+        const { user: existing } = await signedInUser()
+        const { key } = await createAuth(db).api.createApiKey({ body: { userId: existing.id } })
+        const intentsBefore = await intentCount()
+
+        const { status } = await signIn(secondProviderId, `pat-${crypto.randomUUID()}@example.com`, {
+          linkIntent: true,
+          startHeaders: { 'x-api-key': key },
+        })
+
+        expect(status).toBe(403)
+        expect(await intentCount()).toBe(intentsBefore)
+        expect(await accountsOn(existing.id, secondProviderId)).toBe(0)
+      })
+
+      it('refuses a link request made with a CLI device-grant session, and records no intent', async () => {
+        const { user: existing, cookie } = await signedInUser()
+        await db
+          .update(sessionTable)
+          .set({ deviceId: cliRegistrationPendingDeviceId })
+          .where(eq(sessionTable.userId, existing.id))
+        const intentsBefore = await intentCount()
+
+        const { status } = await signIn(secondProviderId, `cli-${crypto.randomUUID()}@example.com`, {
+          sessionCookie: cookie,
+          linkIntent: true,
+        })
+
+        expect(status).toBe(403)
+        expect(await intentCount()).toBe(intentsBefore)
+        expect(await accountsOn(existing.id, secondProviderId)).toBe(0)
+      })
+
+      it('ignores a link request that carries no session', async () => {
+        const idpEmail = `anonymous-${crypto.randomUUID()}@example.com`
+
+        const { sessionUserId } = await signIn(secondProviderId, idpEmail, { linkIntent: true })
+
+        const [created] = await db.select().from(user).where(eq(user.email, idpEmail))
+        expect(sessionUserId).toBe(created.id)
+      })
+
+      it('refuses to move a subject another user already holds', async () => {
+        const subject = crypto.randomUUID()
+        const holderEmail = `holder-${crypto.randomUUID()}@example.com`
+        expect((await signIn(secondProviderId, holderEmail, { subject })).location).toBe(callbackURL)
+        const { user: existing, cookie } = await signedInUser()
+
+        const { location } = await signIn(secondProviderId, holderEmail, {
+          subject,
+          sessionCookie: cookie,
+          linkIntent: true,
+        })
+
+        expect(location).toContain('error=SSO_IDENTITY_LINKED_ELSEWHERE')
+        expect(await accountsOn(existing.id, secondProviderId)).toBe(0)
+      })
+    })
+
     it('refuses sign-in and callbacks on a retired connection', async () => {
       await db
         .update(identityConnection)
@@ -936,13 +1158,80 @@ describe('OIDC Integration', () => {
         expect(await userCount(idpEmail)).toBe(0)
       })
 
-      it('signs an Okta or Keycloak subject into its SCIM user by sub', async () => {
+      it('signs an Okta or Keycloak subject into its SCIM user by sub, recording the first link only', async () => {
         const subject = crypto.randomUUID()
         const { userId } = await provision(subject)
 
         const { sessionUserId } = await signIn(secondProviderId, `kc-${crypto.randomUUID()}@example.com`, { subject })
+        await signIn(secondProviderId, `kc-${crypto.randomUUID()}@example.com`, { subject })
 
         expect(sessionUserId).toBe(userId)
+        const links = await db
+          .select()
+          .from(auditEvent)
+          .where(and(eq(auditEvent.action, 'link.created'), eq(auditEvent.targetId, userId)))
+        expect(links).toEqual([
+          expect.objectContaining({ connectionId: secondConnectionId, metadata: { tier: 'scim_record' } }),
+        ])
+      })
+
+      it.each(['pending', 'rejected'] as const)(
+        'approves a %s review the SCIM create opened in place when the person links, then attaches the retry',
+        async (status) => {
+          const { createAuth } = await import('./auth')
+          const { user: existing, cookie } = await signInByEmailCode(createAuth(db))
+          const subject = crypto.randomUUID()
+          const body = keycloakUser(existing.email, existing.email, subject)
+          expect((await scim.call('POST', '/Users', { body })).status).toBe(409)
+          const [opened] = await db.select().from(linkReview).where(eq(linkReview.externalId, subject))
+          expect(opened.status).toBe('pending')
+          if (status === 'rejected') {
+            await rejectLinkReview(db, {
+              reviewId: opened.id,
+              actorId: (await signInByEmailCode(createAuth(db))).user.id,
+            })
+          }
+
+          const { sessionUserId } = await signIn(secondProviderId, existing.email, {
+            subject,
+            sessionCookie: cookie,
+            linkIntent: true,
+          })
+
+          expect(sessionUserId).toBe(existing.id)
+          expect(await db.select().from(linkReview).where(eq(linkReview.externalId, subject))).toEqual([
+            expect.objectContaining({ id: opened.id, status: 'approved', candidateUserId: existing.id }),
+          ])
+          const retry = await scim.call('POST', '/Users', { body })
+          expect(retry.status).toBe(201)
+          const [record] = await db.select().from(scimUser).where(eq(scimUser.id, retry.body.id!))
+          expect(record.userId).toBe(existing.id)
+          expect((await db.select().from(linkReview).where(eq(linkReview.id, opened.id)))[0].status).toBe('linked')
+        },
+      )
+
+      it('links a signed-in user who asks for it, and attaches the later SCIM create to them', async () => {
+        const { createAuth } = await import('./auth')
+        const { user: existing, cookie } = await signInByEmailCode(createAuth(db))
+        const subject = crypto.randomUUID()
+
+        const { sessionUserId } = await signIn(secondProviderId, `kc-${crypto.randomUUID()}@example.com`, {
+          subject,
+          sessionCookie: cookie,
+          linkIntent: true,
+        })
+
+        expect(sessionUserId).toBe(existing.id)
+        const [review] = await db.select().from(linkReview).where(eq(linkReview.externalId, subject))
+        expect(review).toMatchObject({ status: 'approved', candidateUserId: existing.id, resolvedBy: existing.id })
+
+        const scimEmail = `provisioned-${crypto.randomUUID()}@example.com`
+        const created = await scim.call('POST', '/Users', { body: keycloakUser(scimEmail, scimEmail, subject) })
+
+        expect(created.status).toBe(201)
+        const [record] = await db.select().from(scimUser).where(eq(scimUser.id, created.body.id!))
+        expect(record.userId).toBe(existing.id)
+        expect((await db.select().from(linkReview).where(eq(linkReview.id, review.id)))[0].status).toBe('linked')
       })
 
       it('refuses a sign-in that carries no match claim', async () => {

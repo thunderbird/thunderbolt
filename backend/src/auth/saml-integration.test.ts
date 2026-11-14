@@ -31,6 +31,7 @@ import { getTestCerts } from '../../../e2e/saml-test-certs'
 import { getSharedIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
 import { account, user } from '@/db/auth-schema'
 import { and, eq } from 'drizzle-orm'
+import { linkIntentHeader } from '@/identity/sso-linking'
 import { createSessionCookie } from '@/test-utils/session-cookie'
 import { auditEvent, ssoProvider } from '@/db/schema'
 import { ensureEnvSsoConnection } from '@/identity/sso-connections'
@@ -187,13 +188,20 @@ describe('SAML Integration', () => {
      * Start a SAML login in a fresh browser and sign the response for `email`. An unsolicited response
      * has no `InResponseTo`, as when the login starts from the IdP dashboard.
      */
-    const startLogin = async (email: string, { unsolicited = false, assertionOnly = false } = {}) => {
+    const startLogin = async (
+      email: string,
+      {
+        unsolicited = false,
+        assertionOnly = false,
+        startHeaders = {},
+      }: { unsolicited?: boolean; assertionOnly?: boolean; startHeaders?: Record<string, string> } = {},
+    ) => {
       const { createAuth } = await import('./auth')
       const app = new Elysia({ prefix: '/v1' }).mount(createAuth(db).handler)
       const start = await app.handle(
         new Request('http://localhost/v1/api/auth/sign-in/sso', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...startHeaders },
           body: JSON.stringify({ providerId: 'sso', callbackURL }),
         }),
       )
@@ -317,6 +325,23 @@ describe('SAML Integration', () => {
       expect(failures.filter((event) => event.occurredAt >= before)).toMatchObject([
         { outcome: 'failure', actorId: null, connectionId: 'sso', metadata: { method: 'saml' } },
       ])
+    })
+
+    it('links the SAML identity to a signed-in user who asks for it, whatever email it carries', async () => {
+      const { createAuth } = await import('./auth')
+      const auth = createAuth(db)
+      const sessionCookie = await createSessionCookie(auth, db)
+      const existing = (await auth.api.getSession({ headers: new Headers({ Cookie: sessionCookie }) }))!.user
+      const idpEmail = `work-${crypto.randomUUID()}@example.com`
+
+      const login = await startLogin(idpEmail, {
+        startHeaders: { Cookie: sessionCookie, [linkIntentHeader]: '1' },
+      })
+      const acs = await postToAcs(login, { cookie: `${sessionCookie}; ${login.cookie}`, relayState: login.relayState })
+
+      expect(acs.headers.get('location')).toBe(callbackURL)
+      expect(await ssoAccountCount(existing.id)).toBe(1)
+      expect(await db.$count(user, eq(user.email, idpEmail))).toBe(0)
     })
 
     const attackerLogin = () => startLogin(`attacker-${crypto.randomUUID()}@example.com`)

@@ -19,7 +19,7 @@ import { createTinfoilSession } from '@/lib/tinfoil-session'
 import { getProviderConnectionAttempt } from '@/lib/provider-connection-attempt'
 import * as tinfoilSessionModule from '@/lib/tinfoil-session'
 import { tinfoilAuth, TinfoilReauthorizationError, type TinfoilCredentials } from '@/lib/tinfoil-auth'
-import { http } from '@/lib/http'
+import { createClient, http } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { resetStore } from '@/test-utils/chat-store-mocks'
@@ -368,6 +368,44 @@ describe('useAddModelForm', () => {
       expect(await getProviderConnections(getDb())).toHaveLength(2)
     },
   )
+
+  it('reports the provider connection a model adds, and the credential a re-authorization replaces', async () => {
+    spyOn(tinfoilSessionModule, 'withTinfoilSessionLock').mockImplementation(async (operation) => operation())
+    const reported: unknown[] = []
+    const httpClient = createClient({
+      prefixUrl: 'http://backend.test',
+      fetch: async (input, init) => {
+        const request = input instanceof Request ? input : new Request(input, init)
+        if (new URL(request.url).pathname === '/audit/client-events') {
+          reported.push(await request.json())
+        }
+        return new Response('{}')
+      },
+    })
+    const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose: () => {} }), {
+      wrapper: createTestProvider({ httpClient }),
+    })
+    const values = { provider: 'tinfoil' as const, name: 'Default model', model: 'default-model', supportsTools: true }
+    const authorized = async (token: string) => ({
+      ...values,
+      apiKey: token,
+      providerAuthorization: await currentAuthorization({ access_token: token, expires_at: Date.now() + 900_000 }),
+    })
+
+    await act(async () => {
+      await result.current.saveModel({ ...values, apiKey: 'own-key' })
+      await result.current.saveModel(await authorized('first-grant'))
+      await result.current.saveModel(await authorized('second-grant'))
+      await getClock().runAllAsync()
+    })
+
+    expect(reported).toMatchObject([
+      { action: 'user_connection.added', provider: 'tinfoil', authMethod: 'api_key' },
+      { action: 'user_connection.added', target: { id: 'oauth:tinfoil' }, authMethod: 'oauth' },
+      { action: 'user_connection.credential_replaced', target: { id: 'oauth:tinfoil' }, authMethod: 'oauth' },
+    ])
+    expect(JSON.stringify(reported)).not.toContain('grant')
+  })
 
   it('keeps Tinfoil OAuth and multiple API-key connections separate', async () => {
     const lock = spyOn(tinfoilSessionModule, 'withTinfoilSessionLock').mockImplementation(async (operation) =>

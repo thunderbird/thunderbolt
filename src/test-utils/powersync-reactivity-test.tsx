@@ -7,7 +7,9 @@ import { act, render, type RenderOptions, type RenderResult } from '@testing-lib
 import type { ReactElement, ReactNode } from 'react'
 import { setTimeout as delay } from 'node:timers/promises'
 import { getClock } from '@/testing-library'
+import { HttpClientProvider } from '@/contexts/http-client-context'
 import { ProxyFetchProvider } from '@/lib/proxy-fetch-context'
+import { createMockHttpClient } from './http-client'
 import { PowerSyncReactivityTestProvider } from './powersync-mock'
 import { mockProxyFetch } from './proxy-fetch'
 
@@ -47,7 +49,7 @@ type RenderWithReactivityOptions = RenderOptions & {
 }
 
 /**
- * Renders a component with PowerSyncReactivityTestProvider and optional MemoryRouter.
+ * Renders a component with PowerSyncReactivityTestProvider, a mock HttpClient and optional MemoryRouter.
  * Returns render result plus triggerChange for reactivity tests.
  *
  * @example
@@ -83,9 +85,11 @@ export const renderWithReactivity = (
 
     return (
       <PowerSyncReactivityTestProvider tables={tables} triggerChangeRef={triggerChangeRef}>
-        <ProxyFetchProvider proxyFetch={mockProxyFetch}>
-          {InnerWrapper ? <InnerWrapper>{content}</InnerWrapper> : content}
-        </ProxyFetchProvider>
+        <HttpClientProvider httpClient={createMockHttpClient()}>
+          <ProxyFetchProvider proxyFetch={mockProxyFetch}>
+            {InnerWrapper ? <InnerWrapper>{content}</InnerWrapper> : content}
+          </ProxyFetchProvider>
+        </HttpClientProvider>
       </PowerSyncReactivityTestProvider>
     )
   }

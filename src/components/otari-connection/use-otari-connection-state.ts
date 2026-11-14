@@ -40,6 +40,7 @@ import type { AvailableModel } from '@/settings/models/model-catalog'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { loadOtariSearchStatus, type OtariSearchStatus } from '@/integrations/otari-search/capabilities'
 import { createIdentityController } from '@/lib/identity-lifetime'
+import { useReportConnectionEvent } from '@/lib/report-connection-event'
 
 type ConnectionController = ReturnType<typeof createIdentityController> & { returnId?: string }
 
@@ -97,6 +98,30 @@ export const useOtariConnectionState = (
   const db = useDatabase()
   const getProxyFetch = useProxyFetchGetter()
   const queryClient = useQueryClient()
+  const reportConnectionEvent = useReportConnectionEvent()
+  const saveOtariConnection = async (
+    origin: string,
+    key: string,
+    attempt: ProviderConnectionAttempt,
+    controller: ConnectionController,
+  ) => {
+    const id = await saveProviderConnection(db, {
+      provider: 'otari',
+      name: 'Otari',
+      url: getOtariEndpoints(origin).inference,
+      authMethod: 'oauth',
+      credentials: { access_token: key },
+      attempt,
+      signal: controller.signal,
+    })
+    reportConnectionEvent({
+      action: 'user_connection.added',
+      target: { type: 'provider_connection', id },
+      provider: 'otari',
+      authMethod: 'oauth',
+    })
+    return id
+  }
   const [returned] = useState(() => getOtariBrowserReturn(context))
   const [draft] = useState(() => getOtariBrowserDraft(context))
   const initialOrigin = returned?.origin ?? draft?.origin ?? defaultOtariOrigin
@@ -124,17 +149,7 @@ export const useOtariConnectionState = (
   ) => {
     controller.signal.throwIfAborted()
     const searchSelection = useSearchProviderStore.getState()
-    const connectionId =
-      state.connectionId ??
-      (await saveProviderConnection(db, {
-        provider: 'otari',
-        name: 'Otari',
-        url: getOtariEndpoints(origin).inference,
-        authMethod: 'oauth',
-        credentials: { access_token: key },
-        attempt,
-        signal: controller.signal,
-      }))
+    const connectionId = state.connectionId ?? (await saveOtariConnection(origin, key, attempt, controller))
     const { connection, apiKey } = await resolveProviderConnection(db, connectionId)
     if (connection.url !== getOtariEndpoints(origin).inference || apiKey !== key) {
       throw new Error('The provider connection changed. Connect again to load its models.')
@@ -370,6 +385,12 @@ export const useOtariConnectionState = (
       try {
         if (state.connectionId) {
           await disconnectProviderConnection(db, state.connectionId)
+          reportConnectionEvent({
+            action: 'user_connection.removed',
+            target: { type: 'provider_connection', id: state.connectionId },
+            provider: 'otari',
+            authMethod: 'oauth',
+          })
         }
         controller.signal.throwIfAborted()
         resetConnection()

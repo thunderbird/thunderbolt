@@ -13,6 +13,7 @@ import { addProviderModels } from '@/providers/models'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { resetStore } from '@/test-utils/chat-store-mocks'
 import { createTestProvider } from '@/test-utils/test-provider'
+import { createRecordingClient } from '@/test-utils/http-client'
 import { getClock } from '@/testing-library'
 import { useAiProviderConnections } from './use-ai-provider-connections'
 
@@ -74,6 +75,18 @@ describe('AI provider connection disabling', () => {
       expect(onSuccess).toHaveBeenCalledTimes(1)
     },
   )
+
+  it('reports a removal to the audit log as a client-reported event', async () => {
+    const id = await createConnection()
+    const { client, requests } = createRecordingClient(() => '')
+    const view = renderHook(useAiProviderConnections, { wrapper: createTestProvider({ httpClient: client }) })
+    await settle()
+
+    act(() => view.result.current.remove(id, () => {}))
+    await settle()
+
+    expect(requests.filter((path) => path.startsWith('audit/'))).toEqual(['audit/client-events'])
+  })
 
   it('keeps the panel open and reports a failed removal', async () => {
     const id = await createConnection()

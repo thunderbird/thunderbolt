@@ -11,8 +11,9 @@ Users attach PDFs, images, Word documents, spreadsheets, and plain-text files to
 | Bytes per file (post-shrink) | 25 MB  | `maxAttachmentBytes`, `chat-prompt-input.tsx`                                                                                  |
 | Compression threshold        | 10 MB  | `compressionThresholdBytes`, [`src/files/compress/compress-attachment.ts`](../../../src/files/compress/compress-attachment.ts) |
 | Unpacked size per XLSX       | 32 MiB | `maxUnpackedMib`, [`src/files/transformers/xlsx-to-text.ts`](../../../src/files/transformers/xlsx-to-text.ts)                  |
+| Unpacked XML per PPTX        | 32 MiB | `maxUnpackedMib`, [`src/files/transformers/pptx-to-text.ts`](../../../src/files/transformers/pptx-to-text.ts)                  |
 
-Accepted types: PDF, PNG/JPEG/WebP/GIF, DOCX, XLSX, and Markdown/plain text/CSV/JSON.
+Accepted types: PDF, PNG/JPEG/WebP/GIF, DOCX, XLSX, PPTX, and Markdown/plain text/CSV/JSON.
 
 ## Where the bytes live
 
@@ -82,14 +83,14 @@ would come out sideways with no metadata left to correct it.
 
 ## Delivery is native-first
 
-| Transport                                                                                        | Current-turn attachment becomes                                                                   |
-| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| AI SDK ([`src/lib/attachments.ts`](../../../src/lib/attachments.ts))                             | A `file` part with the bytes as a data URL, one image part per page under `deliverAs: 'images'`   |
-| Built-in agent ([`src/acp/built-in-conversation.ts`](../../../src/acp/built-in-conversation.ts)) | Text plus Pi `image` blocks; PDF/DOCX extract to text, written to the workspace when tools are on |
-| ACP ([`src/acp/acp-adapter.ts`](../../../src/acp/acp-adapter.ts))                                | An embedded `resource` block (base64) when the agent advertises `embeddedContext`, else text      |
+| Transport                                                                                        | Current-turn attachment becomes                                                                        |
+| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| AI SDK ([`src/lib/attachments.ts`](../../../src/lib/attachments.ts))                             | A `file` part with the bytes as a data URL, one image part per page under `deliverAs: 'images'`        |
+| Built-in agent ([`src/acp/built-in-conversation.ts`](../../../src/acp/built-in-conversation.ts)) | Text plus Pi `image` blocks; PDF/DOCX/PPTX extract to text, written to the workspace when tools are on |
+| ACP ([`src/acp/acp-adapter.ts`](../../../src/acp/acp-adapter.ts))                                | An embedded `resource` block (base64) when the agent advertises `embeddedContext`, else text           |
 
 `defaultDeliveryMode` ([`src/files/transformers/index.ts`](../../../src/files/transformers/index.ts)) returns `'text'`
-for plain-text MIME types and for xlsx (no provider accepts a spreadsheet as a native file part, so native-first would only buy a guaranteed rejection and a retry), and `undefined` (native bytes) otherwise. An explicit `deliverAs` overrides it, and is how
+for plain-text MIME types and for xlsx and pptx (no provider accepts a spreadsheet or a deck as a native file part, so native-first would only buy a guaranteed rejection and a retry), and `undefined` (native bytes) otherwise. An explicit `deliverAs` overrides it, and is how
 remediation records its decision durably enough to survive `regenerate()` and a reload.
 
 ### Only the current turn is delivered in full
@@ -122,7 +123,7 @@ aggregates it with `bash`.
   ([`src/files/tabular.ts`](../../../src/files/tabular.ts)). The browser shell has no CSV parser, and `awk -F,`
   silently splits a quoted `"Hertz, LLC"` into two columns; tabs and line breaks inside a field become spaces so
   `awk -F'\t'` always sees the original columns. A CSV that doesn't convert cleanly (other delimiters, malformed
-  quoting, ragged rows) keeps its original text. Other text (txt/md/json, extracted PDF/DOCX) is written as text.
+  quoting, ragged rows) keeps its original text. Other text (txt/md/json, extracted PDF/DOCX/PPTX) is written as text.
 - **History turns use the same shape**, so a harness rebuilt from history cannot overflow on an old attachment either.
 - **IndexedDB stays the source of truth.** The full set is rewritten every send, so a model edit, a reload, the
   in-memory fallback, or a removed workspace all recover on the next send. A failed write is logged, not fatal.
@@ -153,12 +154,24 @@ on the embedded path.
 | `application/pdf->images` | [`pdf-to-images.ts`](../../../src/files/transformers/pdf-to-images.ts) | pdfjs-dist              |
 | `<docx mime>->text`       | [`docx-to-text.ts`](../../../src/files/transformers/docx-to-text.ts)   | mammoth                 |
 | `<xlsx mime>->text`       | [`xlsx-to-text.ts`](../../../src/files/transformers/xlsx-to-text.ts)   | read-excel-file, fflate |
+| `<pptx mime>->text`       | [`pptx-to-text.ts`](../../../src/files/transformers/pptx-to-text.ts)   | fflate, xmldom          |
 
 Text-ish types (`text/*`, `application/json`) resolve to
 [`text-passthrough.ts`](../../../src/files/transformers/text-passthrough.ts) with no entry.
 mammoth only extracts text. The DOCX preview is not a transformer: see [DOCX preview](#docx-preview).
 
-Loaders are dynamic imports, keeping pdfjs, mammoth, read-excel-file and fflate out of the entry bundle.
+`pptx-to-text` gives each slide a `## Slide N` heading, with its title placeholder's text after the number. The
+slide's other text follows, with each table row on one line and its cells separated by tabs, and then its speaker
+notes. Slides come in the order the deck shows them. A deck made by `pptxgenjs`, as the agent makes one, has no
+placeholders, so its titles are plain lines. The slide number, date, header and footer are left out. Content a file
+gives twice, as a choice and as a fallback for older apps, counts once, as the choice the slide shows. Each slide and
+notes page is read once, however many times the deck lists it, so the text is never longer than the XML it comes
+from. Only the XML parts are unpacked, so pictures and video cost nothing. The model gets a message in place of the
+text when the deck's XML unpacks to over 32 MiB, when it lists more than 65,535 parts, when a part unpacks to more
+than it declares ([zip limits](#zip-limits)), or when it has no slide that can be read. Charts, pictures and
+diagrams, SmartArt among them, contribute no text.
+
+Loaders are dynamic imports, keeping pdfjs, mammoth, read-excel-file, fflate and xmldom out of the entry bundle.
 `pdf-to-images` caps at `maxPages = 10`, `renderScale = 2`: legible to a vision model, bounded so a long scan does not
 fire hundreds of images at a provider.
 
@@ -216,6 +229,7 @@ After a conversion the sent bubble offers the remaining modes as manual "Resend 
 | Card type            | Renders                                                                                                                                                                                                                      |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | PDF, image, DOCX     | Blob read through `useLocalDocumentBlob` ([`src/widgets/document-result/use-document-blob.ts`](../../../src/widgets/document-result/use-document-blob.ts)); the DOCX branch renders its pages as a [snapshot](#docx-preview) |
+| PPTX, XLSX           | An icon for the file type. The side view renders a deck as a [snapshot](#pptx-preview) and a workbook as a [grid](#spreadsheet-preview)                                                                                      |
 | Markdown, other text | A snippet read straight from the store ([`text-snippet.tsx`](../../../src/components/chat/text-snippet.tsx))                                                                                                                 |
 
 The card ([`file-card.tsx`](../../../src/components/chat/file-card.tsx)) renders a thumbnail per type, with react-pdf
@@ -241,14 +255,55 @@ for a document opened from a search result. The file is untrusted, so:
   element.
 - A file over 10 MiB, one whose `word/document.xml` unpacks to over 3.5 MB (about 1,000 pages), one whose parts unpack
   to over 32 MiB in all, or one that lists more than 65,535 parts gets a refusal, and Download still works. The app
-  unpacks the parts itself, within those limits, and gives the library a copy stored without compression, because the
-  library's zip reader unpacks a part in full before it checks the size the file declares. Part names resolve as that
+  unpacks the parts itself ([zip limits](#zip-limits)) and gives the library a copy stored without compression,
+  because the library's zip reader unpacks a part in full before it checks the size the file declares. Part names resolve as that
   reader resolves them, so `word/x/../document.xml` counts as `word/document.xml`. A main part under another name is
   held to the 32 MiB total only.
 - A file the library cannot read, damaged or using something it does not handle (a delimiter equation with no
   properties, for one), shows that it can't be previewed, and Download still works.
 - Pages wider than the panel, as on a phone, scale down to its width
-  ([`docx-pages.tsx`](../../../src/widgets/document-result/docx-pages.tsx)).
+  ([`snapshot-pages.tsx`](../../../src/widgets/document-result/snapshot-pages.tsx)).
+
+The size and unpacking limits, the page's policy and the two refusals live in
+[`snapshot.ts`](../../../src/widgets/document-result/snapshot.ts), which the PPTX preview shares.
+
+### PPTX preview
+
+[`pptx-snapshot.ts`](../../../src/widgets/document-result/pptx-snapshot.ts) renders every slide with
+`@aiden0z/pptx-renderer`, loaded only when a deck opens, into a static page for the same sandboxed frame as the DOCX
+preview. The same preview shows for a deck the user attached and for one the agent made. The attachment card shows a
+deck icon rather than a slide, because a thumbnail would render the whole deck for every card.
+
+- The renderer needs layout to fit text and draw charts, so it lays the slides out in a hidden frame whose document
+  has the snapshot's policy and runs no script. It writes colors from the file into CSS as it finds them, so a color
+  can close a gradient and add `url(...)`. While it builds a slide, it attaches the slide to `document.body` to
+  measure the text. The preview builds each slide with `document.body` standing for the frame's body, so the slide is
+  laid out under the frame's policy, which blocks the URL. Laid out in the app's page, the URL reached the network,
+  even under the desktop app's policy, which allows pictures from `api.thunderbolt.io`.
+- It runs with `externalMedia: 'block'`, so it requests no picture, fill, video or audio from outside the file. With
+  the library's default, `'allow'`, a hostile deck fetches its outside pictures while it renders. The PDF fallback for
+  EMF pictures, which starts `blob:` Workers, is off, and so are embedded fonts, which would load into the app's page
+  rather than the frame's.
+- The file's pictures go to the renderer as `data:` URLs in place of the `blob:` URLs it would make, which the frame's
+  policy blocks. The renderer still makes `blob:` URLs for audio and video and leaves them to whoever owns the media
+  cache, so the preview revokes them when it is done. Each chart is drawn with animation off and its canvas becomes a
+  picture of it. Links lose their targets; the library already drops `javascript:` ones.
+- The DOCX limits on size, unpacking and parts apply, and so does a limit of 200 slides, counted as the renderer
+  counts them. A snapshot renders every slide, and 200 painted in about a second in Chromium and WebKit. Past a
+  limit, or for a file the renderer cannot read, the panel shows a refusal and Download still works.
+- Video, audio and chart tooltips do not work in a snapshot. Theme table styles are ignored, so white header text
+  can become invisible.
+
+### Zip limits
+
+[`unzip-within-limits.ts`](../../../src/files/unzip-within-limits.ts) unpacks the DOCX and PPTX previews and the
+PPTX text. It reads the zip's central directory, as unzip tools and JSZip do. Each part counts against the total at
+the larger of its packed and declared sizes, and a deflated part is inflated in 16 KiB steps that stop at the size it
+declares. `fflate.unzipSync` sizes a part's buffer the same way, but it inflates the whole part and drops what does
+not fit. A 1 MB file that declared tiny parts kept the main thread busy there for about twelve seconds per GiB it
+really held, measured under Bun. Encrypted and ZIP64 parts are refused as unreadable, because Office files are far
+too small to need ZIP64. Part names are read as UTF-8, as JSZip reads them, since tools that zip a folder leave the
+UTF-8 flag off.
 
 ### Spreadsheet preview
 

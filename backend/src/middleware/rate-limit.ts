@@ -24,11 +24,20 @@ type RateLimitTier =
   | 'captcha-challenge'
   | 'debug-transcript'
   | 'debug-transcript-intake'
-/** Tiers with a hardcoded limit; the anonymous sign-in and captcha challenge tiers are configured by the operator. */
-type FixedRateLimitTier = Exclude<RateLimitTier, 'anonymous-sign-in' | 'anonymous-sign-in-global' | 'captcha-challenge'>
+  | 'scim'
+  | 'scim-auth-failure'
+/** Tiers whose limit the caller passes: operator-configured, or sized by the module that owns them. */
+type ConfiguredRateLimitTier =
+  | 'anonymous-sign-in'
+  | 'anonymous-sign-in-global'
+  | 'captcha-challenge'
+  | 'scim'
+  | 'scim-auth-failure'
+/** Tiers with a hardcoded limit. */
+type FixedRateLimitTier = Exclude<RateLimitTier, ConfiguredRateLimitTier>
 export type UserRateLimitTier = Exclude<FixedRateLimitTier, 'auth'>
 
-type RateLimitTierConfig = {
+export type RateLimitTierConfig = {
   max: number
   durationSecs: number
 }
@@ -176,7 +185,7 @@ const createIpRateLimitMiddleware = (
  */
 type TierArgs =
   | [tier: FixedRateLimitTier]
-  | [tier: 'captcha-challenge' | 'anonymous-sign-in-global', config: RateLimitTierConfig]
+  | [tier: Exclude<ConfiguredRateLimitTier, 'anonymous-sign-in'>, config: RateLimitTierConfig]
 
 /** Create the limiter for a tier, from `tierConfigs` or the caller's operator config. */
 const createTierLimiter = (database: typeof DbType, ...args: TierArgs) =>
@@ -196,10 +205,17 @@ export const createAuthIpRateLimit = (database: typeof DbType, settings: IpRateL
   createIpTierRateLimit(database, settings, 'auth')
 
 const anonymousSignInMountPath = `${authBasePath}${anonymousSignInPath}`
+const scimMountPath = `${authBasePath}/scim/v2`
 const getSessionMountPath = `${authBasePath}${getSessionPath}`
 
 /** Exact match, as Better Auth routes it: a trailing slash or lookalike prefix is a 404 there. */
 const isAnonymousSignIn = (request: Request) => new URL(request.url).pathname === anonymousSignInMountPath
+
+/** SCIM has its own per-connection budget (createScimRequestHandler), so it skips the auth tiers. */
+const isScim = (request: Request) => {
+  const { pathname } = new URL(request.url)
+  return pathname === scimMountPath || pathname.startsWith(`${scimMountPath}/`)
+}
 
 /** GET with an exact path match, like `isAnonymousSignIn`; the app only ever GETs it. */
 const isGetSession = (request: Request) =>
@@ -212,7 +228,8 @@ const isGetSession = (request: Request) =>
  * cross-tab session change, so visitors sharing one IP would exhaust 'auth' between them,
  * and Better Auth's own '/get-session' rule still limits it. Everything else draws from the fixed 'auth' tier.
  * The deployment-wide 'anonymous-sign-in-global' budget is charged later, in the auth
- * before-hook, once the captcha has passed.
+ * before-hook, once the captcha has passed. SCIM is exempt: an IdP's sync would exhaust 'auth'
+ * within seconds, and SCIM has its own budget.
  */
 export const createAuthPluginIpRateLimit = (database: typeof DbType, settings: AuthPluginIpRateLimitSettings) => {
   if (!settings.enabled) {
@@ -221,7 +238,7 @@ export const createAuthPluginIpRateLimit = (database: typeof DbType, settings: A
   const authLimiter = createLimiter(database, 'auth', tierConfigs.auth)
   const anonymousSignInLimiter = createLimiter(database, 'anonymous-sign-in', settings.anonymousSignIn)
   return createIpRateLimitMiddleware((request) => {
-    if (isGetSession(request)) {
+    if (isGetSession(request) || isScim(request)) {
       return null
     }
     return isAnonymousSignIn(request) ? anonymousSignInLimiter : authLimiter
@@ -247,4 +264,47 @@ export const createRateLimitConsumer = (
   }
   const limiter = createTierLimiter(database, ...args)
   return (key, set) => consumeOrReject(limiter, key, set)
+}
+
+/** Counts only failures: `check` refuses a key that used its budget, `record` spends one point. */
+export type FailureRateLimit = {
+  check: (key: string, set: RateLimitSet) => Promise<{ error: string } | undefined>
+  record: (key: string) => Promise<void>
+}
+
+/**
+ * A budget charged only by failed attempts (a rejected credential, say), so a client that keeps
+ * succeeding never meets it.
+ */
+export const createFailureRateLimit = (
+  database: typeof DbType,
+  settings: RateLimitSettings,
+  ...args: TierArgs
+): FailureRateLimit | null => {
+  if (!settings.enabled) {
+    return null
+  }
+  const limiter = createTierLimiter(database, ...args)
+  return {
+    check: async (key, set) => {
+      const res = await limiter.get(key)
+      if (!res || res.consumedPoints < limiter.points) {
+        return undefined
+      }
+      const resetSecs = Math.ceil(res.msBeforeNext / 1000)
+      set.status = 429
+      set.headers['Retry-After'] = String(resetSecs)
+      setRateLimitHeaders(set.headers, limiter.points, 0, resetSecs)
+      return { error: 'Too many requests. Please try again later.' }
+    },
+    record: async (key) => {
+      try {
+        await limiter.consume(key)
+      } catch (err) {
+        if (!(err instanceof RateLimiterRes)) {
+          throw err
+        }
+      }
+    },
+  }
 }

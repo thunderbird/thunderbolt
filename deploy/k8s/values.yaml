@@ -95,6 +95,10 @@ backend:
   env:
     authMode: oidc
     waitlistEnabled: "false"
+    # -- Comma-separated emails that get the admin role once, at their first verified sign-in.
+    bootstrapAdminEmails: ""
+    # -- "true" lets any address that verifies its email in, without the waitlist.
+    openSignupEnabled: "false"
     databaseDriver: postgres
     rateLimitEnabled: "false"
     # -- Explicit proxy trust: "cloudflare", "akamai", or a fixed XFF hop count

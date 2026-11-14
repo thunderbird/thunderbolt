@@ -5,6 +5,7 @@
 import { lazy, Suspense } from 'react'
 import { Loader2 } from 'lucide-react'
 import { parseDocumentSideviewId } from '@/types/citation'
+import { getFileType } from '@/widgets/document-result/file-type'
 import { useSideview } from './context'
 
 // Lazy-load the PDF viewer so its react-pdf + pdfjs payload only ships when a
@@ -22,9 +23,6 @@ const LocalPdfSidebarViewer = lazy(() =>
 const LocalXlsxSidebarViewer = lazy(() =>
   import('@/components/xlsx-preview').then((m) => ({ default: m.LocalXlsxSidebarViewer })),
 )
-
-/** Workbooks the grid previews. An `.xlsm` previews too, because Excelize only reads it and never runs a macro. */
-const isWorkbookName = (fileName: string) => /\.xls[xm]$/i.test(fileName)
 
 const loadingFallback = (
   <div className="flex h-full items-center justify-center">
@@ -53,7 +51,7 @@ export const Sideview = () => {
     const { fileId, fileName, pageNumber } = parseDocumentSideviewId(sideviewId)
     return (
       <Suspense fallback={loadingFallback}>
-        {isWorkbookName(fileName) ? (
+        {getFileType(fileName) === 'xlsx' ? (
           <LocalXlsxSidebarViewer key={fileId} localFileId={fileId} fileName={fileName} />
         ) : (
           <LocalPdfSidebarViewer localFileId={fileId} fileName={fileName} initialPage={pageNumber} />

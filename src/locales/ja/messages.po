@@ -2049,6 +2049,7 @@ msgstr "新しい並び順を保存できませんでした。"
 
 #: src/components/artifact/artifact-actions.tsx
 #: src/components/chat/created-file-card.tsx
+#: src/widgets/document-result/document-preview-frame.tsx
 msgid "Couldn't save: {saveError}"
 msgstr ""
 

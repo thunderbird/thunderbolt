@@ -2061,6 +2061,7 @@ msgstr "Couldn't save the new order."
 
 #: src/components/artifact/artifact-actions.tsx
 #: src/components/chat/created-file-card.tsx
+#: src/widgets/document-result/document-preview-frame.tsx
 msgid "Couldn't save: {saveError}"
 msgstr "Couldn't save: {saveError}"
 

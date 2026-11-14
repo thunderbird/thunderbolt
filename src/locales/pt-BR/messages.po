@@ -2073,6 +2073,7 @@ msgstr "Não foi possível salvar a nova ordem."
 
 #: src/components/artifact/artifact-actions.tsx
 #: src/components/chat/created-file-card.tsx
+#: src/widgets/document-result/document-preview-frame.tsx
 msgid "Couldn't save: {saveError}"
 msgstr ""
 

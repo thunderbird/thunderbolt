@@ -10,8 +10,7 @@
  * **not** work in the Tauri webview: there is no download manager behind it, so
  * the click resolves to nothing at all. No error, no file, no console output,
  * which is exactly how the artifact download button came to look broken on
- * desktop while working in every browser. `pdf-sidebar-viewer.tsx` still clicks
- * its own anchor at a blob URL, so it still carries that bug until it moves here.
+ * desktop while working in every browser.
  *
  * So each platform saves its own way:
  *
@@ -38,8 +37,8 @@
  * binary, so an app build older than them refuses the save no matter what this
  * file does.
  *
- * Every save goes through here (`downloadJson` in `export-download.ts` and Mini
- * App downloads included) except the PDF viewer noted above. Anything that
+ * Every save goes through here (`downloadJson` in `export-download.ts`, Mini
+ * App downloads and the side view's file previews included). Anything that
  * reimplements the anchor trick for itself is silently web-only, which is the
  * bug above wearing a different filename.
  */

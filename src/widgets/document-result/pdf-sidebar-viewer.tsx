@@ -9,23 +9,12 @@ import { Document, Page, pdfjs } from 'react-pdf'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 import { DocumentPreviewFrame } from './document-preview-frame'
-import { useDocumentBlob, useLocalDocumentBlob, type DocumentBlobState, type FileType } from './use-document-blob'
+import { type FileType, getFileType } from './file-type'
+import { useDocumentBlob, useLocalDocumentBlob, type DocumentBlobState } from './use-document-blob'
 
 // Configure the pdfjs worker via Vite's `new URL(..., import.meta.url)` pattern
 // so the worker ships as its own bundle and is resolved relative to the build.
 pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
-
-/** Returns the supported file type for previewing, based on extension. */
-export const getFileType = (fileName: string): FileType => {
-  const ext = fileName.split('.').pop()?.toLowerCase()
-  if (ext === 'pdf') {
-    return 'pdf'
-  }
-  if (ext === 'docx') {
-    return 'docx'
-  }
-  return 'unsupported'
-}
 
 type DocumentPreviewProps = {
   fileName: string
@@ -82,7 +71,8 @@ const DocumentPreview = ({ fileName, fileType, state, initialPage }: DocumentPre
             />
           )}
 
-          {fileType === 'unsupported' && (
+          {/* A workbook from Haystack has no grid here: only a local one opens in the spreadsheet preview. */}
+          {fileType !== 'pdf' && fileType !== 'docx' && (
             <div className="flex h-full items-center justify-center">
               <p className="text-sm text-muted-foreground">
                 <Trans>Preview not available for this file type. Use the download button to view it.</Trans>

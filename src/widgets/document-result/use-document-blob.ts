@@ -7,8 +7,7 @@ import type { HttpClient } from '@/contexts'
 import { docxToHtml } from '@/files/transformers/docx-to-html'
 import { getAttachment } from '@/lib/file-blob-storage'
 import { useEffect, useReducer, useRef } from 'react'
-
-export type FileType = 'pdf' | 'docx' | 'unsupported'
+import type { FileType } from './file-type'
 
 /** Load lifecycle of a previewable document, modelled as a state machine
  *  so impossible combinations (e.g. "done but no url and no error") can't exist. */

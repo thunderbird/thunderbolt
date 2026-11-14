@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { insertTestUsers } from '@/test-utils/identity'
 import type { Settings } from '@/config/settings'
 import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
-import { session as sessionTable, user as userTable } from '@/db/auth-schema'
-import { devicesTable, modelsTable, promptsTable, settingsTable } from '@/db/schema'
+import { session as sessionTable } from '@/db/auth-schema'
+import { devicesTable, modelsTable, orgMembership, promptsTable, settingsTable } from '@/db/schema'
 import { encryptionMetadataTable } from '@/db/encryption-schema'
 import { betterAuthTestSecret, signTestToken as signToken } from '@/test-utils/auth-token'
 import { createTestDb } from '@/test-utils/db'
@@ -180,7 +181,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Unsigned Bearer User',
         email: 'unsigned-bearer@example.com',
@@ -216,7 +217,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Revoked Device User',
         email: 'revoked-powersync@example.com',
@@ -265,7 +266,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values([
+      await insertTestUsers(db, [
         { id: userA, name: 'User A', email: 'user-a@example.com', emailVerified: true, createdAt: now, updatedAt: now },
         { id: userB, name: 'User B', email: 'user-b@example.com', emailVerified: true, createdAt: now, updatedAt: now },
       ])
@@ -309,7 +310,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Nonexistent Device User',
         email: 'nonexistent-device@example.com',
@@ -346,7 +347,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Untrusted Device User',
         email: 'untrusted-device@example.com',
@@ -394,7 +395,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Unbound Session User',
         email: 'unbound-session@example.com',
@@ -433,7 +434,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Sibling Spoof User',
         email: 'sibling-spoof@example.com',
@@ -471,7 +472,7 @@ describe('PowerSync API', () => {
       const token = 'bearer-cli-token-rejected'
       const deviceId = 'cli-019f0000-0000-7000-8000-000000000101'
       const now = new Date()
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'CLI Token User',
         email: 'cli-token-rejected@example.com',
@@ -513,7 +514,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'No Device ID User',
         email: 'no-device-id@example.com',
@@ -546,7 +547,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Empty Device ID User',
         email: 'empty-device-id@example.com',
@@ -582,7 +583,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Revoked Bypass User',
         email: 'revoked-bypass@example.com',
@@ -625,7 +626,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Unregistered Device User',
         email: 'unregistered-device@example.com',
@@ -663,7 +664,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Revocation Bypass User',
         email: 'revocation-bypass@example.com',
@@ -728,7 +729,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'PowerSync User',
         email: 'powersync-token@example.com',
@@ -769,7 +770,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'PowerSync Claim User',
         email: 'powersync-claim@example.com',
@@ -816,7 +817,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Device User',
         email: 'device-powersync@example.com',
@@ -858,7 +859,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'No Name User',
         email: 'device-no-name@example.com',
@@ -899,7 +900,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Long Name User',
         email: 'device-long-name@example.com',
@@ -941,7 +942,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: '100 Char User',
         email: 'device-100-char@example.com',
@@ -983,7 +984,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: '1 Char User',
         email: 'device-1-char@example.com',
@@ -1024,7 +1025,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'App Version User',
         email: 'device-app-version@example.com',
@@ -1065,7 +1066,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'App Version Keep User',
         email: 'device-app-version-keep@example.com',
@@ -1104,7 +1105,7 @@ describe('PowerSync API', () => {
       const userId = 'user-device-fresh'
       const now = new Date()
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Fresh Device User',
         email: 'device-fresh@example.com',
@@ -1144,7 +1145,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'App Version Long User',
         email: 'device-app-version-long@example.com',
@@ -1199,7 +1200,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Upload User',
         email: 'upload-no-device@example.com',
@@ -1237,7 +1238,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Upload Revoked User',
         email: 'upload-revoked@example.com',
@@ -1284,7 +1285,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Upload Unregistered User',
         email: 'upload-unregistered@example.com',
@@ -1323,7 +1324,7 @@ describe('PowerSync API', () => {
       const token = 'bearer-cli-upload-rejected'
       const deviceId = 'cli-019f0000-0000-7000-8000-000000000102'
       const now = new Date()
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'CLI Upload User',
         email: 'cli-upload-rejected@example.com',
@@ -1367,7 +1368,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Upload User',
         email: 'upload-validation@example.com',
@@ -1402,7 +1403,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Upload Put User',
         email: 'upload-put@example.com',
@@ -1452,7 +1453,7 @@ describe('PowerSync API', () => {
       const userId = 'user-upload-if-absent'
       const now = new Date()
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'If Absent User',
         email: 'upload-if-absent@example.com',
@@ -1499,7 +1500,7 @@ describe('PowerSync API', () => {
     it('preserves the migration-link condition on the wire without constraining deliberate edits', async () => {
       const userId = 'user-upload-migration-link'
       const now = new Date()
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Migration User',
         email: 'upload-migration-link@example.com',
@@ -1555,7 +1556,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Owner',
         email: 'owner@example.com',
@@ -1605,7 +1606,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values([
+      await insertTestUsers(db, [
         { id: userA, name: 'User A', email: 'a@example.com', emailVerified: true, createdAt: now, updatedAt: now },
         { id: userB, name: 'User B', email: 'b@example.com', emailVerified: true, createdAt: now, updatedAt: now },
       ])
@@ -1662,7 +1663,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Upload Patch User',
         email: 'upload-patch@example.com',
@@ -1716,7 +1717,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Patch Empty User',
         email: 'patch-empty@example.com',
@@ -1773,7 +1774,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Stripped Patch User',
         email: 'patch-stripped@example.com',
@@ -1826,7 +1827,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Patch Nonexistent User',
         email: 'patch-nonexistent@example.com',
@@ -1874,7 +1875,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values([
+      await insertTestUsers(db, [
         {
           id: userA,
           name: 'Owner',
@@ -1949,7 +1950,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Patch Owner',
         email: 'patch-owner@example.com',
@@ -2002,7 +2003,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Patch DeletedAt User',
         email: 'patch-deleted-at@example.com',
@@ -2060,7 +2061,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Upload Delete User',
         email: 'upload-delete@example.com',
@@ -2106,7 +2107,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Delete Nonexistent User',
         email: 'delete-nonexistent@example.com',
@@ -2146,7 +2147,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values([
+      await insertTestUsers(db, [
         {
           id: userA,
           name: 'Owner',
@@ -2211,7 +2212,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Patch App Version User',
         email: 'patch-app-version@example.com',
@@ -2260,7 +2261,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Delete Device Blocked User',
         email: 'delete-device-blocked@example.com',
@@ -2313,7 +2314,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Safe Upload User',
         email: 'upload-safe@example.com',
@@ -2367,7 +2368,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values([
+      await insertTestUsers(db, [
         {
           id: userA,
           name: 'User A',
@@ -2444,7 +2445,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values([
+      await insertTestUsers(db, [
         {
           id: userA,
           name: 'Alice',
@@ -2549,7 +2550,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Upload Fail User',
         email: 'upload-fail@example.com',
@@ -2599,7 +2600,7 @@ describe('PowerSync API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(userTable).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Empty Ops User',
         email: 'upload-empty@example.com',
@@ -2646,7 +2647,7 @@ describe('PowerSync cross-origin injection protection', () => {
   const seedUser = async (userId: string, token: string, trustedDeviceId?: string) => {
     const now = new Date()
     const expiresAt = new Date(now.getTime() + 3600 * 1000)
-    await db.insert(userTable).values({
+    await insertTestUsers(db, {
       id: userId,
       name: 'CORS Test User',
       email: `${userId}@example.com`,
@@ -2925,7 +2926,7 @@ describe('PowerSync API — anonymous sync guard', () => {
     const now = new Date()
     const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-    await db.insert(userTable).values({
+    await insertTestUsers(db, {
       id: userId,
       name: 'Anonymous',
       email: `anon-${suffix}@example.com`,
@@ -2955,7 +2956,7 @@ describe('PowerSync API — anonymous sync guard', () => {
     const now = new Date()
     const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-    await db.insert(userTable).values({
+    await insertTestUsers(db, {
       id: userId,
       name: 'Regular User',
       email: `regular-${suffix}@example.com`,
@@ -3045,6 +3046,22 @@ describe('PowerSync API — anonymous sync guard', () => {
     const data = await response.json()
     expect(data).toHaveProperty('token')
     expect(data).toHaveProperty('powerSyncUrl')
+  })
+
+  it('GET /powersync/token — a blocked member gets 401 from both paths', async () => {
+    const app = new Elysia().use(createPowerSyncRoutes(auth, powersyncSettings, db)) as unknown as Elysia
+    const { userId, signedBearer, deviceId } = await seedRegularUser('blocked')
+    await db.update(orgMembership).set({ blockedAt: new Date() }).where(eq(orgMembership.userId, userId))
+
+    // Path 1's session lookup refuses the member, so the request falls through to Path 2, which
+    // reads the session row itself and must refuse them too.
+    const response = await app.handle(
+      new Request('http://localhost/powersync/token', {
+        headers: { Authorization: `Bearer ${signedBearer}`, 'X-Device-ID': deviceId },
+      }),
+    )
+    expect(response.status).toBe(401)
+    expect(await response.json()).toEqual({ error: 'Unauthorized' })
   })
 
   it('PUT /powersync/upload — anonymous user → 403 + code ANONYMOUS_SYNC_FORBIDDEN', async () => {

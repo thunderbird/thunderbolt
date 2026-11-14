@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { insertTestUsers } from '@/test-utils/identity'
 import { clearSettingsCache } from '@/config/settings'
-import { user } from '@/db/auth-schema'
 import { waitlist } from '@/db/schema'
 import { challengeTokenHeader } from '@/auth/otp-constants'
 import { createAuth } from '@/auth/auth'
@@ -99,7 +99,7 @@ describe('Auth Waitlist Integration', () => {
 
     it('should allow existing user to sign in regardless of waitlist', async () => {
       // Existing users bypass waitlist check
-      await db.insert(user).values({
+      await insertTestUsers(db, {
         id: crypto.randomUUID(),
         email: 'existing@example.com',
         name: 'Existing User',
@@ -120,7 +120,7 @@ describe('Auth Waitlist Integration', () => {
       // This is the exact scenario from the bug report (chris@cjroth.com)
       const email = 'dual-entry@example.com'
 
-      await db.insert(user).values({
+      await insertTestUsers(db, {
         id: crypto.randomUUID(),
         email,
         name: 'Dual Entry User',
@@ -253,7 +253,7 @@ describe('Auth Waitlist Integration', () => {
       const generateSignInOtp = mock(createOtpGenerator())
       auth = createAuth(db, { ...emailDeps, generateSignInOtp })
       const email = 'reuse-test@example.com'
-      await db.insert(user).values({
+      await insertTestUsers(db, {
         id: crypto.randomUUID(),
         email,
         name: 'Reuse Test User',
@@ -283,7 +283,7 @@ describe('Auth Waitlist Integration', () => {
 
     it('should not reset attempt counter when OTP is resent', async () => {
       const email = 'counter-test@example.com'
-      await db.insert(user).values({
+      await insertTestUsers(db, {
         id: crypto.randomUUID(),
         email,
         name: 'Counter Test User',
@@ -347,7 +347,7 @@ describe('Auth Waitlist Integration', () => {
 
     it('should only allow 3 verification attempts before locking out', async () => {
       const email = 'lockout-test@example.com'
-      await db.insert(user).values({
+      await insertTestUsers(db, {
         id: crypto.randomUUID(),
         email,
         name: 'Lockout Test User',
@@ -396,7 +396,7 @@ describe('Auth Waitlist Integration', () => {
       // This is mitigated by the 15s cooldown on /waitlist/join.
       auth = createAuth(db, { ...emailDeps, generateSignInOtp: createOtpGenerator() })
       const email = 'exhausted-resend@example.com'
-      await db.insert(user).values({
+      await insertTestUsers(db, {
         id: crypto.randomUUID(),
         email,
         name: 'Exhausted Resend User',

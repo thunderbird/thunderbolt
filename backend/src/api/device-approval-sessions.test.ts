@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { insertTestUsers } from '@/test-utils/identity'
 import { createAuth } from '@/auth/auth'
-import { session as sessionTable, user as userTable } from '@/db/auth-schema'
+import { session as sessionTable } from '@/db/auth-schema'
 import { deviceApprovalSessionsTable } from '@/db/encryption-schema'
 import { devicesTable } from '@/db/schema'
 import { createTestDb } from '@/test-utils/db'
@@ -37,7 +38,7 @@ describe('Device approval session routes', () => {
   const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
   const createUser = async (userId: string) => {
-    await db.insert(userTable).values({
+    await insertTestUsers(db, {
       id: userId,
       name: 'Test User',
       email: `${userId}@test.com`,

@@ -108,8 +108,9 @@ export const readXlsxSheets = async (file: StoredFile): Promise<SpreadsheetSheet
   const sheets = await readXlsxFile(zipSync(unzipSync(zip), { level: 0 }).buffer)
   return sheets.map(({ sheet, data }) => ({
     name: sheet,
-    // The reader pads a blank row to the sheet's width; an empty array keeps it one byte in a `.tsv`.
-    rows: data.map((row) => (row.every((cell) => cell === null || cell === '') ? [] : row.map(cellText))),
+    // The reader pads a blank row to the sheet's width with null, its value for every empty cell; an empty array keeps
+    // the row one byte in a `.tsv`.
+    rows: data.map((row) => (row.every((cell) => cell === null) ? [] : row.map(cellText))),
   }))
 }
 

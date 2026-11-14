@@ -15,6 +15,7 @@ import { createStandaloneLogger } from '@/config/logger'
 import { createCorsMiddleware } from '@/config/cors'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { runMigrations } from '@/db/client'
+import { createIdentityAdminRoutes } from '@/identity/admin/routes'
 import { createClientAuditRoutes } from '@/identity/audit/client-routes'
 import { createAuditRequestContext } from '@/identity/audit/request-context'
 import { createAuditRoutes } from '@/identity/audit/routes'
@@ -246,6 +247,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createAccountRoutes(auth, settings, database))
       .use(createAuditRoutes(auth, database))
       .use(createClientAuditRoutes(auth, database))
+      .use(createIdentityAdminRoutes(auth, database))
       .use(createInvitationRoutes({ database, ipRateLimit: createAuthIpRateLimit(database, ipRateLimitSettings) }))
       .use(createAgentsRoutes(auth))
       .use(createHaystackRoutes(settings, auth, { fetchFn }))

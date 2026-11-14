@@ -5,6 +5,8 @@
 import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 
+const deactivated = msg`Your account has been deactivated. Ask your administrator to restore your access.`
+
 // A Map, not an object: the code comes from the URL, and `messages['constructor']` would hit Object.prototype.
 // Each entry builds its descriptor so copy naming the app can take the deployment's name.
 const messages = new Map<string, (appName: string) => MessageDescriptor>([
@@ -17,6 +19,22 @@ const messages = new Map<string, (appName: string) => MessageDescriptor>([
   [
     'unsolicited_response',
     (appName) => msg`This sign-in did not start from ${appName}. Open ${appName} and sign in from there.`,
+  ],
+  // The organization's access check refused the member; codes from the backend's identity plugin.
+  ['ACCESS_BLOCKED', (appName) => msg`Your access to ${appName} has been blocked. Ask your administrator for help.`],
+  ['ACCESS_DEPROVISIONED', () => deactivated],
+  ['ACCESS_NO_LIVE_SOURCE', () => deactivated],
+  [
+    'ACCESS_NOT_MEMBER',
+    (appName) => msg`Your organization hasn't given you access to ${appName} yet. Ask your administrator to add you.`,
+  ],
+  [
+    'SSO_USER_RESOLUTION_FAILED',
+    () => msg`We couldn't match this sign-in to an account. Ask your administrator for help.`,
+  ],
+  [
+    'SSO_CONNECTION_UNAVAILABLE',
+    () => msg`This sign-in option is no longer available. Try again, or ask your administrator.`,
   ],
 ])
 

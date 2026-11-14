@@ -71,7 +71,7 @@ export const loginViaEmailCode = async (page: Page, email?: string) => {
  */
 
 /**
- * OIDC flow: / -> AuthGate -> /sso-redirect -> POST sign-in/sso -> mock IdP /authorize
+ * OIDC flow: / -> AuthGate -> /sso-redirect -> POST /v1/sso/discover (one connection) -> POST sign-in/sso -> mock IdP /authorize
  * (auto-approves) -> backend callback -> token exchange -> session -> app
  */
 export const loginViaOidc = async (page: Page) => {
@@ -81,7 +81,7 @@ export const loginViaOidc = async (page: Page) => {
 }
 
 /**
- * SAML flow: / -> AuthGate -> /sso-redirect -> POST sign-in/sso -> mock IdP /saml/sso
+ * SAML flow: / -> AuthGate -> /sso-redirect -> POST /v1/sso/discover (one connection) -> POST sign-in/sso -> mock IdP /saml/sso
  * (auto-generates SAMLResponse) -> POST to ACS -> session -> app
  */
 export const loginViaSaml = async (page: Page) => {

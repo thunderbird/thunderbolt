@@ -815,6 +815,10 @@ msgstr ""
 msgid "Back to App"
 msgstr "Zurück zur App"
 
+#: src/components/sso-sign-in/sso-email-code-page.tsx
+msgid "Back to organization sign-in"
+msgstr ""
+
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Bar chart"
 msgstr "Balkendiagramm"
@@ -1098,6 +1102,10 @@ msgstr ""
 
 #: src/settings/models/add-provider-models.tsx
 msgid "Choose from available models"
+msgstr ""
+
+#: src/components/sso-sign-in/sso-connection-list.tsx
+msgid "Choose how to sign in"
 msgstr ""
 
 #: src/components/onboarding/onboarding-server-step.tsx
@@ -1705,6 +1713,7 @@ msgstr "Kontextfenster überschritten"
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/components/sign-in/sign-in-success-step.tsx
+#: src/components/sso-sign-in/sso-email-step.tsx
 #: src/components/sync-setup/passkey-enroll-step.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/settings/connections/connection-setup-footer.tsx
@@ -1718,7 +1727,7 @@ msgid "Continue in your Thunderbolt window"
 msgstr ""
 
 #: src/components/sso-error.tsx
-#: src/components/sso-redirect.tsx
+#: src/components/sso-sign-in/sso-redirect.tsx
 msgid "Continue locally"
 msgstr ""
 
@@ -2923,6 +2932,10 @@ msgstr "Geben Sie Ihren Namen ein"
 msgid "Enter your verification code"
 msgstr ""
 
+#: src/components/sso-sign-in/sso-email-step.tsx
+msgid "Enter your work email to continue with your organization's sign-in."
+msgstr ""
+
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Enterprise"
 msgstr ""
@@ -3890,6 +3903,10 @@ msgstr "Name"
 msgid "Name is required."
 msgstr "Ein Name ist erforderlich."
 
+#: src/components/sso-sign-in/sso-email-step.tsx
+msgid "name@company.com"
+msgstr ""
+
 #: src/components/ui/mobile-sidebar.tsx
 msgid "Navigation"
 msgstr "Navigation"
@@ -4551,6 +4568,10 @@ msgstr "Berechtigung erforderlich"
 #: src/settings/preferences.tsx
 msgid "Personalization"
 msgstr "Personalisierung"
+
+#: src/components/sso-sign-in/sso-connection-list.tsx
+msgid "Pick the identity provider your organization uses for you."
+msgstr ""
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Pick this code on your other device."
@@ -5543,6 +5564,7 @@ msgstr "Erneut anmelden"
 
 #: src/components/device-approval.tsx
 #: src/components/sidebar-footer.tsx
+#: src/components/sso-sign-in/sso-email-step.tsx
 msgid "Sign in"
 msgstr "Anmelden"
 
@@ -5609,6 +5631,10 @@ msgstr ""
 #: src/components/device-approval.tsx
 msgid "Sign in to the CLI"
 msgstr "Bei der CLI anmelden"
+
+#: src/components/sso-sign-in/sso-email-code-page.tsx
+msgid "Sign in with an email code"
+msgstr ""
 
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/waitlist/waitlist-content.tsx
@@ -6471,6 +6497,10 @@ msgstr "Dieses Tabellenblatt ist zu groß für eine Vorschau"
 msgid "This sign-in did not start from {appName}. Open {appName} and sign in from there."
 msgstr ""
 
+#: src/lib/sso-error-messages.ts
+msgid "This sign-in option is no longer available. Try again, or ask your administrator."
+msgstr ""
+
 #: src/lib/device-grant.ts
 msgid "This sign-in request has expired. Start a new one from your terminal."
 msgstr "Diese Anmeldeanfrage ist abgelaufen. Starten Sie eine neue in Ihrem Terminal."
@@ -6748,7 +6778,7 @@ msgstr "Vertrauenswürdige Geräte"
 #: src/components/embedded/surface-status.tsx
 #: src/components/recovery-phrase-change-dialogs.tsx
 #: src/components/sso-error.tsx
-#: src/components/sso-redirect.tsx
+#: src/components/sso-sign-in/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/content-view/viewer-load-failure.tsx
 #: src/webview-recovery/index.ts
@@ -6795,7 +6825,7 @@ msgstr "Aktivieren Sie die Synchronisierung auf diesem Gerät, um diesen Passkey
 msgid "Turning off telemetry will disable all preview features. Are you sure you want to continue?"
 msgstr "Wenn Sie die Telemetrie deaktivieren, werden alle Vorschaufunktionen deaktiviert. Möchten Sie wirklich fortfahren?"
 
-#: src/components/sso-redirect.tsx
+#: src/components/sso-sign-in/sso-redirect.tsx
 msgid "Unable to connect to the identity provider. Check your network connection and SSO configuration."
 msgstr "Verbindung zum Identitätsanbieter nicht möglich. Prüfen Sie Ihre Netzwerkverbindung und Ihre SSO-Konfiguration."
 
@@ -6977,6 +7007,12 @@ msgstr ""
 
 #: src/components/onboarding/onboarding-model-step.tsx
 msgid "Use an API key instead"
+msgstr ""
+
+#: src/components/sso-error.tsx
+#: src/components/sso-sign-in/sso-connection-list.tsx
+#: src/components/sso-sign-in/sso-email-step.tsx
+msgid "Use an email code instead"
 msgstr ""
 
 #: src/lib/mcp-url-validation.ts
@@ -7231,6 +7267,10 @@ msgstr ""
 msgid "We could not sign you in. Please try again."
 msgstr ""
 
+#: src/lib/sso-error-messages.ts
+msgid "We couldn't match this sign-in to an account. Ask your administrator for help."
+msgstr ""
+
 #: src/components/auth-gate/browser-check.tsx
 msgid "We couldn't verify your browser. Check your connection and try again."
 msgstr "Wir konnten Ihren Browser nicht verifizieren. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut."
@@ -7255,6 +7295,10 @@ msgstr ""
 
 #: src/settings/account/delete-account-section.tsx
 msgid "We sent an 8-digit code to your account email. Enter it to permanently delete your account."
+msgstr ""
+
+#: src/components/sso-sign-in/sso-email-code-page.tsx
+msgid "We'll send a sign-in code to your email address."
 msgstr ""
 
 #: src/waitlist/waitlist-content.tsx
@@ -7370,6 +7414,10 @@ msgstr "Fenstersteuerung"
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 msgid "word1 word2 word3 ..."
 msgstr "wort1 wort2 wort3 ..."
+
+#: src/components/sso-sign-in/sso-email-step.tsx
+msgid "Work email"
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Would you like to change the language to {suggestedLanguageLabel}?"
@@ -7493,6 +7541,14 @@ msgstr "Sie haben Ihr KI-Nutzungslimit für das aktuelle 5-Stunden-Fenster errei
 #: src/components/chat/error-message.tsx
 msgid "You've reached your AI usage limit for the current 7-day window. Try again later."
 msgstr "Sie haben Ihr KI-Nutzungslimit für das aktuelle 7-Tage-Fenster erreicht. Versuchen Sie es später erneut."
+
+#: src/lib/sso-error-messages.ts
+msgid "Your access to {appName} has been blocked. Ask your administrator for help."
+msgstr ""
+
+#: src/lib/sso-error-messages.ts
+msgid "Your account has been deactivated. Ask your administrator to restore your access."
+msgstr ""
 
 #: src/components/account-deleted.tsx
 msgid "Your account has been deleted and local data has been cleared."
@@ -7619,6 +7675,10 @@ msgstr ""
 
 #: src/components/recovery-phrase-change-dialogs.tsx
 msgid "Your old recovery phrase no longer works. Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
+msgstr ""
+
+#: src/lib/sso-error-messages.ts
+msgid "Your organization hasn't given you access to {appName} yet. Ask your administrator to add you."
 msgstr ""
 
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx

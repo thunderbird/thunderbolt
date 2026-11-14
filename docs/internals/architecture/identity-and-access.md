@@ -67,14 +67,58 @@ bypasses the organization entirely.
 `admitAtSignIn` ([admission.ts](../../../backend/src/identity/admission.ts)) runs in the sign-in's
 transaction. A user with no membership is admitted by the first rule that matches:
 
-- `waitlist`: an email-code sign-in whose address has an approved waitlist row
+- `invitation`: an email-code sign-in whose address holds a usable invitation, which it consumes
+- `domain`: an email-code sign-in on a verified org domain open to enrollment
+- `waitlist`: an email-code sign-in whose address has an approved waitlist row, unless an IdP claims its domain
+- `open`: with `OPEN_SIGNUP_ENABLED`, any email-code sign-in, unless an IdP claims its domain
 - `sso`: a sign-in through a connection without SCIM (see below)
+
+These rules run only for a user with no membership, so none of them can bring a member back: a blocked
+or IdP-deprovisioned member never reaches them, and `computeAccess` ignores local sources while a
+SCIM source manages a member anyway.
 
 Admission waits for the session rather than user creation because Better Auth runs
 `user.create.after` only after the transaction commits, too late for the SSO callback's session.
 
 A new email address gets a sign-in code without an approved waitlist row only when
-`admitsWithoutWaitlist` says so. All three places that gate codes ask it, so a new way in is added once.
+`admitsWithoutWaitlist` says so: a bootstrap admin email, a usable invitation, an enrollable domain, or
+open sign-up. All three places that gate codes ask it, so a new way in is added once.
+
+A claimed-domain address with an approved waitlist row still gets a code, because the waitlist gates
+in `auth.ts` don't know about claims. Its sign-in creates the user row and is then refused with
+`ACCESS_NOT_MEMBER`, which leaves a user with no membership. That is harmless: a later overridden
+invitation still admits them, since the rules run for anyone without a membership.
+
+### Invitations
+
+An invitation ([invitations/invitations.ts](../../../backend/src/identity/invitations/invitations.ts))
+names one address in one org, expires after a week, and is used once. `createInvitation` emails a
+link to `/invite/<token>`; only the token's SHA-256 is stored. The link opens the invite-accept
+screen, which looks the invitation up with `GET /v1/invitations/:token` (404 for anything no longer
+usable) and offers the email code for the invited address. Admission matches the verified address,
+not the token: the email-code sign-in for that address consumes the invitation with a status-guarded
+update, so a second sign-in, or one racing it, finds nothing to consume.
+
+- An address on a domain an IdP claims is refused (`DOMAIN_CLAIMED_BY_IDP`, audited as a denied
+  `invitation.created`) unless the admin sets `idpOverride`, which is recorded on the row and audited as
+  `invitation.override_used`. The claim is checked again at sign-in, so a domain claimed after a plain
+  invitation was sent closes it.
+- An existing member can't be invited (`ALREADY_MEMBER`). Inviting an address again revokes its
+  pending invitation.
+- The email goes out from the inviting admin's request, so its language is the admin's, passed in as
+  `locale`.
+
+### Approved domains
+
+An org domain ([domains.ts](../../../backend/src/identity/domains.ts)) is verified by a TXT record at
+`_thunderbolt-verification.<domain>` holding `thunderbolt-verification=<token>`, looked up with the
+system resolver. Matching is exact: a subdomain never matches its parent. Once verified, a domain
+stays verified; nothing re-checks it. Only a verified domain that no IdP connection claims can be
+opened to enrollment, and members who join by domain get no role grant, only the implicit `member`
+role, whatever `enrollment_role` says. Claims match the exact domain too: a claim on `corp.com` does
+not close `eu.corp.com`, so each subdomain must be claimed on its own.
+
+`WAITLIST_AUTO_APPROVE_DOMAINS` is separate: a waitlist-only bypass that never creates an org domain.
 
 An existing member who signs in through a connection without SCIM, and has no `sso` source for it,
 gets one (`member.source_added`) before the access check. Without it, the members a connection's

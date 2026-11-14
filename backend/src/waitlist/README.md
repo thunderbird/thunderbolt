@@ -71,7 +71,7 @@ The waitlist integrates with Better Auth's email OTP flow in `backend/src/auth/a
 
 The user row, and its organization membership, are created at the address's first sign-in, after the approval. The identity plugin's sign-in step turns the approved row into a membership with source `waitlist`, so an address approved at any time can sign in ([identity-and-access.md](../../../docs/internals/architecture/identity-and-access.md#admission-at-sign-in)).
 
-An address listed in `BOOTSTRAP_ADMIN_EMAILS` skips the waitlist: `admitsWithoutWaitlist` (`backend/src/identity/admission.ts`) lets it through in `resolveApproval`, `sendVerificationOTP` and the OTP before-hook, and no waitlist row is written.
+An address listed in `BOOTSTRAP_ADMIN_EMAILS`, one with a usable invitation, one on an org domain open to enrollment, and, with `OPEN_SIGNUP_ENABLED`, any address not on an IdP-claimed domain skip the waitlist: `admitsWithoutWaitlist` (`backend/src/identity/admission.ts`) lets them through in `resolveApproval`, `sendVerificationOTP` and the OTP before-hook, and no waitlist row is written. `WAITLIST_AUTO_APPROVE_DOMAINS` stays a waitlist-only bypass and never creates an org domain.
 
 ## Email Templates
 

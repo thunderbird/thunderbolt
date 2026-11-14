@@ -40,7 +40,12 @@ an account always gets a code.
 | One address outside them       | Set its row in the `waitlist` table to `status = 'approved'`; there is no screen or command |
 
 A domain entry must equal everything after the `@`, so `example.com` does not cover
-`mail.example.com`. `WAITLIST_ENABLED` has no effect: the waitlist always applies.
+`mail.example.com`. `WAITLIST_ENABLED` has no effect.
+
+An address with an invitation, or on an organization domain that is verified and open to enrollment,
+skips the waitlist. With `OPEN_SIGNUP_ENABLED=true` on the API, every address that verifies its
+email skips it, except on a domain an identity provider claims. A claim covers only the exact
+domain: claiming `example.com` does not close `mail.example.com`, so claim each subdomain on its own.
 
 ### Codes
 

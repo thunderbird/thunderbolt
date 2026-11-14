@@ -1,6 +1,6 @@
 # Authentication
 
-Every credential resolves to a Better Auth session. Everything downstream (the `auth: true` route macro, PowerSync token issuance, device binding) only ever sees the session.
+Every credential resolves to a Better Auth session. Everything downstream (the `auth: true` route macro, PowerSync token issuance, device binding) only ever sees the session, and only a session whose user has access to the organization: the `identity()` plugin refuses the rest ([identity-and-access.md](../../docs/internals/architecture/identity-and-access.md)). Anonymous sessions are not members and pass through unchanged.
 
 | Credential               | Minted by                                         | Plugin / gate                                       | Documented in                                            |
 | ------------------------ | ------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------- |
@@ -100,7 +100,7 @@ Sign-in errors: `OTP_EXPIRED`, `INVALID_OTP`, `TOO_MANY_ATTEMPTS` (Better Auth),
 
 `sendVerificationOTP` runs the waitlist check regardless of `WAITLIST_ENABLED` ([configuration.md](../../docs/self-hosting/configuration.md)). A new address gets a `pending` entry and the "joined" email; a still-pending address gets the "not ready" email. Neither reply carries a code, and `deletePersistedSignInOtp` removes the one Better Auth already wrote to `verification`, which would otherwise exist for an account not allowed to use it.
 
-Addresses matching `isAutoApprovedDomain` skip straight to approved.
+Addresses matching `isAutoApprovedDomain` skip straight to approved. Addresses `admitsWithoutWaitlist` allows (`BOOTSTRAP_ADMIN_EMAILS`) skip the waitlist entirely and get no waitlist row.
 
 Email locale comes from the `X-App-Language` header on the triggering request, never a stored column. Call-shape traps: [transactional email in AGENTS.md](../../AGENTS.md#transactional-email-backend).
 
@@ -122,7 +122,7 @@ SAML refuses a response that carries no `InResponseTo`, which is a login started
 
 Both sign-in requests send `errorCallbackURL`, because Better Auth sends a failed login to its own `/error` page on the API host when it is missing. The web app sends `/sso-error` ([`sso-error.tsx`](../../src/components/sso-error.tsx), which maps the `error` code to copy and never shows it raw). `desktop-initiate` sends the `desktop-callback` URL, which forwards `error` to the loopback instead of looking for a session. SAML sends an unlinkable account to the callback URL, not the error URL, and a refused IdP-initiated response (`unsolicited_response`) to `APP_URL`, so `useAuthGate` turns an `?error=` on `/` into `/sso-error`. A login attempt whose state expired still ends on Better Auth's own `/error` page; `onAPIError.errorURL` would cover that and is not set.
 
-The hook runs inside a database transaction and Better Auth refuses to call it otherwise, so SSO mode turns on `transaction` in the Drizzle adapter. Consumer mode keeps the plain adapter.
+The hook runs inside a database transaction and Better Auth refuses to call it otherwise. The Drizzle adapter runs with `transaction: true` in every mode: SCIM needs it too, and the identity plugin's sign-in writes (membership, source, audit event) must commit together. Code inside a Better Auth hook reads and writes through `getCurrentAdapter`, never the root Drizzle `db`, which deadlocks on PGlite while the transaction is open.
 
 ### The desktop bridge (Tauri)
 
@@ -186,6 +186,8 @@ Both halves ride the same kill switch: with `CLI_DEVICE_REGISTRATION_ENABLED` un
 
 The `apiKey` plugin runs with `enableSessionForAPIKeys: true`, so `x-api-key` authenticates as the key's owner, and with its per-key rate limit **disabled**: the 10 requests/day default is unusable for automation, and the account/IP limits still apply.
 
+A key whose owner has no access to the organization is refused with `INVALID_API_KEY`: the plugin's `customAPIKeyValidator` runs `apiKeyOwnerHasAccess` ([api-key-access.ts](../src/identity/api-key-access.ts)) on every request carrying `x-api-key`, because on `/get-session` the plugin returns its session before any after-hook could check it.
+
 A PAT registers no CLI device, so `rejectUnregisteredCliDevice` returns early for any request carrying `x-api-key` rather than looking for a device row that will never exist. Lifecycle, expiry and the confidential-model gate: [pat-lifecycle.md](./pat-lifecycle.md).
 
 ## Anonymous sessions
@@ -202,6 +204,7 @@ Anonymous sign-in is intentionally _not_ waitlist-gated: trying the app without 
 
 The `passkey` plugin is registered only when `isPasskeyEnabled` holds (`PASSKEY_ENABLED=true` on a consumer-auth deployment); otherwise every `/passkey/*` route 404s. Sign-in (`generate-authenticate-options` → `verify-authentication`) needs no session. Management routes go through the before-hook. It runs ahead of the bearer plugin, so it looks the caller up with `auth.api.getSession` (`getSessionFromCtx` can't see a bearer-only session there), and then:
 
+- answers 401 when the lookup finds no session, which includes a member the identity plugin refuses (the plugin's routes would otherwise authenticate them with their own internal lookup, which skips that check);
 - refuses anonymous users;
 - refuses API-key and CLI device-grant sessions (`isCliGrantSession`), so a delegated credential can never mint a permanent interactive sign-in;
 - allows one passkey per account, checked at both registration steps and backed by a unique index on `passkey.user_id`;

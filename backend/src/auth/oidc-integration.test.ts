@@ -10,7 +10,7 @@ import { Elysia } from 'elysia'
 import { and, eq, inArray } from 'drizzle-orm'
 import { exportJWK, generateKeyPair, SignJWT, type JWK } from 'jose'
 import { getSharedIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
-import { account, user } from '@/db/auth-schema'
+import { account, session as sessionTable, user } from '@/db/auth-schema'
 import { createSessionCookie } from '@/test-utils/session-cookie'
 import {
   auditEvent,
@@ -414,6 +414,31 @@ describe('OIDC Integration', () => {
       expect(await ssoAccountCount(local.id)).toBe(0)
     })
 
+    it('audits an OIDC sign-in and a refused one, the refusal by its error code with no user', async () => {
+      const { createAuth } = await import('./auth')
+      const { user: existing } = await signInByEmailCode(createAuth(db))
+      await signInThroughIdp(existing.email)
+      const stranger = `unverified-${crypto.randomUUID()}@example.com`
+      await db
+        .insert(user)
+        .values({ id: crypto.randomUUID(), name: 'Unverified', email: stranger, emailVerified: false })
+      const before = new Date()
+      await signInThroughIdp(stranger)
+
+      const events = await db
+        .select()
+        .from(auditEvent)
+        .where(and(eq(auditEvent.action, 'auth.sign_in'), eq(auditEvent.connectionId, envSsoConnectionId)))
+      const successes = events.filter((event) => event.actorId === existing.id)
+      expect(successes).toMatchObject([{ outcome: 'success', metadata: { method: 'oidc' } }])
+      // Recorded once, in the sign-in's transaction, naming the session that transaction created.
+      const sessions = await db.select().from(sessionTable).where(eq(sessionTable.userId, existing.id))
+      expect(sessions.map((row) => row.id)).toContain((successes[0].metadata as { sessionId: string }).sessionId)
+      expect(events.filter((event) => event.occurredAt >= before && event.outcome === 'failure')).toMatchObject([
+        { outcome: 'failure', reason: 'account_not_linked', actorId: null, metadata: { method: 'oidc' } },
+      ])
+    })
+
     it('links a new IdP identity to a user the provider signed up before', async () => {
       const email = `sso-user-${crypto.randomUUID()}@example.com`
       expect((await signInThroughIdp(email)).location).toBe(callbackURL)
@@ -681,6 +706,17 @@ describe('OIDC Integration', () => {
       expect(location).toContain('error=ACCESS_NOT_MEMBER')
       expect(sessionUserId).toBeUndefined()
       expect(await userCount(email)).toBe(0)
+      const failures = await db
+        .select()
+        .from(auditEvent)
+        .where(
+          and(
+            eq(auditEvent.action, 'auth.sign_in'),
+            eq(auditEvent.connectionId, secondConnectionId),
+            eq(auditEvent.outcome, 'failure'),
+          ),
+        )
+      expect(failures).toMatchObject([{ reason: 'ACCESS_NOT_MEMBER', metadata: { method: 'oidc' } }])
     })
 
     it('never links a SCIM connection subject to a verified user by email', async () => {

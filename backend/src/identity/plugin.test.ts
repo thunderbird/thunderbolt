@@ -13,7 +13,8 @@ import { passkey } from '@better-auth/passkey'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { and, eq } from 'drizzle-orm'
 import type { AccessState } from './access'
-import { decideSignIn, passkeySignInPath } from './plugin'
+import { decideSignIn } from './plugin'
+import { passkeySignInPath } from './sign-in'
 import { otpSignInPath } from './sign-in'
 
 const authBase = 'http://localhost/v1/api/auth'
@@ -143,7 +144,9 @@ describe('identity plugin', () => {
     const [failure] = await harness.db
       .select()
       .from(auditEvent)
-      .where(and(eq(auditEvent.action, 'auth.sign_in'), eq(auditEvent.actorId, userId)))
+      .where(
+        and(eq(auditEvent.action, 'auth.sign_in'), eq(auditEvent.actorId, userId), eq(auditEvent.outcome, 'failure')),
+      )
     expect(failure).toMatchObject({
       outcome: 'failure',
       reason: 'ACCESS_BLOCKED',

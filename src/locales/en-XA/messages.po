@@ -1016,6 +1016,10 @@ msgstr ""
 msgid "Check your connection and open the file again, or download it to open it in a word processor."
 msgstr ""
 
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "Check your connection and try again."
+msgstr ""
+
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/waitlist/waitlist-content.tsx
 msgid "Check your email"
@@ -1706,6 +1710,7 @@ msgid "Context Window Exceeded"
 msgstr ""
 
 #: src/components/device-approval.tsx
+#: src/components/invite-accept/invite-accept-page.tsx
 #: src/components/magic-link-verify.tsx
 #: src/components/onboarding/onboarding-action-buttons.tsx
 #: src/components/onboarding/onboarding-dialog.tsx
@@ -2054,6 +2059,10 @@ msgstr ""
 
 #: src/components/settings/iroh-pairing-panel.tsx
 msgid "Couldn't load this app's pairing identity: {error}"
+msgstr ""
+
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "Couldn't load this invitation"
 msgstr ""
 
 #: src/mini-apps/mini-app-page.tsx
@@ -3462,6 +3471,10 @@ msgstr ""
 msgid "It may be damaged. Download the file to open it in a word processor."
 msgstr ""
 
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "It may have expired, been used already, or been withdrawn. Ask for a new invitation."
+msgstr ""
+
 #: src/components/recovery-continuity/recovery-continuity-banner.tsx
 msgid "It was created before a security update. A new phrase lets recovery confirm your keys are yours."
 msgstr ""
@@ -3627,6 +3640,10 @@ msgstr ""
 
 #: src/components/settings/iroh-pairing-panel.tsx
 msgid "Loading this app's pairing identity…"
+msgstr ""
+
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "Loading your invitation…"
 msgstr ""
 
 #: src/components/chat/chat-ui.tsx
@@ -5568,6 +5585,7 @@ msgstr ""
 msgid "Sign in"
 msgstr ""
 
+#: src/components/invite-accept/invite-accept-page.tsx
 #: src/components/onboarding/onboarding-server-step.tsx
 #: src/components/sign-in-modal.tsx
 #: src/settings/preferences.tsx
@@ -5630,6 +5648,10 @@ msgstr ""
 
 #: src/components/device-approval.tsx
 msgid "Sign in to the CLI"
+msgstr ""
+
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "Sign in with {email} to accept the invitation."
 msgstr ""
 
 #: src/components/sso-sign-in/sso-email-code-page.tsx
@@ -6346,6 +6368,10 @@ msgstr ""
 msgid "This helps us personalize your experience with local settings and features."
 msgstr ""
 
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "This invitation is no longer valid"
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "This is the first device on your account. We'll create an encryption key to protect your data and give you a recovery key to keep safe."
 msgstr ""
@@ -6776,6 +6802,7 @@ msgstr ""
 #: src/components/auth-gate/browser-check.tsx
 #: src/components/chat/attestation/attestation-panel.tsx
 #: src/components/embedded/surface-status.tsx
+#: src/components/invite-accept/invite-accept-page.tsx
 #: src/components/recovery-phrase-change-dialogs.tsx
 #: src/components/sso-error.tsx
 #: src/components/sso-sign-in/sso-redirect.tsx
@@ -7508,6 +7535,10 @@ msgstr ""
 msgid "You're all set! 🎉"
 msgstr ""
 
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "You're already signed in"
+msgstr ""
+
 #: src/components/magic-link-verify.tsx
 #: src/components/sign-in/sign-in-success-step.tsx
 msgid "You're now signed in."
@@ -7525,6 +7556,14 @@ msgstr ""
 #: src/components/provider-authorization-result.tsx
 #~ msgid "You're ready for the next step. Return to Thunderbolt to finish connecting your account."
 #~ msgstr ""
+
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "You're signed in as {email}."
+msgstr ""
+
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "You've been invited to {appName}"
+msgstr ""
 
 #: src/settings/models/model-detail.tsx
 msgid "You've customized this model."

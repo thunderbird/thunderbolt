@@ -37,11 +37,13 @@ const loadingFallback = (
 export const Sideview = () => {
   const { sideviewType, sideviewId } = useSideview()
 
+  // Each viewer is keyed by its file id, so switching files starts fresh: a failed save, or one still pending, for
+  // one file never shows on the next. Not by page, which only scrolls the same file.
   if (sideviewType === 'document' && sideviewId) {
     const { fileId, fileName, pageNumber } = parseDocumentSideviewId(sideviewId)
     return (
       <Suspense fallback={loadingFallback}>
-        <PdfSidebarViewer fileId={fileId} fileName={fileName} initialPage={pageNumber} />
+        <PdfSidebarViewer key={fileId} fileId={fileId} fileName={fileName} initialPage={pageNumber} />
       </Suspense>
     )
   }
@@ -54,7 +56,7 @@ export const Sideview = () => {
         {getFileType(fileName) === 'xlsx' ? (
           <LocalXlsxSidebarViewer key={fileId} localFileId={fileId} fileName={fileName} />
         ) : (
-          <LocalPdfSidebarViewer localFileId={fileId} fileName={fileName} initialPage={pageNumber} />
+          <LocalPdfSidebarViewer key={fileId} localFileId={fileId} fileName={fileName} initialPage={pageNumber} />
         )}
       </Suspense>
     )

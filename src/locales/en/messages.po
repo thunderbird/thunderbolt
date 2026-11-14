@@ -7288,6 +7288,10 @@ msgstr "Your donation helps us understand how the app is used and improve the pr
 msgid "Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."
 msgstr "Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."
 
+#: src/lib/sso-error-messages.ts
+msgid "Your identity provider didn't send the identifier your organization matches accounts on. Ask your administrator to check the connection."
+msgstr "Your identity provider didn't send the identifier your organization matches accounts on. Ask your administrator to check the connection."
+
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Your local data stays on this device until you enable sync."
 msgstr "Your local data stays on this device until you enable sync."
@@ -7320,6 +7324,14 @@ msgstr "Your old recovery phrase no longer works. Write down these 24 words in o
 #: src/lib/sso-error-messages.ts
 msgid "Your organization hasn't given you access to {appName} yet. Ask your administrator to add you."
 msgstr "Your organization hasn't given you access to {appName} yet. Ask your administrator to add you."
+
+#: src/settings/account/use-delete-account.ts
+msgid "Your organization manages this account, so it can’t be deleted here. Ask your administrator."
+msgstr "Your organization manages this account, so it can’t be deleted here. Ask your administrator."
+
+#: src/lib/otp-error-messages.ts
+msgid "Your organization requires you to sign in with single sign-on."
+msgstr "Your organization requires you to sign in with single sign-on."
 
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "Your passkey was added before a security update. Check it once so unlocking with it can confirm your encryption keys are yours."

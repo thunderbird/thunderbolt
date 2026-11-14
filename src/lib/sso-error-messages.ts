@@ -33,6 +33,11 @@ const messages = new Map<string, (appName: string) => MessageDescriptor>([
     () => msg`We couldn't match this sign-in to an account. Ask your administrator for help.`,
   ],
   [
+    'SSO_MATCH_CLAIM_MISSING',
+    () =>
+      msg`Your identity provider didn't send the identifier your organization matches accounts on. Ask your administrator to check the connection.`,
+  ],
+  [
     'SSO_CONNECTION_UNAVAILABLE',
     () => msg`This sign-in option is no longer available. Try again, or ask your administrator.`,
   ],

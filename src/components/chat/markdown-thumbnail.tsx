@@ -16,7 +16,7 @@ type MarkdownThumbnailProps = {
  * 160px card). Keeps the placeholder until the text and GFM plugin resolve.
  */
 export const MarkdownThumbnail = ({ localFileId }: MarkdownThumbnailProps) => {
-  const text = useAttachmentText(localFileId, 'text/markdown')
+  const text = useAttachmentText(localFileId)
   const { data: remarkGfm } = useQuery({
     queryKey: ['markdown-thumbnail-gfm'],
     queryFn: async () => {

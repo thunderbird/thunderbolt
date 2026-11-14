@@ -5,14 +5,14 @@
 import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
-import { pptxMime, xlsmMime, xlsxMime } from '@/files/transformers'
+import { docxMime, pptxMime, xlsmMime, xlsxMime } from '@/files/transformers'
 import { FileSpreadsheet, FileText, Presentation, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { DeferredPdfThumbnail } from './deferred-pdf-thumbnail'
 import { DocxThumbnail } from './docx-thumbnail'
 import { ImageThumbnail } from './image-thumbnail'
 import { MarkdownThumbnail } from './markdown-thumbnail'
-import { docxMimeType, isTextualAttachment, TextSnippet } from './text-snippet'
+import { isTextualAttachment, TextSnippet } from './text-snippet'
 
 type FileCardProps = {
   localFileId: string
@@ -42,18 +42,18 @@ const placeholderIcons = new Map([
 ])
 
 /** Human label for a non-native delivery mode. */
-const deliverAsLabel: Record<'text' | 'images', MessageDescriptor> = {
+const deliverAsLabel = {
   text: msg`Sent as text`,
   images: msg`Sent as images`,
-}
+} satisfies Record<'text' | 'images', MessageDescriptor>
 
 /** Label for a resend control option. A whole message per mode rather than the
  *  mode name interpolated into "Resend as …" — a bare noun dropped into a
  *  translated frame gets the grammar wrong in most languages. */
-const resendAsLabel: Record<'text' | 'images', MessageDescriptor> = {
+const resendAsLabel = {
   text: msg`Resend as text`,
   images: msg`Resend as images`,
-}
+} satisfies Record<'text' | 'images', MessageDescriptor>
 
 /** Short type badge from the file extension, falling back to the mime type. */
 const typeBadge = (filename: string, mimeType: string): string => {
@@ -88,7 +88,7 @@ export const FileCard = ({
   const isPdf = mimeType === 'application/pdf'
   const isImage = mimeType.startsWith('image/')
   const isMarkdown = mimeType === 'text/markdown' || ext === 'md' || ext === 'markdown'
-  const isDocx = mimeType === docxMimeType
+  const isDocx = mimeType === docxMime
   // Plain text (txt / csv / …) gets the raw mini-page; md and docx get formatted thumbnails.
   const isPlainText = !isPdf && !isImage && !isMarkdown && !isDocx && isTextualAttachment(filename, mimeType)
 
@@ -100,7 +100,7 @@ export const FileCard = ({
       {isImage && <ImageThumbnail localFileId={localFileId} alt={filename} />}
       {isMarkdown && <MarkdownThumbnail localFileId={localFileId} />}
       {isDocx && <DocxThumbnail localFileId={localFileId} title={filename} />}
-      {isPlainText && <TextSnippet localFileId={localFileId} mimeType={mimeType} />}
+      {isPlainText && <TextSnippet localFileId={localFileId} />}
       {deliverAs && (
         <span className="absolute left-1.5 top-1.5 rounded bg-black/65 px-1.5 py-px text-[length:var(--font-size-xs)] font-medium text-white">
           {i18n._(deliverAsLabel[deliverAs])}

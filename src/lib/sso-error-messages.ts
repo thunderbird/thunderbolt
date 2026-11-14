@@ -37,6 +37,16 @@ const messages = new Map<string, (appName: string) => MessageDescriptor>([
     () =>
       msg`Your identity provider didn't send the identifier your organization matches accounts on. Ask your administrator to check the connection.`,
   ],
+  // Linking: an existing account already uses this email.
+  [
+    'LINK_REVIEW_PENDING',
+    (appName) =>
+      msg`An existing ${appName} account already uses this email. Your administrator needs to approve linking it to this sign-in.`,
+  ],
+  [
+    'SSO_IDENTITY_LINKED_ELSEWHERE',
+    (appName) => msg`This sign-in is already linked to another ${appName} account. Ask your administrator for help.`,
+  ],
   [
     'SSO_CONNECTION_UNAVAILABLE',
     () => msg`This sign-in option is no longer available. Try again, or ask your administrator.`,

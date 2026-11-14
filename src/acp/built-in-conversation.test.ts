@@ -466,6 +466,7 @@ describe('prepareBuiltInConversation', () => {
       expect(prepared.prompt.text).toBe(
         '[Attachment: photos.docx — saved as attachments/e2/photos.docx.txt; to edit the original file, run_office_script reads it by its name, "photos.docx" (the newest file with that name), or by its id, "e2" (this exact file)]\n\n',
       )
+      expect(prepared.files).toEqual([{ path: 'attachments/e2/photos.docx.txt', content: '' }])
     })
 
     it('cuts a single oversized line by characters', async () => {

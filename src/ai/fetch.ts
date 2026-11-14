@@ -565,7 +565,7 @@ export const createModel = async (inputModel: Model, getProxyFetch: () => FetchF
         name: 'trustedrouter',
         baseURL: conn.baseURL,
         apiKey: conn.apiKey,
-        fetch: conn.fetch,
+        fetch: wrapFetch(conn.fetch),
       })
       return trustedrouter(modelConfig.model)
     }

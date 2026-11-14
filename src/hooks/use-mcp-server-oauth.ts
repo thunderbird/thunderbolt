@@ -9,6 +9,7 @@ import { deleteMcpServer } from '@/dal'
 import { clearMcpOAuthState, getMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
 import { completeMcpOAuthFlow, startMcpOAuthFlow } from '@/lib/mcp-auth/web-oauth-flow'
 import type { FetchFn } from '@/lib/proxy-fetch'
+import { useReportConnectionEvent } from '@/lib/report-connection-event'
 import { useReducer } from 'react'
 import { useAsyncAttempt } from './use-async-attempt'
 
@@ -81,6 +82,8 @@ export type McpOAuthCallbackDeps = {
   setCard: (serverId: string, card: OAuthCardState | null) => void
   /** Clears the navigation state so a refresh can't reprocess the callback. */
   clearNavState: () => void
+  /** Called once the authorization has completed and its credentials are stored. */
+  onAuthorized: (serverId: string) => void
 }
 
 /**
@@ -92,7 +95,7 @@ export type McpOAuthCallbackDeps = {
  *  - clears the nav state so a refresh can't reprocess the callback
  *  - `oauth.error` → error card (friendly message) + clear handshake
  *  - missing `oauth.code` → cancelled card + clear handshake
- *  - otherwise → authorizing card, exchange + persist, clear card, reconnect
+ *  - otherwise → authorizing card, exchange + persist, report, clear card, reconnect
  *  - exchange throws → error card carrying the failure message
  */
 export const handleMcpOAuthCallback = async (
@@ -137,6 +140,7 @@ export const handleMcpOAuthCallback = async (
       returnedIss: oauth.iss,
       fetchFn: deps.fetchFn,
     })
+    deps.onAuthorized(serverId)
     deps.setCard(serverId, null)
     await deps.reconnectServer(serverId)
   } catch (error) {
@@ -203,6 +207,14 @@ export const useMcpServerOAuth = (options: UseMcpServerOAuthOptions): UseMcpServ
     completeMcpOAuthFlow: completeFlow = completeMcpOAuthFlow,
   } = options
   const [state, dispatch] = useReducer(oauthReducer, initialState)
+  const reportConnectionEvent = useReportConnectionEvent()
+  // An OAuth authorization gives the server a new credential; a refresh later never reports.
+  const reportAuthorized = (serverId: string) =>
+    reportConnectionEvent({
+      action: 'user_connection.credential_replaced',
+      target: { type: 'mcp_server', id: serverId },
+      authMethod: 'oauth',
+    })
   // Discovery yields before the OAuth nonce is persisted. All entry points
   // share one reservation so no second flow can overwrite that handshake.
   const operation = useAsyncAttempt()
@@ -241,6 +253,9 @@ export const useMcpServerOAuth = (options: UseMcpServerOAuthOptions): UseMcpServ
         serverUrl: server.url ?? '',
         fetchFn: buildOAuthFetch(),
       })
+      if (result.status === 'completed') {
+        reportAuthorized(server.id)
+      }
       if (attempt.isCurrent() && result.status === 'completed') {
         setCard(server.id, null)
         await reconnectServer(server.id)
@@ -272,12 +287,18 @@ export const useMcpServerOAuth = (options: UseMcpServerOAuthOptions): UseMcpServ
     }
     dispatch({ type: 'clear-dialog-error' })
     dispatch({ type: 'set-add-authorize-pending', pending: true })
+    // A row that `createRow` never made was never reported added, so its rollback reports nothing.
+    let created = false
     try {
       await createRow()
+      created = true
       if (!attempt.isCurrent()) {
         return false
       }
       const result = await startFlow({ db, serverId, serverUrl, fetchFn: buildOAuthFetch() })
+      if (result.status === 'completed') {
+        reportAuthorized(serverId)
+      }
       if (!attempt.isCurrent()) {
         return false
       }
@@ -301,6 +322,13 @@ export const useMcpServerOAuth = (options: UseMcpServerOAuthOptions): UseMcpServ
       console.error('Failed to start MCP OAuth flow:', error)
       try {
         await deleteMcpServer(db, serverId)
+        if (created) {
+          reportConnectionEvent({
+            action: 'user_connection.removed',
+            target: { type: 'mcp_server', id: serverId },
+            authMethod: 'oauth',
+          })
+        }
       } catch (rollbackError) {
         console.error('Failed to roll back MCP server after authorization error:', rollbackError)
       }
@@ -339,6 +367,7 @@ export const useMcpServerOAuth = (options: UseMcpServerOAuthOptions): UseMcpServ
           }
         },
         clearNavState,
+        onAuthorized: reportAuthorized,
       })
     } finally {
       attempt.finish()

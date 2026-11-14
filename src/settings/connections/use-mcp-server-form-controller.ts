@@ -25,12 +25,19 @@ import { parseMcpServersConfig, type ParsedMcpServer } from '@/lib/mcp-config-im
 import type { useMCP } from '@/lib/mcp-provider'
 import type { MCPTransportType } from '@/lib/mcp-transport'
 import { validateMcpServerUrl } from '@/lib/mcp-url-validation'
+import { useReportConnectionEvent } from '@/lib/report-connection-event'
 import type { McpServer } from '@/types'
 import type { AddServerMode } from './mcp-server-form'
 import type { ConnectionsPageAction } from './page-state'
 
 const serverGone = msg`This server no longer exists. It may have been removed on another device.`
 const reconnectFailed = msg`Changes were saved, but reconnecting failed. Please retry.`
+
+/** The audit log's name for each way an MCP server authenticates. */
+export const mcpAuthMethods = { oauth: 'oauth', bearer: 'api_key', none: 'none' } as const
+
+/** Whether a server is left with a bearer credential: a token, or a credential object. */
+const credentialTypeOf = (credential: unknown): StoredCredentialType => (credential ? 'bearer' : 'none')
 
 /**
  * Maps the edit form's credential tri-state to DAL semantics: a typed token
@@ -76,6 +83,12 @@ export const useMcpServerFormController = ({
 }: FormControllerOptions) => {
   const { i18n, t } = useLingui()
   const submission = useAsyncAttempt()
+  const reportConnectionEvent = useReportConnectionEvent()
+  const reportServer = (
+    action: Parameters<typeof reportConnectionEvent>[0]['action'],
+    id: string,
+    credentialType: StoredCredentialType,
+  ) => reportConnectionEvent({ action, target: { type: 'mcp_server', id }, authMethod: mcpAuthMethods[credentialType] })
   const { url, isIroh, token, testResult, resolveServerName } = form
   const urlValidation = !isIroh && url ? validateMcpServerUrl(url) : null
   const isUrlReady = Boolean(url) && urlValidation?.ok === true
@@ -91,24 +104,29 @@ export const useMcpServerFormController = ({
       }),
   })
   const addMutation = useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       id,
       name,
       serverUrl,
       transport,
       bearerToken,
+      oauth = false,
     }: {
       id: string
       name: string
       serverUrl: string
       transport: MCPTransportType
       bearerToken: string
-    }) =>
-      createMcpServerWithCredentials(
+      /** The server is added to be authorized by OAuth next. */
+      oauth?: boolean
+    }) => {
+      await createMcpServerWithCredentials(
         db,
         { id, name, url: serverUrl, type: transport, enabled: 1 },
         bearerToken ? { type: 'bearer', token: bearerToken } : undefined,
-      ),
+      )
+      reportServer('user_connection.added', id, oauth ? 'oauth' : credentialTypeOf(bearerToken))
+    },
   })
   const updateMutation = useMutation({
     mutationFn: async ({
@@ -130,26 +148,36 @@ export const useMcpServerFormController = ({
     }) => {
       const credentials = resolveCredentialUpdate(nextToken, isClearingStoredToken, originalCredentialType)
       await updateMcpServerWithCredentials(db, id, { name, url: serverUrl, type: transport }, credentials)
+      const credentialType = credentials === undefined ? originalCredentialType : credentialTypeOf(credentials)
+      reportServer('user_connection.updated', id, credentialType)
+      if (credentials !== undefined) {
+        reportServer('user_connection.credential_replaced', id, credentialType)
+      }
     },
   })
   const importMutation = useMutation({
-    mutationFn: (parsed: ParsedMcpServer[]) =>
-      createMcpServersWithCredentials(
-        db,
-        parsed.map((server) => ({
-          server: {
-            id: uuidv7(),
-            name: server.name,
-            url: server.url,
-            type: server.transport,
-            enabled: server.enabled ? 1 : 0,
-          },
-          credential: server.credential,
-        })),
-      ),
+    mutationFn: async (parsed: ParsedMcpServer[]) => {
+      const servers = parsed.map((server) => ({
+        server: {
+          id: uuidv7(),
+          name: server.name,
+          url: server.url,
+          type: server.transport,
+          enabled: server.enabled ? 1 : 0,
+        },
+        credential: server.credential,
+      }))
+      await createMcpServersWithCredentials(db, servers)
+      for (const { server, credential } of servers) {
+        reportServer('user_connection.added', server.id, credentialTypeOf(credential))
+      }
+    },
   })
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteMcpServer(db, id),
+    mutationFn: async (id: string) => {
+      await deleteMcpServer(db, id)
+      reportServer('user_connection.removed', id, credentialsById[id]?.type ?? 'none')
+    },
     onSuccess: () => dispatch({ type: 'DELETE_DISMISSED' }),
     onError: (error) =>
       dispatch({
@@ -319,6 +347,7 @@ export const useMcpServerFormController = ({
             serverUrl: url,
             transport: form.transport,
             bearerToken: token,
+            oauth: true,
           }),
       })
       if (started && attempt.isCurrent()) {

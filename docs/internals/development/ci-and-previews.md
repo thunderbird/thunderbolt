@@ -32,15 +32,15 @@ Release workflows: [RELEASE.md](../../../RELEASE.md).
 
 ## The `ci.yml` jobs
 
-| Job             | Runs when                                                                      | What it does                                                                          |
-| --------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| `typescript`    | Always                                                                         | `tsc --noEmit`, `bun run lint`, `bun run test:5x`                                     |
-| `backend`       | Always                                                                         | Backend type-check, lint, tests (5x), WS suite, `./server` smoke (OTEL off and on)    |
-| `localization`  | `src/**`, `shared/**`, i18n/build config, `backend/src/emails/**`, `bun.lock`  | `bun run i18n:check`, a catalog-compiling build, the macro tripwire                   |
+| Job             | Runs when                                                                                                                                   | What it does                                                                          |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `typescript`    | Always                                                                                                                                      | `tsc --noEmit`, `bun run lint`, `bun run test:5x`                                     |
+| `backend`       | Always                                                                                                                                      | Backend type-check, lint, tests (5x), WS suite, `./server` smoke (OTEL off and on)    |
+| `localization`  | `src/**`, `shared/**`, i18n/build config, `backend/src/emails/**`, `bun.lock`                                                               | `bun run i18n:check`, a catalog-compiling build, the macro tripwire                   |
 | `agent-core`    | `shared/agent-core/**`, `shared/reasoning-effort*.ts`, browser-check/Chrome scripts, `vite.config.ts`, `package.json`, `bun.lock`, `ci.yml` | `bun run test:agent-core:5x` plus the Chromium/WebKit browser check                   |
-| `cli`           | `cli/**`, `shared/agent-core/**` and the shared contracts the CLI imports      | CLI type-check, tests (5x), build, and an artifact smoke test                         |
-| `wasm-artifact` | `src/acp/iroh/pkg/**`, crate inputs, source-manifest tests, or `ci.yml`        | Staleness gate, source-manifest tests, `SOURCES.txt` and `CHECKSUMS.txt` verification |
-| `rust`          | `src-tauri/**` Rust sources/manifests or `crates/**`                           | The RUSTSEC tripwire, then `cargo build`/`clippy -D warnings`/`test`                  |
+| `cli`           | `cli/**`, `shared/agent-core/**` and the shared contracts the CLI imports                                                                   | CLI type-check, tests (5x), build, and an artifact smoke test                         |
+| `wasm-artifact` | `src/acp/iroh/pkg/**`, crate inputs, source-manifest tests, or `ci.yml`                                                                     | Staleness gate, source-manifest tests, `SOURCES.txt` and `CHECKSUMS.txt` verification |
+| `rust`          | `src-tauri/**` Rust sources/manifests or `crates/**`                                                                                        | The RUSTSEC tripwire, then `cargo build`/`clippy -D warnings`/`test`                  |
 
 Only `typescript` and `backend` run on every PR; the rest are gated by `detect-changes`
 (`dorny/paths-filter`), so **"CI passed" can mean "your job never ran"**. `agent-core` runs
@@ -66,7 +66,8 @@ local set (type-check, lint, format-check, license-check).
 - `bun run test` is not what CI runs: `--randomize` plus the 5x repeat catches
   order-dependent and one-in-fifty failures. Reproduce with the `:5x` script.
 - The disabled timeout (Bun's `--timeout 0` hangs async tests) leans on step and job caps:
-  10 minutes on the backend test step, 15 or 20 on the jobs. Local `test` and
+  10 minutes on the backend test step, 15 on the `backend`, `agent-core` and `cli` jobs, and 30 on
+  `typescript`. Local `test` and
   `test:backend` keep the 5-second timeout.
 
 ### Why the WebSocket suite is excluded

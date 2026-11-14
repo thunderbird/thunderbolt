@@ -30,6 +30,7 @@ a fixed order, and the order is the whole policy.
 | Order | Caller                                      | Outcome                                                                                                                                                                 |
 | ----- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1     | An existing `user` row                      | Approved; past the gate once, never re-queued                                                                                                                           |
+| 1     | An address `admitsWithoutWaitlist` allows   | Approved, with no waitlist row. Today that is a `BOOTSTRAP_ADMIN_EMAILS` address ([identity-and-access.md](identity-and-access.md#bootstrap-admin))                     |
 | 2     | A waitlist row with `status = 'approved'`   | Approved                                                                                                                                                                |
 | 3     | A domain in `WAITLIST_AUTO_APPROVE_DOMAINS` | Approved. Missing row created as `approved`, existing `pending` row upgraded in place (`isAutoApprovedDomain`, [utils.tsx:16](../../../backend/src/waitlist/utils.tsx)) |
 | 4     | Anything else                               | Queued. New address: `pending` row plus the "joined" email. Known `pending` address: the "reminder" email                                                               |
@@ -53,7 +54,9 @@ and whether an email is sent are identical, disclosing nothing about whether an 
 
 ## The gate runs three times, on purpose
 
-The same approval decision runs in three places, and they are not interchangeable.
+The same approval decision runs in three places, and they are not interchangeable. All three ask
+`admitsWithoutWaitlist` ([backend/src/identity/admission.ts](../../../backend/src/identity/admission.ts)) whether
+a new address skips the waitlist, so a new way in is added to that one function.
 
 | Copy                                  | Where                                                                 | What only it does                                                                                                                                                                                                                                      |
 | ------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -76,6 +79,12 @@ callers, both on that branch.
 The `waitlist` table ([backend/src/db/waitlist-schema.ts](../../../backend/src/db/waitlist-schema.ts)) is
 `{ id, email (unique), status: 'pending' | 'approved', batchId, createdAt, updatedAt }`, indexed on `status`
 and `batch_id`. `batchId` is carried for bulk approvals but no code reads or writes it.
+
+## Approval becomes a membership at sign-in
+
+An approval is recorded before the user exists, so the organization membership it grants is created
+at the address's first sign-in, with source `waitlist` pointing at the waitlist row. The access check
+then lets the session through. See [identity-and-access.md](identity-and-access.md#admission-at-sign-in).
 
 ## What the client does
 

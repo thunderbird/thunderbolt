@@ -649,6 +649,7 @@ export const prChecks: PrCheck[] = [
     ],
   },
   { name: 'typescript: Run tests', run: 'bun run test:5x', paths: ['src/', 'shared/', 'scripts/'] },
+  { name: 'office: Run Office script tests (5x)', run: 'bun run test:office:5x', paths: ['src/', 'shared/'] },
   {
     name: 'agent-core: Run agent-core tests (5x)',
     run: 'bun run test:agent-core:5x',

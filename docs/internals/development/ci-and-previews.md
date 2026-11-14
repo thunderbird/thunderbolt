@@ -35,6 +35,7 @@ Release workflows: [RELEASE.md](../../../RELEASE.md).
 | Job             | Runs when                                                                                                                                   | What it does                                                                          |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | `typescript`    | Always                                                                                                                                      | `tsc --noEmit`, `bun run lint`, `bun run test:5x`                                     |
+| `office`        | Always                                                                                                                                      | `bun run test:office:5x`: the Office script suites, apart from `test:5x`              |
 | `backend`       | Always                                                                                                                                      | Backend type-check, lint, tests (5x), WS suite, `./server` smoke (OTEL off and on)    |
 | `localization`  | `src/**`, `shared/**`, i18n/build config, `backend/src/emails/**`, `bun.lock`                                                               | `bun run i18n:check`, a catalog-compiling build, the macro tripwire                   |
 | `agent-core`    | `shared/agent-core/**`, `shared/reasoning-effort*.ts`, browser-check/Chrome scripts, `vite.config.ts`, `package.json`, `bun.lock`, `ci.yml` | `bun run test:agent-core:5x` plus the Chromium/WebKit browser check                   |
@@ -58,6 +59,7 @@ local set (type-check, lint, format-check, license-check).
 | Suite        | CI command                                    | Per-test timeout in CI         |
 | ------------ | --------------------------------------------- | ------------------------------ |
 | Frontend     | `bun run test:5x`                             | Disabled (`--timeout 3600000`) |
+| Office       | `bun run test:office:5x`                      | Disabled (`--timeout 3600000`) |
 | Backend      | `bun test … --randomize --rerun-each 5`       | Disabled (`--timeout 3600000`) |
 | `agent-core` | `bun run test:agent-core:5x`                  | 5s                             |
 | CLI          | `cd cli && bun run test:5x`                   | 5s                             |
@@ -67,7 +69,7 @@ local set (type-check, lint, format-check, license-check).
   order-dependent and one-in-fifty failures. Reproduce with the `:5x` script.
 - The disabled timeout (Bun's `--timeout 0` hangs async tests) leans on step and job caps:
   5 minutes per Backend WS attempt, 10 on the backend test step, 15 on the `backend` job and 20 on
-  `typescript`. Local `test` and `test:backend` keep the 5-second timeout.
+  `typescript` and `office`. Local `test` and `test:backend` keep the 5-second timeout.
 
 ### Why the WebSocket suite is excluded
 

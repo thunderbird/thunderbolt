@@ -497,10 +497,7 @@ describe('prepareBuiltInConversation', () => {
       const readXlsxSheets = async () => [
         {
           name: 'Q1',
-          rows: [
-            ['Name', 'Cost'],
-            ['Rent', '10'],
-          ],
+          rows: [['Name', 'Cost'], [], ['Rent', '10']],
         },
         { name: 'Q2/Q3', rows: [['Name'], ['Tab\there']] },
       ]
@@ -513,7 +510,8 @@ describe('prepareBuiltInConversation', () => {
       )
 
       expect(prepared.files).toEqual([
-        { path: 'attachments/x1/Q1.tsv', content: 'Name\tCost\nRent\t10\n' },
+        // The blank row stays, so Rent is on line 3 of the file, as it is in row 3 of the sheet.
+        { path: 'attachments/x1/Q1.tsv', content: 'Name\tCost\n\nRent\t10\n' },
         { path: 'attachments/x1/Q2_Q3.tsv', content: 'Name\nTab here\n' },
       ])
       expect(prepared.prompt.text).toBe(
@@ -521,11 +519,12 @@ describe('prepareBuiltInConversation', () => {
           '[Attachment: budget.xlsx — saved as attachments/x1/Q1.tsv, attachments/x1/Q2_Q3.tsv]',
           '',
           '## Sheet: Q1',
-          'Name\tCost',
-          'Rent\t10',
+          'Row 1: Name, Cost',
+          'Row 3: Rent, 10',
+          '',
           '## Sheet: Q2/Q3',
-          'Name',
-          'Tab here',
+          'Row 1: Name',
+          'Row 2: Tab\there',
         ].join('\n'),
       )
     })

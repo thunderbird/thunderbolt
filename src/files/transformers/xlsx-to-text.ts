@@ -37,14 +37,12 @@ const cellText = (value: CellValue | null): string => {
   return String(value)
 }
 
-/** True when a row has no content, so blank spacer rows don't reach the model as `, , ,`. */
-const isEmptyRow = (row: (CellValue | null)[]): boolean => row.every((cell) => cell === null || cell === '')
-
 /** Quotes a field that contains a separator, quote, or line break, doubling any
  *  embedded quotes, so `Stark, Inc.` stays one cell instead of reading as two. */
 const csvField = (text: string): string => (/[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text)
 
-/** One worksheet as text cells, blank spacer rows removed. */
+/** One worksheet as text cells. `rows[i]` is row `i + 1` of the sheet: a blank row stays as an empty array, so a `.tsv`
+ *  written from it keeps the sheet's row numbers as line numbers. */
 export type SpreadsheetSheet = {
   readonly name: string
   readonly rows: string[][]
@@ -106,7 +104,8 @@ export const readXlsxSheets = async (file: StoredFile): Promise<SpreadsheetSheet
   const sheets = await readXlsxFile(zipSync(unzipSync(zip), { level: 0 }).buffer)
   return sheets.map(({ sheet, data }) => ({
     name: sheet,
-    rows: data.filter((row) => !isEmptyRow(row)).map((row) => row.map(cellText)),
+    // The reader pads a blank row to the sheet's width; an empty array keeps it one byte in a `.tsv`.
+    rows: data.map((row) => (row.every((cell) => cell === null || cell === '') ? [] : row.map(cellText))),
   }))
 }
 
@@ -114,13 +113,17 @@ export const readXlsxSheets = async (file: StoredFile): Promise<SpreadsheetSheet
  * Renders sheets as a plain-text table dump. Multiple sheets are concatenated
  * with a heading per sheet so the model can tell them apart; rows are joined as
  * CSV-ish text rather than a Markdown table, since spreadsheet column counts and
- * widths vary too widely for a fixed-width table to stay readable.
+ * widths vary too widely for a fixed-width table to stay readable. Blank rows are
+ * left out and every other row is labeled with its row number, so the model reads
+ * row numbers instead of counting lines.
  */
-const sheetsToText = (sheets: readonly SpreadsheetSheet[]): string =>
+export const sheetsToText = (sheets: readonly SpreadsheetSheet[]): string =>
   sheets
     .map(({ name, rows }) => {
-      const text = rows.map((row) => row.map(csvField).join(', ')).join('\n')
-      return `## Sheet: ${name}\n${text}`
+      const lines = rows.flatMap((row, index) =>
+        row.length === 0 ? [] : [`Row ${index + 1}: ${row.map(csvField).join(', ')}`],
+      )
+      return `## Sheet: ${name}\n${lines.join('\n')}`
     })
     .join('\n\n')
     .trim()

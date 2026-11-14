@@ -16,14 +16,15 @@ const mib = 1024 * 1024
 const columnName = (index: number): string =>
   `${index < 26 ? '' : columnName(Math.floor(index / 26) - 1)}${String.fromCharCode(65 + (index % 26))}`
 
-/** A one-sheet workbook of inline strings, deflated as Excel saves it. */
+/** A one-sheet workbook of inline strings, deflated as Excel saves it. An empty row is left out, as Excel leaves it. */
 const workbook = (rows: string[][]) => {
   const sheetData = rows
-    .map(
-      (cells, row) =>
-        `<row r="${row + 1}">${cells
-          .map((text, column) => `<c r="${columnName(column)}${row + 1}" t="inlineStr"><is><t>${text}</t></is></c>`)
-          .join('')}</row>`,
+    .map((cells, row) =>
+      cells.length === 0
+        ? ''
+        : `<row r="${row + 1}">${cells
+            .map((text, column) => `<c r="${columnName(column)}${row + 1}" t="inlineStr"><is><t>${text}</t></is></c>`)
+            .join('')}</row>`,
     )
     .join('')
   return zipSync({
@@ -124,10 +125,25 @@ describe('xlsx-to-text in the browser build, with Workers blocked', () => {
 
     const lines = text.split('\n')
     expect(lines[0]).toBe('## Sheet: Sheet1')
-    expect(lines[1]).toBe(rows[0].join(', '))
-    expect(lines.at(-1)).toBe(rows[4_999].join(', '))
+    expect(lines[1]).toBe(`Row 1: ${rows[0].join(', ')}`)
+    expect(lines.at(-1)).toBe(`Row 5000: ${rows[4_999].join(', ')}`)
     expect(lines).toHaveLength(5_001)
     expect(BlockedWorker.started).toBe(0)
+  })
+
+  test('keeps the row numbers of a sheet whose first row and fourth row are missing', async () => {
+    const book = asFile(workbook([[], ['Name', 'Cost'], ['Orchid', '137'], [], ['Cedar', '59']]))
+
+    expect((await xlsx.xlsxToText(book)).text).toBe(
+      '## Sheet: Sheet1\nRow 2: Name, Cost\nRow 3: Orchid, 137\nRow 5: Cedar, 59',
+    )
+    expect((await xlsx.readXlsxSheets(book))[0].rows).toEqual([
+      [],
+      ['Name', 'Cost'],
+      ['Orchid', '137'],
+      [],
+      ['Cedar', '59'],
+    ])
   })
 
   test('refuses a workbook that declares more than 32 MiB unpacked, without unpacking it', async () => {
@@ -176,7 +192,7 @@ describe('xlsx-to-text in the browser build, with Workers blocked', () => {
       { level: 0 },
     )
 
-    expect((await xlsx.xlsxToText(asFile(renameEntry(zip, 'zz/', 'xl/')))).text).toBe('## Sheet: Sheet1\nkept')
+    expect((await xlsx.xlsxToText(asFile(renameEntry(zip, 'zz/', 'xl/')))).text).toBe('## Sheet: Sheet1\nRow 1: kept')
   })
 
   test('refuses a part named __proto__, which unpacking would turn into the prototype of its result', async () => {

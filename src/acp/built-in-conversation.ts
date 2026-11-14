@@ -4,7 +4,7 @@
 
 import { csvToTsv, toTsv } from '@/files/tabular'
 import { defaultDeliveryMode, getTransformer, isPlainTextMime, xlsxMime } from '@/files/transformers'
-import { readXlsxSheets } from '@/files/transformers/xlsx-to-text'
+import { readXlsxSheets, sheetsToText } from '@/files/transformers/xlsx-to-text'
 import { blobToBase64, isAttachmentPart, unreadableAttachmentNote } from '@/lib/attachments'
 import { getAttachment, type StoredFile } from '@/lib/file-blob-storage'
 import { hydrateQuotesAsText } from '@/lib/quotes'
@@ -166,7 +166,8 @@ const freeName = (name: string, used: ReadonlySet<string>, n = 1): string => {
   return used.has(candidate) ? freeName(name, used, n + 1) : candidate
 }
 
-/** Write each sheet as its own TSV, parsing the workbook once for both files and preview. */
+/** Write each sheet as its own TSV, parsing the workbook once for both files and preview. The preview labels each
+ *  row with its number, as the text the model gets without a workspace does. */
 const xlsxAttachment = async (
   filename: string,
   dir: string,
@@ -180,8 +181,7 @@ const xlsxAttachment = async (
     used.add(name)
     return { path: `${dir}/${name}.tsv`, content: toTsv(sheet.rows) }
   })
-  const preview = sheets.map((sheet, index) => `## Sheet: ${sheet.name}\n${files[index].content}`).join('')
-  return workspaceAttachment(filename, files, preview)
+  return workspaceAttachment(filename, files, sheetsToText(sheets))
 }
 
 /**

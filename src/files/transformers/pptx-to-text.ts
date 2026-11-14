@@ -21,6 +21,11 @@ type Parts = Map<string, Uint8Array>
 const maxUnpackedMib = 32
 // A classic zip stores its entry count in 16 bits; a forged ZIP64 count would keep the listing going.
 const maxEntries = 65_535
+/**
+ * The deepest an XML part may nest. PowerPoint writes a few dozen levels. xmldom's parsing slows with the square of
+ * the depth when each level declares a namespace, so a deeper part is refused before it is parsed.
+ */
+const maxDepth = 256
 
 const limitMessages = {
   bytes: `This presentation's text unpacks to over ${maxUnpackedMib} MiB, the limit for reading it.`,
@@ -40,72 +45,187 @@ const unpackXmlParts = (zip: Uint8Array): Parts => {
   }
 }
 
-const parseXml = (parts: Parts, path: string) => {
-  const bytes = parts.get(path)
-  return bytes && new DOMParser().parseFromString(strFromU8(bytes), 'text/xml').documentElement
+/** Where the markup that starts at `at` ends: a comment, CDATA, a processing instruction, or a tag or declaration. */
+const endOfMarkup = (xml: string, at: number) => {
+  for (const [open, close] of [
+    ['<!--', '-->'],
+    ['<![CDATA[', ']]>'],
+    ['<?', '?>'],
+  ]) {
+    if (xml.startsWith(open, at)) {
+      const end = xml.indexOf(close, at + open.length)
+      return end === -1 ? xml.length : end + close.length
+    }
+  }
+  // The first `>` outside a quoted attribute value, which can hold one.
+  let quote = ''
+  for (let index = at + 1; index < xml.length; index++) {
+    const char = xml[index]
+    if (quote) {
+      quote = char === quote ? '' : quote
+    } else if (char === '"' || char === "'") {
+      quote = char
+    } else if (char === '>') {
+      return index + 1
+    }
+  }
+  return xml.length
 }
 
-/** The parts a part's relationships point to, with each relationship's id and type. */
+/** Throws when an XML part nests elements deeper than {@link maxDepth}. One pass over the text, before any parsing. */
+const checkDepth = (xml: string) => {
+  let depth = 0
+  for (let at = xml.indexOf('<'); at !== -1; ) {
+    const end = endOfMarkup(xml, at)
+    if (xml[at + 1] === '/') {
+      depth -= 1
+    } else if (/[\p{L}_:]/u.test(xml[at + 1] ?? '') && xml[end - 2] !== '/') {
+      depth += 1
+      if (depth > maxDepth) {
+        throw new Error(`This presentation nests its content more than ${maxDepth} levels deep, too deep to read.`)
+      }
+    }
+    at = xml.indexOf('<', end)
+  }
+}
+
+const parseXml = (parts: Parts, path: string) => {
+  const bytes = parts.get(path)
+  if (!bytes) {
+    return undefined
+  }
+  const xml = strFromU8(bytes)
+  checkDepth(xml)
+  return new DOMParser().parseFromString(xml, 'text/xml').documentElement ?? undefined
+}
+
+/** A part's relationships, with their targets as written, relative to the part. Resolve only the ones used. */
 const relationships = (parts: Parts, part: string) => {
   const slash = part.lastIndexOf('/') + 1
   const rels = parseXml(parts, `${part.slice(0, slash)}_rels/${part.slice(slash)}.rels`)
   return [...(rels?.getElementsByTagNameNS(ns.rels, 'Relationship') ?? [])].map((rel) => ({
     id: rel.getAttribute('Id'),
     type: rel.getAttribute('Type') ?? '',
-    target: resolvePart(part, rel.getAttribute('Target') ?? ''),
+    target: rel.getAttribute('Target') ?? '',
   }))
 }
 
-/** The nearest element around a node with the given namespace and name, or `undefined` when there is none. */
-const enclosing = (node: Node | null, namespace: string, name: string): Element | undefined => {
-  if (!node) {
-    return undefined
+const isElement = (node: Node, namespace: string, name: string): node is Element =>
+  node instanceof Element && node.namespaceURI === namespace && node.localName === name
+
+/** Text and CDATA nodes. */
+const textNodeTypes = new Set([3, 4])
+
+/**
+ * Visits `root` and everything inside it in document order, leaving out content a file gives as a fallback for
+ * older apps: the slide shows the choice next to it. `visit` returns true to skip what is inside a node. The walk
+ * keeps its own stack, so a deeply nested part cannot overflow the call stack.
+ */
+const walk = (root: Node, visit: (node: Node) => boolean) => {
+  const stack = [root]
+  while (stack.length > 0) {
+    const node = stack.pop()!
+    if (isElement(node, ns.mc, 'Fallback') || visit(node)) {
+      continue
+    }
+    const children = [...node.childNodes]
+    for (let index = children.length - 1; index >= 0; index--) {
+      stack.push(children[index])
+    }
   }
-  return node instanceof Element && node.namespaceURI === namespace && node.localName === name
-    ? node
-    : enclosing(node.parentNode, namespace, name)
+}
+
+/** The text of a node's text and CDATA nodes, each read once. */
+const textIn = (root: Node) => {
+  const parts: string[] = []
+  walk(root, (node) => {
+    if (textNodeTypes.has(node.nodeType)) {
+      parts.push(node.nodeValue ?? '')
+    }
+    return false
+  })
+  return parts.join('')
+}
+
+/**
+ * A paragraph's text: its runs and fields, with line breaks. A run's text element owns all the text inside it, so
+ * text a crafted file nests in several paragraphs or runs is read once, not once per level.
+ */
+const paragraphText = (paragraph: Element) => {
+  const parts: string[] = []
+  walk(paragraph, (node) => {
+    if (isElement(node, ns.a, 't')) {
+      parts.push(textIn(node))
+      return true
+    }
+    if (isElement(node, ns.a, 'br')) {
+      parts.push('\n')
+    }
+    return false
+  })
+  return parts.join('').trim()
+}
+
+/** The paragraphs inside `root`, each read once and none inside another. */
+const paragraphsIn = (root: Element) => {
+  const texts: string[] = []
+  walk(root, (node) => {
+    if (isElement(node, ns.a, 'p')) {
+      texts.push(paragraphText(node))
+      return true
+    }
+    return false
+  })
+  return texts.filter(Boolean)
+}
+
+/** A table row as one line, its cells separated by tabs. Empty cells keep their place, so columns stay aligned. */
+const rowText = (row: Element) => {
+  const cells = [...row.childNodes]
+    .filter((node) => isElement(node, ns.a, 'tc'))
+    .map((cell) => paragraphsIn(cell).join(' '))
+  return cells.some(Boolean) ? cells.join('\t') : ''
 }
 
 /** The child of `parent` with the given namespace and name. */
 const child = (parent: Element | undefined, namespace: string, name: string) =>
-  [...(parent?.children ?? [])].find((el) => el.namespaceURI === namespace && el.localName === name)
+  [...(parent?.childNodes ?? [])].find((node): node is Element => isElement(node, namespace, name))
 
 /** The type of a text box's placeholder, such as `title` or `body`, or `undefined` when it is not one. */
-const placeholderType = (textBox?: Element) => {
+const placeholderType = (textBox: Element) => {
   const placeholder = child(child(child(textBox, ns.p, 'nvSpPr'), ns.p, 'nvPr'), ns.p, 'ph')
   return placeholder ? (placeholder.getAttribute('type') ?? 'body') : undefined
 }
 
-/** A paragraph's text: its runs and fields, with line breaks. */
-const paragraphText = (paragraph: Element) =>
-  [...paragraph.getElementsByTagNameNS(ns.a, '*')]
-    .map((el) => (el.localName === 't' ? el.textContent : el.localName === 'br' ? '\n' : ''))
-    .join('')
-    .trim()
-
-/** A table row as one line, its cells separated by tabs. Empty cells keep their place, so columns stay aligned. */
-const rowText = (row: Element) => {
-  const cells = [...row.children]
-    .filter((cell) => cell.namespaceURI === ns.a && cell.localName === 'tc')
-    .map((cell) => [...cell.getElementsByTagNameNS(ns.a, 'p')].map(paragraphText).filter(Boolean).join(' '))
-  return cells.some(Boolean) ? cells.join('\t') : ''
-}
+type Line = { text: string; placeholder?: string }
 
 /**
- * A slide or notes page's lines in reading order: each paragraph with the type of placeholder it sits in, and each
- * table row. Content a file gives twice, as a choice and as a fallback for older apps, counts once: the choice,
- * which is what the slide shows.
+ * A slide or notes page's lines in reading order: each paragraph, with the type of placeholder its text box is, and
+ * each table row. One walk reads each part of the page once.
  */
-const lines = (root?: Element | null) =>
-  [...(root?.getElementsByTagNameNS(ns.a, '*') ?? [])]
-    .filter((el) => el.localName === 'tr' || (el.localName === 'p' && !enclosing(el.parentNode, ns.a, 'tr')))
-    .filter((el) => !enclosing(el, ns.mc, 'Fallback'))
-    .map((el) =>
-      el.localName === 'tr'
-        ? { text: rowText(el), placeholder: undefined }
-        : { text: paragraphText(el), placeholder: placeholderType(enclosing(el, ns.p, 'sp')) },
-    )
-    .filter(({ text }) => text !== '')
+const lines = (root?: Element) => {
+  const found: Line[] = []
+  const readScope = (scope: Element, placeholder?: string) =>
+    walk(scope, (node) => {
+      if (node !== scope && isElement(node, ns.p, 'sp')) {
+        readScope(node, placeholderType(node))
+        return true
+      }
+      if (isElement(node, ns.a, 'tr')) {
+        found.push({ text: rowText(node) })
+        return true
+      }
+      if (isElement(node, ns.a, 'p')) {
+        found.push({ text: paragraphText(node), placeholder })
+        return true
+      }
+      return false
+    })
+  if (root) {
+    readScope(root)
+  }
+  return found.filter(({ text }) => text !== '')
+}
 
 const isTitle = (placeholder?: string) => placeholder === 'title' || placeholder === 'ctrTitle'
 
@@ -123,25 +243,31 @@ const slideText = (parts: Parts, path: string, index: number, notesPath?: string
   const notes = lines(notesPath ? parseXml(parts, notesPath) : undefined)
     .filter(({ placeholder }) => placeholder === 'body' || placeholder === undefined)
     .map(({ text }) => text)
-  // A line break in a title would push the rest of it into the body.
-  const heading =
-    title.length > 0 ? `## Slide ${index + 1}: ${title.join(' ').replace(/\s*\n\s*/g, ' ')}` : `## Slide ${index + 1}`
+  // A line break in a title would push the rest of it into the body. Each run of white space is looked at once.
+  const titleText = title.join(' ').replace(/\s+/g, (run) => (run.includes('\n') ? ' ' : run))
+  const heading = title.length > 0 ? `## Slide ${index + 1}: ${titleText}` : `## Slide ${index + 1}`
   return [heading, ...body, ...(notes.length > 0 ? ['', 'Speaker notes:', ...notes] : [])].join('\n')
 }
 
 /**
  * Extracts a deck's text for the model: each slide in the order it is shown, with its title, its other text and its
- * speaker notes. Pictures, charts and diagrams carry no text here. Each part is read once, however many times the
- * deck lists it, so the text is never longer than the XML it comes from.
+ * speaker notes. Pictures, charts and diagrams carry no text here. Each part, and each piece of text in it, is read
+ * once, however many times the deck lists or nests it, so the text is never longer than the XML it comes from.
  */
 export const pptxToText = async (file: StoredFile): Promise<{ text: string }> => {
   const parts = unpackXmlParts(new Uint8Array(await file.blob.arrayBuffer()))
   const presentation = 'ppt/presentation.xml'
   const targets = new Map(relationships(parts, presentation).map(({ id, target }) => [id, target]))
+  const ids = new Set(
+    [...(parseXml(parts, presentation)?.getElementsByTagNameNS(ns.p, 'sldId') ?? [])].map((slide) =>
+      slide.getAttributeNS(ns.r, 'id'),
+    ),
+  )
   const slides = new Set(
-    [...(parseXml(parts, presentation)?.getElementsByTagNameNS(ns.p, 'sldId') ?? [])]
-      .map((slide) => targets.get(slide.getAttributeNS(ns.r, 'id')))
-      .filter((path) => path !== undefined),
+    [...ids]
+      .map((id) => targets.get(id))
+      .filter((target) => target !== undefined)
+      .map((target) => resolvePart(presentation, target)),
   )
   if (slides.size === 0) {
     throw new Error('This presentation has no slides that could be read.')
@@ -149,7 +275,8 @@ export const pptxToText = async (file: StoredFile): Promise<{ text: string }> =>
   const readNotes = new Set<string>()
   const text: string[] = []
   for (const path of slides) {
-    const notes = relationships(parts, path).find(({ type }) => type.endsWith('/notesSlide'))?.target
+    const notesTarget = relationships(parts, path).find(({ type }) => type.endsWith('/notesSlide'))?.target
+    const notes = notesTarget === undefined ? undefined : resolvePart(path, notesTarget)
     const unread = notes && !readNotes.has(notes) ? notes : undefined
     if (unread) {
       readNotes.add(unread)

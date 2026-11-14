@@ -217,6 +217,73 @@ describe('pptxToText', () => {
     expect(text).toContain('Point 15999')
   })
 
+  describe('a crafted deck', () => {
+    const payload = 'X'.repeat(1024)
+    const run = `<a:r><a:t>${payload}</a:t></a:r>`
+    const count = (text: string) => text.split('').filter((char) => char === 'X').length
+    const onSlide = (xml: string) =>
+      read(edited({ 'ppt/slides/slide2.xml': (slide) => slide.replace('</p:spTree>', `${xml}</p:spTree>`) }))
+    const inTextBox = (paragraphs: string) =>
+      '<p:sp><p:nvSpPr><p:cNvPr id="93" name="Box"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr/><p:txBody>' +
+      `<a:bodyPr/>${paragraphs}</p:txBody></p:sp>`
+    const inTable = (rows: string) =>
+      '<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="94" name="Table"/><p:cNvGraphicFramePr/><p:nvPr/>' +
+      '</p:nvGraphicFramePr><p:xfrm/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table">' +
+      `<a:tbl>${rows}</a:tbl></a:graphicData></a:graphic></p:graphicFrame>`
+    const nest = (open: string, close: string, levels: number, inside: string) =>
+      open.repeat(levels) + inside + close.repeat(levels)
+    const fallback = (inside: string) =>
+      `<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">` +
+      `<mc:Fallback>${inside}</mc:Fallback></mc:AlternateContent>`
+
+    it('reads text nested in many paragraphs, runs or table rows once, not once per level', async () => {
+      const decks = [
+        inTextBox(nest('<a:p>', '</a:p>', 32, run)),
+        inTextBox(`<a:p><a:r>${nest('<a:t>', '</a:t>', 32, payload)}</a:r></a:p>`),
+        inTable(nest('<a:tr><a:tc><a:txBody>', '</a:txBody></a:tc></a:tr>', 32, `<a:p>${run}</a:p>`)),
+        inTable(
+          nest(
+            '<a:tr><a:tc>',
+            '</a:tc></a:tr>',
+            8,
+            nest('<a:p>', '</a:p>', 8, `<a:r>${nest('<a:t>', '</a:t>', 8, payload)}</a:r>`),
+          ),
+        ),
+      ]
+
+      for (const deck of decks) {
+        expect(count((await onSlide(deck)).text)).toBe(payload.length)
+      }
+    })
+
+    it('leaves out fallback content inside a paragraph, a run or a table row', async () => {
+      const decks = [
+        inTextBox(`<a:p>${fallback(run)}</a:p>`),
+        inTextBox(`<a:p><a:r><a:t>${fallback(payload)}</a:t></a:r></a:p>`),
+        inTable(`<a:tr><a:tc><a:txBody><a:p>${fallback(run)}</a:p></a:txBody></a:tc></a:tr>`),
+      ]
+
+      for (const deck of decks) {
+        expect(count((await onSlide(deck)).text)).toBe(0)
+      }
+    })
+
+    it('refuses a part nested deeper than 256 levels before parsing it', async () => {
+      await expect(onSlide(inTextBox(nest('<a:p>', '</a:p>', 300, run)))).rejects.toThrow(
+        'nests its content more than 256 levels deep',
+      )
+    })
+
+    it('keeps a long run of spaces in a title, in time that grows with its length', async () => {
+      const spaces = ' '.repeat(128 * 1024)
+      const { text } = await read(
+        edited({ 'ppt/slides/slide2.xml': (xml) => xml.replace('This is the second slide', `This${spaces}is it`) }),
+      )
+
+      expect(text).toContain(`## Slide 2: This${spaces}is it\n`)
+    })
+  })
+
   it('says so, for the model, when the deck has no slides it can read', async () => {
     await expect(
       read(edited({ 'ppt/presentation.xml': (xml) => xml.replace(/<p:sldIdLst>.*<\/p:sldIdLst>/s, '') })),

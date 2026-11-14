@@ -3,36 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { strToU8, unzipSync, zipSync } from 'fflate'
-import { build, type Rolldown } from 'vite'
 import type { StoredFile } from '@/lib/file-blob-storage'
+import { bundleForBrowser } from '@/test-utils/bundle-for-browser'
+import { centralSignature, overlappingStoredEntries, withZip64Count } from '@/test-utils/zip-fixtures'
 import type * as XlsxToText from './xlsx-to-text'
 
 const mib = 1024 * 1024
-
-/**
- * Bundles xlsx-to-text.ts into one ES module, as the app's build does. Under Bun the zip library resolves to a build
- * that never starts a Worker, while its browser build inflates large compressed entries in `blob:` Workers.
- */
-const bundleForBrowser = async (dir: string): Promise<typeof XlsxToText> => {
-  const result = await build({
-    configFile: false,
-    logLevel: 'silent',
-    build: {
-      write: false,
-      lib: { entry: join(import.meta.dir, 'xlsx-to-text.ts'), formats: ['es'] },
-      rolldownOptions: { output: { codeSplitting: false } },
-    },
-  })
-  // `write: false` without `watch` resolves to one output.
-  const [{ output }] = [result].flat() as Rolldown.RolldownOutput[]
-  const path = join(dir, 'xlsx-to-text.mjs')
-  writeFileSync(path, output[0].code)
-  return import(path)
-}
 
 /** `A` for column 0, `AX` for column 49. */
 const columnName = (index: number): string =>
@@ -77,8 +55,6 @@ const workbook = (rows: string[][]) => {
   })
 }
 
-const centralSignature = Buffer.from([0x50, 0x4b, 0x01, 0x02])
-
 /** Rewrites what the central directory says about the zip's last entry: its unpacked size and compression method. */
 const relabelLastEntry = (zip: Uint8Array<ArrayBuffer>, size: number, method: number) => {
   const central = Buffer.from(zip).lastIndexOf(centralSignature)
@@ -88,54 +64,12 @@ const relabelLastEntry = (zip: Uint8Array<ArrayBuffer>, size: number, method: nu
   return zip
 }
 
-/** A zip whose central directory lists `count` stored entries that all point at one 1 MiB payload and declare 0 bytes. */
-const overlappingStoredEntries = (count: number) => {
-  const zip = zipSync({ 'payload.bin': new Uint8Array(mib) }, { level: 0 })
-  const central = Buffer.from(zip).indexOf(centralSignature)
-  const record = zip.slice(central, zip.length - 22)
-  const records = Array.from({ length: count }, (_, index) => {
-    const copy = record.slice()
-    new DataView(copy.buffer).setUint32(24, 0, true)
-    copy.set(strToU8(`file${String(index).padStart(3, '0')}.bin`), 46)
-    return copy
-  })
-  const end = zip.slice(-22)
-  const view = new DataView(end.buffer)
-  view.setUint16(8, count, true)
-  view.setUint16(10, count, true)
-  view.setUint32(12, count * record.length, true)
-  return new Uint8Array(Buffer.concat([zip.subarray(0, central), ...records, end]))
-}
-
 /** Renames an entry in its local header and its central directory record. `to` must be as long as `from`. */
 const renameEntry = (zip: Uint8Array<ArrayBuffer>, from: string, to: string) => {
   const bytes = Buffer.from(zip.buffer)
   bytes.write(to, bytes.indexOf(from))
   bytes.write(to, bytes.indexOf(from))
   return zip
-}
-
-/** Moves the entry count into a ZIP64 end record, the only place a count over 65,535 fits. */
-const withZip64Count = (zip: Uint8Array<ArrayBuffer>, count: number) => {
-  const end = zip.byteLength - 22
-  const classic = new DataView(zip.buffer)
-  // A ZIP64 end of central directory record (56 bytes), then its locator (20 bytes).
-  const zip64 = new DataView(new ArrayBuffer(76))
-  zip64.setUint32(0, 0x06064b50, true)
-  zip64.setBigUint64(4, 44n, true)
-  zip64.setUint16(12, 45, true)
-  zip64.setUint16(14, 45, true)
-  zip64.setBigUint64(24, BigInt(count), true)
-  zip64.setBigUint64(32, BigInt(count), true)
-  zip64.setBigUint64(40, BigInt(classic.getUint32(end + 12, true)), true)
-  zip64.setBigUint64(48, BigInt(classic.getUint32(end + 16, true)), true)
-  zip64.setUint32(56, 0x07064b50, true)
-  zip64.setBigUint64(64, BigInt(end), true)
-  zip64.setUint32(72, 1, true)
-  const classicEnd = zip.slice(end)
-  new DataView(classicEnd.buffer).setUint16(8, 0xffff, true)
-  new DataView(classicEnd.buffer).setUint16(10, 0xffff, true)
-  return new Uint8Array(Buffer.concat([zip.subarray(0, end), new Uint8Array(zip64.buffer), classicEnd]))
 }
 
 const asFile = (bytes: Uint8Array<ArrayBuffer>): StoredFile => ({
@@ -167,18 +101,18 @@ const settleWithin = async <T>(promise: Promise<T>, ms: number): Promise<T> => {
 }
 
 describe('xlsx-to-text in the browser build, with Workers blocked', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'xlsx-to-text-'))
   const realWorker = globalThis.Worker
   let xlsx: typeof XlsxToText
 
   beforeAll(async () => {
-    xlsx = await bundleForBrowser(dir)
+    // Under Bun the zip library resolves to a build that never starts a Worker; its browser build inflates large
+    // compressed entries in `blob:` Workers.
+    xlsx = await bundleForBrowser<typeof XlsxToText>(join(import.meta.dir, 'xlsx-to-text.ts'))
     Object.defineProperty(globalThis, 'Worker', { configurable: true, writable: true, value: BlockedWorker })
   })
 
   afterAll(() => {
     Object.defineProperty(globalThis, 'Worker', { configurable: true, writable: true, value: realWorker })
-    rmSync(dir, { recursive: true, force: true })
   })
 
   test('reads a 5,000-row, 50-column workbook without starting a Worker', async () => {

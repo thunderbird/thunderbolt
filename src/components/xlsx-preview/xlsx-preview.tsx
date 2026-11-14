@@ -6,10 +6,10 @@ import { Trans } from '@lingui/react/macro'
 import { useFormatters } from '@/i18n/use-formatters'
 import { xlsxPreviewLimits } from '@/office/constants'
 import { createPreviewClient, type PreviewClient } from '@/office/xlsx-preview-client'
-import { Loader2 } from 'lucide-react'
+import { PreviewNotice } from '@/components/preview-notice'
+import { FileSpreadsheet, Loader2 } from 'lucide-react'
 import { useId } from 'react'
 import { LeftOutBanner } from './left-out-banner'
-import { PreviewNotice } from './preview-notice'
 import { SheetGrid } from './sheet-grid'
 import { SheetTabs } from './sheet-tabs'
 import { useXlsxPreviewState } from './use-xlsx-preview-state'
@@ -40,7 +40,7 @@ const WorkbookPreview = ({ blob, fileId, createClient }: Required<XlsxPreviewPro
   }
   if (state.status === 'error' && state.failure === 'tooLarge') {
     return (
-      <PreviewNotice title={<Trans>This workbook is too large to preview</Trans>}>
+      <PreviewNotice icon={FileSpreadsheet} title={<Trans>This workbook is too large to preview</Trans>}>
         <Trans>Download the file to open it in a spreadsheet app.</Trans>
       </PreviewNotice>
     )
@@ -48,14 +48,14 @@ const WorkbookPreview = ({ blob, fileId, createClient }: Required<XlsxPreviewPro
   // Excelize did not load, for example on a slow or broken network. The file itself may be fine.
   if (state.status === 'error' && state.failure === 'notLoaded') {
     return (
-      <PreviewNotice title={<Trans>The preview couldn't load</Trans>}>
+      <PreviewNotice icon={FileSpreadsheet} title={<Trans>The preview couldn't load</Trans>}>
         <Trans>Check your connection and open the file again, or download it to open it in a spreadsheet app.</Trans>
       </PreviewNotice>
     )
   }
   if (state.status === 'error') {
     return (
-      <PreviewNotice title={<Trans>This workbook can't be previewed</Trans>}>
+      <PreviewNotice icon={FileSpreadsheet} title={<Trans>This workbook can't be previewed</Trans>}>
         <Trans>
           It may be damaged or protected with a password. Download the file to open it in a spreadsheet app.
         </Trans>
@@ -65,7 +65,7 @@ const WorkbookPreview = ({ blob, fileId, createClient }: Required<XlsxPreviewPro
   const { overview, sheetIndex, sheet } = state
   if (overview.sheets.length === 0) {
     return (
-      <PreviewNotice title={<Trans>This workbook has no visible sheets</Trans>}>
+      <PreviewNotice icon={FileSpreadsheet} title={<Trans>This workbook has no visible sheets</Trans>}>
         <Trans>Download the file to open it in a spreadsheet app.</Trans>
       </PreviewNotice>
     )
@@ -73,7 +73,7 @@ const WorkbookPreview = ({ blob, fileId, createClient }: Required<XlsxPreviewPro
   const sheetBody = () => {
     if (overview.sheets[sheetIndex].tooLarge) {
       return (
-        <PreviewNotice title={<Trans>This sheet is too large to preview</Trans>}>
+        <PreviewNotice icon={FileSpreadsheet} title={<Trans>This sheet is too large to preview</Trans>}>
           <Trans>Download the file to open it in a spreadsheet app.</Trans>
         </PreviewNotice>
       )
@@ -110,7 +110,7 @@ export const XlsxPreview = ({ blob, fileId, createClient = createPreviewClient }
   if (blob.size > xlsxPreviewLimits.fileBytes) {
     const limit = formatters.number(xlsxPreviewLimits.fileBytes / 1024 / 1024)
     return (
-      <PreviewNotice title={<Trans>This workbook is too large to preview</Trans>}>
+      <PreviewNotice icon={FileSpreadsheet} title={<Trans>This workbook is too large to preview</Trans>}>
         <Trans>The preview opens workbooks up to {limit} MB. Download the file to open it in a spreadsheet app.</Trans>
       </PreviewNotice>
     )

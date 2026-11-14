@@ -9,7 +9,7 @@ import { getFileType } from '@/widgets/document-result/file-type'
 import { useSideview } from './context'
 
 // Lazy-load the PDF viewer so its react-pdf + pdfjs payload only ships when a
-// document sideview is opened. mammoth is dynamically imported inside the
+// document sideview is opened. docx-preview is dynamically imported inside the
 // viewer itself for the DOCX path.
 const PdfSidebarViewer = lazy(() =>
   import('@/widgets/document-result/pdf-sidebar-viewer').then((m) => ({ default: m.PdfSidebarViewer })),

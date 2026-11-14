@@ -2624,6 +2624,10 @@ msgstr "Download HTML"
 msgid "Download the file to open it in a spreadsheet app."
 msgstr "Download the file to open it in a spreadsheet app."
 
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "Download the file to open it in a word processor."
+msgstr "Download the file to open it in a word processor."
+
 #: src/hooks/use-desktop-update.ts
 msgid "Download update"
 msgstr "Download update"
@@ -3395,6 +3399,10 @@ msgstr "iOS requires a secure URL (wss://)"
 #: src/components/xlsx-preview/xlsx-preview.tsx
 msgid "It may be damaged or protected with a password. Download the file to open it in a spreadsheet app."
 msgstr "It may be damaged or protected with a password. Download the file to open it in a spreadsheet app."
+
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "It may be damaged. Download the file to open it in a word processor."
+msgstr "It may be damaged. Download the file to open it in a word processor."
 
 #: src/components/recovery-continuity/recovery-continuity-banner.tsx
 msgid "It was created before a security update. A new phrase lets recovery confirm your keys are yours."
@@ -6181,6 +6189,14 @@ msgstr "This device was signed out remotely and its local data has been cleared.
 #: src/settings/connections/integration-detail.tsx
 msgid "This disconnects your account on this device. Its tools will no longer be available."
 msgstr "This disconnects your account on this device. Its tools will no longer be available."
+
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "This document can't be previewed"
+msgstr "This document can't be previewed"
+
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "This document is too large to preview"
+msgstr "This document is too large to preview"
 
 #: src/settings/preferences.tsx
 msgid "This file doesn't look like a {appName} export."

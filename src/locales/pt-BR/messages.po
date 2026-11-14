@@ -2636,6 +2636,10 @@ msgstr "Baixar HTML"
 msgid "Download the file to open it in a spreadsheet app."
 msgstr ""
 
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "Download the file to open it in a word processor."
+msgstr ""
+
 #: src/hooks/use-desktop-update.ts
 msgid "Download update"
 msgstr "Baixar atualização"
@@ -3406,6 +3410,10 @@ msgstr "O iOS exige uma URL segura (wss://)"
 
 #: src/components/xlsx-preview/xlsx-preview.tsx
 msgid "It may be damaged or protected with a password. Download the file to open it in a spreadsheet app."
+msgstr ""
+
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "It may be damaged. Download the file to open it in a word processor."
 msgstr ""
 
 #: src/components/recovery-continuity/recovery-continuity-banner.tsx
@@ -6192,6 +6200,14 @@ msgstr ""
 
 #: src/settings/connections/integration-detail.tsx
 msgid "This disconnects your account on this device. Its tools will no longer be available."
+msgstr ""
+
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "This document can't be previewed"
+msgstr ""
+
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "This document is too large to preview"
 msgstr ""
 
 #: src/settings/preferences.tsx

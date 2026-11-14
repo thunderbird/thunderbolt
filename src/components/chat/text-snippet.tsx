@@ -5,15 +5,12 @@
 import { getAttachment } from '@/lib/file-blob-storage'
 import { useEffect, useState } from 'react'
 
-/** MIME type for `.docx` (OOXML Word documents). */
-export const docxMimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-
 /** Plain-text-ish extensions that may arrive with an empty/odd MIME type. */
 const textualExtensions = ['txt', 'md', 'markdown', 'csv', 'log', 'json']
 
-/** True if we can render a text preview for this attachment (text formats + docx). */
+/** True if we can render a text preview for this attachment. */
 export const isTextualAttachment = (filename: string, mimeType: string): boolean => {
-  if (mimeType === docxMimeType || mimeType.startsWith('text/')) {
+  if (mimeType.startsWith('text/')) {
     return true
   }
   const ext = filename.split('.').pop()?.toLowerCase()
@@ -23,20 +20,9 @@ export const isTextualAttachment = (filename: string, mimeType: string): boolean
 /** Enough to fill the small card; we never render the whole document. */
 const maxPreviewChars = 1500
 
-const extractPreviewText = async (blob: Blob, mimeType: string): Promise<string> => {
-  if (mimeType === docxMimeType) {
-    // docx is a zip — mammoth (lazily imported) extracts the raw text.
-    const mammoth = await import('mammoth')
-    const { value } = await mammoth.extractRawText({ arrayBuffer: await blob.arrayBuffer() })
-    return value
-  }
-  // Plain text: only read the head of the file, not the whole thing.
-  return blob.slice(0, 8192).text()
-}
-
-/** Loads a short head of an attachment's text content (docx via mammoth, else
- *  raw). Returns null until it resolves; best-effort (null on failure). */
-export const useAttachmentText = (localFileId: string, mimeType: string): string | null => {
+/** Loads a short head of an attachment's text. Returns null until it resolves;
+ *  best-effort (null on failure). */
+export const useAttachmentText = (localFileId: string): string | null => {
   const [text, setText] = useState<string | null>(null)
   useEffect(() => {
     let cancelled = false
@@ -46,7 +32,8 @@ export const useAttachmentText = (localFileId: string, mimeType: string): string
         if (!file || cancelled) {
           return
         }
-        const extracted = await extractPreviewText(file.blob, mimeType)
+        // Only the head of the file, not the whole thing.
+        const extracted = await file.blob.slice(0, 8192).text()
         if (!cancelled) {
           setText(extracted.slice(0, maxPreviewChars))
         }
@@ -58,13 +45,12 @@ export const useAttachmentText = (localFileId: string, mimeType: string): string
     return () => {
       cancelled = true
     }
-  }, [localFileId, mimeType])
+  }, [localFileId])
   return text
 }
 
 type TextSnippetProps = {
   localFileId: string
-  mimeType: string
 }
 
 /**
@@ -72,8 +58,8 @@ type TextSnippetProps = {
  * the "Quick Look" preview for plain formats (txt / csv). Markdown and docx get
  * their own *formatted* thumbnails; see MarkdownThumbnail / DocxThumbnail.
  */
-export const TextSnippet = ({ localFileId, mimeType }: TextSnippetProps) => {
-  const text = useAttachmentText(localFileId, mimeType)
+export const TextSnippet = ({ localFileId }: TextSnippetProps) => {
+  const text = useAttachmentText(localFileId)
   if (!text) {
     return null
   }

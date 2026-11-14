@@ -5,11 +5,11 @@
 import '@/testing-library'
 
 import type { HttpClient } from '@/contexts'
-import * as docxTransformer from '@/files/transformers/docx-to-html'
 import { createClient } from '@/lib/http'
 import { getClock } from '@/testing-library'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { act, cleanup, renderHook } from '@testing-library/react'
+import * as docxSnapshot from './docx-snapshot'
 import { useDocumentBlob } from './use-document-blob'
 
 /** Use the real client with a local response so preview tests never access the network. */
@@ -23,6 +23,9 @@ const makeHttpClient = (resolve: { blob?: Blob; error?: Error }): HttpClient =>
       return new Response(resolve.blob)
     },
   })
+
+/** What the renderer resolves to in these tests: one page of markup. */
+const pages: docxSnapshot.DocxSnapshot = { kind: 'pages', html: '<p>Document preview</p>', width: 854 }
 
 /** Flushes the hook's async fetch + reducer dispatch. */
 const flush = async () => {
@@ -49,7 +52,7 @@ describe('useDocumentBlob', () => {
     expect(result.current.status).toBe('loading')
   })
 
-  it('resolves a PDF to a ready state with a blob url and no docx html', async () => {
+  it('resolves a PDF to a ready state with a blob url and no DOCX pages', async () => {
     const httpClient = makeHttpClient({ blob: new Blob(['pdf']) })
     const { result } = renderHook(() => useDocumentBlob('file-1', 'pdf', httpClient))
 
@@ -58,10 +61,10 @@ describe('useDocumentBlob', () => {
       throw new Error(`expected ready state, got ${result.current.status}`)
     }
     expect(result.current.blobUrl).toMatch(/^blob:/)
-    expect(result.current.docxHtml).toBeNull()
+    expect(result.current.docx).toBeNull()
   })
 
-  it('resolves an unsupported file to ready (download still works) without docx html', async () => {
+  it('resolves an unsupported file to ready (download still works) without DOCX pages', async () => {
     const httpClient = makeHttpClient({ blob: new Blob(['raw']) })
     const { result } = renderHook(() => useDocumentBlob('file-2', 'unsupported', httpClient))
 
@@ -69,7 +72,7 @@ describe('useDocumentBlob', () => {
     if (result.current.status !== 'ready') {
       throw new Error(`expected ready state, got ${result.current.status}`)
     }
-    expect(result.current.docxHtml).toBeNull()
+    expect(result.current.docx).toBeNull()
   })
 
   it('surfaces the error message when the fetch fails', async () => {
@@ -94,8 +97,8 @@ describe('useDocumentBlob', () => {
   })
 
   it('creates a DOCX download URL only after conversion succeeds', async () => {
-    const pending = Promise.withResolvers<string>()
-    const convert = spyOn(docxTransformer, 'docxToHtml').mockReturnValue(pending.promise)
+    const pending = Promise.withResolvers<docxSnapshot.DocxSnapshot>()
+    const convert = spyOn(docxSnapshot, 'renderDocxSnapshot').mockReturnValue(pending.promise)
     const create = spyOn(URL, 'createObjectURL')
     try {
       const httpClient = makeHttpClient({ blob: new Blob(['docx']) })
@@ -104,13 +107,13 @@ describe('useDocumentBlob', () => {
       expect(result.current.status).toBe('loading')
       expect(create).not.toHaveBeenCalled()
 
-      await act(async () => pending.resolve('<p>Document preview</p>'))
+      await act(async () => pending.resolve(pages))
       await flush()
       expect(result.current).toEqual({
         status: 'ready',
         blob: expect.any(Blob),
         blobUrl: expect.stringMatching(/^blob:/),
-        docxHtml: '<p>Document preview</p>',
+        docx: pages,
       })
       expect(create).toHaveBeenCalledTimes(1)
       unmount()
@@ -122,7 +125,7 @@ describe('useDocumentBlob', () => {
   })
 
   it('does not retain an object URL when DOCX conversion fails', async () => {
-    const convert = spyOn(docxTransformer, 'docxToHtml').mockRejectedValue(new Error('Invalid DOCX archive'))
+    const convert = spyOn(docxSnapshot, 'renderDocxSnapshot').mockRejectedValue(new Error('Invalid DOCX archive'))
     const create = spyOn(URL, 'createObjectURL')
     try {
       const httpClient = makeHttpClient({ blob: new Blob(['invalid-docx']) })
@@ -137,15 +140,15 @@ describe('useDocumentBlob', () => {
   })
 
   it('does not create a URL if the preview unmounts during DOCX conversion', async () => {
-    const pending = Promise.withResolvers<string>()
-    const convert = spyOn(docxTransformer, 'docxToHtml').mockReturnValue(pending.promise)
+    const pending = Promise.withResolvers<docxSnapshot.DocxSnapshot>()
+    const convert = spyOn(docxSnapshot, 'renderDocxSnapshot').mockReturnValue(pending.promise)
     const create = spyOn(URL, 'createObjectURL')
     try {
       const httpClient = makeHttpClient({ blob: new Blob(['docx']) })
       const { unmount } = renderHook(() => useDocumentBlob('docx-cancelled', 'docx', httpClient))
       await flush()
       unmount()
-      await act(async () => pending.resolve('<p>Late preview</p>'))
+      await act(async () => pending.resolve(pages))
       await flush()
       expect(create).not.toHaveBeenCalled()
       expect(revokeSpy).not.toHaveBeenCalled()
@@ -156,8 +159,8 @@ describe('useDocumentBlob', () => {
   })
 
   it('ignores a previous document conversion after a newer PDF has loaded', async () => {
-    const pending = Promise.withResolvers<string>()
-    const convert = spyOn(docxTransformer, 'docxToHtml').mockReturnValue(pending.promise)
+    const pending = Promise.withResolvers<docxSnapshot.DocxSnapshot>()
+    const convert = spyOn(docxSnapshot, 'renderDocxSnapshot').mockReturnValue(pending.promise)
     const create = spyOn(URL, 'createObjectURL')
     try {
       const httpClient = makeHttpClient({ blob: new Blob(['document']) })
@@ -170,7 +173,7 @@ describe('useDocumentBlob', () => {
       await flush()
       const pdfState = result.current
       expect(pdfState.status).toBe('ready')
-      await act(async () => pending.resolve('<p>Stale document</p>'))
+      await act(async () => pending.resolve(pages))
       await flush()
       expect(result.current).toBe(pdfState)
       expect(create).toHaveBeenCalledTimes(1)
@@ -185,7 +188,7 @@ describe('useDocumentBlob', () => {
   it('does not start conversion or allocate a URL when the download finishes after unmount', async () => {
     const pending = Promise.withResolvers<Response>()
     const httpClient = createClient({ prefixUrl: 'https://document.test', fetch: () => pending.promise })
-    const convert = spyOn(docxTransformer, 'docxToHtml')
+    const convert = spyOn(docxSnapshot, 'renderDocxSnapshot')
     const create = spyOn(URL, 'createObjectURL')
     try {
       const { unmount } = renderHook(() => useDocumentBlob('cancelled-download', 'docx', httpClient))

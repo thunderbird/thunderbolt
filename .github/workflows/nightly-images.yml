@@ -19,9 +19,10 @@ permissions:
 
 jobs:
   publish:
-    # No `secrets: inherit` — images-publish.yml only uses GITHUB_TOKEN, which is
-    # auto-provided to reusable workflows via this job's `permissions` block. Passing
-    # the whole repo secret set would violate least privilege for no benefit.
+    # No `secrets: inherit` — publishing only uses GITHUB_TOKEN, which is
+    # auto-provided to reusable workflows via this job's `permissions` block. The
+    # PowerSync deploy reads its key from the `render` environment, which a called
+    # workflow reaches without `secrets:`.
     uses: ./.github/workflows/images-publish.yml
 
   notify:

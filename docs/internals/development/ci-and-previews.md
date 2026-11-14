@@ -220,10 +220,17 @@ Configured in the Render dashboard, not in this repo. Two code paths know about 
   [src/contexts/sign-in-modal-context.tsx](../../../src/contexts/sign-in-modal-context.tsx)
   bypasses the waitlist there. Test waitlist flows on the Pulumi stack instead.
 
-Render also hosts the production `powersync` service, which does **not** auto-deploy:
-after a sync-rule change merges and `images-publish.yml` publishes a new
-`thunderbolt-powersync` image, roll it by hand
-([two-PR sequence](../architecture/powersync-account-devices.md)).
+Render also hosts the production `powersync` service. After each run of `images-publish.yml` on
+`main` (push, nightly or manual), the `deploy-powersync` job compares the live image with the one just
+built: its `thunderbolt-powersync:<version>` tag, and an `io.thunderbolt.powersync-config` label
+hashing `deploy/docker/powersync.Dockerfile` and `deploy/config/powersync-config.yaml`. If either
+differs, it points the service at the new tag and deploys it with the Render CLI
+([two-PR sequence](../architecture/powersync-account-devices.md)), so releases and changes to
+either file deploy, and no other merge restarts the service. A newer run on `main` cancels an older one,
+and since each compares with what is live, a cancelled or failed run is made up by the next one; to
+deploy sooner, run Images Publish from `main`. The job runs in the `render` environment, which must
+allow only `main` and holds the `RENDER_API_KEY` secret, and reads the service ID from the
+`RENDER_POWERSYNC_SERVICE_ID` variable.
 
 ### Pulumi preview
 

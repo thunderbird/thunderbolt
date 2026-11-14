@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { insertTestUsers } from '@/test-utils/identity'
 import { createAuth } from '@/auth/auth'
 import { session as sessionTable, user } from '@/db/auth-schema'
 import { challengeNoncesTable, encryptionMetadataTable, envelopesTable } from '@/db/encryption-schema'
-import { chatThreadsTable, devicesTable, settingsTable, tasksTable } from '@/db/schema'
+import { chatThreadsTable, devicesTable, orgMembership, settingsTable, tasksTable } from '@/db/schema'
 import { linkCliSessionToDevice } from '@/dal/sessions'
 import { verification } from '@/db/auth-schema'
 import type { SecurityNotifications } from '@/lib/security-notifications'
@@ -90,7 +91,7 @@ describe('Account API', () => {
     const now = new Date()
     const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-    await db.insert(user).values({
+    await insertTestUsers(db, {
       id: userId,
       name: 'Test User',
       email: `${userId}@example.com`,
@@ -128,7 +129,7 @@ describe('Account API', () => {
     options: { deviceId?: string; expiresAt?: Date; isAnonymous?: boolean } = {},
   ) => {
     const now = new Date()
-    await db.insert(user).values({
+    await insertTestUsers(db, {
       id: userId,
       name: 'CLI User',
       email: `${userId}@example.com`,
@@ -616,7 +617,7 @@ describe('Account API', () => {
     it('rejects a synthetic authenticated session that has no persisted session row', async () => {
       const userId = p('cli-synthetic-user')
       const now = new Date()
-      await db.insert(user).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Synthetic User',
         email: `${userId}@example.com`,
@@ -653,6 +654,22 @@ describe('Account API', () => {
       expect(await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))).toHaveLength(0)
       const [persistedSession] = await db.select().from(sessionTable).where(eq(sessionTable.token, token))
       expect(persistedSession.deviceId).toBeNull()
+    })
+
+    it('refuses registration for a blocked member without creating or binding a device, and still lets them log out', async () => {
+      const userId = p('cli-blocked-user')
+      const token = p('cli-blocked-token')
+      const deviceId = `cli-${crypto.randomUUID()}`
+      await createCliSession(userId, token)
+      await db.update(orgMembership).set({ blockedAt: new Date() }).where(eq(orgMembership.userId, userId))
+
+      const response = await registerCli(token, deviceId)
+
+      expect(response.status).toBe(401)
+      expect(await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))).toHaveLength(0)
+      const [persistedSession] = await db.select().from(sessionTable).where(eq(sessionTable.token, token))
+      expect(persistedSession.deviceId).toBeNull()
+      expect((await logoutCli(token)).status).not.toBe(401)
     })
 
     it('self-logout soft-revokes the bound CLI device and deletes every linked session', async () => {
@@ -823,7 +840,7 @@ describe('Account API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(user).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Session Revoke User',
         email: `${userId}@example.com`,
@@ -896,7 +913,7 @@ describe('Account API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(user).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Single Session User',
         email: `${userId}@example.com`,
@@ -951,7 +968,7 @@ describe('Account API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(user).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Nonexistent Revoke User',
         email: `${userId}@example.com`,
@@ -1026,7 +1043,7 @@ describe('Account API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(user).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Test User',
         email: 'full-delete@example.com',
@@ -1077,7 +1094,7 @@ describe('Account API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(user).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Cascade User',
         email: 'cascade-delete@example.com',
@@ -1157,7 +1174,7 @@ describe('Account API', () => {
       const email = `${userId}@example.com`
       const token = p(`tok-${label}`)
       const now = new Date()
-      await db.insert(user).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Delete Me',
         email,

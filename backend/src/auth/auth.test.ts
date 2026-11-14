@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { insertTestUsers } from '@/test-utils/identity'
 import { mock } from 'bun:test'
 import * as authUtils from '@/auth/utils'
 import * as waitlistUtils from '@/waitlist/utils'
@@ -170,7 +171,7 @@ describe('Auth - user.isNew in sign-in response', () => {
   it('should return user.isNew: false when existing user signs in again', async () => {
     const existingUserId = crypto.randomUUID()
 
-    await db.insert(user).values({
+    await insertTestUsers(db, {
       id: existingUserId,
       name: 'Existing User',
       email: 'existing-isnewuser@example.com',
@@ -196,5 +197,19 @@ describe('Auth - user.isNew in sign-in response', () => {
     expect(result.user?.isNew).toBe(false)
     expect(result.session).toBeDefined()
     expect(result.user).toBeDefined()
+  })
+})
+
+describe('Auth - database transactions', () => {
+  // SSO and SCIM need native transactions, and so do the identity plugin's sign-in writes, in
+  // every auth mode.
+  it('uses a transactional adapter in consumer mode', async () => {
+    const { db, cleanup } = await createTestDb()
+    try {
+      const { adapter } = await createAuth(db).$context
+      expect(adapter.options?.adapterConfig.transaction).not.toBe(false)
+    } finally {
+      await cleanup()
+    }
   })
 })

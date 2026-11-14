@@ -9,6 +9,7 @@ import { migrate } from 'drizzle-orm/pglite/migrator'
 import { resolve } from 'path'
 import type { db as DbType } from '../db/client'
 import * as schema from '../db/schema'
+import { ensureImplicitOrganization } from '../identity/organization'
 
 /**
  * Run the shared client's `transaction()` calls as savepoints of the test's open transaction, one at a time. A real
@@ -67,6 +68,7 @@ class TestDbManager {
     this.db = drizzle({ client: this.client, schema })
     const migrationsFolder = resolve(import.meta.dir, '../../drizzle')
     await migrate(this.db, { migrationsFolder })
+    await ensureImplicitOrganization(this.db)
     nestTransactions(this.client)
     this.initialized = true
   }
@@ -138,6 +140,7 @@ export const createIsolatedTestDb = async (): Promise<IsolatedTestDb> => {
   const db = drizzle({ client, schema })
   const migrationsFolder = resolve(import.meta.dir, '../../drizzle')
   await migrate(db, { migrationsFolder })
+  await ensureImplicitOrganization(db)
   return {
     client,
     db,

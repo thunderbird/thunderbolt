@@ -37,6 +37,8 @@ import {
   sendWaitlistJoinedEmail as defaultSendWaitlistJoinedEmail,
   sendWaitlistNotReadyEmail as defaultSendWaitlistNotReadyEmail,
 } from '@/waitlist/utils'
+import { apiKeyOwnerHasAccess } from '@/identity/api-key-access'
+import { identity } from '@/identity/plugin'
 import { createCaptchaProvider } from './captcha'
 import { anonymousSignInPath, authBasePath, configuredSsoProviderId, getSessionPath } from './paths'
 import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds, testSignInOtp } from './otp-constants'
@@ -292,8 +294,9 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
     database: drizzleAdapter(database, {
       provider: 'pg',
       schema,
-      // The SSO plugin's resolveUser hook refuses to run without native transactions.
-      transaction: ssoEnabled,
+      // SSO and SCIM refuse to run without native transactions, and the identity plugin's
+      // sign-in writes (membership, source, audit event) must commit together.
+      transaction: true,
     }),
     trustedOrigins,
     // NOTE: Uses in-memory storage by default — not shared across instances in
@@ -431,8 +434,11 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         ) {
           const headers = ctx.headers ?? new Headers()
           const existing = await resolveSession(headers)
+          // Every guarded passkey route needs a session. Answering here, rather than leaving it
+          // to Better Auth, keeps a member the identity plugin refuses from being authenticated
+          // by the route's own internal session lookup, which skips that check.
           if (!existing) {
-            return
+            throw ctx.error('UNAUTHORIZED')
           }
           if (existing.user.isAnonymous) {
             throw ctx.error('FORBIDDEN', { message: 'Passkeys are not available for anonymous users' })
@@ -566,6 +572,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       }),
     },
     plugins: [
+      identity(),
       bearer({ requireSignature: true }), // Enables Authorization: Bearer <token> for mobile apps where cookies don't work
       emailOTP({
         ...signInOtpOptions({ generateSignInOtp: emailDeps.generateSignInOtp, nodeEnv: process.env.NODE_ENV }),
@@ -659,6 +666,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       // compromised device). Installed plugin runtime interprets defaultExpiresIn as seconds.
       apiKey({
         enableSessionForAPIKeys: true,
+        customAPIKeyValidator: apiKeyOwnerHasAccess,
         keyExpiration: { defaultExpiresIn: settings.apiKeyDefaultExpiresInSeconds },
         rateLimit: { enabled: false },
       }),

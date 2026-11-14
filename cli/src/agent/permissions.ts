@@ -4,6 +4,7 @@
 
 import { isReadOnlyAgentTool } from '../../../shared/agent-tool-permissions.ts'
 import type { HarnessRuntime, ProviderManagerIO, ProviderManagerItem } from '../provider-runtime/types.ts'
+import { webFetchToolName } from './webfetch.ts'
 import { sanitizePermissionText } from '../ui/render.ts'
 import type { PermissionPrompt, PermissionRequest } from './types.ts'
 
@@ -68,7 +69,8 @@ export const attachPermissionGate = (
   const sessionAllowed = new Set<string>()
 
   target.registerToolCallGate(async ({ toolName, input }) => {
-    if (isReadOnlyAgentTool(toolName) || toolName === 'webfetch') return undefined
+    // webfetch is auto-allowed: read-only and SSRF-guarded, so no prompt.
+    if (isReadOnlyAgentTool(toolName) || toolName === webFetchToolName) return undefined
 
     const mode = opts.getMode()
     if (mode === 'yolo') return undefined

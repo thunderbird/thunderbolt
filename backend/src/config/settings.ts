@@ -26,6 +26,9 @@ const isIpLiteral = (host: string): boolean => /^\d{1,3}(\.\d{1,3}){3}$/.test(ho
 
 const defaultCorsExposeHeaders = `set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate,Ehbp-Response-Nonce,X-Proxy-Timing,Server-Timing,X-Passkey-Challenge`
 
+/** Default PAT lifetime (90 days, in seconds) — exported so test fixtures can't drift from the schema default. */
+export const defaultApiKeyExpirySeconds = 90 * 24 * 60 * 60
+
 /**
  * Settings schema for environment variables validation
  */
@@ -149,17 +152,14 @@ const settingsSchema = z
     // Device Authorization Grant (RFC 8628) — used by the `thunderbolt` CLI to log in
     // headless. `deviceAuthExpiresIn` is how long the device/user code stays valid before
     // the CLI must restart the flow; `deviceAuthInterval` is the minimum client polling
-    // gap. Better Auth time strings ('30m', '5s', '1h'). Defaults follow RFC 8628 §3.2.
+    // gap. Better Auth time strings ('30m', '5s', '1h'). The 5s interval default follows
+    // RFC 8628 §3.2; the 30m code lifetime is our own choice (the RFC specifies none).
     deviceAuthExpiresIn: betterAuthTimeString.default('30m'),
     deviceAuthInterval: betterAuthTimeString.default('5s'),
 
     // Better Auth API-key expiry values use seconds at runtime. New PATs expire after
     // 90 days by default; callers may request a different supported lifetime at creation.
-    apiKeyDefaultExpiresInSeconds: z.coerce
-      .number()
-      .int()
-      .positive()
-      .default(90 * 24 * 60 * 60),
+    apiKeyDefaultExpiresInSeconds: z.coerce.number().int().positive().default(defaultApiKeyExpirySeconds),
 
     // General settings
     logLevel: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).default('INFO'),

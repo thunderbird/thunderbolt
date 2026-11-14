@@ -306,6 +306,83 @@ describe('API key authentication', () => {
     await expectApiKeyRejected(key)
   })
 
+  it('honors a disabled deployment limit for an existing key with an exhausted budget', async () => {
+    const { id, key } = await createApiKey()
+    await harness.db
+      .update(apikey)
+      .set({
+        rateLimitEnabled: true,
+        requestCount: 300,
+        lastRequest: new Date(),
+      })
+      .where(eq(apikey.id, id))
+    expect((await getSession(harness.app, { 'x-api-key': key })).status).toBe(200)
+  })
+
+  describe('per-key rate-limit boundaries', () => {
+    let auth: ReturnType<typeof createAuth>
+    let previousRateLimit: string | undefined
+
+    beforeEach(() => {
+      previousRateLimit = process.env.RATE_LIMIT_ENABLED
+      process.env.RATE_LIMIT_ENABLED = 'true'
+      clearSettingsCache()
+      auth = createAuth(harness.db)
+    })
+    afterEach(() => {
+      if (previousRateLimit === undefined) {
+        delete process.env.RATE_LIMIT_ENABLED
+      } else {
+        process.env.RATE_LIMIT_ENABLED = previousRateLimit
+      }
+      clearSettingsCache()
+    })
+
+    /** Exercise the API-key plugin without Better Auth's separate HTTP/IP budget. */
+    const authenticate = (key: string) =>
+      auth.api.getSession({
+        headers: new Headers({ 'x-api-key': key }),
+        asResponse: true,
+      })
+    /** Create a credential with the deployment's actual plugin defaults. */
+    const createLimitedKey = () =>
+      auth.api.createApiKey({
+        headers: new Headers(authHeaders(harness.bearerToken)),
+        body: {},
+      })
+
+    it('allows request 300 and rejects request 301 with the configured minute budget', async () => {
+      const { id, key } = await createLimitedKey()
+      const [stored] = await harness.db.select().from(apikey).where(eq(apikey.id, id))
+      expect(stored).toMatchObject({ rateLimitEnabled: true, rateLimitMax: 300, rateLimitTimeWindow: 60_000 })
+      await harness.db.update(apikey).set({ requestCount: 299, lastRequest: new Date() }).where(eq(apikey.id, id))
+      expect((await authenticate(key)).status).toBe(200)
+      await expect(authenticate(key)).rejects.toMatchObject({ statusCode: 429, body: { code: 'RATE_LIMITED' } })
+    })
+
+    it('accepts a request after the minute window expires and starts a new budget', async () => {
+      const { id, key } = await createLimitedKey()
+      await harness.db.update(apikey).set({ requestCount: 300, lastRequest: new Date() }).where(eq(apikey.id, id))
+      await expect(authenticate(key)).rejects.toMatchObject({ statusCode: 429, body: { code: 'RATE_LIMITED' } })
+      await harness.db
+        .update(apikey)
+        .set({ lastRequest: new Date(Date.now() - 60_001) })
+        .where(eq(apikey.id, id))
+      expect((await authenticate(key)).status).toBe(200)
+      const [stored] = await harness.db.select().from(apikey).where(eq(apikey.id, id))
+      expect(stored.requestCount).toBe(1)
+    })
+
+    it('keeps budgets separate for two keys owned by the same account', async () => {
+      const first = await createLimitedKey()
+      const second = await createLimitedKey()
+      await harness.db.update(apikey).set({ requestCount: 300, lastRequest: new Date() }).where(eq(apikey.id, first.id))
+      await expect(authenticate(first.key)).rejects.toMatchObject({ statusCode: 429, body: { code: 'RATE_LIMITED' } })
+      expect((await authenticate(second.key)).status).toBe(200)
+      await expect(authenticate(first.key)).rejects.toMatchObject({ statusCode: 429, body: { code: 'RATE_LIMITED' } })
+    })
+  })
+
   it('does not throttle a key to the plugin default of 10 requests/day', async () => {
     const { key } = await createApiKey()
 

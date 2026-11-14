@@ -20,7 +20,7 @@ const authBase = 'https://api.test/v1/api/auth'
 /** A fetch fn that records requests and returns one scripted response. */
 const stubFetch = (response: Response) => {
   const requests: { url: string; init: RequestInit; body: unknown }[] = []
-  const fetchFn: FetchFn = async (url, init) => {
+  const fetchFn: FetchFn = async (url, init = {}) => {
     requests.push({ url, init, body: JSON.parse(String(init.body)) })
     return response
   }
@@ -70,7 +70,7 @@ describe('createHttpTransport.requestCode', () => {
   })
 
   it('surfaces a redirect rejection from fetch', async () => {
-    const fetchFn: FetchFn = async (_url, init) => {
+    const fetchFn: FetchFn = async (_url, init = {}) => {
       if (init.redirect !== 'error') throw new Error('redirect protection is required')
       throw new TypeError('redirect rejected by fetch')
     }
@@ -147,7 +147,7 @@ describe('createHttpTransport.pollToken', () => {
   })
 
   it('surfaces a redirect rejection from fetch', async () => {
-    const fetchFn: FetchFn = async (_url, init) => {
+    const fetchFn: FetchFn = async (_url, init = {}) => {
       if (init.redirect !== 'error') throw new Error('redirect protection is required')
       throw new TypeError('redirect rejected by fetch')
     }

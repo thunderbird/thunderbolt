@@ -12,7 +12,7 @@ import { createTestDb } from '@/test-utils/db'
 import { eq } from 'drizzle-orm'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
-import { clearSettingsCache } from '@/config/settings'
+import { clearSettingsCache, defaultApiKeyExpirySeconds } from '@/config/settings'
 import { createPowerSyncRoutes } from './powersync'
 
 const powersyncSettings: Settings = {
@@ -61,7 +61,7 @@ const powersyncSettings: Settings = {
   betterAuthSecret: betterAuthTestSecret,
   deviceAuthExpiresIn: '30m',
   deviceAuthInterval: '5s',
-  apiKeyDefaultExpiresInSeconds: 90 * 24 * 60 * 60,
+  apiKeyDefaultExpiresInSeconds: defaultApiKeyExpirySeconds,
   orgEscrowEnabled: false,
   passkeyEnabled: false,
   passkeyRpId: '',

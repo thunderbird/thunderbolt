@@ -33,7 +33,7 @@ Two design choices, not gaps:
 ### Schema and ranking
 
 One FTS5 virtual table, `search_index` (`buildCreateSql`,
-[`src/search/fts-setup.ts:82`](../../../src/search/fts-setup.ts#L82)):
+[`src/search/fts-setup.ts:90`](../../../src/search/fts-setup.ts#L90)):
 
 | Column        | Tokenized        | bm25 weight | Role                              |
 | ------------- | ---------------- | ----------- | --------------------------------- |
@@ -52,7 +52,7 @@ schema without moving both and search silently misranks.
 
 ### How rows get in
 
-Population is entirely SQLite-side: three triggers per `searchEntities` entry (`AFTER INSERT`,
+Population is entirely SQLite-side: four triggers per `searchEntities` entry (`BEFORE INSERT`, `AFTER INSERT`,
 `AFTER UPDATE`, `AFTER DELETE`) on that entity's **PowerSync internal backing table**, reading
 fields from its JSON `data` blob with `json_extract`.
 
@@ -64,15 +64,15 @@ fields from its JSON `data` blob with `json_extract`.
 
 ### When it rebuilds
 
-`createSearchIndex` ([`src/search/fts-setup.ts:146`](../../../src/search/fts-setup.ts#L146)) runs at
+`createSearchIndex` ([`src/search/fts-setup.ts:188`](../../../src/search/fts-setup.ts#L188)) runs at
 boot as init step `step2d_build_search_index`, before the data steps and best-effort: a failed build
 logs and boot continues with a stale or empty palette (see
 [app-initialization.md](app-initialization.md#the-search-index)). Two gates make it idempotent:
 
 | Gate          | Check                                                                                                                                                                               |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Version       | `searchIndexVersion` ([`src/search/registry.ts:135`](../../../src/search/registry.ts#L135)), recorded in `search_index_meta`; a mismatch drops the previous generation and rebuilds |
-| Trigger count | `searchEntities.length * 3` live triggers must exist                                                                                                                                |
+| Version       | `searchIndexVersion` ([`src/search/registry.ts:148`](../../../src/search/registry.ts#L148)), recorded in `search_index_meta`; a mismatch drops the previous generation and rebuilds |
+| Trigger count | `searchEntities.length * 4` live triggers must exist                                                                                                                                |
 
 The trigger count exists because PowerSync can drop and recreate its internal tables (a resync, a
 schema update), taking the triggers with them while `search_index` survives; the version gate alone

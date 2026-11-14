@@ -8,19 +8,46 @@ import { createMockAuthClient } from '@/test-utils/auth-client'
 import { pendingPromotionKey } from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { getClock } from '@/testing-library'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
-import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import * as tauriCore from '@tauri-apps/api/core'
 import * as tauriEvent from '@tauri-apps/api/event'
 import * as opener from '@tauri-apps/plugin-opener'
 import * as tauriOs from '@tauri-apps/plugin-os'
 import * as authToken from '@/lib/auth-token'
 import * as loopback from '@/lib/sso-loopback'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import SsoRedirect from './sso-redirect'
 
 const originalCloudUrl = useLocalSettingsStore.getState().cloudUrl
 const originalFetch = globalThis.fetch
 
+const isDiscoverRequest = (input: RequestInfo | URL) =>
+  (input instanceof Request ? input.url : input.toString()).endsWith('/v1/sso/discover')
+
+/** What a deployment with only the env-configured connection answers. */
+const singleConnection = () => Response.json({ connections: [{ providerId: 'sso', name: 'SSO' }] })
+
+/** Answer SSO discovery with one connection, and every other request with `handler`. */
+const withDiscovery = (handler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) =>
+  Object.assign(
+    async (input: RequestInfo | URL, init?: RequestInit) =>
+      isDiscoverRequest(input) ? singleConnection() : handler(input, init),
+    { preconnect: originalFetch.preconnect },
+  )
+
+/** Let a discovery round trip and the sign-in request after it settle. */
+const flush = () =>
+  act(async () => {
+    for (let i = 0; i < 20; i++) {
+      await Promise.resolve()
+    }
+  })
+
 describe('SsoRedirect', () => {
+  beforeEach(() => {
+    globalThis.fetch = withDiscovery(async () => Response.json({ url: 'unsafe redirect fixture' }))
+  })
+
   afterEach(() => {
     cleanup()
     globalThis.fetch = originalFetch
@@ -28,30 +55,63 @@ describe('SsoRedirect', () => {
     sessionStorage.removeItem(pendingPromotionKey)
   })
 
-  it('posts to the exact SSO endpoint when cloudUrl has trailing slashes', async () => {
-    const requests: Request[] = []
+  it('sends X-App-Version on discovery, which the minimum-version gate requires', async () => {
+    const env = import.meta.env as Record<string, unknown>
+    const savedVersion = env.VITE_APP_VERSION
+    env.VITE_APP_VERSION = '1.2.3'
+    const discoveries: Request[] = []
     globalThis.fetch = Object.assign(
-      async (request: RequestInfo | URL) => {
-        requests.push(new Request(request))
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (isDiscoverRequest(input)) {
+          discoveries.push(new Request(input, init))
+          return singleConnection()
+        }
         return Response.json({ url: 'unsafe redirect fixture' })
       },
       { preconnect: originalFetch.preconnect },
     )
+    const authClient = createMockAuthClient({ getSession: mock(async () => ({ data: null, error: null })) })
+
+    try {
+      render(
+        <AuthContext.Provider value={{ authClient }}>
+          <MemoryRouter>
+            <SsoRedirect />
+          </MemoryRouter>
+        </AuthContext.Provider>,
+      )
+      await flush()
+    } finally {
+      if (savedVersion === undefined) {
+        delete env.VITE_APP_VERSION
+      } else {
+        env.VITE_APP_VERSION = savedVersion
+      }
+    }
+
+    expect(discoveries).toHaveLength(1)
+    expect(discoveries[0]?.headers.get('X-App-Version')).toBe('1.2.3')
+  })
+
+  it('posts to the exact SSO endpoint when cloudUrl has trailing slashes', async () => {
+    const requests: Request[] = []
+    globalThis.fetch = withDiscovery(async (request) => {
+      requests.push(new Request(request))
+      return Response.json({ url: 'unsafe redirect fixture' })
+    })
     useLocalSettingsStore.setState({ cloudUrl: 'https://api.example.test/v1///' })
     const getSession = mock(async () => ({ data: null, error: null }))
     const authClient = createMockAuthClient({ getSession })
 
     render(
       <AuthContext.Provider value={{ authClient }}>
-        <SsoRedirect />
+        <MemoryRouter>
+          <SsoRedirect />
+        </MemoryRouter>
       </AuthContext.Provider>,
     )
 
-    await act(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+    await flush()
 
     expect(requests).toHaveLength(1)
     expect(requests[0]?.url).toBe('https://api.example.test/v1/api/auth/sign-in/sso')
@@ -59,28 +119,23 @@ describe('SsoRedirect', () => {
     expect(getSession).not.toHaveBeenCalled()
 
     act(() => useLocalSettingsStore.getState().setLocalSetting('cloudUrl', 'https://api.example.test/v1/'))
-    await act(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+    await flush()
 
     expect(requests).toHaveLength(1)
   })
 
   it('waits for the session on a direct visit and does not refetch it before redirecting', async () => {
     const requests: Request[] = []
-    globalThis.fetch = Object.assign(
-      async (request: RequestInfo | URL) => {
-        requests.push(new Request(request))
-        return Response.json({ url: 'unsafe redirect fixture' })
-      },
-      { preconnect: originalFetch.preconnect },
-    )
+    globalThis.fetch = withDiscovery(async (request) => {
+      requests.push(new Request(request))
+      return Response.json({ url: 'unsafe redirect fixture' })
+    })
     const getSession = mock(async () => ({ data: null, error: null }))
     const renderRedirect = (isPending: boolean) => (
       <AuthContext.Provider value={{ authClient: createMockAuthClient({ isPending, getSession }) }}>
-        <SsoRedirect />
+        <MemoryRouter>
+          <SsoRedirect />
+        </MemoryRouter>
       </AuthContext.Provider>
     )
     const view = render(renderRedirect(true))
@@ -105,25 +160,20 @@ describe('SsoRedirect', () => {
 
   it('asks Better Auth to send a failed login back to the app error page', async () => {
     const bodies: unknown[] = []
-    globalThis.fetch = Object.assign(
-      async (request: RequestInfo | URL) => {
-        bodies.push(await new Request(request).json())
-        return Response.json({ url: 'unsafe redirect fixture' })
-      },
-      { preconnect: originalFetch.preconnect },
-    )
+    globalThis.fetch = withDiscovery(async (request) => {
+      bodies.push(await new Request(request).json())
+      return Response.json({ url: 'unsafe redirect fixture' })
+    })
     useLocalSettingsStore.setState({ cloudUrl: 'https://api.example.test/v1' })
 
     render(
       <AuthContext.Provider value={{ authClient: createMockAuthClient() }}>
-        <SsoRedirect />
+        <MemoryRouter>
+          <SsoRedirect />
+        </MemoryRouter>
       </AuthContext.Provider>,
     )
-    await act(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+    await flush()
 
     expect(bodies).toEqual([
       {
@@ -140,29 +190,28 @@ describe('SsoRedirect', () => {
     const errorSession = Promise.withResolvers<Response>()
     const sessionRequests: Request[] = []
     const signInRequests: Request[] = []
-    globalThis.fetch = Object.assign(
-      async (input: RequestInfo | URL, init?: RequestInit) => {
-        const request = new Request(input, init)
-        if (request.url.endsWith('/get-session')) {
-          sessionRequests.push(request)
-          if (sessionRequests.length === 2) {
-            return backgroundSession.promise
-          }
-          if (sessionRequests.length === 3) {
-            return errorSession.promise
-          }
-          return Response.json(null)
+    globalThis.fetch = withDiscovery(async (input, init) => {
+      const request = new Request(input, init)
+      if (request.url.endsWith('/get-session')) {
+        sessionRequests.push(request)
+        if (sessionRequests.length === 2) {
+          return backgroundSession.promise
         }
-        signInRequests.push(request)
-        return signInRequests.length === 1 ? firstSignIn.promise : Response.json({ url: 'unsafe redirect fixture' })
-      },
-      { preconnect: originalFetch.preconnect },
-    )
+        if (sessionRequests.length === 3) {
+          return errorSession.promise
+        }
+        return Response.json(null)
+      }
+      signInRequests.push(request)
+      return signInRequests.length === 1 ? firstSignIn.promise : Response.json({ url: 'unsafe redirect fixture' })
+    })
     useLocalSettingsStore.setState({ cloudUrl: 'https://api.example.test/v1' })
     const authClient = createAuthClientInstance('https://api.example.test/v1')
     const view = render(
       <AuthContext.Provider value={{ authClient }}>
-        <SsoRedirect />
+        <MemoryRouter>
+          <SsoRedirect />
+        </MemoryRouter>
       </AuthContext.Provider>,
     )
 
@@ -226,6 +275,113 @@ describe('SsoRedirect', () => {
     }
   })
 
+  describe('with several connections', () => {
+    const connections = [
+      { providerId: 'entra', name: 'Entra ID' },
+      { providerId: 'keycloak', name: 'Keycloak' },
+    ]
+
+    /** Discovery answers `answer(email)`; sign-in requests are recorded. */
+    const mockServer = (answer: (email?: string) => typeof connections | null) => {
+      const discoveries: (string | undefined)[] = []
+      const signIns: { providerId: string }[] = []
+      globalThis.fetch = Object.assign(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          const request = new Request(input, init)
+          if (isDiscoverRequest(request)) {
+            const { email } = (await request.json()) as { email?: string }
+            discoveries.push(email)
+            const found = answer(email)
+            return found ? Response.json({ connections: found }) : new Response('Not Found', { status: 404 })
+          }
+          if (request.url.endsWith('/get-session')) {
+            return Response.json(null)
+          }
+          signIns.push(await request.json())
+          return Response.json({ url: 'unsafe redirect fixture' })
+        },
+        { preconnect: originalFetch.preconnect },
+      )
+      return { discoveries, signIns }
+    }
+
+    const renderSignIn = () =>
+      render(
+        <AuthContext.Provider value={{ authClient: createMockAuthClient() }}>
+          <MemoryRouter initialEntries={['/sso-redirect']}>
+            <Routes>
+              <Route path="/sso-redirect" element={<SsoRedirect />} />
+              <Route path="/sign-in/email-code" element={<EmailCodeRoute />} />
+            </Routes>
+          </MemoryRouter>
+        </AuthContext.Provider>,
+      )
+
+    const EmailCodeRoute = () => <p>email code for {String(useLocation().state?.email)}</p>
+
+    const submitEmail = async (view: ReturnType<typeof renderSignIn>, email: string) => {
+      fireEvent.change(view.getByRole('textbox', { name: 'Work email' }), { target: { value: email } })
+      fireEvent.click(view.getByRole('button', { name: 'Continue' }))
+      await flush()
+    }
+
+    it('asks for the email instead of going to an identity provider', async () => {
+      const { signIns } = mockServer(() => connections)
+
+      const view = renderSignIn()
+      await flush()
+
+      expect(view.getByRole('textbox', { name: 'Work email' })).toBeInTheDocument()
+      expect(signIns).toEqual([])
+    })
+
+    it("goes straight to the connection that claims the email's domain", async () => {
+      const { discoveries, signIns } = mockServer((email) => (email ? [connections[1]] : connections))
+      const view = renderSignIn()
+      await flush()
+
+      await submitEmail(view, ' person@keycloak.test ')
+
+      expect(discoveries).toEqual([undefined, 'person@keycloak.test'])
+      expect(signIns).toEqual([expect.objectContaining({ providerId: 'keycloak' })])
+    })
+
+    it("offers one button per connection when the domain doesn't decide", async () => {
+      const { signIns } = mockServer(() => connections)
+      const view = renderSignIn()
+      await flush()
+
+      await submitEmail(view, 'contractor@gmail.test')
+      expect(signIns).toEqual([])
+      fireEvent.click(view.getByRole('button', { name: 'Entra ID' }))
+      await flush()
+
+      expect(signIns).toEqual([expect.objectContaining({ providerId: 'entra' })])
+    })
+
+    it('keeps the email-code path open, carrying the typed email', async () => {
+      mockServer(() => connections)
+      const view = renderSignIn()
+      await flush()
+
+      fireEvent.change(view.getByRole('textbox', { name: 'Work email' }), {
+        target: { value: 'invitee@corp.test' },
+      })
+      fireEvent.click(view.getByRole('button', { name: 'Use an email code instead' }))
+
+      expect(view.getByText('email code for invitee@corp.test')).toBeInTheDocument()
+    })
+
+    it('signs in with the env provider on a server from before SSO connections', async () => {
+      const { signIns } = mockServer(() => null)
+
+      renderSignIn()
+      await flush()
+
+      expect(signIns).toEqual([expect.objectContaining({ providerId: 'sso' })])
+    })
+  })
+
   describe('on Tauri desktop', () => {
     const renderWithLoopbackCallback = async (callbackUrl: string | null, authClient = createMockAuthClient()) => {
       Object.assign(window, { isTauri: true })
@@ -250,14 +406,12 @@ describe('SsoRedirect', () => {
 
       const view = render(
         <AuthContext.Provider value={{ authClient }}>
-          <SsoRedirect />
+          <MemoryRouter>
+            <SsoRedirect />
+          </MemoryRouter>
         </AuthContext.Provider>,
       )
-      await act(async () => {
-        for (let i = 0; i < 10; i++) {
-          await Promise.resolve()
-        }
-      })
+      await flush()
       return { replaceSpy, view }
     }
 
@@ -279,13 +433,16 @@ describe('SsoRedirect', () => {
       useLocalSettingsStore.setState({ cloudUrl: 'https://first.example/v1' })
       const view = render(
         <AuthContext.Provider value={{ authClient: createMockAuthClient() }}>
-          <SsoRedirect />
+          <MemoryRouter>
+            <SsoRedirect />
+          </MemoryRouter>
         </AuthContext.Provider>,
       )
       await act(async () => {})
       act(() => useLocalSettingsStore.setState({ cloudUrl: 'https://second.example/v1' }))
       await act(async () => {})
       expect(flowSpy).toHaveBeenCalledTimes(2)
+      expect(flowSpy).toHaveBeenLastCalledWith('https://second.example', 'sso')
       await act(async () => oldFlow.resolve('first-server-token'))
       expect(storeToken).not.toHaveBeenCalled()
       expect(replace).not.toHaveBeenCalled()
@@ -337,13 +494,10 @@ describe('SsoRedirect', () => {
     it('does not open another system browser when a signed-out session refetches during loopback sign-in', async () => {
       const backgroundSession = Promise.withResolvers<Response>()
       const sessionRequests: Request[] = []
-      globalThis.fetch = Object.assign(
-        async (input: RequestInfo | URL, init?: RequestInit) => {
-          sessionRequests.push(new Request(input, init))
-          return sessionRequests.length === 1 ? Response.json(null) : backgroundSession.promise
-        },
-        { preconnect: originalFetch.preconnect },
-      )
+      globalThis.fetch = withDiscovery(async (input, init) => {
+        sessionRequests.push(new Request(input, init))
+        return sessionRequests.length === 1 ? Response.json(null) : backgroundSession.promise
+      })
       Object.assign(window, { isTauri: true })
       spyOn(tauriCore, 'isTauri').mockReturnValue(true)
       spyOn(tauriCore, 'invoke').mockImplementation(async () => 17421 as never)
@@ -362,7 +516,9 @@ describe('SsoRedirect', () => {
       const authClient = createAuthClientInstance('https://api.example.test/v1')
       const view = render(
         <AuthContext.Provider value={{ authClient }}>
-          <SsoRedirect />
+          <MemoryRouter>
+            <SsoRedirect />
+          </MemoryRouter>
         </AuthContext.Provider>,
       )
 

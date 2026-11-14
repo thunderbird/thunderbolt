@@ -12,6 +12,7 @@ export const auditActions = [
   'auth.sign_out',
   'auth.session_revoked',
   'auth.session_expired',
+  'account.deleted',
   // Members
   'member.admitted',
   'member.source_added',

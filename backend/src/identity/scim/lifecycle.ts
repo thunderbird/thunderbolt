@@ -108,8 +108,8 @@ export const createScimLifecycle = (database: QueryableDatabase) => {
     for (const session of sessions) {
       await recordScimLifecycleEvent(adapter, actor, 'auth.session_revoked', {
         connection,
-        target: { type: 'session', id: session.id },
-        metadata: { userId },
+        target: { type: 'user', id: userId },
+        metadata: { sessionId: session.id },
       })
     }
     const apiKeys = await adapter.deleteMany({ model: 'apikey', where: [{ field: 'referenceId', value: userId }] })

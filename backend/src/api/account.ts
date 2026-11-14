@@ -29,6 +29,7 @@ import { verifyChallengeSignature } from '@/lib/canary'
 import { securityNotifications, type SecurityNotifications } from '@/lib/security-notifications'
 import type { StepUpAction } from '@/lib/step-up-otp'
 import { hasAccess, isIdpManagedUser } from '@/identity/access'
+import { insertAuditEvent } from '@/identity/audit/write'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { challengeOperations } from '@shared/e2ee-types'
 import { eq } from 'drizzle-orm'
@@ -307,6 +308,12 @@ export const createAccountRoutes = (
 
           await revokeDevice(txDb, persistedSession.deviceId, userId)
           await revokeDeviceSessions(txDb, persistedSession.deviceId, userId)
+          await insertAuditEvent(txDb, {
+            action: 'auth.sign_out',
+            outcome: 'success',
+            actor: { type: 'user', id: userId },
+            target: { type: 'device', id: persistedSession.deviceId },
+          })
           return { ok: true as const }
         }),
       )
@@ -376,6 +383,12 @@ export const createAccountRoutes = (
 
             if (rows.length > 0) {
               await revokeDeviceSessions(tx, params.id, userId)
+              await insertAuditEvent(tx, {
+                action: 'auth.session_revoked',
+                outcome: 'success',
+                actor: { type: 'user', id: userId },
+                target: { type: 'device', id: params.id },
+              })
             }
           }),
         )
@@ -434,6 +447,12 @@ export const createAccountRoutes = (
           // The account and its single-use authorization commit together.
           await deleteUser(tx, user.id)
           await consumeStepUpOtp(tx, stepUpAction, user.email)
+          await insertAuditEvent(tx, {
+            action: 'account.deleted',
+            outcome: 'success',
+            actor: { type: 'user', id: user.id },
+            target: { type: 'user', id: user.id },
+          })
           return null
         })
         if (refusal) {

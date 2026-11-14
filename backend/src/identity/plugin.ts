@@ -19,6 +19,8 @@ import {
 import { admitAtSignIn } from './admission'
 import { createAuditEvent } from './audit/write'
 import { identityPluginSchema } from './plugin-schema'
+import { getScimActor } from './scim/actor'
+import { scimPathPrefix, sessionEndEvent } from './session-audit'
 import { didIdpDenyEmailVerified, getSsoConnection, otpSignInPath, passkeySignInPath, type SignInUser } from './sign-in'
 import { recordFailedSignIn, signInEvent, signInFailureReason, signInPaths } from './sign-in-audit'
 
@@ -44,8 +46,8 @@ type SignInUserRow = SignInUser & { isAnonymous: boolean | null }
 type SessionResult = { user?: { id: string; isAnonymous?: boolean | null } } | null | undefined
 
 /**
- * Organization identity for Better Auth. Declares the identity tables to the adapter, and
- * enforces membership:
+ * Organization identity for Better Auth. Declares the identity tables to the adapter, audits
+ * sign-ins and session ends, and enforces membership:
  * - at sign-in, before any session is created: admit the user if a rule allows, then refuse a
  *   member without access (blocked, deprovisioned by their IdP, or with no live source), and an
  *   IdP-managed member signing in by email code or passkey instead of SSO
@@ -122,6 +124,28 @@ export const identity = () => {
                     message: 'Access to this organization is not available',
                     code: accessRefusalCodes[access.reason],
                   })
+                },
+              },
+              // Every session Better Auth deletes: sign-out, revocation, expiry, and the SCIM plugin's
+              // when a user is left with no active source, attributed to the connection. Written in
+              // the deleting transaction. The SCIM lifecycle's own revocation (`lifecycle.ts`)
+              // deletes through the raw adapter, which skips this hook, and records those itself.
+              delete: {
+                before: async (session, context) => {
+                  const adapter = await getCurrentAdapter(context?.context.adapter ?? rootAdapter)
+                  const endpoint = context as { path?: string; operationId?: string } | null
+                  const scimActor = endpoint?.path?.startsWith(scimPathPrefix) ? await getScimActor(adapter) : null
+                  const event = sessionEndEvent(session, endpoint && { ...endpoint, scimActor })
+                  if (!event) {
+                    return
+                  }
+                  const user = await adapter.findOne<{ isAnonymous: boolean | null }>({
+                    model: 'user',
+                    where: [{ field: 'id', value: session.userId }],
+                  })
+                  if (user && !user.isAnonymous) {
+                    await createAuditEvent(adapter, event)
+                  }
                 },
               },
             },

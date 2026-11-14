@@ -235,6 +235,10 @@ describe('SCIM lifecycle', () => {
     // Past authentication before the DELETE: this test's session was never bound to the device.
     expect(await (await requestSyncToken()).json()).toEqual({ code: 'DEVICE_NOT_BOUND' })
 
+    const sessionsBefore = await db
+      .select({ id: sessionTable.id })
+      .from(sessionTable)
+      .where(eq(sessionTable.userId, userId))
     expect((await scim.call('DELETE', `/Users/${scimId}`)).status).toBe(204)
 
     expect(await sourcesOf(userId)).toEqual([
@@ -258,6 +262,7 @@ describe('SCIM lifecycle', () => {
     expect(settings.powersyncTokenExpirySeconds).toBeLessThanOrEqual(300)
 
     expect(await actionsFor(userId)).toEqual([
+      'auth.session_revoked',
       'auth.sign_in',
       'member.admitted',
       'scim.user_created',
@@ -270,11 +275,14 @@ describe('SCIM lifecycle', () => {
       .select()
       .from(auditEvent)
       .where(and(eq(auditEvent.action, 'auth.session_revoked'), eq(auditEvent.connectionId, connection.id)))
+    const [{ id: sessionId }] = sessionsBefore
     expect(revocations).toHaveLength(1)
     expect(revocations[0]).toMatchObject({
       actorType: 'scim_connection',
-      targetType: 'session',
+      targetType: 'user',
+      targetId: userId,
       credentialId: credential.credentialId,
+      metadata: { sessionId },
     })
   })
 

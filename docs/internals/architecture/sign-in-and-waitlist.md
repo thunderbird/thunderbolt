@@ -27,13 +27,13 @@ POST /v1/api/auth/sign-in/email-otp   { email, otp }
 `resolveApproval` ([backend/src/waitlist/routes.ts:63-103](../../../backend/src/waitlist/routes.ts)) checks in
 a fixed order, and the order is the whole policy.
 
-| Order | Caller                                      | Outcome                                                                                                                                                                 |
-| ----- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1     | An existing `user` row                      | Approved; past the gate once, never re-queued                                                                                                                           |
-| 1     | An address `admitsWithoutWaitlist` allows   | Approved, with no waitlist row. Today that is a `BOOTSTRAP_ADMIN_EMAILS` address ([identity-and-access.md](identity-and-access.md#bootstrap-admin))                     |
-| 2     | A waitlist row with `status = 'approved'`   | Approved                                                                                                                                                                |
-| 3     | A domain in `WAITLIST_AUTO_APPROVE_DOMAINS` | Approved. Missing row created as `approved`, existing `pending` row upgraded in place (`isAutoApprovedDomain`, [utils.tsx:16](../../../backend/src/waitlist/utils.tsx)) |
-| 4     | Anything else                               | Queued. New address: `pending` row plus the "joined" email. Known `pending` address: the "reminder" email                                                               |
+| Order | Caller                                      | Outcome                                                                                                                                                                                                    |
+| ----- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | An existing `user` row                      | Approved; past the gate once, never re-queued                                                                                                                                                              |
+| 1     | An address `admitsWithoutWaitlist` allows   | Approved, with no waitlist row: a `BOOTSTRAP_ADMIN_EMAILS` address, a usable invitation, an enrollable org domain, or open sign-up ([identity-and-access.md](identity-and-access.md#admission-at-sign-in)) |
+| 2     | A waitlist row with `status = 'approved'`   | Approved                                                                                                                                                                                                   |
+| 3     | A domain in `WAITLIST_AUTO_APPROVE_DOMAINS` | Approved. Missing row created as `approved`, existing `pending` row upgraded in place (`isAutoApprovedDomain`, [utils.tsx:16](../../../backend/src/waitlist/utils.tsx))                                    |
+| 4     | Anything else                               | Queued. New address: `pending` row plus the "joined" email. Known `pending` address: the "reminder" email                                                                                                  |
 
 Only the approved branch mints a challenge token and sends the sign-in email
 ([routes.ts:171-178](../../../backend/src/waitlist/routes.ts)).

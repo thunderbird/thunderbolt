@@ -66,6 +66,12 @@ Each entry must equal everything after the `@`, ignoring case, so `example.com` 
 
 To let in one address outside those domains, set its row in the `waitlist` table to `status = 'approved'`. There is no screen or command for this.
 
+| Variable              | Default | What it does                                                                   |
+| --------------------- | ------- | ------------------------------------------------------------------------------ |
+| `OPEN_SIGNUP_ENABLED` | `false` | When `true`, any address that verifies its email gets in without the waitlist. |
+
+Open sign-up skips domains an identity provider claims: people there sign in through that provider.
+
 ### First admin
 
 | Variable                 | Default | What it does                                                                                                                            |
@@ -74,7 +80,7 @@ To let in one address outside those domains, set its row in the `waitlist` table
 
 Each address is granted once. Removing the role later, or removing the email and restarting, does not bring it back; adding a new email grants that address at its next sign-in. If an admin permanently deletes a listed user, the email gets admin again the next time someone signs in with it, so remove an address from the list when its owner leaves. On SSO, the grant trusts the email your IdP sends, unless an OIDC provider says the address is unverified (`email_verified: false`), in which case that sign-in grants nothing.
 
-> `WAITLIST_ENABLED` appears in the packaged Compose, Helm and AWS configurations but has no effect. The waitlist always applies, so `WAITLIST_AUTO_APPROVE_DOMAINS` and the `waitlist` table are the only ways to let new addresses in.
+> `WAITLIST_ENABLED` appears in the packaged Compose, Helm and AWS configurations but has no effect. Unless `OPEN_SIGNUP_ENABLED` is on, the waitlist applies to every new address that has no invitation and isn't on an approved organization domain.
 
 ### OIDC
 

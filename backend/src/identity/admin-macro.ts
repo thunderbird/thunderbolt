@@ -6,6 +6,7 @@ import { type Auth, resolveAuthSession } from '@/auth/elysia-plugin'
 import type { db as DbType } from '@/db/client'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia } from 'elysia'
+import { adminErrorHandler } from './admin/route-helpers'
 import { sessionActor } from './audit/actor'
 import { createAuditBudget, recordFailedAttempt } from './audit/write'
 import { adminRole, getMemberAuthorization } from './roles'
@@ -53,7 +54,11 @@ export const createAdminMacro = (auth: Auth, database: typeof DbType) => {
 
 /**
  * The base every admin route group builds on: each route registered on it requires admin, with
- * no per-route opt-in to forget.
+ * no per-route opt-in to forget, and admin service errors map to their responses.
  */
 export const createAdminRoutes = (name: string, auth: Auth, database: typeof DbType) =>
-  new Elysia({ name }).onError(safeErrorHandler).use(createAdminMacro(auth, database)).guard({ admin: true })
+  new Elysia({ name })
+    .onError(adminErrorHandler)
+    .onError(safeErrorHandler)
+    .use(createAdminMacro(auth, database))
+    .guard({ admin: true })

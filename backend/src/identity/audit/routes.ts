@@ -8,32 +8,19 @@ import { auditEvent } from '@/db/schema'
 import { and, desc, eq, gte, lt, lte, or, type SQL } from 'drizzle-orm'
 import { t } from 'elysia'
 import { createAdminRoutes } from '../admin-macro'
+import { decodeCursor, defaultAdminPageSize, pageQuery, toPage } from '../admin/pagination'
 import { getCurrentOrganizationId } from '../current-organization'
-
-/** The largest page the API returns. There is no export: reading the log in bulk is not offered. */
-export const auditPageMaxSize = 100
-
-const defaultPageSize = 50
 
 type Cursor = { occurredAt: Date; id: string }
 
-/** A page boundary: the last event's time and id, so pages stay stable while events arrive. */
-const encodeCursor = ({ occurredAt, id }: Cursor) =>
-  Buffer.from(JSON.stringify([occurredAt.toISOString(), id])).toString('base64url')
-
-const decodeCursor = (cursor: string): Cursor | null => {
-  try {
-    const [occurredAt, id] = JSON.parse(Buffer.from(cursor, 'base64url').toString()) as [string, string]
-    const date = new Date(occurredAt)
-    return typeof id === 'string' && !Number.isNaN(date.getTime()) ? { occurredAt: date, id } : null
-  } catch {
-    return null
-  }
+const decodeAuditCursor = (cursor: string): Cursor | null => {
+  const [occurredAt, id] = decodeCursor(cursor, 2) ?? []
+  const date = new Date(occurredAt ?? '')
+  return id && !Number.isNaN(date.getTime()) ? { occurredAt: date, id } : null
 }
 
 const auditQuery = t.Object({
-  limit: t.Optional(t.Numeric({ minimum: 1, maximum: auditPageMaxSize })),
-  cursor: t.Optional(t.String()),
+  ...pageQuery,
   action: t.Optional(t.String()),
   outcome: t.Optional(t.Union([t.Literal('success'), t.Literal('failure'), t.Literal('denied')])),
   actorId: t.Optional(t.String()),
@@ -46,13 +33,13 @@ const auditQuery = t.Object({
 
 /**
  * The org's audit log for admins, newest first, one page at a time. Viewing a page is not itself
- * audited.
+ * audited. There is no export: reading the log in bulk is not offered.
  */
 export const createAuditRoutes = (auth: Auth, database: typeof DbType) =>
   createAdminRoutes('audit-routes', auth, database).get(
     '/admin/audit-events',
     async ({ query, set }) => {
-      const cursor = query.cursor ? decodeCursor(query.cursor) : null
+      const cursor = query.cursor ? decodeAuditCursor(query.cursor) : null
       if (query.cursor && !cursor) {
         set.status = 400
         return { code: 'INVALID_CURSOR' }
@@ -75,7 +62,7 @@ export const createAuditRoutes = (auth: Auth, database: typeof DbType) =>
             )
           : undefined,
       ]
-      const limit = query.limit ?? defaultPageSize
+      const limit = query.limit ?? defaultAdminPageSize
       const rows = await database
         .select()
         .from(auditEvent)
@@ -83,9 +70,8 @@ export const createAuditRoutes = (auth: Auth, database: typeof DbType) =>
         .orderBy(desc(auditEvent.occurredAt), desc(auditEvent.id))
         .limit(limit + 1)
 
-      const events = rows.slice(0, limit)
-      const last = events.at(-1)
-      return { events, nextCursor: rows.length > limit && last ? encodeCursor(last) : null }
+      const { items, nextCursor } = toPage(rows, limit, (event) => [event.occurredAt.toISOString(), event.id])
+      return { events: items, nextCursor }
     },
     { query: auditQuery },
   )

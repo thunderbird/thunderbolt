@@ -21,11 +21,12 @@ import { handleSkillSaveError, skillSaveFailedMessage, useCreateSkillTracked } f
 import { initialSkillsViewState, skillsViewReducer, type LeaveIntent } from './skills-view-state'
 import { SkillsList } from './skills-list'
 import { trackSkillEvent } from './telemetry'
-import { useEnabledSkills, useLibrarySkills, usePinnedSkills } from './use-skills'
+import { useEnabledSkills, useLibrarySkills, usePinnedSkills, useStickySkills } from './use-skills'
 
 export const SkillsView = () => {
   const { t } = useLingui()
-  const { skills, updateSkill, softDeleteSkill } = useLibrarySkills()
+  const { skills: visibleSkills, allSkills, updateSkill, softDeleteSkill } = useLibrarySkills()
+  const skills = useStickySkills(visibleSkills, allSkills)
   const createSkillTracked = useCreateSkillTracked()
   // Pinning is managed entirely from the chat composer; we only read
   // `pinnedSet` here to auto-unpin on disable (a disabled skill can't be
@@ -65,7 +66,9 @@ export const SkillsView = () => {
   // No first-skill fallback: the detail panel only opens when the user
   // explicitly selects a skill (or a deep link does), matching the
   // slide-in-from-the-right behavior. `undefined` means "nothing selected".
-  const activeSkill = skills.find((s) => s.id === activeId)
+  // Ids resolve against `allSkills` so a hidden system skill reached from the
+  // palette or a deep link can still be viewed, edited and removed.
+  const activeSkill = allSkills.find((s) => s.id === activeId)
 
   // Disabling a pinned skill auto-unpins it so no inert chip remains.
   const disableSkill = useCallback(
@@ -142,7 +145,7 @@ export const SkillsView = () => {
   const onCreate = () => requestLeave({ type: 'create' })
 
   const onDelete = (id: string) => {
-    const target = skills.find((s) => s.id === id)
+    const target = allSkills.find((s) => s.id === id)
     if (!target) {
       return
     }

@@ -4,6 +4,7 @@
 
 import { useCallback, useMemo, useReducer, type KeyboardEvent, type RefObject } from 'react'
 
+import { isHiddenSystemSkill } from '@/defaults/skills'
 import type { Skill } from '@/types'
 import type { AcpCommand } from '@/acp/translators/acp-to-ai-sdk'
 import {
@@ -181,7 +182,7 @@ export const useSlashCommand = ({
       // the agent-command comparisons below.
       const query = rawQuery.toLowerCase()
       const skillItems: SlashItem[] = library
-        .filter((s) => isEnabled(s.name) && skillMatchesQuery(s, rawQuery))
+        .filter((s) => !isHiddenSystemSkill(s) && isEnabled(s.name) && skillMatchesQuery(s, rawQuery))
         // Slug tiebreak keeps ordering deterministic when two skills share a
         // display name (labels are free text).
         .sort((a, b) => skillDisplayName(a).localeCompare(skillDisplayName(b)) || a.name.localeCompare(b.name))
@@ -194,8 +195,10 @@ export const useSlashCommand = ({
           skill: s,
         }))
       // A skill and an agent command can share a name; the skill wins so the
-      // menu doesn't show two identical `/foo` rows.
-      const skillNames = new Set(skillItems.map((s) => s.name.toLowerCase()))
+      // menu doesn't show two identical `/foo` rows. Hidden system skills count
+      // too: the composer resolves their slug, so a same-named command would
+      // insert a token that runs our skill instead of the agent's command.
+      const skillNames = new Set(library.filter((s) => isEnabled(s.name)).map((s) => s.name.toLowerCase()))
       const commandItems: SlashItem[] = [...agentCommands]
         .filter((c) => c.name.toLowerCase().includes(query) && !skillNames.has(c.name.toLowerCase()))
         .sort((a, b) => a.name.localeCompare(b.name))
@@ -263,7 +266,7 @@ export const useSlashCommand = ({
   )
 
   const hasSuggestions = useMemo(
-    () => agentCommands.length > 0 || library.some((s) => isEnabled(s.name)),
+    () => agentCommands.length > 0 || library.some((s) => !isHiddenSystemSkill(s) && isEnabled(s.name)),
     [agentCommands, library, isEnabled],
   )
 

@@ -284,7 +284,8 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
     })
     const summaryView = useCompactionSummaryState(messages)
 
-    const { skills: library } = useLibrarySkills()
+    // Hidden system skills still resolve when typed, because the agent runs them.
+    const { allSkills: library } = useLibrarySkills()
     const { isEnabled } = useEnabledSkills()
     // Minimal mode treats `/` as ordinary text: no popup, token resolution,
     // highlighting or token-aware editing (resolution is gated in

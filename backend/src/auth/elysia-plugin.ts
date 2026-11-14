@@ -2,8 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { getSettings } from '@/config/settings'
 import type { db as DbType } from '@/db/client'
 import { getDeviceById } from '@/dal/devices'
+import { createSharedLock, isPostgres } from '@/identity/scim/concurrency'
+import { createScimRequestHandler, isScimPath } from '@/identity/scim/request'
+import { extractClientIp } from '@/utils/request'
 import { APIError } from 'better-auth'
 import { Elysia, type AnyElysia } from 'elysia'
 import { type Auth, createAuth } from './auth'
@@ -160,6 +164,14 @@ const isRevokedDeviceSessionCheck = async (database: typeof DbType, request: Req
 /** Create a Better Auth plugin for Elysia with the provided database. */
 export const createBetterAuthPlugin = (database: typeof DbType, ipRateLimit?: AnyElysia) => {
   const auth = createAuth(database)
+  const settings = getSettings()
+  const handleScim = createScimRequestHandler({
+    handler: auth.handler,
+    database,
+    rateLimit: { enabled: settings.rateLimitEnabled },
+    // PGlite runs in one process, where the in-process lock already covers every write.
+    sharedLock: isPostgres(database) ? createSharedLock(database) : undefined,
+  })
 
   const plugin = new Elysia({ name: 'better-auth' })
   if (ipRateLimit) {
@@ -172,11 +184,15 @@ export const createBetterAuthPlugin = (database: typeof DbType, ipRateLimit?: An
   // path like /v1/x/v1/api/auth/sign-in/anonymous reach it and skip the path-keyed limits.
   plugin.all(
     '/api/auth/*',
-    async ({ request, status }) => {
+    async ({ request, status, server }) => {
+      const { pathname } = new URL(request.url)
+      if (isScimPath(pathname)) {
+        const socketIp = server?.requestIP(request)?.address || 'unknown'
+        return handleScim(request, extractClientIp(request.headers, socketIp, settings.trustedProxy))
+      }
       if (await isRevokedDeviceSessionCheck(database, request)) {
         return status(403, { code: 'DEVICE_DISCONNECTED' })
       }
-      const { pathname } = new URL(request.url)
       if (!pathname.includes('/passkey/')) {
         return auth.handler(request)
       }

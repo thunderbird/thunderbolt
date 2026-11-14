@@ -80,6 +80,8 @@ Open sign-up skips domains an identity provider claims: people there sign in thr
 
 Each address is granted once. Removing the role later, or removing the email and restarting, does not bring it back; adding a new email grants that address at its next sign-in. If an admin permanently deletes a listed user, the email gets admin again the next time someone signs in with it, so remove an address from the list when its owner leaves. On SSO, the grant trusts the email your IdP sends, unless an OIDC provider says the address is unverified (`email_verified: false`), in which case that sign-in grants nothing.
 
+On Kubernetes, set these through the chart's `backend.env.openSignupEnabled` and `backend.env.bootstrapAdminEmails`. On Docker Compose, put them in `.env`. The AWS stack doesn't pass them through.
+
 > `WAITLIST_ENABLED` appears in the packaged Compose, Helm and AWS configurations but has no effect. Unless `OPEN_SIGNUP_ENABLED` is on, the waitlist applies to every new address that has no invitation and isn't on an approved organization domain.
 
 ### OIDC

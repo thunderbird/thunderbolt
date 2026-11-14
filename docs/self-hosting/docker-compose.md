@@ -83,6 +83,16 @@ BRANDING='{"appName":"Acme AI","debugTranscriptRecipient":"Acme IT","cssVars":{"
 
 [Branding](./configuration.md#branding) lists every field. `debugTranscriptRecipient` names your team in the copy users see when they share a debug transcript, and defaults to Thunderbolt.
 
+## Name your admins
+
+Nobody is an admin on a new stack. List your admins' addresses in `deploy/.env` and restart; each gets the admin role at its first verified sign-in:
+
+```bash
+BOOTSTRAP_ADMIN_EMAILS=admin@example.com,break-glass@example.com
+```
+
+[Configuration](./configuration.md#first-admin) explains the rules, and [Provisioning](./provisioning.md) how to connect further identity providers.
+
 ## Verify it works
 
 ```bash

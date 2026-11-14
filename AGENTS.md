@@ -125,6 +125,8 @@ Declare the loader in the `routeChunkLoaders` map in `src/app.tsx` and derive th
 | Demo recording/export helpers                           | `bun run test:demo-videos` (prepared Python/FFmpeg environment) |
 | `cli/`                                                   | `cd cli && bun run test`                                     |
 | Playwright specs in `e2e/`                               | `bun run e2e`                                                |
+| Real Keycloak realms, SSO + SCIM (local stack only)      | `bun run test:keycloak` ([guide](docs/internals/development/keycloak-validation.md)) |
+| SCIM initial-sync load test (local, `TEST_POSTGRES_URL`) | `bun run test:scim-load`                                     |
 
 `cli` and `agent-core` are separate path-gated CI jobs, so a change there that you only exercised through `bun run test` has not been tested at all. The backend job runs `src/proxy/ws-e2e.test.ts` and `src/haystack/routes.test.ts` in a segregated step (same-process WebSocket event delivery is flaky under 5× reruns); `bun run test:backend:ws` runs that pair locally. Full details in [docs/internals/development/testing.md](docs/internals/development/testing.md).
 

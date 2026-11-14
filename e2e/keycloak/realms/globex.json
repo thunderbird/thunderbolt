@@ -1,0 +1,52 @@
+{
+  "realm": "globex",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "editUsernameAllowed": true,
+  "bruteForceProtected": false,
+  "eventsListeners": ["jboss-logging", "keycloak-scim-outbound"],
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": false,
+  "groups": [
+    {
+      "id": "00000000-0000-4000-8000-0000000b9100",
+      "name": "Staff"
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "thunderbolt-app",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "globex-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://localhost:8000/v1/api/auth/sso/callback/globex"],
+      "webOrigins": ["http://localhost:1420"],
+      "defaultClientScopes": ["profile", "email"]
+    }
+  ],
+  "users": [
+    {
+      "id": "00000000-0000-4000-8000-0000000b1100",
+      "username": "alice",
+      "email": "alice@globex.test",
+      "firstName": "Alice",
+      "lastName": "Globex",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

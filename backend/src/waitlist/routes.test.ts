@@ -63,6 +63,27 @@ describe('Waitlist API', () => {
       expect(entries[0].status).toBe('pending')
     })
 
+    it('sends a bootstrap admin address a code without touching the waitlist', async () => {
+      process.env.BOOTSTRAP_ADMIN_EMAILS = 'Founder@Example.com'
+      clearSettingsCache()
+      try {
+        const response = await app.handle(
+          new Request('http://localhost/v1/waitlist/join', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: 'founder@example.com' }),
+          }),
+        )
+
+        expect(response.status).toBe(200)
+        expect((await response.json()).challengeToken).toBeString()
+        expect(await db.select().from(waitlist).where(eq(waitlist.email, 'founder@example.com'))).toHaveLength(0)
+      } finally {
+        delete process.env.BOOTSTRAP_ADMIN_EMAILS
+        clearSettingsCache()
+      }
+    })
+
     it('should normalize email to lowercase', async () => {
       const response = await app.handle(
         new Request('http://localhost/v1/waitlist/join', {

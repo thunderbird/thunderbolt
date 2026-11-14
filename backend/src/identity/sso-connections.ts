@@ -115,10 +115,30 @@ export const envSsoProvider = (settings: Settings): SsoProviderRow | null => {
   return null
 }
 
+const parseConfig = (config: string | null | undefined): Record<string, unknown> =>
+  config ? (JSON.parse(config) as Record<string, unknown>) : {}
+
+/**
+ * The provider fields an env change touched, by name (`oidcConfig.clientSecret`): an audit event
+ * names what changed, never a value, so a rotated secret leaves no trace of itself.
+ */
+const changedProviderFields = (stored: SsoProviderRow, next: SsoProviderRow) => {
+  const changed = stored.issuer === next.issuer ? [] : ['issuer']
+  for (const field of ['oidcConfig', 'samlConfig'] as const) {
+    const [before, after] = [parseConfig(stored[field]), parseConfig(next[field])]
+    for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+      if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) {
+        changed.push(`${field}.${key}`)
+      }
+    }
+  }
+  return changed
+}
+
 /**
  * Write the env provider and its connection. Runs at boot, after the implicit organization exists.
  * The env stays authoritative for this one row, so editing it (a rotated client secret) applies on
- * restart; connections an admin created are never touched. The first run also attributes the `sso`
+ * restart, audited as `connection.updated`; connections an admin created are never touched. The first run also attributes the `sso`
  * sources of members who signed in before connections existed to this connection.
  */
 export const ensureEnvSsoConnection = async (database: typeof DbType, settings: Settings) => {
@@ -130,7 +150,13 @@ export const ensureEnvSsoConnection = async (database: typeof DbType, settings: 
 
   await database.transaction(async (tx) => {
     const existing = await tx
-      .select({ id: ssoProvider.id, userId: ssoProvider.userId })
+      .select({
+        id: ssoProvider.id,
+        userId: ssoProvider.userId,
+        issuer: ssoProvider.issuer,
+        oidcConfig: ssoProvider.oidcConfig,
+        samlConfig: ssoProvider.samlConfig,
+      })
       .from(ssoProvider)
       .where(eq(ssoProvider.providerId, envSsoProviderId))
     if (existing.length > 1) {
@@ -162,6 +188,17 @@ export const ensureEnvSsoConnection = async (database: typeof DbType, settings: 
     if (created.length === 0) {
       // The provider row may have been recreated under a new id since.
       await tx.update(identityConnection).set({ ssoProviderId }).where(eq(identityConnection.id, envSsoConnectionId))
+      const changedFields = current ? changedProviderFields(current, provider) : []
+      if (changedFields.length > 0) {
+        await insertAuditEvent(tx, {
+          action: 'connection.updated',
+          outcome: 'success',
+          actor: { type: 'system' },
+          target: { type: 'identity_connection', id: envSsoConnectionId },
+          connectionId: envSsoConnectionId,
+          metadata: { source: 'env', changedFields },
+        })
+      }
       return
     }
     await tx

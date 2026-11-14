@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import { cellCss, hexColor } from './cell-style'
-import { rasterType } from './sheet-image'
+import { rasterType } from '@/office/raster-type'
 
 describe('cellCss', () => {
   it('drops anything in a hostile style that could escape its own CSS value', () => {

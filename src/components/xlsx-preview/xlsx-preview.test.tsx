@@ -329,6 +329,7 @@ describe('the spreadsheet preview', () => {
     const sources = [...container.querySelectorAll('img')].map((img) => img.getAttribute('src') ?? '')
     expect(sources).toHaveLength(1)
     expect(sources[0]).toMatch(/^blob:/)
+    expect(within(screen.getByRole('note')).getByText('2 pictures the preview does not draw')).toBeDefined()
     expect(container.innerHTML).not.toContain(hostileProbeUrl)
     expect('__xlsxProbe' in window).toBe(false)
   })

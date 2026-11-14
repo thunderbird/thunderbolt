@@ -231,6 +231,13 @@ msgid_plural "Imported # rows. The app may take a moment to reflect new chats."
 msgstr[0] "Imported # row. The app may take a moment to reflect new chats."
 msgstr[1] "Imported # rows. The app may take a moment to reflect new chats."
 
+#. js-lingui:icu=%7BundrawnPictures%2C+plural%2C+one+%7B%23+picture+the+preview+does+not+draw%7D+other+%7B%23+pictures+the+preview+does+not+draw%7D%7D&pluralize_on=undrawnPictures
+#: src/components/xlsx-preview/left-out-banner.tsx
+msgid "# picture the preview does not draw"
+msgid_plural "# pictures the preview does not draw"
+msgstr[0] "# picture the preview does not draw"
+msgstr[1] "# pictures the preview does not draw"
+
 #: src/components/context-usage/context-usage-indicator.tsx
 #~ msgid "{usedTokensLabel} of {maxTokensLabel} Context Window"
 #~ msgstr "{usedTokensLabel} of {maxTokensLabel} Context Window"

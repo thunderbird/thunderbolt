@@ -7,6 +7,7 @@ import { strFromU8, unzipSync } from 'fflate'
 import { sandboxLimits, xlsxPreviewLimits } from './constants'
 import type { Excelize, ExcelizeEngine } from './excelize-engine'
 import { columnName, columnNumber, decodeXml, type WorkbookParts } from './formula-cache'
+import { rasterType } from './raster-type'
 import {
   type Anchor,
   attributeText,
@@ -14,11 +15,15 @@ import {
   drawingObjects,
   type DrawingObject,
   expandPoints,
+  lastValue,
+  namePrefix,
   type PlaceholderKind,
   type SeriesData,
   type Stacking,
   scannableXml,
+  visitStartTags,
   workbookParts,
+  type XmlAttribute,
 } from './xlsx-drawings'
 import { WorkbookTooLargeError } from './xlsx-preview-client'
 
@@ -80,6 +85,8 @@ export type SheetLayout = {
   overlays: Overlay[]
   /** Charts and pictures left out, or drawn with only part of their data, by the caps. */
   leftOutObjects: number
+  /** Pictures the preview does not draw: vector ones such as SVG or EMF, and ones whose bytes the file lacks. */
+  undrawnPictures: number
   rtl: boolean
 }
 
@@ -140,46 +147,57 @@ const range = (length: number) => Array.from({ length }, (_, i) => i)
 
 const clamp = (value: number, max: number) => Math.min(max, Math.max(0, value))
 
-// Each pattern stops at the next `<`, so a scan stays linear on any input. Attribute values may use single or double
-// quotes, as XML allows, and may hold a `>`.
-const sheetTagPattern = new RegExp(String.raw`<(?:[\w.-]+:)?(row|c)\b(${attributeText})>`, 'g')
+// The notice scans' patterns stop at the next `<`, so each stays linear on any input. Attribute values may use single
+// or double quotes, as XML allows, and may hold a `>`.
 
-const attributePattern = (name: string) => new RegExp(`(?:^|\\s)${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`)
+const sheetTags = new Set(['row', 'c'])
 
-const refAttribute = attributePattern('r')
-const styleAttribute = attributePattern('s')
-const heightAttribute = attributePattern('ht')
+// Excel's last row and column, XFD.
+const maxRow = 1_048_576
+const maxColumn = 16_384
 
-const readAttribute = (attributes: string, pattern: RegExp) => {
-  const match = pattern.exec(attributes)
-  return match ? (match[1] ?? match[2]) : undefined
+/** A row's `r`, which must be written as Excel writes it: Excelize reads other spellings the scan would not. */
+const rowNumber = (ref: string) => {
+  const row = /^[1-9][0-9]*$/.test(ref) ? Number(ref) : 0
+  if (row < 1 || row > maxRow) {
+    throw new Error('A row of the workbook has a reference Excel never writes.')
+  }
+  return row
+}
+
+/** A cell's `r`, which must be written as Excel writes it, such as `B12`: not `b12`, `$B$12` or `B+12`. */
+const cellReference = (ref: string) => {
+  const [, letters, digits] = /^([A-Z]{1,3})([1-9][0-9]*)$/.exec(ref) ?? []
+  const col = letters ? columnNumber(letters) : 0
+  const row = digits ? Number(digits) : 0
+  if (col < 1 || col > maxColumn || row < 1 || row > maxRow) {
+    throw new Error('A cell of the workbook has a reference Excel never writes.')
+  }
+  return { row, col }
 }
 
 /**
  * Visit a sheet part's row and cell tags in order, numbering those written without an `r` as Excel does: a row after
- * the last, a cell after the one before it. Either callback returns false to stop.
+ * the last, a cell after the one before it. Attributes are read as Excelize reads them, by local name with the last
+ * one winning, and a reference Excel would not write refuses the workbook. Either callback returns false to stop.
  */
 const visitSheet = (
   xml: string,
-  onRow: (row: number, attributes: string) => boolean,
-  onCell: (row: number, col: number, attributes: string) => boolean,
+  onRow: (row: number, attributes: XmlAttribute[]) => boolean,
+  onCell: (row: number, col: number, attributes: XmlAttribute[]) => boolean,
 ) => {
   const position = { row: 0, col: 0 }
-  for (const [, tag, attributes] of xml.matchAll(sheetTagPattern)) {
+  visitStartTags(xml, sheetTags, (tag, attributes) => {
+    const ref = lastValue(attributes, 'r')
     if (tag === 'row') {
-      position.row = Number(readAttribute(attributes, refAttribute)) || position.row + 1
+      position.row = ref === undefined ? position.row + 1 : rowNumber(ref)
       position.col = 0
-      if (!onRow(position.row, attributes)) {
-        return
-      }
-      continue
+      return onRow(position.row, attributes)
     }
-    const [, letters, digits] = /^([A-Z]{1,3})(\d+)$/.exec(readAttribute(attributes, refAttribute) ?? '') ?? []
-    position.col = letters ? columnNumber(letters) : position.col + 1
-    if (!onCell(digits ? Number(digits) : position.row, position.col, attributes)) {
-      return
-    }
-  }
+    const cell = ref === undefined ? { row: position.row, col: position.col + 1 } : cellReference(ref)
+    position.col = cell.col
+    return onCell(cell.row, cell.col, attributes)
+  })
 }
 
 /**
@@ -215,11 +233,11 @@ const scanCells = (xml: string, maxCells: number) => {
  * self-closing one holds nothing.
  */
 const sheetDataOf = (xml: string) => {
-  const open = new RegExp(String.raw`<(?:[\w.-]+:)?sheetData\b${attributeText}>`).exec(xml)
+  const open = new RegExp(String.raw`<${namePrefix}sheetData(?=[\s/>])${attributeText}>`).exec(xml)
   if (!open || open[0].endsWith('/>')) {
     return ''
   }
-  const end = xml.search(/<\/(?:[\w.-]+:)?sheetData>/)
+  const end = xml.search(new RegExp(String.raw`</${namePrefix}sheetData\s*>`))
   return xml.slice(open.index, end === -1 ? undefined : end)
 }
 
@@ -227,20 +245,21 @@ const sheetDataOf = (xml: string) => {
 const missingResults = (xml: string) =>
   sheetDataOf(xml).match(
     new RegExp(
-      String.raw`<(?:[\w.-]+:)?f\b${attributeText}(?:\/>|>[^<]*<\/(?:[\w.-]+:)?f>)(?!\s*<(?:[\w.-]+:)?v\b)`,
+      String.raw`<${namePrefix}f(?=[\s/>])${attributeText}(?:\/>|>[^<]*</${namePrefix}f\s*>)(?!\s*<${namePrefix}v(?=[\s/>]))`,
       'g',
     ),
   )?.length ?? 0
 
-const countMerges = (xml: string) => xml.match(/<(?:[\w.-]+:)?mergeCell\b/g)?.length ?? 0
+const countMerges = (xml: string) =>
+  xml.match(new RegExp(String.raw`<${namePrefix}mergeCell(?=[\s/>])`, 'g'))?.length ?? 0
 
-const hasElement = (xml: string, name: string) => new RegExp(`<(?:[\\w.-]+:)?${name}\\b`).test(xml)
+const hasElement = (xml: string, name: string) => new RegExp(String.raw`<${namePrefix}${name}(?=[\s/>])`).test(xml)
 
 /** True when an inline string or a saved result in a sheet part is longer than `limit` characters. */
 const hasLongText = (xml: string, limit: number) =>
-  [...xml.matchAll(new RegExp(String.raw`<(?:[\w.-]+:)?[tv]\b${attributeText}>([^<]{${limit + 1},})<`, 'g'))].some(
-    ([, text]) => decodeXml(text).length > limit,
-  )
+  [
+    ...xml.matchAll(new RegExp(String.raw`<${namePrefix}[tv](?=[\s/>])${attributeText}>([^<]{${limit + 1},})<`, 'g')),
+  ].some(([, text]) => decodeXml(text).length > limit)
 
 /**
  * The largest font size in each row with no stored height, by zero-based row: Excel sizes such a row to its largest
@@ -253,11 +272,11 @@ const largestFonts = (xml: string, fontSize: (style: number) => number) => {
   visitSheet(
     xml,
     (_, attributes) => {
-      row.sized = readAttribute(attributes, heightAttribute) !== undefined
+      row.sized = lastValue(attributes, 'ht') !== undefined
       return true
     },
     (cellRow, _, attributes) => {
-      const style = readAttribute(attributes, styleAttribute)
+      const style = lastValue(attributes, 's')
       if (!row.sized && style !== undefined) {
         largest.set(cellRow - 1, Math.max(largest.get(cellRow - 1) ?? 0, fontSize(Number(style))))
       }
@@ -581,8 +600,10 @@ export const openPreviewWorkbook = (
     const top = edgeOf(rowHeights, shownRows, defaultRowPixels)
     const [gridWidth, gridHeight] = [left(colCount), top(rowCount)]
     // Charts and pictures past the last row or column shown, or past the most one sheet draws, are counted as left
-    // out. The sheet's charts share one budget of values.
-    const drawable = objects.filter(({ type }) => type !== 'shape')
+    // out. The sheet's charts share one budget of values. A picture that is no raster image, or whose bytes the file
+    // does not hold, is counted apart: the preview draws none of them.
+    const chartsAndPictures = objects.filter(({ type }) => type !== 'shape')
+    const drawable = chartsAndPictures.filter((object) => object.type !== 'image' || rasterType(object.bytes))
     const { placed } = drawable
       .filter(({ anchor }) => anchor.from.row < rowCount && anchor.from.col < colCount)
       .slice(0, maxOverlays)
@@ -607,6 +628,7 @@ export const openPreviewWorkbook = (
       merges,
       overlays: placed.map(({ overlay }) => overlay),
       leftOutObjects: drawable.length - placed.length + placed.filter(({ cut }) => cut).length,
+      undrawnPictures: chartsAndPictures.length - drawable.length,
       rtl: file.GetSheetView(name, -1).opts?.RightToLeft ?? false,
     } satisfies SheetLayout
     layouts.set(index, layout)

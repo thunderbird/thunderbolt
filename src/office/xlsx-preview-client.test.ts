@@ -46,6 +46,7 @@ const layout = {
   merges: [],
   overlays: [],
   leftOutObjects: 0,
+  undrawnPictures: 0,
   rtl: false,
 }
 

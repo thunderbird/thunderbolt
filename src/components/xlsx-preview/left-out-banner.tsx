@@ -25,12 +25,20 @@ export const LeftOutBanner = ({ overview, layout }: LeftOutBannerProps) => {
   const { leftOut, sheets } = overview
   const { rows: maxRows, columns: maxCols, cellChars } = xlsxPreviewLimits
   const leftOutObjects = layout?.leftOutObjects ?? 0
+  const undrawnPictures = layout?.undrawnPictures ?? 0
   const notes: [boolean, string][] = [
     [
       leftOutObjects > 0,
       plural(leftOutObjects, {
         one: '# chart or picture not shown in full',
         other: '# charts or pictures not shown in full',
+      }),
+    ],
+    [
+      undrawnPictures > 0,
+      plural(undrawnPictures, {
+        one: '# picture the preview does not draw',
+        other: '# pictures the preview does not draw',
       }),
     ],
     [leftOut.hiddenSheets > 0, plural(leftOut.hiddenSheets, { one: '# hidden sheet', other: '# hidden sheets' })],

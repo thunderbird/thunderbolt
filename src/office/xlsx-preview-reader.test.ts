@@ -251,8 +251,10 @@ describe('the spreadsheet preview reader', () => {
     expect(cells.find(({ text }) => text === 'click me')).toMatchObject({ link: true })
     const long = cells.find(({ text }) => text.startsWith('LLL'))
     expect(long?.text).toBe(`${longestCellText.slice(0, xlsxPreviewLimits.cellChars)}…`)
-    // The PNG and the embedded SVG come back as bytes; the linked picture is not there at all.
-    expect(layout.overlays.filter(({ type }) => type === 'image')).toHaveLength(2)
+    // Only the PNG comes back as bytes. The embedded SVG and the linked picture, which has no bytes in the file, are
+    // counted for the notice instead.
+    expect(layout.overlays.filter(({ type }) => type === 'image')).toHaveLength(1)
+    expect(layout.undrawnPictures).toBe(2)
     const sent = JSON.stringify({ layout: { ...layout, overlays: layout.overlays.length }, rows })
     expect(sent).not.toContain(hostileProbeUrl)
     expect(sent).not.toContain('javascript:')
@@ -901,6 +903,9 @@ describe('the spreadsheet preview reader on adversarial workbooks', () => {
     // A quoted `>` does not end the tag, so the reference after it still counts: 12 rows reaching column T pass 200.
     const quoted = (row: number) => `<row r="${row}"><c note="?>" r="T${row}"><v>1</v></c></row>`
     expect(tooLargeOf(Array.from({ length: 12 }, (_, i) => quoted(i + 1)).join(''))).toBe(true)
+    // A reference written inside another attribute's value is not the cell's own.
+    const hidden = (row: number) => `<row r="${row}"><c note=' r="A${row}"' r="T${row}"><v>1</v></c></row>`
+    expect(tooLargeOf(Array.from({ length: 12 }, (_, i) => hidden(i + 1)).join(''))).toBe(true)
   })
 
   it.each([
@@ -922,5 +927,104 @@ describe('the spreadsheet preview reader on adversarial workbooks', () => {
 
     expect(error).toBeInstanceOf(Error)
     expect(error).not.toBeInstanceOf(WorkbookTooLargeError)
+  })
+
+  // Twice 10 × 10 is 200 cells: each case below passes it only if read as Excelize reads it.
+  const smallLimits = { ...xlsxPreviewLimits, rows: 10, columns: 10 }
+  const tooLargeOf = (bytes: Uint8Array) =>
+    openPreviewWorkbook(excelize, bytes, smallLimits).overview.sheets[0].tooLarge
+  /** Twelve rows, each holding the cell `cell` writes for it: reaching column T, they pass 200. */
+  const twelveRows = (cell: (row: number) => string) =>
+    Array.from({ length: 12 }, (_, i) => `<row r="${i + 1}">${cell(i + 1)}</row>`).join('')
+
+  it('reads cell and row attributes as Excelize does: the last of a repeat, any prefix, references decoded', () => {
+    expect(tooLargeOf(withSheetData(twelveRows((row) => `<c r="A${row}" r="T${row}"><v>1</v></c>`)))).toBe(true)
+    expect(
+      tooLargeOf(withSheetData(twelveRows((row) => `<c r="A${row}" xmlns:x="urn:x" x:r="T${row}"><v>1</v></c>`))),
+    ).toBe(true)
+    expect(tooLargeOf(withSheetData('<row r="1"><c r="&#88;FD1"><v>1</v></c></row>'))).toBe(true)
+    expect(tooLargeOf(withSheetData('<row r="&#50;01"><c><v>1</v></c></row>'))).toBe(true)
+    // A row and a cell under a Unicode prefix are still a row and a cell.
+    expect(tooLargeOf(withSheetData('<é:row xmlns:é="urn:x" r="201"><é:c r="A201"><v>1</v></é:c></é:row>'))).toBe(true)
+    // Megabytes of whitespace inside a tag do not hide its column-200 reference.
+    expect(tooLargeOf(withSheetData(`<row r="1"><c r="GR1"${' '.repeat(2_097_152)}><v>1</v></c></row>`))).toBe(true)
+  })
+
+  it.each([['xfd1'], ['$XFD$1'], ['XFD+1'], ['XFE1'], ['A0'], ['A1048577']])(
+    'refuses as damaged a cell reference written %s, which Excel never writes and Excelize reads anyway',
+    (ref) => {
+      expect(() => openPreviewWorkbook(excelize, withSheetData(`<row r="1"><c r="${ref}"><v>1</v></c></row>`))).toThrow(
+        'Excel never writes',
+      )
+    },
+  )
+
+  it('refuses as damaged a row reference that is not a plain row number', () => {
+    expect(() => openPreviewWorkbook(excelize, withSheetData('<row r="+5"><c><v>1</v></c></row>'))).toThrow(
+      'Excel never writes',
+    )
+  })
+
+  const relationshipType = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet'
+
+  /** A one-sheet workbook whose sheet holds XFD1, an empty decoy sheet as `rIdFake`, and its `workbook.xml` rewritten. */
+  const routed = (rewriteWorkbook: (xml: string) => string) => {
+    const f = excelize.NewFile()
+    settle(f.SetCellValue('Sheet1', 'XFD1', 42))
+    const parts = unzipSync(saveWorkbook(f))
+    const [workbookXml, rels] = ['xl/workbook.xml', 'xl/_rels/workbook.xml.rels']
+    const decoy = `<Relationship Id="rIdFake" Type="${relationshipType}" Target="worksheets/decoy.xml"/></Relationships>`
+    return zipSync({
+      ...parts,
+      'xl/worksheets/decoy.xml': strToU8(
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData/></worksheet>',
+      ),
+      [workbookXml]: strToU8(rewriteWorkbook(strFromU8(parts[workbookXml]))),
+      [rels]: strToU8(strFromU8(parts[rels]).replace('</Relationships>', decoy)),
+    })
+  }
+
+  it('routes a sheet by the id in the relationships namespace, not by another prefix’s id', () => {
+    const decoyed = routed((xml) => xml.replace(/r:id="[^"]*"/, (id) => `${id} xmlns:x="urn:x" x:id="rIdFake"`))
+
+    // Excelize reads the real sheet, with its cell at XFD1, not the empty decoy.
+    expect(tooLargeOf(decoyed)).toBe(true)
+  })
+
+  it('refuses a sheet whose id prefix the workbook does not declare, or that names its part twice', () => {
+    const undeclared = routed((xml) => xml.replace(/r:id="[^"]*"/, (id) => `${id} y:id="rIdFake"`))
+    const twice = routed((xml) =>
+      xml.replace(
+        /r:id="[^"]*"/,
+        (id) => `${id} xmlns:z="${relationshipType.replace('/worksheet', '')}" z:id="rIdFake"`,
+      ),
+    )
+
+    expect(() => openPreviewWorkbook(excelize, undeclared)).toThrow('does not declare')
+    expect(() => openPreviewWorkbook(excelize, twice)).toThrow('names its part twice')
+  })
+
+  it('reads a relationship’s target by local name, so an `x:Target` after `Target` is the part Excelize reads', () => {
+    const f = excelize.NewFile()
+    settle(f.SetCellValue('Sheet1', 'A1', 1))
+    const parts = unzipSync(saveWorkbook(f))
+    const rels = 'xl/_rels/workbook.xml.rels'
+    const bytes = zipSync({
+      ...parts,
+      'xl/worksheets/big.xml': strToU8(
+        strFromU8(parts['xl/worksheets/sheet1.xml']).replace(
+          /<sheetData>[\s\S]*<\/sheetData>/,
+          '<sheetData><row r="1"><c r="XFD1"><v>1</v></c></row></sheetData>',
+        ),
+      ),
+      [rels]: strToU8(
+        strFromU8(parts[rels]).replace(
+          /(Target="[^"]*sheet1\.xml")/,
+          '$1 xmlns:x="urn:x" x:Target="worksheets/big.xml"',
+        ),
+      ),
+    })
+
+    expect(tooLargeOf(bytes)).toBe(true)
   })
 })

@@ -279,31 +279,156 @@ export const scannableXml = (xml: string) => {
   return kept.join('')
 }
 
-/** The attribute text of each `name` tag in a part. */
-const tagsIn = (xml: string, name: string) =>
-  [...xml.matchAll(new RegExp(String.raw`<(?:[\w.-]+:)?${name}\b(${attributeText})>`, 'g'))].map(
-    ([, attributes]) => attributes,
-  )
+/**
+ * A tag name's optional namespace prefix for the scans' patterns: any run of characters but whitespace and
+ * `<>/:!?="'`, then a colon, so a Unicode prefix such as `é:` matches as Go's encoding/xml reads it.
+ */
+export const namePrefix = String.raw`(?:[^\s<>/:!?="']+:)?`
 
-/** An attribute's value in a tag's attribute text, in either quote style, its references resolved. */
-const attributeIn = (attributes: string, name: string) => {
-  const [, double, single] = new RegExp(`(?:^|\\s)${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`).exec(attributes) ?? []
-  const value = double ?? single
-  return value === undefined ? undefined : decodeXml(value)
+/** An attribute as Go's encoding/xml reads it: its prefix, empty when it has none, its local name and decoded value. */
+export type XmlAttribute = { prefix: string; local: string; value: string }
+
+const isSpace = (char: string) => char === ' ' || char === '\t' || char === '\n' || char === '\r'
+
+/** A qualified name split as Go splits it: on its one colon, when both sides are there; otherwise it is all local. */
+const splitName = (name: string) => {
+  const colon = name.indexOf(':')
+  return colon > 0 && colon < name.length - 1 && name.indexOf(':', colon + 1) === -1
+    ? { prefix: name.slice(0, colon), local: name.slice(colon + 1) }
+    : { prefix: '', local: name }
 }
 
 /**
- * The targets of a part's relationships, by id and by type. A relationships part is a flat list, so it is read with a
- * linear scan instead of a DOM: an ordinary sheet with 12,000 links has 2.3 MiB of them.
+ * The attributes of a tag, in order, from the text between its name and its `>`: a character loop, so it stays
+ * linear and has no length limit, which a pattern over megabytes of attribute text does not in JavaScriptCore. A
+ * value is read in either quote style and its references resolved; a name written inside another value is that
+ * value's text. Text that is no attribute, such as the `/` of an empty tag, is skipped.
+ */
+export const readAttributes = (text: string): XmlAttribute[] => {
+  const attributes: XmlAttribute[] = []
+  let at = 0
+  while (at < text.length) {
+    if (isSpace(text[at]) || text[at] === '/') {
+      at += 1
+      continue
+    }
+    const nameStart = at
+    while (at < text.length && !isSpace(text[at]) && text[at] !== '=' && text[at] !== '/') {
+      at += 1
+    }
+    const name = text.slice(nameStart, at)
+    while (at < text.length && isSpace(text[at])) {
+      at += 1
+    }
+    if (text[at] !== '=') {
+      continue
+    }
+    at += 1
+    while (at < text.length && isSpace(text[at])) {
+      at += 1
+    }
+    const quote = text[at]
+    if (quote !== '"' && quote !== "'") {
+      continue
+    }
+    const close = text.indexOf(quote, at + 1)
+    const end = close === -1 ? text.length : close
+    attributes.push({ ...splitName(name), value: decodeXml(text.slice(at + 1, end)) })
+    at = end + 1
+  }
+  return attributes
+}
+
+/** The value of the last attribute with this local name, whatever its prefix: the one Go's encoding/xml keeps. */
+export const lastValue = (attributes: XmlAttribute[], local: string) =>
+  attributes.findLast((attribute) => attribute.local === local)?.value
+
+/**
+ * Visit each start tag of a part whose local name is one of `names`, any prefix, in order, with its attributes.
+ * A character loop finds where each tag ends, a quoted `>` included, so it stays linear whatever the file holds.
+ * `visit` returns false to stop.
+ */
+export const visitStartTags = (
+  xml: string,
+  names: ReadonlySet<string>,
+  visit: (local: string, attributes: XmlAttribute[]) => boolean,
+) => {
+  let at = xml.indexOf('<')
+  while (at !== -1) {
+    let nameEnd = at + 1
+    while (nameEnd < xml.length && !isSpace(xml[nameEnd]) && !'/><'.includes(xml[nameEnd])) {
+      nameEnd += 1
+    }
+    let end = nameEnd
+    while (end < xml.length && xml[end] !== '>' && xml[end] !== '<') {
+      const quote = xml[end]
+      const close = quote === '"' || quote === "'" ? xml.indexOf(quote, end + 1) : end
+      end = close === -1 ? xml.length : close + 1
+    }
+    if (end >= xml.length) {
+      return
+    }
+    // A `<` before the tag's end means no tag started here; the scan goes on from that `<`.
+    if (xml[end] === '<') {
+      at = end
+      continue
+    }
+    const { local } = splitName(xml.slice(at + 1, nameEnd))
+    if (names.has(local) && !visit(local, readAttributes(xml.slice(nameEnd, end)))) {
+      return
+    }
+    at = xml.indexOf('<', end + 1)
+  }
+}
+
+/** The attributes of each start tag of a part with this local name, any prefix. */
+const tagsIn = (xml: string, name: string) => {
+  const tags: XmlAttribute[][] = []
+  visitStartTags(xml, new Set([name]), (_, attributes) => {
+    tags.push(attributes)
+    return true
+  })
+  return tags
+}
+
+/**
+ * The targets of a part's relationships, by id and by type: each read by local name, the last one winning, as
+ * Excelize reads them. A relationships part is a flat list, so it is read with a linear scan instead of a DOM: an
+ * ordinary sheet with 12,000 links has 2.3 MiB of them.
  */
 export const relationshipsOf = (parts: WorkbookParts, part: string) => {
   const slash = part.lastIndexOf('/') + 1
   const rels = parts[`${part.slice(0, slash)}_rels/${part.slice(slash)}.rels`]
   return tagsIn(rels ? scannableXml(strFromU8(rels)) : '', 'Relationship').map((attributes) => ({
-    id: attributeIn(attributes, 'Id'),
-    type: attributeIn(attributes, 'Type') ?? '',
-    target: resolvePart(part, attributeIn(attributes, 'Target') ?? ''),
+    id: lastValue(attributes, 'Id'),
+    type: lastValue(attributes, 'Type') ?? '',
+    target: resolvePart(part, lastValue(attributes, 'Target') ?? ''),
   }))
+}
+
+/** The namespaces a sheet's relationship id is read in: transitional OOXML and strict. */
+const relationshipNamespaces = new Set([ns.r, 'http://purl.oclc.org/ooxml/officeDocument/relationships'])
+
+/** The namespace each prefix a tag declares stands for. */
+const bindingsOf = (attributes: XmlAttribute[]) =>
+  attributes.filter(({ prefix }) => prefix === 'xmlns').map(({ local, value }): [string, string] => [local, value])
+
+/**
+ * A sheet's relationship id, read by namespace as Excelize reads it: the `id` whose prefix the sheet's tag or the
+ * workbook's root binds to the relationships namespace. An `id` whose prefix neither binds, or two that qualify, make
+ * the workbook refused: the preview could not tell which part Excelize reads.
+ */
+const relationshipIdOf = (attributes: XmlAttribute[], rootBindings: [string, string][]) => {
+  const bindings = new Map([...rootBindings, ...bindingsOf(attributes)])
+  const ids = attributes.filter(({ prefix, local }) => local === 'id' && prefix !== '' && prefix !== 'xmlns')
+  if (ids.some(({ prefix }) => !bindings.has(prefix))) {
+    throw new Error('A sheet of the workbook names its part through a prefix the workbook does not declare.')
+  }
+  const routed = ids.filter(({ prefix }) => relationshipNamespaces.has(bindings.get(prefix) ?? ''))
+  if (routed.length > 1) {
+    throw new Error('A sheet of the workbook names its part twice.')
+  }
+  return routed[0]?.value
 }
 
 /**
@@ -319,9 +444,12 @@ export const workbookParts = (parts: WorkbookParts) => {
   if (byId.size < rels.length) {
     throw new Error('The workbook gives one relationship Id to two parts.')
   }
-  const tabs = tagsIn(scannableXml(strFromU8(parts[workbookPart] ?? new Uint8Array())), 'sheet').map((attributes) => ({
-    name: attributeIn(attributes, 'name') ?? '',
-    rel: byId.get(attributeIn(attributes, '[\\w.-]+:id')),
+  const workbookXml = scannableXml(strFromU8(parts[workbookPart] ?? new Uint8Array()))
+  const [root = []] = tagsIn(workbookXml, 'workbook')
+  const rootBindings = bindingsOf(root)
+  const tabs = tagsIn(workbookXml, 'sheet').map((attributes) => ({
+    name: lastValue(attributes, 'name') ?? '',
+    rel: byId.get(relationshipIdOf(attributes, rootBindings)),
   }))
   const names = tabs.map(({ name }) => name)
   if (new Set(names.map((name) => name.toLowerCase())).size < names.length) {
@@ -406,10 +534,10 @@ const contentOf = (
   }
   const picture = first(el, ns.xdr, 'pic')
   if (picture) {
-    // Only bytes inside the file: a linked picture (`r:link`) is never fetched.
+    // Only bytes inside the file: a linked picture (`r:link`) is never fetched, and comes back with none, to be counted.
     const bytes = parts[targetOf(first(picture, ns.a, 'blip')?.getAttributeNS(ns.r, 'embed') ?? null) ?? '']
     const alt = first(picture, ns.xdr, 'cNvPr')?.getAttribute('descr') ?? ''
-    return bytes ? { type: 'image', bytes, alt } : undefined
+    return { type: 'image', bytes: bytes ?? new Uint8Array(), alt }
   }
   return first(el, ns.xdr, 'sp') || first(el, ns.xdr, 'cxnSp') ? { type: 'shape' } : undefined
 }

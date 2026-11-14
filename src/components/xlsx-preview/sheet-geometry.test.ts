@@ -44,6 +44,7 @@ describe('sheetGeometry', () => {
     merges: [{ row: 1, col: 0, rows: 4, cols: 3 }],
     overlays: [],
     leftOutObjects: 0,
+    undrawnPictures: 0,
     rtl: false,
   }
 

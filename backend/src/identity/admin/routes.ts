@@ -8,6 +8,7 @@ import { Elysia } from 'elysia'
 import { createAdmissionAdminRoutes } from './admission-routes'
 import { createConnectionAdminRoutes } from './connections-routes'
 import { createGroupAdminRoutes } from './groups-routes'
+import { createLinkReviewAdminRoutes } from './link-review-routes'
 import { createMemberAdminRoutes } from './members-routes'
 
 /**
@@ -20,3 +21,4 @@ export const createIdentityAdminRoutes = (auth: Auth, database: typeof DbType) =
     .use(createGroupAdminRoutes(auth, database))
     .use(createConnectionAdminRoutes(auth, database))
     .use(createAdmissionAdminRoutes(auth, database))
+    .use(createLinkReviewAdminRoutes(auth, database))

@@ -16,6 +16,7 @@ import { createCorsMiddleware } from '@/config/cors'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { runMigrations } from '@/db/client'
 import { createAuditRoutes } from '@/identity/audit/routes'
+import { createInvitationRoutes } from '@/identity/invitations/routes'
 import { ensureImplicitOrganization } from '@/identity/organization'
 import { resumeScimRetirements } from '@/identity/scim/connections'
 import { createAuth } from '@/auth/auth'
@@ -241,6 +242,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createDeviceApprovalSessionRoutes(auth, database))
       .use(createAccountRoutes(auth, settings, database))
       .use(createAuditRoutes(auth, database))
+      .use(createInvitationRoutes({ database, ipRateLimit: createAuthIpRateLimit(database, ipRateLimitSettings) }))
       .use(createAgentsRoutes(auth))
       .use(createHaystackRoutes(settings, auth, { fetchFn }))
   )

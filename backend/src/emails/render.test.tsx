@@ -12,6 +12,7 @@ import type { StepUpAction } from '@/lib/step-up-otp'
 import { getEmailI18n } from './i18n'
 import { emailLogoUrl } from '@/branding/email-logo'
 import { emailColorsFor } from './email-layout'
+import { InvitationEmail, invitationSubject } from './invitation'
 import { MagicLinkEmail, magicLinkSubject } from './magic-link'
 import { SecurityCodeEmail } from './security-code'
 import { WaitlistJoinedEmail, waitlistJoinedSubject } from './waitlist-joined'
@@ -111,7 +112,27 @@ describe('email rendering', () => {
     expect(html).not.toContain('The Thunderbolt Team')
   })
 
+  describe('invitation', () => {
+    const invitationEmail = (locale: AppLocale) => (
+      <InvitationEmail i18n={getEmailI18n(locale)} inviteUrl="https://example.test/invite/token" />
+    )
+
+    it('renders the accept link and the English source copy', async () => {
+      const html = await renderCopy(invitationEmail('en'))
+
+      expect(html).toContain('href="https://example.test/invite/token"')
+      expect(html).toContain('Accept invitation')
+      expect(html).toContain('This invitation expires in one week.')
+    })
+
+    it('resolves its copy through the catalog, in the recipient’s language', async () => {
+      expect(await renderCopy(invitationEmail('en-XA'))).not.toContain('Accept invitation')
+      expect(await renderCopy(invitationEmail('de'))).toContain('lang="de"')
+    })
+  })
+
   it.each([
+    ['invitation', invitationSubject],
     ['magic link', magicLinkSubject],
     ['waitlist joined', waitlistJoinedSubject],
     ['waitlist not ready', waitlistNotReadySubject],

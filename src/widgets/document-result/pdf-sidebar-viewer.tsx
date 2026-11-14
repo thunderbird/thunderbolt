@@ -4,12 +4,15 @@
 
 import { Trans } from '@lingui/react/macro'
 import { useHttpClient } from '@/contexts'
+import { FileText } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 import { DocumentPreviewFrame } from './document-preview-frame'
+import { DocxPages } from './docx-pages'
 import { type FileType, getFileType } from './file-type'
+import { PreviewNotice } from './preview-notice'
 import { useDocumentBlob, useLocalDocumentBlob, type DocumentBlobState } from './use-document-blob'
 
 // Configure the pdfjs worker via Vite's `new URL(..., import.meta.url)` pattern
@@ -25,9 +28,10 @@ type DocumentPreviewProps = {
 
 /**
  * Presentational document preview for the sideview slot: header + download,
- * react-pdf for PDFs, mammoth-rendered HTML (sandboxed iframe) for DOCX, and a
- * download fallback otherwise. Source-agnostic — the blob lifecycle is resolved
- * by the caller (Haystack-backed or local IndexedDB) and passed in as `state`.
+ * react-pdf for PDFs, a DOCX's pages in a sandboxed frame (or a refusal past the
+ * preview's limits), and a download fallback otherwise. Source-agnostic — the
+ * blob lifecycle is resolved by the caller (Haystack-backed or local IndexedDB)
+ * and passed in as `state`.
  */
 const DocumentPreview = ({ fileName, fileType, state, initialPage }: DocumentPreviewProps) => {
   const [numPages, setNumPages] = useState<number | null>(null)
@@ -49,38 +53,46 @@ const DocumentPreview = ({ fileName, fileType, state, initialPage }: DocumentPre
 
   return (
     <DocumentPreviewFrame fileName={fileName} state={state}>
-      {(ready) => (
-        <div className="flex-1 overflow-auto p-4">
-          {fileType === 'pdf' && (
-            <Document file={ready.blobUrl} onLoadSuccess={onDocumentLoadSuccess} loading={null}>
-              {numPages &&
-                Array.from({ length: numPages }, (_, i) => (
-                  <div key={i + 1} data-page-number={i + 1}>
-                    <Page pageNumber={i + 1} width={500} className="mb-4" />
-                  </div>
-                ))}
-            </Document>
-          )}
-
-          {fileType === 'docx' && ready.docxHtml && (
-            <iframe
-              title={fileName}
-              className="prose prose-sm dark:prose-invert max-w-none w-full h-full border-0"
-              sandbox=""
-              srcDoc={ready.docxHtml}
-            />
-          )}
-
-          {/* A workbook from Haystack has no grid here: only a local one opens in the spreadsheet preview. */}
-          {fileType !== 'pdf' && fileType !== 'docx' && (
-            <div className="flex h-full items-center justify-center">
-              <p className="text-sm text-muted-foreground">
-                <Trans>Preview not available for this file type. Use the download button to view it.</Trans>
-              </p>
-            </div>
-          )}
-        </div>
-      )}
+      {(ready) => {
+        if (ready.docx?.kind === 'pages') {
+          return <DocxPages title={fileName} snapshot={ready.docx} />
+        }
+        if (ready.docx?.kind === 'tooLarge') {
+          return (
+            <PreviewNotice icon={FileText} title={<Trans>This document is too large to preview</Trans>}>
+              <Trans>Download the file to open it in a word processor.</Trans>
+            </PreviewNotice>
+          )
+        }
+        if (ready.docx?.kind === 'unreadable') {
+          return (
+            <PreviewNotice icon={FileText} title={<Trans>This document can't be previewed</Trans>}>
+              <Trans>It may be damaged. Download the file to open it in a word processor.</Trans>
+            </PreviewNotice>
+          )
+        }
+        return (
+          <div className="flex-1 overflow-auto p-4">
+            {fileType === 'pdf' ? (
+              <Document file={ready.blobUrl} onLoadSuccess={onDocumentLoadSuccess} loading={null}>
+                {numPages &&
+                  Array.from({ length: numPages }, (_, i) => (
+                    <div key={i + 1} data-page-number={i + 1}>
+                      <Page pageNumber={i + 1} width={500} className="mb-4" />
+                    </div>
+                  ))}
+              </Document>
+            ) : (
+              // A workbook from Haystack has no grid here: only a local one opens in the spreadsheet preview.
+              <div className="flex h-full items-center justify-center">
+                <p className="text-sm text-muted-foreground">
+                  <Trans>Preview not available for this file type. Use the download button to view it.</Trans>
+                </p>
+              </div>
+            )}
+          </div>
+        )
+      }}
     </DocumentPreviewFrame>
   )
 }

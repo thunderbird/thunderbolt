@@ -5,7 +5,7 @@
 import { Document, HeadingLevel, ImageRun, Packer, Paragraph, Table, TableCell, TableRow } from 'docx'
 
 /** A 1×1 PNG, the picture in {@link sampleDocx}. */
-const pixelPng = Uint8Array.from(
+export const pixelPng = Uint8Array.from(
   atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='),
   (char) => char.charCodeAt(0),
 )

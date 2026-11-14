@@ -2,34 +2,22 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } from 'bun:test'
-import { join } from 'node:path'
 import { ContentViewProvider } from '@/content-view/context'
 import { HttpClientProvider } from '@/contexts'
 import { docxMime } from '@/files/transformers'
-import * as docxToHtmlModule from '@/files/transformers/docx-to-html'
+import * as download from '@/lib/download'
 import * as attachmentStorage from '@/lib/file-blob-storage'
 import { createClient } from '@/lib/http'
-import { bundleForBrowser } from '@/test-utils/bundle-for-browser'
-import { expectSampleDocxPreview } from '@/test-utils/expect-sample-docx-preview'
+import { expectSampleDocxPreview, waitForPreviewFrame } from '@/test-utils/docx-preview'
 import { sampleDocx } from '@/test-utils/sample-docx'
+import { parseXmlWithXmlDom } from '@/test-utils/xml-dom-parser'
 import { getClock } from '@/testing-library'
+import { docxPreviewLimits } from './docx-snapshot'
 import { LocalPdfSidebarViewer, PdfSidebarViewer } from './pdf-sidebar-viewer'
 
 const tick = () => act(async () => void (await getClock().tickAsync(20)))
-
-/** Ticks until the preview frame named `title` holds its document, since the renderer reads the file asynchronously. */
-const previewFrame = async (title: string) => {
-  for (let i = 0; i < 50; i++) {
-    const frame = screen.queryByTitle(title)
-    if (frame instanceof HTMLIFrameElement && frame.srcdoc) {
-      return frame
-    }
-    await tick()
-  }
-  throw new Error(`No preview frame named ${title}`)
-}
 
 const haystackClient = (blob: Blob) =>
   createClient({ prefixUrl: 'https://backend.test', fetch: async () => new Response(blob) })
@@ -70,14 +58,10 @@ describe('PdfSidebarViewer', () => {
 })
 
 describe('DOCX preview in the side panel', () => {
+  parseXmlWithXmlDom()
   let docx: Blob
 
   beforeAll(async () => {
-    // Under Bun mammoth resolves to its Node build, which cannot read an ArrayBuffer; the app ships its browser build.
-    const browser = await bundleForBrowser<typeof docxToHtmlModule>(
-      join(import.meta.dir, '../../files/transformers/docx-to-html.ts'),
-    )
-    spyOn(docxToHtmlModule, 'docxToHtml').mockImplementation(browser.docxToHtml)
     docx = await sampleDocx()
     spyOn(attachmentStorage, 'getAttachment').mockResolvedValue({
       id: 'local-1',
@@ -99,7 +83,7 @@ describe('DOCX preview in the side panel', () => {
       </ContentViewProvider>,
     )
 
-    const frame = await previewFrame('report.docx')
+    const frame = await waitForPreviewFrame(() => screen.queryByTitle('report.docx'))
     expect(frame.getAttribute('sandbox')).toBe('')
     expectSampleDocxPreview(frame.srcdoc)
   })
@@ -113,8 +97,47 @@ describe('DOCX preview in the side panel', () => {
       </HttpClientProvider>,
     )
 
-    const frame = await previewFrame('report.docx')
+    const frame = await waitForPreviewFrame(() => screen.queryByTitle('report.docx'))
     expect(frame.getAttribute('sandbox')).toBe('')
     expectSampleDocxPreview(frame.srcdoc)
+  })
+
+  test('refuses a document past the size limit, and Download still saves it', async () => {
+    const bytes = new Uint8Array(docxPreviewLimits.fileBytes + 1)
+    const save = spyOn(download, 'downloadFile').mockResolvedValue('report.docx')
+    render(
+      <HttpClientProvider httpClient={haystackClient(new Blob([bytes], { type: docxMime }))}>
+        <ContentViewProvider trackEvent={mock()}>
+          <PdfSidebarViewer fileId="file-2" fileName="report.docx" />
+        </ContentViewProvider>
+      </HttpClientProvider>,
+    )
+    for (let i = 0; i < 5; i++) {
+      await tick()
+    }
+
+    expect(screen.getByText('This document is too large to preview')).toBeInTheDocument()
+    expect(screen.queryByTitle('report.docx')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Download' }))
+    await tick()
+    expect(save).toHaveBeenCalledWith({ name: 'report.docx', contents: bytes, mimeType: docxMime })
+  })
+
+  test('says a document it cannot read cannot be previewed, and Download still works', async () => {
+    const logged = spyOn(console, 'error').mockImplementation(() => {})
+    render(
+      <HttpClientProvider httpClient={haystackClient(new Blob(['not a document'], { type: docxMime }))}>
+        <ContentViewProvider trackEvent={mock()}>
+          <PdfSidebarViewer fileId="file-3" fileName="report.docx" />
+        </ContentViewProvider>
+      </HttpClientProvider>,
+    )
+    for (let i = 0; i < 5; i++) {
+      await tick()
+    }
+
+    expect(screen.getByText("This document can't be previewed")).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Download' })).toBeEnabled()
+    expect(logged).toHaveBeenCalledTimes(1)
   })
 })

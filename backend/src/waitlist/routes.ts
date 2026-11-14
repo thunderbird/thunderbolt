@@ -12,6 +12,7 @@ import {
   getWaitlistByEmail,
 } from '@/dal'
 import type { db } from '@/db/client'
+import { admitsWithoutWaitlist } from '@/identity/admission'
 import { normalizeEmail } from '@/lib/email'
 import { resolveEmailLocale } from '@/emails/i18n'
 import type { AppLocale } from '@shared/i18n/locales'
@@ -58,7 +59,8 @@ const sendApprovedMagicLinkEmail = async (auth: Auth, email: string, locale: App
 /**
  * Resolve whether an email is approved to receive an OTP.
  * Handles side effects (creating waitlist entries, sending emails) along the way.
- * Returns true for existing users, approved waitlist entries, and auto-approved domains.
+ * Returns true for existing users, addresses `admitsWithoutWaitlist` lets in, approved waitlist
+ * entries, and auto-approved domains.
  */
 const resolveApproval = async (
   database: typeof db,
@@ -67,7 +69,7 @@ const resolveApproval = async (
   emailService: WaitlistEmailService,
 ): Promise<boolean> => {
   const existingUser = await getUserByEmail(database, email)
-  if (existingUser) {
+  if (existingUser || (await admitsWithoutWaitlist(database, email))) {
     return true
   }
 

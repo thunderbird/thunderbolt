@@ -49,6 +49,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   posthogApiKey: '',
   waitlistEnabled: false,
   waitlistAutoApproveDomains: '',
+  bootstrapAdminEmails: '',
   powersyncUrl: '',
   miniApps: '',
   miniAppTokenExpirySeconds: 300,

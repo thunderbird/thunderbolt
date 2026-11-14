@@ -28,6 +28,9 @@ import { LocalXlsxSidebarViewer } from './local-xlsx-sidebar-viewer'
 // Loaded before any test installs fake timers, because Go's runtime needs real ones to start.
 const engine = await loadTestEngine()
 const { excelize } = engine
+// Built once: every test only reads them.
+const styled = styledWorkbook(excelize)
+const hostile = hostileWorkbook(excelize)
 
 const storedFiles = new Map<string, attachmentStorage.StoredFile>()
 
@@ -113,12 +116,20 @@ describe('the spreadsheet preview', () => {
   const clickDownload = async () => {
     const appended = spyOn(document.body, 'appendChild')
     const click = spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    const before = objectUrls.mock.calls.length
     try {
       fireEvent.click(screen.getByRole('button', { name: 'Download' }))
+      await flush()
       const anchor = appended.mock.calls.map(([node]) => node).find((node) => node instanceof HTMLAnchorElement)
-      const blob = objectUrls.mock.calls[objectUrls.mock.results.findIndex(({ value }) => value === anchor?.href)]?.[0]
+      // The app's saver makes a URL of its own from the bytes, on the click: the preview's URL is not the download.
+      const made = objectUrls.mock.results.findIndex(({ value }, i) => i >= before && value === anchor?.href)
+      const blob = made === -1 ? undefined : objectUrls.mock.calls[made][0]
       expect(click).toHaveBeenCalledTimes(1)
-      return { name: anchor?.download, bytes: blob instanceof Blob ? new Uint8Array(await blob.arrayBuffer()) : null }
+      return {
+        name: anchor?.download,
+        type: blob instanceof Blob ? blob.type : null,
+        bytes: blob instanceof Blob ? new Uint8Array(await blob.arrayBuffer()) : null,
+      }
     } finally {
       appended.mockRestore()
       click.mockRestore()
@@ -126,7 +137,7 @@ describe('the spreadsheet preview', () => {
   }
 
   it('shows a styled workbook as a grid with its visible sheets as tabs', async () => {
-    const { container } = await showWorkbook(styledWorkbook(excelize))
+    const { container } = await showWorkbook(styled)
 
     const grid = screen.getByRole('grid', { name: 'Budget' })
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Budget', 'Notes'])
@@ -146,7 +157,7 @@ describe('the spreadsheet preview', () => {
   })
 
   it('merges cells and keeps the title in the merged range', async () => {
-    await showWorkbook(styledWorkbook(excelize))
+    await showWorkbook(styled)
 
     expect(screen.getAllByText('Q1 budget')).toHaveLength(1)
     const title = screen.getByText('Q1 budget').closest('[role="gridcell"]')
@@ -155,7 +166,7 @@ describe('the spreadsheet preview', () => {
   })
 
   it('draws charts and pictures over the grid, hidden from screen readers, and names each in a list beside it', async () => {
-    await showWorkbook(styledWorkbook(excelize))
+    await showWorkbook(styled)
 
     const grid = screen.getByRole('grid', { name: 'Budget' })
     const chart = [...grid.querySelectorAll('svg')].find((svg) => svg.querySelectorAll('rect').length >= 2)
@@ -172,7 +183,7 @@ describe('the spreadsheet preview', () => {
   })
 
   it('lists what the preview leaves out in one note', async () => {
-    await showWorkbook(styledWorkbook(excelize))
+    await showWorkbook(styled)
 
     const note = screen.getByRole('note')
     const items = within(note)
@@ -187,7 +198,7 @@ describe('the spreadsheet preview', () => {
   })
 
   it('switches sheets from the tabs', async () => {
-    await showWorkbook(styledWorkbook(excelize))
+    await showWorkbook(styled)
 
     fireEvent.click(screen.getByRole('tab', { name: 'Notes' }))
     await flush()
@@ -199,7 +210,7 @@ describe('the spreadsheet preview', () => {
   })
 
   it('moves between sheet tabs with the arrow keys, one tab stop for them all', async () => {
-    await showWorkbook(styledWorkbook(excelize))
+    await showWorkbook(styled)
     const [budget, notes] = screen.getAllByRole('tab')
 
     expect([budget.tabIndex, notes.tabIndex]).toEqual([0, -1])
@@ -214,32 +225,24 @@ describe('the spreadsheet preview', () => {
   })
 
   it('stops at the row and column caps and says how many it shows', async () => {
-    const f = excelize.NewFile()
-    settle(
-      f.SetSheetRow(
-        'Sheet1',
-        'A1',
-        Array.from({ length: 51 }, (_, col) => col),
-      ),
-    )
-    settle(
-      f.SetSheetCol(
-        'Sheet1',
-        'A2',
-        Array.from({ length: 5_000 }, (_, row) => row),
-      ),
-    )
-    await showWorkbook(saveWorkbook(f))
+    // Caps of 20 rows and 5 columns stand in for 5,000 and 50, whose layout costs seconds of Excelize calls a run.
+    const caps = { rows: xlsxPreviewLimits.rows, columns: xlsxPreviewLimits.columns }
+    Object.assign(xlsxPreviewLimits, { rows: 20, columns: 5 })
+    try {
+      await showWorkbook(numberGrid(21, 6))
 
-    const grid = screen.getByRole('grid', { name: 'Sheet1' })
-    expect(grid.getAttribute('aria-rowcount')).toBe(String(xlsxPreviewLimits.rows + 1))
-    expect(grid.getAttribute('aria-colcount')).toBe(String(xlsxPreviewLimits.columns + 1))
-    expect(
-      within(screen.getByRole('note')).getByText('Rows after the first 5,000 in Sheet1, which has 5,001'),
-    ).toBeDefined()
-    expect(
-      within(screen.getByRole('note')).getByText('Columns after the first 50 in Sheet1, which has 51'),
-    ).toBeDefined()
+      const grid = screen.getByRole('grid', { name: 'Sheet1' })
+      expect(grid.getAttribute('aria-rowcount')).toBe('21')
+      expect(grid.getAttribute('aria-colcount')).toBe('6')
+      expect(
+        within(screen.getByRole('note')).getByText('Rows after the first 20 in Sheet1, which has 21'),
+      ).toBeDefined()
+      expect(
+        within(screen.getByRole('note')).getByText('Columns after the first 5 in Sheet1, which has 6'),
+      ).toBeDefined()
+    } finally {
+      Object.assign(xlsxPreviewLimits, caps)
+    }
   })
 
   it('refuses a file over the size limit without starting a Worker, and Download still works', async () => {
@@ -253,7 +256,24 @@ describe('the spreadsheet preview', () => {
     expect(screen.getByText('This workbook is too large to preview')).toBeDefined()
     expect(screen.queryByRole('grid')).toBeNull()
     expect(createClient).not.toHaveBeenCalled()
-    expect(await clickDownload()).toEqual({ name: 'budget.xlsx', bytes })
+    expect(await clickDownload()).toEqual({ name: 'budget.xlsx', type: xlsxMime, bytes })
+  })
+
+  it('says why Download failed, rather than nothing', async () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      await showWorkbook(new Uint8Array(xlsxPreviewLimits.fileBytes + 1))
+      // The app's saver makes its own URL from the bytes; this one fails.
+      objectUrls.mockImplementationOnce(() => {
+        throw new Error('The disk is full.')
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'Download' }))
+      await flush()
+
+      expect(screen.getByRole('alert').textContent).toBe("Couldn't save: The disk is full.")
+    } finally {
+      consoleError.mockRestore()
+    }
   })
 
   it('makes one picture URL for a picture the file places many times', async () => {
@@ -278,7 +298,7 @@ describe('the spreadsheet preview', () => {
   })
 
   it('shows hostile text as text, draws no link and loads no picture from outside the file', async () => {
-    const { container } = await showWorkbook(hostileWorkbook(excelize))
+    const { container } = await showWorkbook(hostile)
 
     const grid = screen.getByRole('grid', { name: '<img src=x onerror=alert(1)>' })
     // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag -- the assertion queries literal text; it inserts no HTML.
@@ -296,7 +316,7 @@ describe('the spreadsheet preview', () => {
   })
 
   it('draws a 32,767-character cell cut to the cell limit, so WebKit still paints the grid', async () => {
-    await showWorkbook(hostileWorkbook(excelize))
+    await showWorkbook(hostile)
 
     const long = screen.getByText((text) => text.startsWith('LLL'))
     expect(long.textContent).toHaveLength(xlsxPreviewLimits.cellChars + 1)
@@ -360,12 +380,12 @@ describe('the spreadsheet preview', () => {
 
   it('keeps every tall merge that reaches into the view mounted, however many there are', async () => {
     const f = excelize.NewFile()
-    const columns = Array.from({ length: 25 }, (_, i) => columnName(i + 1))
+    // One more than the 20 the grid once kept; the merges themselves stretch the grid to row 110.
+    const columns = Array.from({ length: 21 }, (_, i) => columnName(i + 1))
     columns.forEach((col, i) => {
       settle(f.SetCellValue('Sheet1', `${col}${50 + i}`, `M${i}`))
       settle(f.MergeCell('Sheet1', `${col}${50 + i}`, `${col}${90 + i}`))
     })
-    settle(f.SetCellValue('Sheet1', 'A200', 'end'))
     await showWorkbook(saveWorkbook(f))
     const grid = screen.getByRole('grid', { name: 'Sheet1' })
     grid.scrollTop = 1_790
@@ -374,11 +394,11 @@ describe('the spreadsheet preview', () => {
 
     // Row 90 is at the top of the view. Every merge starts above the virtualizer's buffer and still reaches into the
     // view.
-    expect(columns.filter((_, i) => screen.queryByText(`M${i}`))).toHaveLength(25)
+    expect(columns.filter((_, i) => screen.queryByText(`M${i}`))).toHaveLength(21)
   })
 
   it('clips charts and pictures that reach past the grid, so the scroll area does not grow', async () => {
-    await showWorkbook(styledWorkbook(excelize))
+    await showWorkbook(styled)
 
     const content = screen.getByRole('grid', { name: 'Budget' }).firstElementChild
     expect(content?.className).toContain('overflow-clip')
@@ -429,7 +449,7 @@ describe('the spreadsheet preview', () => {
 
       expect(screen.getByText('This workbook is too large to preview')).toBeDefined()
       expect(screen.queryByText("This workbook can't be previewed")).toBeNull()
-      expect(await clickDownload()).toEqual({ name: 'budget.xlsx', bytes })
+      expect(await clickDownload()).toEqual({ name: 'budget.xlsx', type: xlsxMime, bytes })
     } finally {
       consoleError.mockRestore()
     }
@@ -482,7 +502,7 @@ describe('the spreadsheet preview', () => {
       return { ...client, rows: (index, from, to) => (index === 0 ? budgetRows : client.rows(index, from, to)) }
     }
     try {
-      await showWorkbook(styledWorkbook(excelize), slowBudget)
+      await showWorkbook(styled, slowBudget)
       // Rows still being read are marked busy and greyed by a cover, not drawn as empty white cells.
       const loadingCover = '[aria-hidden="true"][class*="bg-[#f3f3f3]"]'
       const rows = screen.getByRole('grid', { name: 'Budget' }).querySelectorAll('[role="row"][aria-rowindex]')
@@ -508,7 +528,7 @@ describe('the spreadsheet preview', () => {
 
   it('says a sheet is too large to preview without reading it, and still shows the others', async () => {
     const createClient = reportingTooLarge([0])
-    await showWorkbook(styledWorkbook(excelize), createClient)
+    await showWorkbook(styled, createClient)
 
     expect(screen.getByText('This sheet is too large to preview')).toBeDefined()
     expect(screen.queryByRole('grid')).toBeNull()
@@ -542,7 +562,7 @@ describe('the spreadsheet preview', () => {
 
   it('stops the Worker once no sheet is small enough to read', async () => {
     const onClose = mock()
-    await showWorkbook(styledWorkbook(excelize), reportingTooLarge([0, 1], onClose))
+    await showWorkbook(styled, reportingTooLarge([0, 1], onClose))
 
     expect(screen.getByText('This sheet is too large to preview')).toBeDefined()
     expect(onClose).toHaveBeenCalledTimes(1)
@@ -578,7 +598,7 @@ describe('the spreadsheet preview', () => {
 
       expect(screen.getByText("This workbook can't be previewed")).toBeDefined()
       expect(onClose).toHaveBeenCalledTimes(1)
-      expect(await clickDownload()).toEqual({ name: 'budget.xlsx', bytes })
+      expect(await clickDownload()).toEqual({ name: 'budget.xlsx', type: xlsxMime, bytes })
     } finally {
       consoleError.mockRestore()
     }

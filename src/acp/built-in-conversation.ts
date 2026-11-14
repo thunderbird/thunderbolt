@@ -154,16 +154,17 @@ const officeMimeTypes = new Set([docxMime, xlsxMime, pptxMime])
 
 /**
  * Label a workspace-backed attachment: where its files live, then its preview. The workspace holds only an Office
- * file's text, so its label also says how the Office script tool, which every turn with a workspace has, reads the
- * original. The label offers it for edits only, because the tool fails a script that saves no file.
+ * file's text, so its label also says the original is stored and how the Office script tool, which every turn with a
+ * workspace has, reads it: only for an edit, because the tool fails a script that saves no file. Measure any change
+ * to this wording on real models: close rewordings changed how often they told the user the file had not arrived.
  */
 const workspaceAttachment = (data: AttachmentData, files: WorkspaceFile[], preview: string): PreparedPart => {
   const paths = files.map((file) => file.path).join(', ')
-  const original = officeMimeTypes.has(data.mimeType)
-    ? `; to edit the original file, ${officeScriptToolName} reads it by its name, "${data.filename}" (the newest file with that name), or by its id, "${data.localFileId}" (this exact file)`
-    : ''
+  const label = officeMimeTypes.has(data.mimeType)
+    ? `[Attachment: ${data.filename} — text copy at ${paths}. The original file is stored too: do not tell the user it did not arrive or ask them to attach it again unless ${officeScriptToolName} cannot find it, and confirming that you have it needs no tool call. Answer from the text copy; only when the user asks to edit it or build a file from it, list "${data.filename}" (newest file with that name) or "${data.localFileId}" (this exact file) in ${officeScriptToolName} inputs]`
+    : `[Attachment: ${data.filename} — saved as ${paths}]`
   return {
-    text: `[Attachment: ${data.filename} — saved as ${paths}${original}]\n\n${previewText(preview)}`,
+    text: `${label}\n\n${previewText(preview)}`,
     images: [],
     files,
   }

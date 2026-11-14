@@ -464,7 +464,7 @@ describe('prepareBuiltInConversation', () => {
       )
 
       expect(prepared.prompt.text).toBe(
-        '[Attachment: photos.docx — saved as attachments/e2/photos.docx.txt; to edit the original file, run_office_script reads it by its name, "photos.docx" (the newest file with that name), or by its id, "e2" (this exact file)]\n\n',
+        '[Attachment: photos.docx — text copy at attachments/e2/photos.docx.txt. The original file is stored too: do not tell the user it did not arrive or ask them to attach it again unless run_office_script cannot find it, and confirming that you have it needs no tool call. Answer from the text copy; only when the user asks to edit it or build a file from it, list "photos.docx" (newest file with that name) or "e2" (this exact file) in run_office_script inputs]\n\n',
       )
       expect(prepared.files).toEqual([{ path: 'attachments/e2/photos.docx.txt', content: '' }])
     })
@@ -532,7 +532,7 @@ describe('prepareBuiltInConversation', () => {
       ])
       expect(prepared.prompt.text).toBe(
         [
-          '[Attachment: budget.xlsx — saved as attachments/x1/Q1.tsv, attachments/x1/Q2_Q3.tsv; to edit the original file, run_office_script reads it by its name, "budget.xlsx" (the newest file with that name), or by its id, "x1" (this exact file)]',
+          '[Attachment: budget.xlsx — text copy at attachments/x1/Q1.tsv, attachments/x1/Q2_Q3.tsv. The original file is stored too: do not tell the user it did not arrive or ask them to attach it again unless run_office_script cannot find it, and confirming that you have it needs no tool call. Answer from the text copy; only when the user asks to edit it or build a file from it, list "budget.xlsx" (newest file with that name) or "x1" (this exact file) in run_office_script inputs]',
           '',
           '## Sheet: Q1',
           'Row 1: Name, Cost',
@@ -594,7 +594,7 @@ describe('prepareBuiltInConversation', () => {
       const prepared = await prepareBuiltInConversation(messages, undefined, workspace, depsFor([file]))
 
       expect(prepared.history[0].text).toBe(
-        `[Attachment: ${filename} — saved as attachments/o1/${filename}.txt; to edit the original file, run_office_script reads it by its name, "${filename}" (the newest file with that name), or by its id, "o1" (this exact file)]\n\nExtracted text\nSummarize it`,
+        `[Attachment: ${filename} — text copy at attachments/o1/${filename}.txt. The original file is stored too: do not tell the user it did not arrive or ask them to attach it again unless run_office_script cannot find it, and confirming that you have it needs no tool call. Answer from the text copy; only when the user asks to edit it or build a file from it, list "${filename}" (newest file with that name) or "o1" (this exact file) in run_office_script inputs]\n\nExtracted text\nSummarize it`,
       )
     })
 

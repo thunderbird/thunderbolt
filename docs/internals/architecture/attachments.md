@@ -133,12 +133,16 @@ aggregates it with `bash`.
   in-memory fallback, or a removed workspace all recover on the next send. A failed write is logged, not fatal.
 - **Office edits read the original bytes.** The workspace holds only the extracted text, so `run_office_script` reads
   an attached `.docx`, `.xlsx` or `.pptx` from IndexedDB by its file name or id. It looks in the workspace only for a name
-  that none of the thread's stored files has ([prompt and tools](prompt-and-tools.md)). The attachment line of an
-  Office file says so: to edit the original, the tool reads it by its name (the newest file with that name) or by its
-  id (that exact file). Without it, a model that sees only the `.txt` copy can decide the original never arrived and
-  ask the user to attach it again. The line mentions edits only, because the tool fails a script that saves no file.
-  A compaction summary drops the line with the rest of its turn; the harness prompt and the tool description, which
-  compaction never touches, still say that an edit reads the original.
+  that none of the thread's stored files has ([prompt and tools](prompt-and-tools.md)).
+- **The label of an Office attachment points at the original.** It calls the workspace file a text copy and says the
+  original is stored too. Then it tells the model not to say the file did not arrive, or to ask for it again, unless
+  the tool cannot find it. The model needs no tool call to confirm it has the file. It answers from the text copy, and
+  lists the file in the tool's inputs only to edit it or build a file from it: by name for the newest file with that
+  name, by id for that exact file. With only `saved as <name>.txt`, models often told the user the original had not arrived.
+  The exception keeps a re-upload possible when the file really is gone, as in a conversation resumed on another
+  device. The wording was compared with close alternatives on real models, so measure any change to it. A compaction
+  summary drops the label with the rest of its turn; the harness prompt and the tool description, which compaction
+  never touches, still say that an edit reads the original.
 - **Tools off means inline.** With no `bash` to query with (`toolUsage === 0`), attachments are inlined whole, as on
   the AI SDK path.
 

@@ -276,7 +276,6 @@ describe('pptxToText', () => {
 
     describe('refuses a part whose nesting the depth check could misread', () => {
       const deep = nest('<x>', '</x>', 300, '')
-      const quotedDeep = deep.replaceAll('"', "'")
       // The prolog goes before the slide's root, and the deep nesting inside it.
       const beforeRoot = (prolog: string) =>
         read(
@@ -285,24 +284,43 @@ describe('pptxToText', () => {
               xml.replace('?>', `?>${prolog}`).replace('</p:spTree>', `${deep}</p:spTree>`),
           }),
         )
+      const tooDeep = 'nests its content more than 256 levels deep'
+      const malformed = 'has malformed XML'
+      const declaration = 'has a document type declaration'
+      // Each case names the refusal it expects, so a case only passes when the check itself caught the trick.
       const cases = {
-        'names outside the Unicode letters': () => onSlide(nest('<\u2160>', '</\u2160>', 300, '')),
-        'names outside the Basic Multilingual Plane': () => onSlide(nest('<\u{10400}>', '</\u{10400}>', 300, '')),
-        'a malformed start tag xmldom reads past': () => onSlide(`<bad "${quotedDeep}">`),
-        'a malformed end tag xmldom reads past': () => onSlide(`<x></x\n "<skip>${quotedDeep}">`),
-        'an attribute with no opening quote, which xmldom only warns about': () =>
-          onSlide(`<x a=foo">${quotedDeep}"></x>`),
-        'an unterminated attribute value': () => onSlide(`<bad attr="${quotedDeep}`),
-        'a document type declaration whose comment holds closing tags': () =>
-          beforeRoot(`<!DOCTYPE p:sld [<!-- > ${'</z>'.repeat(400)} -->]>`),
-        'a document type declaration whose comment holds a quote': () => beforeRoot('<!DOCTYPE p:sld [<!-- " -->]>'),
+        'names outside the Unicode letters': [() => onSlide(nest('<\u2160>', '</\u2160>', 300, '')), tooDeep],
+        'names outside the Basic Multilingual Plane': [
+          () => onSlide(nest('<\u{10400}>', '</\u{10400}>', 300, '')),
+          tooDeep,
+        ],
+        'a malformed start tag xmldom reads past': [() => onSlide(`<bad "${deep}">`), malformed],
+        'a malformed end tag xmldom reads past': [() => onSlide(`<x></x\n "<skip>${deep}">`), malformed],
+        'an attribute with no opening quote, which xmldom only warns about': [
+          () => onSlide(`<x a=foo">${deep}"></x>`),
+          malformed,
+        ],
+        'an unterminated attribute value': [() => onSlide(`<bad attr="${deep}`), malformed],
+        'closing tags with nothing open before deep nesting': [
+          () => onSlide(`${'</z>'.repeat(400)}${deep}`),
+          malformed,
+        ],
+        'a comment that never ends before deep nesting': [() => onSlide(`<!-- ${deep}`), malformed],
+        'a document type declaration whose comment holds closing tags': [
+          () => beforeRoot(`<!DOCTYPE p:sld [<!-- > ${'</z>'.repeat(400)} -->]>`),
+          declaration,
+        ],
+        'a document type declaration whose comment holds a quote': [
+          () => beforeRoot('<!DOCTYPE p:sld [<!-- " -->]>'),
+          declaration,
+        ],
         // Text boxes sit at depth 4, under the slide, its content and its shape tree.
-        'an empty element at depth 257': () => onSlide(`${'<x>'.repeat(253)}<leaf/>${'</x>'.repeat(253)}`),
-      }
+        'an empty element at depth 257': [() => onSlide(`${'<x>'.repeat(253)}<leaf/>${'</x>'.repeat(253)}`), tooDeep],
+      } satisfies Record<string, [() => Promise<{ text: string }>, string]>
 
-      for (const [name, readDeck] of Object.entries(cases)) {
+      for (const [name, [readDeck, refusal]] of Object.entries(cases)) {
         it(name, async () => {
-          await expect(readDeck()).rejects.toThrow()
+          await expect(readDeck()).rejects.toThrow(refusal)
         })
       }
 

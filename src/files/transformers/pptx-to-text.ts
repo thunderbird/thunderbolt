@@ -45,7 +45,12 @@ const unpackXmlParts = (zip: Uint8Array): Parts => {
   }
 }
 
-/** Where the markup that starts at `at` ends: a comment, CDATA, a processing instruction, or a tag or declaration. */
+const malformed = () => new Error('This presentation has malformed XML.')
+
+/**
+ * Where the markup that starts at `at` ends: a comment, CDATA, a processing instruction, or a tag or declaration.
+ * Markup that never ends is refused, so the scan always sees what follows it.
+ */
 const endOfMarkup = (xml: string, at: number) => {
   for (const [open, close] of [
     ['<!--', '-->'],
@@ -54,7 +59,10 @@ const endOfMarkup = (xml: string, at: number) => {
   ]) {
     if (xml.startsWith(open, at)) {
       const end = xml.indexOf(close, at + open.length)
-      return end === -1 ? xml.length : end + close.length
+      if (end === -1) {
+        throw malformed()
+      }
+      return end + close.length
     }
   }
   // A document type declaration can hold comments and quotes this scan would misread, and Office files have none.
@@ -67,7 +75,7 @@ const endOfMarkup = (xml: string, at: number) => {
   for (let index = at + 1; index < xml.length; index++) {
     const char = xml[index]
     if (char === '<') {
-      throw new Error('This presentation has malformed XML.')
+      throw malformed()
     }
     if (quote) {
       quote = char === quote ? '' : quote
@@ -77,7 +85,7 @@ const endOfMarkup = (xml: string, at: number) => {
       return index + 1
     }
   }
-  return xml.length
+  throw malformed()
 }
 
 /**
@@ -93,7 +101,7 @@ const checkDepth = (xml: string) => {
     if (kind === '/') {
       depth -= 1
       if (depth < 0) {
-        throw new Error('This presentation has malformed XML.')
+        throw malformed()
       }
     } else if (kind !== '!' && kind !== '?') {
       depth += 1

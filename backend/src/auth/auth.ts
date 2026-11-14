@@ -584,7 +584,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
             }),
           ]
         : []),
-      ...buildSsoPlugins(settings),
+      ...buildSsoPlugins(settings, database),
       ...buildScimPlugins(settings, database),
     ],
   })

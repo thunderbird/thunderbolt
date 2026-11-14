@@ -274,6 +274,49 @@ describe('pptxToText', () => {
       )
     })
 
+    describe('refuses a part whose nesting the depth check could misread', () => {
+      const deep = nest('<x>', '</x>', 300, '')
+      const quotedDeep = deep.replaceAll('"', "'")
+      // The prolog goes before the slide's root, and the deep nesting inside it.
+      const beforeRoot = (prolog: string) =>
+        read(
+          edited({
+            'ppt/slides/slide2.xml': (xml) =>
+              xml.replace('?>', `?>${prolog}`).replace('</p:spTree>', `${deep}</p:spTree>`),
+          }),
+        )
+      const cases = {
+        'names outside the Unicode letters': () => onSlide(nest('<\u2160>', '</\u2160>', 300, '')),
+        'names outside the Basic Multilingual Plane': () => onSlide(nest('<\u{10400}>', '</\u{10400}>', 300, '')),
+        'a malformed start tag xmldom reads past': () => onSlide(`<bad "${quotedDeep}">`),
+        'a malformed end tag xmldom reads past': () => onSlide(`<x></x\n "<skip>${quotedDeep}">`),
+        'an attribute with no opening quote, which xmldom only warns about': () =>
+          onSlide(`<x a=foo">${quotedDeep}"></x>`),
+        'an unterminated attribute value': () => onSlide(`<bad attr="${quotedDeep}`),
+        'a document type declaration whose comment holds closing tags': () =>
+          beforeRoot(`<!DOCTYPE p:sld [<!-- > ${'</z>'.repeat(400)} -->]>`),
+        'a document type declaration whose comment holds a quote': () => beforeRoot('<!DOCTYPE p:sld [<!-- " -->]>'),
+        // Text boxes sit at depth 4, under the slide, its content and its shape tree.
+        'an empty element at depth 257': () => onSlide(`${'<x>'.repeat(253)}<leaf/>${'</x>'.repeat(253)}`),
+      }
+
+      for (const [name, readDeck] of Object.entries(cases)) {
+        it(name, async () => {
+          await expect(readDeck()).rejects.toThrow()
+        })
+      }
+
+      it('but keeps an empty element at depth 256', async () => {
+        await expect(onSlide(`${'<x>'.repeat(252)}<leaf/>${'</x>'.repeat(252)}`)).resolves.toBeDefined()
+      })
+
+      it('but keeps a shallow element with a name outside the Unicode letters, and `/>` in a quoted value', async () => {
+        const { text } = await onSlide(`<\u2160 a="/>"><y /></\u2160>${inTextBox(`<a:p>${run}</a:p>`)}`)
+
+        expect(count(text)).toBe(payload.length)
+      })
+    })
+
     it('keeps a long run of spaces in a title, in time that grows with its length', async () => {
       const spaces = ' '.repeat(128 * 1024)
       const { text } = await read(

@@ -57,10 +57,18 @@ const endOfMarkup = (xml: string, at: number) => {
       return end === -1 ? xml.length : end + close.length
     }
   }
-  // The first `>` outside a quoted attribute value, which can hold one.
+  // A document type declaration can hold comments and quotes this scan would misread, and Office files have none.
+  if (xml.startsWith('<!DOCTYPE', at)) {
+    throw new Error('This presentation has a document type declaration, which it cannot have.')
+  }
+  // The first `>` outside a quoted attribute value, which can hold one. A `<` cannot appear in a tag, not even in
+  // a quoted value; xmldom recovers from one by reading on, which would hide from this scan what it then parses.
   let quote = ''
   for (let index = at + 1; index < xml.length; index++) {
     const char = xml[index]
+    if (char === '<') {
+      throw new Error('This presentation has malformed XML.')
+    }
     if (quote) {
       quote = char === quote ? '' : quote
     } else if (char === '"' || char === "'") {
@@ -72,17 +80,28 @@ const endOfMarkup = (xml: string, at: number) => {
   return xml.length
 }
 
-/** Throws when an XML part nests elements deeper than {@link maxDepth}. One pass over the text, before any parsing. */
+/**
+ * Throws when an XML part nests elements deeper than {@link maxDepth}, an empty element counting at its own depth.
+ * One pass over the text, before any parsing. Every start tag counts, whatever its name, and a closing tag with
+ * nothing open is refused, so the count cannot drift below what xmldom builds.
+ */
 const checkDepth = (xml: string) => {
   let depth = 0
   for (let at = xml.indexOf('<'); at !== -1; ) {
     const end = endOfMarkup(xml, at)
-    if (xml[at + 1] === '/') {
+    const kind = xml[at + 1]
+    if (kind === '/') {
       depth -= 1
-    } else if (/[\p{L}_:]/u.test(xml[at + 1] ?? '') && xml[end - 2] !== '/') {
+      if (depth < 0) {
+        throw new Error('This presentation has malformed XML.')
+      }
+    } else if (kind !== '!' && kind !== '?') {
       depth += 1
       if (depth > maxDepth) {
         throw new Error(`This presentation nests its content more than ${maxDepth} levels deep, too deep to read.`)
+      }
+      if (xml[end - 2] === '/') {
+        depth -= 1
       }
     }
     at = xml.indexOf('<', end)

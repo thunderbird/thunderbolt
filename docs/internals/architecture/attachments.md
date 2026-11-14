@@ -171,7 +171,10 @@ deck lists it. One walk over each page gives every piece of text a single owner,
 row around it, so text a crafted file nests in many paragraphs, runs or rows is not copied once per level; 256
 nested paragraphs around 4 MiB of text had made a gigabyte. The walk keeps its own stack, and a part nested more
 than 256 levels deep is refused before xmldom parses it, because xmldom slows with the square of the depth when each
-level declares a namespace. Only the XML parts are unpacked, so pictures and video cost nothing.
+level declares a namespace. The depth check counts every start tag, and an empty element at its own depth. It
+refuses a closing tag with nothing open, a `<` inside a tag and a document type declaration: xmldom reads on past
+those, so the check would count less than xmldom builds. Only the XML parts are unpacked, so pictures and video cost
+nothing.
 
 The model gets a message in place of the text when the deck's XML unpacks to over 32 MiB, when it lists more than
 65,535 parts, when a part unpacks to more than it declares ([zip limits](#zip-limits)), when a part nests too deep,

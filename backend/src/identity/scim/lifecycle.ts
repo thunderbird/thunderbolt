@@ -3,15 +3,28 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { deleteEnvelope } from '@/dal/encryption'
-import type { QueryableDatabase } from '@/db/client'
+import type { db as DbType } from '@/db/client'
 import type { membershipSourceStatuses } from '@/db/schema'
-import { queueAfterTransactionHook, tryGetCurrentAuthEndpointContext } from '@better-auth/core/context'
+import {
+  defineRequestState,
+  hasRequestState,
+  queueAfterTransactionHook,
+  tryGetCurrentAuthEndpointContext,
+} from '@better-auth/core/context'
 import type { SCIMIdentity, SCIMIdentityState, SCIMTransactionContext } from '@better-auth/scim'
 import type { DBTransactionAdapter } from 'better-auth'
 import { type AuthAdapter, findMembership, getAccess, type MembershipSourceRow } from '../access'
 import type { AuditAction } from '../audit/events'
 import { createAuditEvent } from '../audit/write'
 import { getCurrentOrganizationId } from '../current-organization'
+import { findApprovedLinkReview, markLinkReviewLinked, recordLinkReview } from '../link-reviews'
+import {
+  findLinkCandidate,
+  hasRecordOnScimConnection,
+  isDomainClaimedByConnection,
+  type LinkTier,
+  linkProfile,
+} from '../linking'
 import { addMembershipSource, createMembership } from '../membership'
 import { getScimActor, type ScimActor, scimAuditEvent } from './actor'
 
@@ -70,6 +83,18 @@ const findConnections = (adapter: Pick<AuthAdapter, 'findMany'>, field: 'id' | '
 const isLiveScimSide = (connection: ScimSideConnection | undefined): connection is ScimSideConnection =>
   connection?.status === 'active' && connection.scimConnectionId !== null
 
+/** The link `resolveUser` chose for this create, recorded by `reconcileUser` once the source exists. */
+type ScimLink = {
+  userId: string
+  identityConnectionId: string
+  tier: Exclude<LinkTier, 'self_service'>
+  reviewId?: string
+}
+
+const scimLinkState = defineRequestState<ScimLink | null>(() => null)
+
+const takeScimLink = async () => ((await hasRequestState()) ? scimLinkState.get() : null)
+
 /** Whether the current request is a PUT or PATCH of a SCIM user, the writes that change a profile. */
 const isUserProfileWrite = () => {
   const endpoint = tryGetCurrentAuthEndpointContext()
@@ -77,10 +102,11 @@ const isUserProfileWrite = () => {
 }
 
 /**
- * The plugin's `identity` callbacks. `database` is the app's Drizzle database, for the one write
- * the auth adapter can't make: envelopes, deleted after the SCIM transaction commits.
+ * The plugin's `identity` callbacks. `database` is the app's Drizzle database, for the writes the
+ * SCIM transaction can't hold: envelopes, deleted after it commits, and a link review, recorded
+ * before a create that is about to be refused.
  */
-export const createScimLifecycle = (database: QueryableDatabase) => {
+export const createScimLifecycle = (database: typeof DbType) => {
   /**
    * End a member's access everywhere it outlives the membership: revoke every device (the same
    * columns `revokeDevice` sets) and delete their sessions and API keys, through the SCIM
@@ -125,16 +151,87 @@ export const createScimLifecycle = (database: QueryableDatabase) => {
   }
 
   /**
-   * `identity.resolveUser` for a SCIM create. Always a new user for now: linking an incoming
-   * identity to an existing one is a separate concern, added here. Refuses a connection whose SCIM
-   * side is not live, which the token check should already have done.
+   * `identity.resolveUser` for a SCIM create, before the plugin's transaction. Links to an existing
+   * user only through an approved review for this `externalId`, or when the email's domain is
+   * verified and claimed by this connection (and the user never had a record on it). Any other
+   * collision with an existing user's email opens a review and returns `create`, which the plugin
+   * refuses with a 409: nothing reaches the existing user until an admin approves and the IdP
+   * retries. Refuses a connection whose SCIM side is not live, which the token check should
+   * already have done.
    */
   const resolveUser: NonNullable<SCIMIdentity['resolveUser']> = async (input, { database: adapter }) => {
     const [connection] = await findConnections(adapter, 'scimConnectionId', [input.connectionId])
     if (!isLiveScimSide(connection)) {
       throw new Error(`SCIM connection ${input.connectionId} has no live identity connection`)
     }
+    const { externalId, primaryEmail, displayName } = input.resource
+    const identityConnectionId = connection.id
+    const approved = externalId ? await findApprovedLinkReview(adapter, { identityConnectionId, externalId }) : null
+    if (approved) {
+      await scimLinkState.set({
+        userId: approved.candidateUserId,
+        identityConnectionId,
+        tier: 'review',
+        reviewId: approved.id,
+      })
+      return {
+        action: 'link',
+        userId: approved.candidateUserId,
+        profile: await linkProfile(adapter, approved.candidateUserId),
+      }
+    }
+    const candidate = await findLinkCandidate(adapter, primaryEmail)
+    if (!candidate) {
+      return { action: 'create' }
+    }
+    if (
+      (await isDomainClaimedByConnection(adapter, primaryEmail, identityConnectionId)) &&
+      !(await hasRecordOnScimConnection(adapter, candidate.id, input.connectionId))
+    ) {
+      await scimLinkState.set({ userId: candidate.id, identityConnectionId, tier: 'domain' })
+      return { action: 'link', userId: candidate.id, profile: await linkProfile(adapter, candidate.id) }
+    }
+    // The plugin requires `externalId` on create only through our pipeline; without one there is
+    // nothing to key a review on, and the create is refused all the same.
+    if (externalId) {
+      const actor = await getScimActor(adapter)
+      await recordLinkReview(
+        database,
+        {
+          identityConnectionId,
+          trigger: 'scim_create_conflict',
+          externalId,
+          incomingEmail: primaryEmail,
+          incomingName: displayName || null,
+          candidateUserId: candidate.id,
+        },
+        {
+          actor: scimConnectionActor(identityConnectionId),
+          credentialId: actor?.identityConnectionId === identityConnectionId ? actor.credentialId : null,
+        },
+      )
+    }
     return { action: 'create' }
+  }
+
+  /** Record the link `resolveUser` chose, once the plugin has attached the new SCIM user to that user. */
+  const recordScimLink = async (
+    adapter: DBTransactionAdapter,
+    actor: ScimActor | null,
+    { userId, connection }: { userId: string; connection: ScimSideConnection },
+  ) => {
+    const link = await takeScimLink()
+    if (!link || link.userId !== userId || link.identityConnectionId !== connection.id) {
+      return
+    }
+    if (link.reviewId) {
+      await markLinkReviewLinked(adapter, link.reviewId)
+    }
+    await recordScimLifecycleEvent(adapter, actor, 'link.created', {
+      connection,
+      target: { type: 'user', id: userId },
+      metadata: { tier: link.tier, ...(link.reviewId ? { reviewId: link.reviewId } : {}) },
+    })
   }
 
   /**
@@ -199,6 +296,7 @@ export const createScimLifecycle = (database: QueryableDatabase) => {
           target,
           metadata: { status },
         })
+        await recordScimLink(adapter, actor, { userId, connection })
         changed.add(connection.id)
         continue
       }

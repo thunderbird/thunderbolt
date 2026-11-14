@@ -28,6 +28,7 @@ describe('provider labels', () => {
       'otari',
       'openai',
       'openrouter',
+      'trustedrouter',
       'anthropic',
       'custom',
     ])

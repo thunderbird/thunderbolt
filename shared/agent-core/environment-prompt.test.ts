@@ -23,6 +23,7 @@ describe('appHarnessEnvironmentPrompt', () => {
   it('names attachments as tab-separated workspace files', () => {
     expect(appHarnessEnvironmentPrompt).toContain('`attachments/`')
     expect(appHarnessEnvironmentPrompt).toContain("`awk -F'\\t'`")
+    expect(appHarnessEnvironmentPrompt).toContain('line N of the file is row N of the sheet')
   })
 
   it('advertises only commands the browser bundle can run', async () => {

@@ -124,6 +124,10 @@ aggregates it with `bash`.
   silently splits a quoted `"Hertz, LLC"` into two columns; tabs and line breaks inside a field become spaces so
   `awk -F'\t'` always sees the original columns. A CSV that doesn't convert cleanly (other delimiters, malformed
   quoting, ragged rows) keeps its original text. Other text (txt/md/json, extracted PDF/DOCX/PPTX) is written as text.
+- **A sheet keeps its row numbers.** A blank row stays in the sheet's `.tsv` as an empty line, so line N is row N,
+  as the harness prompt tells the model. The text the model reads, in the preview or inline, leaves blank rows out and
+  starts every other line with `Row N:`, so the model never counts lines to name a cell. As in the `.tsv`, line breaks
+  inside a cell become spaces, so each row is one line and a truncated preview never ends inside a cell.
 - **History turns use the same shape**, so a harness rebuilt from history cannot overflow on an old attachment either.
 - **IndexedDB stays the source of truth.** The full set is rewritten every send, so a model edit, a reload, the
   in-memory fallback, or a removed workspace all recover on the next send. A failed write is logged, not fatal.

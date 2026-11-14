@@ -97,12 +97,12 @@ const pagesWidth = (wrapper: Element) => {
  * they show as empty boxes. These are the Unicode characters that look the same.
  */
 const fontBullets = new Map([
-  ['', '•'],
-  ['', '▪'],
-  ['', '■'],
-  ['', '❖'],
-  ['', '➢'],
-  ['', '✓'],
+  ['\uF0B7', '\u2022'], // Symbol bullet: •
+  ['\uF0A7', '\u25AA'], // Wingdings small square: ▪
+  ['\uF06E', '\u25A0'], // Wingdings square: ■
+  ['\uF076', '\u2756'], // Wingdings diamond: ❖
+  ['\uF0D8', '\u27A2'], // Wingdings arrowhead: ➢
+  ['\uF0FC', '\u2713'], // Wingdings check mark: ✓
 ])
 const fontBulletPattern = new RegExp(`[${[...fontBullets.keys()].join('')}]`, 'g')
 

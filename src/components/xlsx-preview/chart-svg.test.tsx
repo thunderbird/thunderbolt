@@ -73,4 +73,34 @@ describe('ChartSvg', () => {
     expect([first.height, second.height].every(Number.isFinite)).toBe(true)
     expect(first.height).toBeGreaterThan(0)
   })
+
+  /** The coloured slices of a pie or doughnut, legend swatches and the doughnut's white hole left out. */
+  const drawnSlices = (kind: 'pie' | 'doughnut', values: number[]) => {
+    const chart: Extract<Overlay, { type: 'chart' }> = {
+      ...columns('none'),
+      kind,
+      categories: values.map((_, i) => `C${i}`),
+      series: [{ name: 'Share', values }],
+    }
+    const { container } = render(<ChartSvg chart={chart} style={{}} />)
+    return [...container.querySelectorAll('path, circle')]
+      .filter((slice) => slice.getAttribute('fill') !== '#fff')
+      .map((slice) => ({ element: slice.tagName.toLowerCase(), fill: slice.getAttribute('fill') }))
+  }
+
+  it('draws a pie or doughnut whose one slice is the whole as a full disk in that slice’s colour', () => {
+    for (const kind of ['pie', 'doughnut'] as const) {
+      // The first and the second palette colours: the slice keeps its own index.
+      expect(drawnSlices(kind, [10])).toEqual([{ element: 'circle', fill: '#4472C4' }])
+      expect(drawnSlices(kind, [0, 10, 0])).toEqual([{ element: 'circle', fill: '#ED7D31' }])
+      expect(drawnSlices(kind, [0, 0])).toEqual([])
+    }
+  })
+
+  it('still draws a pie of several slices as slices, leaving out the empty ones', () => {
+    expect(drawnSlices('pie', [1, 0, 3])).toEqual([
+      { element: 'path', fill: '#4472C4' },
+      { element: 'path', fill: '#A5A5A5' },
+    ])
+  })
 })

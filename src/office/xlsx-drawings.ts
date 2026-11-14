@@ -227,6 +227,29 @@ const parseXml = (xml: Uint8Array) => {
   return new DOMParser().parseFromString(strFromU8(xml), 'text/xml').documentElement ?? undefined
 }
 
+/**
+ * A part's text with its XML comments taken out, in one forward pass, so no raw scan counts a tag inside one. A
+ * comment left open runs to the end of the part, as in XML.
+ */
+export const withoutComments = (xml: string) => {
+  if (!xml.includes('<!--')) {
+    return xml
+  }
+  const kept: string[] = []
+  let at = 0
+  while (at < xml.length) {
+    const open = xml.indexOf('<!--', at)
+    if (open === -1) {
+      kept.push(xml.slice(at))
+      break
+    }
+    kept.push(xml.slice(at, open))
+    const close = xml.indexOf('-->', open + 4)
+    at = close === -1 ? xml.length : close + 3
+  }
+  return kept.join('')
+}
+
 /** The attribute text of each `name` tag in a part. A tag ends at the next `<`, so the scan stays linear. */
 const tagsIn = (xml: string, name: string) =>
   [...xml.matchAll(new RegExp(`<(?:[\\w.-]+:)?${name}\\b([^<>]*)>`, 'g'))].map(([, attributes]) => attributes)
@@ -245,7 +268,7 @@ const attributeIn = (attributes: string, name: string) => {
 export const relationshipsOf = (parts: WorkbookParts, part: string) => {
   const slash = part.lastIndexOf('/') + 1
   const rels = parts[`${part.slice(0, slash)}_rels/${part.slice(slash)}.rels`]
-  return tagsIn(rels ? strFromU8(rels) : '', 'Relationship').map((attributes) => ({
+  return tagsIn(rels ? withoutComments(strFromU8(rels)) : '', 'Relationship').map((attributes) => ({
     id: attributeIn(attributes, 'Id'),
     type: attributeIn(attributes, 'Type') ?? '',
     target: resolvePart(part, attributeIn(attributes, 'Target') ?? ''),
@@ -265,10 +288,12 @@ export const workbookParts = (parts: WorkbookParts) => {
   if (byId.size < rels.length) {
     throw new Error('The workbook gives one relationship Id to two parts.')
   }
-  const tabs = tagsIn(strFromU8(parts[workbookPart] ?? new Uint8Array()), 'sheet').map((attributes) => ({
-    name: attributeIn(attributes, 'name') ?? '',
-    rel: byId.get(attributeIn(attributes, '[\\w.-]+:id')),
-  }))
+  const tabs = tagsIn(withoutComments(strFromU8(parts[workbookPart] ?? new Uint8Array())), 'sheet').map(
+    (attributes) => ({
+      name: attributeIn(attributes, 'name') ?? '',
+      rel: byId.get(attributeIn(attributes, '[\\w.-]+:id')),
+    }),
+  )
   const names = tabs.map(({ name }) => name)
   if (new Set(names.map((name) => name.toLowerCase())).size < names.length) {
     throw new Error('The workbook gives two sheets one name.')

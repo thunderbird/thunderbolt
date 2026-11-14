@@ -17,13 +17,23 @@ const colorAt = (index: number) => palette[index % palette.length]
 /** A value kept within what a double holds, so sums of huge values stay finite. */
 const finite = (value: number) => Math.min(Number.MAX_VALUE, Math.max(-Number.MAX_VALUE, value))
 
+/**
+ * A pie's slices, each in its palette colour. An empty slice is skipped, and a slice that is the whole pie is a circle:
+ * an arc that ends where it starts draws nothing.
+ */
 const pieSlices = (values: number[], cx: number, cy: number, radius: number) => {
   // As shares of the largest value, so a total of huge values stays finite.
   const largest = values.reduce((most, value) => Math.max(most, value), 0) || 1
   const shares = values.map((value) => Math.max(0, value) / largest)
-  const total = shares.reduce((sum, share) => sum + share, 0) || 1
+  const total = shares.reduce((sum, share) => sum + share, 0)
   const angle = { at: -Math.PI / 2 }
   return shares.map((share, i) => {
+    if (share === 0) {
+      return null
+    }
+    if (share === total) {
+      return <circle key={i} cx={cx} cy={cy} r={radius} fill={colorAt(i)} />
+    }
     const start = angle.at
     const end = start + (share / total) * Math.PI * 2
     angle.at = end

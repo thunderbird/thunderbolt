@@ -20,6 +20,8 @@ import {
 
 const engine = await loadTestEngine()
 const { excelize } = engine
+// Built once: every test only reads it.
+const styled = styledWorkbook(excelize)
 
 const fixture = async (name: string) =>
   new Uint8Array(await Bun.file(new URL(`./test-fixtures/${name}`, import.meta.url)).arrayBuffer())
@@ -33,7 +35,7 @@ const patched = (file: ExcelizeFile, part: string, rewrite: (xml: string) => str
 
 describe('the spreadsheet preview reader', () => {
   it('lists the visible sheets with their used size, and what the preview leaves out', () => {
-    const { overview } = openPreviewWorkbook(excelize, styledWorkbook(excelize))
+    const { overview } = openPreviewWorkbook(excelize, styled)
 
     expect(overview.sheets).toEqual([
       { name: 'Budget', rows: 7, cols: 5, tooLarge: false },
@@ -52,7 +54,7 @@ describe('the spreadsheet preview reader', () => {
   })
 
   it('lays out a sheet: merges, frozen rows, hidden rows and columns, sizes, a picture and charts', () => {
-    const layout = openPreviewWorkbook(excelize, styledWorkbook(excelize)).sheet(0)
+    const layout = openPreviewWorkbook(excelize, styled).sheet(0)
 
     expect(layout.merges).toEqual([{ row: 0, col: 0, rows: 1, cols: 4 }])
     expect(layout.frozenRows).toBe(2)
@@ -87,11 +89,11 @@ describe('the spreadsheet preview reader', () => {
     // 20 points is 26.7 px of text, in a row 1.3 times that.
     expect(rowHeights.slice(0, 3)).toEqual([35, 16, 20])
     // The styled workbook's 16-point title, saved by Excelize with no height.
-    expect(openPreviewWorkbook(excelize, styledWorkbook(excelize)).sheet(0).rowHeights.slice(0, 2)).toEqual([28, 20])
+    expect(openPreviewWorkbook(excelize, styled).sheet(0).rowHeights.slice(0, 2)).toEqual([28, 20])
   })
 
   it('reads rows as text in their number formats, aligned as Excel aligns them, with each style sent once', () => {
-    const workbook = openPreviewWorkbook(excelize, styledWorkbook(excelize))
+    const workbook = openPreviewWorkbook(excelize, styled)
     const first = workbook.rows(0, 0, 6)
 
     const cellsOf = (row: number) => first.rows.find((r) => r.row === row)?.cells ?? []
@@ -143,11 +145,12 @@ describe('the spreadsheet preview reader', () => {
     const f = excelize.NewFile()
     settle(f.SetSheetRow('Sheet1', 'A1', ['Q1', 4]))
     settle(f.AddChart('Sheet1', 'D1', { Type: excelize.Line, Series: [{ Values: 'Sheet1!$B$1:$Z$1048576' }] }))
-    const layout = openPreviewWorkbook(excelize, saveWorkbook(f)).sheet(0)
+    // A small budget, so the range is read cell by cell no further than it allows.
+    const layout = openPreviewWorkbook(excelize, saveWorkbook(f), { ...xlsxPreviewLimits, chartPoints: 100 }).sheet(0)
     const [chart] = layout.overlays
 
     expect(chart).toMatchObject({ type: 'chart', kind: 'line' })
-    expect(chart.type === 'chart' && chart.series[0].values).toHaveLength(xlsxPreviewLimits.chartPoints)
+    expect(chart.type === 'chart' && chart.series[0].values).toHaveLength(100)
     expect(layout.leftOutObjects).toBe(1)
   })
 
@@ -295,7 +298,7 @@ describe('the spreadsheet preview reader', () => {
   })
 
   it('refuses a workbook that unzips past the ceiling, and a file that is not a workbook', () => {
-    const bytes = styledWorkbook(excelize)
+    const bytes = styled
 
     expect(() => openPreviewWorkbook(excelize, bytes, { ...xlsxPreviewLimits, unzipBytes: 1024 })).toThrow()
     expect(() => openPreviewWorkbook(excelize, new TextEncoder().encode('not a zip'))).toThrow()
@@ -349,12 +352,12 @@ describe('the spreadsheet preview reader on adversarial workbooks', () => {
   })
 
   it('draws saved values past 5,000 in full, within the sheet’s budget, and counts the series it cuts', () => {
-    const layout = openPreviewWorkbook(excelize, chartWithCache(points(6_000), 4)).sheet(0)
+    // A budget of 5,001: the first series fills it, past the old 5,000 cap, and the second is cut.
+    const limits = { ...xlsxPreviewLimits, chartPoints: 5_001 }
+    const layout = openPreviewWorkbook(excelize, chartWithCache(points(5_001), 2), limits).sheet(0)
     const [chart] = layout.overlays
 
-    expect(chart.type === 'chart' && chart.series.map(({ values }) => values.length)).toEqual([
-      6_000, 6_000, 6_000, 2_000,
-    ])
+    expect(chart.type === 'chart' && chart.series.map(({ values }) => values.length)).toEqual([5_001])
     expect(layout.leftOutObjects).toBe(1)
   })
 
@@ -457,12 +460,17 @@ describe('the spreadsheet preview reader on adversarial workbooks', () => {
     const unclosed = (part: string, rewrite: (xml: string) => string) => {
       parts[part] = strToU8(rewrite(strFromU8(parts[part])))
     }
+    // Outside any comment, which the scans leave out, and ending in comments that never close.
     unclosed('xl/worksheets/sheet1.xml', (xml) =>
-      xml.replace('<sheetData>', `<!--${'<c '.repeat(100_000)}${'<row '.repeat(100_000)}--><sheetData>`),
+      xml.replace(
+        '<sheetData>',
+        `${'<c '.repeat(100_000)}${'<row '.repeat(100_000)}<sheetData>${'<!--'.repeat(100_000)}`,
+      ),
     )
-    unclosed('xl/sharedStrings.xml', (xml) => xml.replace('</sst>', `<!--${'<si>'.repeat(100_000)}--></sst>`))
+    unclosed('xl/sharedStrings.xml', (xml) => xml.replace('</sst>', `${'<si>'.repeat(100_000)}</sst>`))
     const started = performance.now()
-    openPreviewWorkbook(excelize, zipSync(parts)).sheet(0)
+    // The scans run when the workbook opens; Excelize, which would refuse such a sheet, has not parsed it yet.
+    openPreviewWorkbook(excelize, zipSync(parts))
 
     // Quadratic scans took minutes on this.
     expect(performance.now() - started).toBeLessThan(2_000)
@@ -515,8 +523,8 @@ describe('the spreadsheet preview reader on adversarial workbooks', () => {
   it('fails a call after which Excelize holds more memory than the preview allows, and answers it as too large', () => {
     const reader = createPreviewReader(engine, 1)
 
-    expect(() => reader.open(styledWorkbook(excelize))).toThrow(WorkbookTooLargeError)
-    expect(answerRequest(reader, { id: 7, call: 'open', args: [styledWorkbook(excelize)] })).toMatchObject({
+    expect(() => reader.open(styled)).toThrow(WorkbookTooLargeError)
+    expect(answerRequest(reader, { id: 7, call: 'open', args: [styled] })).toMatchObject({
       id: 7,
       tooLarge: true,
     })
@@ -595,18 +603,8 @@ describe('the spreadsheet preview reader on adversarial workbooks', () => {
       [workbookXml]: strToU8(strFromU8(parts[workbookXml]).replace('name="Other"', 'name="SHEET1"')),
     })
     const backslash = zipSync({ ...parts, 'xl\\worksheets\\sheet1.xml': parts['xl/worksheets/sheet1.xml'] })
-    // A comment Excelize skips, which a scan of `<sheet>` tags would take for a sheet.
-    const commentedSheet = zipSync({
-      ...parts,
-      [workbookXml]: strToU8(
-        strFromU8(parts[workbookXml]).replace(
-          '<sheets>',
-          '<sheets><!-- <sheet name="Fake" sheetId="9" r:id="rId1"/> -->',
-        ),
-      ),
-    })
 
-    for (const bytes of [duplicateId, sameName, backslash, commentedSheet]) {
+    for (const bytes of [duplicateId, sameName, backslash]) {
       const error = (() => {
         try {
           openPreviewWorkbook(excelize, bytes)
@@ -619,31 +617,37 @@ describe('the spreadsheet preview reader on adversarial workbooks', () => {
     }
   })
 
-  it('reads an ordinary workbook with thousands of links and defined names, past the bound on parsed parts', () => {
+  it('reads an ordinary workbook whose links and defined names pass 2 MiB, the bound on parsed parts', () => {
     const f = excelize.NewFile()
     settle(f.SetCellValue('Sheet1', 'A1', 'links'))
     const parts = unzipSync(saveWorkbook(f))
+    // A thousand long links and long names: past 2 MiB each, with fewer elements for Excelize to parse.
     const links = Array.from(
-      { length: 12_000 },
+      { length: 1_000 },
       (_, i) =>
-        `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://crm.example.com/customers/${100_000 + i}" TargetMode="External"/>`,
+        `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://crm.example.com/customers/${100_000 + i}?view=${'x'.repeat(2_200)}" TargetMode="External"/>`,
     ).join('')
     const names = Array.from(
-      { length: 32_000 },
-      (_, i) => `<definedName name="Range_${i}">Sheet1!$A$1:$C$1</definedName>`,
+      { length: 1_000 },
+      (_, i) => `<definedName name="Range_${i}">${Array(130).fill('Sheet1!$A$1:$C$1').join(',')}</definedName>`,
     )
-    const bytes = zipSync({
-      ...parts,
-      'xl/worksheets/_rels/sheet1.xml.rels': strToU8(
-        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${links}</Relationships>`,
-      ),
-      'xl/workbook.xml': strToU8(
-        strFromU8(parts['xl/workbook.xml']).replace(
-          '</sheets>',
-          `</sheets><definedNames>${names.join('')}</definedNames>`,
+    expect(Math.min(links.length, names.join('').length)).toBeGreaterThan(xlsxPreviewLimits.xmlPartBytes)
+    const bytes = zipSync(
+      {
+        ...parts,
+        'xl/worksheets/_rels/sheet1.xml.rels': strToU8(
+          `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${links}</Relationships>`,
         ),
-      ),
-    })
+        'xl/workbook.xml': strToU8(
+          strFromU8(parts['xl/workbook.xml']).replace(
+            '</sheets>',
+            `</sheets><definedNames>${names.join('')}</definedNames>`,
+          ),
+        ),
+      },
+      // Stored, not deflated: compressing megabytes costs the test more than reading them.
+      { level: 0 },
+    )
     const workbook = openPreviewWorkbook(excelize, bytes)
 
     expect(workbook.overview.sheets).toEqual([{ name: 'Sheet1', rows: 1, cols: 1, tooLarge: false }])
@@ -777,5 +781,95 @@ describe('the spreadsheet preview reader on adversarial workbooks', () => {
     )
 
     expect(openPreviewWorkbook(excelize, bytes).overview.leftOut.missingResults).toBe(1)
+  })
+
+  it('leaves XML comments out of every scan, so commented rows, cells, merges and sheets change nothing', () => {
+    const f = excelize.NewFile()
+    const large = settle(f.NewStyle({ Font: { Size: 72 } })).style
+    settle(f.SetSheetRow('Sheet1', 'A1', ['ok', 2]))
+    settle(f.SetCellValue('Sheet1', 'A3', 'third'))
+    const plain = saveWorkbook(f)
+    const parts = unzipSync(plain)
+    const [sheet, workbookXml, rels, strings] = [
+      'xl/worksheets/sheet1.xml',
+      'xl/workbook.xml',
+      'xl/_rels/workbook.xml.rels',
+      'xl/sharedStrings.xml',
+    ]
+    const comment = (part: string, rewrite: (xml: string) => string) => strToU8(rewrite(strFromU8(parts[part])))
+    const commented = zipSync({
+      ...parts,
+      [sheet]: comment(sheet, (xml) =>
+        xml
+          .replace('<sheetData>', '<sheetData><!-- <row r="1048576"><c r="XFD1048576"><v>1</v></c></row> -->')
+          .replace(
+            '<c r="A1"',
+            `<!-- <c r="A1" s="${large}"><f>1+1</f></c><c r="B1" t="inlineStr"><is><t>${'x'.repeat(2_000)}</t></is></c> --><c r="A1"`,
+          )
+          .replace(
+            '</sheetData>',
+            `</sheetData><!-- <mergeCells>${'<mergeCell ref="A1:B2"/>'.repeat(10_001)}</mergeCells><conditionalFormatting/><x14:sparklineGroup/> -->`,
+          ),
+      ),
+      [strings]: comment(strings, (xml) =>
+        xml.replace('</sst>', `<!-- <si><t>${'y'.repeat(2_000)}</t></si> --></sst>`),
+      ),
+      [workbookXml]: comment(workbookXml, (xml) =>
+        xml.replace('<sheets>', '<sheets><!-- <sheet name="Fake" sheetId="9" r:id="rId1"/> -->'),
+      ),
+      [rels]: comment(rels, (xml) =>
+        xml.replace(
+          '</Relationships>',
+          '<!-- <Relationship Id="rId1" Target="worksheets/sheet9.xml" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"/> --></Relationships>',
+        ),
+      ),
+    })
+    const read = (bytes: Uint8Array) => {
+      const workbook = openPreviewWorkbook(excelize, bytes)
+      return { overview: workbook.overview, layout: workbook.sheet(0), rows: workbook.rows(0, 0, 5) }
+    }
+    const distant = patched(f, sheet, (xml) =>
+      xml.replace('</sheetData>', '<row r="1048576"><c r="XFD1048576"><v>1</v></c></row></sheetData>'),
+    )
+
+    expect(read(commented)).toEqual(read(plain))
+    // The same cell, real, still makes the sheet too large.
+    expect(openPreviewWorkbook(excelize, distant).overview.sheets[0].tooLarge).toBe(true)
+  })
+
+  it('draws the styles a whole row or column carries on cells past the last one written', () => {
+    const f = excelize.NewFile()
+    const fill = (color: string) => settle(f.NewStyle({ Fill: { Type: 'pattern', Pattern: 1, Color: [color] } })).style
+    const [columnStyle, rowStyle, ownStyle] = [fill('#FF0000'), fill('#00FF00'), fill('#0000FF')]
+    // Before any cell is written, so Excelize keeps them on the column and the row, not on cells.
+    settle(f.SetColStyle('Sheet1', 'H', columnStyle))
+    settle(f.SetRowStyle('Sheet1', 6, 6, rowStyle))
+    settle(f.SetCellValue('Sheet1', 'A1', 'first'))
+    settle(f.SetCellStyle('Sheet1', 'A6', 'A6', ownStyle))
+    const bytes = saveWorkbook(f)
+    const { rows, styles } = openPreviewWorkbook(excelize, bytes).rows(0, 0, 8)
+    const styleAt = (row: number, col: number) =>
+      rows.find((read) => read.row === row)?.cells.find((cell) => cell.col === col)?.style
+    const capped = openPreviewWorkbook(excelize, bytes, { ...xlsxPreviewLimits, columns: 5 }).rows(0, 0, 8)
+
+    expect(styleAt(2, 7)).toBe(columnStyle)
+    // Below the last row written, too.
+    expect(styleAt(7, 7)).toBe(columnStyle)
+    expect(styleAt(5, 3)).toBe(rowStyle)
+    expect(styleAt(5, 0)).toBe(ownStyle)
+    const ids = styles.map(([id]) => id)
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(ids).toEqual(expect.arrayContaining([columnStyle, rowStyle, ownStyle]))
+    expect(capped.rows.flatMap(({ cells }) => cells).every(({ col }) => col < 5)).toBe(true)
+  })
+
+  it('hides a row the file hides below its last cell, while the rows the grid adds stay shown', () => {
+    const layout = openPreviewWorkbook(
+      excelize,
+      withSheetData('<row r="1"><c r="A1"><v>1</v></c></row><row r="5" hidden="1"/>'),
+    ).sheet(0)
+
+    expect(layout.rows).not.toContain(4)
+    expect(layout.rows).toEqual(expect.arrayContaining([1, 2, 3, 5, 29]))
   })
 })

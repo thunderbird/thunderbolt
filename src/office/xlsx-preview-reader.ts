@@ -16,6 +16,7 @@ import {
   type PlaceholderKind,
   type SeriesData,
   type Stacking,
+  withoutComments,
   workbookParts,
 } from './xlsx-drawings'
 import { WorkbookTooLargeError } from './xlsx-preview-client'
@@ -181,9 +182,10 @@ const visitSheet = (
 }
 
 /**
- * The rows and columns a sheet part's cells reach, and how many cells Excelize would hold for it. Excelize fills
- * each row out to its last cell and the sheet out to its last row, so one cell at XFD costs 16,384 and one row at
- * 1,048,576 costs a million. Counting stops past `maxCells`, the size at which the sheet is not read.
+ * The rows and columns a sheet part's cells reach, the last row it holds at all, and how many cells Excelize would
+ * hold for it. Excelize fills each row out to its last cell and the sheet out to its last row, so one cell at XFD
+ * costs 16,384 and one row at 1,048,576 costs a million. Counting stops past `maxCells`, the size at which the sheet
+ * is not read.
  */
 const scanCells = (xml: string, maxCells: number) => {
   const size = { rows: 0, cols: 0, lastRow: 0, filled: 0, rowEnd: 0 }
@@ -204,7 +206,7 @@ const scanCells = (xml: string, maxCells: number) => {
       return cells() <= maxCells
     },
   )
-  return { rows: size.rows, cols: size.cols, cells: cells() }
+  return { rows: size.rows, cols: size.cols, lastRow: size.lastRow, cells: cells() }
 }
 
 /**
@@ -363,7 +365,8 @@ export const openPreviewWorkbook = (
   // Every worksheet, hidden ones too, since a chart can read any of them.
   const scans = workbook.sheets.map(({ name, part }) => {
     const visible = file.GetSheetVisible(name).visible
-    const xml = strFromU8(parts[part])
+    // Every scan of the part below reads it without its comments: a tag inside one is no tag to Excelize.
+    const xml = withoutComments(strFromU8(parts[part]))
     const { cells, ...size } = scanCells(xml, maxCells)
     const tooMany = cells > maxCells || countMerges(xml) > limits.merges
     const objects = visible && !tooMany ? drawingObjects(parts, part) : []
@@ -515,7 +518,7 @@ export const openPreviewWorkbook = (
   }
 
   const sheet = (index: number): SheetLayout => {
-    const { name, part, rows: usedRows, cols: usedCols, objects, tooLarge } = sheets[index]
+    const { name, part, rows: usedRows, cols: usedCols, lastRow, objects, tooLarge } = sheets[index]
     if (tooLarge) {
       throw new WorkbookTooLargeError(`Sheet ${name} is larger than the preview reads.`)
     }
@@ -536,15 +539,15 @@ export const openPreviewWorkbook = (
       ends.reduce((most, { col }) => Math.max(most, col + 1), Math.max(usedCols + 1, 10)),
       limits.columns,
     )
-    const fonts = largestFonts(strFromU8(parts[part]), fontSizeOf)
+    const fonts = largestFonts(withoutComments(strFromU8(parts[part])), fontSizeOf)
     const rowHeights = range(rowCount).map((r) => {
       const stored = Math.round((settle(file.GetRowHeight(name, r + 1)).height * 4) / 3)
       const font = fonts.get(r)
       const height = font ? Math.max(stored, Math.ceil(((font * 4) / 3) * lineHeight)) : stored
       return clamp(height, maxRowPixels)
     })
-    // Excelize reports a row past the last one it holds as hidden.
-    const rows = range(rowCount).filter((r) => r >= usedRows || file.GetRowVisible(name, r + 1).visible)
+    // Excelize reports a row past the last one it holds as hidden; a row the file holds, cells or none, says itself.
+    const rows = range(rowCount).filter((r) => r >= lastRow || file.GetRowVisible(name, r + 1).visible)
     const colWidths = range(colCount).map((c) =>
       clamp(Math.round(settle(file.GetColWidth(name, columnName(c + 1))).width * 7), maxColumnPixels),
     )
@@ -613,28 +616,28 @@ export const openPreviewWorkbook = (
     return [excelize.CellTypeBool, excelize.CellTypeError].includes(cellType) ? 'center' : undefined
   }
 
+  /**
+   * The shown rows from `from` up to `to`, each shown column of each. Past the last cell too: a style the file sets on
+   * a whole row or column, which `GetCellStyle` resolves for an empty cell, draws there.
+   */
   const rows = (index: number, from: number, to: number): RowsRead => {
-    const { name, rows: usedRows, cols: usedCols } = sheets[index]
+    const { name } = sheets[index]
     const layout = layouts.get(index) ?? sheet(index)
     const linked = links.get(index) ?? new Set()
     const styleIds = new Set<number>()
     const cellsOf = (row: number) =>
-      layout.cols
-        .filter((col) => col < usedCols)
-        .flatMap((col): PreviewCell[] => {
-          const ref = `${columnName(col + 1)}${row + 1}`
-          const text = settle(file.GetCellValue(name, ref)).value ?? ''
-          const { style } = settle(file.GetCellStyle(name, ref))
-          if (!text && !style) {
-            return []
-          }
-          styleIds.add(style)
-          const align = text ? alignOf(settle(file.GetCellType(name, ref)).cellType) : undefined
-          return [{ col, text: clip(text), style, align, link: linked.has(ref) || undefined }]
-        })
-    const read = layout.rows
-      .filter((row) => row >= from && row < to && row < usedRows)
-      .map((row) => ({ row, cells: cellsOf(row) }))
+      layout.cols.flatMap((col): PreviewCell[] => {
+        const ref = `${columnName(col + 1)}${row + 1}`
+        const text = settle(file.GetCellValue(name, ref)).value ?? ''
+        const { style } = settle(file.GetCellStyle(name, ref))
+        if (!text && !style) {
+          return []
+        }
+        styleIds.add(style)
+        const align = text ? alignOf(settle(file.GetCellType(name, ref)).cellType) : undefined
+        return [{ col, text: clip(text), style, align, link: linked.has(ref) || undefined }]
+      })
+    const read = layout.rows.filter((row) => row >= from && row < to).map((row) => ({ row, cells: cellsOf(row) }))
     const styles = [...styleIds]
       .filter((id) => !sentStyles.has(id))
       .map((id): [number, Style] => {
@@ -661,7 +664,8 @@ export const openPreviewWorkbook = (
       unsupportedCharts: objects.filter(({ type }) => type === 'placeholder').length,
       drawings: objects.some(({ type }) => type === 'shape'),
       sparklines: shown.some((scan) => scan.sparklines),
-      longText: shown.some((scan) => scan.longText) || hasLongText(strFromU8(sharedStrings), limits.cellChars),
+      longText:
+        shown.some((scan) => scan.longText) || hasLongText(withoutComments(strFromU8(sharedStrings)), limits.cellChars),
     },
   } satisfies WorkbookOverview
   return { overview, sheet, rows }

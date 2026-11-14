@@ -19,6 +19,9 @@ export const memberRole = 'member'
 
 export const adminRole = 'admin'
 
+/** The roles an admin can grant or map a group to: the ones the system knows. `member` is implicit. */
+export const assignableRoles = [adminRole] as const
+
 export type RoleSources = {
   /** `member_role_grant` rows: local grants, the bootstrap admin's included. */
   grants: string[]

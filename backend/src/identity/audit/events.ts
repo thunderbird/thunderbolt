@@ -20,6 +20,7 @@ export const auditActions = [
   'member.source_removed',
   'member.blocked',
   'member.unblocked',
+  'member.updated',
   'member.role_granted',
   'member.role_revoked',
   'member.bootstrap_admin_granted',

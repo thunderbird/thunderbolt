@@ -134,10 +134,11 @@ jobs:
 
   typescript:
     runs-on: ubuntu-latest
-    # Happy path is a few minutes; the GitHub default is 360min (6h). A 20min cap
-    # kills a CPU-starved runner ~18x sooner and frees the cancel-in-progress slot
+    # The happy path is about 18 minutes, most of it the Office script suites that run
+    # real WebAssembly five times; the GitHub default is 360min (6h). A 30min cap still
+    # kills a CPU-starved runner ~12x sooner and frees the cancel-in-progress slot
     # instead of blocking the concurrency group for hours.
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       pull-requests: write
       contents: read

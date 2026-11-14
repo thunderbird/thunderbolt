@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans } from '@lingui/react/macro'
+import { PreviewNotice } from '@/components/preview-notice'
 import { useHttpClient } from '@/contexts'
 import { FileText } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
@@ -12,7 +13,6 @@ import 'react-pdf/dist/Page/TextLayer.css'
 import { DocumentPreviewFrame } from './document-preview-frame'
 import { DocxPages } from './docx-pages'
 import { type FileType, getFileType } from './file-type'
-import { PreviewNotice } from './preview-notice'
 import { useDocumentBlob, useLocalDocumentBlob, type DocumentBlobState } from './use-document-blob'
 
 // Configure the pdfjs worker via Vite's `new URL(..., import.meta.url)` pattern

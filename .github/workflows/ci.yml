@@ -26,6 +26,7 @@ jobs:
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       agent-core: ${{ steps.filter.outputs.agent-core }}
+      office: ${{ steps.filter.outputs.office }}
       cli: ${{ steps.filter.outputs.cli }}
       wasm-artifact: ${{ steps.filter.outputs.wasm-artifact }}
       wasm-provenance: ${{ steps.filter.outputs.wasm-provenance }}
@@ -54,6 +55,25 @@ jobs:
               - 'src-tauri/.cargo/**'
               - 'src-tauri/capabilities/**'
               - 'crates/**'
+            # The Office script tool and what it imports directly; main runs the job on every push.
+            office:
+              - 'src/office/**'
+              - 'src/files/transformers/**'
+              - 'src/lib/attachments.ts'
+              - 'src/lib/file-blob-storage.ts'
+              - 'src/lib/install-webkit-own-property.ts'
+              - 'src/lib/safe-file-name.ts'
+              - 'src/lib/tool-output.ts'
+              - 'src/dal/chat-messages.ts'
+              - 'src/db/database.ts'
+              - 'scripts/office-sandbox-script.ts'
+              - 'vite.config.ts'
+              - 'happydom.ts'
+              - 'src/testing-library.ts'
+              - 'bunfig.toml'
+              - 'package.json'
+              - 'bun.lock'
+              - '.github/workflows/ci.yml'
             agent-core:
               - 'shared/agent-core/**'
               - 'shared/reasoning-effort*.ts'
@@ -225,8 +245,11 @@ jobs:
 
   # The Office script suites run real WebAssembly (QuickJS, Excelize, IronCalc) and take about
   # two thirds of the frontend tests' time, so they run five times here, in parallel with the
-  # typescript job, which leaves them out of `test:5x`.
+  # typescript job, which leaves them out of `test:5x`. Path-gated on pull requests like
+  # agent-core/cli; every push runs it, so a change the filter misses still fails on main.
   office:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.office == 'true' || github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

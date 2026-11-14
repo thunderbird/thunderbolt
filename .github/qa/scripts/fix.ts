@@ -626,6 +626,26 @@ const cliPaths = [
 ]
 const backendPaths = ['backend/', 'shared/']
 
+/** The paths ci.yml's `office` filter watches. */
+const officePaths = [
+  'src/office/',
+  'src/files/transformers/',
+  'src/lib/attachments.ts',
+  'src/lib/file-blob-storage.ts',
+  'src/lib/install-webkit-own-property.ts',
+  'src/lib/safe-file-name.ts',
+  'src/lib/tool-output.ts',
+  'src/dal/chat-messages.ts',
+  'src/db/database.ts',
+  'scripts/office-sandbox-script.ts',
+  'vite.config.ts',
+  'happydom.ts',
+  'src/testing-library.ts',
+  'bunfig.toml',
+  'package.json',
+  'bun.lock',
+]
+
 /**
  * The PR checks a fix can fail, cheapest first. A `<job>: <step>` name is that step of `ci.yml` (`e2e.yml` for the
  * collected-spec check) with its exact command. `bun run check` runs ci.yml's type check and lint of the typescript
@@ -649,7 +669,7 @@ export const prChecks: PrCheck[] = [
     ],
   },
   { name: 'typescript: Run tests', run: 'bun run test:5x', paths: ['src/', 'shared/', 'scripts/'] },
-  { name: 'office: Run Office script tests (5x)', run: 'bun run test:office:5x', paths: ['src/', 'shared/'] },
+  { name: 'office: Run Office script tests (5x)', run: 'bun run test:office:5x', paths: officePaths },
   {
     name: 'agent-core: Run agent-core tests (5x)',
     run: 'bun run test:agent-core:5x',

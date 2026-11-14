@@ -56,6 +56,14 @@ To replace a lost or exposed phrase, choose **Change Recovery Phrase** under **S
 
 On a deployment with [organizational key escrow](../self-hosting/configuration.md#organizational-key-escrow) enabled, an operator holding its private key can decrypt an account's data offline.
 
+Know its limits before you rely on it. Escrow is a proof of concept:
+
+- **Retained data stays readable.** When your identity provider deletes someone, their data is kept until an admin purges it, and with escrow on the operator can decrypt it all that time. Without escrow, nobody but the person can.
+- **No recovery trail.** Decryption runs offline against the database, so the server never sees it and the audit log can't record it.
+- **No backfill.** Accounts set up before escrow was turned on have no escrow copy of their key until their next key rotation, which adds one.
+- **Nothing revokes an envelope.** Blocking, suspending or removing a member leaves their escrow copy in place.
+- **One key for the deployment.** Every account is escrowed to the same operator key.
+
 ## Revoking a device
 
 Use this when a device is lost or stolen, or when someone should no longer have access. On a trusted device, open **Settings → Devices**, find the entry under **Trusted devices**, and choose **Revoke**. Revocation cannot be undone.

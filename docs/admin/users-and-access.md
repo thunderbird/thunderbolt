@@ -88,6 +88,11 @@ setting is an ordinary environment variable and takes effect on restart.
 With `AUTH_ALLOW_ANONYMOUS` off, the API has no anonymous sign-in endpoint at all, so a modified or
 hand-rolled client cannot create an anonymous session either.
 
+**Anonymous sign-in bypasses your identity provider.** Anonymous users are not members of the
+organization, so neither your provider nor a block applies to them. The app hides anonymous access
+under SSO, but the API setting doesn't depend on `AUTH_MODE`: leave `AUTH_ALLOW_ANONYMOUS` off on an
+SSO deployment.
+
 | Capability                          | Anonymous visitor                   |
 | ----------------------------------- | ----------------------------------- |
 | Chat, with data kept on that device | Yes                                 |
@@ -119,12 +124,20 @@ provider's job.
 
 - Add the provider's origin to `TRUSTED_ORIGINS`, not `CORS_ORIGINS`. Containerized deployments
   usually need two entries: the origin the browser sees and the internal hostname the API uses.
-- An identity from your provider is linked onto an existing account with the same email address, so a
-  deployment can move from email codes to SSO without stranding accounts. The existing account's email
-  must be verified, or the account must already have an identity from your provider. Otherwise the
-  sign-in fails with "account not linked". It also fails when an OIDC provider reports the email as
-  not verified (`email_verified` false), so mark addresses verified at the provider. See
+- On a provider without SCIM, an identity is linked onto an existing account with the same email
+  address, so a deployment can move from email codes to SSO without stranding accounts. The existing
+  account's email must be verified, or the account must already have an identity from your provider,
+  and no SCIM provider may manage it. Otherwise the sign-in fails with "account not linked". An account
+  that already signs in through another SSO provider links only on a domain this provider claims;
+  otherwise the sign-in fails with `LINK_REVIEW_PENDING` and waits for an admin in
+  `GET /v1/admin/link-reviews`. It also
+  fails when an OIDC provider reports the email as not verified (`email_verified` false), so mark
+  addresses verified at the provider. See
   [Authentication](../self-hosting/authentication.md#what-single-sign-on-looks-like-to-the-user).
+- On a provider with SCIM, email never links anything. A sign-in lands on the account the provider
+  provisioned, matched on its `externalId`, and an existing account joins a provider only through a
+  claimed domain, the person proving both identities, or an admin's approval. See
+  [Provisioning](../self-hosting/provisioning.md#collisions-and-the-review-queue).
 - A failed or cancelled sign-in returns the user to the app with a message and a "Try again" button.
 - Under SAML, a login that starts at your provider's dashboard is refused by default. Point the
   dashboard icon at your app's address, or read the risk of `SAML_ALLOW_IDP_INITIATED` in
@@ -135,12 +148,19 @@ Your provider can also provision accounts ahead of first use over SCIM 2.0, at
 (`POST /v1/admin/connections/scim`); the token is shown once. On a connection with SCIM, only people
 the provider has provisioned can sign in, and deactivating or deleting them there cuts their access.
 Without SCIM, an account exists once the person signs in for the first time.
+[Provisioning](../self-hosting/provisioning.md) covers setup for Entra, Okta and Keycloak.
+
+People a provider with both SSO and SCIM manages sign in through SSO only: their email codes and
+passkey sign-in are refused, so the provider's MFA always applies. That holds after the provider
+deletes them, too, until an admin detaches the link. Members of a SCIM-only connection keep email
+codes.
 
 ## Removing access
 
 | Goal                             | How                                                                                                                           |
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | Offboard someone (SSO)           | Disable or remove them in your identity provider. Without SCIM that stops new sign-ins only; block them too to end sessions   |
+| Offboard everyone a provider let in | Retire its SSO connection (`POST /v1/admin/connections/:id/retire`). Members it alone admitted lose access; anyone another source admits keeps it. Retire its SCIM side first and wait until `GET /v1/admin/connections/:id` shows `scim_retired`; the env connection `sso` can't be retired |
 | Offboard someone (any sign-in)   | Block them through the admin API (`POST /v1/admin/members/:userId/block`). It outranks every identity provider grant          |
 | Remove a blocked member for good | Purge them through the admin API (`DELETE /v1/admin/members/:userId`), which deletes their account and data                   |
 | Cut off one lost laptop or phone | The user revokes it under **Settings → Devices**                                                                              |

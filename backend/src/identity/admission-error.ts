@@ -9,8 +9,13 @@ export type AdmissionErrorCode =
   | 'DOMAIN_CLAIMED_BY_IDP'
   | 'ALREADY_MEMBER'
   | 'INVITATION_NOT_FOUND'
+  | 'LINK_REVIEW_NOT_FOUND'
+  | 'LINK_REVIEW_RESOLVED'
+  | 'LINK_REVIEW_SELF'
+  | 'LINK_REVIEW_RECORD_EXISTS'
+  | 'LINK_REVIEW_INVALID_CURSOR'
 
-/** A refused invitation or domain change. Admin routes map `code` to their response. */
+/** A refused invitation, domain change or link review. Admin routes map `code` to their response. */
 export class AdmissionError extends Error {
   constructor(readonly code: AdmissionErrorCode) {
     super(code)

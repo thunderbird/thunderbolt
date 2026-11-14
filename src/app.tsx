@@ -79,6 +79,7 @@ import { preloadInBackground } from '@/lib/after-paint'
 import { takeDeviceApprovalReturn } from '@/lib/device-approval-return'
 import { LazyMotion } from 'framer-motion'
 import { ProjectRedirect } from '@/projects/project-redirect'
+import { ssoEmailCodePath } from '@/lib/sso-paths'
 
 // Loaded after first paint so framer-motion feature code lives in an
 // async chunk instead of the entry bundle.
@@ -126,8 +127,10 @@ const VoiceSettingsPage = lazy(() => import('@/settings/voice'))
 
 // Keep SSO out of consumer builds' startup requests. SSO deployments warm the
 // redirect during initialization so routing doesn't add a chunk-fetch waterfall.
-const loadSsoRedirect = () => import('@/components/sso-redirect')
+const loadSsoRedirect = () => import('@/components/sso-sign-in')
 const SsoRedirect = lazy(loadSsoRedirect)
+// Same chunk as the redirect, so it costs nothing extra once the redirect is warm.
+const SsoEmailCodePage = lazy(async () => ({ default: (await loadSsoRedirect()).SsoEmailCodePage }))
 // Reached only after a failed SSO login: deliberately cold, not in routeChunkLoaders.
 const SsoError = lazy(() => import('@/components/sso-error'))
 
@@ -220,6 +223,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
         {/* SSO redirect route — no guard, only in OIDC/SAML mode */}
         {ssoMode && <Route path="/sso-redirect" element={<SsoRedirect />} />}
         {ssoMode && <Route path="/sso-error" element={<SsoError />} />}
+        {ssoMode && <Route path={ssoEmailCodePath} element={<SsoEmailCodePage />} />}
 
         {/* Waitlist routes - unauthenticated only (skip when bypass or SSO mode) */}
         {!ssoMode && !shouldBypassWaitlist && (

@@ -14,6 +14,7 @@ const renderAt = (search: string) =>
       <Routes>
         <Route path="/sso-error" element={<SsoError />} />
         <Route path="/sso-redirect" element={<p>restarted sign-in</p>} />
+        <Route path="/sign-in/email-code" element={<p>email code sign-in</p>} />
         <Route path="/" element={<p>local app</p>} />
       </Routes>
     </MemoryRouter>,
@@ -46,6 +47,19 @@ describe('SsoError', () => {
     expect(screen.getByText(/Open Thunderbolt and sign in from there/)).toBeInTheDocument()
   })
 
+  it.each([
+    ['ACCESS_BLOCKED', /Your access to Thunderbolt has been blocked/],
+    ['ACCESS_DEPROVISIONED', /Your account has been deactivated/],
+    ['ACCESS_NO_LIVE_SOURCE', /Your account has been deactivated/],
+    ['ACCESS_NOT_MEMBER', /Your organization hasn't given you access to Thunderbolt yet/],
+    ['SSO_USER_RESOLUTION_FAILED', /We couldn't match this sign-in to an account/],
+    ['SSO_CONNECTION_UNAVAILABLE', /This sign-in option is no longer available/],
+  ])('explains a sign-in the organization refused with %s', (code, message) => {
+    renderAt(`?error=${code}`)
+
+    expect(screen.getByText(message)).toBeInTheDocument()
+  })
+
   it('shows a generic message for an unknown code and never the code itself', () => {
     renderAt('?error=<b>boom</b>&error_description=raw+provider+text')
 
@@ -58,6 +72,14 @@ describe('SsoError', () => {
     renderAt(search)
 
     expect(screen.getByText('We could not sign you in. Please try again.')).toBeInTheDocument()
+  })
+
+  it('offers the email code, which a single-connection deployment shows nowhere else', () => {
+    renderAt('?error=ACCESS_NOT_MEMBER')
+
+    fireEvent.click(screen.getByRole('link', { name: 'Use an email code instead' }))
+
+    expect(screen.getByText('email code sign-in')).toBeInTheDocument()
   })
 
   it('sends "Try again" to the SSO redirect', () => {

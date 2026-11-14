@@ -8,10 +8,11 @@ import { AppWordmark } from '@/components/app-wordmark'
 import { useAppName } from '@/lib/branding-selectors'
 import { Button } from '@/components/ui/button'
 import { getSsoErrorMessage } from '@/lib/sso-error-messages'
+import { ssoEmailCodePath } from '@/lib/sso-paths'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 
 /**
- * Where a failed SSO login lands (`errorCallbackURL` in `sso-redirect.tsx`, or `AuthGate` for an error that
+ * Where a failed SSO login lands (`errorCallbackURL` in `sso-sign-in/use-sso-sign-in-state.ts`, or `AuthGate` for an error that
  * arrives on `/`). It must not be `/sso-redirect`, which restarts the login on load and would loop.
  */
 const SsoError = () => {
@@ -35,6 +36,13 @@ const SsoError = () => {
         <Button asChild>
           <Link to="/sso-redirect" replace>
             <Trans>Try again</Trans>
+          </Link>
+        </Button>
+        {/* With one SSO connection the sign-in goes straight to the IdP, so this is where people no IdP
+            manages (an invitee, a break-glass admin) find the email code. */}
+        <Button asChild variant="ghost">
+          <Link to={ssoEmailCodePath}>
+            <Trans>Use an email code instead</Trans>
           </Link>
         </Button>
         {localMode && (

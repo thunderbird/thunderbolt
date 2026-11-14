@@ -43,7 +43,8 @@ Drizzle schema has every column its models write, and fails the call if not.
 
 A SCIM source on a connection whose SCIM side is retiring or retired is ignored: it neither keeps the
 member in nor deprovisions them. An `sso` source (a connection without SCIM) counts like a local grant,
-because nothing can deprovision it automatically.
+because nothing can deprovision it automatically, until its connection is retired: then it is ignored
+the same way, so members that connection alone let in lose access.
 
 Where it runs:
 
@@ -156,6 +157,10 @@ IdP holds both sides, and only server-side admin code creates them
 with no live connection is refused ([sso.ts](../../../backend/src/identity/sso.ts)), so rows older
 releases let users register can't sign anyone in.
 
+- **Retiring** a connection (`retireSsoConnection`) sets it `retired`: its SSO side signs nobody in,
+  and its members' `sso` sources stop counting. That offboards members it alone admitted; anyone with
+  another live source keeps access. The env connection can't be retired here (its settings own it),
+  nor can a row whose SCIM side isn't `scim_retired` yet: retire that side first.
 - **The env provider** (`OIDC_*` or `SAML_*`) is written at boot as provider and connection `sso`, after
   the implicit org. The env stays authoritative for that row; connections an admin created are never
   touched. The first run fills that connection into the `sso` sources of members who signed in before.
@@ -215,6 +220,52 @@ An OIDC sign-in whose provider says `email_verified: false` is not a verified si
 `resolveUser` hook records the denial for the request, and the grant is skipped.
 The `bootstrap` membership source is the once-per-email marker. It goes away with the user on a
 permanent delete, so a still-listed email gets admin again at its next sign-in.
+
+## Admin API
+
+The routes the admin screens call live under `/v1/admin` ([identity/admin/](../../../backend/src/identity/admin)).
+They wrap the services above and add only what had no service: member admin, local groups and their
+role mappings, domain claims, and the break-glass flag.
+
+- **The admin check.** Every route takes `{ admin: true }` (`createAdminMacro`). A signed-in
+  non-admin gets 403 `ADMIN_REQUIRED` and an `admin.access_denied` event; a caller without access,
+  a blocked admin included, reads as signed out and gets 401. Elysia validates a request before the
+  macro runs, so a malformed body from a non-admin gets 422 and records nothing: it learns only the
+  schema.
+- **Errors.** Services throw `APIError` or `AdmissionError` with a code, and the routes answer
+  `{ code, message? }` with the service's status ([errors.ts](../../../backend/src/identity/admin/errors.ts)).
+  A policy refusal (a 403 or 409, or an admin purging themselves) is recorded as a `denied` event of
+  the action it attempted, unless its service records it itself. Input conflicts such as a taken
+  name are not.
+- **What an IdP manages.** A member `isIdpManaged` has their email, name, SCIM groups, SCIM-mapped
+  roles and SCIM status owned by the IdP; the member view lists them under `idpManaged.fields`.
+  Renaming such a member is refused with `FIELD_MANAGED_BY_IDP`, and revoking a role held only
+  through a SCIM group with `ROLE_MANAGED_BY_IDP`. No admin can change anyone's email: the address
+  is how a member signs in. Local grants and the local block stay editable on every member.
+- **Blocking** sets `org_membership.blocked_at`, which the access check reads first. The member's
+  sessions are deleted (one `auth.session_revoked` each, the admin as actor, the member as target,
+  `metadata.reason: 'member_blocked'`); devices and API keys stay, refused while
+  blocked, so unblocking needs only a new sign-in. A PowerSync token already issued lasts at most
+  `powersyncTokenExpirySeconds` (300 s). An admin can't block themselves.
+- **Roles.** Only roles the system knows can be granted or mapped (`assignableRoles`: `admin`).
+- **No last-admin refusal.** A change that leaves no admin able to sign in without the IdP succeeds,
+  and its response carries `warning: 'NO_LOCAL_ADMIN'`. An admin managed only through a SCIM-only
+  connection still counts: email-code sign-in stays open to anyone no IdP requires SSO of. `GET /v1/admin/break-glass` reports the same
+  state as `allAdminsIdpManaged`, with the admin counts. Only shared hosting would have to refuse it.
+- **Hard deletes.** Local groups, their members, local role mappings, local role grants (a revoke,
+  the bootstrap admin's grant included) and org domains are configuration rows with no `deleted_at`;
+  deleting one removes it, and its audit event keeps the history. A group's delete records one
+  `group_role_mapping.deleted` for each mapping it takes with it, and its member count.
+- **Domain claims.** `claimOrgDomain` needs a verified domain and a live connection, and refuses a
+  domain another connection holds, a concurrent claim included; unclaim it first. Claiming turns
+  enrollment off, so unclaiming leaves the domain closed until an admin opens it. A claimed domain
+  can't be removed.
+- **Link reviews.** `GET /v1/admin/link-reviews` pages the review queue; `POST …/:reviewId/approve`
+  and `…/reject` wrap `approveLinkReview` and `rejectLinkReview`, which audit what they resolve. Their
+  refusals (`LINK_REVIEW_SELF`, `LINK_REVIEW_RESOLVED`, `LINK_REVIEW_RECORD_EXISTS`) are recorded as
+  denied attempts.
+- **Lists** page by an opaque `cursor`, at most 100 rows a page (`limit`, default 50). Domains,
+  connections and role mappings are per-org configuration and come back whole.
 
 ## Audit
 

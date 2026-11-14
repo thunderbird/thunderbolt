@@ -2,120 +2,85 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test'
-import { zipSync } from 'fflate'
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import type { StoredFile } from '@/lib/file-blob-storage'
+import { workbook, type WorkbookRows } from '@/test-utils/xlsx-workbook'
+import { readXlsxSheets, sheetsToText, xlsxToText } from './xlsx-to-text'
 
-const readXlsxFile = mock(async () => [] as { sheet: string; data: unknown[][] }[])
-
-mock.module('read-excel-file/browser', () => ({
-  default: readXlsxFile,
-}))
-
-const { readXlsxSheets, xlsxToText } = await import('./xlsx-to-text')
-
-const asFile = (): StoredFile =>
-  ({
+const asFile = (...sheets: readonly WorkbookRows[]): StoredFile => {
+  const bytes = workbook(...sheets)
+  return {
     id: 'file-1',
     filename: 'book.xlsx',
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    size: 0,
+    size: bytes.byteLength,
     createdAt: 0,
-    blob: new Blob([zipSync({})]),
-  }) as StoredFile
+    blob: new Blob([bytes]),
+  }
+}
 
-describe('xlsxToText', () => {
-  test('formats a single sheet as a heading plus comma-joined rows, each labeled with its row number', async () => {
-    readXlsxFile.mockImplementationOnce(async () => [
-      {
-        sheet: 'Sheet1',
-        data: [
-          ['Name', 'Age'],
-          ['Ada', 30],
-        ],
-      },
-    ])
+describe('sheetsToText', () => {
+  test('puts a heading over each sheet and labels each row with its number, leaving blank rows out', () => {
+    const sheets = [
+      { name: 'Q1', rows: [['Name', 'Cost'], [], ['Rent', '10']] },
+      { name: 'Q2', rows: [['Revenue', '150']] },
+    ]
 
-    expect(await xlsxToText(asFile())).toEqual({
-      text: '## Sheet: Sheet1\nRow 1: Name, Age\nRow 2: Ada, 30',
-    })
+    expect(sheetsToText(sheets)).toBe(
+      '## Sheet: Q1\nRow 1: Name, Cost\nRow 3: Rent, 10\n\n## Sheet: Q2\nRow 1: Revenue, 150',
+    )
   })
 
-  test('joins multiple sheets with a blank line between them', async () => {
-    readXlsxFile.mockImplementationOnce(async () => [
-      { sheet: 'Q1', data: [['Revenue', 100]] },
-      { sheet: 'Q2', data: [['Revenue', 150]] },
-    ])
-
-    expect(await xlsxToText(asFile())).toEqual({
-      text: '## Sheet: Q1\nRow 1: Revenue, 100\n\n## Sheet: Q2\nRow 1: Revenue, 150',
-    })
+  test('quotes cells containing a comma or quote', () => {
+    expect(sheetsToText([{ name: 'Sheet1', rows: [['Stark, Inc.', 'The "Big" One', 'plain']] }])).toBe(
+      '## Sheet: Sheet1\nRow 1: "Stark, Inc.", "The ""Big"" One", plain',
+    )
   })
 
-  test('renders a null cell as an empty string, not the literal "null"', async () => {
-    readXlsxFile.mockImplementationOnce(async () => [{ sheet: 'Sheet1', data: [['A', null, 'C']] }])
+  test('keeps a row on one line when a cell holds line breaks', () => {
+    const rows = [
+      ['a\r\nb\rc\nd\ve\ff\u0085g\u2028h\u2029i', 'two, "lines"\nhere'],
+      ['next', '1'],
+    ]
 
-    expect(await xlsxToText(asFile())).toEqual({ text: '## Sheet: Sheet1\nRow 1: A, , C' })
+    expect(sheetsToText([{ name: 'Sheet1', rows }])).toBe(
+      '## Sheet: Sheet1\nRow 1: a b c d e f g h i, "two, ""lines"" here"\nRow 2: next, 1',
+    )
   })
+})
 
-  test('quotes cells containing a comma or quote', async () => {
-    readXlsxFile.mockImplementationOnce(async () => [
-      { sheet: 'Sheet1', data: [['Stark, Inc.', 'The "Big" One', 'plain']] },
-    ])
+describe('reading a workbook', () => {
+  // Rows 1 to 3 and 5 hold data and row 4 is blank, the layout where the model used to read Cedar as row 4.
+  const blankRow4: WorkbookRows = [['Name', 'Cost'], ['Orchid', 137], ['Maple', 286], [], ['Cedar', 59]]
 
-    expect(await xlsxToText(asFile())).toEqual({
-      text: '## Sheet: Sheet1\nRow 1: "Stark, Inc.", "The ""Big"" One", plain',
-    })
-  })
-
-  test('keeps a row on one line when a cell holds line breaks', async () => {
-    readXlsxFile.mockImplementationOnce(async () => [
-      {
-        sheet: 'Sheet1',
-        data: [
-          ['a\r\nb\rc\nd\ve\ff\u0085g\u2028h\u2029i', 'two, "lines"\nhere'],
-          ['next', 1],
-        ],
-      },
-    ])
-
-    expect(await xlsxToText(asFile())).toEqual({
-      text: '## Sheet: Sheet1\nRow 1: a b c d e f g h i, "two, ""lines"" here"\nRow 2: next, 1',
-    })
-  })
-
-  // The reader returns row 1 first and fills gaps with blank rows, so a row's index gives its number.
-  const withBlankRow4 = [
-    {
-      sheet: 'Sheet1',
-      data: [
-        ['Name', 'Cost'],
-        ['Orchid', 137],
-        ['Maple', 286],
-        [null, ''],
-        ['Cedar', 59],
-      ],
-    },
-  ]
-
-  test('leaves blank rows out of the text and keeps the row numbers of the rows below them', async () => {
-    readXlsxFile.mockImplementationOnce(async () => withBlankRow4)
-
-    expect(await xlsxToText(asFile())).toEqual({
+  test('keeps the row numbers of the rows below a blank row in the text', async () => {
+    expect(await xlsxToText(asFile(blankRow4))).toEqual({
       text: '## Sheet: Sheet1\nRow 1: Name, Cost\nRow 2: Orchid, 137\nRow 3: Maple, 286\nRow 5: Cedar, 59',
     })
   })
 
   test('keeps a blank row in the sheets as an empty array, so row N of the sheet is row N of a file written from it', async () => {
-    readXlsxFile.mockImplementationOnce(async () => withBlankRow4)
-
-    expect((await readXlsxSheets(asFile()))[0].rows).toEqual([
+    expect((await readXlsxSheets(asFile(blankRow4)))[0].rows).toEqual([
       ['Name', 'Cost'],
       ['Orchid', '137'],
       ['Maple', '286'],
       [],
       ['Cedar', '59'],
     ])
+  })
+
+  test('keeps the number of a row below a blank first row', async () => {
+    expect((await readXlsxSheets(asFile([[], ['Title']])))[0].rows).toEqual([[], ['Title']])
+  })
+
+  test('reads every sheet under its own name', async () => {
+    expect(await xlsxToText(asFile([['Revenue', 100]], [['Revenue', 150.5]]))).toEqual({
+      text: '## Sheet: Sheet1\nRow 1: Revenue, 100\n\n## Sheet: Sheet2\nRow 1: Revenue, 150.5',
+    })
+  })
+
+  test('renders an empty cell between two others as an empty string, not the literal "null"', async () => {
+    expect(await xlsxToText(asFile([['A', null, 'C']]))).toEqual({ text: '## Sheet: Sheet1\nRow 1: A, , C' })
   })
 
   // `bun test` runs in UTC, which hides timezone bugs: read-excel-file hands back
@@ -135,36 +100,22 @@ describe('xlsxToText', () => {
     })
 
     test('keeps the calendar day written in the sheet', async () => {
-      readXlsxFile.mockImplementationOnce(async () => [
-        { sheet: 'Sheet1', data: [['Shipped', new Date(Date.UTC(2026, 7, 1))]] },
-      ])
-
-      expect(await xlsxToText(asFile())).toEqual({ text: '## Sheet: Sheet1\nRow 1: Shipped, 2026-08-01' })
+      expect(await xlsxToText(asFile([['Shipped', new Date(Date.UTC(2026, 7, 1))]]))).toEqual({
+        text: '## Sheet: Sheet1\nRow 1: Shipped, 2026-08-01',
+      })
     })
 
-    test('keeps the time of day when the cell has one', async () => {
-      readXlsxFile.mockImplementationOnce(async () => [
-        { sheet: 'Sheet1', data: [['Logged', new Date(Date.UTC(2026, 8, 1, 14, 30))]] },
-      ])
-
-      expect(await xlsxToText(asFile())).toEqual({ text: '## Sheet: Sheet1\nRow 1: Logged, 2026-09-01 14:30' })
+    test('keeps the time of day, rounding away the float error the reader leaves in it', async () => {
+      // read-excel-file floors the Excel serial, so 14:30 comes back as 14:29:59.999.
+      expect(await xlsxToText(asFile([['Logged', new Date(Date.UTC(2026, 8, 1, 14, 30))]]))).toEqual({
+        text: '## Sheet: Sheet1\nRow 1: Logged, 2026-09-01 14:30',
+      })
     })
 
     test('includes seconds only when they are not zero', async () => {
-      readXlsxFile.mockImplementationOnce(async () => [
-        { sheet: 'Sheet1', data: [['Logged', new Date(Date.UTC(2026, 8, 1, 14, 30, 15))]] },
-      ])
-
-      expect(await xlsxToText(asFile())).toEqual({ text: '## Sheet: Sheet1\nRow 1: Logged, 2026-09-01 14:30:15' })
-    })
-
-    test('rounds away the float error read-excel-file leaves in times', async () => {
-      // read-excel-file floors the Excel serial, so 14:30 comes back as 14:29:59.999.
-      readXlsxFile.mockImplementationOnce(async () => [
-        { sheet: 'Sheet1', data: [['Logged', new Date(Date.UTC(2026, 8, 1, 14, 29, 59, 999))]] },
-      ])
-
-      expect(await xlsxToText(asFile())).toEqual({ text: '## Sheet: Sheet1\nRow 1: Logged, 2026-09-01 14:30' })
+      expect(await xlsxToText(asFile([['Logged', new Date(Date.UTC(2026, 8, 1, 14, 30, 15))]]))).toEqual({
+        text: '## Sheet: Sheet1\nRow 1: Logged, 2026-09-01 14:30:15',
+      })
     })
   })
 })

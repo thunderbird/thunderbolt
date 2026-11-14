@@ -10,6 +10,7 @@ import {
   getTransformer,
   hasTransformer,
   isPlainTextMime,
+  pptxMime,
   resolveTextMimeType,
   xlsxMime,
 } from './index'
@@ -19,6 +20,7 @@ describe('transformer registry', () => {
     expect(hasTransformer('application/pdf', 'text')).toBe(true)
     expect(hasTransformer(docxMime, 'text')).toBe(true)
     expect(hasTransformer(xlsxMime, 'text')).toBe(true)
+    expect(hasTransformer(pptxMime, 'text')).toBe(true)
     expect(hasTransformer('application/pdf', 'images')).toBe(true)
   })
 
@@ -33,30 +35,32 @@ describe('transformer registry', () => {
     expect(hasTransformer('', 'text')).toBe(false)
     // Plain-text passthrough is text-only — no images target.
     expect(hasTransformer('text/csv', 'images')).toBe(false)
-    // docx and xlsx have a text transformer but not an images one.
+    // docx, xlsx and pptx have a text transformer but not an images one.
     expect(hasTransformer(docxMime, 'images')).toBe(false)
     expect(hasTransformer(xlsxMime, 'images')).toBe(false)
+    expect(hasTransformer(pptxMime, 'images')).toBe(false)
   })
 
   test('getTransformer lazy-loads a callable transformer for a known type', async () => {
     const pdf = await getTransformer('application/pdf', 'text')
     const docx = await getTransformer(docxMime, 'text')
     const xlsx = await getTransformer(xlsxMime, 'text')
+    const pptx = await getTransformer(pptxMime, 'text')
     const csv = await getTransformer('text/csv', 'text')
-    expect(typeof pdf).toBe('function')
-    expect(typeof docx).toBe('function')
-    expect(typeof xlsx).toBe('function')
-    expect(typeof csv).toBe('function')
+    for (const transformer of [pdf, docx, xlsx, pptx, csv]) {
+      expect(transformer).toBeInstanceOf(Function)
+    }
   })
 
   test('getTransformer resolves to null for an unknown type', async () => {
     expect(await getTransformer('image/png', 'text')).toBeNull()
   })
 
-  test('defaultDeliveryMode: plain text and xlsx → text, other rich/binary → native (undefined)', () => {
+  test('defaultDeliveryMode: plain text, xlsx and pptx → text, other rich/binary → native (undefined)', () => {
     expect(defaultDeliveryMode('text/csv')).toBe('text')
     expect(defaultDeliveryMode('application/json')).toBe('text')
     expect(defaultDeliveryMode(xlsxMime)).toBe('text')
+    expect(defaultDeliveryMode(pptxMime)).toBe('text')
     expect(defaultDeliveryMode('application/pdf')).toBeUndefined()
     expect(defaultDeliveryMode(docxMime)).toBeUndefined()
     expect(defaultDeliveryMode('image/png')).toBeUndefined()
@@ -101,14 +105,23 @@ describe('resolveTextMimeType', () => {
     expect(resolveTextMimeType(filename, declared)).toBe(docxMime)
   })
 
+  it.each([
+    ['deck.pptx', ''],
+    ['deck.pptx', 'application/octet-stream'],
+    ['deck.pptx', 'application/zip'],
+  ])('resolves %s (declared "%s") to the pptx type', (filename, declared) => {
+    expect(resolveTextMimeType(filename, declared)).toBe(pptxMime)
+  })
+
   it('makes an OS-unnamed office file deliver as text rather than unreadable bytes', () => {
     // The composer accepts these by extension, so an unresolved type would store
     // a file no transformer can read — and remediation looks up by that same type.
-    for (const filename of ['book.xlsx', 'report.docx']) {
+    for (const filename of ['book.xlsx', 'report.docx', 'deck.pptx']) {
       const resolved = resolveTextMimeType(filename, '')
       expect(hasTransformer(resolved, 'text')).toBe(true)
     }
     expect(defaultDeliveryMode(resolveTextMimeType('book.xlsx', ''))).toBe('text')
+    expect(defaultDeliveryMode(resolveTextMimeType('deck.pptx', ''))).toBe('text')
   })
 
   it('leaves a genuinely binary type alone', () => {

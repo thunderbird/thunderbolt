@@ -5,8 +5,9 @@
 import '@/testing-library'
 
 import { describe, expect, it } from 'bun:test'
-import { xlsxMime } from '@/files/transformers'
+import { getTransformer, pptxMime, xlsxMime } from '@/files/transformers'
 import type { StoredFile } from '@/lib/file-blob-storage'
+import { samplePptx } from '@/test-utils/sample-pptx'
 import type { ThunderboltUIMessage } from '@/types'
 import type { SeedTurn } from '@shared/agent-core'
 import {
@@ -464,6 +465,31 @@ describe('prepareBuiltInConversation', () => {
 
       expect(prepared.prompt.text).toContain('[Showing the first 16000 of 20005 characters.')
       expect(prepared.prompt.text).not.toContain('next')
+    })
+
+    it('gives the model an attached deck as the text of each slide, in order, with its speaker notes', async () => {
+      const blob = new Blob([await samplePptx()], { type: pptxMime })
+      const file: StoredFile = {
+        id: 'd1',
+        filename: 'review.pptx',
+        mimeType: pptxMime,
+        size: blob.size,
+        createdAt: 0,
+        blob,
+      }
+
+      const prepared = await prepareBuiltInConversation(
+        [message('user', [attachment(file), { type: 'text', text: 'Summarize the deck' }])],
+        undefined,
+        inline,
+        depsFor([file], { getTransformer }),
+      )
+
+      expect(prepared.prompt.text).toStartWith(
+        '[Attachment: review.pptx]\n\n## Slide 1\nQuarterly review\nPrepared for the board\n\nSpeaker notes:\nWelcome everyone.',
+      )
+      expect(prepared.prompt.text).toContain('## Slide 2\nRegions\n')
+      expect(prepared.prompt.text).toEndWith('## Slide 3\nSummarize the deck')
     })
 
     it('writes each spreadsheet sheet as its own TSV', async () => {

@@ -173,7 +173,11 @@ try {
     'Linux link confirmation must offer external opening',
   )
   await (await linkDialog.$('//button[normalize-space()="Cancel"]')).click()
-  await browser.url(new URL('/settings/preferences', await browser.getUrl()).href)
+  // Navigate in the app: a page load would drop the app's data and reopen the setup wizard (see the reload above).
+  const settings = await browser.$('nav[aria-label="Sidebar sections"] button[aria-label^="Settings"]')
+  await settings.waitForClickable({ timeout: 30_000 })
+  await settings.click()
+  await clickButton('Preferences')
   const ask = await browser.$('[role="radio"][aria-label="Always ask"]')
   await ask.waitForDisplayed({ timeout: 30_000 })
   assert.equal(

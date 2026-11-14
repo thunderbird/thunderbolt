@@ -2,9 +2,8 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
-import { getReleaseSnapshot } from '../server/release-snapshot';
 import MarketingLayout from '../layouts/MarketingLayout.astro';
-import { SiteHeader } from '../components/marketing/spark/site-header';
+import { SparkHeader } from '../components/marketing/spark/spark-header';
 import { SparkFooter } from '../components/marketing/spark/spark-footer';
 import { SparkBurst } from '../components/marketing/spark/spark-burst';
 import PrivacyPathIllustration from '../components/privacy/PrivacyPathIllustration.astro';
@@ -13,7 +12,6 @@ import '../components/marketing/spark/spark.css';
 import '../styles/spark-privacy.css';
 
 const safetyArticle = 'https://tinfoil.sh/blog/2026-09-14-safety-without-compromising-privacy';
-const { release } = await getReleaseSnapshot();
 ---
 <MarketingLayout
   title="Privacy — A private place for big ideas. | Thunderbolt"
@@ -22,7 +20,7 @@ const { release } = await getReleaseSnapshot();
 >
   <div class="spark-page privacy-page">
     <a class="spark-skip" href="#privacy-main">Skip to content</a>
-    <SiteHeader release={release} currentPage="Privacy" client:load />
+    <SparkHeader currentPage="Privacy" client:load />
     <main id="privacy-main">
       <section class="privacy-hero spark-shell">
         <h1>A private place<br /><span class="spark-heading-accent">for big ideas.</span></h1>

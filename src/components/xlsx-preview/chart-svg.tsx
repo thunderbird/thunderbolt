@@ -14,6 +14,18 @@ const palette = ['#4472C4', '#ED7D31', '#A5A5A5', '#FFC000', '#5B9BD5', '#70AD47
 
 const colorAt = (index: number) => palette[index % palette.length]
 
+/** The width of one legend entry: an 8-pixel swatch, its gap and the name. */
+const legendEntryWidth = 70
+
+/**
+ * Text cut to about `width` pixels at the chart's label sizes, about 6 pixels a character: SVG text neither wraps nor
+ * clips, so a long label would run over the next one.
+ */
+const clipTo = (text: string, width: number) => {
+  const most = Math.max(1, Math.floor(width / 6))
+  return text.length > most ? `${text.slice(0, most - 1)}…` : text
+}
+
 /** A value kept within what a double holds, so sums of huge values stay finite. */
 const finite = (value: number) => Math.min(Number.MAX_VALUE, Math.max(-Number.MAX_VALUE, value))
 
@@ -94,11 +106,15 @@ export const ChartSvg = ({ chart, style }: { chart: ChartOverlay; style: CSSProp
   const y = (value: number) => pad.top + innerHeight - ((value / 2 - min / 2) / (max / 2 - min / 2 || 1)) * innerHeight
   const step = innerWidth / count
   const round = kind === 'pie' || kind === 'doughnut'
-  // Only the legend entries and category labels that fit are drawn, since a chart can have thousands.
-  const legendNames = (round ? categories : series.map((s, i) => s.name || t`Series ${i + 1}`)).slice(
-    0,
-    Math.max(1, Math.floor((width - pad.left) / 70)),
-  )
+  // A chart that names no categories numbers them from 1, as Excel does.
+  const labels = categories.length > 0 ? categories : Array.from({ length: count }, (_, i) => formatters.number(i + 1))
+  // Only the legend entries and category labels that fit are drawn, since a chart can have thousands. A pie's
+  // legend names its categories, each cut to its entry's width; a series legend is left as the file names it.
+  const legendNames = (
+    round
+      ? labels.map((label) => clipTo(label, legendEntryWidth - 11))
+      : series.map((s, i) => s.name || t`Series ${i + 1}`)
+  ).slice(0, Math.max(1, Math.floor((width - pad.left) / legendEntryWidth)))
   const labelEvery = Math.max(1, Math.ceil((count * 30) / innerWidth))
   const tickLabel = (tick: number) =>
     stacking === 'percent' ? formatters.percent(tick / 100) : formatters.number(Math.round(tick * 100) / 100)
@@ -128,11 +144,11 @@ export const ChartSvg = ({ chart, style }: { chart: ChartOverlay; style: CSSProp
               </text>
             </g>
           ))}
-          {categories.map(
-            (category, i) =>
+          {labels.map(
+            (label, i) =>
               i % labelEvery === 0 && (
                 <text key={i} x={pad.left + step * (i + 0.5)} y={pad.top + innerHeight + 12} textAnchor="middle">
-                  {category}
+                  {clipTo(label, step * labelEvery)}
                 </text>
               ),
           )}
@@ -174,7 +190,7 @@ export const ChartSvg = ({ chart, style }: { chart: ChartOverlay; style: CSSProp
       {plot()}
       <g fontSize={10} fill="#404040">
         {legendNames.map((name, i) => (
-          <g key={i} transform={`translate(${pad.left + i * 70}, ${height - 8})`}>
+          <g key={i} transform={`translate(${pad.left + i * legendEntryWidth}, ${height - 8})`}>
             <rect width={8} height={8} y={-8} fill={colorAt(i)} />
             <text x={11}>{name}</text>
           </g>

@@ -103,4 +103,60 @@ describe('ChartSvg', () => {
       { element: 'path', fill: '#A5A5A5' },
     ])
   })
+
+  /** The chart's category labels under its plot: the only middle-anchored text when it has no title. */
+  const categoryLabels = (kind: 'line' | 'column', categories: string[], values: number[]) => {
+    const chart: Extract<Overlay, { type: 'chart' }> = {
+      ...columns('none'),
+      kind,
+      categories,
+      series: [{ name: 'Rent', values }],
+    }
+    const { container } = render(<ChartSvg chart={chart} style={{}} />)
+    return [...container.querySelectorAll('text[text-anchor="middle"]')].map(({ textContent }) => textContent)
+  }
+
+  it('labels the categories of a line or column chart, numbering them from 1 when the chart names none', () => {
+    for (const kind of ['line', 'column'] as const) {
+      expect(categoryLabels(kind, [], [3, 5, 4])).toEqual(['1', '2', '3'])
+      expect(categoryLabels(kind, ['Q1', 'Q2'], [3, 5])).toEqual(['Q1', 'Q2'])
+    }
+  })
+
+  it('thins out category labels that would overlap, and cuts a long one', () => {
+    const many = categoryLabels('line', [], Array(200).fill(1))
+    const [long] = categoryLabels('column', ['A category name far too long for its place', 'B'], [1, 2])
+
+    // 200 labels on a 256-pixel plot: one every 24, the first among them.
+    expect(many.length).toBeLessThan(20)
+    expect(many[0]).toBe('1')
+    expect(long.endsWith('…')).toBe(true)
+    expect(long.length).toBeLessThan(25)
+  })
+
+  /** A pie or doughnut's legend: each entry's name and its swatch colour. */
+  const legendOf = (kind: 'pie' | 'doughnut', categories: string[], values: number[]) => {
+    const chart: Extract<Overlay, { type: 'chart' }> = {
+      ...columns('none'),
+      kind,
+      categories,
+      series: [{ name: 'Share', values }],
+    }
+    const { container } = render(<ChartSvg chart={chart} style={{}} />)
+    return [...container.querySelectorAll('g[transform]')].map((entry) => ({
+      name: entry.querySelector('text')?.textContent,
+      fill: entry.querySelector('rect')?.getAttribute('fill'),
+    }))
+  }
+
+  it('gives a pie or doughnut a legend of its categories in their slice colours, numbered from 1 when unnamed', () => {
+    for (const kind of ['pie', 'doughnut'] as const) {
+      expect(legendOf(kind, ['North', 'South', 'East'], [1, 2, 3])).toEqual([
+        { name: 'North', fill: '#4472C4' },
+        { name: 'South', fill: '#ED7D31' },
+        { name: 'East', fill: '#A5A5A5' },
+      ])
+      expect(legendOf(kind, [], [1, 2]).map(({ name }) => name)).toEqual(['1', '2'])
+    }
+  })
 })

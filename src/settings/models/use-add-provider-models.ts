@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useProviderVisibility } from '@/providers/use-provider-visibility'
 import { useCallback, useDeferredValue, useEffect, useReducer, useRef } from 'react'
 import { useLingui } from '@lingui/react/macro'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
@@ -68,7 +67,6 @@ export const providerModelPickerReducer = (state: PickerState, action: PickerAct
 export const useAddProviderModels = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
   const { t } = useLingui()
   const db = useDatabase()
-  const { isProviderVisible } = useProviderVisibility()
   const getProxyFetch = useProxyFetchGetter()
   const queryClient = useQueryClient()
   const [state, dispatch] = useReducer(providerModelPickerReducer, initialState)
@@ -83,10 +81,8 @@ export const useAddProviderModels = ({ isOpen, onClose }: { isOpen: boolean; onC
     queryKey: ['models', 'provider-picker'],
     query: toCompilableQuery(getAllModels(db)),
   })
-  const connections = allConnections.filter(
-    (connection) =>
-      isProviderVisible(connection.provider) &&
-      getProviderDefinition(connection.provider).capabilities.includes('models'),
+  const connections = allConnections.filter((connection) =>
+    getProviderDefinition(connection.provider).capabilities.includes('models'),
   )
   const connection = connections.find((candidate) => candidate.id === state.connectionId)
   const canLoad = Boolean(isOpen && connection?.connected && connection.enabled)

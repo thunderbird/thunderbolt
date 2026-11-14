@@ -4,8 +4,7 @@
 
 import { act, cleanup } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { createModel, getAllModels, updateModel } from '@/dal/models'
-import { updateSettings } from '@/dal/settings'
+import { createModel, updateModel } from '@/dal/models'
 import { saveIntegrationCredentials } from '@/dal/integrations'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
@@ -115,31 +114,5 @@ describe('live chat model availability', () => {
     triggerChange(['integrations_secrets'])
     await settle()
     expect(modelIds()).toEqual([])
-  })
-
-  it('updates open chats when the Otari preview setting changes without deleting their models', async () => {
-    await createModel(getDb(), {
-      id: 'otari',
-      name: 'Otari model',
-      provider: 'otari',
-      model: 'test',
-      url: 'https://otari.example/api/v1',
-      apiKey: 'otari-key',
-      enabled: 1,
-    })
-    const { triggerChange } = renderWithReactivity(<Harness />, {
-      tables: ['models', 'models_secrets', 'integrations_secrets', 'settings'],
-    })
-    await settle()
-    expect(modelIds()).toEqual(['byok', 'oauth'])
-    await updateSettings(getDb(), { experimental_feature_otari: true })
-    triggerChange(['settings'])
-    await settle()
-    expect(modelIds()).toEqual(['byok', 'oauth', 'otari'])
-    await updateSettings(getDb(), { experimental_feature_otari: false })
-    triggerChange(['settings'])
-    await settle()
-    expect(modelIds()).toEqual(['byok', 'oauth'])
-    expect((await getAllModels(getDb())).find(({ id }) => id === 'otari')?.enabled).toBe(1)
   })
 })

@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { updateSettings } from '@/dal/settings'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import * as connections from '@/dal/provider-connections'
@@ -40,7 +39,6 @@ const setup = async () => {
 describe('AI provider connection disabling', () => {
   beforeEach(async () => {
     await resetTestDatabase()
-    await updateSettings(getDb(), { experimental_feature_otari: true })
     resetStore()
     useSearchProviderStore.getState().clearSearchProvider()
   })

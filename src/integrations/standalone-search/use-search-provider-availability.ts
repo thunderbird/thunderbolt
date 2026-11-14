@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useProviderVisibility } from '@/providers/use-provider-visibility'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
@@ -18,16 +17,13 @@ import { canSupplySearch } from './eligibility'
 export const useSearchProviderAvailability = () => {
   const db = useDatabase()
   const queryClient = useQueryClient()
-  const { isProviderVisible, otariEnabled } = useProviderVisibility()
   const { selection, connectionId } = useSearchProviderStore()
   const query = useQuery({
     queryKey: ['provider-connections', 'search'],
     query: toCompilableQuery(getProviderConnections(db)),
   })
-  const candidates = (query.data ?? []).filter(
-    (connection) =>
-      isProviderVisible(connection.provider) &&
-      getProviderDefinition(connection.provider).capabilities.includes('search'),
+  const candidates = (query.data ?? []).filter((connection) =>
+    getProviderDefinition(connection.provider).capabilities.includes('search'),
   )
   const otari = candidates.filter((connection) => connection.provider === 'otari' && canSupplySearch(connection))
   const capabilities = useQueries({
@@ -62,7 +58,6 @@ export const useSearchProviderAvailability = () => {
     hasSearchProvider && (selectedConnection?.provider === 'tinfoil' || selectedConnection?.provider === 'otari')
   const discovering = capabilities.some((capability) => capability.isPending)
   return {
-    otariEnabled,
     connections,
     configuredConnections: candidates,
     selectedConnection,

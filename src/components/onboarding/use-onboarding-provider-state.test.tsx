@@ -374,6 +374,26 @@ describe('useOnboardingProviderState', () => {
     expect(result.current.addForm.allowServerModels).toBe(false)
   })
 
+  it('defaults to Otari, follows a saved connection once it loads, and keeps an explicit choice', () => {
+    const deps = makeDependencies()
+    const noConnections: { connected: readonly ('openrouter' | 'tinfoil')[] } = { connected: [] }
+    const { result, rerender } = renderHook(({ connected }) => useOnboardingProviderState(connected, deps), {
+      wrapper: createTestProvider(),
+      initialProps: noConnections,
+    })
+    expect(result.current.selection).toBe('otari')
+    expect(result.current.isConnected).toBe(false)
+
+    rerender({ connected: ['tinfoil'] })
+    expect(result.current.selection).toBe('tinfoil')
+    expect(result.current.isConnected).toBe(true)
+
+    act(() => result.current.selectProvider('openrouter'))
+    rerender({ connected: ['tinfoil'] })
+    expect(result.current.selection).toBe('openrouter')
+    expect(result.current.isConnected).toBe(false)
+  })
+
   it('returns to provider choices for an existing connection and continues without reconnecting', async () => {
     const deps = makeDependencies()
     const { result, unmount } = renderHook(() => useOnboardingProviderState([], deps), {
@@ -851,7 +871,8 @@ describe('useOnboardingProviderState', () => {
   it('shows Tinfoil key setup and the local-provider form from their onboarding choices', async () => {
     render(<OnboardingModelStep />, { wrapper: createTestProvider() })
     await act(async () => getClock().runAllAsync())
-    expect(screen.getByRole('radio', { name: 'OpenRouter' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Otari' })).toBeChecked()
+    expect(screen.getAllByRole('radio')[0]).toHaveAccessibleName('Otari')
     fireEvent.click(screen.getByRole('radio', { name: 'Tinfoil' }))
     expect(screen.getByRole('radio', { name: 'Tinfoil' })).toBeChecked()
     expect(screen.queryByLabelText('API Key')).not.toBeInTheDocument()
@@ -912,8 +933,7 @@ describe('useOnboardingProviderState', () => {
     expect(screen.getByRole('radio', { name: 'Tinfoil' })).toBeInTheDocument()
   })
 
-  it('loads the saved preview flag before consuming an authorization return', async () => {
-    await updateSettings(getDb(), { experimental_feature_otari: true })
+  it('consumes an authorization return on mount', async () => {
     const completion = Promise.withResolvers<{ access_token: string }>()
     const complete = mock(() => completion.promise)
     const cancel = mock(() => {})

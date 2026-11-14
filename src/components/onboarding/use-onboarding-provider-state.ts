@@ -43,8 +43,10 @@ import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import { prepareProviderDefaultModel, type OnboardingProvider } from './provider-default-model'
 
 type SetupView = 'choices' | 'openrouter' | 'tinfoil' | 'otari' | 'other' | 'manual'
+type ProviderSelection = OnboardingProvider | 'otari' | 'custom'
 type ProviderState = {
-  selection: OnboardingProvider | 'otari' | 'custom'
+  /** Null until the user or an authorization return picks one; the default is derived from saved connections. */
+  selection: ProviderSelection | null
   view: SetupView
   isConnecting: boolean
   isDisconnecting: boolean
@@ -54,7 +56,7 @@ type ProviderState = {
   code: string
 }
 type ProviderAction =
-  | { type: 'select'; selection: ProviderState['selection'] }
+  | { type: 'select'; selection: ProviderSelection }
   | { type: 'view'; view: SetupView }
   | { type: 'connecting' }
   | { type: 'disconnecting' }
@@ -110,11 +112,11 @@ const connectionDependencies = {
 
 /** Coordinates provider authorization and the existing tested-model save flow. */
 export const useOnboardingProviderState = (
-  connectedProviders: readonly ProviderState['selection'][],
+  connectedProviders: readonly ProviderSelection[],
   dependencies = connectionDependencies,
   onConnected?: () => void,
   options: {
-    initialProvider?: ProviderState['selection']
+    initialProvider?: ProviderSelection
     initialView?: SetupView
     onSaved?: () => void
     returnContext?: TinfoilReturnContext
@@ -129,9 +131,7 @@ export const useOnboardingProviderState = (
       getTinfoilMobileReturn(options.returnContext ?? 'onboarding'),
   )
   const [state, dispatch] = useReducer(onboardingProviderReducer, {
-    selection: returned
-      ? returned.attempt.provider
-      : (options.initialProvider ?? connectedProviders[0] ?? 'openrouter'),
+    selection: returned ? returned.attempt.provider : (options.initialProvider ?? null),
     view: returned ? returned.attempt.provider : (options.initialView ?? 'choices'),
     isConnecting: false,
     isDisconnecting: false,
@@ -148,8 +148,10 @@ export const useOnboardingProviderState = (
   const pending = useRef<AbortController | null>(null)
   const returnedOwner = useRef<{ id: string; controller: AbortController } | null>(null)
   const isFormOpen = state.view === 'other'
-  const provider: OnboardingProvider = state.selection === 'tinfoil' ? 'tinfoil' : 'openrouter'
-  const isConnected = connectedProviders.includes(state.selection)
+  // Saved models load after mount, so the default follows them rather than being fixed in initial state.
+  const selection = state.selection ?? connectedProviders[0] ?? 'otari'
+  const provider: OnboardingProvider = selection === 'tinfoil' ? 'tinfoil' : 'openrouter'
+  const isConnected = connectedProviders.includes(selection)
   const addForm = useAddModelForm({
     isOpen: state.view === 'other',
     onClose: () => dispatch({ type: 'view', view: state.view === 'other' ? 'choices' : provider }),
@@ -417,7 +419,7 @@ export const useOnboardingProviderState = (
     dispatch({ type: 'view', view: 'choices' })
   }
 
-  const chooseProvider = (provider: ProviderState['selection']) => {
+  const chooseProvider = (provider: ProviderSelection) => {
     cancelAuthorization()
     discardPendingAuthorization()
     addForm.onProviderChange(provider)
@@ -430,7 +432,7 @@ export const useOnboardingProviderState = (
       return
     }
     const key = addForm.form.getValues('apiKey')?.trim()
-    if (!key || state.selection === 'custom' || state.selection === 'otari') {
+    if (!key || selection === 'custom' || selection === 'otari') {
       return
     }
     pending.current?.abort()
@@ -471,7 +473,7 @@ export const useOnboardingProviderState = (
       return
     }
     if (state.view === 'choices') {
-      chooseProvider(state.selection)
+      chooseProvider(selection)
       return
     }
     if (isConnected) {
@@ -481,6 +483,7 @@ export const useOnboardingProviderState = (
 
   return {
     ...state,
+    selection,
     showApiKey: state.showApiKey,
     addForm,
     isFormOpen,
@@ -501,7 +504,7 @@ export const useOnboardingProviderState = (
     chooseProvider,
     continueSelection,
     connectApiKey,
-    selectProvider: (selection: ProviderState['selection']) => dispatch({ type: 'select', selection }),
+    selectProvider: (selection: ProviderSelection) => dispatch({ type: 'select', selection }),
     setCode: (code: string) => dispatch({ type: 'code', code }),
   }
 }

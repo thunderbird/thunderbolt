@@ -27,13 +27,6 @@ import { isModelReady } from '@/settings/models/model-policy'
 /** Models whose requests and credentials do not require a Thunderbolt server. */
 const standaloneModelCondition = sql`${modelsTable.provider} != 'thunderbolt' AND (${modelsTable.provider} != 'tinfoil' OR COALESCE(${modelsTable.isSystem}, 0) != 1)`
 
-/** Hidden preview providers cannot remain active through a saved model selection. */
-const providerVisibilityCondition = sql`(${modelsTable.provider} != 'otari' OR EXISTS (
-  SELECT 1 FROM ${settingsTable} AS provider_settings
-  WHERE provider_settings.id = 'experimental_feature_otari'
-    AND provider_settings.value = 'true'
-))`
-
 /** A model can use only the enabled, locally approved connection for its own provider. */
 const modelConnectionReady = sql`${connections.provider} = ${modelsTable.provider} AND ${connections.enabled} = 1 AND ${providerCredentialConnected}`
 
@@ -113,7 +106,6 @@ export const getAvailableModels = (db: AnyDrizzleDatabase) => {
       and(
         eq(modelsTable.enabled, 1),
         providerConnectionCondition,
-        providerVisibilityCondition,
         isNull(modelsTable.deletedAt),
         usesLocalProviders() ? standaloneModelCondition : undefined,
       ),
@@ -152,7 +144,6 @@ export const getSelectedModelQuery = (db: AnyDrizzleDatabase) => {
       and(
         isNull(modelsTable.deletedAt),
         providerConnectionCondition,
-        providerVisibilityCondition,
         or(
           eq(modelsTable.isSystem, 1),
           isNotNull(settingsTable.value),

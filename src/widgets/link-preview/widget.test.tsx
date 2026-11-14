@@ -307,7 +307,6 @@ describe('cloud-account private-search preview routing', () => {
   it.each(['auto', 'cloud', 'none', 'connection'] as const)(
     'does not discover unrelated provider capabilities for passive previews (%s)',
     async (selection) => {
-      await updateSettings(getDb(), { experimental_feature_otari: true })
       const id = await saveProviderConnection(getDb(), {
         provider: 'otari',
         name: 'Private Otari',

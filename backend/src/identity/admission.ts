@@ -3,10 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { db as DbType } from '@/db/client'
-import { type AuthAdapter, findMembership } from './access'
+import { type AuthAdapter, findMembership, type MembershipRow } from './access'
+import { createAuditEvent } from './audit/write'
 import { applyBootstrapAdmin, isBootstrapAdminEmail } from './bootstrap-admin'
-import { type Admission, createMembership } from './membership'
-import { otpSignInPath, type SignIn, ssoSignInPaths } from './sign-in'
+import { type Admission, addMembershipSource, createMembership } from './membership'
+import { otpSignInPath, type SignIn } from './sign-in'
 
 type AdmissionRule = (adapter: AuthAdapter, signIn: SignIn) => Promise<Admission | null>
 
@@ -25,9 +26,12 @@ const waitlistRule: AdmissionRule = async (adapter, { user, path }) => {
   return approval ? { kind: 'waitlist', ref: approval.id } : null
 }
 
-/** Any subject of the deployment's SSO provider, as before organizations existed. */
-const ssoRule: AdmissionRule = async (_adapter, { path }) =>
-  path !== undefined && ssoSignInPaths.includes(path) ? { kind: 'sso' } : null
+/**
+ * A subject of a connection without SCIM. A connection with SCIM admits only the subjects SCIM
+ * provisioned ("require a SCIM record before first login"), so it admits nobody here.
+ */
+const ssoRule: AdmissionRule = async (_adapter, { ssoConnection }) =>
+  ssoConnection && !ssoConnection.requiresScimRecord ? { kind: 'sso', identityConnectionId: ssoConnection.id } : null
 
 /** Tried in order for a signing-in user with no membership; the first match admits them. */
 const admissionRules: AdmissionRule[] = [waitlistRule, ssoRule]
@@ -39,8 +43,43 @@ const admissionRules: AdmissionRule[] = [waitlistRule, ssoRule]
  * transaction.
  */
 export const admitAtSignIn = async (adapter: AuthAdapter, signIn: SignIn) => {
-  const membership = (await findMembership(adapter, signIn.user.id)) ?? (await admitByRule(adapter, signIn))
-  return applyBootstrapAdmin(adapter, signIn, membership)
+  const existing = await findMembership(adapter, signIn.user.id)
+  if (existing) {
+    await addSsoSource(adapter, existing, signIn)
+  }
+  return applyBootstrapAdmin(adapter, signIn, existing ?? (await admitByRule(adapter, signIn)))
+}
+
+/**
+ * A connection without SCIM admits its subjects at every sign-in, members included: one whose
+ * only source was this connection's retiring or retired SCIM side would otherwise be locked out of the SSO
+ * side that stays. The access check still runs after, so a block or another IdP's
+ * deprovisioning wins. A source an admin suspended or removed is left as it is.
+ */
+const addSsoSource = async (adapter: AuthAdapter, membership: MembershipRow, { user, ssoConnection }: SignIn) => {
+  if (!ssoConnection || ssoConnection.requiresScimRecord) {
+    return
+  }
+  const source = await adapter.findOne({
+    model: 'membershipSource',
+    where: [
+      { field: 'membershipId', value: membership.id },
+      { field: 'kind', value: 'sso' },
+      { field: 'identityConnectionId', value: ssoConnection.id },
+    ],
+  })
+  if (source) {
+    return
+  }
+  await addMembershipSource(adapter, membership.id, { kind: 'sso', identityConnectionId: ssoConnection.id })
+  await createAuditEvent(adapter, {
+    action: 'member.source_added',
+    outcome: 'success',
+    actor: { type: 'user', id: user.id },
+    target: { type: 'user', id: user.id },
+    connectionId: ssoConnection.id,
+    metadata: { kind: 'sso' },
+  })
 }
 
 const admitByRule = async (adapter: AuthAdapter, signIn: SignIn) => {

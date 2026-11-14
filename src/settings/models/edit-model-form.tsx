@@ -154,11 +154,8 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitErro
           model={state.watchedModel}
           apiKey={state.effectiveApiKey}
           hasOAuth={Boolean(model.providerConnectionId || model.oauthProvider)}
-          isTesting={state.connection.isTesting}
+          connection={state.connection}
           onTest={state.testConnection}
-          status={state.connection.status}
-          error={state.connection.error}
-          toolSupport={state.connection.toolSupport}
         />
         {model.provider !== 'thunderbolt' && (
           <SupportsToolsSwitch

@@ -3404,6 +3404,10 @@ msgstr "Loading devices…"
 msgid "Loading emoji…"
 msgstr "Loading emoji…"
 
+#: src/settings/models/connection-test-section.tsx
+msgid "Loading model…"
+msgstr "Loading model…"
+
 #: src/components/otari-connection/otari-connection.tsx
 #: src/settings/models/add-provider-models.tsx
 msgid "Loading models…"
@@ -3431,6 +3435,10 @@ msgstr "Loading…"
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Local"
 msgstr "Local"
+
+#: src/settings/models/connection-test-section.tsx
+msgid "Local models can take a few minutes to load the first time."
+msgstr "Local models can take a few minutes to load the first time."
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 #~ msgid "Local Storage"

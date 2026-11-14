@@ -7,7 +7,7 @@ import { AlertTriangle, Check, Loader2, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { StatusCard } from '@/components/ui/status-card'
-import type { ToolSupport } from '@/hooks/use-model-connection-test'
+import type { ModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
 import { providerRequiresApiKey, providerRequiresConnectionTest } from './model-policy'
 
@@ -16,11 +16,8 @@ type ConnectionTestSectionProps = {
   model: string
   apiKey: string | undefined
   hasOAuth?: boolean
-  isTesting: boolean
+  connection: Pick<ModelConnectionTest, 'isTesting' | 'isLoadingModel' | 'status' | 'error' | 'toolSupport'>
   onTest: () => void
-  status: 'idle' | 'success' | 'error'
-  error: string | null
-  toolSupport: ToolSupport | null
 }
 
 /** Determines whether the current provider fields are sufficient for a test. */
@@ -37,13 +34,11 @@ export const ConnectionTestSection = ({
   model,
   apiKey,
   hasOAuth = false,
-  isTesting,
+  connection,
   onTest,
-  status,
-  error,
-  toolSupport,
 }: ConnectionTestSectionProps) => {
   const { t } = useLingui()
+  const { isTesting, isLoadingModel, status, error, toolSupport } = connection
   const canTest = (hasOAuth && Boolean(model)) || canTestModelConnection(provider, model, apiKey)
   const showApiKeyHint = !canTest && Boolean(model) && providerRequiresApiKey(provider)
 
@@ -54,12 +49,17 @@ export const ConnectionTestSection = ({
           {isTesting ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              <Trans>Testing model…</Trans>
+              {isLoadingModel ? <Trans>Loading model…</Trans> : <Trans>Testing model…</Trans>}
             </>
           ) : (
             <Trans>Test model</Trans>
           )}
         </Button>
+      )}
+      {isLoadingModel && (
+        <p className="text-center text-sm text-muted-foreground">
+          <Trans>Local models can take a few minutes to load the first time.</Trans>
+        </p>
       )}
       {showApiKeyHint && (
         <p className="text-center text-sm text-muted-foreground">

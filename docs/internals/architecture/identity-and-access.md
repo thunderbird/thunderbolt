@@ -165,8 +165,9 @@ releases let users register can't sign anyone in.
   subject is refused with `ACCESS_NOT_MEMBER` and, since the SSO callback runs user creation and
   admission in one transaction, no user is created. A `BOOTSTRAP_ADMIN_EMAILS` address is the one
   exception: the bootstrap grant admits it before SCIM provisions it.
-- **Email linking** happens only on a connection without SCIM, and never to a user a SCIM connection
-  manages, on any connection.
+- **Email linking** happens only on a connection without SCIM, never to a user a SCIM connection
+  manages, and never to a user who already signs in through another SSO connection: those go
+  through the linking tiers (below).
 - **The match claim** (`match_claim`: `oid` for Entra, `sub` for Okta and Keycloak, or a SAML attribute)
   names the claim whose value is the subject's SCIM `externalId`. On a connection whose SCIM side is
   active, the SSO `resolveUser` hook signs the subject into the user of that SCIM record
@@ -423,7 +424,57 @@ only when something changed, so a replay writes nothing. `getScimActor()`
 `identity_connection` id. A change to a group with no members reaches no callback, so the pipeline
 records it after the commit; a memberless group grants nothing. Sessions the revocation deletes write
 one `auth.session_revoked` each; the ones the plugin signs out go through Better Auth's session hooks. Revocation is not a remote wipe: a revoked device clears
-its data only when it next reaches the server. `identity.resolveUser` always creates a new user for now.
+its data only when it next reaches the server. `identity.resolveUser` links an incoming identity only through the linking tiers (below).
 
 Not supported yet: groups with duplicate names (Entra allows them) and users without an email.
 The plugin refuses both.
+
+## Linking
+
+An incoming IdP identity whose email an existing user owns is joined to that user only through one
+of three tiers ([linking.ts](../../../backend/src/identity/linking.ts)), never by email alone. Two
+existing users are never merged: each has its own E2EE account key, and a link only attaches an
+`account` (SSO) or a SCIM user to one user. Nothing touches their devices or envelopes, so the first
+sign-in on a new device still goes through device approval.
+
+1. **Domain:** the email's exact domain is verified and claimed by the connection the identity
+   arrives on. A user who has, or had, a SCIM record on that same connection is excluded: the IdP
+   sending a new `externalId` for their email (Keycloak recreating a user with a new UUID) means a
+   different identity.
+2. **Self-service:** a signed-in member asks to link (`/sign-in/sso` with `X-Link-Intent: 1`, from
+   a live session) and completes SSO. The request is stored against the flow's OIDC `state` or SAML
+   `RelayState`, which are bound to the browser that started it, and taken once at the callback. A
+   session alone never links, so a shared machine can't hand one person's corporate identity to
+   another's account. On a connection with SCIM it also records an approved review on the match
+   claim, so the IdP's SCIM create attaches to the same user.
+3. **Review:** everything else waits for one admin in `link_review`
+   ([link-reviews.ts](../../../backend/src/identity/link-reviews.ts)). An approval doesn't link by
+   itself: the IdP's next attempt does.
+
+Every link to an existing user writes `link.created`, with `tier` naming how it was made: a tier
+above, `scim_record` for the first SSO sign-in that reaches a user through their SCIM record, or
+`email` for the email rules of a connection without SCIM. Where each path applies:
+
+- **SCIM create** (`identity.resolveUser`, before the plugin's transaction): an approved review for
+  the connection and `externalId` links to its user; otherwise tier 1; otherwise the review is opened
+  (or its `attempts` and `lastSeenAt` bumped) and the create gets the plugin's 409 `uniqueness`.
+  Nothing reaches the existing user until an admin approves and the IdP retries.
+- **SSO on a connection with SCIM:** only the SCIM record or tier 2. An approved review attaches
+  through the SCIM retry.
+- **SSO on a connection without SCIM:** tier 2, an approved review keyed on the match claim, then the
+  email rules above. A user who already signs in through another SSO provider goes through tier 1,
+  else the sign-in is refused with `LINK_REVIEW_PENDING` and the review is written once the sign-in
+  has rolled back.
+
+**Profile.** Only one SCIM source manages a user's email and name. The first IdP to link a local user
+takes it over (`manage`); a user another SCIM source already manages is linked with `preserve`, so
+with Entra and Keycloak both provisioning one person, the first keeps managing the profile.
+
+**The queue** (`listLinkReviews`, `approveLinkReview`, `rejectLinkReview`, for the admin routes):
+
+- One open review per connection and `externalId`; retries only bump it.
+- A rejection is final for the IdP: its retries keep getting 409 and bump the rejected review. An
+  admin can still approve it later.
+- An admin can't approve their own link (`LINK_REVIEW_SELF`). Approval is also refused while the
+  candidate still has a SCIM user on that connection (`LINK_REVIEW_RECORD_EXISTS`), because the
+  plugin allows one per connection and user: the IdP must delete the old record first.

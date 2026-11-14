@@ -5,7 +5,7 @@
 import { useReducer } from 'react'
 import { useAsyncAttempt } from '@/hooks/use-async-attempt'
 import { msg } from '@lingui/core/macro'
-import { deleteAccount, postAccountDeletionCode } from '@/api/account'
+import { AccountManagedByIdpError, deleteAccount, postAccountDeletionCode } from '@/api/account'
 import { useHttpClient, type HttpClient } from '@/contexts'
 import { i18n } from '@/i18n'
 import { clearLocalData } from '@/lib/cleanup'
@@ -23,6 +23,7 @@ const codeRejected = msg`That code is invalid or expired. Check your email and t
 // locale, and rewording it would orphan those translations.
 const deleteFailed = msg`Failed to delete account.`
 const localCleanupFailed = msg`Your account was deleted, but this device’s data couldn’t be cleared. Reload the app.`
+const managedByIdp = msg`Your organization manages this account, so it can’t be deleted here. Ask your administrator.`
 
 type DeleteAccountState = {
   /** idle → confirming (are-you-sure) → stepUp (emailed code entry); success ends in a reload. */
@@ -109,7 +110,18 @@ const requestFailure = (err: unknown, isResend: boolean): { message: string; thr
   if (err instanceof HttpError && err.response.status === 429) {
     return { message: i18n._(codeRequestThrottled), throttled: true }
   }
+  if (err instanceof AccountManagedByIdpError) {
+    return { message: i18n._(managedByIdp), throttled: false }
+  }
   return { message: i18n._(isResend ? codeResendFailed : codeRequestFailed), throttled: false }
+}
+
+/** What a refused delete tells the user. */
+const deleteFailure = (err: unknown) => {
+  if (err instanceof StepUpVerificationError) {
+    return codeRejected
+  }
+  return err instanceof AccountManagedByIdpError ? managedByIdp : deleteFailed
 }
 
 /**
@@ -180,7 +192,7 @@ export const useDeleteAccount = (
         }
         dispatch({
           type: rejected ? 'CODE_REJECTED' : 'DELETE_FAILED',
-          payload: i18n._(rejected ? codeRejected : deleteFailed),
+          payload: i18n._(deleteFailure(err)),
         })
         return
       }

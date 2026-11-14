@@ -8,6 +8,15 @@ import { msg } from '@lingui/core/macro'
 type OtpError = { code?: string; message?: string }
 type OtpErrorContext = 'link' | 'code'
 
+/** The backend's refusal of email-code and passkey sign-in to a member whose organization requires SSO. */
+const ssoRequiredCode = 'ACCESS_SSO_REQUIRED'
+
+export const ssoRequired = msg`Your organization requires you to sign in with single sign-on.`
+
+/** Whether a sign-in error is the backend's SSO-only refusal. */
+export const isSsoRequiredError = (error: unknown) =>
+  typeof error === 'object' && error !== null && (error as { code?: unknown }).code === ssoRequiredCode
+
 // `msg` (not `t`) because these live at module scope: `t` resolves against the
 // active catalog where it is evaluated, so a module-scope `t` would freeze the
 // locale at import time and never follow a language change. `msg` records a
@@ -17,11 +26,13 @@ const messages: Record<OtpErrorContext, Record<string, MessageDescriptor>> = {
     OTP_EXPIRED: msg`This link has expired. Please request a new one.`,
     INVALID_OTP: msg`This link is invalid. Please request a new one.`,
     TOO_MANY_ATTEMPTS: msg`Too many attempts. Please request a new code.`,
+    [ssoRequiredCode]: ssoRequired,
   },
   code: {
     OTP_EXPIRED: msg`This code has expired. Please request a new one.`,
     INVALID_OTP: msg`Invalid code. Please try again.`,
     TOO_MANY_ATTEMPTS: msg`Too many attempts. Please request a new code.`,
+    [ssoRequiredCode]: ssoRequired,
   },
 }
 
@@ -29,7 +40,8 @@ const fallback = msg`Verification failed. Please try again.`
 
 /**
  * Returns a user-facing message for OTP verification errors.
- * Handles OTP_EXPIRED, INVALID_OTP, and TOO_MANY_ATTEMPTS from Better Auth.
+ * Handles OTP_EXPIRED, INVALID_OTP, and TOO_MANY_ATTEMPTS from Better Auth, and the backend's
+ * SSO-only refusal.
  *
  * Returns a descriptor rather than a string so the caller resolves it with
  * `i18n._` at render time — callers hold this in reducer/component state, and a

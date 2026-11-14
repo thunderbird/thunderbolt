@@ -46,6 +46,22 @@ describe('sign-in operation outcomes', () => {
     }
   })
 
+  it('tells a member whose organization requires SSO to use it instead of a passkey', async () => {
+    const refusal = {
+      status: 403,
+      code: 'ACCESS_SSO_REQUIRED',
+      message: 'Access to this organization is not available',
+    }
+    const signIn = spyOn(passkeys, 'signInWithPasskey').mockRejectedValueOnce(refusal)
+    try {
+      const { result } = mount()
+      await act(async () => result.current.actions.handlePasskeySignIn())
+      expect(result.current.state.errorMessage).toBe('Your organization requires you to sign in with single sign-on.')
+    } finally {
+      signIn.mockRestore()
+    }
+  })
+
   it('announces a successful passkey sign-in', async () => {
     const signIn = spyOn(passkeys, 'signInWithPasskey').mockResolvedValueOnce({ userId: 'user' })
     try {

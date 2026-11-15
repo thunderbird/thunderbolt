@@ -6,7 +6,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } from 'bun:test'
 import { ContentViewProvider } from '@/content-view/context'
 import { HttpClientProvider } from '@/contexts'
-import { docxMime } from '@/files/transformers'
+import { docxMime, pptxMime } from '@/files/transformers'
 import * as download from '@/lib/download'
 import * as attachmentStorage from '@/lib/file-blob-storage'
 import { createClient } from '@/lib/http'
@@ -16,6 +16,7 @@ import { parseXmlWithXmlDom } from '@/test-utils/xml-dom-parser'
 import { getClock } from '@/testing-library'
 import { docxPreviewLimits } from './docx-snapshot'
 import { LocalPdfSidebarViewer, PdfSidebarViewer } from './pdf-sidebar-viewer'
+import { pptxPreviewLimits } from './pptx-snapshot'
 
 const tick = () => act(async () => void (await getClock().tickAsync(20)))
 
@@ -139,5 +140,55 @@ describe('DOCX preview in the side panel', () => {
     expect(screen.getByText("This document can't be previewed")).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Download' })).toBeEnabled()
     expect(logged).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('PPTX preview in the side panel', () => {
+  afterEach(cleanup)
+
+  test('refuses a deck past the size limit, and Download still saves it', async () => {
+    const bytes = new Uint8Array(pptxPreviewLimits.fileBytes + 1)
+    const save = spyOn(download, 'downloadFile').mockResolvedValue('review.pptx')
+    try {
+      render(
+        <HttpClientProvider httpClient={haystackClient(new Blob([bytes], { type: pptxMime }))}>
+          <ContentViewProvider trackEvent={mock()}>
+            <PdfSidebarViewer fileId="deck-1" fileName="review.pptx" />
+          </ContentViewProvider>
+        </HttpClientProvider>,
+      )
+      for (let i = 0; i < 5; i++) {
+        await tick()
+      }
+
+      expect(screen.getByText('This presentation is too large to preview')).toBeInTheDocument()
+      expect(screen.queryByTitle('review.pptx')).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'Download' }))
+      await tick()
+      expect(save).toHaveBeenCalledWith({ name: 'review.pptx', contents: bytes, mimeType: pptxMime })
+    } finally {
+      save.mockRestore()
+    }
+  })
+
+  test('says a deck it cannot read cannot be previewed, and Download still works', async () => {
+    const logged = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      render(
+        <HttpClientProvider httpClient={haystackClient(new Blob(['not a deck'], { type: pptxMime }))}>
+          <ContentViewProvider trackEvent={mock()}>
+            <PdfSidebarViewer fileId="deck-2" fileName="review.pptx" />
+          </ContentViewProvider>
+        </HttpClientProvider>,
+      )
+      for (let i = 0; i < 5; i++) {
+        await tick()
+      }
+
+      expect(screen.getByText("This presentation can't be previewed")).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Download' })).toBeEnabled()
+    } finally {
+      logged.mockRestore()
+    }
   })
 })

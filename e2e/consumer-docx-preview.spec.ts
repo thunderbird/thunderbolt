@@ -2,9 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { readFileSync } from 'node:fs'
-import type { BrowserContext, Page } from '@playwright/test'
-import { defaultModelOpus55 } from '../shared/defaults/models'
+import type { Page } from '@playwright/test'
 import {
   hostileAltChunkText,
   hostileDocx,
@@ -12,67 +10,16 @@ import {
   hostileLinkText,
 } from '../src/test-utils/hostile-docx'
 import { sampleDocx, sampleDocxText } from '../src/test-utils/sample-docx'
-import { fakeProviderReply } from './fake-provider'
-import { collectPageErrors, loginViaEmailCode, sendChatPrompt } from './helpers'
+import { collectPageErrors } from './helpers'
+import { contentView, openPreview, openUnderAppCsp, sendAttachment } from './office-preview'
 import { expect, test } from './test'
 
 const docxMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
-const chooseFakeModel = async (page: Page) => {
-  await page.getByTestId('model-selector-trigger').click()
-  await page.getByRole('button', { name: `${defaultModelOpus55.name} Thunderbolt`, exact: true }).click()
-  await page.keyboard.press('Escape')
-}
-
-/** The side view: a panel on desktop, a full-screen dialog on a phone. */
-const contentView = (page: Page) =>
-  (page.viewportSize()?.width ?? 1280) < 768 ? page.getByRole('dialog') : page.getByTestId('content-view')
-
-/** Attaches a document, sends it, and waits for the answer, which moves the chat to its own URL. */
-const sendDocument = async (page: Page, name: string, buffer: Buffer) => {
-  await loginViaEmailCode(page)
-  await chooseFakeModel(page)
-  await page.locator('input[type="file"]').setInputFiles({ name, mimeType: docxMime, buffer })
-  await sendChatPrompt(page, 'What is in this document?')
-  await expect(page.locator('[data-quotable-message-id]').last()).toContainText(fakeProviderReply)
-}
-
-/** Opens a sent attachment's card in the side view. Its thumbnail frame shares the card's title, so match the button. */
-const openPreview = async (page: Page, name: string) => {
-  await page.locator(`button[title="${name}"]`).click()
-  return contentView(page).locator(`iframe[title="${name}"]`)
-}
+const sendDocument = (page: Page, name: string, buffer: Buffer) =>
+  sendAttachment(page, { name, mimeType: docxMime, buffer })
 
 const sampleBuffer = async () => Buffer.from(await (await sampleDocx()).arrayBuffer())
-
-/** The desktop app's policy, as `tauri.conf.json` declares it. */
-const appCsp = () => {
-  const { app } = JSON.parse(readFileSync('src-tauri/tauri.conf.json', 'utf8'))
-  return Object.entries<string>(app.security.csp)
-    .map(([directive, sources]) => `${directive} ${sources}`)
-    .join('; ')
-}
-
-const escapeAttribute = (text: string) => text.replaceAll('&', '&amp;').replaceAll('"', '&quot;')
-
-/**
- * Shows a snapshot the app made in a page served with the desktop app's policy, which a frame with `srcdoc` inherits.
- * The e2e servers send the self-hosted web headers instead, which set no policy for the page.
- */
-const openUnderAppCsp = async (context: BrowserContext, snapshot: string) => {
-  const page = await context.newPage()
-  const requests: string[] = []
-  page.on('request', (request) => requests.push(request.url()))
-  await page.route('https://app-csp.test/', (route) =>
-    route.fulfill({
-      contentType: 'text/html',
-      headers: { 'Content-Security-Policy': appCsp() },
-      body: `<!DOCTYPE html><iframe title="snapshot" sandbox="" style="width:900px;height:900px" srcdoc="${escapeAttribute(snapshot)}"></iframe>`,
-    }),
-  )
-  await page.goto('https://app-csp.test/')
-  return { page, frame: page.frameLocator('iframe[title="snapshot"]'), requests }
-}
 
 test('an attached DOCX previews as pages on its card and in the side panel', async ({ page, context }) => {
   const errors = collectPageErrors(page)
@@ -110,7 +57,7 @@ test('an attached DOCX previews as pages on its card and in the side panel', asy
   expect(
     await underCsp.frame.locator('img').evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth),
   ).toBe(1)
-  expect(underCsp.requests).toEqual(['https://app-csp.test/'])
+  expect(underCsp.requests).toEqual([])
   expect(errors).toEqual([])
 })
 
@@ -168,7 +115,7 @@ test('a hostile DOCX runs no script and sends no request, with the web headers a
   const underCsp = await openUnderAppCsp(context, (await frame.getAttribute('srcdoc')) ?? '')
   await expect(underCsp.frame.getByText('Hostile document')).toBeVisible()
   await underCsp.frame.getByText(hostileLinkText).dispatchEvent('click')
-  expect(underCsp.requests).toEqual(['https://app-csp.test/'])
+  expect(underCsp.requests).toEqual([])
 
   expect(outsideRequests).toEqual([])
   expect(dialogs).toEqual([])

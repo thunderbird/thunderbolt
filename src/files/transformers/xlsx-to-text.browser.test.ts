@@ -4,56 +4,14 @@
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
-import { strToU8, unzipSync, zipSync } from 'fflate'
+import { unzipSync, zipSync } from 'fflate'
 import type { StoredFile } from '@/lib/file-blob-storage'
 import { bundleForBrowser } from '@/test-utils/bundle-for-browser'
+import { workbook } from '@/test-utils/xlsx-workbook'
 import { centralSignature, overlappingStoredEntries, withZip64Count } from '@/test-utils/zip-fixtures'
 import type * as XlsxToText from './xlsx-to-text'
 
 const mib = 1024 * 1024
-
-/** `A` for column 0, `AX` for column 49. */
-const columnName = (index: number): string =>
-  `${index < 26 ? '' : columnName(Math.floor(index / 26) - 1)}${String.fromCharCode(65 + (index % 26))}`
-
-/** A one-sheet workbook of inline strings, deflated as Excel saves it. */
-const workbook = (rows: string[][]) => {
-  const sheetData = rows
-    .map(
-      (cells, row) =>
-        `<row r="${row + 1}">${cells
-          .map((text, column) => `<c r="${columnName(column)}${row + 1}" t="inlineStr"><is><t>${text}</t></is></c>`)
-          .join('')}</row>`,
-    )
-    .join('')
-  return zipSync({
-    '[Content_Types].xml': strToU8(
-      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
-        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
-        '<Default Extension="xml" ContentType="application/xml"/>' +
-        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
-        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
-        '</Types>',
-    ),
-    '_rels/.rels': strToU8(
-      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
-        '</Relationships>',
-    ),
-    'xl/workbook.xml': strToU8(
-      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
-        '<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>',
-    ),
-    'xl/_rels/workbook.xml.rels': strToU8(
-      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
-        '</Relationships>',
-    ),
-    'xl/worksheets/sheet1.xml': strToU8(
-      `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetData}</sheetData></worksheet>`,
-    ),
-  })
-}
 
 /** Rewrites what the central directory says about the zip's last entry: its unpacked size and compression method. */
 const relabelLastEntry = (zip: Uint8Array<ArrayBuffer>, size: number, method: number) => {
@@ -124,8 +82,8 @@ describe('xlsx-to-text in the browser build, with Workers blocked', () => {
 
     const lines = text.split('\n')
     expect(lines[0]).toBe('## Sheet: Sheet1')
-    expect(lines[1]).toBe(rows[0].join(', '))
-    expect(lines.at(-1)).toBe(rows[4_999].join(', '))
+    expect(lines[1]).toBe(`Row 1: ${rows[0].join(', ')}`)
+    expect(lines.at(-1)).toBe(`Row 5000: ${rows[4_999].join(', ')}`)
     expect(lines).toHaveLength(5_001)
     expect(BlockedWorker.started).toBe(0)
   })
@@ -155,7 +113,7 @@ describe('xlsx-to-text in the browser build, with Workers blocked', () => {
   })
 
   test('stops listing a zip whose directory claims more parts than the rewritten zip can hold', async () => {
-    // The real directory has five entries; the forged count would keep the listing going far past it.
+    // The real directory has six entries; the forged count would keep the listing going far past it.
     await expect(xlsx.xlsxToText(asFile(withZip64Count(workbook([['a']]), 1_000_000)))).rejects.toThrow(
       'This spreadsheet has more than 65535 parts, over the limit for reading it.',
     )
@@ -176,7 +134,7 @@ describe('xlsx-to-text in the browser build, with Workers blocked', () => {
       { level: 0 },
     )
 
-    expect((await xlsx.xlsxToText(asFile(renameEntry(zip, 'zz/', 'xl/')))).text).toBe('## Sheet: Sheet1\nkept')
+    expect((await xlsx.xlsxToText(asFile(renameEntry(zip, 'zz/', 'xl/')))).text).toBe('## Sheet: Sheet1\nRow 1: kept')
   })
 
   test('refuses a part named __proto__, which unpacking would turn into the prototype of its result', async () => {

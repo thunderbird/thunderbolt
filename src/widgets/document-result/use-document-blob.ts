@@ -6,19 +6,19 @@ import { useLingui } from '@lingui/react/macro'
 import type { HttpClient } from '@/contexts'
 import { getAttachment } from '@/lib/file-blob-storage'
 import { useEffect, useReducer, useRef } from 'react'
-import type { DocxSnapshot } from './docx-snapshot'
+import type { DocumentSnapshot } from './snapshot'
 import type { FileType } from './file-type'
 
 /** Load lifecycle of a previewable document, modelled as a state machine
  *  so impossible combinations (e.g. "done but no url and no error") can't exist. */
 export type DocumentBlobState =
   | { status: 'loading' }
-  | { status: 'ready'; blob: Blob; blobUrl: string; docx: DocxSnapshot | null }
+  | { status: 'ready'; blob: Blob; blobUrl: string; snapshot: DocumentSnapshot | null }
   | { status: 'error'; message: string }
 
 type DocumentBlobAction =
   | { type: 'reset' }
-  | { type: 'loaded'; blob: Blob; blobUrl: string; docx: DocxSnapshot | null }
+  | { type: 'loaded'; blob: Blob; blobUrl: string; snapshot: DocumentSnapshot | null }
   | { type: 'failed'; message: string }
 
 const reducer = (_state: DocumentBlobState, action: DocumentBlobAction): DocumentBlobState => {
@@ -26,20 +26,27 @@ const reducer = (_state: DocumentBlobState, action: DocumentBlobAction): Documen
     case 'reset':
       return { status: 'loading' }
     case 'loaded':
-      return { status: 'ready', blob: action.blob, blobUrl: action.blobUrl, docx: action.docx }
+      return { status: 'ready', blob: action.blob, blobUrl: action.blobUrl, snapshot: action.snapshot }
     case 'failed':
       return { status: 'error', message: action.message }
   }
 }
 
-/** Renders a DOCX's pages for its preview; other types skip conversion. The renderer loads only for a DOCX, which keeps
- *  it out of the entry chunk. */
-const convertDocxIfNeeded = async (blob: Blob, fileType: FileType): Promise<DocxSnapshot | null> =>
-  fileType === 'docx' ? (await import('./docx-snapshot')).renderDocxSnapshot(blob) : null
+/** Renders a DOCX's pages or a PPTX's slides for its preview; other types skip conversion. Each renderer loads only
+ *  for its own type, which keeps both out of the entry chunk. */
+const renderSnapshotIfNeeded = async (blob: Blob, fileType: FileType): Promise<DocumentSnapshot | null> => {
+  if (fileType === 'docx') {
+    return (await import('./docx-snapshot')).renderDocxSnapshot(blob)
+  }
+  if (fileType === 'pptx') {
+    return (await import('./pptx-snapshot')).renderPptxSnapshot(blob)
+  }
+  return null
+}
 
 /**
  * Shared blob-preview loader: resolves a Blob via `loadBlob`, exposes the load
- * lifecycle as a state machine, renders a DOCX's pages, and revokes the object URL
+ * lifecycle as a state machine, renders a DOCX's pages or a PPTX's slides, and revokes the object URL
  * on cleanup. `cacheKey` drives reloads; `loadBlob` is read through a ref so its
  * identity changing on every render doesn't retrigger the effect.
  */
@@ -59,12 +66,12 @@ const useBlobDocument = (cacheKey: string, fileType: FileType, loadBlob: () => P
       if (cancelled) {
         return
       }
-      const docx = await convertDocxIfNeeded(blob, fileType)
+      const snapshot = await renderSnapshotIfNeeded(blob, fileType)
       if (cancelled) {
         return
       }
       objectUrl = URL.createObjectURL(blob)
-      dispatch({ type: 'loaded', blob, blobUrl: objectUrl, docx })
+      dispatch({ type: 'loaded', blob, blobUrl: objectUrl, snapshot })
     }
 
     load().catch((err) => {

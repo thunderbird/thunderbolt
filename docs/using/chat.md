@@ -38,16 +38,17 @@ Skills are managed under **Settings → Skills**, where you can write your own. 
 
 ### Accepted types and limits
 
-| Type         | Extensions                                  |
-| ------------ | ------------------------------------------- |
-| Documents    | `.pdf`, `.docx`                             |
-| Spreadsheets | `.xlsx`                                     |
-| Images       | `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`    |
-| Text         | `.md`, `.markdown`, `.txt`, `.csv`, `.json` |
+| Type          | Extensions                                  |
+| ------------- | ------------------------------------------- |
+| Documents     | `.pdf`, `.docx`                             |
+| Spreadsheets  | `.xlsx`                                     |
+| Presentations | `.pptx`                                     |
+| Images        | `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`    |
+| Text          | `.md`, `.markdown`, `.txt`, `.csv`, `.json` |
 
 A message carries up to 10 files, each up to 25 MB as measured after Thunderbolt shrinks it. Only files over 10 MB are shrunk at all: a large photo is re-encoded as WebP, which loses some quality, and a PDF is re-saved losslessly. GIFs are never touched, so animation survives. A 30 MB phone picture usually attaches; an 8 MB one is sent exactly as it is.
 
-Anything else, including `.doc`, `.xls`, `.pptx`, audio and video, is rejected at the composer with a message naming the file.
+Anything else, including `.doc`, `.xls`, `.ppt`, audio and video, is rejected at the composer with a message naming the file.
 
 ### Where the bytes go
 
@@ -63,11 +64,13 @@ Three consequences follow:
 
 ### How a file reaches the model
 
-Images go to the model as images. Every document (PDF, `.docx`, spreadsheet, plain text) is converted to text on your device first, because the assistant has no way to carry a document as a document. A model with **Supports tools** turned off under **Settings → Models** is the exception: it takes an older path that can send a PDF as a file.
+Images go to the model as images. Every document (PDF, `.docx`, spreadsheet, presentation, plain text) is converted to text on your device first, because the assistant has no way to carry a document as a document. A model with **Supports tools** turned off under **Settings → Models** is the exception: it takes an older path that can send a PDF as a file.
 
 A scanned PDF is the case to watch. It has no text layer to extract and there is no text recognition (OCR) step, so the assistant receives the filename and nothing else. Screenshot the page you care about and attach that instead.
 
 If a file can't be converted, the message still sends. The assistant is told the file could not be read and why, and answers the rest. An `.xlsx` file is stored compressed, and one that expands to more than 32 MiB is refused this way. Split it into smaller workbooks.
+
+A presentation reaches the model as the text of each slide in order: its title, its other text and its speaker notes. Pictures and charts carry no text, so the model does not see them.
 
 Only the newest message's attachments are sent at full fidelity. Files from earlier turns in the same conversation are replaced by their extracted text, which keeps a long thread from resending megabytes on every reply.
 

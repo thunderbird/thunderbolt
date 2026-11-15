@@ -5,18 +5,18 @@
 import { mockVirtuaMeasurement } from '@/test-utils/mock-virtua-measurement'
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'bun:test'
-import { DocxPages } from './docx-pages'
+import { SnapshotPages } from './snapshot-pages'
 
 const html = '<!DOCTYPE html><p>Page</p>'
 
-describe('DocxPages', () => {
+describe('SnapshotPages', () => {
   afterEach(cleanup)
 
   it('scales pages wider than the panel down to its width, as on a phone', () => {
     // The panel measures 300 by 800.
     const restore = mockVirtuaMeasurement({ viewportHeight: 800 })
     try {
-      render(<DocxPages title="report.docx" snapshot={{ kind: 'pages', html, width: 600 }} />)
+      render(<SnapshotPages title="report.docx" snapshot={{ kind: 'pages', html, width: 600 }} />)
 
       const frame = screen.getByTitle('report.docx')
       expect(frame.getAttribute('sandbox')).toBe('')
@@ -32,7 +32,7 @@ describe('DocxPages', () => {
   it('fills the panel when the pages fit in it', () => {
     const restore = mockVirtuaMeasurement({ viewportHeight: 800 })
     try {
-      render(<DocxPages title="report.docx" snapshot={{ kind: 'pages', html, width: 280 }} />)
+      render(<SnapshotPages title="report.docx" snapshot={{ kind: 'pages', html, width: 280 }} />)
 
       const frame = screen.getByTitle('report.docx')
       expect(frame.style.width).toBe('100%')

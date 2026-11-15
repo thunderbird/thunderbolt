@@ -4,18 +4,18 @@
 
 import { useViewSize } from '@/hooks/use-view-size'
 import { useRef } from 'react'
-import type { DocxSnapshot } from './docx-snapshot'
+import type { DocumentSnapshot } from './snapshot'
 
-type DocxPagesProps = {
+type SnapshotPagesProps = {
   title: string
-  snapshot: Extract<DocxSnapshot, { kind: 'pages' }>
+  snapshot: Extract<DocumentSnapshot, { kind: 'pages' }>
 }
 
 /**
- * A document's pages in a frame with `sandbox=""`. Pages wider than the panel, as on a phone, scale down to its width:
- * the frame keeps the pages' own width and is drawn smaller, and it scrolls the pages itself.
+ * A document's pages or a deck's slides in a frame with `sandbox=""`. Pages wider than the panel, as on a phone,
+ * scale down to its width: the frame keeps the pages' own width and is drawn smaller, and it scrolls the pages itself.
  */
-export const DocxPages = ({ title, snapshot }: DocxPagesProps) => {
+export const SnapshotPages = ({ title, snapshot }: SnapshotPagesProps) => {
   const ref = useRef<HTMLDivElement>(null)
   const view = useViewSize(ref)
   const scale = view.width > 0 && view.width < snapshot.width ? view.width / snapshot.width : 1

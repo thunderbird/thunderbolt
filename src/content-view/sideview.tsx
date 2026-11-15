@@ -9,8 +9,8 @@ import { getFileType } from '@/widgets/document-result/file-type'
 import { useSideview } from './context'
 
 // Lazy-load the PDF viewer so its react-pdf + pdfjs payload only ships when a
-// document sideview is opened. docx-preview is dynamically imported inside the
-// viewer itself for the DOCX path.
+// document sideview is opened. The DOCX and PPTX renderers are dynamically
+// imported inside the viewer itself, each for its own file type.
 const PdfSidebarViewer = lazy(() =>
   import('@/widgets/document-result/pdf-sidebar-viewer').then((m) => ({ default: m.PdfSidebarViewer })),
 )

@@ -2620,6 +2620,10 @@ msgstr ""
 msgid "Download HTML"
 msgstr ""
 
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "Download the file to open it in a presentation app."
+msgstr ""
+
 #: src/components/xlsx-preview/xlsx-preview.tsx
 msgid "Download the file to open it in a spreadsheet app."
 msgstr ""
@@ -3398,6 +3402,10 @@ msgstr ""
 
 #: src/components/xlsx-preview/xlsx-preview.tsx
 msgid "It may be damaged or protected with a password. Download the file to open it in a spreadsheet app."
+msgstr ""
+
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "It may be damaged. Download the file to open it in a presentation app."
 msgstr ""
 
 #: src/widgets/document-result/pdf-sidebar-viewer.tsx
@@ -6284,6 +6292,14 @@ msgstr ""
 
 #: src/components/remove-bridge-dialog.tsx
 msgid "This permanently removes the revoked bridge registration. The bridge can register again afterward."
+msgstr ""
+
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "This presentation can't be previewed"
+msgstr ""
+
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "This presentation is too large to preview"
 msgstr ""
 
 #: src/components/xlsx-preview/left-out-banner.tsx

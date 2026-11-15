@@ -5,10 +5,9 @@
 import type { StoredFile } from '@/lib/file-blob-storage'
 
 /**
- * Extracts plain text from a DOCX blob via a lazily-imported mammoth. This is
- * the delivery counterpart to the preview's {@link docxToHtml}: the model
- * wants prose, not markup, so we use mammoth's raw-text path and drop the HTML
- * styling entirely.
+ * Extracts plain text from a DOCX blob via a lazily-imported mammoth: the
+ * model wants prose, not markup, so we use mammoth's raw-text path. The
+ * preview renders the pages with docx-preview instead.
  */
 export const docxToText = async (file: StoredFile): Promise<{ text: string }> => {
   const mammoth = await import('mammoth')

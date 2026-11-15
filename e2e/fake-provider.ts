@@ -9,11 +9,16 @@ import type { RawMessageStreamEvent } from '@anthropic-ai/sdk/resources/messages
 import { z } from 'zod'
 import { miniAppToolsetName, miniAppTransferPrompt, protectedEmailId } from './mini-app-fixture'
 import {
+  officeDeckEditFilename,
+  officeDeckEditPrompt,
+  officeDeckEditScript,
   officeEditFilename,
   officeEditPrompt,
   officeEditScript,
   officeScript,
   officeScriptPrompt,
+  officeWorkbookPrompt,
+  officeWorkbookScript,
 } from './office-script-fixture'
 import { performanceStreamOptions, performanceStreamPrompt } from './streaming-fixture'
 
@@ -63,9 +68,10 @@ const emailBodyFromToolResult = ({ messages }: FakeRequest) => {
 /**
  * The Mini App transfer script: read the email, then pass its body to the open app's tool, then reply in text. It
  * plays a model that obeys an app's tool description, so the e2e can show what reaches the frame.
- * The Office script: call `run_office_script` once, then reply in text, so the e2e can run the sandbox Worker.
- * The Office edit does the same with the attached file as the script's input. The turn's text also carries the
- * attachment, so the edit prompt is matched anywhere in that text.
+ * The Office script: call `run_office_script` once, then reply in text, so the e2e can run the sandbox Worker. The
+ * workbook script does the same with Excelize.
+ * The Office edits do the same with the attached document or deck as the script's input. The turn's text also
+ * carries the attachment, so an edit prompt is matched anywhere in that text.
  */
 const scriptedToolCall = (request: FakeRequest): { name: string; input: Record<string, string | string[]> } | null => {
   const text = lastUserContent(request)?.text
@@ -75,8 +81,14 @@ const scriptedToolCall = (request: FakeRequest): { name: string; input: Record<s
   if (text === officeScriptPrompt) {
     return { name: 'run_office_script', input: { script: officeScript } }
   }
+  if (text === officeWorkbookPrompt) {
+    return { name: 'run_office_script', input: { script: officeWorkbookScript } }
+  }
   if (text?.includes(officeEditPrompt)) {
     return { name: 'run_office_script', input: { script: officeEditScript, inputs: [officeEditFilename] } }
+  }
+  if (text?.includes(officeDeckEditPrompt)) {
+    return { name: 'run_office_script', input: { script: officeDeckEditScript, inputs: [officeDeckEditFilename] } }
   }
   const body = emailBodyFromToolResult(request)
   return body === null ? null : { name: miniAppToolsetName, input: { note: body } }

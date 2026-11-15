@@ -1276,6 +1276,23 @@ describe('ChatPromptInput', () => {
       },
     )
 
+    it.each([['application/vnd.openxmlformats-officedocument.presentationml.presentation'], ['']])(
+      'attaches a presentation pasted as %p',
+      async (type) => {
+        const { mockUseChat } = setupStore()
+        render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+          wrapper: TestWrapper,
+        })
+
+        const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
+        const file = new File(['PK'], 'deck.pptx', { type })
+        pasteItems(textarea, [{ kind: 'file', type, getAsFile: () => file }])
+        await flushAttachments()
+
+        expect(screen.getByLabelText('Remove deck.pptx')).toBeInTheDocument()
+      },
+    )
+
     it('lets a file paste fall through untouched for the hosted agent', async () => {
       const { mockUseChat } = setupStore()
       useChatStore.getState().updateSession('thread-1', { selectedAgent: hostedAgent })

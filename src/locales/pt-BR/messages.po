@@ -2632,8 +2632,16 @@ msgstr "Baixar o app"
 msgid "Download HTML"
 msgstr "Baixar HTML"
 
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "Download the file to open it in a presentation app."
+msgstr ""
+
 #: src/components/xlsx-preview/xlsx-preview.tsx
 msgid "Download the file to open it in a spreadsheet app."
+msgstr ""
+
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "Download the file to open it in a word processor."
 msgstr ""
 
 #: src/hooks/use-desktop-update.ts
@@ -3406,6 +3414,14 @@ msgstr "O iOS exige uma URL segura (wss://)"
 
 #: src/components/xlsx-preview/xlsx-preview.tsx
 msgid "It may be damaged or protected with a password. Download the file to open it in a spreadsheet app."
+msgstr ""
+
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "It may be damaged. Download the file to open it in a presentation app."
+msgstr ""
+
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "It may be damaged. Download the file to open it in a word processor."
 msgstr ""
 
 #: src/components/recovery-continuity/recovery-continuity-banner.tsx
@@ -6194,6 +6210,14 @@ msgstr ""
 msgid "This disconnects your account on this device. Its tools will no longer be available."
 msgstr ""
 
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "This document can't be previewed"
+msgstr ""
+
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "This document is too large to preview"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "This file doesn't look like a {appName} export."
 msgstr "Este arquivo não parece ser uma exportação do {appName}."
@@ -6281,6 +6305,14 @@ msgstr ""
 #: src/components/remove-bridge-dialog.tsx
 msgid "This permanently removes the revoked bridge registration. The bridge can register again afterward."
 msgstr "Isso remove permanentemente o registro do bridge revogado. O bridge pode se registrar novamente depois."
+
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "This presentation can't be previewed"
+msgstr ""
+
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "This presentation is too large to preview"
+msgstr ""
 
 #: src/components/xlsx-preview/left-out-banner.tsx
 msgid "This preview leaves out"

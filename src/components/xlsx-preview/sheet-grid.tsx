@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useViewSize } from '@/hooks/use-view-size'
 import { cn } from '@/lib/utils'
 import { columnName } from '@/office/formula-cache'
-import { type KeyboardEvent, type MouseEvent, type RefObject, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { type KeyboardEvent, type MouseEvent, useId, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { Virtualizer, type VirtualizerHandle } from 'virtua'
 import { sheetFontStack } from './cell-style'
@@ -30,24 +31,6 @@ type SheetGridProps = { name: string; sheet: SheetView }
  */
 const virtuaBufferSize = 200
 
-/** The grid's own size as it resizes, to tell whether its frozen panes fit. */
-const useViewSize = (ref: RefObject<HTMLElement | null>) => {
-  const [size, setSize] = useState({ width: 0, height: 0 })
-  useEffect(() => {
-    const element = ref.current
-    if (!element) {
-      return
-    }
-    const observer = new ResizeObserver(([entry]) => {
-      const { width, height } = entry.contentRect
-      setSize((current) => (current.width === width && current.height === height ? current : { width, height }))
-    })
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [ref])
-  return size
-}
-
 /**
  * The grid of one sheet: sticky column and row headers, frozen panes, merged cells, pictures and charts, with
  * virtualized rows. The grid is one tab stop. The arrow keys, Home, End and Page Up/Down move the active cell, which
@@ -58,6 +41,7 @@ export const SheetGrid = ({ name, sheet }: SheetGridProps) => {
   const id = useId()
   const scrollRef = useRef<HTMLDivElement>(null)
   const virtualizer = useRef<VirtualizerHandle>(null)
+  // The grid's own size, to tell whether its frozen panes fit.
   const view = useViewSize(scrollRef)
   const layout = useMemo(() => fitFrozenPanes(sheet.layout, view), [sheet.layout, view])
   const geometry = useMemo(() => sheetGeometry(layout), [layout])

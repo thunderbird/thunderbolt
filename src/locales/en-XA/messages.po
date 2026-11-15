@@ -2722,8 +2722,8 @@ msgid "e.g., llama3.3"
 msgstr ""
 
 #: src/components/sign-in/sign-in-email-step.tsx
-msgid "Early Access Login"
-msgstr ""
+#~ msgid "Early Access Login"
+#~ msgstr ""
 
 #: src/components/settings/detail-actions-menu.tsx
 #: src/components/settings/edit-delete-context-menu.tsx
@@ -4055,8 +4055,8 @@ msgid "No locations found."
 msgstr ""
 
 #: src/components/sign-in/sign-in-email-step.tsx
-msgid "No logs or training on your data"
-msgstr ""
+#~ msgid "No logs or training on your data"
+#~ msgstr ""
 
 #: src/settings/devices.tsx
 msgid "No longer accepts device connections"
@@ -6637,8 +6637,8 @@ msgid "Thunderbolt is not allowed to save there."
 msgstr ""
 
 #: src/components/sign-in/sign-in-email-step.tsx
-msgid "Thunderbolt is open-source"
-msgstr ""
+#~ msgid "Thunderbolt is open-source"
+#~ msgstr ""
 
 #: src/settings/connections/use-integrations-controller.tsx
 msgid "Thunderbolt Pro is not available yet. Stay tuned!"

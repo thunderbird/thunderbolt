@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans } from '@lingui/react/macro'
+import { authButtonClass } from '@/components/auth-screen'
 import { Button } from '@/components/ui/button'
 import { SsoSignInLayout } from './sso-sign-in-layout'
 import type { SsoConnectionOption } from './use-sso-sign-in-state'
@@ -20,11 +21,16 @@ export const SsoConnectionList = ({ connections, onChoose, onUseEmailCode }: Sso
     description={<Trans>Pick the identity provider your organization uses for you.</Trans>}
   >
     {connections.map((connection) => (
-      <Button key={connection.providerId} size="lg" variant="outline" onClick={() => onChoose(connection.providerId)}>
+      <Button
+        key={connection.providerId}
+        variant="outline"
+        onClick={() => onChoose(connection.providerId)}
+        className={authButtonClass}
+      >
         {connection.name}
       </Button>
     ))}
-    <Button type="button" variant="ghost" onClick={onUseEmailCode}>
+    <Button type="button" variant="ghost" onClick={onUseEmailCode} className={authButtonClass}>
       <Trans>Use an email code instead</Trans>
     </Button>
   </SsoSignInLayout>

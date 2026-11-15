@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { AuthScreenHeading, authButtonClass } from '@/components/auth-screen'
 import { ActionFeedbackButton } from '@/components/ui/action-feedback-button'
 import { Button } from '@/components/ui/button'
 import { GradientMail } from '@/components/ui/gradient-mail'
@@ -31,7 +32,7 @@ type SignInOtpStepProps = {
 /**
  * OTP verification step for sign-in form.
  *
- * Page variant: title + subtitle centered, OTP input at bottom (matches Figma).
+ * Page variant: the waitlist's heading and controls, for an auth card.
  * Modal variant: icon + headline + OTP input + cancel button.
  */
 export const SignInOtpStep = ({
@@ -96,21 +97,20 @@ export const SignInOtpStep = ({
 
   if (variant === 'page') {
     return (
-      <div className="flex h-full w-full flex-col items-center">
-        {/* Title + subtitle — centered vertically */}
-        <div className="my-auto flex flex-col items-center text-center">
-          <p className="font-sans text-[28px] font-medium leading-normal text-foreground">
-            <Trans>Check your email</Trans>
-          </p>
-          <p className="mt-2 text-base text-foreground">
-            <Trans>
-              If you have access, we&apos;ve sent an 8-digit code to <span className="font-bold">{email}</span>
-            </Trans>
-          </p>
+      <div className="flex w-full flex-col items-center gap-8">
+        <div className="flex flex-col items-center">
+          <AuthScreenHeading
+            title={<Trans>Check your email</Trans>}
+            description={
+              <Trans>
+                If you have access, we&apos;ve sent an 8-digit code to{' '}
+                <span className="font-medium text-foreground">{email}</span>
+              </Trans>
+            }
+          />
           {renderResendButton('mt-1')}
         </div>
 
-        {/* OTP input + feedback at bottom */}
         <div className="flex w-full flex-col items-center gap-4">
           {renderOtpInput('one-time-code')}
 
@@ -122,10 +122,7 @@ export const SignInOtpStep = ({
             isLoading={isVerifying}
             loadingLabel={t`Verifying…`}
             disabled={isBusy || otp.length !== otpLength}
-            // Deliberate hero-CTA treatment for the auth flows (taller than
-            // the standard button and rounded-xl instead of the usual
-            // rounded-lg atom tier) — matches waitlist-page.tsx.
-            className="h-[46px] w-full rounded-xl bg-foreground text-background text-base font-medium hover:bg-foreground/90 disabled:bg-muted disabled:text-muted-foreground"
+            className={authButtonClass}
           >
             <Trans>Continue</Trans>
           </Button>

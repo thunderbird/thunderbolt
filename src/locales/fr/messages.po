@@ -619,7 +619,7 @@ msgstr ""
 
 #: src/lib/sso-error-messages.ts
 msgid "An existing {appName} account already uses this email. Your administrator needs to approve linking it to this sign-in."
-msgstr ""
+msgstr "Un compte {appName} existant utilise déjà cette adresse e-mail. Votre administrateur doit approuver son association à cette connexion."
 
 #: src/lib/openrouter-auth.ts
 #~ msgid "An OpenRouter connection is already in progress."
@@ -840,7 +840,7 @@ msgstr "Retour à l'application"
 
 #: src/components/sso-sign-in/sso-email-code-page.tsx
 msgid "Back to organization sign-in"
-msgstr ""
+msgstr "Retour à la connexion de l'organisation"
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Bar chart"
@@ -1133,7 +1133,7 @@ msgstr ""
 
 #: src/components/sso-sign-in/sso-connection-list.tsx
 msgid "Choose how to sign in"
-msgstr ""
+msgstr "Choisissez comment vous connecter"
 
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Choose how you use Thunderbolt."
@@ -2966,7 +2966,7 @@ msgstr ""
 
 #: src/components/sso-sign-in/sso-email-step.tsx
 msgid "Enter your work email to continue with your organization's sign-in."
-msgstr ""
+msgstr "Saisissez votre e-mail professionnel pour continuer avec la connexion de votre organisation."
 
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Enterprise"
@@ -3945,7 +3945,7 @@ msgstr "Le nom est requis."
 
 #: src/components/sso-sign-in/sso-email-step.tsx
 msgid "name@company.com"
-msgstr ""
+msgstr "nom@entreprise.com"
 
 #: src/components/ui/mobile-sidebar.tsx
 msgid "Navigation"
@@ -4611,7 +4611,7 @@ msgstr "Personnalisation"
 
 #: src/components/sso-sign-in/sso-connection-list.tsx
 msgid "Pick the identity provider your organization uses for you."
-msgstr ""
+msgstr "Choisissez le fournisseur d'identité que votre organisation utilise pour vous."
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Pick this code on your other device."
@@ -5679,7 +5679,7 @@ msgstr "Connectez-vous avec {email} pour accepter l’invitation."
 
 #: src/components/sso-sign-in/sso-email-code-page.tsx
 msgid "Sign in with an email code"
-msgstr ""
+msgstr "Se connecter avec un code par e-mail"
 
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/waitlist/waitlist-content.tsx
@@ -6548,11 +6548,11 @@ msgstr ""
 
 #: src/lib/sso-error-messages.ts
 msgid "This sign-in is already linked to another {appName} account. Ask your administrator for help."
-msgstr ""
+msgstr "Cette connexion est déjà associée à un autre compte {appName}. Demandez de l'aide à votre administrateur."
 
 #: src/lib/sso-error-messages.ts
 msgid "This sign-in option is no longer available. Try again, or ask your administrator."
-msgstr ""
+msgstr "Cette option de connexion n'est plus disponible. Réessayez ou contactez votre administrateur."
 
 #: src/lib/device-grant.ts
 msgid "This sign-in request has expired. Start a new one from your terminal."
@@ -7067,7 +7067,7 @@ msgstr ""
 #: src/components/sso-sign-in/sso-connection-list.tsx
 #: src/components/sso-sign-in/sso-email-step.tsx
 msgid "Use an email code instead"
-msgstr ""
+msgstr "Utiliser plutôt un code par e-mail"
 
 #: src/lib/mcp-url-validation.ts
 msgid "Use an http:// or https:// URL"
@@ -7323,7 +7323,7 @@ msgstr ""
 
 #: src/lib/sso-error-messages.ts
 msgid "We couldn't match this sign-in to an account. Ask your administrator for help."
-msgstr ""
+msgstr "Impossible d'associer cette connexion à un compte. Demandez de l'aide à votre administrateur."
 
 #: src/components/auth-gate/browser-check.tsx
 msgid "We couldn't verify your browser. Check your connection and try again."
@@ -7353,7 +7353,7 @@ msgstr ""
 
 #: src/components/sso-sign-in/sso-email-code-page.tsx
 msgid "We'll send a sign-in code to your email address."
-msgstr ""
+msgstr "Nous enverrons un code de connexion à votre adresse e-mail."
 
 #: src/waitlist/waitlist-content.tsx
 msgid "We've sent an email to <0>{email}</0> with your next steps."
@@ -7471,7 +7471,7 @@ msgstr "mot1 mot2 mot3 ..."
 
 #: src/components/sso-sign-in/sso-email-step.tsx
 msgid "Work email"
-msgstr ""
+msgstr "E-mail professionnel"
 
 #: src/settings/preferences.tsx
 msgid "Would you like to change the language to {suggestedLanguageLabel}?"
@@ -7610,11 +7610,11 @@ msgstr "Vous avez atteint votre limite d'utilisation de l'IA pour la fenêtre de
 
 #: src/lib/sso-error-messages.ts
 msgid "Your access to {appName} has been blocked. Ask your administrator for help."
-msgstr ""
+msgstr "Votre accès à {appName} a été bloqué. Demandez de l'aide à votre administrateur."
 
 #: src/lib/sso-error-messages.ts
 msgid "Your account has been deactivated. Ask your administrator to restore your access."
-msgstr ""
+msgstr "Votre compte a été désactivé. Demandez à votre administrateur de rétablir votre accès."
 
 #: src/components/account-deleted.tsx
 msgid "Your account has been deleted and local data has been cleared."
@@ -7716,7 +7716,7 @@ msgstr ""
 
 #: src/lib/sso-error-messages.ts
 msgid "Your identity provider didn't send the identifier your organization matches accounts on. Ask your administrator to check the connection."
-msgstr ""
+msgstr "Votre fournisseur d'identité n'a pas envoyé l'identifiant utilisé par votre organisation pour associer les comptes. Demandez à votre administrateur de vérifier la connexion."
 
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Your local data stays on this device until you enable sync."
@@ -7749,15 +7749,15 @@ msgstr ""
 
 #: src/lib/sso-error-messages.ts
 msgid "Your organization hasn't given you access to {appName} yet. Ask your administrator to add you."
-msgstr ""
+msgstr "Votre organisation ne vous a pas encore donné accès à {appName}. Demandez à votre administrateur de vous ajouter."
 
 #: src/settings/account/use-delete-account.ts
 msgid "Your organization manages this account, so it can’t be deleted here. Ask your administrator."
-msgstr ""
+msgstr "Votre organisation gère ce compte, il ne peut donc pas être supprimé ici. Contactez votre administrateur."
 
 #: src/lib/otp-error-messages.ts
 msgid "Your organization requires you to sign in with single sign-on."
-msgstr ""
+msgstr "Votre organisation exige une connexion par authentification unique (SSO)."
 
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "Your passkey was added before a security update. Check it once so unlocking with it can confirm your encryption keys are yours."

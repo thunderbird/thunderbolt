@@ -31,12 +31,12 @@ test('an invitation link offers the email code for the invited address and signs
 
   await expect(page.getByRole('heading', { name: /You've been invited to/ })).toBeVisible()
   await expect(page.getByText(`Sign in with ${email} to accept the invitation.`, { exact: true })).toBeVisible()
-  await expect(page.getByPlaceholder('Email address', { exact: true })).toHaveValue(email)
+  await expect(page.getByPlaceholder('Email', { exact: true })).toHaveValue(email)
   const codeRequested = page.waitForResponse((response) => new URL(response.url()).pathname === '/v1/waitlist/join')
-  await page.getByRole('button', { name: 'Send Magic Link', exact: true }).click()
-  expect((await codeRequested).ok()).toBe(true)
-  await page.locator('input[data-input-otp]').fill('12345678')
   await page.getByRole('button', { name: 'Continue', exact: true }).click()
+  expect((await codeRequested).ok()).toBe(true)
+  // A complete code verifies on its own, and a successful sign-in goes straight into the app.
+  await page.locator('input[data-input-otp]').fill('12345678')
 
   await expect(page.locator('textarea')).toBeVisible({ timeout: 30_000 })
   expect(errors).toEqual([])

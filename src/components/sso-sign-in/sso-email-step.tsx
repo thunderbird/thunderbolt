@@ -4,6 +4,7 @@
 
 import { Trans, useLingui } from '@lingui/react/macro'
 import type { FormEvent } from 'react'
+import { authButtonClass } from '@/components/auth-screen'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SsoSignInLayout } from './sso-sign-in-layout'
@@ -30,7 +31,7 @@ export const SsoEmailStep = ({ email, pending, onEmailChange, onSubmit, onUseEma
       title={<Trans>Sign in</Trans>}
       description={<Trans>Enter your work email to continue with your organization's sign-in.</Trans>}
     >
-      <form onSubmit={handleSubmit} className="flex w-full flex-col gap-3">
+      <form onSubmit={handleSubmit} className="flex w-full flex-col gap-4">
         <Input
           type="email"
           inputMode="email"
@@ -40,13 +41,15 @@ export const SsoEmailStep = ({ email, pending, onEmailChange, onSubmit, onUseEma
           value={email}
           onChange={(event) => onEmailChange(event.target.value)}
           disabled={pending}
-          className="h-[var(--touch-height-lg)] text-base"
+          variant="filled"
+          inputSize="xl"
+          className="rounded-xl"
         />
-        <Button type="submit" size="lg" disabled={pending || !email.includes('@')}>
+        <Button type="submit" disabled={pending || !email.includes('@')} className={authButtonClass}>
           <Trans>Continue</Trans>
         </Button>
       </form>
-      <Button type="button" variant="ghost" onClick={onUseEmailCode}>
+      <Button type="button" variant="ghost" onClick={onUseEmailCode} className={authButtonClass}>
         <Trans>Use an email code instead</Trans>
       </Button>
     </SsoSignInLayout>

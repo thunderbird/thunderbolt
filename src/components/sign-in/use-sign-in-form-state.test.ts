@@ -74,6 +74,30 @@ describe('sign-in operation outcomes', () => {
     }
   })
 
+  it('calls onSignedIn once a passkey or code sign-in succeeds, and not when the code is refused', async () => {
+    const signIn = spyOn(passkeys, 'signInWithPasskey').mockResolvedValueOnce({ userId: 'user' })
+    const onSignedIn = mock()
+    let codeResult: { error: { message: string } | null } = { error: { message: 'Invalid code' } }
+    const authClient = createMockAuthClient({ signInEmailOtp: async () => codeResult })
+    const { httpClient } = createSpyHttpClient(undefined, waitlistResponse)
+    try {
+      const { result } = renderHook(() =>
+        useSignInFormState({ authClient, httpClient, onSignedIn, initialEmail: 'test@example.com' }),
+      )
+      await act(async () => result.current.actions.handlePasskeySignIn())
+      expect(onSignedIn).toHaveBeenCalledTimes(1)
+
+      await act(async () => result.current.actions.handleOtpComplete('12345678'))
+      expect(onSignedIn).toHaveBeenCalledTimes(1)
+
+      codeResult = { error: null }
+      await act(async () => result.current.actions.handleOtpComplete('12345678'))
+      expect(onSignedIn).toHaveBeenCalledTimes(2)
+    } finally {
+      signIn.mockRestore()
+    }
+  })
+
   it('excludes overlapping OTP and passkey operations and ignores a cancelled ceremony', async () => {
     const response = Promise.withResolvers<{ userId: string }>()
     const signIn = spyOn(passkeys, 'signInWithPasskey').mockImplementationOnce(() => response.promise)

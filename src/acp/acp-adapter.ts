@@ -55,7 +55,13 @@ import {
   supportsWireSkills,
   type SkillDefinition,
 } from '@shared/agent-core/skills'
-import { blobToBase64, getAttachments, undeliverableAttachmentsNote, type HydratedAttachment } from '@/lib/attachments'
+import {
+  blobToBase64,
+  getAttachments,
+  undeliverableAttachmentsNote,
+  unreadableAttachmentNote,
+  type HydratedAttachment,
+} from '@/lib/attachments'
 import { renderMessageQuotesAsText } from '@/lib/quotes'
 import { getTransformer } from '@/files/transformers'
 import { getAttachment } from '@/lib/file-blob-storage'
@@ -252,27 +258,38 @@ const resolveEmbeddedDelivery = async (
   | { kind: 'undeliverable'; filename: string }
 > => {
   if (attachment.deliverAs === undefined) {
-    const file = await deps.getAttachment(attachment.localFileId)
-    if (!file) {
-      return { kind: 'undeliverable', filename: attachment.filename }
+    try {
+      const file = await deps.getAttachment(attachment.localFileId)
+      if (!file) {
+        return { kind: 'undeliverable', filename: attachment.filename }
+      }
+      return { kind: 'resource', attachment: { ...attachment, base64: await blobToBase64(file.blob) } }
+    } catch (error) {
+      console.warn('Sending a note in place of an unreadable attachment', { filename: attachment.filename, error })
+      return { kind: 'text', text: unreadableAttachmentNote(attachment.filename, error) }
     }
-    return { kind: 'resource', attachment: { ...attachment, base64: await blobToBase64(file.blob) } }
   }
   return resolveTextDelivery(attachment, deps)
 }
 
-/** Resolve one attachment to an extracted-text block, or mark it undeliverable (no text transformer). */
+/** Resolve one attachment to an extracted-text block, to a could-not-be-read note
+ *  when reading it fails, or mark it undeliverable (no text transformer). */
 const resolveTextDelivery = async (
   attachment: ReturnType<typeof getAttachments>[number],
   deps: PromptBlockDeps,
 ): Promise<{ kind: 'text'; text: string } | { kind: 'undeliverable'; filename: string }> => {
-  const transformer = await deps.getTransformer(attachment.mimeType, 'text')
-  const file = transformer ? await deps.getAttachment(attachment.localFileId) : null
-  if (transformer && file) {
-    const output = await transformer(file)
-    if ('text' in output) {
-      return { kind: 'text', text: `[Attachment: ${attachment.filename}]\n\n${output.text}` }
+  try {
+    const transformer = await deps.getTransformer(attachment.mimeType, 'text')
+    const file = transformer ? await deps.getAttachment(attachment.localFileId) : null
+    if (transformer && file) {
+      const output = await transformer(file)
+      if ('text' in output) {
+        return { kind: 'text', text: `[Attachment: ${attachment.filename}]\n\n${output.text}` }
+      }
     }
+  } catch (error) {
+    console.warn('Sending a note in place of an unreadable attachment', { filename: attachment.filename, error })
+    return { kind: 'text', text: unreadableAttachmentNote(attachment.filename, error) }
   }
   return { kind: 'undeliverable', filename: attachment.filename }
 }

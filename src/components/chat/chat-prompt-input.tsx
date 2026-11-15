@@ -74,7 +74,7 @@ import { hasAssistantContent } from '@/lib/message-utils'
 import { buildQuotePart } from '@/lib/quotes'
 import { QuoteChip } from './quote-chip'
 import { deleteAttachment, putAttachment } from '@/lib/file-blob-storage'
-import { resolveTextMimeType } from '@/files/transformers'
+import { docxMime, pptxMime, resolveTextMimeType, xlsxMime } from '@/files/transformers'
 import { maybeCompressAttachment } from '@/files/compress/compress-attachment'
 import { VoiceModeButton } from '@/voice/ui/voice-mode-button'
 import { VoiceModeComposer } from '@/voice/ui/voice-mode-composer'
@@ -95,16 +95,17 @@ const maxAttachmentBytes = 25 * 1024 * 1024
 const maxAttachmentCount = 10
 
 /** Mime types accepted as attachments. PDFs and images deliver natively to
- *  capable models; plain-text types (txt / md / csv / json) and xlsx deliver as
- *  text; docx (and a native file a model rejects) auto-remediate to text/images. */
+ *  capable models; plain-text types (txt / md / csv / json), xlsx and pptx deliver
+ *  as text; docx (and a native file a model rejects) auto-remediate to text/images. */
 const acceptedAttachmentMimeTypes = new Set([
   'application/pdf',
   'image/png',
   'image/jpeg',
   'image/webp',
   'image/gif',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  docxMime,
+  xlsxMime,
+  pptxMime,
   'text/markdown',
   'text/plain',
   'text/csv',
@@ -122,6 +123,7 @@ const acceptedAttachmentExtensions = [
   '.gif',
   '.docx',
   '.xlsx',
+  '.pptx',
   '.md',
   '.markdown',
   '.txt',

@@ -16,7 +16,9 @@ import type { WebToolApi } from '@/integrations/thunderbolt-pro/tools'
 import { getSearchConnectionApi } from '@/integrations/standalone-search/connection'
 import { resolveSearchSelection } from '@/integrations/standalone-search/selection'
 import { hasServerAuthentication } from '@/lib/provider-mode'
-import { officeScriptTool } from '@/office/office-script-tool'
+import { createOfficeScriptTool } from '@/office/office-script-tool'
+import type { ReadWorkspaceFile } from '@/office/script-inputs'
+import { loadThreadFiles } from '@/office/thread-files'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { toolCallKey } from '@/lib/stable-stringify'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
@@ -54,10 +56,18 @@ const loadToolAvailabilityContext = async (): Promise<ToolAvailabilityContext> =
   return { settings, integrationStatus, ...(await loadConnectedSearchApis(db)) }
 }
 
+/** Where the Office tool finds a script's inputs. Without a thread it reads nothing. */
+export type OfficeInputSources = {
+  chatThreadId?: string
+  /** The built-in agent's workspace; the legacy pipeline has none. */
+  readWorkspaceFile?: ReadWorkspaceFile
+}
+
 export const getAvailableTools = async (
   httpClient: HttpClient,
   sourceCollector?: SourceMetadata[],
   context?: ToolAvailabilityContext,
+  { chatThreadId, readWorkspaceFile }: OfficeInputSources = {},
 ): Promise<ToolConfig[]> => {
   const proEnabled = await hasProAccess()
   const {
@@ -68,7 +78,10 @@ export const getAvailableTools = async (
   } = context ?? (await loadToolAvailabilityContext())
   const baseTools: ToolConfig[] = [
     renderHtmlTool,
-    officeScriptTool,
+    createOfficeScriptTool({
+      listThreadFiles: chatThreadId ? () => loadThreadFiles(chatThreadId) : undefined,
+      readWorkspaceFile,
+    }),
     ...(experimentalFeatureTasks ? Object.values(tasksTools) : []),
   ]
   const { selection, connectionId } = useSearchProviderStore.getState()

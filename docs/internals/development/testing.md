@@ -219,6 +219,7 @@ Check [`src/test-utils/`](../../../src/test-utils) first; most cases that tempt 
 | `@/test-utils/fake-timers`                | `installFakeTimers`                                                                               | What the preload calls; in a test use `getClock()` rather than installing your own                       |
 | `@/test-utils/chat-store-mocks`           | `createMockModel`, `createMockChatThread`, `createMockChatInstance`, `hydrateStore`, `resetStore` | Chat-store fixtures and a seeded/reset store                                                             |
 | `@/test-utils/create-request-probe`       | `CreateRequestProbe`                                                                              | Asserting a quick-create entry point opened a surface without changing routes                            |
+| `@/test-utils/xlsx-workbook`              | `workbook`                                                                                        | A real `.xlsx` for the real sheet reader, instead of mocking `read-excel-file`                           |
 
 ### What Runs Before Your Test
 

@@ -14,6 +14,7 @@
  */
 
 import { describe, expect, test } from 'bun:test'
+import { xlsxMime } from '@/files/transformers'
 import type { StoredFile } from '@/lib/file-blob-storage'
 import { buildAttachmentPart } from '@/lib/attachments'
 import { buildQuotePart } from '@/lib/quotes'
@@ -71,6 +72,33 @@ describe('buildPromptBlocks — no embeddedContext', () => {
     expect(blocks[1]?.text).toBe('[Attachment: doc.pdf]\n\nEXTRACTED PDF TEXT')
   })
 
+  test('sends a note for a file that fails to extract, keeping the text and other files', async () => {
+    const tooBig = new Error('This spreadsheet unpacks to 180 MiB, over the 32 MiB limit for reading it.')
+    const failingXlsx: PromptBlockDeps = {
+      ...deps,
+      getTransformer: async (mime, target) =>
+        mime === xlsxMime
+          ? async () => {
+              throw tooBig
+            }
+          : deps.getTransformer(mime, target),
+    }
+    const xlsx = buildAttachmentPart({ localFileId: 'f3', filename: 'budget.xlsx', mimeType: xlsxMime })
+
+    const blocks = (await buildPromptBlocks(
+      initWith([textPart('hi'), xlsx, pdf()]),
+      undefined,
+      false,
+      failingXlsx,
+    )) as Block[]
+
+    expect(blocks).toEqual([
+      { type: 'text', text: 'hi' },
+      { type: 'text', text: `[Attachment "budget.xlsx" could not be read: ${tooBig.message}]` },
+      { type: 'text', text: '[Attachment: doc.pdf]\n\nEXTRACTED PDF TEXT' },
+    ])
+  })
+
   test('with no attachments, returns a single text block (no note)', async () => {
     const blocks = (await buildPromptBlocks(initWith([textPart('just text')]), undefined, false, deps)) as Block[]
 
@@ -118,6 +146,22 @@ describe('buildPromptBlocks — embeddedContext', () => {
     expect(blocks).toHaveLength(1)
     expect(blocks[0]?.text).toContain('hi')
     expect(blocks[0]?.text).toContain('[Attachment "doc.pdf" could not be delivered to this agent]')
+  })
+
+  test('sends a note for a file whose bytes fail to load, keeping the text', async () => {
+    const readFailure = new Error('The stored file could not be opened')
+    const failingDeps: PromptBlockDeps = {
+      ...deps,
+      getAttachment: async () => {
+        throw readFailure
+      },
+    }
+    const blocks = (await buildPromptBlocks(initWith([textPart('hi'), pdf()]), undefined, true, failingDeps)) as Block[]
+
+    expect(blocks).toEqual([
+      { type: 'text', text: 'hi' },
+      { type: 'text', text: `[Attachment "doc.pdf" could not be read: ${readFailure.message}]` },
+    ])
   })
 })
 

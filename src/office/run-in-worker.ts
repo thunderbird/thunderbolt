@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { sandboxLimits } from './constants'
-import type { SandboxResult } from './sandbox'
+import type { SandboxJob, SandboxResult } from './sandbox'
 
 /** What the Worker posts: `'ready'` once the sandbox is loaded and the script starts, then the result. */
 export type SandboxMessage = 'ready' | SandboxResult
@@ -12,7 +12,7 @@ export type SandboxMessage = 'ready' | SandboxResult
 export type SandboxWorker = {
   onmessage: ((event: MessageEvent<SandboxMessage>) => void) | null
   onerror: ((event: ErrorEvent) => void) | null
-  postMessage: (script: string) => void
+  postMessage: (job: SandboxJob, transfer: Transferable[]) => void
   terminate: () => void
 }
 
@@ -27,14 +27,15 @@ const watchdogGraceMs = 5_000
 const loadTimeoutMs = 120_000
 
 /**
- * Run a script in a fresh sandbox Worker and terminate the Worker afterwards. The VM interrupt enforces the
- * time limit; this watchdog only fires when the Worker stops answering (for example inside a long WASM call).
+ * Run a job in a fresh sandbox Worker and terminate the Worker afterwards. The inputs' buffers move to the
+ * Worker, so the caller must not read them again. The VM interrupt enforces the time limit; this watchdog
+ * only fires when the Worker stops answering (for example inside a long WASM call).
  * Loading the sandbox has its own, longer limit, and the script's watchdog starts only when the Worker says
  * it is ready: in WebKit a Worker's fetches go through the page's main thread, so a busy page holds up the
  * load without the script having run. Rejects with the signal's reason on Stop.
  */
 export const runInSandboxWorker = (
-  script: string,
+  job: SandboxJob,
   signal?: AbortSignal,
   createWorker: () => SandboxWorker = createOfficeWorker,
 ): Promise<SandboxResult> => {
@@ -68,7 +69,10 @@ export const runInSandboxWorker = (
     event.preventDefault()
     resolve({ ok: false, error: `The sandbox failed to start: ${event.message}`, logs: '' })
   }
-  worker.postMessage(script)
+  worker.postMessage(
+    job,
+    job.inputs.map(({ bytes }) => bytes.buffer),
+  )
   return promise.finally(() => {
     clearTimeout(watchdog)
     signal?.removeEventListener('abort', onAbort)

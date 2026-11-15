@@ -735,6 +735,7 @@ const fetchViaHarness = async (
     // prompt, which `harnessSignature` fingerprints — so editing a project
     // mid-thread rebuilds the harness on the next send by itself.
     chatThreadId: context.threadId,
+    readWorkspaceFile: (path, maxBytes) => agentCore.readAgentWorkspaceFile(context.threadId, path, maxBytes),
     telemetry: context.telemetry,
   })
   init.signal?.throwIfAborted()
@@ -985,6 +986,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
       reconnectClient: context.reconnectClient,
       httpClient: context.httpClient,
       chatThreadId: context.threadId,
+      readWorkspaceFile: (path, maxBytes) => agentCore.readAgentWorkspaceFile(context.threadId, path, maxBytes),
     })
     init.signal?.throwIfAborted()
     const resolved = await resolvePiModel(agentCore, context, config.profile, options)

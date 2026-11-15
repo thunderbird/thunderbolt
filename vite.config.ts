@@ -16,6 +16,7 @@ import pkg from './package.json' with { type: 'json' }
 import { exaRelayPlugin, exaRelayProxies } from './scripts/exa-relay'
 import { tinfoilSearchRelayPlugin, tinfoilSearchProxy } from './scripts/tinfoil-search-relay'
 import { copyPowerSyncAssets } from './scripts/copy-powersync-assets'
+import { officeSandboxScriptPlugin } from './scripts/office-sandbox-script'
 import {
   addWebKitCompatToAsset,
   webkitCompatAssetFileNames,
@@ -95,6 +96,8 @@ export default defineConfig({
   },
   plugins: [
     webkitCompatPlugin(),
+    // The dev server runs the app's plugins on Worker modules too; a build uses `worker.plugins` below.
+    officeSandboxScriptPlugin(),
     tinfoilSearchRelayPlugin(),
     exaRelayPlugin(),
     {
@@ -277,17 +280,22 @@ export default defineConfig({
   },
   optimizeDeps: {
     // The Office sandbox Worker loads these on first use. Pre-bundling found them only then and reloaded the
-    // page mid-run, and it also wrapped the library files' `?url` imports as modules.
+    // page mid-run, and it also wrapped the library files' `?url` imports as modules. The PPTX preview's
+    // renderer is the same case: its browser build is one self-contained module, loaded when a deck opens.
     exclude: [
       '@journeyapps/wa-sqlite',
       '@powersync/web',
       'quickjs-wasi',
       'office-sandbox-docx',
       'office-sandbox-pptxgenjs',
+      'excelize-wasm',
+      '@ironcalc/wasm',
+      '@aiden0z/pptx-renderer',
     ],
   },
   worker: {
     format: 'es',
+    plugins: () => [officeSandboxScriptPlugin()],
     // Workers have their own intrinsics; a page polyfill does not protect them.
     rolldownOptions: { output: { banner: webkitCompatScript } },
   },

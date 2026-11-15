@@ -9,6 +9,7 @@
  * fresh here, after the swap.
  */
 import type { SandboxLimits } from './constants'
+import type { SandboxJob } from './sandbox'
 
 const nativeSymbol = Symbol
 const standIn = Object.setPrototypeOf((description?: string) => nativeSymbol(description), nativeSymbol)
@@ -23,8 +24,8 @@ const { runSandboxedScript } = await import('./sandbox')
 const { loadTestSandboxRuntime } = await import('./sandbox-test-runtime')
 const runtime = await loadTestSandboxRuntime()
 
-self.onmessage = async ({ data }: MessageEvent<{ script: string; limits: SandboxLimits }>) => {
-  self.postMessage(await runSandboxedScript(runtime, data.script, data.limits))
+self.onmessage = async ({ data }: MessageEvent<{ job: SandboxJob; limits: SandboxLimits }>) => {
+  self.postMessage(await runSandboxedScript(runtime, data.job, data.limits))
 }
 // Messages posted before the handler above exists are dropped, so the test waits for this one.
 self.postMessage('ready')

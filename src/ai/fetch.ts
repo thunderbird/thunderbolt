@@ -655,6 +655,7 @@ export const prepareAiRequestConfig = async ({
         httpClient,
         sourceCollector,
         { settings, integrationStatus, ...(await loadConnectedSearchApis(db)) },
+        webToolBudget?.priorSources,
         { chatThreadId, readWorkspaceFile },
       )
     : []

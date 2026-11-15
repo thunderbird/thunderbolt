@@ -12,6 +12,7 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { useDatabase } from '@/contexts'
 import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
+import { isSameModelKeyDestination } from '@/lib/credential-destination'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import { fetchProviderModels } from '@/providers/models'
 import type { Model } from '@/types'
@@ -84,7 +85,12 @@ export const useEditModelFormState = (model: Model) => {
   const [apiKeyEdit, setApiKeyEdit] = useState<ApiKeyEdit>({ kind: 'keep' })
   const liveApiKeyEdit: ApiKeyEdit =
     apiKeyEdit.kind === 'replace' ? { kind: 'replace', value: watchedApiKey } : apiKeyEdit
-  const effectiveApiKey = modelApiKeyForConnection(model.apiKey, liveApiKeyEdit)
+  // The saved key only goes where it was saved for, so a URL edit leaves it behind.
+  const storedApiKey =
+    model.providerConnectionId || isSameModelKeyDestination(model, { provider: model.provider, url: watchedUrl })
+      ? model.apiKey
+      : null
+  const effectiveApiKey = modelApiKeyForConnection(storedApiKey, liveApiKeyEdit)
   const legacyCatalog = useModelCatalog()
   const legacyCatalogRequest = { provider: model.provider, apiKey: effectiveApiKey, url: watchedUrl }
   const catalog = useQuery({
@@ -132,6 +138,8 @@ export const useEditModelFormState = (model: Model) => {
     modelItems,
     isCustomModel,
     apiKeyEdit,
+    hasStoredApiKey: Boolean(storedApiKey),
+    isStoredApiKeyLeftBehind: Boolean(model.apiKey) && !storedApiKey && apiKeyEdit.kind === 'keep',
     effectiveApiKey,
     isLoadingCatalog: model.providerConnectionId ? catalog.isFetching : legacyCatalog.isLoading,
     catalogError: model.providerConnectionId

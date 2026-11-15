@@ -102,7 +102,7 @@ Session minting, SSO, the CLI device grant, bearer signing: [backend/docs/authen
 - Sessions come from a cookie, a signed bearer, or an `x-api-key` PAT (`enableSessionForAPIKeys`).
 - `.derive` routes branch to answer 401 (no session) vs 403 (anonymous) with a machine-readable `code`. Anonymous users are rejected from sync, agent discovery and Haystack files.
 - `GET /v1/powersync/token` accepts a bearer with no session (credential refresh). The bearer plugin runs `requireSignature: true`, so any path reading a raw `Authorization` header must re-verify the signature or become a bypass.
-- Browsers cannot set headers on `new WebSocket()`, hence the subprotocol. Validation runs in `open()`, not `beforeHandle`, which Bun's adapter may invoke more than once per upgrade. The bearer entry is never echoed back, keeping it out of `WebSocket.protocol` and response logs.
+- Browsers cannot set headers on `new WebSocket()`, hence the subprotocol. Validation runs in `open()`, not `beforeHandle`, which Bun's adapter may invoke more than once per upgrade. The bearer entry is never echoed back, keeping it out of `WebSocket.protocol` and response logs. Each handshake starts a fresh session lookup; per-process sockets with the same bearer share one-second successful validation for frames and a forced five-second session poll. The WebSocket limiter does not effectively cap per-user handshakes or frame rate.
 - Health probes answer 403 when `MONITORING_TOKEN` is unset, 401 when it does not match ([self-hosting configuration](../../self-hosting/configuration.md)).
 
 Metered routes add two guards:
@@ -117,6 +117,7 @@ Metered routes add two guards:
 | `inference`                | 60 / minute  | `user:<id>`                     |
 | `pro`                      | 100 / minute | `user:<id>`                     |
 | `auth`                     | 10 / minute  | `ip:<addr>`                     |
+| `integration-oauth`        | 30 / minute  | `ip:<addr>`                     |
 | `anonymous-sign-in`        | 10 / minute  | `ip:<addr>`                     |
 | `captcha-challenge`        | 10 / minute  | `ip:<addr>`                     |
 | `anonymous-sign-in-global` | 2000 / hour  | `all` (one deployment-wide key) |
@@ -127,7 +128,7 @@ Limits are hardcoded per tier in `backend/src/middleware/rate-limit.ts:49-56`, t
 
 - **User-keyed limiters go after the auth macro's guard**: inside a `guard({ auth: true }, …)` callback, or inside `createMeteredRouteGuard` (`backend/src/inference/metered-route-guard.ts`), which fronts every managed-inference route. They read the macro-resolved `user`; at app level the resolve runs after `onBeforeHandle` and the limit is a silent no-op.
 - **IP-keyed limiters fail closed.** An unresolvable IP shares one `ip:unknown` bucket instead of skipping the check, so the guard on OTP send and waitlist join cannot disable itself. `extractClientIp` trusts forwarding headers only under `TRUSTED_PROXY`.
-- **`RATE_LIMIT_ENABLED=false` returns an empty plugin**: the limiter disappears rather than being bypassed per request.
+- **`RATE_LIMIT_ENABLED=false` returns an empty plugin**: the limiter disappears rather than being bypassed per request. The `integration-oauth` limit is the exception: `index.ts` builds it with `enabled: true`, so token exchanges stay limited.
 
 Limited responses carry `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset`; a 429 adds `Retry-After`. Mechanism and how to add a tier: [backend/docs/rate-limiting.md](../../../backend/docs/rate-limiting.md).
 

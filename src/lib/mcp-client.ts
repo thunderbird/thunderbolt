@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createMCPClient } from '@ai-sdk/mcp'
-import { getMcpServerCredentials, type McpServerCredentials } from '@/dal/mcp-secrets'
+import { getMcpServerCredentialsFor, type McpServerCredentials } from '@/dal/mcp-secrets'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { getAuthToken } from './auth-token'
 import type { HttpClient } from './http'
@@ -19,6 +19,7 @@ import { createProxyFetch } from './proxy-fetch'
 export const resolveMcpAccessToken = async (
   db: AnyDrizzleDatabase,
   serverId: string,
+  url: string,
   credentials: McpServerCredentials | null,
   cloudUrl: string,
   ensureValidToken: typeof ensureValidMcpOAuthToken = ensureValidMcpOAuthToken,
@@ -31,7 +32,7 @@ export const resolveMcpAccessToken = async (
       cloudUrl,
       getProxyAuthToken: getAuthToken,
     })
-    return ensureValidToken(db, serverId, fetchFn)
+    return ensureValidToken(db, serverId, url, fetchFn)
   }
   return undefined
 }
@@ -45,10 +46,11 @@ type ConnectMcpClientOptions = {
   cloudUrl: string
 }
 
-/** Connect using freshly read credentials so reconnects pick up token rotation. */
+/** Connect using freshly read credentials so reconnects pick up token rotation. A credential
+ *  saved for another URL is left out, so the server sees an unauthenticated request instead. */
 export const connectMcpClient = async ({ db, httpClient, serverId, url, type, cloudUrl }: ConnectMcpClientOptions) => {
-  const credentials = await getMcpServerCredentials(db, serverId)
-  const token = await resolveMcpAccessToken(db, serverId, credentials, cloudUrl)
+  const credentials = await getMcpServerCredentialsFor(db, serverId, url)
+  const token = await resolveMcpAccessToken(db, serverId, url, credentials, cloudUrl)
   const headers = buildMcpHeaders(token)
   const transport = createMcpTransport(url, type, cloudUrl, headers, httpClient)
   return createMCPClient({ transport })

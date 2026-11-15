@@ -17,6 +17,7 @@ import { isAttachmentPart } from '@/lib/attachments'
 import { filterMessageParts } from '@/lib/assistant-message'
 import { useHaptics } from '@/hooks/use-haptics'
 import { useAttachmentRemediation } from './use-attachment-remediation'
+import { useThreadSources } from './use-thread-sources'
 import { useTurnOffModelTools } from './use-turn-off-model-tools'
 import { isBuiltInAgent } from '@/defaults/agents'
 import { QuoteReplyButton } from './quote-reply-button'
@@ -84,6 +85,8 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
     )
     return new Set(start === -1 ? [] : messages.slice(start).map((message) => message.id))
   }, [messages])
+  // All messages, like the request history the model numbered its citations against.
+  const threadSources = useThreadSources(messages)
   const lastMessage = useMemo(() => visibleMessages.at(-1), [visibleMessages])
   const shareActionHostId = useMemo(() => visibleMessages.findLast(rendersContent)?.id, [visibleMessages])
   const lastAssistantMessage = useMemo(
@@ -187,6 +190,7 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
               <PrivateSourcesContext value={privateSourceMessageIds.has(message.id)}>
                 <AssistantMessage
                   message={message}
+                  sources={threadSources.get(message.id)}
                   isStreaming={isStreaming && isLast}
                   isLastMessage={isLast && shouldUseViewportPositioning(visibleMessages.length)}
                   isLastAssistantMessage={message.id === lastAssistantMessage?.id}

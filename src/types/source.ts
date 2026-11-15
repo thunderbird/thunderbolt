@@ -7,7 +7,7 @@
  * Stored on UIMessageMetadata.sources for the source registry.
  */
 export type SourceMetadata = {
-  /** 1-based sequential index, matches AI's [N] reference */
+  /** 1-based citation number, matches AI's [N] reference; continues across the thread's turns */
   index: number
   /** Full URL of the source */
   url: string

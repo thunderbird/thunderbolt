@@ -1,7 +1,5 @@
 # Thunderbolt Enterprise Deployment
 
-> ⚠️ **Under active development — not production ready.** Thunderbolt is currently undergoing a security audit and preparing for enterprise production readiness. These deployment paths are provided for evaluation and early testing. Do not use in production environments.
-
 Self-hosted Thunderbolt with OIDC or SAML authentication via Keycloak. Three deployment paths: Docker Compose for local development, Helm chart for Kubernetes, and Pulumi for AWS (Fargate or EKS).
 
 ## Table of Contents
@@ -87,7 +85,7 @@ deploy/
   config/                   # Shared config files
     nginx.conf.template     # Frontend nginx with COEP/COOP headers; ${THUNDERBOLT_BACKEND_HOST}/${THUNDERBOLT_BACKEND_PORT} substituted at container start
     security-headers.conf   # Shared nginx security-header snippet, included by nginx.conf.template
-    marketing-nginx.conf    # Marketing/docs site nginx
+    marketing-nginx.conf.template  # Marketing/docs site nginx; caches the latest desktop release from GitHub
     powersync-config.yaml   # Sync rules + replication config
     keycloak-realm.json     # Thunderbolt realm + demo user
   k8s/                      # Helm chart

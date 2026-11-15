@@ -112,8 +112,48 @@ const rewriteMath = (text: string): string =>
   )
 
 // An inline code span (`` `…` ``, `` ``…`` ``, …). Left verbatim so a message
-// that shows `$$…$$` / `\(…\)` *as inline code* keeps its literal text.
-const inlineCodeSpan = /(`+)[^`]*?\1/g
+// that shows `$$…$$` / `\(…\)` *as inline code* keeps its literal text. It closes on a
+// backtick run of the same length, so ``a`b`` holds a backtick, and may wrap a line but
+// never crosses a blank one — a code span can't leave its paragraph.
+const inlineCodeSpan = /(?<!`)(`+)(?!`)(?:[^\n]|\n(?![ \t]*\r?\n))*?(?<!`)\1(?!`)/g
+
+// A fenced code block, through a closing run of the same character at least as long,
+// or to the end of the text when unclosed (the normal state mid-stream). The opener may
+// follow list markers (`- ```js`). A backtick fence's info string can't contain a
+// backtick — that line is inline code instead.
+const fencedCodeBlock =
+  /^[ \t]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+)*(`{3,})[^`\n]*$[\s\S]*?(?:^[ \t]*\1`*[ \t]*$|(?![\s\S]))|^[ \t]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+)*(~{3,}).*$[\s\S]*?(?:^[ \t]*\2~*[ \t]*$|(?![\s\S]))/gm
+
+// The inline spans `blankNonProse` overwrites once fences are gone, in order: each pass
+// runs on the previous passes' output, so a `$` inside code can't open a math span.
+const inlineNonProseSpans = [
+  inlineCodeSpan,
+  displayMathDelimiters,
+  displayMathSpan,
+  inlineMathDelimiters,
+  inlineMathSpan,
+]
+
+// A blank line. Outside fences no span crosses one: the renderer normalizes math one
+// block at a time, so a stray `\(` must not pair with a `\)` paragraphs later.
+const paragraphBreak = /(\r?\n[ \t]*\r?\n)/
+
+/** `text` with every match of `span` overwritten by spaces, newlines kept, so offsets don't move. */
+const blankSpan = (text: string, span: RegExp): string => text.replace(span, (match) => match.replace(/[^\n]/g, ' '))
+
+/**
+ * `markdown` with fenced code, inline code and math (both `$` and `\(…\)` / `\[…\]`
+ * delimiters) overwritten by spaces, newlines kept, so offsets still line up with the
+ * original. Lets raw-text rewrites (citation placeholders) leave code and equations
+ * verbatim. Fences are blanked first, across the whole text; every other span stays
+ * within its paragraph. Known limitation: indented code blocks and fences inside
+ * blockquotes are not recognized, so they read as prose.
+ */
+export const blankNonProse = (markdown: string): string =>
+  blankSpan(markdown, fencedCodeBlock)
+    .split(paragraphBreak)
+    .map((paragraph) => inlineNonProseSpans.reduce(blankSpan, paragraph))
+    .join('')
 
 // Rewrite math everywhere except inside inline code spans.
 const normalizeDisplayMath = (markdown: string): string => {

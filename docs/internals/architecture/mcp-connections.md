@@ -119,6 +119,20 @@ these two ([src/db/powersync/schema.test.ts](../../../src/db/powersync/schema.te
   `mcp_secrets` row in the same transaction.
 - `getMcpServerCredentialRows` ([src/dal/mcp-secrets.ts](../../../src/dal/mcp-secrets.ts)) projects blobs
   in SQL down to `{ id, type, bearerToken }`; those rows reach the settings page's query cache.
+- A credential is bound to the URL it was saved or authorized for (`approvedUrl` in the blob) and is
+  sent nowhere else. `connectMcpClient` reads it through `getMcpServerCredentialsFor`, and
+  `parseMcpCredentialSummary` drops a credential whose URL no longer matches the server row, so the
+  edit form never offers it. `credentialDestination`
+  ([src/lib/credential-destination.ts](../../../src/lib/credential-destination.ts)) decides when two
+  URLs are the same destination: scheme, host, effective port, the exact path (a trailing slash
+  included, since the transport sends to that path) and the query count; letter case in the scheme
+  and host, a default port and the fragment don't. An OAuth refresh reads, shares and stores the
+  credential for one id and URL together, so a refresh still running for an old URL can't hand its
+  token to the new one or overwrite a newer authorization.
+- Changing a server's URL to another destination leaves its credential behind. The edit form probes
+  without it, and once saved the server connects unauthenticated: a bearer server needs its token
+  typed again, and an OAuth server shows Authorize. Changing the URL back makes the old credential
+  usable again.
 - Export includes both tables; import writes them locally without uploading
   ([export-format.md](export-format.md)).
 - Sign-out, account deletion, and device revocation run `clearLocalData`

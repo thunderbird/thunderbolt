@@ -1072,7 +1072,11 @@ describe('ConnectionsPage Edit server', () => {
     expect(rows[0]?.name).toBe('Renamed')
     expect(rows[0]?.url).toBe('https://old.example.com/mcp')
     // The prefilled bearer token survives an edit that doesn't touch it.
-    expect(await getMcpServerCredentials(db, id)).toEqual({ type: 'bearer', token: 'original-token' })
+    expect(await getMcpServerCredentials(db, id)).toEqual({
+      type: 'bearer',
+      token: 'original-token',
+      approvedUrl: 'https://old.example.com/mcp',
+    })
   })
 
   it('saves a rename of an iroh server without a probe (no http/sse gate applies)', async () => {

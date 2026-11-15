@@ -12,6 +12,7 @@ import { useServerAuthentication } from '@/hooks/use-local-providers'
 import { useSettings } from '@/hooks/use-settings'
 import { useQuery } from '@tanstack/react-query'
 import { hasProAccess } from '@/integrations/thunderbolt-pro/utils'
+import { findSourceByIndex } from '@/lib/source-utils'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import type { LinkPreviewData } from '@/integrations/thunderbolt-pro/schemas'
 import type { SourceMetadata } from '@/types/source'
@@ -72,7 +73,7 @@ export const LinkPreviewWidget = ({
 }: LinkPreviewWidgetProps) => {
   const privateSources = usePrivateSources(sourceMetadata)
   const sourceData =
-    sourceMetadata?.find(({ index }) => index === Number(source)) ??
+    (sourceMetadata && findSourceByIndex(sourceMetadata, Number(source))) ??
     sourceMetadata?.find((entry) => pageUrl(entry.url) === pageUrl(url))
   if (sourceData) {
     return <InstantLinkPreview sourceData={sourceData} />

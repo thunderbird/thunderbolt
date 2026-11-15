@@ -67,6 +67,7 @@ export const getAvailableTools = async (
   httpClient: HttpClient,
   sourceCollector?: SourceMetadata[],
   context?: ToolAvailabilityContext,
+  priorSources?: readonly SourceMetadata[],
   { chatThreadId, readWorkspaceFile }: OfficeInputSources = {},
 ): Promise<ToolConfig[]> => {
   const proEnabled = await hasProAccess()
@@ -95,6 +96,7 @@ export const getAvailableTools = async (
       httpClient,
       sourceCollector,
       selected === 'connection' ? searchApi : undefined,
+      priorSources,
     )
     baseTools.push(
       ...webTools.map((config) => ({

@@ -100,7 +100,11 @@ for (const theme of ['light', 'dark'] as const) {
   }
 }
 
-test('recovery follows system appearance even when saved settings are unreadable', async ({ page }) => {
+test('recovery follows system appearance even when saved settings are unreadable', async ({ page, browserName }) => {
+  test.skip(
+    browserName === 'firefox',
+    'Playwright applies an emulated colour scheme to Firefox only after the page loads',
+  )
   await page.addInitScript(() => localStorage.setItem('thunderbolt-local-settings', '{broken'))
   await page.emulateMedia({ colorScheme: 'dark' })
   await page.goto('/webview-recovery.html')

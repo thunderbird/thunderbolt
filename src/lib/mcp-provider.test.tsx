@@ -1063,14 +1063,21 @@ describe('resolveMcpAccessToken', () => {
     // rotated access token the provider must inject. No real fetch/network.
     let seenServerId: string | undefined
     let seenFetch: FetchLike | undefined
-    const ensureValidToken: typeof ensureValidMcpOAuthToken = async (_db, id, fetchFn) => {
+    const ensureValidToken: typeof ensureValidMcpOAuthToken = async (_db, id, _url, fetchFn) => {
       seenServerId = id
       seenFetch = fetchFn
       return 'refreshed-token'
     }
 
     const credentials = { type: 'oauth' as const, access_token: 'stale-token' }
-    const token = await resolveMcpAccessToken(getDb(), serverId, credentials, cloudUrl, ensureValidToken)
+    const token = await resolveMcpAccessToken(
+      getDb(),
+      serverId,
+      'https://mcp.example.com/mcp',
+      credentials,
+      cloudUrl,
+      ensureValidToken,
+    )
 
     expect(token).toBe('refreshed-token')
     expect(seenServerId).toBe(serverId)
@@ -1088,6 +1095,7 @@ describe('resolveMcpAccessToken', () => {
     const token = await resolveMcpAccessToken(
       getDb(),
       'bearer-srv',
+      'https://mcp.example.com/mcp',
       { type: 'bearer', token: 'static-bearer' },
       cloudUrl,
       ensureValidToken,
@@ -1098,7 +1106,7 @@ describe('resolveMcpAccessToken', () => {
   })
 
   it('returns undefined when the server has no stored credentials', async () => {
-    const token = await resolveMcpAccessToken(getDb(), 'no-auth-srv', null, cloudUrl)
+    const token = await resolveMcpAccessToken(getDb(), 'no-auth-srv', 'https://mcp.example.com/mcp', null, cloudUrl)
     expect(token).toBeUndefined()
   })
 })

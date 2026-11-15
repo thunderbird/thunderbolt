@@ -131,6 +131,19 @@ it.each([
   expect((await getDb().select().from(modelsSecretsTable).get())?.apiKey).toBe('private-key')
   expect((await getDb().select().from(modelsTable).get())?.url).toBe(url)
 })
+it('leaves a key saved for another endpoint where it is instead of moving it to the model’s new URL', async () => {
+  await getDb()
+    .insert(modelsTable)
+    .values({ id: 'moved', provider: 'custom', name: 'moved', model: 'moved', url: 'https://moved.example/v1' })
+  await getDb()
+    .insert(modelsSecretsTable)
+    .values({ modelId: 'moved', apiKey: 'saved-key', provider: 'custom', url: 'https://saved.example/v1' })
+  await migrateProviderConnections(getDb())
+  expect((await getProviderCredentials(getDb(), 'legacy-model:moved'))?.apiKey ?? '').toBe('')
+  expect(
+    await getDb().select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, 'moved')).get(),
+  ).toMatchObject({ apiKey: 'saved-key', url: 'https://saved.example/v1' })
+})
 it('honors a synced connection deletion without reviving the old credential', async () => {
   await legacyModel('removed', 'old-key', true)
   await syncedConnection('removed', { deletedAt: new Date().toISOString() })
@@ -195,9 +208,10 @@ it.each([
   expect(await getDb().select().from(modelsTable).where(eq(modelsTable.id, 'm-unsupported')).get()).toEqual(
     originalModel,
   )
+  // The key is bound to the endpoint its model has, and stays otherwise untouched.
   expect(
     await getDb().select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, 'm-unsupported')).get(),
-  ).toEqual(originalSecret)
+  ).toEqual({ ...originalSecret!, provider: legacy.provider, url: legacy.url })
   expect(await getModel(getDb(), 'm-unsupported')).toMatchObject({
     url: legacy.url,
     apiKey: 'retained-key',

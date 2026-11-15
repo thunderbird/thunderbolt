@@ -15,7 +15,7 @@ import { getClock } from '@/testing-library'
 import { mockLocationData } from '@/test-utils/http-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { render, waitFor } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { MemoryRouter } from 'react-router'
@@ -61,8 +61,11 @@ afterEach(async () => {
   await resetTestDatabase()
 })
 
+/** What the OAuth callback hands the wizard in `location.state`. */
+type OAuthLocationState = { oauth: { code?: string; state?: string; error?: string } }
+
 const createRouterWrapper =
-  (locationState?: unknown, authClient?: AuthClient) =>
+  (locationState?: OAuthLocationState, authClient?: AuthClient) =>
   ({ children }: { children: ReactNode }) => {
     const TestProvider = createTestProvider({ mockResponse: mockLocationData, authClient })
     const entries = [{ pathname: '/', state: locationState ?? null }]
@@ -267,6 +270,38 @@ describe('OnboardingDialog', () => {
       expect(screen.queryByRole('heading', { name: 'Connect Google' })).not.toBeNull()
       expect(screen.queryByText('Choose your setup')).toBeNull()
       sessionSpy.mockRestore()
+    })
+
+    it('leaves the connected steps usable after signing in through the Cloud waitlist', async () => {
+      useLocalSettingsStore.setState({
+        cloudUrl: thunderboltCloudUrl,
+        localMode: true,
+        serverHasAuthenticated: false,
+        syncEnabled: false,
+      })
+      clearAuthToken()
+      await reconcileDefaults(getDb())
+      await updateSettings(getDb(), { onboarding_current_step: '8' })
+      const signInEmailOtp = mock(async () => ({ data: { user: { id: 'cloud-user', isNew: true } }, error: null }))
+      render(<OnboardingDialog />, {
+        wrapper: createRouterWrapper(undefined, createMockAuthClient({ signInEmailOtp })),
+      })
+      await flush()
+      // The code field keeps a timer running, so the steps after it advance a bounded amount instead of draining all.
+      const settle = () => act(() => getClock().tickAsync(1000))
+
+      fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: 'new@thunderbolt.test' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+      await settle()
+      fireEvent.change(screen.getByRole('textbox', { name: /enter it here/ }), { target: { value: '12345678' } })
+      await settle()
+      expect(signInEmailOtp).toHaveBeenCalledTimes(1)
+      act(() => setAuthToken('cloud-session'))
+      await settle()
+
+      expect(screen.getByRole('heading', { name: 'Connect Google' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Skip' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Back' })).toBeEnabled()
     })
 
     it.each(['choices', 'OpenRouter', 'Tinfoil'] as const)(

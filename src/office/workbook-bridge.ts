@@ -7,7 +7,8 @@ import type { QuickJS } from 'quickjs-wasi'
 import { z } from 'zod'
 import type { SandboxLimits } from './constants'
 import { cacheFormulaResults, type FormulaError, type WorkbookParts } from './formula-cache'
-import type { Excelize, ExcelizeFile, SpreadsheetEngines } from './spreadsheet-engines'
+import type { Excelize, ExcelizeFile } from './excelize-engine'
+import type { SpreadsheetEngines } from './spreadsheet-engines'
 
 /** What crosses between the script and Excelize: plain data and bytes. */
 export type WorkbookValue =

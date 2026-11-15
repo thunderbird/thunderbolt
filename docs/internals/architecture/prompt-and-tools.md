@@ -129,7 +129,8 @@ own context.
   (`src/office/constants.ts`), and the host terminates a Worker that stops answering. Each file the script
   saves becomes a new entry in the attachment store, and the tool result lists them. The transcript builds
   one chip per listed file (`src/components/chat/created-file-card.tsx`), and a device without the bytes
-  says so. The harness environment block names this tool as the way to deliver a file.
+  says so. On the device that has the bytes, clicking the chip opens the file in the side view, like the
+  card of an attached file. The harness environment block names this tool as the way to deliver a file.
 - A script can also read files, which is how it edits one. The call lists them in `inputs`, and the script
   reads each with `readFile(name)`. The host loads them before the run (`src/office/script-inputs.ts`). It
   looks first in the thread's stored files: the user's attachments and the files this tool made earlier in

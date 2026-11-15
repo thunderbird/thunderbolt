@@ -17,12 +17,12 @@ const compileFile = async (file: string) => WebAssembly.compile(await Bun.file(f
 const readPackageFile = async (specifier: string) =>
   new Uint8Array(await Bun.file(Bun.resolveSync(specifier, import.meta.dir)).arrayBuffer())
 
+// Unzipped once per test file, which halves the workbook suite; every run still starts its own Excelize from it.
+const excelizeWasm = readPackageFile('excelize-wasm/excelize.wasm.gz').then((bytes) => Bun.gunzipSync(bytes))
+
 /** Fresh engines for each run, as the app's one-run Worker has. */
 const loadWorkbooks: SandboxRuntime['loadWorkbooks'] = async () => {
-  const engines = await loadSpreadsheetEngines(
-    await readPackageFile('excelize-wasm/excelize.wasm.gz'),
-    await readPackageFile('@ironcalc/wasm/wasm_bg.wasm'),
-  )
+  const engines = await loadSpreadsheetEngines(await excelizeWasm, await readPackageFile('@ironcalc/wasm/wasm_bg.wasm'))
   return (vm, limits, stop) => installWorkbooks(vm, engines, limits, stop)
 }
 

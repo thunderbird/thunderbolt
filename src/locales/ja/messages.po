@@ -525,7 +525,7 @@ msgstr ""
 
 #: src/lib/sso-error-messages.ts
 msgid "An existing {appName} account already uses this email. Your administrator needs to approve linking it to this sign-in."
-msgstr ""
+msgstr "このメールアドレスは既存の {appName} アカウントで使用されています。このサインインとの連携には管理者の承認が必要です。"
 
 #: src/lib/openrouter-auth.ts
 #~ msgid "An OpenRouter connection is already in progress."
@@ -742,7 +742,7 @@ msgstr "アプリに戻る"
 
 #: src/components/sso-sign-in/sso-email-code-page.tsx
 msgid "Back to organization sign-in"
-msgstr ""
+msgstr "組織のサインインに戻る"
 
 #: src/settings/voice.tsx
 msgid "Base URL"
@@ -1003,7 +1003,7 @@ msgstr ""
 
 #: src/components/sso-sign-in/sso-connection-list.tsx
 msgid "Choose how to sign in"
-msgstr ""
+msgstr "サインイン方法を選択"
 
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Choose how you use Thunderbolt."
@@ -2779,7 +2779,7 @@ msgstr ""
 
 #: src/components/sso-sign-in/sso-email-step.tsx
 msgid "Enter your work email to continue with your organization's sign-in."
-msgstr ""
+msgstr "組織のサインインを続けるには、仕事用のメールアドレスを入力してください。"
 
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Enterprise"
@@ -3711,7 +3711,7 @@ msgstr "名前は必須です。"
 
 #: src/components/sso-sign-in/sso-email-step.tsx
 msgid "name@company.com"
-msgstr ""
+msgstr "name@company.com"
 
 #: src/components/ui/mobile-sidebar.tsx
 msgid "Navigation"
@@ -4365,7 +4365,7 @@ msgstr "パーソナライズ"
 
 #: src/components/sso-sign-in/sso-connection-list.tsx
 msgid "Pick the identity provider your organization uses for you."
-msgstr ""
+msgstr "組織があなたに割り当てている ID プロバイダーを選択してください。"
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Pick this code on your other device."
@@ -5373,7 +5373,7 @@ msgstr "{email} でサインインして招待を承諾してください。"
 
 #: src/components/sso-sign-in/sso-email-code-page.tsx
 msgid "Sign in with an email code"
-msgstr ""
+msgstr "メールのコードでサインイン"
 
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/waitlist/waitlist-content.tsx
@@ -6153,11 +6153,11 @@ msgstr ""
 
 #: src/lib/sso-error-messages.ts
 msgid "This sign-in is already linked to another {appName} account. Ask your administrator for help."
-msgstr ""
+msgstr "このサインインはすでに別の {appName} アカウントに連携されています。管理者にお問い合わせください。"
 
 #: src/lib/sso-error-messages.ts
 msgid "This sign-in option is no longer available. Try again, or ask your administrator."
-msgstr ""
+msgstr "このサインイン方法は利用できなくなりました。もう一度お試しいただくか、管理者にお問い合わせください。"
 
 #: src/lib/device-grant.ts
 msgid "This sign-in request has expired. Start a new one from your terminal."
@@ -6643,7 +6643,7 @@ msgstr ""
 #: src/components/sso-sign-in/sso-connection-list.tsx
 #: src/components/sso-sign-in/sso-email-step.tsx
 msgid "Use an email code instead"
-msgstr ""
+msgstr "代わりにメールのコードを使用"
 
 #: src/lib/mcp-url-validation.ts
 msgid "Use an http:// or https:// URL"
@@ -6895,7 +6895,7 @@ msgstr ""
 
 #: src/lib/sso-error-messages.ts
 msgid "We couldn't match this sign-in to an account. Ask your administrator for help."
-msgstr ""
+msgstr "このサインインに対応するアカウントが見つかりませんでした。管理者にお問い合わせください。"
 
 #: src/components/auth-gate/browser-check.tsx
 msgid "We couldn't verify your browser. Check your connection and try again."
@@ -6924,7 +6924,7 @@ msgstr ""
 
 #: src/components/sso-sign-in/sso-email-code-page.tsx
 msgid "We'll send a sign-in code to your email address."
-msgstr ""
+msgstr "メールアドレスにサインイン用のコードを送信します。"
 
 #: src/waitlist/waitlist-content.tsx
 msgid "We've sent an email to <0>{email}</0> with your next steps."
@@ -7042,7 +7042,7 @@ msgstr "単語1 単語2 単語3 ..."
 
 #: src/components/sso-sign-in/sso-email-step.tsx
 msgid "Work email"
-msgstr ""
+msgstr "仕事用のメールアドレス"
 
 #: src/settings/preferences.tsx
 msgid "Would you like to change the language to {suggestedLanguageLabel}?"
@@ -7181,11 +7181,11 @@ msgstr "現在の 7 日間枠の AI 利用上限に達しました。しばら�
 
 #: src/lib/sso-error-messages.ts
 msgid "Your access to {appName} has been blocked. Ask your administrator for help."
-msgstr ""
+msgstr "{appName} へのアクセスがブロックされました。管理者にお問い合わせください。"
 
 #: src/lib/sso-error-messages.ts
 msgid "Your account has been deactivated. Ask your administrator to restore your access."
-msgstr ""
+msgstr "アカウントは無効化されています。アクセスの復元を管理者に依頼してください。"
 
 #: src/components/account-deleted.tsx
 msgid "Your account has been deleted and local data has been cleared."
@@ -7286,7 +7286,7 @@ msgstr ""
 
 #: src/lib/sso-error-messages.ts
 msgid "Your identity provider didn't send the identifier your organization matches accounts on. Ask your administrator to check the connection."
-msgstr ""
+msgstr "ID プロバイダーから、組織がアカウントの照合に使う識別子が送信されませんでした。接続の確認を管理者に依頼してください。"
 
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Your local data stays on this device until you enable sync."
@@ -7319,15 +7319,15 @@ msgstr ""
 
 #: src/lib/sso-error-messages.ts
 msgid "Your organization hasn't given you access to {appName} yet. Ask your administrator to add you."
-msgstr ""
+msgstr "組織からまだ {appName} へのアクセスが付与されていません。追加を管理者に依頼してください。"
 
 #: src/settings/account/use-delete-account.ts
 msgid "Your organization manages this account, so it can’t be deleted here. Ask your administrator."
-msgstr ""
+msgstr "このアカウントは組織が管理しているため、ここでは削除できません。管理者にお問い合わせください。"
 
 #: src/lib/otp-error-messages.ts
 msgid "Your organization requires you to sign in with single sign-on."
-msgstr ""
+msgstr "組織ではシングルサインオン (SSO) でのサインインが必要です。"
 
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "Your passkey was added before a security update. Check it once so unlocking with it can confirm your encryption keys are yours."

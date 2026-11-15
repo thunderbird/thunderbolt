@@ -6,10 +6,10 @@ import { AppLogo } from '@/components/app-logo'
 import { useAppName } from '@/lib/branding-selectors'
 
 /**
- * Shared branding header for waitlist pages.
+ * The branding header at the top of an auth card.
  * Displays the logo and the deployment's app name.
  */
-export const WaitlistHeader = () => {
+export const AuthBrandHeader = () => {
   const appName = useAppName()
 
   return (

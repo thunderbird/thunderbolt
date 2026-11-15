@@ -119,6 +119,8 @@ type UseSignInFormStateOptions = {
   httpClient: HttpClient
   onCancel?: () => void
   onEmailSent?: () => void
+  /** Called once sign-in completes. */
+  onSignedIn?: () => void
   /** Pre-fill the email input (user still needs to click submit) */
   initialEmail?: string
 }
@@ -132,6 +134,7 @@ export const useSignInFormState = ({
   httpClient,
   onCancel,
   onEmailSent,
+  onSignedIn,
   initialEmail,
 }: UseSignInFormStateOptions) => {
   const [state, dispatch] = useReducer(reducer, {
@@ -222,6 +225,7 @@ export const useSignInFormState = ({
         analytics.onPromotionSuccess()
       }
       dispatch({ type: 'VERIFY_SUCCESS' })
+      onSignedIn?.()
     } catch (error) {
       if (!attempt.isCancellation(error)) {
         console.error('OTP verification error:', error)
@@ -260,6 +264,7 @@ export const useSignInFormState = ({
       }
       analytics.onPromotionSuccess()
       dispatch({ type: 'VERIFY_SUCCESS' })
+      onSignedIn?.()
     } catch (error) {
       const cancelled = !attempt.isCommitted() && (isPasskeyCancellation(error) || attempt.isCancellation(error))
       if (!cancelled) {

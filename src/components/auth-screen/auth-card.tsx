@@ -5,16 +5,16 @@
 import { cn } from '@/lib/utils'
 import type { ReactNode } from 'react'
 
-type WaitlistCardProps = {
+type AuthCardProps = {
   children: ReactNode
 }
 
 /**
- * Shared card container for waitlist pages.
+ * The card the standalone auth screens (waitlist, invitation, SSO sign-in) sit in.
  * Responsive: full-screen on mobile, fixed-size card on desktop.
  * Uses CSS media queries to avoid layout flicker during navigation.
  */
-export const WaitlistCard = ({ children }: WaitlistCardProps) => {
+export const AuthCard = ({ children }: AuthCardProps) => {
   return (
     <div
       className={cn(

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { ReactNode } from 'react'
-import { AppWordmark } from '@/components/app-wordmark'
+import { AuthScreen, AuthScreenHeading } from '@/components/auth-screen'
 
 type SsoSignInLayoutProps = {
   title: ReactNode
@@ -11,16 +11,10 @@ type SsoSignInLayoutProps = {
   children: ReactNode
 }
 
-/** The centered card the SSO sign-in steps share. */
+/** The auth card the SSO sign-in steps share. */
 export const SsoSignInLayout = ({ title, description, children }: SsoSignInLayoutProps) => (
-  <div className="flex h-dvh w-full flex-col items-center justify-center px-6">
-    <div className="flex w-full max-w-sm flex-col items-center gap-8 text-center">
-      <AppWordmark />
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        <p className="text-[length:var(--font-size-body)] text-muted-foreground">{description}</p>
-      </div>
-      <div className="flex w-full flex-col gap-3">{children}</div>
-    </div>
-  </div>
+  <AuthScreen>
+    <AuthScreenHeading title={title} description={description} />
+    <div className="flex w-full flex-col gap-4">{children}</div>
+  </AuthScreen>
 )

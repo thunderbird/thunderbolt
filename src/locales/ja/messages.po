@@ -2558,8 +2558,8 @@ msgid "e.g., llama3.3"
 msgstr ""
 
 #: src/components/sign-in/sign-in-email-step.tsx
-msgid "Early Access Login"
-msgstr "早期アクセスのログイン"
+#~ msgid "Early Access Login"
+#~ msgstr "早期アクセスのログイン"
 
 #: src/components/settings/detail-actions-menu.tsx
 #: src/components/settings/edit-delete-context-menu.tsx
@@ -3840,8 +3840,8 @@ msgid "No locations found."
 msgstr "場所が見つかりません。"
 
 #: src/components/sign-in/sign-in-email-step.tsx
-msgid "No logs or training on your data"
-msgstr "ログの保存も、お客様のデータでの学習も行いません"
+#~ msgid "No logs or training on your data"
+#~ msgstr "ログの保存も、お客様のデータでの学習も行いません"
 
 #: src/settings/devices.tsx
 msgid "No longer accepts device connections"
@@ -6245,8 +6245,8 @@ msgid "Thunderbolt couldn't verify this device's encryption keys, so it can't up
 msgstr ""
 
 #: src/components/sign-in/sign-in-email-step.tsx
-msgid "Thunderbolt is open-source"
-msgstr "Thunderbolt はオープンソースです"
+#~ msgid "Thunderbolt is open-source"
+#~ msgstr "Thunderbolt はオープンソースです"
 
 #: src/settings/connections/use-integrations-controller.tsx
 msgid "Thunderbolt Pro is not available yet. Stay tuned!"

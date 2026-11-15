@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { AppLogo } from '@/components/app-logo'
+import { AuthBrandHeader } from '@/components/auth-screen'
 import { OnboardingStepHeader } from '@/components/onboarding/onboarding-step-header'
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
@@ -16,7 +17,6 @@ import { REGEXP_ONLY_DIGITS } from 'input-otp'
 import { Fingerprint } from 'lucide-react'
 import { useId } from 'react'
 import type { useWaitlistState } from './use-waitlist-state'
-import { WaitlistHeader } from './waitlist-header'
 import { WaitlistLanguagePicker } from './waitlist-language-picker'
 
 type WaitlistContentProps = {
@@ -47,7 +47,7 @@ export const WaitlistContent = ({ waitlist, embedded = false }: WaitlistContentP
               : 'flex w-full flex-1 flex-col items-center p-4'
           }
         >
-          {!embedded && <WaitlistHeader />}
+          {!embedded && <AuthBrandHeader />}
 
           {embedded ? (
             <OnboardingStepHeader
@@ -128,7 +128,7 @@ export const WaitlistContent = ({ waitlist, embedded = false }: WaitlistContentP
           : 'flex w-full flex-1 flex-col items-center justify-between p-4'
       }
     >
-      {!embedded && <WaitlistHeader />}
+      {!embedded && <AuthBrandHeader />}
 
       <div className="flex w-full flex-col items-center gap-8">
         {embedded ? (

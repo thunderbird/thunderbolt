@@ -17,7 +17,7 @@ import { Loader2 } from 'lucide-react'
 
 type SignInFormProps = {
   /**
-   * Layout variant: 'modal' for use inside ResponsiveModal, 'page' for standalone page
+   * Layout variant: 'modal' for use inside ResponsiveModal, 'page' for an auth card (`AuthScreen`)
    */
   variant: 'modal' | 'page'
   /**
@@ -25,9 +25,14 @@ type SignInFormProps = {
    */
   onCancel?: () => void
   /**
-   * Called after successful sign-in
+   * Called when the user continues from the welcome step after a successful sign-in
    */
   onSuccess?: () => void
+  /**
+   * Called as soon as sign-in succeeds, in place of the welcome step: for a host that leaves the
+   * form for the app, where onboarding takes over
+   */
+  onSignedIn?: () => void
   /**
    * Called when the user navigates back from OTP to email step
    */
@@ -55,12 +60,13 @@ type SignInFormProps = {
  * Reusable sign-in form component.
  * Can be used inside a modal or as a standalone page.
  *
- * After authentication is accepted, session setup finishes before the welcome step.
+ * After authentication is accepted, session setup finishes before the welcome step (or `onSignedIn`).
  */
 export const SignInForm = ({
   variant,
   onCancel,
   onSuccess,
+  onSignedIn,
   onGoBack,
   onEmailSent,
   initialEmail,
@@ -80,6 +86,7 @@ export const SignInForm = ({
     httpClient,
     onCancel,
     onEmailSent,
+    onSignedIn,
     initialEmail,
   })
 
@@ -94,12 +101,12 @@ export const SignInForm = ({
     goBackRef.current = handleGoBack
   }
 
-  // Success state
-  if (state.status === 'success') {
+  if (state.status === 'success' && !onSignedIn) {
     return <SignInSuccessStep displayName={displayName} onContinue={() => onSuccess?.()} variant={variant} />
   }
 
-  if (state.status === 'completing') {
+  // A host with onSignedIn is navigating away, so success holds the same progress line.
+  if (state.status === 'completing' || state.status === 'success') {
     return (
       <div role="status" className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" />
@@ -111,7 +118,7 @@ export const SignInForm = ({
   // OTP entry state
   if (state.status === 'sent' || state.status === 'resending' || state.status === 'verifying') {
     return (
-      <div className="relative h-full w-full">
+      <div className={variant === 'modal' ? 'relative h-full w-full' : 'relative w-full'}>
         {/* Optional back button slot - parent can render here if needed */}
         {renderBackButton?.(handleGoBack)}
 
@@ -131,12 +138,8 @@ export const SignInForm = ({
     )
   }
 
-  // Initial email entry state. The page variant stretches to full height so
-  // its feature cards can flex into the middle; the modal variant hugs its
-  // content so the ResponsiveModal's `centered` block can vertically center
-  // the title + form as one group.
   return (
-    <div className={variant === 'page' ? 'flex h-full w-full flex-1 flex-col' : 'w-full'}>
+    <div className="w-full">
       <SignInEmailStep
         email={state.email}
         status={state.status === 'passkey' ? 'idle' : state.status}

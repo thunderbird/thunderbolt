@@ -28,9 +28,9 @@ test('in SSO mode an invitation link still takes the email-code path', async ({ 
   await page.goto('/invite/e2e-token')
 
   await expect(page.getByRole('heading', { name: /You've been invited to/ })).toBeVisible()
-  await expect(page.getByPlaceholder('Email address', { exact: true })).toHaveValue(email)
+  await expect(page.getByPlaceholder('Email', { exact: true })).toHaveValue(email)
   const codeRequested = page.waitForResponse((response) => new URL(response.url()).pathname === '/v1/waitlist/join')
-  await page.getByRole('button', { name: 'Send Magic Link', exact: true }).click()
+  await page.getByRole('button', { name: 'Continue', exact: true }).click()
   expect((await codeRequested).ok()).toBe(true)
 
   await expect(page.locator('input[data-input-otp]')).toBeVisible()

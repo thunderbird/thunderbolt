@@ -5,6 +5,7 @@
 import { Trans } from '@lingui/react/macro'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import Loading from '@/loading'
+import { AuthScreen, authButtonClass } from '@/components/auth-screen'
 import { Button } from '@/components/ui/button'
 import { SsoConnectionList } from './sso-connection-list'
 import { SsoEmailStep } from './sso-email-step'
@@ -42,25 +43,23 @@ const SsoRedirect = () => {
 
   if (state.status === 'error') {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-4 px-6 text-center">
-        <p className="text-[length:var(--font-size-body)] text-muted-foreground">
+      <AuthScreen>
+        <p className="text-center text-base text-muted-foreground">
           <Trans>
             Unable to connect to the identity provider. Check your network connection and SSO configuration.
           </Trans>
         </p>
-        <button
-          type="button"
-          onClick={actions.retry}
-          className="h-[var(--touch-height-default)] rounded-lg bg-primary px-4 text-[length:var(--font-size-body)] text-primary-foreground"
-        >
-          <Trans>Try again</Trans>
-        </button>
-        {localMode && (
-          <Button variant="outline" onClick={() => window.location.replace('/')}>
-            <Trans>Continue locally</Trans>
+        <div className="flex w-full flex-col gap-4">
+          <Button onClick={actions.retry} className={authButtonClass}>
+            <Trans>Try again</Trans>
           </Button>
-        )}
-      </div>
+          {localMode && (
+            <Button variant="outline" onClick={() => window.location.replace('/')} className={authButtonClass}>
+              <Trans>Continue locally</Trans>
+            </Button>
+          )}
+        </div>
+      </AuthScreen>
     )
   }
 

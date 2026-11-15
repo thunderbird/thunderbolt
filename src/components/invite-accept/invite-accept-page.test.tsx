@@ -104,7 +104,7 @@ describe('InviteAcceptPage', () => {
     try {
       const { paths } = await renderPage()
 
-      fireEvent.click(screen.getByRole('button', { name: 'Send Magic Link' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
       await act(async () => {
         await getClock().runAllAsync()
       })
@@ -115,6 +115,38 @@ describe('InviteAcceptPage', () => {
     } finally {
       globalThis.fetch = originalFetch
     }
+  })
+
+  it('goes straight into the app once the code is accepted, with no welcome step', async () => {
+    const { getLocation } = await renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(screen.getByText('Check your email')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /You've been invited to/ })).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '12345678' } })
+    await act(async () => {
+      await getClock().tickAsync(100)
+    })
+
+    expect(getLocation()).toBe('/')
+    expect(screen.queryByText(/Welcome/)).not.toBeInTheDocument()
+  })
+
+  it('goes back from the code step to the invitation', async () => {
+    await renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Go back' }))
+
+    expect(screen.getByRole('heading', { name: /You've been invited to/ })).toBeInTheDocument()
+    expect(screen.getByRole('textbox')).toHaveValue('contractor@corp.com')
   })
 
   it('says an invitation that can no longer be used is not valid, and offers sign-in', async () => {

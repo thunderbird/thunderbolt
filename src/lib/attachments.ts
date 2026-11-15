@@ -27,6 +27,11 @@ export type AttachmentPart = {
 export const undeliverableAttachmentsNote = (filenames: string[]): string =>
   filenames.map((name) => `[Attachment "${name}" could not be delivered to this agent]`).join('\n')
 
+/** Model-facing note in place of an attachment whose content failed to load or
+ *  extract. It carries the reason so the model can tell the user what went wrong. */
+export const unreadableAttachmentNote = (filename: string, cause: unknown): string =>
+  `[Attachment "${filename}" could not be read: ${cause instanceof Error ? cause.message : String(cause)}]`
+
 /** Build the reference-only attachment part to include in an outgoing message. */
 export const buildAttachmentPart = (data: AttachmentData): AttachmentPart => ({
   type: attachmentPartType,
@@ -166,13 +171,13 @@ export const hydrateAttachmentsAsFileParts = async (
           if (!isAttachmentPart(part)) {
             return [part]
           }
-          // An unreadable attachment is treated exactly like a missing one: leave
-          // the part alone and send the turn without those bytes. Both the lookup
-          // and the read can fail for a file stored before `putAttachment` copied
-          // bytes (it held a reference to a path on disk, so editing the source
-          // invalidated it) — and because every send re-reads the whole history,
-          // letting that throw failed the turn, burned all three auto-retries, and
-          // broke even a plain-text follow-up. The conversation stays usable.
+          // An unreadable attachment becomes a note saying why, and the turn goes
+          // out without its bytes. The lookup and the read can both fail: for a
+          // file stored before `putAttachment` copied bytes (it held a reference to
+          // a path on disk, so editing the source invalidated it), or for one a
+          // reader rejects. Every send re-reads the whole history, so a throw here
+          // would fail the turn, burn all three auto-retries, and break even a
+          // plain-text follow-up.
           try {
             const file = await deps.getAttachment(part.data.localFileId)
             if (!file) {
@@ -182,8 +187,8 @@ export const hydrateAttachmentsAsFileParts = async (
               ? await hydrateCurrentAttachment(part.data, file, deps)
               : await hydrateHistoricalAttachment(part.data, file, deps)
           } catch (error) {
-            console.warn('Skipping an unreadable attachment', { filename: part.data.filename, error })
-            return [part]
+            console.warn('Sending a note in place of an unreadable attachment', { filename: part.data.filename, error })
+            return [{ type: 'text' as const, text: unreadableAttachmentNote(part.data.filename, error) }]
           }
         }),
       )

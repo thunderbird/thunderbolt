@@ -5,7 +5,7 @@
 import { anonymousSignInPath, authBasePath, getSessionPath } from '@/auth/paths'
 import type { db as DbType } from '@/db/client'
 import { rateLimits } from '@/db/rate-limit-schema'
-import { extractClientIp } from '@/utils/request'
+import { extractClientIp, type TrustedProxy } from '@/utils/request'
 import { Elysia } from 'elysia'
 import { type RateLimiterAbstract, RateLimiterDrizzle, RateLimiterRes } from 'rate-limiter-flexible'
 
@@ -38,7 +38,7 @@ export type RateLimitSettings = {
 }
 
 export type IpRateLimitSettings = RateLimitSettings & {
-  trustedProxy: '' | 'cloudflare' | 'akamai'
+  trustedProxy: TrustedProxy
 }
 
 export type AuthPluginIpRateLimitSettings = IpRateLimitSettings & {
@@ -235,7 +235,7 @@ export type RateLimitConsumer = (key: string, set: RateLimitSet) => Promise<{ er
 
 /**
  * Rate limiting whose key is neither the session user nor the IP (an intake client, or the
- * single key of the deployment-wide anonymous sign-in budget).
+ * single key of a deployment-wide budget: anonymous sign-in).
  */
 export const createRateLimitConsumer = (
   database: typeof DbType,

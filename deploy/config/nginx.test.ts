@@ -4,19 +4,15 @@
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { fetch } from 'bun'
-import { execFileSync } from 'node:child_process'
 import { chmodSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { exaRelayEndpoints } from '../../shared/exa-relay'
+import { docker, startNginx } from './nginx-container'
 
 const fixtureDir = mkdtempSync(join(tmpdir(), 'thunderbolt-nginx-'))
 const containerName = `thunderbolt-nginx-test-${process.pid}`
-const image = 'nginxinc/nginx-unprivileged:alpine'
 let origin: string
-
-/** Runs the same nginx image and configuration as the deployed frontend. */
-const docker = (...args: string[]) => execFileSync('docker', args, { encoding: 'utf8' }).trim()
 
 beforeAll(async () => {
   // nginx runs as a different UID on Linux; mkdtemp defaults to owner-only access.
@@ -25,18 +21,7 @@ beforeAll(async () => {
   writeFileSync(join(fixtureDir, 'index.html'), '<!doctype html><title>Current build</title>')
   writeFileSync(join(fixtureDir, 'assets', 'entry-current.js'), 'console.log("current")')
   writeFileSync(join(fixtureDir, 'assets', 'entry-current.js.map'), '{}')
-  docker(
-    'run',
-    '--detach',
-    '--rm',
-    '--name',
-    containerName,
-    '--publish',
-    '127.0.0.1::8080',
-    '--dns',
-    '192.0.2.53',
-    '--env',
-    'NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1',
+  origin = await startNginx(containerName, [
     '--env',
     'THUNDERBOLT_BACKEND_HOST=127.0.0.1',
     '--env',
@@ -47,20 +32,7 @@ beforeAll(async () => {
     `${import.meta.dir}/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro`,
     '--volume',
     `${import.meta.dir}/security-headers.conf:/etc/nginx/snippets/security-headers.conf:ro`,
-    image,
-  )
-  origin = `http://${docker('port', containerName, '8080/tcp')}`
-  // Startup readiness is bounded; errors from assertions below are never retried.
-  const deadline = Date.now() + 10_000
-  while (true) {
-    try {
-      await fetch(origin)
-      return
-    } catch (error) {
-      if (Date.now() >= deadline) throw error
-      await Bun.sleep(100)
-    }
-  }
+  ])
 }, 30_000)
 
 afterAll(() => {

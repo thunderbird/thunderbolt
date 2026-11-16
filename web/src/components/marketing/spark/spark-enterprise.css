@@ -1,0 +1,282 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+.spark-enterprise-hero {
+  position: relative;
+  text-align: center;
+  padding-block: 58px 110px;
+}
+.spark-enterprise-hero h1 {
+  font:
+    500 clamp(48px, 6.5vw, 92px)/1.12 'Lora Variable',
+    serif;
+  letter-spacing: -0.045em;
+}
+.spark-enterprise-hero > p {
+  max-width: 620px;
+  margin: 28px auto 0;
+  font-size: 18px;
+  color: var(--spark-muted);
+  text-wrap: balance;
+}
+.spark-enterprise-burst {
+  position: absolute;
+  right: 0;
+  bottom: 28px;
+  width: 100px;
+  height: 100px;
+  transform: rotate(10deg);
+}
+.spark-enterprise-foundations {
+  padding-block: 32px var(--spark-section-space);
+}
+.spark-enterprise-deploy {
+  background: var(--spark-section);
+  padding-block: var(--spark-section-space);
+}
+.spark-enterprise-deploy-layout {
+  display: grid;
+  grid-template-columns: var(--spark-columns);
+  align-items: center;
+  gap: var(--spark-column-gap);
+}
+.spark-enterprise-deploy-layout p {
+  margin-top: 24px;
+  max-width: 440px;
+  color: var(--spark-muted);
+}
+.spark-enterprise-deploy-layout .spark-text-link {
+  margin-top: 24px;
+}
+.spark-enterprise-deploy-links {
+  border-top: 1px solid var(--spark-border);
+}
+.spark-enterprise-deploy-links a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding-block: 25px;
+  border-bottom: 1px solid var(--spark-border);
+  font-size: 19px;
+}
+.spark-enterprise-deploy-links a:hover {
+  color: var(--spark-red);
+}
+.spark-enterprise-contact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  padding-block: var(--spark-section-space);
+  border-bottom: 1px solid var(--spark-border);
+}
+.spark-enterprise-contact h2 {
+  font-size: clamp(32px, 3.6vw, 46px);
+}
+.spark-enterprise-contact .spark-button {
+  flex-shrink: 0;
+}
+@media (max-width: 760px) {
+  .spark-enterprise-hero {
+    padding-block: 36px 112px;
+  }
+  .spark-enterprise-hero h1 {
+    font-size: clamp(36px, 9.5vw, 64px);
+  }
+  .spark-enterprise-hero > p {
+    font-size: 16px;
+  }
+  .spark-enterprise-burst {
+    width: 64px;
+    height: 64px;
+    bottom: 16px;
+  }
+  .spark-enterprise-deploy-layout {
+    grid-template-columns: 1fr;
+    gap: 36px;
+  }
+  .spark-enterprise-contact {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+.spark-partnership {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: 56px 72px;
+  padding-block: 48px 88px;
+}
+.spark-partnership-copy > p {
+  margin-top: 24px;
+  color: var(--spark-secondary);
+  max-width: 490px;
+}
+.spark-partnership-copy .spark-text-link {
+  margin-top: 28px;
+}
+.spark-partnership-stack {
+  padding: 40px 32px;
+  border-radius: 28px;
+  background:
+    radial-gradient(ellipse at top right, color-mix(in srgb, var(--spark-yellow) 20%, transparent), transparent 70%),
+    var(--spark-section);
+  border: 1px solid var(--spark-border);
+}
+.spark-stack-layer {
+  background: var(--spark-surface);
+  border: 1px solid var(--spark-border);
+  border-radius: 16px;
+  text-align: center;
+  padding: 28px 24px;
+}
+.spark-stack-wordmark {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  font: 600 28px/1 var(--tb-font-heading);
+  letter-spacing: -0.6px;
+}
+.spark-stack-layer > p {
+  font-size: 13px;
+  color: var(--spark-muted);
+  margin-top: 12px;
+}
+.spark-stack-question {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 24px;
+  padding: 14px;
+  border-radius: 9px;
+  background: var(--spark-section);
+  font-size: 13px;
+  text-align: left;
+}
+.spark-stack-question span {
+  color: var(--spark-red);
+}
+.spark-stack-connector {
+  height: 30px;
+  display: grid;
+  place-items: center;
+}
+.spark-stack-connector span {
+  height: 100%;
+  width: 1px;
+  background: var(--spark-border-strong);
+}
+.spark-haystack-logo {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  padding-block: 10px;
+}
+.spark-haystack-logo img {
+  width: 54px;
+  height: 54px;
+  flex-shrink: 0;
+  display: block;
+}
+.spark-haystack-logo > div {
+  text-align: left;
+}
+.spark-haystack-name {
+  display: block;
+  color: var(--spark-ink);
+  font-family: var(--tb-font-sans);
+  font-size: 31px;
+  line-height: 1.1;
+  font-weight: 550;
+  letter-spacing: -1px;
+}
+.spark-haystack-byline {
+  display: block;
+  color: var(--spark-secondary);
+  font-size: 14px;
+  line-height: 1.4;
+  margin-top: 5px;
+}
+.spark-stack-foundation {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 20px;
+  padding: 17px 12px;
+  border: 1px dashed var(--spark-border-strong);
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--spark-secondary);
+}
+.spark-partnership-delivery {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 48px;
+  padding: 32px 36px;
+  background: var(--spark-section);
+  border-radius: 18px;
+}
+.spark-partnership-delivery h3 {
+  font-size: 25px;
+  letter-spacing: -0.025em;
+}
+.spark-partnership-delivery p {
+  max-width: 630px;
+  color: var(--spark-secondary);
+  margin-top: 12px;
+  font-size: 15px;
+}
+.spark-partnership-delivery .spark-text-link {
+  flex-shrink: 0;
+  font-size: 14px;
+}
+@media (max-width: 900px) {
+  .spark-partnership {
+    gap: 40px;
+  }
+  .spark-partnership-stack {
+    padding: 24px;
+  }
+  .spark-partnership-delivery {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 24px;
+  }
+}
+@media (max-width: 760px) {
+  .spark-partnership {
+    grid-template-columns: 1fr;
+    padding-block: 24px 64px;
+  }
+  .spark-partnership-stack {
+    padding: 28px 20px;
+    border-radius: 20px;
+  }
+  .spark-stack-layer {
+    padding: 24px 16px;
+  }
+  .spark-partnership-delivery {
+    padding: 28px 24px;
+  }
+}
+
+@media (max-width: 380px) {
+  .spark-stack-wordmark {
+    font-size: 23px;
+  }
+  .spark-haystack-name {
+    font-size: 26px;
+  }
+  .spark-haystack-logo img {
+    width: 46px;
+    height: 46px;
+  }
+}

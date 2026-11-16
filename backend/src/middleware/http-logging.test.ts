@@ -6,6 +6,7 @@ import { describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createAppVersionMiddleware } from './app-version'
 import { createErrorHandlingMiddleware, safeErrorHandler } from './error-handling'
+import type { TrustedProxy } from '@/utils/request'
 import { createHttpLoggingMiddleware } from './http-logging'
 
 const realFetch = (globalThis as Record<string, unknown>).__originalFetch as typeof fetch
@@ -15,7 +16,7 @@ const realFetch = (globalThis as Record<string, unknown>).__originalFetch as typ
  * the logging middleware ahead of the version gate, then route groups as separate
  * plugins, one of them behind a guard that short-circuits in `onBeforeHandle`.
  */
-const createTestApp = () => {
+const createTestApp = (trustedProxy: TrustedProxy = 'cloudflare') => {
   const lines: string[] = []
   const logger = { info: (line: string) => lines.push(line) }
 
@@ -41,7 +42,7 @@ const createTestApp = () => {
     .get('/private', () => ({ ok: true }))
 
   const app = new Elysia({ prefix: '/v1' })
-    .use(createHttpLoggingMiddleware(logger, 'cloudflare'))
+    .use(createHttpLoggingMiddleware(logger, trustedProxy))
     .use(createAppVersionMiddleware({ minAppVersion: '1.0.0' }))
     .use(createErrorHandlingMiddleware())
     .use(routes)
@@ -62,6 +63,14 @@ describe('http-logging middleware', () => {
     expect(response.status).toBe(200)
     expect(lines).toHaveLength(1)
     expect(lines[0]).toMatch(/^203\.0\.113\.7 - "GET \/v1\/ok HTTP\/1\.1" 200 OK \d+ms$/)
+  })
+
+  it('logs the trusted hop of a fixed proxy chain as the client', async () => {
+    const { app, lines } = createTestApp(1)
+
+    await request(app, '/v1/ok', { 'x-forwarded-for': '198.51.100.9, 203.0.113.7' })
+
+    expect(lines).toEqual([expect.stringMatching(/^203\.0\.113\.7 - "GET \/v1\/ok HTTP\/1\.1" 200 OK/)])
   })
 
   it('logs a 401 returned early by a guard in another plugin', async () => {

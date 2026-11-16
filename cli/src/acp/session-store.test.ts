@@ -102,6 +102,29 @@ describe('createSessionStore', () => {
     )
   })
 
+  test('a session never resumes from a different workspace whose path encodes to the same directory', async () => {
+    const victimCwd = '/workspace/a/b'
+    const victim = await createSessionStore(dir).createSession('victim', victimCwd)
+    await victim.appendMessage(userMessage('victim transcript'))
+    await victim.appendMessage(assistantText('victim reply'))
+
+    // Pi flattens `/`, `\` and `:` to `-` when it names the per-cwd directory.
+    for (const collidingCwd of ['/workspace/a-b', '/workspace/a:b', '/workspace/a\\b']) {
+      await expect(createSessionStore(dir).openSession('victim', collidingCwd)).rejects.toThrow(
+        `no on-disk session 'victim' for workspace '${collidingCwd}'`,
+      )
+    }
+    await expect(createSessionStore(dir).openSession('victim', '/workspace/c')).rejects.toThrow(
+      "no on-disk session 'victim' for workspace '/workspace/c'",
+    )
+
+    const resumed = await createSessionStore(dir).openSession('victim', victimCwd)
+    expect((await resumed.buildContext()).messages).toMatchObject([
+      { role: 'user', content: 'victim transcript' },
+      { role: 'assistant', content: [{ type: 'text', text: 'victim reply' }] },
+    ])
+  })
+
   test('resume drops a trailing dangling tool_use (killed mid-turn)', async () => {
     const writer = createSessionStore(dir)
     const session = await writer.createSession('s2', sessionCwd)

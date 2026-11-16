@@ -91,7 +91,7 @@ Serve the app over HTTPS anywhere other than `localhost`. Browsers grant the loc
 | The IdP rejects the entity ID                            | `SAML_ENTITY_ID` does not match the application registered in the IdP                      | Make them identical                                                                                 |
 | SAML sign-in says it did not start from the app          | No login cookie: API on HTTP at another site, expired request, or another browser          | Serve `BETTER_AUTH_URL` over HTTPS and sign in again in the same browser                            |
 | Clicking the icon in the IdP dashboard does not sign in  | Thunderbolt refuses SAML responses that answer no login request it sent                    | Point the icon at your app's address, or set `SAML_ALLOW_IDP_INITIATED=true` after reading the risk |
-| Many users get `429` at the same time                    | `TRUSTED_PROXY` is empty behind a CDN, so every client shares one rate-limit bucket        | Set `TRUSTED_PROXY` to `cloudflare` or `akamai` if you use one                                      |
+| Many users get `429` at the same time                    | `TRUSTED_PROXY` is empty behind a CDN or proxy, so every client shares one rate-limit bucket | Set `TRUSTED_PROXY` to `cloudflare` or `akamai`, or to the hop count of a fixed reverse-proxy chain |
 | "Account not linked" on an SSO sign-in                   | The account with that email is not verified                                                | See [Account not linked](#account-not-linked) below                                                 |
 
 Point your IdP at the service-provider metadata to check what Thunderbolt is actually sending:

@@ -321,8 +321,9 @@ const settingsSchema = z
 
     // Trusted proxy (controls which proxy headers are trusted for IP extraction)
     // Set to 'cloudflare' to trust CF-Connecting-IP, 'akamai' for True-Client-IP,
+    // a positive hop count (1–32) for a fixed X-Forwarded-For chain,
     // or leave empty to use only the direct socket IP (proxy headers are NOT trusted)
-    trustedProxy: z.enum(['', 'cloudflare', 'akamai']).default(''),
+    trustedProxy: z.union([z.enum(['', 'cloudflare', 'akamai']), z.coerce.number().int().min(1).max(32)]).default(''),
 
     // ACP (Agent Client Protocol) settings
     // Comma-separated list of agent IDs to expose via GET /agents. Empty = all registered.

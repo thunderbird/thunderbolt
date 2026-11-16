@@ -85,7 +85,7 @@ deploy/
   config/                   # Shared config files
     nginx.conf.template     # Frontend nginx with COEP/COOP headers; ${THUNDERBOLT_BACKEND_HOST}/${THUNDERBOLT_BACKEND_PORT} substituted at container start
     security-headers.conf   # Shared nginx security-header snippet, included by nginx.conf.template
-    marketing-nginx.conf    # Marketing/docs site nginx
+    marketing-nginx.conf.template  # Marketing/docs site nginx; caches the latest desktop release from GitHub
     powersync-config.yaml   # Sync rules + replication config
     keycloak-realm.json     # Thunderbolt realm + demo user
   k8s/                      # Helm chart

@@ -40,7 +40,16 @@ spec:
             - name: KC_BOOTSTRAP_ADMIN_USERNAME
               value: {{ .Values.keycloak.admin.username }}
             - name: KC_BOOTSTRAP_ADMIN_PASSWORD
-              value: {{ .Values.keycloak.admin.password }}
+              valueFrom:
+                secretKeyRef:
+                  name: thunderbolt-secrets
+                  key: keycloak-admin-password
+            # The realm import substitutes this for its `${...}` placeholder (templates/configmaps.yaml).
+            - name: THUNDERBOLT_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: thunderbolt-secrets
+                  key: keycloak-client-secret
             - name: KC_HTTP_PORT
               value: "8080"
             - name: KC_HOSTNAME

@@ -132,14 +132,14 @@ own context.
 
 ## Toolset assembly and the MCP merge
 
-`createToolset` (`src/lib/tools.ts:142`) turns configs into AI SDK tools, wrapping each executor in
+`createToolset` (`src/lib/tools.ts:188`) turns configs into AI SDK tools, wrapping each executor in
 up to two layers:
 
 - **Per-request dedupe**, `cacheable` tools only. Identical calls in one streaming response share
-  the first promise; a rejection is evicted so the next call re-runs (`:94`). Never `cacheable` a
+  the first promise; a rejection is evicted so the next call re-runs (`:140`). Never `cacheable` a
   write tool: the SDK's execute-options (`abortSignal`, `messages`, `toolCallId`) are not forwarded
   through the wrapper.
-- **Budget accounting**, for the names in `webToolNames` (`:80`). A third web tool must be added to
+- **Budget accounting**, for the names in `webToolNames` (`:126`). A third web tool must be added to
   that set or it spends nothing and reports nothing.
 
 MCP tools merge last, namespaced `<prefix>_<tool>` via `sanitizeToolPrefix` (`shared/mcp-tool-names.ts`),
@@ -164,20 +164,22 @@ are replaced every send, which is why live MCP client closures are deliberately 
 (`:10`): `auto` 5, `search` 12, `research` 30. Intent comes from the skill token in the user's
 message (`resolveWebToolIntent`, `src/ai/turn-web-budget.ts:17`); loading the research skill
 mid-turn can promote an `auto` budget to the research cap once (`promote`,
-`src/ai/web-tool-budget.ts:81`).
+`src/ai/web-tool-budget.ts:88`).
 
-- **Calls are deduped before they are charged.** `normalizeWebToolKey` (`:126`) lowercases and collapses
+- **Calls are deduped before they are charged.** `normalizeWebToolKey` (`:134`) lowercases and collapses
   whitespace in a query, and normalizes a URL's host and path, so a repeated lookup costs nothing.
 - **Exhaustion is a result, not an error.** A call past the cap resolves to
-  `{ status: 'budget_exhausted', message }` (`:135`), and every web tool result carries a
+  `{ status: 'budget_exhausted', message }` (`:143`), and every web tool result carries a
   `Web calls remaining this turn: N` line from `createTool`'s `toModelOutput`
-  (`src/lib/tools.ts:124`). `# Tools` tells the model those notices apply only to that turn
+  (`src/lib/tools.ts:170`). `# Tools` tells the model those notices apply only to that turn
   (`src/ai/prompt.ts:145`); prompt text and enforcement change together. Pi's
   `installWebToolBudgetFloor` (`src/acp/built-in-adapter.ts:603`) steers the harness at the floor
   and un-steers it if a promotion reopens capacity.
 - **The budget owns the turn's source registry.** `sourceCollector` hangs off the budget object
-  (`:31`) so citation labels and cached web results share one lifetime; a different lifetime would
-  renumber `[N]` mid-turn.
+  (`:31`) so this turn's new sources and cached web results share one lifetime; a different lifetime
+  would renumber `[N]` mid-turn. Numbering itself spans the thread: the budget also carries
+  `priorSources` (`:37`), the sources earlier turns registered, which the chat layer seeds from the
+  history (`collectThreadSources`, `src/lib/source-utils.ts:24`).
 
 The chat layer creates the budget per turn; it survives auto-retries of the same prompt
 ([chat runtime](chat-runtime.md#budgets-and-retries)).
@@ -187,33 +189,44 @@ The chat layer creates the budget per turn; it survives auto-retries of the same
 One index travels from tool result to badge in five steps across as many modules. Changing one
 link requires changing the others.
 
-1. **Assignment.** `search` and `fetch_content` push a `SourceMetadata` entry
-   (`src/types/source.ts:9`) into the turn's `sourceCollector`, keyed by URL: a page fetched after
-   it was searched reuses its index, and `fetch_content` (authoritative title) may enrich the entry
-   in place (`src/integrations/thunderbolt-pro/tools.ts:110`). Past the 200-entry cap (`:23`),
-   sources are dropped with a warning rather than renumbered.
-2. **Disclosure.** Every result carries `[Source N] (cite as [N])` (`:70`, `:142`).
+1. **Assignment.** `search` and `fetch_content` register a `SourceMetadata` entry
+   (`src/types/source.ts:9`) in the turn's `sourceCollector` through `collectSource`
+   (`src/integrations/thunderbolt-pro/tools.ts:63`), keyed by URL. The model keeps the whole
+   history, so numbers are thread-wide: new sources continue after the highest earlier number, and a
+   URL an earlier turn registered keeps its number (`indexFor`, `:58`). A page fetched after it was
+   searched this turn reuses its index, and `fetch_content` (authoritative title) may enrich this
+   turn's entry in place (`:146`) but never an earlier turn's. Past the 200-entry cap (`:23`), a
+   source gets no number and the model is told to cite it by URL instead.
+2. **Disclosure.** Every numbered result carries `[Source N] (cite as [N])` (`withSourceReference`, `:26`).
    `# Output Format` fixes placement: inline, same line, once per source, never a footnote or
    trailing list, never the model-native `【1】` (`src/ai/prompt.ts:165`). `webToolsPrompt` adds
    that a selected subset must never be renumbered.
-3. **Persistence.** `createMessageMetadata` (`src/ai/message-metadata.ts:30`) snapshots the
+3. **Persistence.** `createMessageMetadata` (`src/ai/message-metadata.ts:31`) snapshots the
    collector onto the message's `metadata.sources` each `finish-step`, so a reloaded conversation
-   still resolves its citations.
+   still resolves its citations. Each message stores only its own turn's sources.
 4. **Cleanup.** Models drift, so `stripBracketCitations` (`src/ai/widget-parser.ts:122`) removes
    `【N†title】` and `【N】` before parsing. The regex requires the digits, sparing genuine CJK
    bracket text, and `TextPart` withholds a half-streamed `【…` suffix so the raw syntax never
-   flashes on screen (`src/components/chat/text-part.tsx:165`).
-5. **Rendering.** `buildSourceCitationPlaceholders` (`src/components/chat/text-part.tsx:81`)
-   rewrites each run of `[N]` into one `{{CITE:key}}` placeholder plus a `CitationMap` entry, which
-   `markdown-utils.tsx:115` swaps for an inline `CitationBadge`. Out-of-range indices stay literal.
-   The grouping regex (`:36`) excludes `[1](…)` by negative lookahead so Markdown links survive; the
-   same machinery serves Haystack document citations via `buildDocumentCitationPlaceholders`.
+   flashes on screen (`src/components/chat/text-part.tsx:187`).
+5. **Rendering.** `useThreadSources` (`src/components/chat/use-thread-sources.ts:39`) hands each
+   assistant message its own sources plus every earlier turn's, built at render time rather than
+   copied onto every message. `buildSourceCitationPlaceholders` (`src/components/chat/text-part.tsx:102`)
+   resolves each `[N]` by the source's `index` (`findSourceByIndex`, `src/lib/source-utils.ts:16`;
+   the latest entry wins a shared number) and rewrites each run into one `{{CITE:key}}` placeholder
+   plus a `CitationMap` entry, which `markdown-utils.tsx:119` swaps for an inline `CitationBadge`.
+   Unknown numbers stay literal. Runs inside fenced code, inline code and math (`$`, `\(…\)` and
+   `\[…\]` delimiters) are left verbatim (`blankNonProse`, `src/components/chat/markdown-blocks.ts:150`),
+   so `arr[1]` stays an index. Indented code blocks and fences inside blockquotes are not recognized
+   and read as prose.
+   The grouping regex (`text-part.tsx:43`) excludes `[1](…)` by negative lookahead so Markdown links
+   survive; the same machinery serves Haystack document citations via
+   `buildDocumentCitationPlaceholders`.
 
 Two further consumers read the same registry:
 
 - `WidgetRenderer` passes `sources` into _every_ widget's props
   (`src/components/chat/widget-renderer.tsx:50`), so `<widget:link-preview source="2" …/>` renders
-  from registry metadata instead of refetching (`src/widgets/link-preview/widget.tsx:50`).
+  from registry metadata instead of refetching (`src/widgets/link-preview/widget.tsx:67`).
 - The `citation` widget serves content that already carries structured sources and is _forbidden_ to
   the model by the prompt ([widgets.md](../widgets.md)).
 
@@ -228,7 +241,7 @@ not in a type error.
 | A prompt section        | Decide stable vs volatile (does it change per send?); place it so no user-controlled text trails; check both engines compose it                                                                |
 | A tool                  | `ToolConfig` with a `verb`, gated explicitly in `getAvailableTools`; `cacheable` only if read-only and deterministic; usage text in the fragment beside its gate, never the unconditional body |
 | A web-capable tool      | Add it to `webToolNames`, or it escapes the budget                                                                                                                                             |
-| A source-producing tool | Write `SourceMetadata` into the injected `sourceCollector` with URL-keyed index reuse, or `[N]` alignment breaks for the turn                                                                  |
+| A source-producing tool | Register through `collectSource` with the injected `sourceCollector` and `priorSources`: URL-keyed reuse, numbers continuing after earlier turns, or `[N]` alignment breaks                    |
 
 ## Source map
 
@@ -244,7 +257,9 @@ not in a type error.
 | Pi harness composition and tool install    | `src/acp/built-in-adapter.ts`, `src/acp/built-in-conversation.ts`                                                       |
 | Web budget                                 | `src/ai/web-tool-budget.ts`, `src/ai/turn-web-budget.ts`                                                                |
 | Source registry type                       | `src/types/source.ts`                                                                                                   |
+| Source registry and lookup                 | `src/integrations/thunderbolt-pro/tools.ts`, `src/lib/source-utils.ts`                                                  |
 | Citation parsing and rendering             | `src/components/chat/text-part.tsx`, `src/components/chat/markdown-utils.tsx`, `src/components/chat/citation-badge.tsx` |
+| Thread source pool, code/math detection    | `src/components/chat/use-thread-sources.ts`, `src/components/chat/markdown-blocks.ts`                                   |
 | Native-bracket cleanup                     | `src/ai/widget-parser.ts`                                                                                               |
 
 ## Related

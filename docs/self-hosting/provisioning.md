@@ -14,11 +14,14 @@ An admin creates connections through the admin API:
 | ----------------------------- | --------------------------------------------------------------------------------------- |
 | Add an SSO side               | `POST /v1/admin/connections/sso` with the provider's OIDC or SAML details and its match claim |
 | Add a SCIM side to it         | `POST /v1/admin/connections/scim` with `{ "identityConnectionId": "…" }`                |
+| Edit its SSO side             | `PATCH /v1/admin/connections/:id` with any of `name`, `matchClaim`, `oidc: { clientId, clientSecret, discoveryEndpoint }` or `saml: { cert, entryPoint }` |
 | Issue another token           | `POST /v1/admin/connections/:id/scim/credentials`                                       |
 | Revoke a token                | `POST /v1/admin/connections/:id/scim/credentials/:credentialId/revoke`                  |
 | Stop provisioning             | `POST /v1/admin/connections/:id/scim/retire`                                            |
 
-The SSO provider you configure through `OIDC_*` or `SAML_*` is connection `sso`; give it a SCIM side the same way.
+The SSO provider you configure through `OIDC_*` or `SAML_*` is connection `sso`; give it a SCIM side the same way. Its SSO side follows those settings and can't be edited through the API.
+
+A new client secret or certificate takes effect at the next sign-in, and nobody needs to link again. The provider id, the OIDC issuer and the SAML entity ids never change (`SSO_IDENTITY_FIELD_IMMUTABLE`): retire the connection and create another instead. The client id, the discovery URL and the entry point decide which of the provider's identities an account belongs to, so they change only while nobody has signed in through the connection (`SSO_IDENTITY_FIELD_LOCKED`). The match claim also waits for the review queue to hold nothing pending or approved for it (`SSO_MATCH_CLAIM_LOCKED`). A discovery URL must be on a trusted origin, as at sign-in.
 
 ### Tokens
 

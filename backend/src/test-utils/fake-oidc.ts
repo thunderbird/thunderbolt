@@ -30,22 +30,34 @@ export type FakeOidcSignIn = {
   cookie: string
 }
 
+/** The client secret a token request carries, by HTTP Basic or in the form body. */
+const clientSecretOf = async (request: Request) => {
+  const basic = request.headers.get('authorization')?.match(/^Basic (.+)$/)?.[1]
+  if (basic) {
+    const credentials = atob(basic)
+    return decodeURIComponent(credentials.slice(credentials.indexOf(':') + 1))
+  }
+  return new URLSearchParams(await request.text()).get('client_secret')
+}
+
 /**
  * Several OIDC identity providers in one process, one per issuer, answering discovery, token and
  * JWKS requests through a stand-in `fetch`. `signIn` runs a full authorization-code sign-in against
  * an app; `setReachable(false)` makes every IdP request fail as an outage would. `requests` lists
- * every IdP URL fetched, reachable or not.
+ * every IdP URL fetched, reachable or not. `setClientSecret` makes an IdP's token endpoint refuse
+ * any other client secret, as a real one does.
  */
 export const createFakeOidcIdps = async (issuers: string[]) => {
   const { privateKey, publicKey } = await generateKeyPair('RS256', { extractable: true })
   const publicJwk = { ...(await exportJWK(publicKey)), alg: 'RS256' }
   const requests: string[] = []
   const idTokens = new Map<string, string>()
+  const clientSecrets = new Map<string, string>()
   let reachable = true
 
   const issuerOf = (url: string) => issuers.find((issuer) => url.startsWith(`${issuer}/`))
 
-  const idpFetch = async (...[input]: Parameters<typeof fetch>) => {
+  const idpFetch = async (...[input, init]: Parameters<typeof fetch>) => {
     const url = input instanceof Request ? input.url : input.toString()
     const issuer = issuerOf(url)
     if (!issuer) {
@@ -60,6 +72,10 @@ export const createFakeOidcIdps = async (issuers: string[]) => {
       return Response.json(discovery)
     }
     if (url === discovery.token_endpoint) {
+      const expected = clientSecrets.get(issuer)
+      if (expected !== undefined && (await clientSecretOf(new Request(input, init))) !== expected) {
+        return Response.json({ error: 'invalid_client' }, { status: 401 })
+      }
       return Response.json({ access_token: 'idp-access-token', token_type: 'Bearer', id_token: idTokens.get(issuer) })
     }
     if (url === discovery.jwks_uri) {
@@ -139,6 +155,9 @@ export const createFakeOidcIdps = async (issuers: string[]) => {
     requests,
     setReachable: (value: boolean) => {
       reachable = value
+    },
+    setClientSecret: (issuer: string, secret: string) => {
+      clientSecrets.set(issuer, secret)
     },
   }
 }

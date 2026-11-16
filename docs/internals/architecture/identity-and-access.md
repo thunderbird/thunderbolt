@@ -152,7 +152,7 @@ admit users that some path forgot to admit.
 
 An SSO connection is a Better Auth `sso_provider` row named by an `identity_connection`'s
 `sso_provider_id`; the same row's `scim_connection_id` pairs it with a SCIM connection. One row per
-IdP holds both sides, and only server-side admin code creates them
+IdP holds both sides, and only server-side admin code creates and edits them
 ([sso-connections.ts](../../../backend/src/identity/sso-connections.ts)). A request naming a provider
 with no live connection is refused ([sso.ts](../../../backend/src/identity/sso.ts)), so rows older
 releases let users register can't sign anyone in.
@@ -161,6 +161,15 @@ releases let users register can't sign anyone in.
   and its members' `sso` sources stop counting. That offboards members it alone admitted; anyone with
   another live source keeps access. The env connection can't be retired here (its settings own it),
   nor can a row whose SCIM side isn't `scim_retired` yet: retire that side first.
+- **Editing** a connection (`updateSsoConnection`) changes its name, match claim, OIDC client and
+  discovery URL, or SAML certificate and entry point, merging them into the stored config. What
+  names the IdP or our service provider (provider id, OIDC issuer, SAML entity ids) is refused with
+  `SSO_IDENTITY_FIELD_IMMUTABLE`. What decides which IdP identity an `account` belongs to (client id,
+  discovery URL, entry point) changes only while the provider has no `account`, else
+  `SSO_IDENTITY_FIELD_LOCKED`; the match claim also needs no pending or approved link review, as it
+  keys them (`SSO_MATCH_CLAIM_LOCKED`). A secret or certificate rotation therefore never relinks
+  anyone. A new discovery URL passes the trusted-origin check sign-in applies. `connection.updated`
+  names the changed fields, never a value. The env connection is refused with `SSO_CONNECTION_ENV_OWNED`.
 - **The env provider** (`OIDC_*` or `SAML_*`) is written at boot as provider and connection `sso`, after
   the implicit org. The env stays authoritative for that row; connections an admin created are never
   touched. The first run fills that connection into the `sso` sources of members who signed in before.

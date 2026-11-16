@@ -12,7 +12,7 @@ import {
   revokeScimCredential,
   rotateScimCredential,
 } from '../scim/connections'
-import { createSsoConnection, retireSsoConnection, ssoProviderIdPattern } from '../sso-connections'
+import { createSsoConnection, retireSsoConnection, ssoProviderIdPattern, updateSsoConnection } from '../sso-connections'
 import { getConnection, listConnections } from './connections'
 import { auditRefusals } from './route-helpers'
 
@@ -20,6 +20,21 @@ const id = t.String({ maxLength: 255 })
 const connectionParams = t.Object({ connectionId: id })
 const name = t.String({ minLength: 1, maxLength: 100 })
 const expiresAt = t.Optional(t.Date())
+const matchClaim = t.String({ minLength: 1, maxLength: 255 })
+
+const oidcFields = {
+  issuer: t.String({ minLength: 1, maxLength: 2048 }),
+  clientId: t.String({ minLength: 1, maxLength: 512 }),
+  clientSecret: t.String({ minLength: 1, maxLength: 4096 }),
+  discoveryEndpoint: t.Optional(t.String({ maxLength: 2048 })),
+}
+
+const samlFields = {
+  entityId: t.String({ minLength: 1, maxLength: 2048 }),
+  entryPoint: t.String({ minLength: 1, maxLength: 2048 }),
+  cert: t.String({ minLength: 1, maxLength: 16384 }),
+  idpIssuer: t.String({ minLength: 1, maxLength: 2048 }),
+}
 
 /** A token is shown once: nothing may keep a copy of the response. */
 const noStore = { 'cache-control': 'no-store' }
@@ -52,26 +67,42 @@ export const createConnectionAdminRoutes = (auth: Auth, database: typeof DbType)
         body: t.Object({
           name,
           providerId: t.String({ pattern: ssoProviderIdPattern }),
-          protocol: t.Union([
-            t.Object({
-              oidc: t.Object({
-                issuer: t.String({ minLength: 1, maxLength: 2048 }),
-                clientId: t.String({ minLength: 1, maxLength: 512 }),
-                clientSecret: t.String({ minLength: 1, maxLength: 4096 }),
-                discoveryEndpoint: t.Optional(t.String({ maxLength: 2048 })),
-              }),
-            }),
-            t.Object({
-              saml: t.Object({
-                entityId: t.String({ minLength: 1, maxLength: 2048 }),
-                entryPoint: t.String({ minLength: 1, maxLength: 2048 }),
-                cert: t.String({ minLength: 1, maxLength: 16384 }),
-                idpIssuer: t.String({ minLength: 1, maxLength: 2048 }),
-              }),
-            }),
-          ]),
-          matchClaim: t.Optional(t.String({ minLength: 1, maxLength: 255 })),
+          protocol: t.Union([t.Object({ oidc: t.Object(oidcFields) }), t.Object({ saml: t.Object(samlFields) })]),
+          matchClaim: t.Optional(matchClaim),
           identityConnectionId: t.Optional(id),
+        }),
+      },
+    )
+    .patch(
+      '/admin/connections/:connectionId',
+      async ({ params, body, user }) => {
+        const context = await auth.$context
+        await auditRefusals(
+          database,
+          {
+            action: 'connection.updated',
+            actorId: user.id,
+            target: { type: 'identity_connection', id: params.connectionId },
+          },
+          () =>
+            updateSsoConnection(database, {
+              ...body,
+              identityConnectionId: params.connectionId,
+              actorId: user.id,
+              isTrustedOrigin: (url) => context.isTrustedOrigin(url),
+            }),
+        )
+        return getConnection(auth, database, params.connectionId)
+      },
+      {
+        params: connectionParams,
+        // The identifying fields are accepted so that changing one is refused with its code.
+        body: t.Object({
+          name: t.Optional(name),
+          matchClaim: t.Optional(matchClaim),
+          providerId: t.Optional(t.String({ maxLength: 255 })),
+          oidc: t.Optional(t.Partial(t.Object(oidcFields))),
+          saml: t.Optional(t.Partial(t.Object(samlFields))),
         }),
       },
     )

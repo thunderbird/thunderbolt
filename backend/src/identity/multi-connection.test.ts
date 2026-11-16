@@ -36,7 +36,7 @@ import { approveLinkReview } from './link-reviews'
 import { getMemberAuthorization } from './roles'
 import { createScimConnection, revokeScimCredential } from './scim/connections'
 import { createScimGroupRoleMapping } from './scim/role-mappings'
-import { createSsoConnection } from './sso-connections'
+import { createSsoConnection, updateSsoConnection } from './sso-connections'
 
 /*
  * Several IdPs provisioning into one org, as several Keycloak realms or an Entra tenant beside a
@@ -78,7 +78,7 @@ describe.each(databases)('several connections in one org on $name', ({ name, ski
   let initech: Connection
 
   const runSuffix = uniqueSuffix()
-  const realms = ['acme', 'globex', 'initech', 'revoked']
+  const realms = ['acme', 'globex', 'initech', 'revoked', 'rotating']
   const issuerOf = (realm: string) => `https://${realm}-${runSuffix}.idp.test`
 
   const newConnection = async (realm: string): Promise<Connection> => {
@@ -522,6 +522,36 @@ describe.each(databases)('several connections in one org on $name', ({ name, ski
         expect(await sourcesOf(userId)).toEqual([])
       },
     )
+  })
+
+  it('keeps signing a member in through a connection whose client secret an admin replaced, with no relinking', async () => {
+    // Its own connection: the rotation must not leak into the other tests' sign-ins.
+    const rotating = await newConnection('rotating')
+    const email = `rotated-${uniqueSuffix()}@acme.test`
+    const externalId = crypto.randomUUID()
+    expect((await provision(rotating, { email, externalId })).status).toBe(201)
+    const userId = await userIdOf(email)
+    idps.setClientSecret(rotating.issuer, 'rotating-secret')
+    expect(await sessionUserOf((await signIn(rotating, externalId, email)).cookie)).toBe(userId)
+    const links = () =>
+      db.$count(auditEvent, and(eq(auditEvent.action, 'link.created'), eq(auditEvent.targetId, userId)))
+    const linksBefore = await links()
+
+    idps.setClientSecret(rotating.issuer, 'rotated-secret')
+    expect(await sessionUserOf((await signIn(rotating, externalId, email)).cookie)).toBeUndefined()
+    const context = await auth.$context
+    await updateSsoConnection(db, {
+      identityConnectionId: rotating.id,
+      oidc: { clientSecret: 'rotated-secret' },
+      actorId,
+      isTrustedOrigin: (url) => context.isTrustedOrigin(url),
+    })
+
+    expect(await sessionUserOf((await signIn(rotating, externalId, email)).cookie)).toBe(userId)
+    expect(await db.$count(account, and(eq(account.userId, userId), eq(account.providerId, rotating.providerId)))).toBe(
+      1,
+    )
+    expect(await links()).toBe(linksBefore)
   })
 
   it("keeps the other connections syncing when one connection's credential is revoked", async () => {

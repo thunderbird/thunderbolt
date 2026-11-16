@@ -46,7 +46,10 @@ export const accessRefusalCodes: Record<AccessRefusal, string> = {
  * Whether a source counts: a SCIM source only while its connection's SCIM side is active, an SSO
  * source unless its connection is retired, and every other source.
  */
-const isCountedSource = (source: MembershipSourceRow, connectionStatusById: AccessState['connectionStatusById']) => {
+export const isCountedSource = (
+  source: Pick<MembershipSourceRow, 'kind' | 'identityConnectionId'>,
+  connectionStatusById: AccessState['connectionStatusById'],
+) => {
   const connectionStatus = source.identityConnectionId ? connectionStatusById.get(source.identityConnectionId) : null
   if (source.kind === 'scim') {
     return connectionStatus === 'active'

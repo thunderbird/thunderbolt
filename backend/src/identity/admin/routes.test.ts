@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import {
+  account,
   auditEvent,
   groupRoleMapping,
   identityConnection,
@@ -13,6 +14,7 @@ import {
   membershipSource,
   orgDomain,
   orgMembership,
+  scimIdentityTombstone,
   session,
   ssoProvider,
   user,
@@ -46,6 +48,7 @@ const adminRoutes: { method: string; path: string; body?: unknown }[] = [
   { method: 'POST', path: '/v1/admin/members/:userId/unblock' },
   { method: 'POST', path: '/v1/admin/members/:userId/roles', body: { role: 'admin' } },
   { method: 'DELETE', path: '/v1/admin/members/:userId/roles/:role' },
+  { method: 'POST', path: '/v1/admin/members/:userId/connections/:connectionId/detach' },
   { method: 'DELETE', path: '/v1/admin/members/:userId' },
   { method: 'GET', path: '/v1/admin/break-glass' },
   { method: 'GET', path: '/v1/admin/groups' },
@@ -447,6 +450,197 @@ describe('admin API', () => {
           adminCount: 1,
           localAdminCount: 0,
         })
+      })
+    })
+
+    describe('detaching an IdP link', () => {
+      /** A connection with SSO and SCIM sides, as the tables hold them; `status` is the connection's. */
+      const addConnection = async (status: 'active' | 'scim_retired' = 'active') => {
+        const providerId = `idp-${crypto.randomUUID()}`
+        const [provider] = await harness.db
+          .insert(ssoProvider)
+          .values({ id: crypto.randomUUID(), providerId, issuer: `https://${providerId}.test`, domain: '' })
+          .returning()
+        const [connection] = await harness.db
+          .insert(identityConnection)
+          .values({
+            id: crypto.randomUUID(),
+            orgId,
+            name: `IdP ${providerId}`,
+            ssoProviderId: provider.id,
+            scimConnectionId: crypto.randomUUID(),
+            status,
+          })
+          .returning()
+        return { ...connection, providerId, scimConnectionId: connection.scimConnectionId! }
+      }
+
+      type Connection = Awaited<ReturnType<typeof addConnection>>
+
+      /** Link a member to a connection: sources of the given kinds, an SSO account and a SCIM tombstone. */
+      const link = async (
+        userId: string,
+        connection: Connection,
+        sources: { kind: 'scim' | 'sso'; status: 'active' | 'suspended' | 'removed' }[],
+      ) => {
+        const membershipId = (await membershipOf(userId)).id
+        for (const source of sources) {
+          await harness.db
+            .insert(membershipSource)
+            .values({ id: crypto.randomUUID(), orgId, membershipId, identityConnectionId: connection.id, ...source })
+        }
+        await harness.db.insert(account).values({
+          id: crypto.randomUUID(),
+          accountId: `subject-${crypto.randomUUID()}`,
+          providerId: connection.providerId,
+          userId,
+          updatedAt: new Date(),
+        })
+        const externalId = crypto.randomUUID()
+        await harness.db.insert(scimIdentityTombstone).values({
+          id: crypto.randomUUID(),
+          connectionId: connection.scimConnectionId,
+          provisioningDomainId: orgId,
+          externalId,
+          externalIdKey: `${connection.scimConnectionId}:${externalId}`,
+          userId,
+          profile: 'manage',
+          deletedAt: new Date(),
+        })
+      }
+
+      /** Everything a link to `connection` holds for `userId`. */
+      const linkRows = async (userId: string, connection: Connection) => ({
+        sources: (
+          await harness.db
+            .select({ kind: membershipSource.kind, status: membershipSource.status })
+            .from(membershipSource)
+            .where(
+              and(
+                eq(membershipSource.membershipId, (await membershipOf(userId)).id),
+                eq(membershipSource.identityConnectionId, connection.id),
+              ),
+            )
+        ).sort((a, b) => a.kind.localeCompare(b.kind)),
+        accounts: await harness.db.$count(
+          account,
+          and(eq(account.userId, userId), eq(account.providerId, connection.providerId)),
+        ),
+        tombstones: await harness.db.$count(
+          scimIdentityTombstone,
+          and(
+            eq(scimIdentityTombstone.userId, userId),
+            eq(scimIdentityTombstone.connectionId, connection.scimConnectionId),
+          ),
+        ),
+      })
+
+      const detach = (userId: string, connectionId: string) =>
+        call('POST', `/v1/admin/members/${userId}/connections/${connectionId}/detach`)
+
+      it('detaches a link the IdP deleted: the local grant decides again, other connections stay', async () => {
+        // An invitation admits the member locally; the IdP's removed source still manages them.
+        const userId = await addMember()
+        const [connection, other] = [await addConnection(), await addConnection()]
+        await link(userId, connection, [
+          { kind: 'scim', status: 'removed' },
+          { kind: 'sso', status: 'active' },
+        ])
+        await link(userId, other, [{ kind: 'scim', status: 'removed' }])
+        const otherBefore = await linkRows(userId, other)
+
+        const response = await detach(userId, connection.id)
+
+        expect(response.status).toBe(200)
+        expect(await response.json()).toMatchObject({
+          access: { allowed: false, reason: 'deprovisioned' },
+          idpManaged: { connections: [{ id: other.id }] },
+        })
+        expect(await linkRows(userId, connection)).toEqual({ sources: [], accounts: 0, tombstones: 0 })
+        expect(await linkRows(userId, other)).toEqual(otherBefore)
+        expect(await events('link.detached')).toMatchObject([
+          {
+            actorId: adminId,
+            targetId: userId,
+            connectionId: connection.id,
+            metadata: { sourceStatus: 'removed', kinds: ['scim', 'sso'], accountsRemoved: 1, tombstoneCleared: true },
+          },
+        ])
+
+        expect((await detach(userId, other.id)).status).toBe(200)
+        expect(await json(await call('GET', `/v1/admin/members/${userId}`))).toMatchObject({
+          access: { allowed: true },
+          idpManaged: null,
+          requiresSso: false,
+        })
+      })
+
+      it.each([
+        ['active', 'LINK_SOURCE_ACTIVE'],
+        ['suspended', 'LINK_SOURCE_SUSPENDED'],
+      ] as const)('refuses a %s SCIM source with %s, records it, and changes nothing', async (status, code) => {
+        const userId = await addMember()
+        const connection = await addConnection()
+        await link(userId, connection, [{ kind: 'scim', status }])
+        const before = await linkRows(userId, connection)
+
+        const response = await detach(userId, connection.id)
+
+        expect(response.status).toBe(409)
+        expect(await response.json()).toMatchObject({ code })
+        expect(await linkRows(userId, connection)).toEqual(before)
+        expect(await events('link.detached', 'denied')).toMatchObject([
+          { actorId: adminId, targetId: userId, reason: code },
+        ])
+      })
+
+      it('detaches an active SCIM source the access check ignores, on a retired SCIM side', async () => {
+        const userId = await addMember()
+        const connection = await addConnection('scim_retired')
+        await link(userId, connection, [{ kind: 'scim', status: 'active' }])
+
+        expect((await detach(userId, connection.id)).status).toBe(200)
+        expect(await linkRows(userId, connection)).toEqual({ sources: [], accounts: 0, tombstones: 0 })
+        expect(await events('link.detached')).toMatchObject([{ metadata: { sourceStatus: 'active' } }])
+      })
+
+      it('refuses an admin detaching their own link, and records it', async () => {
+        const connection = await addConnection('scim_retired')
+        await link(adminId, connection, [
+          { kind: 'scim', status: 'active' },
+          { kind: 'sso', status: 'active' },
+        ])
+        const before = await linkRows(adminId, connection)
+
+        const response = await detach(adminId, connection.id)
+
+        expect(response.status).toBe(409)
+        expect(await response.json()).toMatchObject({ code: 'DETACH_SELF' })
+        expect(await linkRows(adminId, connection)).toEqual(before)
+        expect(await events('link.detached', 'denied')).toMatchObject([
+          { actorId: adminId, targetId: adminId, reason: 'DETACH_SELF' },
+        ])
+      })
+
+      it('refuses a link with no SCIM source, and answers 404 for a missing link or member', async () => {
+        const userId = await addMember()
+        const [ssoOnly, unlinked] = [await addConnection(), await addConnection()]
+        await link(userId, ssoOnly, [{ kind: 'sso', status: 'active' }])
+
+        const refused = await detach(userId, ssoOnly.id)
+        expect(refused.status).toBe(409)
+        expect(await refused.json()).toMatchObject({ code: 'LINK_NOT_DETACHABLE' })
+        expect(await linkRows(userId, ssoOnly)).toMatchObject({ sources: [{ kind: 'sso' }], accounts: 1 })
+
+        for (const [member, connectionId] of [
+          [userId, unlinked.id],
+          [userId, 'no-such-connection'],
+          ['nobody', ssoOnly.id],
+        ]) {
+          const missing = await detach(member, connectionId)
+          expect(missing.status).toBe(404)
+        }
+        expect(await events('link.detached', 'denied')).toMatchObject([{ reason: 'LINK_NOT_DETACHABLE' }])
       })
     })
 

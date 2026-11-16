@@ -4,6 +4,7 @@
 
 import { type Auth, createAuth } from '@/auth/auth'
 import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
+import { challengeTokenHeader, testSignInOtp } from '@/auth/otp-constants'
 import * as settingsModule from '@/config/settings'
 import type { db as DbType } from '@/db/client'
 import {
@@ -22,12 +23,15 @@ import { getSharedIsolatedTestDb } from '@/test-utils/db'
 import { createPostgresTestDb, postgresTestUrl } from '@/test-utils/postgres'
 import { createFakeOidcIdps, type FakeOidcIdps, fakeOidcClientId } from '@/test-utils/fake-oidc'
 import { insertTestUsers } from '@/test-utils/identity'
+import { createTestChallenge } from '@/test-utils/otp-challenge'
 import { createScimClient, keycloakUser, type ScimClient, scimGroupSchema, uniqueSuffix } from '@/test-utils/scim'
 import { createTestSettings } from '@/test-utils/settings'
 import { afterAll, beforeAll, describe, expect, it, spyOn } from 'bun:test'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { Elysia } from 'elysia'
 import { getAccess } from './access'
+import { detachMemberLink } from './admin/members'
+import { getCurrentOrganizationId } from './current-organization'
 import { approveLinkReview } from './link-reviews'
 import { getMemberAuthorization } from './roles'
 import { createScimConnection, revokeScimCredential } from './scim/connections'
@@ -49,7 +53,7 @@ const databases = [
   { name: 'Postgres', skip: !postgresTestUrl, open: createPostgresTestDb },
 ]
 
-describe.each(databases)('several connections in one org on $name', ({ skip, open }) => {
+describe.each(databases)('several connections in one org on $name', ({ name, skip, open }) => {
   if (skip) {
     it.skip('needs TEST_POSTGRES_URL', () => {})
     return
@@ -366,6 +370,158 @@ describe.each(databases)('several connections in one org on $name', ({ skip, ope
       ].sort()
     expect(await rolesOf(acmeEmail)).toEqual(['admin', 'member'])
     expect(await rolesOf(globexEmail)).toEqual(['member'])
+  })
+
+  describe('detaching a link the IdP deleted', () => {
+    const signInByCode = async (email: string) => {
+      await auth.api.sendVerificationOTP({ body: { email, type: 'sign-in' } })
+      return (await auth.api.signInEmailOTP({
+        body: { email, otp: testSignInOtp },
+        headers: new Headers({ [challengeTokenHeader]: await createTestChallenge(db, email) }),
+        asResponse: true,
+      })) as Response
+    }
+
+    /** A member acme provisioned, signed in through acme once, invited locally, then deleted by acme. */
+    const deletedMember = async () => {
+      const email = `detached-${uniqueSuffix()}@contractor.test`
+      const externalId = crypto.randomUUID()
+      const scimId = (await provision(acme, { email, externalId })).body.id!
+      const userId = await userIdOf(email)
+      expect(await sessionUserOf((await signIn(acme, externalId, email)).cookie)).toBe(userId)
+      const [membership] = await db.select().from(orgMembership).where(eq(orgMembership.userId, userId))
+      await db.insert(membershipSource).values({
+        id: crypto.randomUUID(),
+        orgId: getCurrentOrganizationId(),
+        membershipId: membership.id,
+        kind: 'invitation',
+        ref: 'local-invitation',
+      })
+      expect((await acme.scim.call('DELETE', `/Users/${scimId}`)).status).toBe(204)
+      return { email, externalId, userId }
+    }
+
+    it('lets the local grant sign them in again, and keeps the IdP from relinking them silently', async () => {
+      const { email, externalId, userId } = await deletedMember()
+      expect(await access(userId)).toEqual({ allowed: false, reason: 'deprovisioned' })
+      expect((await signInByCode(email)).status).toBe(403)
+
+      await detachMemberLink(db, { userId, identityConnectionId: acme.id, actorId })
+
+      expect(await access(userId)).toEqual({ allowed: true })
+      expect((await signInByCode(email)).status).toBe(200)
+      expect(
+        await db.$count(auditEvent, and(eq(auditEvent.action, 'link.detached'), eq(auditEvent.targetId, userId))),
+      ).toBe(1)
+
+      // The deleted subject no longer signs in to the user, through SSO or a SCIM create.
+      const viaSso = await signIn(acme, externalId, email)
+      expect(await sessionUserOf(viaSso.cookie)).toBeUndefined()
+      expect(await db.$count(account, and(eq(account.userId, userId), eq(account.providerId, acme.providerId)))).toBe(0)
+      expect((await provision(acme, { email, externalId })).status).toBe(409)
+      const [review] = await db
+        .select()
+        .from(linkReview)
+        .where(and(eq(linkReview.identityConnectionId, acme.id), eq(linkReview.externalId, externalId)))
+      expect(review).toMatchObject({ candidateUserId: userId, status: 'pending' })
+      expect(await sourcesOf(userId)).toEqual([])
+
+      // Once an admin approves the review, the IdP's retry links them again and SSO signs them in.
+      await approveLinkReview(db, { reviewId: review.id, actorId })
+      expect((await provision(acme, { email, externalId })).status).toBe(201)
+      expect(await sourcesOf(userId)).toEqual([{ connectionId: acme.id, status: 'active' }])
+      expect(await sessionUserOf((await signIn(acme, externalId, email)).cookie)).toBe(userId)
+    })
+
+    /** Resolve once `count` backends of this database are blocked on a lock. */
+    const lockWaiters = async (count: number) => {
+      for (let attempt = 0; attempt < 500; attempt++) {
+        // postgres.js returns the rows themselves.
+        const [{ waiting }] = (await db.execute(
+          sql`select count(*)::int as waiting from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'`,
+        )) as unknown as { waiting: number }[]
+        if (waiting >= count) {
+          return
+        }
+        await Bun.sleep(10)
+      }
+      throw new Error(`Fewer than ${count} backends ever waited on a lock`)
+    }
+
+    it.if(name === 'Postgres')(
+      'refuses when a SCIM write reactivates the source while the detach waits for it',
+      async () => {
+        const { userId } = await deletedMember()
+        const [membership] = await db.select().from(orgMembership).where(eq(orgMembership.userId, userId))
+        const onAcme = and(
+          eq(membershipSource.membershipId, membership.id),
+          eq(membershipSource.identityConnectionId, acme.id),
+        )
+        const held = Promise.withResolvers<void>()
+        const sourceLocked = Promise.withResolvers<void>()
+        // A SCIM re-POST's reconcile, holding the row it reactivated until it commits.
+        const reprovision = db.transaction(async (tx) => {
+          await tx.update(membershipSource).set({ status: 'active' }).where(onAcme)
+          sourceLocked.resolve()
+          await held.promise
+        })
+        await sourceLocked.promise
+
+        const detaching = detachMemberLink(db, { userId, identityConnectionId: acme.id, actorId }).catch(
+          (error: unknown) => error,
+        )
+        await lockWaiters(1)
+        held.resolve()
+        await reprovision
+
+        expect(await detaching).toMatchObject({ body: { code: 'LINK_SOURCE_ACTIVE' } })
+        expect(await sourcesOf(userId)).toEqual([{ connectionId: acme.id, status: 'active' }])
+      },
+    )
+
+    it.if(name === 'Postgres')(
+      'makes a SCIM write that would reactivate the source wait until the detach commits',
+      async () => {
+        const { userId } = await deletedMember()
+        const [membership] = await db.select().from(orgMembership).where(eq(orgMembership.userId, userId))
+        const held = Promise.withResolvers<void>()
+        const accountLocked = Promise.withResolvers<void>()
+        // Holds the account the detach deletes last, so the detach waits holding the sources' locks.
+        const blocker = db.transaction(async (tx) => {
+          await tx
+            .select()
+            .from(account)
+            .where(and(eq(account.userId, userId), eq(account.providerId, acme.providerId)))
+            .for('update')
+          accountLocked.resolve()
+          await held.promise
+        })
+        await accountLocked.promise
+        const detaching = detachMemberLink(db, { userId, identityConnectionId: acme.id, actorId })
+        await lockWaiters(1)
+
+        let flipped = false
+        const flip = db
+          .update(membershipSource)
+          .set({ status: 'active' })
+          .where(
+            and(eq(membershipSource.membershipId, membership.id), eq(membershipSource.identityConnectionId, acme.id)),
+          )
+          .returning()
+          .then((rows) => {
+            flipped = true
+            return rows
+          })
+        await lockWaiters(2)
+        expect(flipped).toBe(false)
+
+        held.resolve()
+        await blocker
+        await detaching
+        expect(await flip).toEqual([])
+        expect(await sourcesOf(userId)).toEqual([])
+      },
+    )
   })
 
   it("keeps the other connections syncing when one connection's credential is revoked", async () => {

@@ -10,6 +10,7 @@ import { purgeMember } from '../purge'
 import {
   blockMember,
   breakGlassWarning,
+  detachMemberLink,
   getBreakGlassStatus,
   getMember,
   grantMemberRole,
@@ -23,7 +24,7 @@ import { assignableRoleSchema, auditRefusals, cursorParts } from './route-helper
 
 const userParams = t.Object({ userId: t.String({ maxLength: 255 }) })
 
-/** Members: who they are, where they came from, what the IdP manages; block, roles, profile and purge. */
+/** Members: who they are, where they came from, what the IdP manages; block, roles, profile, IdP links and purge. */
 export const createMemberAdminRoutes = (auth: Auth, database: typeof DbType) =>
   createAdminRoutes('member-admin-routes', auth, database)
     .get(
@@ -91,6 +92,23 @@ export const createMemberAdminRoutes = (auth: Auth, database: typeof DbType) =>
         return { ...(await getMember(database, params.userId)), ...(await breakGlassWarning(database)) }
       },
       { params: t.Object({ userId: t.String({ maxLength: 255 }), role: assignableRoleSchema }) },
+    )
+    .post(
+      '/admin/members/:userId/connections/:connectionId/detach',
+      async ({ params, user }) => {
+        await auditRefusals(
+          database,
+          { action: 'link.detached', actorId: user.id, target: { type: 'user', id: params.userId } },
+          () =>
+            detachMemberLink(database, {
+              userId: params.userId,
+              identityConnectionId: params.connectionId,
+              actorId: user.id,
+            }),
+        )
+        return getMember(database, params.userId)
+      },
+      { params: t.Object({ userId: t.String({ maxLength: 255 }), connectionId: t.String({ maxLength: 255 }) }) },
     )
     .delete(
       '/admin/members/:userId',

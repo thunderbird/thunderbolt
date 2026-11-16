@@ -252,13 +252,27 @@ role mappings, domain claims, and the break-glass flag.
   and its response carries `warning: 'NO_LOCAL_ADMIN'`. `GET /v1/admin/break-glass` reports the same
   state as `allAdminsIdpManaged`, with the admin counts. Only shared hosting would have to refuse it.
 - **Hard deletes.** Local groups, their members, local role mappings, local role grants (a revoke,
-  the bootstrap admin's grant included) and org domains are configuration rows with no `deleted_at`;
+  the bootstrap admin's grant included), org domains and a detached link's rows have no `deleted_at`;
   deleting one removes it, and its audit event keeps the history. A group's delete records one
   `group_role_mapping.deleted` for each mapping it takes with it, and its member count.
 - **Domain claims.** `claimOrgDomain` needs a verified domain and a live connection, and refuses a
   domain another connection holds, a concurrent claim included; unclaim it first. Claiming turns
   enrollment off, so unclaiming leaves the domain closed until an admin opens it. A claimed domain
   can't be removed.
+- **Detaching an IdP link.** `POST /v1/admin/members/:userId/connections/:connectionId/detach`
+  (`detachMemberLink`) deletes the member's `scim` and `sso` sources on that connection, their
+  `account` on its SSO side and the plugin's tombstone for them on its SCIM side, in one transaction
+  with its `link.detached` event, so their other sources and local grants decide their access again.
+  Only a `scim` source the IdP deleted (`removed`), or one the access check ignores, can be detached:
+  an `active` one is refused with `LINK_SOURCE_ACTIVE`, a `suspended` one with
+  `LINK_SOURCE_SUSPENDED` (the plugin keeps that record, and a reactivation would bring the source
+  back), a link with no `scim` source with `LINK_NOT_DETACHABLE`, and an admin's own link with
+  `DETACH_SELF`. With the tombstone gone, the IdP creating the same identity again goes through the
+  linking tiers rather than back to the user. The detach reads the member's sources on that
+  connection `for update`, so a SCIM write that would reactivate one waits for it to commit, and one
+  that committed first makes it refuse. The plugin reads the tombstone before its own transaction,
+  so a create that read it just before the detach commits still links back to the member, who is
+  then IdP-managed again through a live source.
 - **Link reviews.** `GET /v1/admin/link-reviews` pages the review queue; `POST …/:reviewId/approve`
   and `…/reject` wrap `approveLinkReview` and `rejectLinkReview`, which audit what they resolve. Their
   refusals (`LINK_REVIEW_SELF`, `LINK_REVIEW_RESOLVED`, `LINK_REVIEW_RECORD_EXISTS`) are recorded as

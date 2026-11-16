@@ -138,6 +138,13 @@ provider's job.
   provisioned, matched on its `externalId`, and an existing account joins a provider only through a
   claimed domain, the person proving both identities, or an admin's approval. See
   [Provisioning](../self-hosting/provisioning.md#collisions-and-the-review-queue).
+- An admin edits a connection with `PATCH /v1/admin/connections/:id`. The name, the OIDC client
+  secret and the SAML certificate can change at any time, and nobody has to link again. The OIDC
+  client ID, the discovery URL and the SAML entry point can change only while nobody has signed in
+  through the connection, and the match claim only while no identity is linked or waiting in the
+  review queue. The provider ID, the OIDC issuer, the SAML entity ID and the SAML IdP issuer never
+  change: retire the connection and create another. The env connection `sso` follows its settings
+  and can't be edited here.
 - A failed or cancelled sign-in returns the user to the app with a message and a "Try again" button.
 - Under SAML, a login that starts at your provider's dashboard is refused by default. Point the
   dashboard icon at your app's address, or read the risk of `SAML_ALLOW_IDP_INITIATED` in

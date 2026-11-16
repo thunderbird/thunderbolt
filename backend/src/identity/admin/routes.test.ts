@@ -66,6 +66,7 @@ const adminRoutes: { method: string; path: string; body?: unknown }[] = [
   { method: 'GET', path: '/v1/admin/connections/:connectionId' },
   { method: 'GET', path: '/v1/admin/connections/:connectionId/scim-groups' },
   { method: 'POST', path: '/v1/admin/connections/sso', body: oidcBody('okta') },
+  { method: 'PATCH', path: '/v1/admin/connections/:connectionId', body: { name: 'Renamed' } },
   { method: 'POST', path: '/v1/admin/connections/:connectionId/retire' },
   { method: 'POST', path: '/v1/admin/connections/scim', body: { name: 'Entra' } },
   { method: 'POST', path: '/v1/admin/connections/:connectionId/scim/credentials', body: {} },
@@ -1002,6 +1003,196 @@ describe('admin API', () => {
           'SCIM_SIDE_NOT_RETIRED',
           'SSO_CONNECTION_ENV_OWNED',
         ])
+      })
+
+      describe('editing an SSO connection', () => {
+        const samlBody = (providerId: string) => ({
+          name: `IdP ${providerId}`,
+          providerId,
+          protocol: {
+            saml: {
+              entityId: 'thunderbolt-sp',
+              entryPoint: `https://${providerId}.test/sso`,
+              cert: 'first-cert',
+              idpIssuer: `https://${providerId}.test`,
+            },
+          },
+        })
+
+        const create = async (body: unknown) =>
+          (await json<{ id: string }>(await call('POST', '/v1/admin/connections/sso', body))).id
+
+        const storedConfig = async (providerId: string) => {
+          const [row] = await harness.db.select().from(ssoProvider).where(eq(ssoProvider.providerId, providerId))
+          return JSON.parse((row.oidcConfig ?? row.samlConfig)!) as Record<string, unknown>
+        }
+
+        const edit = (connectionId: string, body: unknown) =>
+          call('PATCH', `/v1/admin/connections/${connectionId}`, body)
+
+        const linkAccount = (providerId: string) =>
+          harness.db.insert(account).values({
+            id: crypto.randomUUID(),
+            accountId: `subject-${crypto.randomUUID()}`,
+            providerId,
+            userId: adminId,
+            updatedAt: new Date(),
+          })
+
+        it('renames and replaces an OIDC secret, merging the config, naming only the fields it changed', async () => {
+          const connectionId = await create(oidcBody('okta'))
+          const before = await storedConfig('okta')
+
+          const response = await edit(connectionId, { name: 'Okta', oidc: { clientSecret: 'rotated-secret' } })
+
+          expect(response.status).toBe(200)
+          const text = await response.text()
+          expect(JSON.parse(text)).toMatchObject({ name: 'Okta', sso: { providerId: 'okta', protocol: 'oidc' } })
+          expect(text).not.toContain('secret')
+          expect(await storedConfig('okta')).toEqual({ ...before, clientSecret: 'rotated-secret' })
+          const [updated] = await events('connection.updated')
+          expect(updated).toMatchObject({
+            actorId: adminId,
+            connectionId,
+            metadata: { side: 'sso', providerId: 'okta', changedFields: ['name', 'oidcConfig.clientSecret'] },
+          })
+          expect(JSON.stringify(updated)).not.toContain('rotated-secret')
+
+          // The same values again change nothing and record nothing.
+          expect((await edit(connectionId, { name: 'Okta', oidc: { clientSecret: 'rotated-secret' } })).status).toBe(
+            200,
+          )
+          expect(await events('connection.updated')).toHaveLength(1)
+        })
+
+        it('replaces a SAML certificate and entry point, keeping what names both sides', async () => {
+          const connectionId = await create(samlBody('adfs'))
+          const before = await storedConfig('adfs')
+
+          const response = await edit(connectionId, {
+            saml: { cert: 'second-cert', entryPoint: 'https://adfs.test/sso2', entityId: 'thunderbolt-sp' },
+          })
+
+          expect(response.status).toBe(200)
+          expect(await response.text()).not.toContain('second-cert')
+          expect(await storedConfig('adfs')).toEqual({
+            ...before,
+            cert: 'second-cert',
+            entryPoint: 'https://adfs.test/sso2',
+          })
+          const [updated] = await events('connection.updated')
+          expect((updated.metadata as { changedFields: string[] }).changedFields.sort()).toEqual([
+            'samlConfig.cert',
+            'samlConfig.entryPoint',
+          ])
+        })
+
+        it.each([
+          ['providerId', oidcBody('okta'), { providerId: 'okta-2' }],
+          ['issuer', oidcBody('okta'), { oidc: { issuer: 'https://elsewhere.test' } }],
+          ['entityId', samlBody('adfs'), { saml: { entityId: 'another-sp' } }],
+          ['idpIssuer', samlBody('adfs'), { saml: { idpIssuer: 'https://elsewhere.test' } }],
+        ])('refuses to change the %s, and records it', async (field, createBody, body) => {
+          const connectionId = await create(createBody)
+
+          const response = await edit(connectionId, body)
+
+          expect(response.status).toBe(409)
+          expect(await response.json()).toMatchObject({ code: 'SSO_IDENTITY_FIELD_IMMUTABLE', field })
+          expect(await events('connection.updated', 'denied')).toMatchObject([
+            { actorId: adminId, targetId: connectionId, reason: 'SSO_IDENTITY_FIELD_IMMUTABLE' },
+          ])
+          expect(await events('connection.updated')).toHaveLength(0)
+        })
+
+        it.each([
+          ['clientId', oidcBody('okta'), { oidc: { clientId: 'another-client' } }],
+          ['discoveryEndpoint', oidcBody('okta'), { oidc: { discoveryEndpoint: 'https://okta.test/other' } }],
+          ['entryPoint', samlBody('adfs'), { saml: { entryPoint: 'https://adfs.test/other' } }],
+        ])('refuses to change the %s once an identity is linked, and records it', async (field, createBody, body) => {
+          const connectionId = await create(createBody)
+          const { sso } = await json<{ sso: { providerId: string } }>(
+            await call('GET', `/v1/admin/connections/${connectionId}`),
+          )
+          await linkAccount(sso.providerId)
+
+          const response = await edit(connectionId, body)
+
+          expect(response.status).toBe(409)
+          expect(await response.json()).toMatchObject({ code: 'SSO_IDENTITY_FIELD_LOCKED', field })
+          expect(await events('connection.updated', 'denied')).toMatchObject([{ reason: 'SSO_IDENTITY_FIELD_LOCKED' }])
+          // A secret or certificate still rotates.
+          const rotation = 'oidc' in body ? { oidc: { clientSecret: 'new' } } : { saml: { cert: 'new' } }
+          expect((await edit(connectionId, rotation)).status).toBe(200)
+        })
+
+        it('changes the client id of a connection nothing is linked through yet', async () => {
+          const connectionId = await create(oidcBody('okta'))
+
+          expect((await edit(connectionId, { oidc: { clientId: 'another-client' } })).status).toBe(200)
+          expect(await storedConfig('okta')).toMatchObject({ clientId: 'another-client' })
+        })
+
+        it('changes the match claim only while nothing is linked or awaiting review', async () => {
+          const connectionId = await create(oidcBody('entra'))
+          expect(await json(await edit(connectionId, { matchClaim: 'oid' }))).toMatchObject({ matchClaim: 'oid' })
+          expect(await events('connection.updated')).toMatchObject([{ metadata: { changedFields: ['matchClaim'] } }])
+
+          await harness.db.insert(linkReview).values({
+            id: crypto.randomUUID(),
+            orgId,
+            identityConnectionId: connectionId,
+            trigger: 'sso_sign_in',
+            externalId: 'oid-1',
+            incomingEmail: 'someone@example.com',
+            candidateUserId: adminId,
+            lastSeenAt: new Date(),
+          })
+          const reviewed = await edit(connectionId, { matchClaim: 'sub' })
+          expect(reviewed.status).toBe(409)
+          expect(await reviewed.json()).toMatchObject({ code: 'SSO_MATCH_CLAIM_LOCKED' })
+
+          await harness.db.delete(linkReview).where(eq(linkReview.identityConnectionId, connectionId))
+          await linkAccount('entra')
+          const linked = await edit(connectionId, { matchClaim: 'sub' })
+          expect(linked.status).toBe(409)
+          expect(await linked.json()).toMatchObject({ code: 'SSO_MATCH_CLAIM_LOCKED' })
+          expect(await events('connection.updated', 'denied')).toHaveLength(2)
+        })
+
+        it('refuses the env connection, another protocol, a taken name and an untrusted discovery URL', async () => {
+          const [provider] = await harness.db
+            .insert(ssoProvider)
+            .values({ id: crypto.randomUUID(), providerId: 'sso', issuer: 'https://env.test', domain: '' })
+            .returning()
+          await harness.db
+            .insert(identityConnection)
+            .values({ id: envSsoConnectionId, orgId, name: 'Company SSO', ssoProviderId: provider.id })
+          const connectionId = await create(oidcBody('okta'))
+          const before = await storedConfig('okta')
+
+          const refusals = [
+            [await edit(envSsoConnectionId, { name: 'Renamed' }), 409, 'SSO_CONNECTION_ENV_OWNED'],
+            [await edit(connectionId, { saml: { cert: 'cert' } }), 400, 'SSO_PROTOCOL_MISMATCH'],
+            [await edit(connectionId, { name: 'company sso' }), 409, 'CONNECTION_NAME_TAKEN'],
+            [
+              await edit(connectionId, { oidc: { discoveryEndpoint: 'https://untrusted.test/discovery' } }),
+              400,
+              'SSO_DISCOVERY_URL_UNTRUSTED',
+            ],
+            [await edit('no-such-connection', { name: 'Renamed' }), 404, 'SSO_CONNECTION_NOT_FOUND'],
+          ] as const
+          for (const [response, status, code] of refusals) {
+            expect(response.status).toBe(status)
+            expect(await response.json()).toMatchObject({ code })
+          }
+          expect(await storedConfig('okta')).toEqual(before)
+          expect(await events('connection.updated')).toHaveLength(0)
+          // Only the policy refusal is recorded; input errors are not.
+          expect((await events('connection.updated', 'denied')).map((event) => event.reason)).toEqual([
+            'SSO_CONNECTION_ENV_OWNED',
+          ])
+        })
       })
 
       it('creates a SCIM connection and returns its token once, uncached', async () => {

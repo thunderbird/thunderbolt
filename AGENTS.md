@@ -14,7 +14,7 @@ Each workspace below has its own dependencies and its own checks; there is no si
 | `e2e/`               | Playwright specs (SSO, proxy, ACP, version gate) run against a real backend.                                                               |
 | `deploy/`            | Self-hosting: Docker Compose, the Helm chart, and the Pulumi AWS stacks.                                                                   |
 | `powersync-service/` | Docker Compose PowerSync stack for local development, including its sync rules.                                                            |
-| `scripts/`           | Repo automation — releases, license headers, migration bundling, `thunderdoctor`.                                                          |
+| `scripts/`           | Repo automation — releases, license headers, migration bundling, `thunderdoctor.sh`.                                                          |
 | `docs/`              | Architecture and development docs.                                                                                                         |
 | `public/`            | Static assets served by Vite.                                                                                                              |
 
@@ -52,7 +52,8 @@ Each workspace below has its own dependencies and its own checks; there is no si
 - Install latest versions: `bun add <package>@latest`
 - Use the app's `HttpClient` (`src/lib/http.ts`) instead of bare `fetch` — `useHttpClient()` (`src/contexts/http-client-context.tsx`) for authenticated backend calls in React, `createAuthenticatedClient()` when you need to build one yourself, `http` for external APIs, and `getAuthenticatedHeaders()` (`src/lib/auth-token.ts`) for non-React callers that can't hold a client (e.g. the PowerSync connector)
 - Generate Drizzle migrations with `bun db generate` - never manually create SQL files
-- Never manually run `git add`, `git commit`, or `git push` — always use `/thunderpush`
+- Never manually run `git add`, `git commit`, or `git push` — always use the `thunder-push` skill (`/thunder-push` in Claude Code, `$thunder-push` in Codex)
+- Project skills live in `.agents/skills/`; [its README](.agents/skills/README.md) lists what each one does and how to add one
 - Use `resolve-library-id` and `get-library-docs` tools for library documentation (if unavailable, request access)
 
 ## React Patterns
@@ -120,6 +121,8 @@ Declare the loader in the `routeChunkLoaders` map in `src/app.tsx` and derive th
 | `src/` + `shared/` roots                                 | `bun run test`                                               |
 | `shared/agent-core` (nested, outside frontend discovery) | `bun run test:agent-core`, `bun run test:agent-core:browser` |
 | `backend/`                                               | `bun run test:backend`                                       |
+| Public website (`web/`)                                  | `cd web && bun run test && bun run typecheck`                |
+| Demo recording/export helpers                           | `bun run test:demo-videos` (prepared Python/FFmpeg environment) |
 | `cli/`                                                   | `cd cli && bun run test`                                     |
 | Playwright specs in `e2e/`                               | `bun run e2e`                                                |
 

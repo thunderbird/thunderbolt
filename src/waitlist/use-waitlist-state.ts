@@ -90,6 +90,8 @@ type UseWaitlistStateOptions = {
  * State hook for the unified waitlist flow.
  * Handles email submission via the waitlist API, then OTP verification for approved users.
  * The caller reacts to the authenticated session; post-sign-in work can finish after the form unmounts.
+ * After a successful sign-in the status stays `verifying` (or `passkey`), which keeps the form locked until its host
+ * redirects, closes or moves to the next step. A host that outlives the form must not treat that status as busy.
  *
  * Privacy note: The API always returns { success: true } regardless of user status.
  * Approved users receive an OTP email; others receive waitlist status emails.

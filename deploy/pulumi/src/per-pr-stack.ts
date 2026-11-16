@@ -6,7 +6,9 @@ import * as aws from '@pulumi/aws'
 import * as cloudflare from '@pulumi/cloudflare'
 import * as keycloak from '@pulumi/keycloak'
 import * as pulumi from '@pulumi/pulumi'
+import { createBackendEmail, type EmailConfig } from './email'
 import * as random from '@pulumi/random'
+import { previewCloudflareProxy } from './alb-ingress'
 import type { SharedStackOutputs } from './shared'
 
 /**
@@ -50,6 +52,8 @@ export type PerPrStackArgs = {
   confidentialApiKeysEnabled: boolean
   /** Operator branding JSON (env: BRANDING). Empty ships the default look. */
   branding: string
+  /** Optional transactional email delivery, configured per stack. */
+  email?: EmailConfig
 }
 
 export type PerPrStackOutputs = {
@@ -408,6 +412,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
   const marketingUrl = pulumi.interpolate`https://${args.hostnames.marketing}`
   const powersyncUrl = pulumi.interpolate`https://${args.hostnames.powersync}`
 
+  const email = createBackendEmail(name, execRole.name, args.email)
   const beTaskDef = new aws.ecs.TaskDefinition(`${name}-be-task`, {
     family: `${name}-backend`,
     requiresCompatibilities: ['FARGATE'],
@@ -422,6 +427,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
         image: beImage,
         essential: true,
         environment: [
+          ...email.environment,
           { name: 'NODE_ENV', value: 'production' },
           { name: 'PORT', value: '8000' },
           { name: 'AUTH_MODE', value: 'oidc' },
@@ -459,9 +465,10 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
           { name: 'TINFOIL_ENCLAVE_URL', value: args.tinfoilEnclaveUrl ?? '' },
           // Omitted when empty so the backend applies its own defaults.
           ...(args.branding ? [{ name: 'BRANDING', value: args.branding }] : []),
-          { name: 'TRUSTED_PROXY', value: 'cloudflare' },
+          { name: 'TRUSTED_PROXY', value: previewCloudflareProxy.trustedProxy },
         ],
         secrets: [
+          ...email.secrets,
           { name: 'DATABASE_URL', valueFrom: databaseUrlSecret.arn },
           { name: 'POSTGRES_ADMIN_URL', valueFrom: postgresAdminUrlSecret.arn },
           { name: 'OIDC_CLIENT_SECRET', valueFrom: oidcClientSecretArn },
@@ -479,7 +486,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
         ...(repositoryCredentials && { repositoryCredentials }),
       },
     ]),
-  })
+  }, { dependsOn: email.dependencies })
 
   new aws.ecs.Service(
     `${name}-be-svc`,

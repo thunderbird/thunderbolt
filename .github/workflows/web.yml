@@ -1,0 +1,51 @@
+name: Website
+
+on:
+  pull_request:
+    paths:
+      - 'web/**'
+      - 'docs/**'
+      - '.github/workflows/web.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'docs/**'
+      - '.github/workflows/web.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: website-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  website:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+      - run: bun run test:coverage
+      - run: bun run typecheck
+      # Keep GitHub credentials on the runner; only public metadata enters the build.
+      # Outages retain the checked-in stable snapshot rather than blocking website changes.
+      - name: Refresh desktop release snapshot
+        run: |
+          RELEASE_RESPONSE=$(mktemp)
+          if gh api repos/thunderbird/thunderbolt/releases/latest > "$RELEASE_RESPONSE"; then
+            mv "$RELEASE_RESPONSE" release-snapshot.json
+          else
+            rm -f "$RELEASE_RESPONSE"
+            echo "::warning::Release lookup failed; building with the last-known-good snapshot."
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - run: bun run build

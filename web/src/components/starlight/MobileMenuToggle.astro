@@ -1,0 +1,55 @@
+---
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+import { Icon } from '@astrojs/starlight/components';
+---
+
+<starlight-menu-button class="print:hidden">
+  <button
+    type="button"
+    aria-expanded="false"
+    aria-label={Astro.locals.t('menuButton.accessibleLabel')}
+    aria-controls="starlight__sidebar"
+    class="sl-flex md:sl-hidden"
+  >
+    <Icon name="bars" class="open-menu" />
+    <Icon name="close" class="close-menu" />
+  </button>
+</starlight-menu-button>
+
+<script>
+  import { initializeDocsMenu } from './docs-menu';
+
+  class DocsMenuButton extends HTMLElement {
+    private cleanup!: () => void;
+
+    connectedCallback() {
+      this.cleanup = initializeDocsMenu(this);
+    }
+
+    disconnectedCallback() {
+      this.cleanup();
+    }
+  }
+
+  customElements.define('starlight-menu-button', DocsMenuButton);
+</script>
+
+<style>
+  button {
+    position: fixed;
+    z-index: var(--sl-z-index-navbar);
+    cursor: pointer;
+  }
+  [aria-expanded='true'] .open-menu,
+  [aria-expanded='false'] .close-menu {
+    display: none;
+  }
+</style>
+
+<style is:global>
+  @media (width < 50rem) {
+    body[data-mobile-menu-expanded] { overflow: hidden; }
+  }
+</style>

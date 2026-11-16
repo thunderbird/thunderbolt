@@ -59,6 +59,7 @@ import {
 import type { HttpClient } from '@/lib/http'
 import { hasAssistantContent } from '@/lib/message-utils'
 import { trackEvent as defaultTrackEvent } from '@/lib/posthog'
+import { collectThreadSources } from '@/lib/source-utils'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import type { Agent, AgentAdapterContext } from '@/types/acp'
@@ -316,6 +317,9 @@ export const createAgentRoutingFetch = (
     }
   }
 
+  /** The call cap is per turn, but citation numbering is per thread: the budget is
+   *  seeded with earlier turns' sources so a follow-up's `[N]` keeps pointing at
+   *  the page the model saw labelled `[Source N]`. */
   const getWebToolBudget = (messages: ThunderboltUIMessage[]): WebToolBudget | undefined => {
     const lastUserMessage = messages.findLast((message) => message.role === 'user')
     if (!lastUserMessage) {
@@ -329,6 +333,7 @@ export const createAgentRoutingFetch = (
       resolveWebToolIntent(extractLastUserText(messages)),
       undefined,
       webBudgetExhaustedMessage,
+      collectThreadSources(messages),
     )
     routingState.webToolBudgetState = { key, budget }
     return budget

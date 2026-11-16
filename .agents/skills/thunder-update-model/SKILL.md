@@ -1,13 +1,13 @@
 ---
 name: thunder-update-model
-description: Swap a built-in model in the catalog (retire one, add its replacement) end to end, from a fresh worktree to a verified branch ready for /thunderpush.
+description: Swap a built-in model in the catalog (retire one, add its replacement) end to end, from a fresh worktree to a verified branch ready for /thunder-push.
 disable-model-invocation: true
 ---
 
 # Updating a built-in model
 
 Swap one built-in model for its replacement, from a fresh worktree to a verified branch ready for
-`/thunderpush`. The questions need the developer, so run this in the developer-facing session, not
+`/thunder-push`. The questions need the developer, so run this in the developer-facing session, not
 in a subagent.
 
 ## Read first
@@ -25,8 +25,7 @@ in a subagent.
 Up to four space-separated tokens, in this order: the leaving model (slug or export constant,
 never a display name), the provider that serves the replacement, the incoming model id, and a
 Linear ticket (`THU-nnn`). Each token answers its question below; ask only the questions that
-remain. Claude Code passes them as `$ARGUMENTS`; other harnesses pass the text typed after the
-skill name.
+remain. They arrive as the text typed after the skill name.
 
 ## Harness notes
 
@@ -203,7 +202,7 @@ Done when the report arrives with those three things.
 Present, in this order: the checklist table from the implementer's report, the model, the effort and
 the reason chosen in stage 6, the tail of each verification command, the grep report, the deploy
 note from the checklist, the two manual follow-ups below, and the exact next command:
-`/thunderpush`. CI runs the deep review on the PR, so do not start it here. Stop there.
+`/thunder-push`. CI runs the deep review on the PR, so do not start it here. Stop there.
 
 Name both follow-ups with their values and tell the developer to change them by hand:
 
@@ -222,7 +221,7 @@ Name both follow-ups with their values and tell the developer to change them by 
 
 ## Guardrails
 
-- Never commit or push from this skill; `/thunderpush` owns that.
+- Never commit or push from this skill; `/thunder-push` owns that.
 - Never run bare `bun test` at the repo root; use the scoped commands in the checklist.
 - Pin pi-ai where it is: items 16 and 17 alias a model Pi's catalog lacks, and a dependency bump
   ships as its own PR.

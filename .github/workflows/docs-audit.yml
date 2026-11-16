@@ -70,7 +70,8 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       # The agent has no shell, no web access and no git. It reads only the checkout and writes only docs and its
-      # summary. /proc is denied because the session's own environment holds the key.
+      # summary. /proc is denied because the session's own environment holds the key. Glob and Grep get no allow rule:
+      # Claude Code never matches a path against one, so dontAsk keeps their searches inside the working directory.
       - name: Audit
         timeout-minutes: 50
         uses: anthropics/claude-code-action@fd1c128679612beff4ca259c78021c506e8aa7a7 # v1.0.237
@@ -83,7 +84,7 @@ jobs:
             --setting-sources user
             --permission-mode dontAsk
             --tools "Read,Glob,Grep,Edit,Write"
-            --allowedTools "Read(./**),Glob,Grep,Edit(docs/**/*.md),Edit(AGENTS.md),Edit(**/AGENTS.md),Edit(${{ env.DOCS_AUDIT_SUMMARY }})"
+            --allowedTools "Read(./**),Edit(docs/**/*.md),Edit(AGENTS.md),Edit(**/AGENTS.md),Edit(${{ env.DOCS_AUDIT_SUMMARY }})"
             --disallowedTools "Read(//proc/**)"
             --max-budget-usd ${{ env.DOCS_AUDIT_MAX_BUDGET_USD }}
             --max-turns ${{ env.DOCS_AUDIT_MAX_TURNS }}

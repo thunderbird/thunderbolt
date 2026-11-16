@@ -152,8 +152,9 @@ Without SCIM, an account exists once the person signs in for the first time.
 
 People a provider with both SSO and SCIM manages sign in through SSO only: their email codes and
 passkey sign-in are refused, so the provider's MFA always applies. That holds after the provider
-deletes them, too, until an admin detaches the link. Members of a SCIM-only connection keep email
-codes.
+deletes them, too, until an admin detaches the link
+(`POST /v1/admin/members/:userId/connections/:connectionId/detach`). Members of a SCIM-only
+connection keep email codes.
 
 ## Removing access
 
@@ -162,6 +163,7 @@ codes.
 | Offboard someone (SSO)           | Disable or remove them in your identity provider. Without SCIM that stops new sign-ins only; block them too to end sessions   |
 | Offboard everyone a provider let in | Retire its SSO connection (`POST /v1/admin/connections/:id/retire`). Members it alone admitted lose access; anyone another source admits keeps it. Retire its SCIM side first and wait until `GET /v1/admin/connections/:id` shows `scim_retired`; the env connection `sso` can't be retired |
 | Offboard someone (any sign-in)   | Block them through the admin API (`POST /v1/admin/members/:userId/block`). It outranks every identity provider grant          |
+| Let someone the provider deleted back in locally | Detach the link (`POST /v1/admin/members/:userId/connections/:connectionId/detach`). Their other access, such as an invitation, then decides. Only a link the provider deleted, or one on a retiring or retired SCIM side, can be detached, and the provider no longer signs them in. You can't detach your own |
 | Remove a blocked member for good | Purge them through the admin API (`DELETE /v1/admin/members/:userId`), which deletes their account and data                   |
 | Cut off one lost laptop or phone | The user revokes it under **Settings → Devices**                                                                              |
 | Remove a person's data entirely  | The user does it under **Settings → Preferences → Data**, or you delete their `user` row, which cascades to their synced data |

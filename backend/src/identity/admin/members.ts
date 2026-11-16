@@ -4,14 +4,17 @@
 
 import type { db as DbType, QueryableDatabase } from '@/db/client'
 import {
+  account,
   groupRoleMapping,
   identityConnection,
   localGroupMember,
   memberRoleGrant,
   membershipSource,
   orgMembership,
+  scimIdentityTombstone,
   scimProjectionGrant,
   session,
+  ssoProvider,
   user,
 } from '@/db/schema'
 import { APIError } from 'better-auth'
@@ -21,6 +24,7 @@ import {
   type AccessState,
   computeAccess,
   idpManagingSources,
+  isCountedSource,
   type MembershipSourceRow,
   requiresSso,
 } from '../access'
@@ -490,6 +494,118 @@ export const updateMemberProfile = async (
       actor: { type: 'user', id: actorId },
       target: { type: 'user', id: userId },
       metadata: { fields: ['name'] },
+    })
+  })
+}
+
+const memberLinkNotFound = () =>
+  new APIError('NOT_FOUND', { message: 'The member has no link to this connection', code: 'MEMBER_LINK_NOT_FOUND' })
+
+/**
+ * Detach a member from one connection, so their other sources and local grants decide their access
+ * again. Deletes their `scim` and `sso` sources on it, their account on its SSO side, and the SCIM
+ * plugin's tombstone for them, so a later SCIM create of the same identity goes through linking
+ * instead of relinking silently. Only a `scim` source the IdP deleted, or one the access check
+ * ignores, can go: an active one still vouches for the member, and a suspended one keeps the IdP's
+ * record, which a reactivation would bring back.
+ */
+export const detachMemberLink = async (
+  database: typeof DbType,
+  { userId, identityConnectionId, actorId }: { userId: string; identityConnectionId: string; actorId: string },
+) => {
+  // Their `sso` source on a retired SCIM side may be what admits them.
+  if (userId === actorId) {
+    throw new APIError('CONFLICT', { message: 'Admins cannot detach their own link', code: 'DETACH_SELF' })
+  }
+  await database.transaction(async (tx) => {
+    const membership = await findMembership(tx, userId)
+    const [connection] = await tx
+      .select({
+        id: identityConnection.id,
+        status: identityConnection.status,
+        scimConnectionId: identityConnection.scimConnectionId,
+        providerId: ssoProvider.providerId,
+      })
+      .from(identityConnection)
+      .leftJoin(ssoProvider, eq(ssoProvider.id, identityConnection.ssoProviderId))
+      .where(
+        and(eq(identityConnection.id, identityConnectionId), eq(identityConnection.orgId, getCurrentOrganizationId())),
+      )
+    if (!connection) {
+      throw memberLinkNotFound()
+    }
+    // Before the sources, in the order a SCIM create that consumes the tombstone takes them, so the
+    // two don't deadlock. The plugin reads the tombstone before its transaction, though: a create
+    // that read it before this commits still links to the member, and then holds a live source.
+    const tombstones = connection.scimConnectionId
+      ? await tx
+          .delete(scimIdentityTombstone)
+          .where(
+            and(
+              eq(scimIdentityTombstone.connectionId, connection.scimConnectionId),
+              eq(scimIdentityTombstone.userId, userId),
+            ),
+          )
+          .returning()
+      : []
+    const onConnection = and(
+      eq(membershipSource.membershipId, membership.membershipId),
+      eq(membershipSource.identityConnectionId, connection.id),
+    )
+    const sources = await tx
+      .select({
+        id: membershipSource.id,
+        kind: membershipSource.kind,
+        status: membershipSource.status,
+        identityConnectionId: membershipSource.identityConnectionId,
+      })
+      .from(membershipSource)
+      .where(onConnection)
+      .for('update')
+    const scimSource = sources.find((source) => source.kind === 'scim')
+    if (!scimSource) {
+      if (sources.length === 0) {
+        throw memberLinkNotFound()
+      }
+      throw new APIError('CONFLICT', {
+        message: 'No identity provider manages this member through this connection',
+        code: 'LINK_NOT_DETACHABLE',
+      })
+    }
+    const counted = isCountedSource(scimSource, new Map([[connection.id, connection.status]]))
+    if (counted && scimSource.status === 'active') {
+      throw new APIError('CONFLICT', {
+        message: 'The identity provider still vouches for this member; remove them there first',
+        code: 'LINK_SOURCE_ACTIVE',
+      })
+    }
+    if (counted && scimSource.status === 'suspended') {
+      throw new APIError('CONFLICT', {
+        message: 'The identity provider keeps a record of this member; delete the user in the identity provider first',
+        code: 'LINK_SOURCE_SUSPENDED',
+      })
+    }
+    // The `for update` above keeps the checked status from changing before this delete. An `sso`
+    // source the connection admitted before it had SCIM is no local grant either.
+    const deleted = await tx.delete(membershipSource).where(onConnection).returning()
+    const accounts = connection.providerId
+      ? await tx
+          .delete(account)
+          .where(and(eq(account.userId, userId), eq(account.providerId, connection.providerId)))
+          .returning()
+      : []
+    await insertAuditEvent(tx, {
+      action: 'link.detached',
+      outcome: 'success',
+      actor: { type: 'user', id: actorId },
+      target: { type: 'user', id: userId },
+      connectionId: connection.id,
+      metadata: {
+        sourceStatus: scimSource.status,
+        kinds: deleted.map((source) => source.kind).sort(),
+        accountsRemoved: accounts.length,
+        tombstoneCleared: tombstones.length > 0,
+      },
     })
   })
 }

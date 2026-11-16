@@ -5,16 +5,18 @@
 import type { Settings } from '@/config/settings'
 import type { db as DbType, QueryableDatabase } from '@/db/client'
 import {
+  account,
   identityConnection,
   type identityConnectionStatuses,
+  linkReview,
   membershipSource,
   orgDomain,
   ssoProvider,
 } from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
-import { computeDiscoveryUrl } from '@better-auth/sso'
+import { computeDiscoveryUrl, DiscoveryError, validateDiscoveryUrl } from '@better-auth/sso'
 import { APIError } from 'better-auth'
-import { and, asc, eq, isNull, ne } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm'
 import type { AuthAdapter } from './access'
 import { insertAuditEvent } from './audit/write'
 import { getCurrentOrganizationId } from './current-organization'
@@ -239,9 +241,9 @@ export type CreateSsoConnectionInput = {
 export const ssoProviderIdPattern = '^[a-z0-9][a-z0-9-]{0,62}$'
 
 /**
- * Create an SSO connection. This and the env seed are the only writers: SSO providers are never
- * registered through Better Auth's `/sso/register`, which the auth guard refuses to every caller.
- * Returns the connection id.
+ * Create an SSO connection. This, `updateSsoConnection` and the env seed are the only writers: SSO
+ * providers are never registered or updated through Better Auth's `/sso/*` routes, which the auth
+ * guard refuses to every caller. Returns the connection id.
  */
 export const createSsoConnection = async (
   database: typeof DbType,
@@ -320,6 +322,185 @@ const attachSsoSide = async (
   return identityConnectionId
 }
 
+export type UpdateSsoConnectionInput = {
+  identityConnectionId: string
+  name?: string
+  matchClaim?: string
+  /** Identifying: refused when it differs from the stored one, as are `oidc.issuer` and `saml.entityId`/`idpIssuer`. */
+  providerId?: string
+  oidc?: Partial<OidcConnectionConfig>
+  saml?: Partial<SamlConnectionConfig>
+  actorId: string
+  /** Better Auth's trusted-origin check, which sign-in applies to the discovery URL too. */
+  isTrustedOrigin: (url: string) => boolean
+}
+
+/** The fields a protocol config may change, and those of them that move linked identities. */
+const editableProviderFields = {
+  oidc: { settable: ['clientId', 'clientSecret', 'discoveryEndpoint'], locked: ['clientId', 'discoveryEndpoint'] },
+  saml: { settable: ['cert', 'entryPoint'], locked: ['entryPoint'] },
+} as const
+
+const isChange = (next: unknown, current: unknown) => next !== undefined && next !== current
+
+const ssoConnectionNotFound = () =>
+  new APIError('NOT_FOUND', { message: 'SSO connection not found', code: 'SSO_CONNECTION_NOT_FOUND' })
+
+const envOwnedConnection = () =>
+  new APIError('CONFLICT', {
+    message: "This connection comes from the server's OIDC or SAML settings; change them there",
+    code: 'SSO_CONNECTION_ENV_OWNED',
+  })
+
+/** Refuse a discovery URL sign-in would refuse: not a URL, or not on a trusted origin. */
+const assertDiscoveryUrl = (url: string, isTrustedOrigin: (url: string) => boolean) => {
+  try {
+    validateDiscoveryUrl(url, isTrustedOrigin)
+  } catch (error) {
+    if (!(error instanceof DiscoveryError)) {
+      throw error
+    }
+    throw new APIError('BAD_REQUEST', {
+      message: error.message,
+      code: error.code === 'discovery_untrusted_origin' ? 'SSO_DISCOVERY_URL_UNTRUSTED' : 'SSO_DISCOVERY_URL_INVALID',
+    })
+  }
+}
+
+/**
+ * Edit an SSO connection: its name, an OIDC client and discovery URL, a SAML certificate and entry
+ * point, and its match claim. What names the IdP or our service provider (the provider id, the
+ * OIDC issuer, the SAML entity ids) never changes, and what decides which IdP identity an account
+ * belongs to (the client id, the discovery URL, the entry point, the match claim) changes only while
+ * no identity is linked, so a secret or certificate rotation never makes anyone relink. The stored
+ * config is merged, keeping every field it doesn't name. The event names the fields, never a value.
+ */
+export const updateSsoConnection = async (
+  database: typeof DbType,
+  {
+    identityConnectionId,
+    name,
+    matchClaim,
+    providerId,
+    oidc,
+    saml,
+    actorId,
+    isTrustedOrigin,
+  }: UpdateSsoConnectionInput,
+) =>
+  database.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ connection: identityConnection, provider: ssoProvider })
+      .from(identityConnection)
+      .innerJoin(ssoProvider, eq(ssoProvider.id, identityConnection.ssoProviderId))
+      .where(
+        and(eq(identityConnection.id, identityConnectionId), eq(identityConnection.orgId, getCurrentOrganizationId())),
+      )
+      .for('update')
+    if (!row || row.connection.status === 'retired') {
+      throw ssoConnectionNotFound()
+    }
+    if (row.connection.id === envSsoConnectionId) {
+      throw envOwnedConnection()
+    }
+    const { connection, provider } = row
+    const protocol = provider.oidcConfig ? 'oidc' : 'saml'
+    if ((protocol === 'oidc' ? saml : oidc) !== undefined) {
+      throw new APIError('BAD_REQUEST', {
+        message: `This connection uses ${protocol.toUpperCase()}`,
+        code: 'SSO_PROTOCOL_MISMATCH',
+      })
+    }
+    const configField = protocol === 'oidc' ? 'oidcConfig' : 'samlConfig'
+    const stored = parseConfig(provider[configField])
+    const patch: Record<string, string | undefined> = (protocol === 'oidc' ? oidc : saml) ?? {}
+
+    const storedIdentity: Record<string, unknown> =
+      protocol === 'oidc'
+        ? { issuer: stored.issuer }
+        : { entityId: stored.issuer, idpIssuer: (stored.idpMetadata as { entityID?: string } | undefined)?.entityID }
+    const [immutable] = [
+      ...(isChange(providerId, provider.providerId) ? ['providerId'] : []),
+      ...Object.keys(storedIdentity).filter((field) => isChange(patch[field], storedIdentity[field])),
+    ]
+    if (immutable) {
+      throw new APIError('CONFLICT', {
+        message: `The ${immutable} of a connection can't change; retire it and create another`,
+        code: 'SSO_IDENTITY_FIELD_IMMUTABLE',
+        field: immutable,
+      })
+    }
+
+    const { settable, locked } = editableProviderFields[protocol]
+    const updates = Object.fromEntries(
+      settable.flatMap((field) => {
+        // An empty discovery URL means the issuer's own, as on create.
+        const next =
+          field === 'discoveryEndpoint' && patch[field] === ''
+            ? computeDiscoveryUrl(String(stored.issuer))
+            : patch[field]
+        return isChange(next, stored[field]) ? [[field, next]] : []
+      }),
+    )
+    const lockedField = locked.find((field) => field in updates)
+    const matchClaimChanged = isChange(matchClaim, connection.matchClaim)
+    if (lockedField || matchClaimChanged) {
+      const linked = (await tx.$count(account, eq(account.providerId, provider.providerId))) > 0
+      if (lockedField && linked) {
+        throw new APIError('CONFLICT', {
+          message: `The ${lockedField} can't change while identities are linked through this connection`,
+          code: 'SSO_IDENTITY_FIELD_LOCKED',
+          field: lockedField,
+        })
+      }
+      const reviewed =
+        matchClaimChanged &&
+        (await tx.$count(
+          linkReview,
+          and(eq(linkReview.identityConnectionId, connection.id), inArray(linkReview.status, ['pending', 'approved'])),
+        )) > 0
+      if (matchClaimChanged && (linked || reviewed)) {
+        throw new APIError('CONFLICT', {
+          message: "The match claim can't change while identities are linked or awaiting review",
+          code: 'SSO_MATCH_CLAIM_LOCKED',
+        })
+      }
+    }
+    if (typeof updates.discoveryEndpoint === 'string') {
+      assertDiscoveryUrl(updates.discoveryEndpoint, isTrustedOrigin)
+    }
+
+    const connectionChanges = {
+      ...(isChange(name, connection.name) ? { name } : {}),
+      ...(matchClaimChanged ? { matchClaim } : {}),
+    }
+    const next = { ...provider, [configField]: JSON.stringify({ ...stored, ...updates }) }
+    const changedFields = [
+      ...Object.keys(connectionChanges),
+      ...(Object.keys(updates).length > 0 ? changedProviderFields(provider, next) : []),
+    ]
+    if (changedFields.length === 0) {
+      return
+    }
+    if (Object.keys(connectionChanges).length > 0) {
+      await tx.update(identityConnection).set(connectionChanges).where(eq(identityConnection.id, connection.id))
+    }
+    if (Object.keys(updates).length > 0) {
+      await tx
+        .update(ssoProvider)
+        .set({ [configField]: next[configField] })
+        .where(eq(ssoProvider.id, provider.id))
+    }
+    await insertAuditEvent(tx, {
+      action: 'connection.updated',
+      outcome: 'success',
+      actor: { type: 'user', id: actorId },
+      target: { type: 'identity_connection', id: connection.id },
+      connectionId: connection.id,
+      metadata: { side: 'sso', providerId: provider.providerId, changedFields },
+    })
+  })
+
 /**
  * Retire a connection: its SSO side stops signing anyone in, and the access check stops counting
  * the `sso` sources it admitted, so members it alone let in lose access. The env connection is
@@ -338,13 +519,10 @@ export const retireSsoConnection = async (
         and(eq(identityConnection.id, identityConnectionId), eq(identityConnection.orgId, getCurrentOrganizationId())),
       )
     if (!row?.ssoProviderId || row.status === 'retired') {
-      throw new APIError('NOT_FOUND', { message: 'SSO connection not found', code: 'SSO_CONNECTION_NOT_FOUND' })
+      throw ssoConnectionNotFound()
     }
     if (row.id === envSsoConnectionId) {
-      throw new APIError('CONFLICT', {
-        message: "This connection comes from the server's OIDC or SAML settings; change them there",
-        code: 'SSO_CONNECTION_ENV_OWNED',
-      })
+      throw envOwnedConnection()
     }
     if (row.scimConnectionId && row.status !== 'scim_retired') {
       throw new APIError('CONFLICT', {

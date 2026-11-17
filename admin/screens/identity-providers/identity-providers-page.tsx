@@ -15,10 +15,11 @@ import { ListSkeleton } from '../../components/list-skeleton'
 import { ResourcePageDialogs } from '../../components/resource-page-dialogs'
 import { StatusBadge } from '../../components/status-badge'
 import { useResourcePageState } from '../../components/use-resource-page-state'
+import { ConnectionEditor } from './connection-editor'
 import { connectionBadge, envOwnedLabel, scimLabels, ssoLabels } from './connection-labels'
 import { describeConnection } from './connection-status'
 import { NewConnectionEditor } from './new-connection-editor'
-import { useConnections } from './use-connection-queries'
+import { useConnections, useRetireConnection } from './use-connection-queries'
 
 const ConnectionRow = ({
   connection,
@@ -60,6 +61,7 @@ export const IdentityProvidersPage = () => {
   const { t, i18n } = useLingui()
   const page = useResourcePageState()
   const connections = useConnections()
+  const retire = useRetireConnection()
 
   const panel =
     page.selectedId === 'new' ? (
@@ -68,6 +70,8 @@ export const IdentityProvidersPage = () => {
         onCreated={(connectionId) => page.select(connectionId)}
         onDirty={(dirty) => page.patch({ dirty })}
       />
+    ) : page.selectedId ? (
+      <ConnectionEditor key={page.selectedId} connectionId={page.selectedId} page={page} />
     ) : null
 
   const body = () => {
@@ -99,17 +103,29 @@ export const IdentityProvidersPage = () => {
   }
 
   return (
-    <AdminPage
-      title={t`Identity providers`}
-      action={<PageCreateAction label={t`Add connection`} onClick={() => page.requestSelect('new')} />}
-      panel={panel}
-      onClose={page.close}
-    >
-      <p className="text-sm text-muted-foreground">
-        <Trans>Connect your identity provider to sign people in and keep accounts in step with it.</Trans>
-      </p>
-      {body()}
-      <ResourcePageDialogs page={page} />
-    </AdminPage>
+    <>
+      <AdminPage
+        title={t`Identity providers`}
+        action={<PageCreateAction label={t`Add connection`} onClick={() => page.requestSelect('new')} />}
+        panel={panel}
+        onClose={page.close}
+      >
+        <p className="text-sm text-muted-foreground">
+          <Trans>Connect your identity provider to sign people in and keep accounts in step with it.</Trans>
+        </p>
+        {body()}
+      </AdminPage>
+      <ResourcePageDialogs
+        page={page}
+        remove={{
+          title: t`Retire this connection?`,
+          description: t`Nobody can sign in through it any more, and members only it admitted lose access. This can't be undone.`,
+          confirmLabel: t`Retire connection`,
+          onConfirm: async (connectionId) => {
+            await retire.mutateAsync(connectionId)
+          },
+        }}
+      />
+    </>
   )
 }

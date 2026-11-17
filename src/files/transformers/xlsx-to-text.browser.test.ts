@@ -98,12 +98,11 @@ describe('xlsx-to-text in the browser build, with Workers blocked', () => {
     )
   })
 
-  test('unpacks an entry that understates its size only to the size it declares', async () => {
-    // The sheet holds 80 MiB of text but declares 1 KiB. Unpacked in full it would parse; cut off at 1 KiB, its XML
-    // ends early.
+  test('refuses an entry that understates its size once it passes that size, without inflating the rest', async () => {
+    // The sheet holds 80 MiB of text but declares 1 KiB.
     const understated = relabelLastEntry(workbook([['a'.repeat(80 * mib)]]), 1024, 8)
 
-    await expect(xlsx.xlsxToText(asFile(understated))).rejects.toThrow('unexpected end of file')
+    await expect(xlsx.xlsxToText(asFile(understated))).rejects.toThrow('unpacks to more than it declares')
   }, 10_000)
 
   test('counts a stored entry at its stored size, which unpacking copies in full whatever size it declares', async () => {

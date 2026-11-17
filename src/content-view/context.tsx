@@ -4,6 +4,7 @@
 
 import { msg } from '@lingui/core/macro'
 import { i18n } from '@lingui/core'
+import { useChatStore } from '@/chats/chat-store'
 import { getMcpToolDisplay } from '@/lib/mcp-tool-display'
 import { trackEvent as defaultTrackEvent } from '@/lib/posthog'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
@@ -94,6 +95,13 @@ export const ContentViewProvider = ({
 }) => {
   const [state, setState] = useState<ContentViewState>({ type: null, data: null })
   const [previewHidden, setPreviewHidden] = useState(false)
+  // The provider sits above the routes, so a view would outlive the chat it shows a file from: switching chats closes it.
+  const currentSessionId = useChatStore((store) => store.currentSessionId)
+  const [viewSessionId, setViewSessionId] = useState(currentSessionId)
+  if (viewSessionId !== currentSessionId) {
+    setViewSessionId(currentSessionId)
+    setState({ type: null, data: null })
+  }
 
   const showObjectView = useCallback(
     (content: ObjectViewContent, mcpTools?: UIMessageMetadata['mcpTools']) => {

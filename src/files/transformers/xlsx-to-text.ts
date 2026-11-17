@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { StoredFile } from '@/lib/file-blob-storage'
+import type { visitStartTags } from '@/office/xlsx-drawings'
 import type { UnzipFileInfo } from 'fflate'
 import type { CellValue } from 'read-excel-file/browser'
 
@@ -50,6 +51,23 @@ const csvField = (text: string): string => {
 export type SpreadsheetSheet = {
   readonly name: string
   readonly rows: string[][]
+  /** Hidden from the sheet tabs, though still in the workbook. */
+  readonly hidden?: boolean
+}
+
+/**
+ * Whether each sheet `xl/workbook.xml` lists is hidden, in the order the sheet reader returns them: every `<sheet>`
+ * with a name, whatever its prefix, outside comments. Run only on XML the reader has parsed, so every tag closes.
+ */
+const hiddenSheets = (workbookXml: string, visit: typeof visitStartTags): boolean[] => {
+  const hidden: boolean[] = []
+  visit(workbookXml.replace(/<!--[\s\S]*?-->/g, ''), new Set(['sheet']), (_, attributes) => {
+    if (attributes.some(({ local }) => local === 'name')) {
+      hidden.push(/^(?:hidden|veryHidden)$/.test(attributes.findLast(({ local }) => local === 'state')?.value ?? ''))
+    }
+    return true
+  })
+  return hidden
 }
 
 const mib = 1024 * 1024
@@ -87,10 +105,13 @@ const checkEntries = (entries: readonly UnzipFileInfo[]): void => {
  * readers are imported lazily.
  */
 export const readXlsxSheets = async (file: StoredFile): Promise<SpreadsheetSheet[]> => {
-  const [{ default: readXlsxFile }, { unzipSync, zipSync }] = await Promise.all([
-    import('read-excel-file/browser'),
-    import('fflate'),
-  ])
+  const [{ default: readXlsxFile }, { strFromU8, unzipSync, zipSync }, { unzipWithinLimits }, { visitStartTags }] =
+    await Promise.all([
+      import('read-excel-file/browser'),
+      import('fflate'),
+      import('@/files/unzip-within-limits'),
+      import('@/office/xlsx-drawings'),
+    ])
   const zip = new Uint8Array(await file.blob.arrayBuffer())
   const entries: UnzipFileInfo[] = []
   unzipSync(zip, {
@@ -104,10 +125,15 @@ export const readXlsxSheets = async (file: StoredFile): Promise<SpreadsheetSheet
     },
   })
   checkEntries(entries)
+  // `unzipSync` inflates a part that understates its size in full before dropping what does not fit, which can freeze
+  // the tab for seconds on a GiB of data. This stops each part at its declared size.
+  const parts = unzipWithinLimits(zip, { bytes: maxUnpackedMib * mib, parts: maxEntries })
   // The app's CSP blocks the `blob:` Workers the reader starts to inflate compressed sheets, so store every entry.
-  const sheets = await readXlsxFile(zipSync(unzipSync(zip), { level: 0 }).buffer)
-  return sheets.map(({ sheet, data }) => ({
+  const sheets = await readXlsxFile(zipSync(Object.fromEntries(parts), { level: 0 }).buffer)
+  const hidden = hiddenSheets(strFromU8(parts.get('xl/workbook.xml') ?? new Uint8Array()), visitStartTags)
+  return sheets.map(({ sheet, data }, index) => ({
     name: sheet,
+    hidden: hidden[index] ?? false,
     // The reader pads a blank row to the sheet's width with null, its value for every empty cell; an empty array keeps
     // the row one byte in a `.tsv`.
     rows: data.map((row) => (row.every((cell) => cell === null) ? [] : row.map(cellText))),
@@ -124,11 +150,11 @@ export const readXlsxSheets = async (file: StoredFile): Promise<SpreadsheetSheet
  */
 export const sheetsToText = (sheets: readonly SpreadsheetSheet[]): string =>
   sheets
-    .map(({ name, rows }) => {
+    .map(({ name, rows, hidden }) => {
       const lines = rows.flatMap((row, index) =>
         row.length === 0 ? [] : [`Row ${index + 1}: ${row.map(csvField).join(', ')}`],
       )
-      return `## Sheet: ${name}\n${lines.join('\n')}`
+      return `## Sheet: ${name}${hidden ? ' (hidden)' : ''}\n${lines.join('\n')}`
     })
     .join('\n\n')
     .trim()

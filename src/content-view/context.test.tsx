@@ -6,6 +6,7 @@ import '@/testing-library'
 import { act, render, renderHook, fireEvent } from '@testing-library/react'
 import type { DynamicToolUIPart, ToolUIPart } from 'ai'
 import { describe, expect, mock, test } from 'bun:test'
+import { useChatStore } from '@/chats/chat-store'
 import type { EventType } from '@/lib/posthog'
 import { memo, type ReactNode } from 'react'
 import {
@@ -62,6 +63,21 @@ describe('ContentView sideview mode', () => {
     })
 
     expect(result.current.state.type).toBeNull()
+  })
+
+  test('switching to another chat closes the view, and going back does not reopen it', () => {
+    act(() => useChatStore.getState().setCurrentSessionId('chat-a'))
+    const { result } = renderHook(() => useContentView(), { wrapper })
+
+    act(() => result.current.showSideview('document', 'file-1:report.docx'))
+    act(() => useChatStore.getState().setCurrentSessionId('chat-a'))
+    expect(result.current.state.type).toBe('sideview')
+
+    act(() => useChatStore.getState().setCurrentSessionId('chat-b'))
+    expect(result.current.state.type).toBeNull()
+
+    act(() => useChatStore.getState().setCurrentSessionId('chat-a'))
+    expect(result.current.isOpen).toBe(false)
   })
 
   test('useSideview reports the active sideview', () => {

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 import type { StoredFile } from '@/lib/file-blob-storage'
 import { workbook, type WorkbookRows } from '@/test-utils/xlsx-workbook'
 import { readXlsxSheets, sheetsToText, xlsxToText } from './xlsx-to-text'
@@ -77,6 +78,35 @@ describe('reading a workbook', () => {
     expect(await xlsxToText(asFile([['Revenue', 100]], [['Revenue', 150.5]]))).toEqual({
       text: '## Sheet: Sheet1\nRow 1: Revenue, 100\n\n## Sheet: Sheet2\nRow 1: Revenue, 150.5',
     })
+  })
+
+  test('marks the sheets hidden from the tabs', async () => {
+    const parts = unzipSync(workbook([['shown']], [['hidden']], [['very hidden']]))
+    parts['xl/workbook.xml'] = strToU8(
+      strFromU8(parts['xl/workbook.xml'])
+        .replace('<sheets>', '<sheets><!-- <sheet name="Old" state="hidden"/> -->')
+        .replace('<sheet name="Sheet2"', '<sheet state="hidden" name="Sheet2"')
+        .replace('<sheet name="Sheet3"', '<sheet name="Sheet3" state=\'veryHidden\''),
+    )
+    const bytes = zipSync(parts)
+    const file = { ...asFile(), size: bytes.byteLength, blob: new Blob([bytes]) }
+
+    expect((await xlsxToText(file)).text).toBe(
+      '## Sheet: Sheet1\nRow 1: shown\n\n## Sheet: Sheet2 (hidden)\nRow 1: hidden\n\n## Sheet: Sheet3 (hidden)\nRow 1: very hidden',
+    )
+  })
+
+  test('marks a hidden sheet whose name holds a >', async () => {
+    const parts = unzipSync(workbook([['shown']], [['hidden']]))
+    parts['xl/workbook.xml'] = strToU8(
+      strFromU8(parts['xl/workbook.xml']).replace('<sheet name="Sheet2"', '<sheet name="Q1>Q2" state="hidden"'),
+    )
+    const bytes = zipSync(parts)
+    const file = { ...asFile(), size: bytes.byteLength, blob: new Blob([bytes]) }
+
+    expect((await xlsxToText(file)).text).toBe(
+      '## Sheet: Sheet1\nRow 1: shown\n\n## Sheet: Q1>Q2 (hidden)\nRow 1: hidden',
+    )
   })
 
   test('renders an empty cell between two others as an empty string, not the literal "null"', async () => {

@@ -7,6 +7,7 @@ import { Boxes, Globe, KeyRound, LifeBuoy, Link2, Mail, ScrollText, Users } from
 import type { ReactNode } from 'react'
 import { SectionSidebar, type SectionNavGroup } from '@/layout/sidebar/section-sidebar'
 import type { SidebarSection } from '@/layout/sidebar/types'
+import { usePendingLinkReviewCount } from './screens/link-reviews/use-pending-link-review-count'
 
 /** The admin sidebar. Each entry matches a route in `admin-routes.tsx`. */
 export const adminNavGroups: SectionNavGroup[] = [
@@ -31,7 +32,7 @@ export const adminNavGroups: SectionNavGroup[] = [
     id: 'security',
     label: msg`Security`,
     items: [
-      { path: '/admin/link-reviews', label: msg`Link reviews`, icon: Link2 },
+      { path: '/admin/link-reviews', label: msg`Link reviews`, icon: Link2, useBadge: usePendingLinkReviewCount },
       { path: '/admin/audit-log', label: msg`Audit log`, icon: ScrollText },
       { path: '/admin/break-glass', label: msg`Break-glass`, icon: LifeBuoy },
     ],

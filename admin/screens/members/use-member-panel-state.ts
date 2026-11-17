@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts'
 import { adminRole, type AdminMember, type AdminMemberWithWarning } from '@shared/admin-api'
 import { adminQueryKeys } from '../../api/query-keys'
 import { useAdminApi } from '../../api/use-admin-api'
+import { useConnections } from '../../api/use-connections'
 import { hasBreakGlassWarning } from '../../components/break-glass-banner'
 import type { ConnectionStatusById } from './member-rules'
 
@@ -25,10 +26,7 @@ export const useMemberPanelState = (userId: string) => {
     queryKey: adminQueryKeys.members.detail(userId),
     queryFn: () => api.members.get(userId),
   })
-  const connections = useQuery({
-    queryKey: adminQueryKeys.connections.list(),
-    queryFn: () => api.connections.list(),
-  })
+  const connections = useConnections()
   const connectionStatusById: ConnectionStatusById = new Map(
     (connections.data ?? []).map((connection) => [connection.id, connection.status]),
   )

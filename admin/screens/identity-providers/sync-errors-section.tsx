@@ -4,6 +4,7 @@
 
 import { Trans } from '@lingui/react/macro'
 import { Link } from 'react-router'
+import { useAppName } from '@/lib/branding-selectors'
 import type { AuditEvent, AuditEventQuery } from '@shared/admin-api'
 import { auditLogPath } from '../../api/audit-log-url'
 import { AuditEventList } from '../../components/audit-event-list'
@@ -29,13 +30,14 @@ const ScimFailure = ({ event }: { event: AuditEvent }) => {
 
 /** The connection's recent rejected SCIM requests, from the audit log. */
 export const SyncErrorsSection = ({ connectionId }: { connectionId: string }) => {
+  const appName = useAppName()
   const filters: AuditEventQuery = { action: 'scim.request', outcome: 'failure', connectionId }
   return (
     <div className="flex flex-col gap-4">
       <p className="text-muted-foreground">
         <Trans>
-          Requests from your identity provider that Thunderbolt rejected. Requests that never authenticated aren't
-          listed, because they can't be tied to a connection.
+          Requests from your identity provider that {appName} rejected. Requests that never authenticated aren't listed,
+          because they can't be tied to a connection.
         </Trans>
       </p>
       <AuditEventList

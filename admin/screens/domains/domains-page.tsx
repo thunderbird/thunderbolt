@@ -70,7 +70,7 @@ export const DomainsPage = () => {
       panel={panel}
       onClose={page.close}
     >
-      <p className="text-sm text-muted-foreground">
+      <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
         <Trans>Verify the domains your organization owns, then decide how people on each one join.</Trans>
       </p>
       {domains.isPending && <ListSkeleton />}

@@ -991,8 +991,16 @@ msgstr ""
 msgid "Check the backend logs"
 msgstr ""
 
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "Check your connection and open the file again, or download it to open it in a presentation app."
+msgstr ""
+
 #: src/components/xlsx-preview/xlsx-preview.tsx
 msgid "Check your connection and open the file again, or download it to open it in a spreadsheet app."
+msgstr ""
+
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "Check your connection and open the file again, or download it to open it in a word processor."
 msgstr ""
 
 #: src/components/sign-in/sign-in-otp-step.tsx
@@ -2604,7 +2612,11 @@ msgid "Download"
 msgstr ""
 
 #: src/components/chat/created-file-card.tsx
-msgid "Download {filename}"
+#~ msgid "Download {filename}"
+#~ msgstr ""
+
+#: src/components/chat/created-file-card.tsx
+msgid "Download {shownName}"
 msgstr ""
 
 #: src/search/commands/use-commands.ts
@@ -4798,6 +4810,10 @@ msgstr ""
 msgid "Remove {0}?"
 msgstr ""
 
+#: src/components/chat/file-card.tsx
+msgid "Remove {filename}"
+msgstr ""
+
 #: src/settings/connections/integration-detail.tsx
 msgid "Remove {integrationName}?"
 msgstr ""
@@ -5050,6 +5066,18 @@ msgstr ""
 
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Save your recovery phrase"
+msgstr ""
+
+#: src/components/saved-file-notice.tsx
+msgid "Saved {name} to Downloads."
+msgstr ""
+
+#: src/components/saved-file-notice.tsx
+msgid "Saved {name} to the Files app."
+msgstr ""
+
+#: src/lib/download.ts
+msgid "Saving files needs Android 10 or later."
 msgstr ""
 
 #: src/projects/project-form.tsx
@@ -5669,6 +5697,10 @@ msgstr ""
 msgid "Something went wrong"
 msgstr ""
 
+#: src/lib/download.ts
+msgid "Something went wrong while saving the file."
+msgstr ""
+
 #: src/components/chat/error-message.tsx
 #: src/components/magic-link-verify.tsx
 #: src/components/sign-in/sign-in-email-step.tsx
@@ -5997,8 +6029,16 @@ msgstr ""
 msgid "The device will be signed out and lose access to your synced data. Its local copy is cleared the next time it connects; a device that never comes back online keeps what is already on it. Your recovery phrase keeps working."
 msgstr ""
 
+#: src/lib/download.ts
+msgid "The file could not be marked as downloaded from the internet, so it was not saved. The Downloads folder may be on a drive that cannot keep that mark."
+msgstr ""
+
 #: src/components/approve-device/fingerprint-confirmation.tsx
 msgid "The fingerprint doesn't match. Check the fingerprint shown on the new device and try again."
+msgstr ""
+
+#: src/lib/download.ts
+msgid "The folder to save into does not exist."
 msgstr ""
 
 #: src/components/chat/error-message.tsx
@@ -6026,6 +6066,7 @@ msgid "The passkey check was cancelled. Try again when you're ready."
 msgstr ""
 
 #: src/components/xlsx-preview/xlsx-preview.tsx
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "The preview couldn't load"
 msgstr ""
 
@@ -6091,6 +6132,10 @@ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Theme"
+msgstr ""
+
+#: src/lib/download.ts
+msgid "There is not enough free space on this device."
 msgstr ""
 
 #. placeholder {0}: state.modelsWithoutTools.join(', ')
@@ -6474,6 +6519,10 @@ msgstr ""
 msgid "Thunderbolt couldn't verify this device's encryption keys, so it can't update your recovery phrase or passkey. To verify it, sign out with \"Delete data from device\", sign in again, and approve it from a device that was trusted before."
 msgstr ""
 
+#: src/lib/download.ts
+msgid "Thunderbolt is not allowed to save there."
+msgstr ""
+
 #: src/components/sign-in/sign-in-email-step.tsx
 msgid "Thunderbolt is open-source"
 msgstr ""
@@ -6602,6 +6651,10 @@ msgstr ""
 
 #: src/components/approve-device/fingerprint-confirmation.tsx
 msgid "Too many codes didn't match on this device today, so approve with the fingerprint instead."
+msgstr ""
+
+#: src/lib/download.ts
+msgid "Too many files with this name are already in the folder. Rename or move some of them, then try again."
 msgstr ""
 
 #: src/components/chat/error-message.tsx

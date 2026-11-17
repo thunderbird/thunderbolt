@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { expect } from '@playwright/test'
-import { adminApiBaseUrl, adminTest as test, uniqueName } from './admin/helpers'
+import { adminRouteStatus, adminTest as test, uniqueName } from './admin/helpers'
 
 test('mapping a group to admin makes its members admins, and unmapping takes it away', async ({
   page,
@@ -12,12 +12,7 @@ test('mapping a group to admin makes its members admins, and unmapping takes it 
 }) => {
   const member = await adminApi.seedMember()
   const groupName = uniqueName('Group')
-  const adminStatus = async () =>
-    (
-      await request.get(`${adminApiBaseUrl}/admin/members?limit=1`, {
-        headers: { Authorization: `Bearer ${member.token}` },
-      })
-    ).status()
+  const adminStatus = () => adminRouteStatus(request, member.token)
 
   await page.goto('/admin/groups')
   await page.getByRole('button', { name: 'New group' }).click()

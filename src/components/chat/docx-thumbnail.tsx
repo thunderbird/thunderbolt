@@ -24,6 +24,9 @@ export const DocxThumbnail = ({ localFileId, title }: DocxThumbnailProps) => {
     <div className="pointer-events-none absolute inset-0 overflow-hidden bg-white">
       <iframe
         title={title}
+        // The card's button opens the file. WebKit would otherwise put focus inside the frame, where Enter and Space do nothing.
+        tabIndex={-1}
+        aria-hidden="true"
         sandbox=""
         srcDoc={html}
         scrolling="no"

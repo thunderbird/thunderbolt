@@ -2,9 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { i18n } from '@/i18n'
 import { BaseDirectory } from '@tauri-apps/api/path'
 import { describe, expect, it, mock } from 'bun:test'
-import { downloadFile, withSuffix, type DownloadNative, type SaveToDownloadsArgs } from './download'
+import {
+  downloadFile,
+  saveErrorMessage,
+  subscribeToMobileSaves,
+  withSuffix,
+  type DownloadNative,
+  type MobileSave,
+  type SaveToDownloadsArgs,
+} from './download'
 
 const request = { name: 'q3.html', contents: '<p>x</p>', mimeType: 'text/html' }
 
@@ -247,6 +256,79 @@ describe('downloadFile on iOS', () => {
     const { native } = fakeNative('ios', taken)
 
     await expect(downloadFile(request, native)).rejects.toThrow('File exists')
+  })
+})
+
+describe('downloadFile names', () => {
+  /** Windows refuses `:`, and a right-to-left override in the saved name made Downloads show an `.xlsx` as a `.docx`. */
+  it.each([
+    ['macos', 'Meeting 10:30.docx', 'Meeting 10 30.docx'],
+    ['android', `annual${String.fromCharCode(0x202e)}xcod.xlsx`, 'annual xcod.xlsx'],
+  ] as const)('makes the name safe before the %s command sees it', async (platform, name, saved) => {
+    const { native, invoked } = fakeNative(platform)
+
+    expect(await downloadFile({ ...request, name }, native)).toBe(saved)
+    expect(invoked.map(({ args }) => args.name)).toEqual([saved])
+  })
+
+  it('makes the name safe on the web too', async () => {
+    expect(await downloadFile({ ...request, name: 'a?b.html' })).toBe('a b.html')
+  })
+})
+
+describe('subscribeToMobileSaves', () => {
+  it.each(['ios', 'android'] as const)('hears a save on %s with the name it was saved under', async (platform) => {
+    const { native } = fakeNative(platform, ['q3.html'])
+    const saves: MobileSave[] = []
+    const unsubscribe = subscribeToMobileSaves((save) => saves.push(save))
+
+    await downloadFile(request, native)
+    unsubscribe()
+    await downloadFile(request, native)
+
+    expect(saves).toEqual([{ name: 'q3 (1).html', platform }])
+  })
+
+  /** The desktop and the browser show their own download feedback. */
+  it('hears nothing from a desktop save', async () => {
+    const saves: MobileSave[] = []
+    const unsubscribe = subscribeToMobileSaves((save) => saves.push(save))
+
+    await downloadFile(request, fakeNative('linux').native)
+    await downloadFile(request)
+    unsubscribe()
+
+    expect(saves).toEqual([])
+  })
+})
+
+describe('saveErrorMessage', () => {
+  it.each([
+    [
+      'failed to open file at path: /var/mobile/Containers/Data/Application/1/Documents/q3 (19).html with error: File exists (os error 17)',
+      'Too many files with this name are already in the folder. Rename or move some of them, then try again.',
+    ],
+    [
+      'Could not save q3.html to Downloads: it and the next 19 numbered names are taken',
+      'Too many files with this name are already in the folder. Rename or move some of them, then try again.',
+    ],
+    [
+      'Could not use /home/me/Missing/Downloads as the Downloads folder: No such file or directory (os error 2)',
+      'The folder to save into does not exist.',
+    ],
+    [
+      'Could not save q3.html to Downloads: No space left on device (os error 28)',
+      'There is not enough free space on this device.',
+    ],
+    ['forbidden path: $DOCUMENT/q3.html', 'Thunderbolt is not allowed to save there.'],
+    ['Saving files needs Android 10 or later', 'Saving files needs Android 10 or later.'],
+    [
+      'Could not mark q3.html as downloaded from the internet, so it was not saved (Permission denied (os error 13)).',
+      'The file could not be marked as downloaded from the internet, so it was not saved. The Downloads folder may be on a drive that cannot keep that mark.',
+    ],
+    ['something nobody expected', 'Something went wrong while saving the file.'],
+  ])('explains %s in plain words', (raw, reason) => {
+    expect(i18n._(saveErrorMessage(raw))).toBe(reason)
   })
 })
 

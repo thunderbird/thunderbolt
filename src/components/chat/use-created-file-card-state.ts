@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { i18n } from '@/i18n'
 import { useTransientFlag } from '@/hooks/use-transient-flag'
-import { downloadFile } from '@/lib/download'
+import { downloadFile, saveErrorMessage } from '@/lib/download'
 import { getAttachment, type StoredFile } from '@/lib/file-blob-storage'
 import type { CreatedFile } from '@/office/office-script-tool'
 import { useEffect, useState } from 'react'
@@ -55,7 +56,7 @@ export const useCreatedFileCardState = (file: CreatedFile) => {
       flagSaved()
     } catch (error) {
       console.error('[office] Could not save the file', error)
-      setSaveError(error instanceof Error ? error.message : String(error))
+      setSaveError(i18n._(saveErrorMessage(error instanceof Error ? error.message : String(error))))
     }
   }
 

@@ -7,6 +7,7 @@ import { SidebarCloseButton } from '@/components/ui/sidebar-close-button'
 import { ResponsiveModalActions, useResponsiveModalContext } from '@/components/ui/responsive-modal'
 import { useMacWindowControlsClearance } from '@/hooks/use-window-controls-safe-area'
 import { isFramelessControlsPlatform, isTauriDesktop } from '@/lib/platform'
+import { withoutBidiControls } from '@/lib/safe-file-name'
 import { cn } from '@/lib/utils'
 import { type ReactNode } from 'react'
 
@@ -54,7 +55,7 @@ export const ContentViewHeader = ({ title, onClose, actions, className = '' }: C
         className,
       )}
     >
-      <h2 className="truncate text-lg font-semibold">{title}</h2>
+      <h2 className="truncate text-lg font-semibold">{withoutBidiControls(title)}</h2>
       {isMobile && actions && (
         <ResponsiveModalActions className={cn('gap-1', mobileHeaderControlFillDescendantClass)}>
           {actions}

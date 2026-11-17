@@ -6,6 +6,7 @@ import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
 import { docxMime, pptxMime, xlsmMime, xlsxMime } from '@/files/transformers'
+import { withoutBidiControls } from '@/lib/safe-file-name'
 import { FileSpreadsheet, FileText, Presentation, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { DeferredPdfThumbnail } from './deferred-pdf-thumbnail'
@@ -72,7 +73,7 @@ const typeBadge = (filename: string, mimeType: string): string => {
  */
 export const FileCard = ({
   localFileId,
-  filename,
+  filename: rawFilename,
   mimeType,
   onOpen,
   onRemove,
@@ -82,7 +83,8 @@ export const FileCard = ({
   action,
   note,
 }: FileCardProps) => {
-  const { i18n } = useLingui()
+  const { i18n, t } = useLingui()
+  const filename = withoutBidiControls(rawFilename)
   const ext = filename.split('.').pop()?.toLowerCase()
   const PlaceholderIcon = placeholderIcons.get(mimeType) ?? FileText
   const isPdf = mimeType === 'application/pdf'
@@ -133,13 +135,13 @@ export const FileCard = ({
         <button
           type="button"
           onClick={onRemove}
-          aria-label={`Remove ${filename}`}
+          aria-label={t`Remove ${filename}`}
           className="absolute -right-1.5 -top-1.5 cursor-pointer rounded-full border bg-background p-0.5 text-muted-foreground shadow-sm hover:text-foreground"
         >
           <X className="size-3.5" />
         </button>
       )}
-      {action && <div className="absolute right-1.5 top-1.5">{action}</div>}
+      {action && <div className="absolute right-0 top-0">{action}</div>}
       {note && <p className="mt-1 w-28 text-[length:var(--font-size-xs)] text-muted-foreground sm:w-36">{note}</p>}
       {onResend && resendTargets && resendTargets.length > 0 && (
         <div className="mt-1 flex flex-wrap items-center justify-end gap-1">

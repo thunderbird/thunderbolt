@@ -12,8 +12,9 @@ import {
   xlsxMime,
 } from '@/files/transformers'
 import { readXlsxSheets, sheetsToText } from '@/files/transformers/xlsx-to-text'
-import { blobToBase64, isAttachmentPart, unreadableAttachmentNote } from '@/lib/attachments'
+import { attachmentText, blobToBase64, isAttachmentPart, unreadableAttachmentNote } from '@/lib/attachments'
 import { getAttachment, type StoredFile } from '@/lib/file-blob-storage'
+import { promptFileName } from '@/lib/safe-file-name'
 import { hydrateQuotesAsText } from '@/lib/quotes'
 import { officeScriptToolName } from '@/office/constants'
 import type { ThunderboltUIMessage } from '@/types'
@@ -108,10 +109,6 @@ type AttachmentData = Extract<ThunderboltUIMessage['parts'][number], { type: 'da
 const previewMaxLines = 200
 const previewMaxChars = 16_000
 
-/** Label attachment content in plain-text conversation history. */
-const attachmentText = (filename: string, text?: string): string =>
-  text ? `[Attachment: ${filename}]\n\n${text}` : `[Attachment: ${filename}]`
-
 /** Convert transformer data URL to Pi's raw-base64 image shape. */
 const imageFromDataUrl = (mimeType: string, dataUrl: string): ImageContent => ({
   type: 'image',
@@ -160,9 +157,10 @@ const officeMimeTypes = new Set([docxMime, xlsxMime, pptxMime])
  */
 const workspaceAttachment = (data: AttachmentData, files: WorkspaceFile[], preview: string): PreparedPart => {
   const paths = files.map((file) => file.path).join(', ')
+  const name = promptFileName(data.filename)
   const label = officeMimeTypes.has(data.mimeType)
-    ? `[Attachment: ${data.filename} — text copy at ${paths}. The original file is stored too: do not tell the user it did not arrive or ask them to attach it again unless ${officeScriptToolName} cannot find it, and confirming that you have it needs no tool call. Answer from the text copy; only when the user asks to edit it or build a file from it, list "${data.filename}" (newest file with that name) or "${data.localFileId}" (this exact file) in ${officeScriptToolName} inputs]`
-    : `[Attachment: ${data.filename} — saved as ${paths}]`
+    ? `[Attachment: ${name} — text copy at ${paths}. The original file is stored too: do not tell the user it did not arrive or ask them to attach it again unless ${officeScriptToolName} cannot find it, and confirming that you have it needs no tool call. Answer from the text copy; only when the user asks to edit it or build a file from it, list ${name} (newest file with that name) or "${data.localFileId}" (this exact file) in ${officeScriptToolName} inputs]`
+    : `[Attachment: ${name} — saved as ${paths}]`
   return {
     text: `${label}\n\n${previewText(preview)}`,
     images: [],

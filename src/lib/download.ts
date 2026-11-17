@@ -43,10 +43,13 @@
  * bug above wearing a different filename.
  */
 
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
 import { invoke } from '@tauri-apps/api/core'
 import { BaseDirectory } from '@tauri-apps/api/path'
 import { uint8ArrayToBase64 } from '@/crypto/primitives'
 import { getPlatform, isTauri } from './platform'
+import { safeFileNameString } from './safe-file-name'
 
 export type DownloadRequest = {
   /** Filename including extension. Collisions get a numeric suffix. */
@@ -105,9 +108,9 @@ const loadNative = async (): Promise<DownloadNative> => {
  *
  * A failure that isn't a collision, such as a missing grant or a full disk,
  * looks identical here, so it costs the remaining attempts and then rethrows *its own* error
- * rather than a synthesized "no unused name". The caller shows that text, and
- * it is the only thing that distinguishes a missing permission from a crowded
- * folder.
+ * rather than a synthesized "no unused name". `saveErrorMessage` reads that
+ * text, and it is the only thing that distinguishes a missing permission from a
+ * crowded folder.
  */
 const saveToDocuments = async (request: DownloadRequest, fs: DownloadFs): Promise<string> => {
   let lastError: unknown
@@ -151,8 +154,26 @@ const saveToDownloads = async (request: DownloadRequest, invoke: DownloadNative[
   }
 }
 
-const saveNatively = (request: DownloadRequest, { platform, fs, invoke }: DownloadNative): Promise<string> =>
-  platform === 'ios' ? saveToDocuments(request, fs) : saveToDownloads(request, invoke)
+/** A file a phone saved. Phones show no download bar, so the app says where it went. */
+export type MobileSave = { name: string; platform: 'ios' | 'android' }
+
+const mobileSaveListeners = new Set<(save: MobileSave) => void>()
+
+/** Call `listener` after each native save on a phone. Returns the unsubscribe. */
+export const subscribeToMobileSaves = (listener: (save: MobileSave) => void): (() => void) => {
+  mobileSaveListeners.add(listener)
+  return () => {
+    mobileSaveListeners.delete(listener)
+  }
+}
+
+const saveNatively = async (request: DownloadRequest, { platform, fs, invoke }: DownloadNative): Promise<string> => {
+  const name = await (platform === 'ios' ? saveToDocuments(request, fs) : saveToDownloads(request, invoke))
+  if (platform === 'ios' || platform === 'android') {
+    mobileSaveListeners.forEach((listener) => listener({ name, platform }))
+  }
+  return name
+}
 
 const saveViaBrowser = (request: DownloadRequest): string => {
   const url = URL.createObjectURL(new Blob([request.contents], { type: request.mimeType }))
@@ -171,16 +192,52 @@ const saveViaBrowser = (request: DownloadRequest): string => {
 /**
  * Save a file, resolving to the name it was actually written under.
  *
+ * The name is made safe first, the same on every platform: no bidirectional
+ * controls that disguise the extension, and none of the characters Windows
+ * refuses, such as the `:` in `Meeting 10:30.docx`.
+ *
  * Throws on failure rather than reporting it, so the caller decides what the
- * user sees. Silence is the one thing this must not do.
+ * user sees, through {@link saveErrorMessage}. Silence is the one thing this must not do.
  *
  * `native` lets tests run the Tauri branches, which are the ones that had the
  * bugs: `plugin-fs`, the platform and the native command mean nothing outside
  * the webview.
  */
 export const downloadFile = async (request: DownloadRequest, native?: DownloadNative): Promise<string> => {
+  const safe = { ...request, name: safeFileNameString(request.name) }
   if (native) {
-    return saveNatively(request, native)
+    return saveNatively(safe, native)
   }
-  return isTauri() ? saveNatively(request, await loadNative()) : saveViaBrowser(request)
+  return isTauri() ? saveNatively(safe, await loadNative()) : saveViaBrowser(safe)
 }
+
+/**
+ * Why a save failed, in plain words. The platform's own text names internal paths and OS error numbers, so it goes
+ * to the console and the user gets the reason it stands for. Matches the texts `save_to_downloads` (Rust and Kotlin)
+ * and plugin-fs reject with.
+ */
+const saveErrorReasons: [RegExp, MessageDescriptor][] = [
+  // Checked first, because its text also quotes the OS error behind it.
+  [
+    /as downloaded from the internet/,
+    msg`The file could not be marked as downloaded from the internet, so it was not saved. The Downloads folder may be on a drive that cannot keep that mark.`,
+  ],
+  [
+    /numbered names are taken|os error 17\b|file exists/i,
+    msg`Too many files with this name are already in the folder. Rename or move some of them, then try again.`,
+  ],
+  [/os error (28|112)\b|no space left|not enough space/i, msg`There is not enough free space on this device.`],
+  [
+    /os error (2|3)\b|no such file|cannot find the path|as the Downloads folder|find the (home|Downloads) folder/i,
+    msg`The folder to save into does not exist.`,
+  ],
+  [
+    /os error (1|5|13|30)\b|permission denied|access is denied|forbidden path|read-only/i,
+    msg`Thunderbolt is not allowed to save there.`,
+  ],
+  [/Android 10/, msg`Saving files needs Android 10 or later.`],
+]
+
+/** The reason to show for the message of an error from {@link downloadFile}; resolve it with `i18n._`. */
+export const saveErrorMessage = (message: string): MessageDescriptor =>
+  saveErrorReasons.find(([pattern]) => pattern.test(message))?.[1] ?? msg`Something went wrong while saving the file.`

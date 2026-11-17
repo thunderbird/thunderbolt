@@ -56,6 +56,7 @@ import {
   type SkillDefinition,
 } from '@shared/agent-core/skills'
 import {
+  attachmentLabel,
   blobToBase64,
   getAttachments,
   undeliverableAttachmentsNote,
@@ -284,7 +285,7 @@ const resolveTextDelivery = async (
     if (transformer && file) {
       const output = await transformer(file)
       if ('text' in output) {
-        return { kind: 'text', text: `[Attachment: ${attachment.filename}]\n\n${output.text}` }
+        return { kind: 'text', text: `${attachmentLabel(attachment.filename)}\n\n${output.text}` }
       }
     }
   } catch (error) {

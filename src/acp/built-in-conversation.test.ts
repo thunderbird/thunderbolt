@@ -143,11 +143,11 @@ describe('prepareBuiltInConversation', () => {
     const prepared = await prepareBuiltInConversation(messages, ['Follow project style.'], inline, deps)
 
     expect(prepared.history).toEqual([
-      { role: 'user', text: 'Review this\n[Attachment: notes.txt]\n\nnote contents' },
+      { role: 'user', text: 'Review this\n[Attachment: "notes.txt"]\n\nnote contents' },
       { role: 'assistant', text: 'Reviewed.' },
     ])
     expect(prepared.prompt.text).toBe(
-      'Follow project style.\n\n> first line\n> second line\nWhat changed?\n[Attachment: diagram.png]',
+      'Follow project style.\n\n> first line\n> second line\nWhat changed?\n[Attachment: "diagram.png"]',
     )
     expect(prepared.prompt.images).toEqual([{ type: 'image', data: 'aW1hZ2U=', mimeType: 'image/png' }])
   })
@@ -171,7 +171,7 @@ describe('prepareBuiltInConversation', () => {
 
     const prepared = await prepareBuiltInConversation(messages, undefined, inline, deps)
 
-    expect(prepared.prompt.text).toBe('[Attachment: report.pdf]\n\nPDF contents\nSummarize it.')
+    expect(prepared.prompt.text).toBe('[Attachment: "report.pdf"]\n\nPDF contents\nSummarize it.')
     expect(prepared.prompt.images).toEqual([])
   })
 
@@ -193,7 +193,7 @@ describe('prepareBuiltInConversation', () => {
 
     const prepared = await prepareBuiltInConversation(messages, undefined, inline, deps)
 
-    expect(prepared.prompt.text).toBe('[Attachment: missing.bin] (file unavailable on this device)')
+    expect(prepared.prompt.text).toBe('[Attachment: "missing.bin"] (file unavailable on this device)')
   })
 
   describe('with an attachment that cannot be read', () => {
@@ -219,11 +219,11 @@ describe('prepareBuiltInConversation', () => {
     }
 
     it.each([
-      ['off', inline, '[Attachment: notes.txt]\n\nnote contents', []],
+      ['off', inline, '[Attachment: "notes.txt"]\n\nnote contents', []],
       [
         'on',
         workspace,
-        '[Attachment: notes.txt — saved as attachments/notes/notes.txt]\n\nnote contents',
+        '[Attachment: "notes.txt" — saved as attachments/notes/notes.txt]\n\nnote contents',
         [{ path: 'attachments/notes/notes.txt', content: 'note contents' }],
       ],
     ])('inlines a note and keeps the rest of the message with tools %s', async (_tools, options, notesText, files) => {
@@ -269,7 +269,7 @@ describe('prepareBuiltInConversation', () => {
       [
         'is not on this device',
         { ...deps, getAttachment: async () => null },
-        '[Attachment: budget.xlsx] (file unavailable on this device)',
+        '[Attachment: "budget.xlsx"] (file unavailable on this device)',
       ],
     ])('keeps the note for a file from before a checkpoint that %s', async (_case, caseDeps, caseNote) => {
       const checkpoint = {
@@ -335,7 +335,7 @@ describe('prepareBuiltInConversation', () => {
       )
 
       expect(prepared.prompt.text).toBe(
-        '[Attachment: notes.md — saved as attachments/n1/notes.md]\n\n# Notes\nship it\nSummarize',
+        '[Attachment: "notes.md" — saved as attachments/n1/notes.md]\n\n# Notes\nship it\nSummarize',
       )
       expect(prepared.files).toEqual([{ path: 'attachments/n1/notes.md', content: '# Notes\nship it' }])
     })
@@ -354,7 +354,7 @@ describe('prepareBuiltInConversation', () => {
         { path: 'attachments/c1/spend.tsv', content: 'payee\tamount\nHertz, LLC\t-99.5\n' },
       ])
       expect(prepared.prompt.text).toBe(
-        '[Attachment: spend.csv — saved as attachments/c1/spend.tsv]\n\npayee\tamount\nHertz, LLC\t-99.5',
+        '[Attachment: "spend.csv" — saved as attachments/c1/spend.tsv]\n\npayee\tamount\nHertz, LLC\t-99.5',
       )
     })
 
@@ -385,7 +385,7 @@ describe('prepareBuiltInConversation', () => {
       )
 
       expect(prepared.files).toEqual([{ path: `attachments/k1/${filename}`, content: text }])
-      expect(prepared.prompt.text).toBe(`[Attachment: ${filename} — saved as attachments/k1/${filename}]\n\n${text}`)
+      expect(prepared.prompt.text).toBe(`[Attachment: "${filename}" — saved as attachments/k1/${filename}]\n\n${text}`)
     })
 
     it('truncates a long file to a preview with a marker pointing at the full file', async () => {
@@ -400,7 +400,7 @@ describe('prepareBuiltInConversation', () => {
       )
 
       const lines = prepared.prompt.text.split('\n')
-      expect(lines[0]).toBe('[Attachment: big.csv — saved as attachments/big/big.tsv]')
+      expect(lines[0]).toBe('[Attachment: "big.csv" — saved as attachments/big/big.tsv]')
       expect(lines).toContain('198\t396')
       expect(lines).not.toContain('199\t398')
       expect(lines.at(-1)).toBe(
@@ -426,7 +426,7 @@ describe('prepareBuiltInConversation', () => {
       ['lines that land exactly on the character budget', `${'x'.repeat(7_999)}\n${'y'.repeat(8_000)}`],
       ['exactly 200 lines', Array.from({ length: 200 }, (_, index) => `line ${index}`).join('\n')],
     ])('keeps %s whole', async (_what, text) => {
-      expect(await promptFor(text)).toBe(`[Attachment: notes.txt — saved as attachments/t1/notes.txt]\n\n${text}`)
+      expect(await promptFor(text)).toBe(`[Attachment: "notes.txt" — saved as attachments/t1/notes.txt]\n\n${text}`)
     })
 
     it('cuts by characters after the last line that fits', async () => {
@@ -449,7 +449,7 @@ describe('prepareBuiltInConversation', () => {
         depsFor([file]),
       )
 
-      expect(prepared.prompt.text).toBe('[Attachment: empty.csv]')
+      expect(prepared.prompt.text).toBe('[Attachment: "empty.csv"]')
       expect(prepared.files).toEqual([])
     })
 
@@ -464,7 +464,7 @@ describe('prepareBuiltInConversation', () => {
       )
 
       expect(prepared.prompt.text).toBe(
-        '[Attachment: photos.docx — text copy at attachments/e2/photos.docx.txt. The original file is stored too: do not tell the user it did not arrive or ask them to attach it again unless run_office_script cannot find it, and confirming that you have it needs no tool call. Answer from the text copy; only when the user asks to edit it or build a file from it, list "photos.docx" (newest file with that name) or "e2" (this exact file) in run_office_script inputs]\n\n',
+        '[Attachment: "photos.docx" — text copy at attachments/e2/photos.docx.txt. The original file is stored too: do not tell the user it did not arrive or ask them to attach it again unless run_office_script cannot find it, and confirming that you have it needs no tool call. Answer from the text copy; only when the user asks to edit it or build a file from it, list "photos.docx" (newest file with that name) or "e2" (this exact file) in run_office_script inputs]\n\n',
       )
       expect(prepared.files).toEqual([{ path: 'attachments/e2/photos.docx.txt', content: '' }])
     })
@@ -502,7 +502,7 @@ describe('prepareBuiltInConversation', () => {
       )
 
       expect(prepared.prompt.text).toStartWith(
-        '[Attachment: review.pptx]\n\n## Slide 1\nQuarterly review\nPrepared for the board\n\nSpeaker notes:\nWelcome everyone.',
+        '[Attachment: "review.pptx"]\n\n## Slide 1\nQuarterly review\nPrepared for the board\n\nSpeaker notes:\nWelcome everyone.',
       )
       expect(prepared.prompt.text).toContain('## Slide 2\nRegions\n')
       expect(prepared.prompt.text).toEndWith('## Slide 3\nSummarize the deck')
@@ -532,7 +532,7 @@ describe('prepareBuiltInConversation', () => {
       ])
       expect(prepared.prompt.text).toBe(
         [
-          '[Attachment: budget.xlsx — text copy at attachments/x1/Q1.tsv, attachments/x1/Q2_Q3.tsv. The original file is stored too: do not tell the user it did not arrive or ask them to attach it again unless run_office_script cannot find it, and confirming that you have it needs no tool call. Answer from the text copy; only when the user asks to edit it or build a file from it, list "budget.xlsx" (newest file with that name) or "x1" (this exact file) in run_office_script inputs]',
+          '[Attachment: "budget.xlsx" — text copy at attachments/x1/Q1.tsv, attachments/x1/Q2_Q3.tsv. The original file is stored too: do not tell the user it did not arrive or ask them to attach it again unless run_office_script cannot find it, and confirming that you have it needs no tool call. Answer from the text copy; only when the user asks to edit it or build a file from it, list "budget.xlsx" (newest file with that name) or "x1" (this exact file) in run_office_script inputs]',
           '',
           '## Sheet: Q1',
           'Row 1: Name, Cost',
@@ -576,7 +576,7 @@ describe('prepareBuiltInConversation', () => {
 
       expect(prepared.files).toEqual([{ path: 'attachments/p1/report.pdf.txt', content: 'PDF contents' }])
       expect(prepared.prompt.text).toBe(
-        '[Attachment: report.pdf — saved as attachments/p1/report.pdf.txt]\n\nPDF contents',
+        '[Attachment: "report.pdf" — saved as attachments/p1/report.pdf.txt]\n\nPDF contents',
       )
     })
 
@@ -594,7 +594,7 @@ describe('prepareBuiltInConversation', () => {
       const prepared = await prepareBuiltInConversation(messages, undefined, workspace, depsFor([file]))
 
       expect(prepared.history[0].text).toBe(
-        `[Attachment: ${filename} — text copy at attachments/o1/${filename}.txt. The original file is stored too: do not tell the user it did not arrive or ask them to attach it again unless run_office_script cannot find it, and confirming that you have it needs no tool call. Answer from the text copy; only when the user asks to edit it or build a file from it, list "${filename}" (newest file with that name) or "o1" (this exact file) in run_office_script inputs]\n\nExtracted text\nSummarize it`,
+        `[Attachment: "${filename}" — text copy at attachments/o1/${filename}.txt. The original file is stored too: do not tell the user it did not arrive or ask them to attach it again unless run_office_script cannot find it, and confirming that you have it needs no tool call. Answer from the text copy; only when the user asks to edit it or build a file from it, list "${filename}" (newest file with that name) or "o1" (this exact file) in run_office_script inputs]\n\nExtracted text\nSummarize it`,
       )
     })
 
@@ -700,7 +700,7 @@ describe('prepareBuiltInConversation', () => {
 
       expect(prepared.history[0]).toEqual({
         role: 'user',
-        text: '[Attachment: spend.csv — saved as attachments/h1/spend.tsv]\n\na\tb\n1\t2\nTotal?',
+        text: '[Attachment: "spend.csv" — saved as attachments/h1/spend.tsv]\n\na\tb\n1\t2\nTotal?',
       })
       expect(prepared.files).toEqual([{ path: 'attachments/h1/spend.tsv', content: 'a\tb\n1\t2\n' }])
     })
@@ -720,7 +720,7 @@ describe('prepareBuiltInConversation', () => {
       )
 
       expect(prepared.prompt.text).toBe(
-        '[Attachment: chart.png]\n[Attachment: gone.csv] (file unavailable on this device)',
+        '[Attachment: "chart.png"]\n[Attachment: "gone.csv"] (file unavailable on this device)',
       )
       expect(prepared.prompt.images).toEqual([{ type: 'image', mimeType: 'image/png', data: 'cG5n' }])
       expect(prepared.files).toEqual([])

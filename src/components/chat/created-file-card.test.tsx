@@ -201,15 +201,17 @@ describe('the chip for a file the agent created', () => {
     expect(screen.queryByRole('button', { name: 'Download report.docx' })).toBeNull()
   })
 
-  it('shows why a download failed', async () => {
-    downloadFile.mockRejectedValue(new Error('No space left on device'))
+  it('shows why a download failed in plain words, not the system text', async () => {
+    downloadFile.mockRejectedValue(
+      new Error('Could not save report.docx to Downloads: No space left on device (os error 28)'),
+    )
     await renderMessage(finishedCall({ ok: true, files: [report], logs: '' }))
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Download report.docx' }))
       await getClock().runAllAsync()
     })
-    expect(screen.getByText("Couldn't save: No space left on device")).toBeDefined()
+    expect(screen.getByText("Couldn't save: There is not enough free space on this device.")).toBeDefined()
   })
 
   it('reads the files from the result envelope the harness returns', async () => {

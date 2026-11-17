@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { cn } from '@/lib/utils'
 import { useLingui } from '@lingui/react/macro'
-import { downloadFile } from '@/lib/download'
+import { i18n } from '@/i18n'
+import { downloadFile, saveErrorMessage } from '@/lib/download'
 import { useTransientFlag } from '@/hooks/use-transient-flag'
 import { Check, Copy, Download, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
@@ -69,10 +70,7 @@ export const ArtifactActions = ({ html, title, buttonClassName }: ArtifactAction
       flagSaved()
     } catch (error) {
       console.error('[artifacts] Could not save the artifact', error)
-      // The platform's own message, not a rewrite of it: "forbidden path" and
-      // "no space left on device" call for different actions, and only the
-      // original text tells them apart.
-      setSaveError(error instanceof Error ? error.message : String(error))
+      setSaveError(i18n._(saveErrorMessage(error instanceof Error ? error.message : String(error))))
     }
   }
 

@@ -74,7 +74,8 @@ async fn save_to_downloads<R: Runtime>(
 /// The user's Downloads folder. On Linux `dirs` reads it only from
 /// `user-dirs.dirs`, so a system without xdg-user-dirs, or with Downloads
 /// disabled there, has none; like Firefox and Chromium, fall back to
-/// `~/Downloads`, created if missing.
+/// `~/Downloads`. On Linux the folder is created if missing, as
+/// `user-dirs.dirs` can name one that was never made.
 #[cfg(desktop)]
 fn downloads_folder<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     let folder = app.path().download_dir();
@@ -86,7 +87,10 @@ fn downloads_folder<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
             .map_err(|error| format!("Could not find the home folder to save into: {error}"))?;
         return ensure_folder(&home.join("Downloads"));
     }
-    folder.map_err(|error| format!("Could not find the Downloads folder: {error}"))
+    let folder = folder.map_err(|error| format!("Could not find the Downloads folder: {error}"))?;
+    #[cfg(not(any(windows, target_os = "macos")))]
+    let folder = ensure_folder(&folder)?;
+    Ok(folder)
 }
 
 /// `folder`, created if missing, but not its parents. An existing folder, or a
@@ -168,15 +172,15 @@ fn with_suffix(name: &str, attempt: u32) -> String {
     }
 }
 
-/// A bare file name: no folder, not `.` or `..`, and no `:`, which on Windows
-/// names a drive or an alternate data stream. Nor a trailing dot or space:
+/// A bare file name: no folder, not `.` or `..`. On Windows also no `:`, which
+/// names a drive or an alternate data stream, and no trailing dot or space:
 /// Windows drops them from the file it creates, but not from the
 /// `name:Zone.Identifier` stream path, so the mark would land on another file.
+/// macOS and Linux accept all three, so `Meeting 10:30.docx` saves there.
 #[cfg(desktop)]
 fn is_plain_basename(name: &str) -> bool {
-    !name.contains(':')
-        && !name.ends_with(['.', ' '])
-        && Path::new(name).file_name() == Some(OsStr::new(name))
+    let windows_safe = !cfg!(windows) || (!name.contains(':') && !name.ends_with(['.', ' ']));
+    windows_safe && Path::new(name).file_name() == Some(OsStr::new(name))
 }
 
 /// The `Zone.Identifier` stream browsers write; zone 3 is the Internet zone.
@@ -390,14 +394,15 @@ mod tests {
     #[test]
     fn refuses_anything_but_a_bare_file_name() {
         let folder = temp_folder("names");
+        for name in ["", ".", "..", "a/b.docx", "../a.docx", "/etc/passwd", "a/"] {
+            assert!(
+                save_into(&folder, name, b"x", mark_nothing).is_err(),
+                "{name} was accepted"
+            );
+        }
+        #[cfg(windows)]
         for name in [
-            "",
-            ".",
-            "..",
-            "a/b.docx",
-            "../a.docx",
-            "/etc/passwd",
-            "a/",
+            "a\\b.docx",
             "a:b.docx",
             "C:a.docx",
             "report.docx.",
@@ -408,9 +413,11 @@ mod tests {
                 "{name} was accepted"
             );
         }
-        #[cfg(windows)]
-        assert!(save_into(&folder, "a\\b.docx", b"x", mark_nothing).is_err());
         for name in ["report.docx", "q3 (1).html", "..notes.txt"] {
+            assert!(is_plain_basename(name), "{name} was refused");
+        }
+        #[cfg(not(windows))]
+        for name in ["Meeting 10:30.docx", "report.docx.", "report.docx "] {
             assert!(is_plain_basename(name), "{name} was refused");
         }
         assert!(names_in(&folder).is_empty());

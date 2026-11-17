@@ -47,7 +47,7 @@ describe('buildPromptBlocks — no embeddedContext', () => {
     expect(blocks).toHaveLength(2)
     expect(blocks[0]).toEqual({ type: 'text', text: 'hi' })
     expect(blocks[1]?.type).toBe('text')
-    expect(blocks[1]?.text).toBe('[Attachment: doc.pdf]\n\nEXTRACTED PDF TEXT')
+    expect(blocks[1]?.text).toBe('[Attachment: "doc.pdf"]\n\nEXTRACTED PDF TEXT')
   })
 
   test('flags a non-text file as undeliverable instead of dropping it silently', async () => {
@@ -69,7 +69,7 @@ describe('buildPromptBlocks — no embeddedContext', () => {
     expect(blocks).toHaveLength(2)
     expect(blocks[0]?.text).toContain('[Attachment "pic.png" could not be delivered to this agent]')
     expect(blocks[0]?.text).not.toContain('doc.pdf')
-    expect(blocks[1]?.text).toBe('[Attachment: doc.pdf]\n\nEXTRACTED PDF TEXT')
+    expect(blocks[1]?.text).toBe('[Attachment: "doc.pdf"]\n\nEXTRACTED PDF TEXT')
   })
 
   test('sends a note for a file that fails to extract, keeping the text and other files', async () => {
@@ -95,7 +95,7 @@ describe('buildPromptBlocks — no embeddedContext', () => {
     expect(blocks).toEqual([
       { type: 'text', text: 'hi' },
       { type: 'text', text: `[Attachment "budget.xlsx" could not be read: ${tooBig.message}]` },
-      { type: 'text', text: '[Attachment: doc.pdf]\n\nEXTRACTED PDF TEXT' },
+      { type: 'text', text: '[Attachment: "doc.pdf"]\n\nEXTRACTED PDF TEXT' },
     ])
   })
 
@@ -136,7 +136,7 @@ describe('buildPromptBlocks — embeddedContext', () => {
     expect(blocks).toHaveLength(2)
     expect(blocks[0]).toEqual({ type: 'text', text: 'hi' })
     expect(blocks[1]?.type).toBe('text')
-    expect(blocks[1]?.text).toBe('[Attachment: doc.pdf]\n\nEXTRACTED PDF TEXT')
+    expect(blocks[1]?.text).toBe('[Attachment: "doc.pdf"]\n\nEXTRACTED PDF TEXT')
   })
 
   test('flags a file missing from IndexedDB as undeliverable instead of dropping it silently', async () => {

@@ -12,6 +12,7 @@ import type * as Api from '@shared/admin-api'
 import { describe, expect, it } from 'bun:test'
 import type { AccessDecision, AccessRefusal } from '../access'
 import type { DomainCheckError } from '../domains'
+import type { SsoLockableField, SsoSettings } from '../sso-connections'
 import type { approveLinkReview, listLinkReviews } from '../link-reviews'
 import type { adminRole, assignableRoles } from '../roles'
 import type { createScimConnection, rotateScimCredential } from '../scim/connections'
@@ -64,6 +65,8 @@ describe('admin API contract', () => {
       // Connections
       contract<Same<(typeof identityConnectionStatuses)[number], Api.ConnectionStatus>>(),
       contract<Same<Wire<ConnectionView>, Api.AdminConnection>>(),
+      contract<Same<SsoSettings, Api.SsoSettings>>(),
+      contract<Same<SsoLockableField, Api.SsoLockableField>>(),
       contract<Same<Wire<Resolved<typeof getConnection>>, Api.AdminConnectionDetail>>(),
       contract<Same<Wire<Resolved<typeof createScimConnection>>, Api.CreateScimConnectionResponse>>(),
       contract<Same<Wire<Resolved<typeof rotateScimCredential>>, Api.RotateScimCredentialResponse>>(),

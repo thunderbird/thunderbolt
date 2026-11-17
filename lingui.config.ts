@@ -28,7 +28,7 @@ export default defineConfig({
   catalogs: [
     {
       path: '<rootDir>/src/locales/{locale}/messages',
-      include: ['src'],
+      include: ['src', 'admin'],
       exclude: [
         '**/*.test.*',
         '**/test-utils/**',

@@ -145,6 +145,7 @@ jobs:
             # build: app source (strings + catalogs), shared/ (imported by the
             # frontend build), build/i18n config, deps, and this workflow.
             localization:
+              - 'admin/**'
               - 'src/**'
               - 'shared/**'
               - 'index.html'
@@ -229,6 +230,9 @@ jobs:
 
       - name: Lint
         run: bun run lint
+
+      - name: Check source license notices
+        run: bun run license:check
 
       # Pull requests run the suite once, then re-run only the test files they changed 5x:
       # that is where a new flake comes from. Push to main runs the whole suite 5x.

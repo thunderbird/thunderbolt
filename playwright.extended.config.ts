@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { defineConfig, devices } from '@playwright/test'
-import baseConfig from './playwright.config'
+import baseConfig, { adminBackendPort } from './playwright.config'
 import { getChromeLaunchOptions } from './scripts/chrome'
 
 const isMac = (process.env.EXTENDED_PLATFORM ?? process.platform) === 'darwin'
@@ -77,9 +77,12 @@ export default defineConfig({
     .filter((server) => server !== undefined)
     .map((server) => {
       if (!server.command?.startsWith('cd backend')) return server
+      // The admin backend keeps its own PGlite database: on the shared Postgres it would point the env
+      // `sso` connection at the admin IdP and add connections to the org the OIDC and SAML specs sign in to.
+      const isAdminBackend = server.env?.PORT === String(adminBackendPort)
       const env = {
         ...server.env,
-        ...databaseEnv,
+        ...(isAdminBackend ? {} : databaseEnv),
         ANTHROPIC_API_KEY:
           server.env?.AUTH_MODE === 'consumer' ? 'e2e-fake-provider-key' : (process.env.ANTHROPIC_API_KEY ?? ''),
         TINFOIL_API_KEY: process.env.TINFOIL_API_KEY ?? '',

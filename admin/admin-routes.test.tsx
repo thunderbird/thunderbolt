@@ -2,12 +2,14 @@
  * All rights reserved. See admin/LICENSE.
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import '@testing-library/jest-dom'
 import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'bun:test'
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { Route, Routes, useLocation } from 'react-router'
 import AdminRoutes from './admin-routes'
 import { adminNavGroups } from './admin-sidebar'
+import { createAdminTestHarness, type FakeRequest } from './test-utils'
 
 const screens = [
   ['/admin/members', 'Members'],
@@ -22,17 +24,30 @@ const screens = [
 
 const CurrentPath = () => <output aria-label="path">{useLocation().pathname}</output>
 
-const renderAt = (path: string) =>
-  render(
-    <MemoryRouter initialEntries={[path]}>
+// Reads that aren't cursor pages, or page under another name; every other list answers `{ items }`.
+const emptyReads: Record<string, unknown> = {
+  'admin/link-reviews': { reviews: [], nextCursor: null },
+  'admin/audit-events': { events: [], nextCursor: null },
+  'admin/break-glass': { allAdminsIdpManaged: false, adminCount: 1, localAdminCount: 1 },
+}
+
+const emptyBackend = ({ path }: FakeRequest) => ({ body: emptyReads[path] ?? { items: [], nextCursor: null } })
+
+const renderAt = (path: string) => {
+  const { wrapper: Wrapper } = createAdminTestHarness(emptyBackend, { initialEntries: [path] })
+  return render(
+    <Wrapper>
       <Routes>
         <Route path="/admin/*" element={<AdminRoutes />} />
       </Routes>
       <CurrentPath />
-    </MemoryRouter>,
+    </Wrapper>,
   )
+}
 
 describe('AdminRoutes', () => {
+  beforeAll(setupTestDatabase)
+  afterAll(teardownTestDatabase)
   afterEach(() => {
     cleanup()
   })

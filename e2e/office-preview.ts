@@ -20,12 +20,30 @@ const chooseFakeModel = async (page: Page) => {
 export const contentView = (page: Page) =>
   (page.viewportSize()?.width ?? 1280) < 768 ? page.getByRole('dialog') : page.getByTestId('content-view')
 
-/** Attaches a file, sends it, and waits for the answer, which moves the chat to its own URL. */
-export const sendAttachment = async (page: Page, file: { name: string; mimeType: string; buffer: Buffer }) => {
+const attachmentPrompt = 'What is in this file?'
+
+/** Text as it appears inside a JSON request body. */
+const inJson = (text: string) => JSON.stringify(text).slice(1, -1)
+
+/**
+ * Attaches a file, sends it, and waits for the answer, which moves the chat to its own URL. It also checks that the
+ * request to the model carries `fileText`, some text from the file: the fake provider gives the same answer whatever
+ * it receives, so its reply proves nothing about what the model was sent.
+ */
+export const sendAttachment = async (
+  page: Page,
+  file: { name: string; mimeType: string; buffer: Buffer },
+  fileText: string,
+) => {
   await loginViaEmailCode(page)
   await chooseFakeModel(page)
   await page.locator('input[type="file"]').setInputFiles(file)
-  await sendChatPrompt(page, 'What is in this file?')
+  const modelRequest = page.waitForRequest((request) => {
+    const body = request.method() === 'POST' ? (request.postData() ?? '') : ''
+    return body.includes(inJson(attachmentPrompt)) && body.includes(inJson(fileText))
+  })
+  await sendChatPrompt(page, attachmentPrompt)
+  await modelRequest
   await expect(page.locator('[data-quotable-message-id]').last()).toContainText(fakeProviderReply)
 }
 

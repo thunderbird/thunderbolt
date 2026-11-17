@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { readFile } from 'node:fs/promises'
 import type { Page } from '@playwright/test'
 import {
   hostileAltChunkText,
@@ -12,19 +13,19 @@ import {
 import { sampleDocx, sampleDocxText } from '../src/test-utils/sample-docx'
 import { collectPageErrors } from './helpers'
 import { contentView, openPreview, openUnderAppCsp, sendAttachment } from './office-preview'
-import { expect, test } from './test'
+import { expect, isolateProviderRequests, test } from './test'
 
 const docxMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
-const sendDocument = (page: Page, name: string, buffer: Buffer) =>
-  sendAttachment(page, { name, mimeType: docxMime, buffer })
+const sendDocument = (page: Page, name: string, buffer: Buffer, fileText: string) =>
+  sendAttachment(page, { name, mimeType: docxMime, buffer }, fileText)
 
 const sampleBuffer = async () => Buffer.from(await (await sampleDocx()).arrayBuffer())
 
 test('an attached DOCX previews as pages on its card and in the side panel', async ({ page, context }) => {
   const errors = collectPageErrors(page)
   const name = 'e2e-report.docx'
-  await sendDocument(page, name, await sampleBuffer())
+  await sendDocument(page, name, await sampleBuffer(), sampleDocxText.title)
 
   const thumbnail = page.locator(`button[title="${name}"] iframe`)
   await expect(thumbnail).toHaveAttribute('sandbox', '')
@@ -61,16 +62,103 @@ test('an attached DOCX previews as pages on its card and in the side panel', asy
   expect(errors).toEqual([])
 })
 
-test('on a phone the page scales down to the width of the screen', async ({ page }) => {
+test('on a phone the pages reflow to the width of the screen, and the text keeps its size', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   const name = 'e2e-phone.docx'
-  await sendDocument(page, name, await sampleBuffer())
+  await sendDocument(page, name, await sampleBuffer(), sampleDocxText.title)
 
   const preview = await openPreview(page, name)
-  await expect(preview.contentFrame().getByText(sampleDocxText.title)).toBeVisible()
-  // The frame keeps the page's own width and is drawn smaller, once the panel has been measured.
-  await expect.poll(() => preview.evaluate((frame: HTMLIFrameElement) => frame.offsetWidth)).toBeGreaterThan(390)
-  expect((await preview.boundingBox())?.width).toBeLessThanOrEqual(390)
+  const pages = preview.contentFrame()
+  await expect(pages.getByText(sampleDocxText.title)).toBeVisible()
+  // The frame is as wide as the screen and drawn at full size, so the text is not scaled down.
+  expect(await preview.evaluate((frame: HTMLIFrameElement) => frame.offsetWidth)).toBeLessThanOrEqual(390)
+  expect(await preview.evaluate((frame: HTMLIFrameElement) => frame.style.transform)).toBe('')
+  const fontSize = await pages
+    .getByText(sampleDocxText.bullets[0])
+    .evaluate((element) => parseFloat(getComputedStyle(element).fontSize))
+  expect(fontSize).toBeGreaterThanOrEqual(12)
+})
+
+test('a DOCX card opens from the keyboard, and Escape on the Close button closes the preview', async ({ page }) => {
+  const errors = collectPageErrors(page)
+  const name = 'e2e-keyboard.docx'
+  await sendDocument(page, name, await sampleBuffer(), sampleDocxText.title)
+  const card = page.locator(`button[title="${name}"]`)
+  const isPhone = (page.viewportSize()?.width ?? 1280) < 768
+  // The Copy button on the user's message comes right after the card. If the thumbnail's frame took focus, Shift+Tab
+  // from there would land inside the frame instead of on the card.
+  const focusCardFromBelow = async () => {
+    await page.getByRole('button', { name: 'Copy message', exact: true }).first().focus()
+    await page.keyboard.press('Shift+Tab')
+    await expect(card).toBeFocused()
+  }
+  await expect(card.locator('iframe')).toBeAttached()
+
+  // Tabbing is a desktop path; a phone focuses the card directly.
+  await (isPhone ? card.focus() : focusCardFromBelow())
+  await page.keyboard.press('Enter')
+  await expect(contentView(page).getByRole('heading', { name, exact: true })).toBeVisible()
+  await contentView(page).getByRole('button', { name: 'Close', exact: true }).focus()
+  await page.keyboard.press('Escape')
+  await expect(contentView(page)).toBeHidden()
+  // Only the desktop side panel hands focus back to the card that opened it; the phone's dialog leaves it on the page.
+  if (isPhone) {
+    await card.focus()
+  } else {
+    await expect(card).toBeFocused()
+    await focusCardFromBelow()
+  }
+
+  await page.keyboard.press(' ')
+  await expect(contentView(page).getByRole('heading', { name, exact: true })).toBeVisible()
+  expect(errors).toEqual([])
+})
+
+test('when the preview code does not load, the panel says so and Download still saves the file', async ({ page }) => {
+  // The renderer is its own module, so a broken connection can fail it alone.
+  await page.route(/\/docx-snapshot[^/]*\.(?:ts|js)(?:\?|$)/, (route) => route.abort())
+  const name = 'e2e-offline.docx'
+  const buffer = await sampleBuffer()
+  await sendDocument(page, name, buffer, sampleDocxText.title)
+
+  await page.locator(`button[title="${name}"]`).click()
+  await expect(contentView(page).getByText("The preview couldn't load")).toBeVisible()
+  await expect(contentView(page).locator('iframe')).toHaveCount(0)
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    contentView(page).getByRole('button', { name: 'Download' }).click(),
+  ])
+  expect(download.suggestedFilename()).toBe(name)
+  expect(await readFile(await download.path())).toEqual(buffer)
+})
+
+test('in a private window an attached file still downloads whole', async ({ browser, baseURL }, testInfo) => {
+  // The WebKit Nightly runs each test in a saved profile. A new context keeps storage in memory, like Safari's private
+  // browsing.
+  const context = await browser.newContext({ baseURL })
+  await isolateProviderRequests(context, testInfo.project.name)
+  const page = await context.newPage()
+  const name = 'e2e-private.docx'
+  const buffer = await sampleBuffer()
+  await sendDocument(page, name, buffer, sampleDocxText.title)
+
+  await page.locator(`button[title="${name}"]`).click()
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    contentView(page).getByRole('button', { name: 'Download' }).click(),
+  ])
+  expect(await readFile(await download.path())).toEqual(buffer)
+  await context.close()
+})
+
+test('a right-to-left override is dropped from a file name, so the name reads in order', async ({ page }) => {
+  // Left in, the override would draw everything after it right to left.
+  const shown = 'e2e-xcod.docx'
+  await sendDocument(page, `e2e-${String.fromCodePoint(0x202e)}xcod.docx`, await sampleBuffer(), sampleDocxText.title)
+
+  await expect(page.getByText(shown, { exact: true })).toBeVisible()
+  await page.locator(`button[title="${shown}"]`).click()
+  await expect(contentView(page).getByRole('heading', { name: shown, exact: true })).toBeVisible()
 })
 
 test('a hostile DOCX runs no script and sends no request, with the web headers and the app policy', async ({
@@ -99,18 +187,21 @@ test('a hostile DOCX runs no script and sends no request, with the web headers a
     }
   })
   const name = 'e2e-hostile.docx'
-  await sendDocument(page, name, Buffer.from(hostileDocx()))
+  await sendDocument(page, name, Buffer.from(hostileDocx()), 'Hostile document')
 
   preview.open = true
   const frame = await openPreview(page, name)
+  await expect(frame).toHaveAttribute('sandbox', '')
   const pages = frame.contentFrame()
   await expect(pages.getByText('Hostile document')).toBeVisible()
   await expect(pages.getByText(hostileAltChunkText)).toHaveCount(0)
   // The blocked picture sits over the link, so the click goes to the link itself.
   await pages.getByText(hostileLinkText).dispatchEvent('click')
   await expect(pages.getByText('Hostile document')).toBeVisible()
-  expect(await pages.locator('script, iframe, [href]').count()).toBe(0)
+  expect(await pages.locator('script, iframe, meta[http-equiv="refresh" i], [href], [onerror]').count()).toBe(0)
   expect(await page.evaluate(() => '__docxProbe' in window)).toBe(false)
+  // A script that ran would have set the probe in the frame's own window, not the app's.
+  expect(await pages.locator('body').evaluate(() => '__docxProbe' in window)).toBe(false)
 
   const underCsp = await openUnderAppCsp(context, (await frame.getAttribute('srcdoc')) ?? '')
   await expect(underCsp.frame.getByText('Hostile document')).toBeVisible()

@@ -10,6 +10,7 @@ import PptxGenJS from 'pptxgenjs'
 import { defaultModelOpus55 } from '../shared/defaults/models'
 import { fakeProviderReply } from './fake-provider'
 import { collectPageErrors, loginViaEmailCode, sendChatPrompt } from './helpers'
+import { contentView } from './office-preview'
 import {
   officeDeckEditFilename,
   officeDeckEditMarker,
@@ -125,6 +126,11 @@ test('the agent edits an attached Word document and the user downloads the edite
   expect(documentXml).toContain(officeEditMarker)
   expect(documentXml).not.toContain(officeEditPlaceholder)
 
+  // The card the user attached, the first with this name, still opens the original.
+  await page.locator(`button[title="${officeEditFilename}"]`).first().click()
+  const original = contentView(page).frameLocator(`iframe[title="${officeEditFilename}"]`)
+  await expect(original.getByText(`Status: ${officeEditPlaceholder}`)).toBeVisible()
+
   expect(errors).toEqual([])
 })
 
@@ -149,8 +155,13 @@ test('the agent edits an attached deck, and the edited copy opens in the side pa
   })
   await expect(reply.getByText('Edited', { exact: true })).toBeVisible()
   await reply.locator(`button[title="${officeDeckEditFilename}"]`).click()
-  const slides = page.getByTestId('content-view').frameLocator(`iframe[title="${officeDeckEditFilename}"]`)
+  const slides = contentView(page).frameLocator(`iframe[title="${officeDeckEditFilename}"]`)
   await expect(slides.getByText(`Status: ${officeDeckEditMarker}`)).toBeVisible()
+
+  await contentView(page).getByRole('button', { name: 'Close', exact: true }).click()
+  await page.locator(`button[title="${officeDeckEditFilename}"]`).first().click()
+  const original = contentView(page).frameLocator(`iframe[title="${officeDeckEditFilename}"]`)
+  await expect(original.getByText(`Status: ${officeEditPlaceholder}`)).toBeVisible()
 
   expect(errors).toEqual([])
 })

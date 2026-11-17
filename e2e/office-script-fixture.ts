@@ -49,6 +49,16 @@ parts[slide] = fflate.strToU8(fflate.strFromU8(parts[slide]).replace(${JSON.stri
 saveFile(${JSON.stringify(officeDeckEditFilename)}, fflate.zipSync(parts))
 `
 
+/** Sent with an attached workbook whose chart reads Sheet1; the fake provider answers it by editing a value there. */
+export const officeChartEditPrompt = 'Set the fourth value to 90.'
+export const officeChartEditFilename = 'e2e-chart.xlsx'
+/** What a model would write: change one cell the chart reads, and save the workbook under its own name. */
+export const officeChartEditScript = `
+const f = excelize.OpenReader(readFile(${JSON.stringify(officeChartEditFilename)}))
+f.SetCellValue('Sheet1', 'B4', 90)
+saveFile(${JSON.stringify(officeChartEditFilename)}, f.WriteToBuffer().buffer)
+`
+
 /** Sent to the composer; the fake provider answers it by calling `run_office_script` to build a workbook. */
 export const officeWorkbookPrompt = 'Build the e2e budget as a spreadsheet.'
 

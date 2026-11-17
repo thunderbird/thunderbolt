@@ -11,6 +11,7 @@ type MockAuthClientOptions = {
       email: string
       name?: string
       isAnonymous?: boolean
+      roles?: string[]
     }
   } | null
   isPending?: boolean

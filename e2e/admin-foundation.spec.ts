@@ -33,7 +33,7 @@ test('a bootstrap admin reaches every admin screen from the sidebar', async ({ p
   for (const screen of screens) {
     await openSidebarOnMobile(page)
     await page.locator('[data-sidebar="menu-button"]', { hasText: screen }).click()
-    await expect(page.getByRole('heading', { name: screen })).toBeVisible()
+    await expect(page.getByRole('heading', { name: screen, exact: true })).toBeVisible()
   }
   await expect(page).toHaveURL(/\/admin\/break-glass$/)
 })

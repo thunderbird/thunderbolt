@@ -4,13 +4,15 @@
 
 import { expect, type APIRequestContext } from '@playwright/test'
 import { scimBasePath, type LinkReviewPage } from '../shared/admin-api'
-import { adminApiBaseUrl, adminAppUrl, adminTest as test, uniqueName } from './admin/helpers'
-
-// Matches testSignInOtp in backend/src/auth/otp-constants.ts (NODE_ENV=test only).
-const signInCode = '12345678'
-
-/** The backend refuses a second code for one address within 15 s. */
-const otpCooldownMs = 15_250
+import {
+  adminApiBaseUrl,
+  adminRouteStatus,
+  adminTest as test,
+  otpCooldownMs,
+  requestEmailCodeSignIn,
+  retireConnection,
+  uniqueName,
+} from './admin/helpers'
 
 /** A route any signed-in member may call: 401 once their access is gone. */
 const canaryStatus = async (request: APIRequestContext, token: string) =>
@@ -20,27 +22,19 @@ const canaryStatus = async (request: APIRequestContext, token: string) =>
 
 /** Whether `email` can sign in by email code right now, over HTTP. Waits out the code cooldown once. */
 const canSignIn = async (request: APIRequestContext, email: string) => {
-  const headers = { Origin: adminAppUrl }
-  const join = async () => request.post(`${adminApiBaseUrl}/waitlist/join`, { data: { email }, headers })
-  const first = await join()
-  const joined =
-    first.status() === 429 ? await new Promise((done) => setTimeout(done, otpCooldownMs)).then(join) : first
-  if (!joined.ok()) {
-    return false
+  const first = await requestEmailCodeSignIn(request, email)
+  if (first.status() !== 429) {
+    return first.ok()
   }
-  const { challengeToken } = (await joined.json()) as { challengeToken?: string }
-  const signIn = await request.post(`${adminApiBaseUrl}/api/auth/sign-in/email-otp`, {
-    data: { email, otp: signInCode },
-    headers: { ...headers, 'x-challenge-token': challengeToken ?? '' },
-  })
-  return signIn.ok()
+  await new Promise((done) => setTimeout(done, otpCooldownMs))
+  return (await requestEmailCodeSignIn(request, email)).ok()
 }
 
 const seededConnections: string[] = []
 
 test.afterEach(async ({ adminApi }) => {
   for (const connectionId of seededConnections.splice(0)) {
-    await adminApi.request('POST', `admin/connections/${connectionId}/scim/retire`)
+    await retireConnection(adminApi, connectionId)
   }
 })
 
@@ -95,12 +89,7 @@ test("an admin can't block themselves", async ({ page, adminApi, adminSession })
 
 test('an admin grants and revokes admin', async ({ page, adminApi, request }) => {
   const member = await adminApi.seedMember()
-  const adminStatus = async () =>
-    (
-      await request.get(`${adminApiBaseUrl}/admin/members?limit=1`, {
-        headers: { Authorization: `Bearer ${member.token}` },
-      })
-    ).status()
+  const adminStatus = () => adminRouteStatus(request, member.token)
 
   await page.goto(`/admin/members?edit=${member.userId}`)
   await page.getByRole('button', { name: 'Make admin' }).click()

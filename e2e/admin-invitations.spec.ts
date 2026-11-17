@@ -3,10 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { expect, type Browser, type Page, type ViewportSize } from '@playwright/test'
-import { adminAppUrl, adminTest as test, readInviteUrl, uniqueEmail } from './admin/helpers'
-
-// Matches testSignInOtp in backend/src/auth/otp-constants.ts (NODE_ENV=test only).
-const signInCode = '12345678'
+import { adminAppUrl, adminTest as test, e2eSignInCode, readInviteUrl, uniqueEmail } from './admin/helpers'
 
 /** Invite `email` from the Invitations screen. */
 const invite = async (page: Page, email: string) => {
@@ -41,7 +38,7 @@ test('an invitation shows as pending, its link signs the person in, and it then 
   await expect(invitee.page.getByRole('heading', { name: /You've been invited to/ })).toBeVisible()
   await expect(invitee.page.getByPlaceholder('Email', { exact: true })).toHaveValue(email)
   await invitee.page.getByRole('button', { name: 'Continue', exact: true }).click()
-  await invitee.page.locator('input[data-input-otp]').fill(signInCode)
+  await invitee.page.locator('input[data-input-otp]').fill(e2eSignInCode)
   await expect(invitee.page.locator('textarea')).toBeVisible({ timeout: 30_000 })
   await invitee.close()
 

@@ -1,0 +1,11 @@
+# The Keycloak outbound SCIM extension this stack builds. Third-party, GPL-3.0, unreleased:
+# bump only to a commit someone has reviewed, then re-run the whole suite.
+EXTENSION_REPO=https://github.com/TerminSolutions/keycloak-scim-outbound
+EXTENSION_BRANCH=termindiego25
+EXTENSION_COMMIT=e7c6a33151e22c5a5bcfc277e393e69eb504e138
+# Validated on, with this commit (the extension is built against 26.8.1):
+KEYCLOAK_IMAGE=quay.io/keycloak/keycloak:26.8.2@sha256:c68e286cacd87b942ac1939a0a1481461109d6acd3a57dc496969a319a76bbf0
+MAVEN_IMAGE=maven:3.9.11-eclipse-temurin-21@sha256:6fdc855a6ed81d288ca7ca37ac6ff5e9308b612485c0801d70b25a858c83d237
+# The rest of the stack, pinned the same way:
+POSTGRES_IMAGE=postgres:18-alpine@sha256:1018733457011bf88d81db98cf43aac6d5150afc18787dbe204771fedf80ff95
+SOCAT_IMAGE=alpine/socat:1.8.0.3@sha256:beb4a68d9e4fe6b0f21ea774a0fde6c31f580dde6368939ed70100c5385b015e

@@ -27,6 +27,7 @@ import type { ComboboxItem } from '@/components/ui/combobox'
 import { useDatabase } from '@/contexts'
 import { getAllModels, getAvailableModels, updateSettings } from '@/dal'
 import { useLocalProviders } from '@/hooks/use-local-providers'
+import { useReportConnectionEvent } from '@/lib/report-connection-event'
 import { useAsyncAttempt } from '@/hooks/use-async-attempt'
 import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
@@ -113,6 +114,7 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
   const { i18n } = useLingui()
   const db = useDatabase()
   const queryClient = useQueryClient()
+  const reportConnectionEvent = useReportConnectionEvent()
   const isStandalone = useLocalProviders()
   const [state, dispatch] = useReducer(addModelReducer, initialState)
   const { selectedModelId, submitError } = state
@@ -188,6 +190,7 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
       const save = (input = providerInput) =>
         db.transaction(async (tx) => {
           signal?.throwIfAborted()
+          const replaced = input ? Boolean((await prepareProviderConnectionSave(tx, input)).existing) : false
           const providerConnectionId = input ? await saveProviderConnectionInTransaction(tx, input) : null
           const previous = providerConnectionId
             ? (await getAllModels(tx)).find(
@@ -209,9 +212,13 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
             })
           }
           signal?.throwIfAborted()
-          return { id, created: !previous }
+          return {
+            id,
+            created: !previous,
+            connection: providerConnectionId ? { id: providerConnectionId, replaced } : null,
+          }
         })
-      const { id, created } =
+      const { id, created, connection } =
         providerInput?.provider === 'tinfoil' && providerInput.authMethod === 'oauth'
           ? await withTinfoilSessionLock(async () => {
               const guarded = {
@@ -223,6 +230,14 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
               return save(guarded)
             })
           : await save()
+      if (connection && providerInput) {
+        reportConnectionEvent({
+          action: connection.replaced ? 'user_connection.credential_replaced' : 'user_connection.added',
+          target: { type: 'provider_connection', id: connection.id },
+          provider: providerInput.provider,
+          authMethod: providerInput.authMethod,
+        })
+      }
       if (isStandalone && created) {
         await updateSettings(db, { selected_model: id })
       }

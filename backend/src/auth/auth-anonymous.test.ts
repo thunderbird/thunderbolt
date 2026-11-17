@@ -11,7 +11,7 @@
  */
 
 import { user as userTable } from '@/db/auth-schema'
-import { devicesTable, waitlist } from '@/db/schema'
+import { devicesTable, orgMembership, waitlist } from '@/db/schema'
 import { challengeTokenHeader } from '@/auth/otp-constants'
 import { createAuth, type AuthEmailDeps } from '@/auth/auth'
 import { clearSettingsCache } from '@/config/settings'
@@ -123,6 +123,9 @@ describe('anonymous plugin — link deletes anonymous user', () => {
 
     const anonRows = await db.select().from(userTable).where(eq(userTable.id, anonId))
     expect(anonRows).toHaveLength(0)
+    // The promoted account is admitted like any other waitlist-approved sign-up.
+    const [promoted] = await db.select({ id: userTable.id }).from(userTable).where(eq(userTable.email, realEmail))
+    expect(await db.select().from(orgMembership).where(eq(orgMembership.userId, promoted.id))).toHaveLength(1)
   })
 })
 
@@ -155,9 +158,11 @@ describe('anonymous plugin — session-fixation guard', () => {
     })) as Response
 
     expect(result.status).toBe(200)
-    const body = (await result.json()) as { user?: { isAnonymous?: boolean }; token?: string }
+    const body = (await result.json()) as { user?: { id: string; isAnonymous?: boolean }; token?: string }
     expect(body.user?.isAnonymous).toBe(true)
     expect(body.token).toBeDefined()
+    // Anonymous users are not organization members.
+    expect(await db.select().from(orgMembership).where(eq(orgMembership.userId, body.user!.id))).toHaveLength(0)
   })
 
   // The before-hook (captcha + fixation guard) and the IP limiter both match the path exactly.

@@ -33,6 +33,7 @@ import { getAllModels } from '@/dal/models'
 import { getIntegrationCredentials } from '@/dal/integrations'
 import { resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
+import { createRecordingClient } from '@/test-utils/http-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { rejectNestedTransactions } from '@/test-utils/flat-transactions'
 import { getClock } from '@/testing-library'
@@ -229,6 +230,20 @@ describe('provider authorization without a model', () => {
     expect((await getProviderCredentials(getDb(), 'oauth:openrouter'))?.access_token).toBe('openrouter-token')
     expect(await getAllModels(getDb())).toEqual([])
     expect(result.current.isPending).toBe(false)
+  })
+
+  it('reports a completed authorization once', async () => {
+    spyOn(openrouter, 'startOpenRouterConnection').mockResolvedValue('openrouter-token')
+    const reports = createRecordingClient(() => '')
+    const onConnected = mock(() => {})
+    const { result } = renderHook(() => useProviderAuthorization({ onConnected }), {
+      wrapper: createTestProvider({ httpClient: reports.client }),
+    })
+
+    await act(async () => result.current.authorize({ provider: 'openrouter', name: 'My OpenRouter' }))
+    await act(async () => getClock().runAllAsync())
+
+    expect(reports.requests.filter((path) => path.startsWith('audit/'))).toEqual(['audit/client-events'])
   })
 
   it.each(['openrouter', 'tinfoil', 'otari'] as const)(

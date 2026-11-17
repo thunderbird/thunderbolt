@@ -2,23 +2,43 @@
 
 Hardcoded per-tier budgets, enforced by a Postgres-backed limiter in [backend/src/middleware/rate-limit.ts](../src/middleware/rate-limit.ts) and wired per route group in [backend/src/index.ts](../src/index.ts).
 
-| Tier                       | Budget       | Keyed on                 | Routes                                                                                   |
-| -------------------------- | ------------ | ------------------------ | ---------------------------------------------------------------------------------------- |
-| `inference`                | 60 / minute  | user                     | `/v1/chat/*` (managed inference)                                                         |
-| `pro`                      | 100 / minute | user                     | `/v1/pro/*`, `/v1/proxy/*`, `/v1/proxy/ws`, `/v1/tinfoil/*`, `/v1/search`, `/v1/preview` |
-| `auth`                     | 10 / minute  | client IP                | `/v1/api/auth/*` (except anonymous sign-in and GET get-session), `/v1/waitlist/*`        |
-| `integration-oauth`        | 30 / minute  | client IP                | `/v1/auth/google/*`, `/v1/auth/microsoft/*`. Always on.                                  |
-| `anonymous-sign-in`        | 10 / minute  | client IP                | `POST /v1/api/auth/sign-in/anonymous`                                                    |
-| `anonymous-sign-in-global` | 2000 / hour  | one key, deployment-wide | `POST /v1/api/auth/sign-in/anonymous`, while `AUTH_ALLOW_ANONYMOUS=true`                 |
-| `captcha-challenge`        | 10 / minute  | client IP                | `GET /v1/captcha/challenge`                                                              |
-| `debug-transcript`         | 10 / hour    | user                     | `POST /v1/debug-transcripts`                                                             |
-| `debug-transcript-intake`  | 600 / hour   | intake client, and IP    | `POST /v1/debug-transcripts/intake`                                                      |
+| Tier                       | Budget        | Keyed on                 | Routes                                                                                   |
+| -------------------------- | ------------- | ------------------------ | ---------------------------------------------------------------------------------------- |
+| `inference`                | 60 / minute   | user                     | `/v1/chat/*` (managed inference)                                                         |
+| `pro`                      | 100 / minute  | user                     | `/v1/pro/*`, `/v1/proxy/*`, `/v1/proxy/ws`, `/v1/tinfoil/*`, `/v1/search`, `/v1/preview` |
+| `auth`                     | 10 / minute   | client IP                | `/v1/api/auth/*` (except anonymous sign-in, GET get-session and SCIM), `/v1/waitlist/*`  |
+| `integration-oauth`        | 30 / minute   | client IP                | `/v1/auth/google/*`, `/v1/auth/microsoft/*`. Always on.                                  |
+| `anonymous-sign-in`        | 10 / minute   | client IP                | `POST /v1/api/auth/sign-in/anonymous`                                                    |
+| `anonymous-sign-in-global` | 2000 / hour   | one key, deployment-wide | `POST /v1/api/auth/sign-in/anonymous`, while `AUTH_ALLOW_ANONYMOUS=true`                 |
+| `captcha-challenge`        | 10 / minute   | client IP                | `GET /v1/captcha/challenge`                                                              |
+| `debug-transcript`         | 10 / hour     | user                     | `POST /v1/debug-transcripts`                                                             |
+| `debug-transcript-intake`  | 600 / hour    | intake client, and IP    | `POST /v1/debug-transcripts/intake`                                                      |
+| `scim`                     | 1200 / minute | SCIM bearer token        | `/v1/api/auth/scim/v2/*`                                                                 |
+| `scim-auth-failure`        | 20 / minute   | client IP, 401s only     | `/v1/api/auth/scim/v2/*`                                                                 |
+| `scim-failure-record`      | 60 / hour     | SCIM credential          | audit rows for rejected SCIM requests; never refuses a request                           |
+| `audit-admin-denied`       | 10 / hour     | user                     | the `admin.access_denied` audit event, not the request. Always on.                       |
+| `audit-client-event`       | 60 / hour     | user                     | `POST /v1/audit/client-events`. Always on.                                               |
 
 Limits are hardcoded in `tierConfigs` ([rate-limit.ts:48](../src/middleware/rate-limit.ts)), not configurable, so every deployment enforces a known floor and no env var can quietly raise it. The exceptions are `anonymous-sign-in` and `captcha-challenge`, whose budgets both come from `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX` / `_WINDOW_SECS` (with ALTCHA, every anonymous sign-in fetches one challenge first) and cannot be raised without a captcha while anonymous auth is on, and `anonymous-sign-in-global`, sized by `ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX` / `_WINDOW_SECS`. That last one is a single `anonymous-sign-in-global:all` bucket every client shares, and it is the cap on scripted anonymous sign-up. It counts only sign-ins that passed the captcha (all of them with `CAPTCHA_PROVIDER=none`): `createAuth` charges it through `createRateLimitConsumer` in the Better Auth before-hook, after captcha verification and the session-fixation guard, so the per-IP bucket runs first and an unsolved request never spends a point. Its 429 comes from Better Auth (`{ message }` with `Retry-After` and `RateLimit-*` headers), not from the Elysia limiter.
 
 Being Postgres-backed rather than in-process, all replicas share one budget. It runs independent of any edge or CDN because several `/v1` routes spend real money or send real email (managed inference, Exa-backed search, link previews, OTP send, waitlist join) and self-hosted deployments have no edge.
 
 Operator configuration (`RATE_LIMIT_ENABLED`, `TRUSTED_PROXY`) is in [docs/self-hosting/configuration.md](../../docs/self-hosting/configuration.md#rate-limiting).
+
+### SCIM
+
+An IdP's sync sends several requests per user (a Keycloak full sync is about 9), so SCIM can't share the `auth` tier. `createAuthPluginIpRateLimit` exempts `/v1/api/auth/scim/v2`, Better Auth's limiter skips it (`'/scim/v2/**': false`), and `createScimRequestHandler` ([identity/scim/request.ts](../src/identity/scim/request.ts)) applies three tiers of its own, sized there rather than in `tierConfigs`:
+
+- `scim` is keyed on a SHA-256 of the bearer token, so a connection's budget is its credential's. Only `/Users` and `/Groups` are charged: discovery answers without a token, so charging it would let anyone write a row per made-up token without ever earning a 401. The connection itself is only known inside the plugin, after every hook we can attach to. A garbage token gets a bucket of its own, never a real connection's.
+- `scim-auth-failure` is keyed on the client IP and spent only by 401s, so token spraying has a ceiling and a working IdP never meets it.
+
+- `scim-failure-record` is keyed on the credential a rejected request authenticated as, and bounds the failed `scim.request` audit events it can leave. Past it the event is dropped and the request is answered as usual.
+
+The first two answer with SCIM's error body (`application/scim+json`, `status: "429"`) and `Retry-After`.
+
+### Audit budgets
+
+Two tiers bound the audit log rather than the API, so they ignore `RATE_LIMIT_ENABLED`. `audit-admin-denied` caps the `admin.access_denied` events one user can cause, through `createAuditBudget` ([identity/audit/write.ts](../src/identity/audit/write.ts)): past it the request still gets its 403, and only the event is skipped. `audit-client-event` caps the app's client-reported events at the route, with a 429.
 
 ## How tiers map to buckets
 

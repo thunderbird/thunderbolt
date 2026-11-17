@@ -15,6 +15,16 @@ import { createStandaloneLogger } from '@/config/logger'
 import { createCorsMiddleware } from '@/config/cors'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { runMigrations } from '@/db/client'
+import { createIdentityAdminRoutes } from '@/identity/admin/routes'
+import { createClientAuditRoutes } from '@/identity/audit/client-routes'
+import { createAuditRequestContext } from '@/identity/audit/request-context'
+import { createAuditRoutes } from '@/identity/audit/routes'
+import { createInvitationRoutes } from '@/identity/invitations/routes'
+import { ensureImplicitOrganization } from '@/identity/organization'
+import { resumeScimRetirements } from '@/identity/scim/connections'
+import { createAuth } from '@/auth/auth'
+import { ensureEnvSsoConnection } from '@/identity/sso-connections'
+import { createSsoRoutes } from '@/identity/sso-routes'
 import { releaseOpenHolds } from '@/inference/managed-request'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createAppVersionMiddleware } from '@/middleware/app-version'
@@ -132,6 +142,7 @@ export const createApp = async (deps?: AppDeps) => {
     configuredApp
       .use(createCorsMiddleware(settings))
       .use(createHttpLoggingMiddleware(appLogger, settings.trustedProxy))
+      .use(createAuditRequestContext())
       .use(createAppVersionMiddleware(settings))
       .use(createErrorHandlingMiddleware())
       // Auth routes (mounted at /api/auth/*)
@@ -151,6 +162,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createMicrosoftAuthRoutes(auth, fetchFn, integrationOAuthRateLimit))
       .use(createOidcConfigRoutes())
       .use(createSsoDesktopCallbackRoutes(settings, fetchFn))
+      .use(createSsoRoutes({ settings, database, ipRateLimit: createAuthIpRateLimit(database, ipRateLimitSettings) }))
       .use(createProToolsRoutes(auth, proRateLimit))
       .use(
         createUniversalProxyRoutes({
@@ -233,6 +245,10 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createEncryptionRoutes(auth, database, settings))
       .use(createDeviceApprovalSessionRoutes(auth, database))
       .use(createAccountRoutes(auth, settings, database))
+      .use(createAuditRoutes(auth, database))
+      .use(createClientAuditRoutes(auth, database))
+      .use(createIdentityAdminRoutes(auth, database))
+      .use(createInvitationRoutes({ database, ipRateLimit: createAuthIpRateLimit(database, ipRateLimitSettings) }))
       .use(createAgentsRoutes(auth))
       .use(createHaystackRoutes(settings, auth, { fetchFn }))
   )
@@ -264,6 +280,11 @@ const startServer = async () => {
   try {
     // Run PGLite migrations before creating the app (no-op for Postgres)
     await runMigrations()
+    // The access check refuses users without a membership, so the implicit org and the
+    // existing users' memberships must exist before the first request.
+    const { db: bootDb } = await import('@/db/client')
+    await ensureImplicitOrganization(bootDb)
+    await ensureEnvSsoConnection(bootDb, settings)
 
     // Downloads the operator's fonts and logos before the server takes traffic, so
     // a pod that joins a rolling deploy serves them from its first /config: a
@@ -284,12 +305,14 @@ const startServer = async () => {
     const app = await createApp({ brandingAssets })
 
     // Periodically purge expired/consumed E2EE challenge nonces (plan Track A A7), expired
-    // solved captcha challenges and idle anonymous users. There is no cron infra, so a startup
+    // solved captcha challenges and idle anonymous users, and resume SCIM connection retirements
+    // a restart interrupted. There is no cron infra, so a startup
     // sweep plus an hourly interval keeps these tables bounded (nonces have a ~5-minute TTL,
     // captcha challenges ALTCHA_TTL_SECS, anonymous users ANONYMOUS_USER_IDLE_DAYS). The db is
     // lazily imported to preserve the "no db init at module load" invariant that keeps tests/CI
     // clean.
     const { db: sweepDb } = await import('@/db/client')
+    const scimRetirementAuth = createAuth(sweepDb)
     const sweepExpiredRows = async () => {
       try {
         await deleteExpiredOrConsumedNonces(sweepDb)
@@ -302,6 +325,11 @@ const startServer = async () => {
         log.error({ err }, 'Failed to sweep expired captcha challenges')
       }
       await sweepIdleAnonymousUsers(sweepDb, settings, log)
+      try {
+        await resumeScimRetirements(scimRetirementAuth)
+      } catch (err) {
+        log.error({ err }, 'Failed to resume SCIM connection retirements')
+      }
     }
     void sweepExpiredRows()
     const sweepTimer = setInterval(() => void sweepExpiredRows(), 60 * 60 * 1000)

@@ -535,6 +535,10 @@ msgstr ""
 msgid "An encrypted agent connection alone does not verify the agent or its model provider."
 msgstr ""
 
+#: src/lib/sso-error-messages.ts
+msgid "An existing {appName} account already uses this email. Your administrator needs to approve linking it to this sign-in."
+msgstr "Ein bestehendes {appName}-Konto verwendet bereits diese E-Mail-Adresse. Ihr Administrator muss die Verknüpfung mit dieser Anmeldung genehmigen."
+
 #: src/lib/openrouter-auth.ts
 #~ msgid "An OpenRouter connection is already in progress."
 #~ msgstr ""
@@ -748,6 +752,10 @@ msgstr ""
 msgid "Back to App"
 msgstr "Zurück zur App"
 
+#: src/components/sso-sign-in/sso-email-code-page.tsx
+msgid "Back to organization sign-in"
+msgstr "Zurück zur Anmeldung über Ihre Organisation"
+
 #: src/settings/voice.tsx
 msgid "Base URL"
 msgstr "Basis-URL"
@@ -913,6 +921,10 @@ msgstr "Jetzt prüfen"
 msgid "Check the backend logs"
 msgstr "Backend-Protokolle prüfen"
 
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "Check your connection and try again."
+msgstr "Prüfen Sie Ihre Verbindung und versuchen Sie es erneut."
+
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/waitlist/waitlist-content.tsx
 msgid "Check your email"
@@ -1000,6 +1012,10 @@ msgstr ""
 #: src/settings/models/add-provider-models.tsx
 msgid "Choose from available models"
 msgstr ""
+
+#: src/components/sso-sign-in/sso-connection-list.tsx
+msgid "Choose how to sign in"
+msgstr "Anmeldemethode wählen"
 
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Choose how you use Thunderbolt."
@@ -1581,6 +1597,7 @@ msgid "Context Window Exceeded"
 msgstr "Kontextfenster überschritten"
 
 #: src/components/device-approval.tsx
+#: src/components/invite-accept/invite-accept-page.tsx
 #: src/components/magic-link-verify.tsx
 #: src/components/onboarding/onboarding-action-buttons.tsx
 #: src/components/onboarding/onboarding-dialog.tsx
@@ -1588,6 +1605,7 @@ msgstr "Kontextfenster überschritten"
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/components/sign-in/sign-in-success-step.tsx
+#: src/components/sso-sign-in/sso-email-step.tsx
 #: src/components/sync-setup/passkey-enroll-step.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/settings/connections/connection-setup-footer.tsx
@@ -1601,7 +1619,7 @@ msgid "Continue in your Thunderbolt window"
 msgstr ""
 
 #: src/components/sso-error.tsx
-#: src/components/sso-redirect.tsx
+#: src/components/sso-sign-in/sso-redirect.tsx
 msgid "Continue locally"
 msgstr ""
 
@@ -1929,6 +1947,10 @@ msgstr "Die Emoji-Liste konnte nicht geladen werden. Schließen Sie die Auswahl 
 #: src/components/settings/iroh-pairing-panel.tsx
 msgid "Couldn't load this app's pairing identity: {error}"
 msgstr "Die Kopplungsidentität dieser App konnte nicht geladen werden: {error}"
+
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "Couldn't load this invitation"
+msgstr "Diese Einladung konnte nicht geladen werden"
 
 #: src/mini-apps/mini-app-page.tsx
 msgid "Couldn't load your apps. Check your connection and reload."
@@ -2548,8 +2570,8 @@ msgid "e.g., llama3.3"
 msgstr ""
 
 #: src/components/sign-in/sign-in-email-step.tsx
-msgid "Early Access Login"
-msgstr "Anmeldung für den Early Access"
+#~ msgid "Early Access Login"
+#~ msgstr "Anmeldung für den Early Access"
 
 #: src/components/settings/detail-actions-menu.tsx
 #: src/components/settings/edit-delete-context-menu.tsx
@@ -2766,6 +2788,10 @@ msgstr "Geben Sie Ihren Namen ein"
 #: src/components/step-up-code-dialog.tsx
 msgid "Enter your verification code"
 msgstr ""
+
+#: src/components/sso-sign-in/sso-email-step.tsx
+msgid "Enter your work email to continue with your organization's sign-in."
+msgstr "Geben Sie Ihre geschäftliche E-Mail-Adresse ein, um mit der Anmeldung Ihrer Organisation fortzufahren."
 
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Enterprise"
@@ -3266,6 +3292,10 @@ msgstr "Ungültiger Bestätigungslink. Bitte fordern Sie einen neuen an."
 msgid "iOS requires a secure URL (wss://)"
 msgstr "iOS erfordert eine sichere URL (wss://)"
 
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "It may have expired, been used already, or been withdrawn. Ask for a new invitation."
+msgstr "Sie ist möglicherweise abgelaufen, wurde bereits verwendet oder zurückgezogen. Bitten Sie um eine neue Einladung."
+
 #: src/components/recovery-continuity/recovery-continuity-banner.tsx
 msgid "It was created before a security update. A new phrase lets recovery confirm your keys are yours."
 msgstr ""
@@ -3420,6 +3450,10 @@ msgstr "Vorschau wird geladen…"
 #: src/components/settings/iroh-pairing-panel.tsx
 msgid "Loading this app's pairing identity…"
 msgstr "Kopplungsidentität dieser App wird geladen…"
+
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "Loading your invitation…"
+msgstr "Ihre Einladung wird geladen…"
 
 #: src/components/chat/chat-ui.tsx
 #: src/components/device-approval.tsx
@@ -3687,6 +3721,10 @@ msgstr "Name"
 msgid "Name is required."
 msgstr "Ein Name ist erforderlich."
 
+#: src/components/sso-sign-in/sso-email-step.tsx
+msgid "name@company.com"
+msgstr "name@firma.de"
+
 #: src/components/ui/mobile-sidebar.tsx
 msgid "Navigation"
 msgstr "Navigation"
@@ -3814,8 +3852,8 @@ msgid "No locations found."
 msgstr "Keine Orte gefunden."
 
 #: src/components/sign-in/sign-in-email-step.tsx
-msgid "No logs or training on your data"
-msgstr "Keine Protokolle und kein Training mit Ihren Daten"
+#~ msgid "No logs or training on your data"
+#~ msgstr "Keine Protokolle und kein Training mit Ihren Daten"
 
 #: src/settings/devices.tsx
 msgid "No longer accepts device connections"
@@ -4336,6 +4374,10 @@ msgstr "Berechtigung erforderlich"
 #: src/settings/preferences.tsx
 msgid "Personalization"
 msgstr "Personalisierung"
+
+#: src/components/sso-sign-in/sso-connection-list.tsx
+msgid "Pick the identity provider your organization uses for you."
+msgstr "Wählen Sie den Identitätsanbieter, den Ihre Organisation für Sie verwendet."
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Pick this code on your other device."
@@ -5268,9 +5310,11 @@ msgstr "Erneut anmelden"
 
 #: src/components/device-approval.tsx
 #: src/components/sidebar-footer.tsx
+#: src/components/sso-sign-in/sso-email-step.tsx
 msgid "Sign in"
 msgstr "Anmelden"
 
+#: src/components/invite-accept/invite-accept-page.tsx
 #: src/components/onboarding/onboarding-server-step.tsx
 #: src/components/sign-in-modal.tsx
 #: src/settings/preferences.tsx
@@ -5334,6 +5378,14 @@ msgstr ""
 #: src/components/device-approval.tsx
 msgid "Sign in to the CLI"
 msgstr "Bei der CLI anmelden"
+
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "Sign in with {email} to accept the invitation."
+msgstr "Melden Sie sich mit {email} an, um die Einladung anzunehmen."
+
+#: src/components/sso-sign-in/sso-email-code-page.tsx
+msgid "Sign in with an email code"
+msgstr "Mit einem E-Mail-Code anmelden"
 
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/waitlist/waitlist-content.tsx
@@ -5972,6 +6024,10 @@ msgstr "Diese Datei scheint kein {appName}-Export zu sein."
 msgid "This helps us personalize your experience with local settings and features."
 msgstr "So können wir Ihr Erlebnis mit lokalen Einstellungen und Funktionen personalisieren."
 
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "This invitation is no longer valid"
+msgstr "Diese Einladung ist nicht mehr gültig"
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "This is the first device on your account. We'll create an encryption key to protect your data and give you a recovery key to keep safe."
 msgstr "Das ist das erste Gerät in Ihrem Konto. Wir erstellen einen Verschlüsselungsschlüssel zum Schutz Ihrer Daten und geben Ihnen einen Wiederherstellungsschlüssel zum sicheren Aufbewahren."
@@ -6107,6 +6163,14 @@ msgstr "Dieser Server verwendet OAuth. Fügen Sie ihn hinzu und autorisieren Sie
 msgid "This sign-in did not start from {appName}. Open {appName} and sign in from there."
 msgstr ""
 
+#: src/lib/sso-error-messages.ts
+msgid "This sign-in is already linked to another {appName} account. Ask your administrator for help."
+msgstr "Diese Anmeldung ist bereits mit einem anderen {appName}-Konto verknüpft. Wenden Sie sich an Ihren Administrator."
+
+#: src/lib/sso-error-messages.ts
+msgid "This sign-in option is no longer available. Try again, or ask your administrator."
+msgstr "Diese Anmeldeoption ist nicht mehr verfügbar. Versuchen Sie es erneut oder wenden Sie sich an Ihren Administrator."
+
 #: src/lib/device-grant.ts
 msgid "This sign-in request has expired. Start a new one from your terminal."
 msgstr "Diese Anmeldeanfrage ist abgelaufen. Starten Sie eine neue in Ihrem Terminal."
@@ -6193,8 +6257,8 @@ msgid "Thunderbolt couldn't verify this device's encryption keys, so it can't up
 msgstr ""
 
 #: src/components/sign-in/sign-in-email-step.tsx
-msgid "Thunderbolt is open-source"
-msgstr "Thunderbolt ist Open Source"
+#~ msgid "Thunderbolt is open-source"
+#~ msgstr "Thunderbolt ist Open Source"
 
 #: src/settings/connections/use-integrations-controller.tsx
 msgid "Thunderbolt Pro is not available yet. Stay tuned!"
@@ -6358,9 +6422,10 @@ msgstr "Vertrauenswürdige Geräte"
 #: src/components/auth-gate/browser-check.tsx
 #: src/components/chat/attestation/attestation-panel.tsx
 #: src/components/embedded/surface-status.tsx
+#: src/components/invite-accept/invite-accept-page.tsx
 #: src/components/recovery-phrase-change-dialogs.tsx
 #: src/components/sso-error.tsx
-#: src/components/sso-redirect.tsx
+#: src/components/sso-sign-in/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/webview-recovery/index.ts
 msgid "Try again"
@@ -6402,7 +6467,7 @@ msgstr "Aktivieren Sie die Synchronisierung auf diesem Gerät, um diesen Passkey
 msgid "Turning off telemetry will disable all preview features. Are you sure you want to continue?"
 msgstr "Wenn Sie die Telemetrie deaktivieren, werden alle Vorschaufunktionen deaktiviert. Möchten Sie wirklich fortfahren?"
 
-#: src/components/sso-redirect.tsx
+#: src/components/sso-sign-in/sso-redirect.tsx
 msgid "Unable to connect to the identity provider. Check your network connection and SSO configuration."
 msgstr "Verbindung zum Identitätsanbieter nicht möglich. Prüfen Sie Ihre Netzwerkverbindung und Ihre SSO-Konfiguration."
 
@@ -6585,6 +6650,12 @@ msgstr ""
 #: src/components/onboarding/onboarding-model-step.tsx
 msgid "Use an API key instead"
 msgstr ""
+
+#: src/components/sso-error.tsx
+#: src/components/sso-sign-in/sso-connection-list.tsx
+#: src/components/sso-sign-in/sso-email-step.tsx
+msgid "Use an email code instead"
+msgstr "Stattdessen einen E-Mail-Code verwenden"
 
 #: src/lib/mcp-url-validation.ts
 msgid "Use an http:// or https:// URL"
@@ -6834,6 +6905,10 @@ msgstr ""
 msgid "We could not sign you in. Please try again."
 msgstr ""
 
+#: src/lib/sso-error-messages.ts
+msgid "We couldn't match this sign-in to an account. Ask your administrator for help."
+msgstr "Diese Anmeldung konnte keinem Konto zugeordnet werden. Wenden Sie sich an Ihren Administrator."
+
 #: src/components/auth-gate/browser-check.tsx
 msgid "We couldn't verify your browser. Check your connection and try again."
 msgstr "Wir konnten Ihren Browser nicht verifizieren. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut."
@@ -6858,6 +6933,10 @@ msgstr ""
 #: src/settings/account/delete-account-section.tsx
 msgid "We sent an 8-digit code to your account email. Enter it to permanently delete your account."
 msgstr ""
+
+#: src/components/sso-sign-in/sso-email-code-page.tsx
+msgid "We'll send a sign-in code to your email address."
+msgstr "Wir senden einen Anmeldecode an Ihre E-Mail-Adresse."
 
 #: src/waitlist/waitlist-content.tsx
 msgid "We've sent an email to <0>{email}</0> with your next steps."
@@ -6973,6 +7052,10 @@ msgstr "Fenstersteuerung"
 msgid "word1 word2 word3 ..."
 msgstr "wort1 wort2 wort3 ..."
 
+#: src/components/sso-sign-in/sso-email-step.tsx
+msgid "Work email"
+msgstr "Geschäftliche E-Mail-Adresse"
+
 #: src/settings/preferences.tsx
 msgid "Would you like to change the language to {suggestedLanguageLabel}?"
 msgstr "Möchten Sie die Sprache auf {suggestedLanguageLabel} umstellen?"
@@ -7062,6 +7145,10 @@ msgstr "Alles bereit!"
 msgid "You're all set! 🎉"
 msgstr "Alles bereit! 🎉"
 
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "You're already signed in"
+msgstr "Sie sind bereits angemeldet"
+
 #: src/components/magic-link-verify.tsx
 #: src/components/sign-in/sign-in-success-step.tsx
 msgid "You're now signed in."
@@ -7080,6 +7167,14 @@ msgstr "Sie nutzen die neueste Version."
 #~ msgid "You're ready for the next step. Return to Thunderbolt to finish connecting your account."
 #~ msgstr ""
 
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "You're signed in as {email}."
+msgstr "Sie sind als {email} angemeldet."
+
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "You've been invited to {appName}"
+msgstr "Sie wurden zu {appName} eingeladen"
+
 #: src/settings/models/model-detail.tsx
 msgid "You've customized this model."
 msgstr "Sie haben dieses Modell angepasst."
@@ -7095,6 +7190,14 @@ msgstr "Sie haben Ihr KI-Nutzungslimit für das aktuelle 5-Stunden-Fenster errei
 #: src/components/chat/error-message.tsx
 msgid "You've reached your AI usage limit for the current 7-day window. Try again later."
 msgstr "Sie haben Ihr KI-Nutzungslimit für das aktuelle 7-Tage-Fenster erreicht. Versuchen Sie es später erneut."
+
+#: src/lib/sso-error-messages.ts
+msgid "Your access to {appName} has been blocked. Ask your administrator for help."
+msgstr "Ihr Zugang zu {appName} wurde gesperrt. Wenden Sie sich an Ihren Administrator."
+
+#: src/lib/sso-error-messages.ts
+msgid "Your account has been deactivated. Ask your administrator to restore your access."
+msgstr "Ihr Konto wurde deaktiviert. Bitten Sie Ihren Administrator, Ihren Zugang wiederherzustellen."
 
 #: src/components/account-deleted.tsx
 msgid "Your account has been deleted and local data has been cleared."
@@ -7193,6 +7296,10 @@ msgstr ""
 msgid "Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."
 msgstr ""
 
+#: src/lib/sso-error-messages.ts
+msgid "Your identity provider didn't send the identifier your organization matches accounts on. Ask your administrator to check the connection."
+msgstr "Ihr Identitätsanbieter hat die Kennung nicht gesendet, über die Ihre Organisation Konten zuordnet. Bitten Sie Ihren Administrator, die Verbindung zu prüfen."
+
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Your local data stays on this device until you enable sync."
 msgstr ""
@@ -7221,6 +7328,18 @@ msgstr ""
 #: src/components/recovery-phrase-change-dialogs.tsx
 msgid "Your old recovery phrase no longer works. Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
 msgstr ""
+
+#: src/lib/sso-error-messages.ts
+msgid "Your organization hasn't given you access to {appName} yet. Ask your administrator to add you."
+msgstr "Ihre Organisation hat Ihnen noch keinen Zugang zu {appName} gewährt. Bitten Sie Ihren Administrator, Sie hinzuzufügen."
+
+#: src/settings/account/use-delete-account.ts
+msgid "Your organization manages this account, so it can’t be deleted here. Ask your administrator."
+msgstr "Ihre Organisation verwaltet dieses Konto, daher kann es hier nicht gelöscht werden. Wenden Sie sich an Ihren Administrator."
+
+#: src/lib/otp-error-messages.ts
+msgid "Your organization requires you to sign in with single sign-on."
+msgstr "Ihre Organisation verlangt die Anmeldung per Single Sign-On."
 
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "Your passkey was added before a security update. Check it once so unlocking with it can confirm your encryption keys are yours."

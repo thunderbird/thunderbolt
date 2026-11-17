@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import {
   clearSettingsCache,
+  getBootstrapAdminEmails,
   getWaitlistAutoApproveDomains,
   getCorsMethodsList,
   getCorsOriginsList,
@@ -260,6 +261,16 @@ describe('Config Settings', () => {
 
       expect(isOriginAllowed('https://evil.com', settings)).toBe(false)
       expect(isOriginAllowed('http://malicious.localhost', settings)).toBe(false)
+    })
+  })
+
+  describe('getBootstrapAdminEmails', () => {
+    it('splits, trims, lowercases and drops empty entries', () => {
+      expect(getBootstrapAdminEmails({ bootstrapAdminEmails: ' Founder@Example.com ,, ops@example.com,' })).toEqual([
+        'founder@example.com',
+        'ops@example.com',
+      ])
+      expect(getBootstrapAdminEmails({ bootstrapAdminEmails: '' })).toEqual([])
     })
   })
 

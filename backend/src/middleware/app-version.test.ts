@@ -41,6 +41,12 @@ describe('app-version gate', () => {
       }
     })
 
+    it('exempts SCIM, whose provisioning clients send no X-App-Version', () => {
+      expect(isExempt('/v1/api/auth/scim/v2', 'POST')).toBe(true)
+      expect(isExempt('/v1/api/auth/scim/v2/Users/abc', 'PATCH')).toBe(true)
+      expect(isExempt('/v1/api/auth/scim/v2x', 'GET')).toBe(false)
+    })
+
     it('does not exempt an arbitrary gated path', () => {
       expect(isExempt('/v1/inference', 'GET')).toBe(false)
     })

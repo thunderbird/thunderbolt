@@ -8,6 +8,7 @@ import { session, user } from '@/db/auth-schema'
 import { betterAuthTestSecret, signTestToken } from '@/test-utils/auth-token'
 import { getSharedIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
 import { createAuthDouble } from '@/test-utils/mock-auth'
+import { addTestMembership } from '@/test-utils/identity'
 import { createTestSettings } from '@/test-utils/settings'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { eq } from 'drizzle-orm'
@@ -18,6 +19,9 @@ import { encodeWsBearer } from '@shared/ws-bearer'
 
 describe('authoritative session lookup', () => {
   const queries: string[] = []
+  // The identity plugin's membership check adds its own reads to every non-anonymous lookup;
+  // these tests pin the session lookups alone.
+  const sessionQueries = () => queries.filter((query) => query.includes('from "session"'))
   let client: IsolatedTestDb['client']
   let db: ReturnType<typeof drizzle<typeof schema>>
   let auth: ReturnType<typeof createAuth>
@@ -51,6 +55,8 @@ describe('authoritative session lookup', () => {
       isNew: false,
       isAnonymous: true,
     })
+    // Most cases flip the user to non-anonymous, which makes them need a membership.
+    await addTestMembership(db, userId)
     await db.insert(session).values({
       id: sessionId,
       userId,
@@ -109,13 +115,13 @@ describe('authoritative session lookup', () => {
       queries.length = 0
       const opened = await Promise.all([first.authorize(), second.authorize()])
       expect(opened.map((result) => result.ok)).toEqual([true, true])
-      expect(queries).toHaveLength(2)
+      expect(sessionQueries()).toHaveLength(2)
       expect(
         (await Promise.all(Array.from({ length: 100 }, (_, index) => (index % 2 ? first : second).check()))).every(
           Boolean,
         ),
       ).toBe(true)
-      expect(queries).toHaveLength(2)
+      expect(sessionQueries()).toHaveLength(2)
     } finally {
       first.stop()
       second.stop()
@@ -367,7 +373,7 @@ describe('authoritative session lookup', () => {
       queries.length = 0
       const refreshed = await auth.api.getSession({ headers })
       expect(refreshed?.user).toMatchObject({ name: 'Updated owner', isAnonymous: false })
-      expect(queries).toHaveLength(1)
+      expect(sessionQueries()).toHaveLength(1)
     })
 
     it(`rejects a session as soon as it expires with ${transport} auth`, async () => {

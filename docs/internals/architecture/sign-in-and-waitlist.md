@@ -27,12 +27,13 @@ POST /v1/api/auth/sign-in/email-otp   { email, otp }
 `resolveApproval` ([backend/src/waitlist/routes.ts:63-103](../../../backend/src/waitlist/routes.ts)) checks in
 a fixed order, and the order is the whole policy.
 
-| Order | Caller                                      | Outcome                                                                                                                                                                 |
-| ----- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1     | An existing `user` row                      | Approved; past the gate once, never re-queued                                                                                                                           |
-| 2     | A waitlist row with `status = 'approved'`   | Approved                                                                                                                                                                |
-| 3     | A domain in `WAITLIST_AUTO_APPROVE_DOMAINS` | Approved. Missing row created as `approved`, existing `pending` row upgraded in place (`isAutoApprovedDomain`, [utils.tsx:16](../../../backend/src/waitlist/utils.tsx)) |
-| 4     | Anything else                               | Queued. New address: `pending` row plus the "joined" email. Known `pending` address: the "reminder" email                                                               |
+| Order | Caller                                      | Outcome                                                                                                                                                                                                    |
+| ----- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | An existing `user` row                      | Approved; past the gate once, never re-queued                                                                                                                                                              |
+| 1     | An address `admitsWithoutWaitlist` allows   | Approved, with no waitlist row: a `BOOTSTRAP_ADMIN_EMAILS` address, a usable invitation, an enrollable org domain, or open sign-up ([identity-and-access.md](identity-and-access.md#admission-at-sign-in)) |
+| 2     | A waitlist row with `status = 'approved'`   | Approved                                                                                                                                                                                                   |
+| 3     | A domain in `WAITLIST_AUTO_APPROVE_DOMAINS` | Approved. Missing row created as `approved`, existing `pending` row upgraded in place (`isAutoApprovedDomain`, [utils.tsx:16](../../../backend/src/waitlist/utils.tsx))                                    |
+| 4     | Anything else                               | Queued. New address: `pending` row plus the "joined" email. Known `pending` address: the "reminder" email                                                                                                  |
 
 Only the approved branch mints a challenge token and sends the sign-in email
 ([routes.ts:171-178](../../../backend/src/waitlist/routes.ts)).
@@ -53,7 +54,9 @@ and whether an email is sent are identical, disclosing nothing about whether an 
 
 ## The gate runs three times, on purpose
 
-The same approval decision runs in three places, and they are not interchangeable.
+The same approval decision runs in three places, and they are not interchangeable. All three ask
+`admitsWithoutWaitlist` ([backend/src/identity/admission.ts](../../../backend/src/identity/admission.ts)) whether
+a new address skips the waitlist, so a new way in is added to that one function.
 
 | Copy                                  | Where                                                                 | What only it does                                                                                                                                                                                                                                      |
 | ------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -76,6 +79,12 @@ callers, both on that branch.
 The `waitlist` table ([backend/src/db/waitlist-schema.ts](../../../backend/src/db/waitlist-schema.ts)) is
 `{ id, email (unique), status: 'pending' | 'approved', batchId, createdAt, updatedAt }`, indexed on `status`
 and `batch_id`. `batchId` is carried for bulk approvals but no code reads or writes it.
+
+## Approval becomes a membership at sign-in
+
+An approval is recorded before the user exists, so the organization membership it grants is created
+at the address's first sign-in, with source `waitlist` pointing at the waitlist row. The access check
+then lets the session through. See [identity-and-access.md](identity-and-access.md#admission-at-sign-in).
 
 ## What the client does
 
@@ -127,11 +136,11 @@ Localizing either means giving the backend a code the client can map, not transl
 
 ## Which switches actually change the flow
 
-| Switch                          | Where                                                                     | Effect                                                                                                       |
-| ------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `WAITLIST_AUTO_APPROVE_DOMAINS` | Backend env, read through `getSettings()`                                 | The only server-side way to let addresses through without touching rows                                      |
-| `VITE_BYPASS_WAITLIST`          | Build-time flag, [src/lib/auth-mode.ts:16](../../../src/lib/auth-mode.ts) | Drops the `/waitlist` route, but not on its own the redirect to it (below). UI only; the backend still gates |
-| `VITE_AUTH_MODE=sso`            | Build-time flag, [src/lib/auth-mode.ts:5](../../../src/lib/auth-mode.ts)  | Replaces the whole flow with an IdP redirect; SSO sign-in never reaches the waitlist code                    |
+| Switch                          | Where                                                                     | Effect                                                                                                                     |
+| ------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `WAITLIST_AUTO_APPROVE_DOMAINS` | Backend env, read through `getSettings()`                                 | The only server-side way to let addresses through without touching rows                                                    |
+| `VITE_BYPASS_WAITLIST`          | Build-time flag, [src/lib/auth-mode.ts:16](../../../src/lib/auth-mode.ts) | Drops the `/waitlist` route, but not on its own the redirect to it (below). UI only; the backend still gates               |
+| `VITE_AUTH_MODE=sso`            | Build-time flag, [src/lib/auth-mode.ts:5](../../../src/lib/auth-mode.ts)  | Replaces the sign-in screen with an IdP redirect. Email-code sign-in at `/sign-in/email-code` still runs the waitlist code |
 
 `getSettings()` memoizes per process, so an auto-approve-domain change needs a backend restart; the `VITE_`
 flags are baked into the bundle and need a rebuild.

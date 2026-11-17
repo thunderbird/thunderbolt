@@ -2,11 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { authButtonClass } from '@/components/auth-screen'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { SiGithub } from '@icons-pack/react-simple-icons'
 import { Trans, useLingui } from '@lingui/react/macro'
-import { EyeOff, Fingerprint, Loader2, Mail } from 'lucide-react'
+import { Fingerprint, Loader2, Mail } from 'lucide-react'
 import { useRef, type FormEvent, type RefObject } from 'react'
 
 type SignInEmailStepProps = {
@@ -25,11 +25,10 @@ type SignInEmailStepProps = {
 }
 
 /**
- * Email input step for sign-in form.
+ * Email input step for sign-in form: a simple email + submit form whose title comes from its host.
  *
- * Page variant includes the title and feature cards.
- * Modal variant omits both (title comes from ResponsiveModalHeader) and stays
- * a simple email + submit form.
+ * Page variant: the waitlist's controls, for an auth card.
+ * Modal variant: the sign-in modal's controls.
  */
 export const SignInEmailStep = ({
   email,
@@ -49,47 +48,10 @@ export const SignInEmailStep = ({
   const inputRef = emailInputRef ?? localRef
 
   const isLoading = status === 'sending'
+  const placeholder = variant === 'modal' ? t`Email address` : t`Email`
 
   return (
-    // Page variant fills the viewport so the feature cards can center between
-    // title and controls; modal variant hugs content for outer centering.
-    <form onSubmit={onSubmit} className={variant === 'page' ? 'flex h-full w-full flex-1 flex-col' : 'w-full'}>
-      {/* Title — page variant only (modal has its own header) */}
-      {variant === 'page' && (
-        <div className="text-center">
-          <p className="font-sans text-[28px] font-medium leading-normal text-foreground">
-            <Trans>Early Access Login</Trans>
-          </p>
-        </div>
-      )}
-
-      {/* Feature cards — page variant only; the modal stays a simple sign-in form.
-          #DCE875 is a one-off accent for these dark-mode feature icons (the
-          light-mode emerald/amber tones read as muddy on the dark card); it
-          intentionally isn't a theme token — nothing else uses it. */}
-      {variant === 'page' && (
-        <div className="flex flex-1 items-center">
-          <div className="flex w-full flex-col gap-4 rounded-xl bg-secondary px-3 py-4 text-left">
-            <div className="flex items-center gap-2">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand/15 dark:bg-transparent">
-                <SiGithub className="size-6 text-brand" />
-              </div>
-              <p className="text-base text-muted-foreground">
-                <Trans>Thunderbolt is open-source</Trans>
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand-2/15 dark:bg-transparent">
-                <EyeOff className="size-6 text-brand-2" />
-              </div>
-              <p className="text-base text-muted-foreground">
-                <Trans>No logs or training on your data</Trans>
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
+    <form onSubmit={onSubmit} className={variant === 'page' ? 'flex w-full flex-col gap-4' : 'w-full'}>
       {status === 'error' && (
         <p className="text-sm text-destructive">{errorMessage || t`Something went wrong. Please try again.`}</p>
       )}
@@ -106,16 +68,19 @@ export const SignInEmailStep = ({
             name="email"
             type="email"
             inputMode="email"
-            placeholder={variant === 'modal' ? t`Email address` : t`Email`}
+            placeholder={placeholder}
+            aria-label={placeholder}
             value={email}
             onChange={(e) => onEmailChange(e.target.value)}
+            variant={variant === 'page' ? 'filled' : undefined}
+            inputSize={variant === 'page' ? 'xl' : undefined}
             className={
               variant === 'modal'
                 ? // Same height token as the submit button below so the pair
                   // reads as one unit; rounded-xl steps down from the modal's
                   // rounded-2xl shell.
                   'h-[var(--touch-height-lg)] rounded-xl pl-12 text-base'
-                : 'h-[46px] rounded-xl border-border bg-secondary px-3 text-base'
+                : 'rounded-xl'
             }
             disabled={isLoading}
             autoComplete="email"
@@ -125,11 +90,7 @@ export const SignInEmailStep = ({
         <Button
           type="submit"
           size={variant === 'modal' ? 'lg' : undefined}
-          className={
-            variant === 'modal'
-              ? 'w-full rounded-xl'
-              : 'h-[46px] w-full rounded-xl bg-foreground text-background text-base font-medium hover:bg-foreground/90'
-          }
+          className={variant === 'modal' ? 'w-full rounded-xl' : authButtonClass}
           disabled={isLoading || passkeyPending || !isValidEmail}
         >
           {isLoading ? (
@@ -158,7 +119,7 @@ export const SignInEmailStep = ({
               type="button"
               variant="outline"
               size={variant === 'modal' ? 'lg' : undefined}
-              className={variant === 'modal' ? 'w-full rounded-xl' : 'h-[46px] w-full rounded-xl text-base font-medium'}
+              className={variant === 'modal' ? 'w-full rounded-xl' : authButtonClass}
               disabled={isLoading || passkeyPending}
               onClick={onPasskeySignIn}
             >

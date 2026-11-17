@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { insertTestUsers } from '@/test-utils/identity'
 import { createAuth } from '@/auth/auth'
-import { session as sessionTable, user as userTable } from '@/db/auth-schema'
+import { session as sessionTable } from '@/db/auth-schema'
 import { encryptionMetadataTable, envelopesTable } from '@/db/encryption-schema'
 import { devicesTable } from '@/db/schema'
 import { createApp } from '@/index'
@@ -48,7 +49,7 @@ describe('Encryption API', () => {
     email = `${userId}@test.com`,
     deviceId?: string,
   ) => {
-    await db.insert(userTable).values({
+    await insertTestUsers(db, {
       id: userId,
       name: 'Test User',
       email,
@@ -476,9 +477,11 @@ describe('Encryption API', () => {
       expect(body.error).toBe('Device not found')
     })
 
-    it('returns 403 when device is revoked', async () => {
+    it('returns 403 when device is revoked, even while its envelope still exists', async () => {
       await createUserAndSession(p('u-me4'), p('tok-me4'), undefined, p('d-me4'))
       await insertDevice(p('d-me4'), p('u-me4'), { revokedAt: now })
+      // A SCIM DELETE revokes the device in its transaction and deletes the envelope just after.
+      await insertEnvelope(p('d-me4'), p('u-me4'))
 
       const response = await app.handle(
         new Request(`${baseUrl}/devices/me/envelope`, {
@@ -970,7 +973,7 @@ describe('Bridge device lifecycle API through full app', () => {
   const createFullAppUserAndSession = async (label: string) => {
     const userId = testId(`user-${label}`)
     const token = testId(`token-${label}`)
-    await fullAppDb.insert(userTable).values({
+    await insertTestUsers(fullAppDb, {
       id: userId,
       name: label,
       email: `${userId}@test.com`,

@@ -28,6 +28,8 @@ import { resolveEmailLocale } from '@/emails/i18n'
 import { verifyChallengeSignature } from '@/lib/canary'
 import { securityNotifications, type SecurityNotifications } from '@/lib/security-notifications'
 import type { StepUpAction } from '@/lib/step-up-otp'
+import { hasAccess, isIdpManagedUser } from '@/identity/access'
+import { insertAuditEvent } from '@/identity/audit/write'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { challengeOperations } from '@shared/e2ee-types'
 import { eq } from 'drizzle-orm'
@@ -49,6 +51,13 @@ const isAnonymousUser = (user: { isAnonymous?: boolean | null }): boolean => use
 const anonymousRefusal = {
   status: 403,
   body: { error: 'Anonymous accounts cannot be deleted', code: 'anonymous_account' },
+} as const
+
+// The IdP removes an account it manages; deleting it here would also drop the SCIM record the
+// IdP reprovisions through.
+const idpManagedRefusal = {
+  status: 403,
+  body: { error: 'Your organization manages this account', code: 'ACCOUNT_IDP_MANAGED' },
 } as const
 
 const unknownDeviceName = 'Unknown device'
@@ -144,7 +153,8 @@ export const createAccountRoutes = (
       }
 
       const initialSession = await getActivePersistedSession(database, rawToken)
-      if (!initialSession) {
+      // This route reads the session row itself, so it skips the access check `getSession` runs.
+      if (!initialSession || !(await hasAccess(auth, initialSession.userId))) {
         set.status = 401
         return { error: 'Unauthorized' }
       }
@@ -298,6 +308,12 @@ export const createAccountRoutes = (
 
           await revokeDevice(txDb, persistedSession.deviceId, userId)
           await revokeDeviceSessions(txDb, persistedSession.deviceId, userId)
+          await insertAuditEvent(txDb, {
+            action: 'auth.sign_out',
+            outcome: 'success',
+            actor: { type: 'user', id: userId },
+            target: { type: 'device', id: persistedSession.deviceId },
+          })
           return { ok: true as const }
         }),
       )
@@ -367,6 +383,12 @@ export const createAccountRoutes = (
 
             if (rows.length > 0) {
               await revokeDeviceSessions(tx, params.id, userId)
+              await insertAuditEvent(tx, {
+                action: 'auth.session_revoked',
+                outcome: 'success',
+                actor: { type: 'user', id: userId },
+                target: { type: 'device', id: params.id },
+              })
             }
           }),
         )
@@ -385,6 +407,10 @@ export const createAccountRoutes = (
         if (isAnonymousUser(user)) {
           set.status = anonymousRefusal.status
           return anonymousRefusal.body
+        }
+        if (await isIdpManagedUser(auth, user.id)) {
+          set.status = idpManagedRefusal.status
+          return idpManagedRefusal.body
         }
         // Session-gated only. Trust is NOT required: `trusted` is granted when an
         // encryption envelope is stored, so an account that never set up E2EE has
@@ -409,6 +435,10 @@ export const createAccountRoutes = (
           set.status = anonymousRefusal.status
           return anonymousRefusal.body
         }
+        if (await isIdpManagedUser(auth, user.id)) {
+          set.status = idpManagedRefusal.status
+          return idpManagedRefusal.body
+        }
         const refusal = await database.transaction(async (tx) => {
           const refusal = await requireStepUpCode(tx, stepUpAction, user.email, body?.stepUpOtp)
           if (refusal) {
@@ -417,6 +447,12 @@ export const createAccountRoutes = (
           // The account and its single-use authorization commit together.
           await deleteUser(tx, user.id)
           await consumeStepUpOtp(tx, stepUpAction, user.email)
+          await insertAuditEvent(tx, {
+            action: 'account.deleted',
+            outcome: 'success',
+            actor: { type: 'user', id: user.id },
+            target: { type: 'user', id: user.id },
+          })
           return null
         })
         if (refusal) {

@@ -1,0 +1,47 @@
+{
+  "realm": "legacy",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "editUsernameAllowed": true,
+  "bruteForceProtected": false,
+  "eventsListeners": ["jboss-logging"],
+  "adminEventsEnabled": false,
+  "adminEventsDetailsEnabled": false,
+  "groups": [],
+  "clients": [
+    {
+      "clientId": "thunderbolt-app",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "legacy-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://localhost:8000/v1/api/auth/sso/callback/sso"],
+      "webOrigins": ["http://localhost:1420"],
+      "defaultClientScopes": ["profile", "email"]
+    }
+  ],
+  "users": [
+    {
+      "id": "00000000-0000-4000-8000-0000000d1100",
+      "username": "lee",
+      "email": "lee@legacy.test",
+      "firstName": "Lee",
+      "lastName": "Legacy",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

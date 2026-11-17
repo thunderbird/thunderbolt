@@ -132,6 +132,7 @@ export default defineConfig({
 					items: [
 						{ label: 'Settings reference', slug: 'docs/self-hosting/configuration' },
 						{ label: 'Authentication', slug: 'docs/self-hosting/authentication' },
+						{ label: 'Provisioning (SCIM)', slug: 'docs/self-hosting/provisioning' },
 						{ label: 'Models and inference', slug: 'docs/self-hosting/models' },
 					],
 				},

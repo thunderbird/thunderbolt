@@ -79,6 +79,7 @@ import { preloadInBackground } from '@/lib/after-paint'
 import { takeDeviceApprovalReturn } from '@/lib/device-approval-return'
 import { LazyMotion } from 'framer-motion'
 import { ProjectRedirect } from '@/projects/project-redirect'
+import { ssoEmailCodePath } from '@/lib/sso-paths'
 
 // Loaded after first paint so framer-motion feature code lives in an
 // async chunk instead of the entry bundle.
@@ -106,6 +107,8 @@ const routeChunkLoaders = {
   // The CLI device-authorization approval page is off the chat/landing
   // critical path (only reached via a QR/link).
   deviceApproval: () => import('@/components/device-approval'),
+  // Reached only from an invitation email's link.
+  inviteAccept: () => import('@/components/invite-accept'),
 }
 
 const TasksPage = lazy(routeChunkLoaders.tasks)
@@ -119,6 +122,7 @@ const ConnectionsPage = lazy(routeChunkLoaders.connections)
 const SkillsPage = lazy(routeChunkLoaders.skills)
 const AgentsSettingsPage = lazy(routeChunkLoaders.agents)
 const DeviceApproval = lazy(routeChunkLoaders.deviceApproval)
+const InviteAcceptPage = lazy(routeChunkLoaders.inviteAccept)
 
 // Voice settings is feature-flagged and hidden by default, so it's a
 // deliberately-cold chunk (outside routeChunkLoaders) — lazy but not warmed.
@@ -126,8 +130,10 @@ const VoiceSettingsPage = lazy(() => import('@/settings/voice'))
 
 // Keep SSO out of consumer builds' startup requests. SSO deployments warm the
 // redirect during initialization so routing doesn't add a chunk-fetch waterfall.
-const loadSsoRedirect = () => import('@/components/sso-redirect')
+const loadSsoRedirect = () => import('@/components/sso-sign-in')
 const SsoRedirect = lazy(loadSsoRedirect)
+// Same chunk as the redirect, so it costs nothing extra once the redirect is warm.
+const SsoEmailCodePage = lazy(async () => ({ default: (await loadSsoRedirect()).SsoEmailCodePage }))
 // Reached only after a failed SSO login: deliberately cold, not in routeChunkLoaders.
 const SsoError = lazy(() => import('@/components/sso-error'))
 
@@ -216,10 +222,12 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
         <Route path="/oauth/tinfoil" element={<TinfoilCallback />} />
         <Route path="/auth/verify" element={<MagicLinkVerify />} />
         <Route path="/device" element={<DeviceApproval />} />
+        <Route path="/invite/:token" element={<InviteAcceptPage />} />
 
         {/* SSO redirect route — no guard, only in OIDC/SAML mode */}
         {ssoMode && <Route path="/sso-redirect" element={<SsoRedirect />} />}
         {ssoMode && <Route path="/sso-error" element={<SsoError />} />}
+        {ssoMode && <Route path={ssoEmailCodePath} element={<SsoEmailCodePage />} />}
 
         {/* Waitlist routes - unauthenticated only (skip when bypass or SSO mode) */}
         {!ssoMode && !shouldBypassWaitlist && (

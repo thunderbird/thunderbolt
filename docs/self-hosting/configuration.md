@@ -66,7 +66,23 @@ Each entry must equal everything after the `@`, ignoring case, so `example.com` 
 
 To let in one address outside those domains, set its row in the `waitlist` table to `status = 'approved'`. There is no screen or command for this.
 
-> `WAITLIST_ENABLED` appears in the packaged Compose, Helm and AWS configurations but has no effect. The waitlist always applies, so `WAITLIST_AUTO_APPROVE_DOMAINS` and the `waitlist` table are the only ways to let new addresses in.
+| Variable              | Default | What it does                                                                   |
+| --------------------- | ------- | ------------------------------------------------------------------------------ |
+| `OPEN_SIGNUP_ENABLED` | `false` | When `true`, any address that verifies its email gets in without the waitlist. |
+
+Open sign-up skips domains an identity provider claims: people there sign in through that provider.
+
+### First admin
+
+| Variable                 | Default | What it does                                                                                                                            |
+| ------------------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `BOOTSTRAP_ADMIN_EMAILS` | empty   | Comma-separated emails that get the admin role once, at their first verified sign-in by email code or SSO. They also skip the waitlist. |
+
+Each address is granted once. Removing the role later, or removing the email and restarting, does not bring it back; adding a new email grants that address at its next sign-in. If an admin permanently deletes a listed user, the email gets admin again the next time someone signs in with it, so remove an address from the list when its owner leaves. On SSO, the grant trusts the email your IdP sends, unless an OIDC provider says the address is unverified (`email_verified: false`), in which case that sign-in grants nothing.
+
+On Kubernetes, set these through the chart's `backend.env.openSignupEnabled` and `backend.env.bootstrapAdminEmails`. On Docker Compose, put them in `.env`. The AWS stack doesn't pass them through.
+
+> `WAITLIST_ENABLED` appears in the packaged Compose, Helm and AWS configurations but has no effect. Unless `OPEN_SIGNUP_ENABLED` is on, the waitlist applies to every new address that has no invitation and isn't on an approved organization domain.
 
 ### OIDC
 
@@ -396,18 +412,18 @@ Request headers need no configuration: the API echoes back whatever the browser 
 
 ## Rate limiting
 
-| Variable                                          | Default  | What it does                                                                                                                       |
-| ------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `RATE_LIMIT_ENABLED`                              | `true`   | Set `false` to switch limits off, except on the integration token routes. Local evaluation only.      |
-| `TRUSTED_PROXY`                                   | empty    | `cloudflare` trusts `CF-Connecting-IP`, `akamai` trusts `True-Client-IP`, a positive integer (1–32) selects that many trusted hops from the right of `X-Forwarded-For`; empty trusts only the socket address.         |
-| `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX`                | `10`     | Anonymous sign-ins allowed per IP address per window. See [Anonymous sign-in](#anonymous-sign-in).                                 |
-| `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS`        | `60`     | Length of that window, in seconds.                                                                                                 |
-| `ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX`         | `2000`   | Anonymous sign-ins allowed per window across the whole deployment, every IP together. See [Anonymous sign-in](#anonymous-sign-in). |
-| `ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS` | `3600`   | Length of that window, in seconds.                                                                                                 |
-| `CAPTCHA_PROVIDER`                                | `none`   | Captcha on anonymous sign-in. `altcha` needs the app built with `VITE_CAPTCHA_PROVIDER=altcha`. See [ALTCHA](#altcha).             |
-| `ALTCHA_SECRET`                                   | empty    | Key that signs ALTCHA challenges. Required with `altcha`, at least 32 characters.                                                  |
-| `ALTCHA_DIFFICULTY`                               | `100000` | Upper bound of the ALTCHA search, at least `50000`. Higher costs bots more and makes phones wait longer.                           |
-| `ALTCHA_TTL_SECS`                                 | `600`    | How long an issued ALTCHA challenge stays solvable, in seconds.                                                                    |
+| Variable                                          | Default  | What it does                                                                                                                                                                                                  |
+| ------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RATE_LIMIT_ENABLED`                              | `true`   | Set `false` to switch limits off, except on the integration token routes. Local evaluation only.                                                                                                              |
+| `TRUSTED_PROXY`                                   | empty    | `cloudflare` trusts `CF-Connecting-IP`, `akamai` trusts `True-Client-IP`, a positive integer (1–32) selects that many trusted hops from the right of `X-Forwarded-For`; empty trusts only the socket address. |
+| `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX`                | `10`     | Anonymous sign-ins allowed per IP address per window. See [Anonymous sign-in](#anonymous-sign-in).                                                                                                            |
+| `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS`        | `60`     | Length of that window, in seconds.                                                                                                                                                                            |
+| `ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX`         | `2000`   | Anonymous sign-ins allowed per window across the whole deployment, every IP together. See [Anonymous sign-in](#anonymous-sign-in).                                                                            |
+| `ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS` | `3600`   | Length of that window, in seconds.                                                                                                                                                                            |
+| `CAPTCHA_PROVIDER`                                | `none`   | Captcha on anonymous sign-in. `altcha` needs the app built with `VITE_CAPTCHA_PROVIDER=altcha`. See [ALTCHA](#altcha).                                                                                        |
+| `ALTCHA_SECRET`                                   | empty    | Key that signs ALTCHA challenges. Required with `altcha`, at least 32 characters.                                                                                                                             |
+| `ALTCHA_DIFFICULTY`                               | `100000` | Upper bound of the ALTCHA search, at least `50000`. Higher costs bots more and makes phones wait longer.                                                                                                      |
+| `ALTCHA_TTL_SECS`                                 | `600`    | How long an issued ALTCHA challenge stays solvable, in seconds.                                                                                                                                               |
 
 > Don't set `TRUSTED_PROXY` unless you know exactly what sits in front of the API. Trusting the wrong header lets any client claim any IP and walk straight past the limits.
 

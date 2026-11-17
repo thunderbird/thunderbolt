@@ -1,0 +1,113 @@
+{
+  "realm": "initech",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "editUsernameAllowed": true,
+  "bruteForceProtected": false,
+  "eventsListeners": ["jboss-logging", "keycloak-scim-outbound"],
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": false,
+  "groups": [],
+  "clients": [
+    {
+      "clientId": "thunderbolt-initech",
+      "enabled": true,
+      "protocol": "saml",
+      "frontchannelLogout": false,
+      "redirectUris": ["http://localhost:8000/v1/api/auth/sso/saml2/sp/acs/initech"],
+      "attributes": {
+        "saml.assertion.signature": "true",
+        "saml.server.signature": "true",
+        "saml.client.signature": "false",
+        "saml.force.post.binding": "true",
+        "saml.signature.algorithm": "RSA_SHA256",
+        "saml_name_id_format": "email",
+        "saml_assertion_consumer_url_post": "http://localhost:8000/v1/api/auth/sso/saml2/sp/acs/initech"
+      },
+      "defaultClientScopes": [],
+      "protocolMappers": [
+        {
+          "name": "email",
+          "protocol": "saml",
+          "protocolMapper": "saml-user-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "attribute.nameformat": "Basic",
+            "user.attribute": "email",
+            "attribute.name": "email"
+          }
+        },
+        {
+          "name": "givenName",
+          "protocol": "saml",
+          "protocolMapper": "saml-user-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "attribute.nameformat": "Basic",
+            "user.attribute": "firstName",
+            "attribute.name": "givenName"
+          }
+        },
+        {
+          "name": "surname",
+          "protocol": "saml",
+          "protocolMapper": "saml-user-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "attribute.nameformat": "Basic",
+            "user.attribute": "lastName",
+            "attribute.name": "surname"
+          }
+        },
+        {
+          "name": "kcUserId",
+          "protocol": "saml",
+          "protocolMapper": "saml-user-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "attribute.nameformat": "Basic",
+            "user.attribute": "id",
+            "attribute.name": "kcUserId"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "id": "00000000-0000-4000-8000-0000000c1100",
+      "username": "ivan",
+      "email": "ivan@initech.test",
+      "firstName": "Ivan",
+      "lastName": "Initech",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-0000000c1300",
+      "username": "pat",
+      "email": "pat@contractor.test",
+      "firstName": "Pat",
+      "lastName": "Initech",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

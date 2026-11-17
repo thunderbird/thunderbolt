@@ -6,6 +6,7 @@ import { createAuth } from '@/auth/auth'
 import { clearSettingsCache } from '@/config/settings'
 import { cliRegistrationPendingDeviceId } from '@/dal/sessions'
 import { apikey, session as sessionTable } from '@/db/auth-schema'
+import { auditEvent } from '@/db/schema'
 import { createInferenceRoutes } from '@/inference/routes'
 import { authHeaders, createTestApp, type TestAppHandle } from '@/test-utils/e2e'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
@@ -84,6 +85,37 @@ describe('Device Authorization Grant (RFC 8628)', () => {
     const pendingRes = await postJson(harness.app, '/device/token', deviceTokenBody(deviceCode))
     expect(pendingRes.status).toBe(400)
     expect(((await pendingRes.json()) as { error: string }).error).toBe('authorization_pending')
+  })
+
+  it('audits a granted and a denied device sign-in, but not polling', async () => {
+    // Drop the harness's own sign-in, which can share a millisecond with the test's.
+    await harness.db.delete(auditEvent)
+    const signInEvents = () =>
+      harness.db.select().from(auditEvent).where(eq(auditEvent.action, 'auth.sign_in')).orderBy(auditEvent.occurredAt)
+    const claim = (userCode: string) =>
+      harness.app.handle(
+        new Request(`${authBase}/device?user_code=${userCode}`, { headers: authHeaders(harness.bearerToken) }),
+      )
+
+    const pending = await requestDeviceCode()
+    expect((await postJson(harness.app, '/device/token', deviceTokenBody(pending.device_code))).status).toBe(400)
+    expect((await postJson(harness.app, '/device/token', deviceTokenBody(pending.device_code))).status).toBe(400)
+    expect(await signInEvents()).toEqual([])
+
+    const granted = await requestDeviceCode()
+    await claim(granted.user_code)
+    await postJson(harness.app, '/device/approve', { userCode: granted.user_code }, authHeaders(harness.bearerToken))
+    expect((await postJson(harness.app, '/device/token', deviceTokenBody(granted.device_code))).status).toBe(200)
+
+    const denied = await requestDeviceCode()
+    await claim(denied.user_code)
+    await postJson(harness.app, '/device/deny', { userCode: denied.user_code }, authHeaders(harness.bearerToken))
+    expect((await postJson(harness.app, '/device/token', deviceTokenBody(denied.device_code))).status).toBe(400)
+
+    expect(await signInEvents()).toMatchObject([
+      { outcome: 'success', metadata: { method: 'device_grant' } },
+      { outcome: 'failure', reason: 'access_denied', actorId: null, metadata: { method: 'device_grant' } },
+    ])
   })
 
   it('exposes an approved device credential that authenticates protected routes as the approving account', async () => {

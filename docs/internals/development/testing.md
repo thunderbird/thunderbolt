@@ -35,11 +35,17 @@ bun run e2e:headed   # with a visible browser
 
 # Run the Helm chart tests (needs Helm and the helm-unittest plugin, see "Helm chart tests")
 helm unittest deploy/k8s
+
+# Run SSO and SCIM against real Keycloak realms (local only, see keycloak-validation.md)
+bun run test:keycloak
+
+# Load-test an initial SCIM sync of 5,000 users (local only, needs TEST_POSTGRES_URL)
+bun run test:scim-load
 ```
 
 **Never run `bun test` from the project root.** [`bunfig.toml`](../../../bunfig.toml)'s `pathIgnorePatterns = ["backend/**", "e2e/**"]` keeps root discovery off the backend suite and the Playwright specs, but is a silent no-op on Bun below 1.3.11, and a root run has no per-test timeout, no `--randomize`, and walks `shared/agent-core/` (own runner).
 
-`bun run test` is `bun test --cwd=src` plus explicit paths: `shared/*.test.ts`, `shared/defaults/`, `shared/i18n/`, `scripts/create-release.test.ts`, `scripts/release-workflows.test.ts`, `scripts/preview-workflows.test.ts`, `scripts/chrome.test.ts`, `scripts/install-chrome.test.ts`, `scripts/check-e2e-specs-collected.test.ts`, `scripts/notify-on-failure.test.ts`, `scripts/sanitize-nightly-artifacts.test.ts`, `scripts/copy-powersync-assets.test.ts`, and selected `.github/scripts/*.test.*`. They must be explicit: `shared/` is outside `--cwd=src`, and Bun skips hidden dirs. `bun test --cwd=e2e db-diagnostic.test.ts fake-provider.test.ts helpers.test.ts` runs as a separate step, because root `bunfig.toml` excludes `e2e/**` from discovery and Playwright collects only `*.spec.ts`.
+`bun run test` is `bun test --cwd=src` plus explicit paths: `shared/*.test.ts`, `shared/defaults/`, `shared/i18n/`, `scripts/create-release.test.ts`, `scripts/release-workflows.test.ts`, `scripts/preview-workflows.test.ts`, `scripts/chrome.test.ts`, `scripts/install-chrome.test.ts`, `scripts/check-e2e-specs-collected.test.ts`, `scripts/notify-on-failure.test.ts`, `scripts/sanitize-nightly-artifacts.test.ts`, `scripts/copy-powersync-assets.test.ts`, `deploy/docker/backend-image.test.ts`, and selected `.github/scripts/*.test.*`. They must be explicit: `shared/` is outside `--cwd=src`, and Bun skips hidden dirs. `bun test --cwd=e2e db-diagnostic.test.ts fake-provider.test.ts helpers.test.ts` runs as a separate step, because root `bunfig.toml` excludes `e2e/**` from discovery and Playwright collects only `*.spec.ts`.
 
 ### AWS deployment routing
 

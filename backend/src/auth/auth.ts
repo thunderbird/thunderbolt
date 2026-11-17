@@ -25,20 +25,26 @@ import { createRateLimitConsumer, type RateLimitSet } from '@/middleware/rate-li
 import { extractClientIp, getTrustedIpHeaders, withTrustedClientIp } from '@/utils/request'
 import { captchaTokenHeader, captchaVerificationFailedCode } from '@shared/captcha'
 import { createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
-import { betterAuth, type User } from 'better-auth'
+import { betterAuth } from 'better-auth'
 import { makeSignature } from 'better-auth/crypto'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { anonymous, bearer, deviceAuthorization, emailOTP, type TimeString } from 'better-auth/plugins'
 import { apiKey } from '@better-auth/api-key'
 import { passkey } from '@better-auth/passkey'
-import { computeDiscoveryUrl, sso, type SSOOptions } from '@better-auth/sso'
 import {
   isAutoApprovedDomain,
   sendWaitlistJoinedEmail as defaultSendWaitlistJoinedEmail,
   sendWaitlistNotReadyEmail as defaultSendWaitlistNotReadyEmail,
 } from '@/waitlist/utils'
+import { admitsWithoutWaitlist } from '@/identity/admission'
+import { apiKeyOwnerHasAccess } from '@/identity/api-key-access'
+import { identity } from '@/identity/plugin'
+import { refuseSignIn } from '@/identity/sign-in-audit'
+import { buildScimPlugins } from '@/identity/scim/plugin'
+import { buildSsoPlugins, isForeignSsoRequest } from '@/identity/sso'
+import { isSsoAuthMode } from '@/identity/sso-connections'
 import { createCaptchaProvider } from './captcha'
-import { anonymousSignInPath, authBasePath, configuredSsoProviderId, getSessionPath } from './paths'
+import { anonymousSignInPath, authBasePath, getSessionPath } from './paths'
 import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds, testSignInOtp } from './otp-constants'
 import { buildVerifyUrl, parseTrustedOrigins, sendSignInEmail as defaultSendSignInEmail } from './utils'
 import { eq } from 'drizzle-orm'
@@ -81,29 +87,6 @@ type SessionLookup = {
   session: { deviceId?: string | null }
 } | null
 
-type SsoRequest = Partial<Record<'body' | 'params' | 'query', { providerId?: unknown }>>
-
-/** The SSO routes the app uses, each with the part of the request that names the provider. */
-const ssoRouteProviderPart = new Map<string, keyof SsoRequest>([
-  ['/sign-in/sso', 'body'],
-  ['/sso/callback/:providerId', 'params'],
-  ['/sso/saml2/sp/acs/:providerId', 'params'],
-  ['/sso/saml2/sp/metadata', 'query'],
-])
-
-/**
- * Better Auth still reads `sso_provider` rows that older releases let any signed-in user
- * register, and a row's owner holds its IdP. Any SSO route outside the table above, or naming
- * another provider, is refused so such a row can neither sign in nor be edited.
- */
-const isForeignSsoRequest = (path: string, request: SsoRequest) => {
-  if (path !== '/sign-in/sso' && !path.startsWith('/sso/')) {
-    return false
-  }
-  const part = ssoRouteProviderPart.get(path)
-  return part === undefined || request[part]?.providerId !== configuredSsoProviderId
-}
-
 const samlAcsPath = '/sso/saml2/sp/acs/:providerId'
 
 /**
@@ -113,53 +96,12 @@ const samlAcsPath = '/sso/saml2/sp/acs/:providerId'
 const samlLoginCookie = (relayState: string, isHttps: boolean) =>
   `${isHttps ? '__Host-' : ''}thunderbolt_saml_login_${relayState}`
 
-type SsoUserResolution = Parameters<NonNullable<SSOOptions['resolveUser']>>[0]
+/** The single key of the deployment-wide anonymous sign-in budget: every client shares it. */
+const anonymousSignInBudgetKey = 'all'
 
-/** True when an OIDC provider states it never confirmed the address. SAML carries no such claim. */
-const idpDeniesEmailVerified = (input: SsoUserResolution) =>
-  input.protocol === 'oidc' &&
-  [input.verifiedIdTokenClaims, input.providerClaims].some(
-    (claims) => claims.email_verified === false || claims.email_verified === 'false',
-  )
-
-/**
- * Signs a new SSO identity into the existing user with the same email when that user verified
- * it by email code, or already signed in through the configured provider (a new IdP, subject or
- * SAML NameID for the same person). We trust the operator's env-configured IdP once Better Auth
- * has checked the SAML signature or OIDC id_token, unless it says the email is unverified.
- * See backend/docs/authentication.md.
- */
-const linkSsoToKnownEmailOwner: NonNullable<SSOOptions['resolveUser']> = async (input, { database }) => {
-  const hasSsoAccount = async (field: 'accountId' | 'userId', value: string) =>
-    (await database.findOne({
-      model: 'account',
-      where: [
-        { field: 'providerId', value: configuredSsoProviderId },
-        { field, value },
-      ],
-    })) !== null
-  // This runs on every sign-in, before Better Auth finds a known identity's own user.
-  if (idpDeniesEmailVerified(input) || (await hasSsoAccount('accountId', input.accountKey.accountId))) {
-    return { action: 'continue' }
-  }
-  const existing = await database.findOne<User>({
-    model: 'user',
-    where: [{ field: 'email', value: normalizeEmail(input.providerUser.email) }],
-  })
-  if (!existing) {
-    return { action: 'continue' }
-  }
-  return existing.emailVerified || (await hasSsoAccount('userId', existing.id))
-    ? { action: 'link', userId: existing.id, profile: 'preserve' }
-    : { action: 'continue' }
-}
-
-/** What every SSO mode needs, so a new mode cannot leave one out. */
-const sharedSsoOptions = {
-  // Stops new rows; isForeignSsoRequest refuses the ones older releases stored.
-  providersLimit: 0,
-  resolveUser: linkSsoToKnownEmailOwner,
-} satisfies SSOOptions
+/** Rate-limit headers as Better Auth's `ctx.error` takes them. */
+const toHeaderRecord = (headers: RateLimitSet['headers']) =>
+  Object.fromEntries(Object.entries(headers).map(([name, value]) => [name, String(value)]))
 
 /**
  * Create a Better Auth instance with the provided database
@@ -171,84 +113,6 @@ const sharedSsoOptions = {
  * - Both paths (manual OTP entry, clicking link) use the same verification endpoint
  * - No separate email verification needed - signing in proves email ownership
  */
-const buildSsoPlugins = () => {
-  const settings = getSettings()
-
-  if (settings.authMode === 'oidc') {
-    if (!settings.oidcIssuer || !settings.oidcClientId || !settings.oidcClientSecret) {
-      throw new Error(
-        'OIDC is enabled (AUTH_MODE=oidc) but one or more required env vars are missing: ' +
-          'OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET. Set all three to configure OIDC authentication.',
-      )
-    }
-
-    return [
-      sso({
-        ...sharedSsoOptions,
-        defaultSSO: [
-          {
-            providerId: configuredSsoProviderId,
-            domain: new URL(settings.betterAuthUrl).host,
-            oidcConfig: {
-              issuer: settings.oidcIssuer,
-              pkce: true,
-              clientId: settings.oidcClientId,
-              clientSecret: settings.oidcClientSecret,
-              // Better Auth's own helper rather than string concatenation: it strips a
-              // trailing slash from the issuer, as OIDC Discovery requires. Concatenating
-              // produced a double slash and a 404 for the providers that publish issuer
-              // URLs that way (Authentik among them).
-              discoveryEndpoint: settings.oidcDiscoveryUrl || computeDiscoveryUrl(settings.oidcIssuer),
-              scopes: ['openid', 'profile', 'email'],
-            },
-          },
-        ],
-      }),
-    ]
-  }
-
-  if (settings.authMode === 'saml') {
-    if (!settings.samlEntryPoint || !settings.samlCert || !settings.samlEntityId || !settings.samlIdpIssuer) {
-      throw new Error(
-        'SAML is enabled (AUTH_MODE=saml) but one or more required env vars are missing: ' +
-          'SAML_ENTRY_POINT, SAML_CERT, SAML_ENTITY_ID, SAML_IDP_ISSUER. Set all four to configure SAML authentication.',
-      )
-    }
-
-    return [
-      sso({
-        ...sharedSsoOptions,
-        // Without a callback, a response with no RelayState (IdP-initiated) lands on the API origin, not the app.
-        saml: { allowIdpInitiated: settings.samlAllowIdpInitiated, idpInitiatedCallbackUrl: settings.appUrl },
-        defaultSSO: [
-          {
-            providerId: configuredSsoProviderId,
-            domain: new URL(settings.betterAuthUrl).host,
-            samlConfig: {
-              // `issuer` names our service provider; the IdP is identified by idpMetadata.entityID.
-              issuer: settings.samlEntityId,
-              entryPoint: settings.samlEntryPoint,
-              cert: settings.samlCert,
-              idpMetadata: {
-                entityID: settings.samlIdpIssuer,
-              },
-            },
-          },
-        ],
-      }),
-    ]
-  }
-
-  return []
-}
-
-/** The single key of the deployment-wide anonymous sign-in budget: every client shares it. */
-const anonymousSignInBudgetKey = 'all'
-
-/** Rate-limit headers as Better Auth's `ctx.error` takes them. */
-const toHeaderRecord = (headers: RateLimitSet['headers']) =>
-  Object.fromEntries(Object.entries(headers).map(([name, value]) => [name, String(value)]))
-
 export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {}) => {
   const settings = getSettings()
   const parsedOrigins = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
@@ -279,7 +143,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
     )
   }
 
-  const ssoEnabled = settings.authMode === 'oidc' || settings.authMode === 'saml'
+  const ssoEnabled = isSsoAuthMode(settings)
   const isHttps = settings.betterAuthUrl.startsWith('https://')
 
   // This before-hook runs ahead of every plugin hook, bearer included, so
@@ -292,8 +156,9 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
     database: drizzleAdapter(database, {
       provider: 'pg',
       schema,
-      // The SSO plugin's resolveUser hook refuses to run without native transactions.
-      transaction: ssoEnabled,
+      // SSO and SCIM refuse to run without native transactions, and the identity plugin's
+      // sign-in writes (membership, source, audit event) must commit together.
+      transaction: true,
     }),
     trustedOrigins,
     // NOTE: Uses in-memory storage by default — not shared across instances in
@@ -313,6 +178,8 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         // Better Auth's limiter resets only after a full idle window and falls back to
         // x-forwarded-for, so steady venue traffic would be refused well under the limit.
         [anonymousSignInPath]: false,
+        // SCIM has its own per-connection budget in createScimRequestHandler.
+        '/scim/v2/**': false,
       },
     },
     advanced: {
@@ -366,15 +233,22 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
     },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
-        if (ssoEnabled && isForeignSsoRequest(ctx.path, ctx)) {
-          console.warn(`Refused ${ctx.path}: only the configured SSO provider is available`)
-          throw ctx.error('FORBIDDEN', { message: 'Only the configured SSO provider is available' })
+        if (ssoEnabled && (await isForeignSsoRequest(ctx.context.adapter, ctx.path, ctx))) {
+          console.warn(`Refused ${ctx.path}: it names no SSO connection of this deployment`)
+          throw await refuseSignIn(
+            ctx.context.adapter,
+            ctx,
+            ctx.error('FORBIDDEN', {
+              message: 'This SSO connection is not available',
+              code: 'SSO_CONNECTION_UNAVAILABLE',
+            }),
+          )
         }
 
         // Better Auth checks RelayState and InResponseTo against rows shared by all browsers. Require this
         // browser's cookie when RelayState is present. With IdP-initiated login enabled, responses without
         // RelayState remain unbound and retain that mode's documented login-CSRF risk.
-        if (settings.authMode === 'saml' && ctx.path === samlAcsPath && ctx.body?.SAMLResponse) {
+        if (ssoEnabled && ctx.path === samlAcsPath && ctx.body?.SAMLResponse) {
           const relayState = ctx.body.RelayState
           const bound =
             typeof relayState === 'string' &&
@@ -385,7 +259,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
             // Use the plugin's existing landing for an unsolicited response.
             const landing = new URL(settings.appUrl)
             landing.searchParams.set('error', 'unsolicited_response')
-            throw ctx.redirect(landing.toString())
+            throw await refuseSignIn(ctx.context.adapter, ctx, ctx.redirect(landing.toString()))
           }
         }
 
@@ -431,8 +305,11 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         ) {
           const headers = ctx.headers ?? new Headers()
           const existing = await resolveSession(headers)
+          // Every guarded passkey route needs a session. Answering here, rather than leaving it
+          // to Better Auth, keeps a member the identity plugin refuses from being authenticated
+          // by the route's own internal session lookup, which skips that check.
           if (!existing) {
-            return
+            throw ctx.error('UNAUTHORIZED')
           }
           if (existing.user.isAnonymous) {
             throw ctx.error('FORBIDDEN', { message: 'Passkeys are not available for anonymous users' })
@@ -475,23 +352,35 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         const rawEmail = (ctx.body as { email?: string })?.email
 
         if (!challengeToken || !rawEmail) {
-          throw ctx.error('UNAUTHORIZED', { message: 'Challenge token required' })
+          throw await refuseSignIn(
+            ctx.context.adapter,
+            ctx,
+            ctx.error('UNAUTHORIZED', { message: 'Challenge token required', code: 'CHALLENGE_TOKEN_REQUIRED' }),
+          )
         }
 
         const normalizedEmail = normalizeEmail(rawEmail)
 
         const valid = await validateOtpChallenge(database, normalizedEmail, challengeToken)
         if (!valid) {
-          throw ctx.error('UNAUTHORIZED', { message: 'Invalid challenge token' })
+          throw await refuseSignIn(
+            ctx.context.adapter,
+            ctx,
+            ctx.error('UNAUTHORIZED', { message: 'Invalid challenge token', code: 'CHALLENGE_TOKEN_INVALID' }),
+          )
         }
 
         // Block sign-in for non-approved waitlist users (defense-in-depth).
         // Even if a challenge token was somehow obtained, pending users cannot sign in.
         const existingUser = await getUserByEmail(database, normalizedEmail)
-        if (!existingUser) {
+        if (!existingUser && !(await admitsWithoutWaitlist(database, normalizedEmail))) {
           const waitlistEntry = await getWaitlistByEmail(database, normalizedEmail)
           if (!waitlistEntry || waitlistEntry.status !== 'approved') {
-            throw ctx.error('UNAUTHORIZED', { message: 'Sign-in not available' })
+            throw await refuseSignIn(
+              ctx.context.adapter,
+              ctx,
+              ctx.error('UNAUTHORIZED', { message: 'Sign-in not available', code: 'SIGN_IN_NOT_AVAILABLE' }),
+            )
           }
         }
 
@@ -499,7 +388,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         // (after hook) or by expiry. This allows the 3-attempt limit to work correctly.
       }),
       after: createAuthMiddleware(async (ctx) => {
-        if (settings.authMode === 'saml' && ctx.path === '/sign-in/sso') {
+        if (ssoEnabled && ctx.path === '/sign-in/sso') {
           const url = (ctx.context.returned as { url?: string } | undefined)?.url
           const relayState = url && new URL(url).searchParams.get('RelayState')
           if (relayState) {
@@ -566,6 +455,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       }),
     },
     plugins: [
+      identity(),
       bearer({ requireSignature: true }), // Enables Authorization: Bearer <token> for mobile apps where cookies don't work
       emailOTP({
         ...signInOtpOptions({ generateSignInOtp: emailDeps.generateSignInOtp, nodeEnv: process.env.NODE_ENV }),
@@ -593,10 +483,11 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
           // `@/waitlist/routes`.
           const locale = resolveEmailLocale(ctx?.getHeader('X-App-Language'))
 
-          // Existing users bypass waitlist entirely
+          // Existing users bypass waitlist entirely, and so does an address another admission
+          // path will let in at sign-in.
           const existingUser = await getUserByEmail(database, normalizedEmail)
 
-          if (!existingUser) {
+          if (!existingUser && !(await admitsWithoutWaitlist(database, normalizedEmail))) {
             const waitlistEntry = await getWaitlistByEmail(database, normalizedEmail)
             const autoApproved = isAutoApprovedDomain(normalizedEmail)
 
@@ -659,6 +550,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       // compromised device). Installed plugin runtime interprets defaultExpiresIn as seconds.
       apiKey({
         enableSessionForAPIKeys: true,
+        customAPIKeyValidator: apiKeyOwnerHasAccess,
         keyExpiration: { defaultExpiresIn: settings.apiKeyDefaultExpiresInSeconds },
         rateLimit: { enabled: false },
       }),
@@ -692,7 +584,8 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
             }),
           ]
         : []),
-      ...buildSsoPlugins(),
+      ...buildSsoPlugins(settings, database),
+      ...buildScimPlugins(settings, database),
     ],
   })
 

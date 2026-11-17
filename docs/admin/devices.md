@@ -6,9 +6,9 @@ Each install of Thunderbolt is a device on someone's account.
 
 ## Who does what
 
-Device management is self-service. Each person manages the devices on their own account under **Settings → Devices**, approving, denying, or revoking from another device on the same account that is already trusted. The account owner can also delete the account and its server-side data, from **Settings → Preferences → Data**.
+Device management is self-service. Each person manages the devices on their own account under **Settings → Devices**, approving, denying, or revoking from another device on the same account that is already trusted. The account owner can also delete the account and its server-side data, from **Settings → Preferences → Data**, unless your identity provider manages the account through SCIM: then only the provider removes it.
 
-There is no server-side admin console for browsing or revoking other people's devices. If an employee leaves and you need their access cut off, disable or delete the account in your identity provider. That stops new sign-ins; it does not by itself end existing sessions on devices already signed in.
+There is no server-side admin console for browsing or revoking other people's devices. If an employee leaves and you need their access cut off, disable or delete the account in your identity provider, or block them from Thunderbolt through the admin API (`POST /v1/admin/members/:userId/block`): a block ends their sessions and refuses their sign-in, API keys and sync at once, whatever the identity provider says, and keeps their devices so an unblock restores them. With SCIM provisioning, disabling them ends their sessions and refuses their API keys and sync, and deleting them also revokes their devices, sessions and API keys. With SSO alone, that stops new sign-ins; it does not by itself end existing sessions on devices already signed in.
 
 ## What counts as a device
 
@@ -53,6 +53,14 @@ To replace a lost or exposed phrase, choose **Change Recovery Phrase** under **S
 ### Organizational key escrow
 
 On a deployment with [organizational key escrow](../self-hosting/configuration.md#organizational-key-escrow) enabled, an operator holding its private key can decrypt an account's data offline.
+
+Know its limits before you rely on it. Escrow is a proof of concept:
+
+- **Retained data stays readable.** When your identity provider deletes someone, their data is kept until an admin purges it, and with escrow on the operator can decrypt it all that time. Without escrow, nobody but the person can.
+- **No recovery trail.** Decryption runs offline against the database, so the server never sees it and the audit log can't record it.
+- **No backfill.** Accounts set up before escrow was turned on have no escrow copy of their key until their next key rotation, which adds one.
+- **Nothing revokes an envelope.** Blocking, suspending or removing a member leaves their escrow copy in place.
+- **One key for the deployment.** Every account is escrowed to the same operator key.
 
 ## Revoking a device
 

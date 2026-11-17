@@ -12,6 +12,7 @@ import {
   getRenameState,
   getRevokeAdminState,
   isAdmin,
+  isSelfDemotingGroupRemoval,
   type Availability,
   type ConnectionStatusById,
 } from './member-rules'
@@ -134,5 +135,26 @@ describe('getPurgeState', () => {
     const suspended = makeScimMember('suspended', { access: { allowed: false, reason: 'deprovisioned' } })
     expect(getPurgeState(suspended, active)?.available).toBe(false)
     expect(getPurgeState(suspended, retired)).toEqual({ available: true })
+  })
+})
+
+describe('isSelfDemotingGroupRemoval', () => {
+  const fromGroup = { role: 'admin', from: 'local_group', groupId: 'g1', groupName: 'Ops' } as const
+
+  it('is true when the group is your only admin source', () => {
+    expect(isSelfDemotingGroupRemoval(makeMember({ roles: [fromGroup] }), 'g1')).toBe(true)
+  })
+
+  it('is false when another group or a grant keeps you admin', () => {
+    const otherGroup = { ...fromGroup, groupId: 'g2', groupName: 'Leads' }
+    expect(isSelfDemotingGroupRemoval(makeMember({ roles: [fromGroup, otherGroup] }), 'g1')).toBe(false)
+    expect(isSelfDemotingGroupRemoval(makeMember({ roles: [fromGroup, { role: 'admin', from: 'local' }] }), 'g1')).toBe(
+      false,
+    )
+  })
+
+  it('is false when the group gives you no admin role', () => {
+    expect(isSelfDemotingGroupRemoval(makeMember({ roles: [{ role: 'admin', from: 'local' }] }), 'g1')).toBe(false)
+    expect(isSelfDemotingGroupRemoval(makeMember(), 'g1')).toBe(false)
   })
 })

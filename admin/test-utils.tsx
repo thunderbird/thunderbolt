@@ -16,10 +16,14 @@ export type FakeRequest = { method: string; path: string; search: URLSearchParam
 export type FakeReply = { status?: number; body?: unknown }
 
 /**
- * A wrapper for admin component tests: a signed-in admin, a router, and a fake backend that records
- * each request and answers through `respond`. `queryClient` is exposed to inspect the caches.
+ * A wrapper for admin component tests: a signed-in admin, a router at `initialEntries`, and a fake
+ * backend that records each request and answers through `respond`. `queryClient` is exposed to
+ * inspect the caches.
  */
-export const createAdminTestHarness = (respond: (request: FakeRequest) => FakeReply = () => ({})) => {
+export const createAdminTestHarness = (
+  respond: (request: FakeRequest) => FakeReply = () => ({}),
+  { initialEntries }: { initialEntries?: string[] } = {},
+) => {
   const requests: FakeRequest[] = []
   const http = createClient({
     prefixUrl: 'http://backend.test/v1',
@@ -48,7 +52,7 @@ export const createAdminTestHarness = (respond: (request: FakeRequest) => FakeRe
   const wrapper = ({ children }: { children: ReactNode }) => (
     <TestProvider>
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter>{children}</MemoryRouter>
+        <MemoryRouter initialEntries={initialEntries}>{children}</MemoryRouter>
       </QueryClientProvider>
     </TestProvider>
   )

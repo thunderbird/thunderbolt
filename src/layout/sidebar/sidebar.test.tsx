@@ -11,7 +11,7 @@ import { createProject } from '@/dal/projects'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { createMockAuthClient } from '@/test-utils/auth-client'
-import { createMockHttpClient } from '@/test-utils/http-client'
+import { createClient } from '@/lib/http'
 import { mockVirtuaMeasurement } from '@/test-utils/mock-virtua-measurement'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
@@ -24,6 +24,15 @@ import { v7 as uuidv7 } from 'uuid'
 import Sidebar from './index'
 import type { ReactNode } from 'react'
 
+// The admin sidebar's Link reviews badge reads the review queue; everything else gets an empty list.
+const sidebarHttpClient = createClient({
+  prefixUrl: 'http://test-api.local',
+  fetch: async (input) =>
+    Response.json(
+      new URL((input as Request).url).pathname === '/admin/link-reviews' ? { reviews: [], nextCursor: null } : [],
+    ),
+})
+
 const adminSession = { user: { id: 'admin-1', email: 'admin@example.com', roles: ['member', 'admin'] } }
 
 const createSidebarWrapper =
@@ -34,7 +43,7 @@ const createSidebarWrapper =
   }: { path?: string; defaultOpen?: boolean; session?: typeof adminSession | null } = {}) =>
   ({ children }: { children: ReactNode }) => (
     <DatabaseProvider db={getDb()}>
-      <HttpClientProvider httpClient={createMockHttpClient([])}>
+      <HttpClientProvider httpClient={sidebarHttpClient}>
         <AuthProvider authClient={createMockAuthClient({ session })}>
           <SignInModalProvider>
             <MemoryRouter initialEntries={[path]}>

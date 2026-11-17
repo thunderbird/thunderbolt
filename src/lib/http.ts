@@ -52,6 +52,8 @@ export type ResponsePromise = Promise<Response> & {
 export type HttpClient = {
   get: (url: string, options?: RequestOptions) => ResponsePromise
   post: (url: string, options?: RequestOptions) => ResponsePromise
+  put: (url: string, options?: RequestOptions) => ResponsePromise
+  patch: (url: string, options?: RequestOptions) => ResponsePromise
   delete: (url: string, options?: RequestOptions) => ResponsePromise
 }
 
@@ -179,6 +181,8 @@ export const createClient = (config: HttpClientConfig = {}): HttpClient => {
   return {
     get: (url, options) => request('GET', url, options),
     post: (url, options) => request('POST', url, options),
+    put: (url, options) => request('PUT', url, options),
+    patch: (url, options) => request('PATCH', url, options),
     delete: (url, options) => request('DELETE', url, options),
   }
 }
@@ -301,6 +305,8 @@ export const createStandaloneClient = (config: Pick<HttpClientConfig, 'fetch'> =
   return {
     get: (url, options) => request('get', url, options),
     post: (url, options) => request('post', url, options),
+    put: (url, options) => request('put', url, options),
+    patch: (url, options) => request('patch', url, options),
     delete: (url, options) => request('delete', url, options),
   }
 }

@@ -9,7 +9,7 @@ import { m, useReducedMotion } from 'framer-motion'
 import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
-import { MessageCircle, Settings, type LucideIcon } from 'lucide-react'
+import { MessageCircle, Settings, ShieldCheck, type LucideIcon } from 'lucide-react'
 import type { SidebarSection } from './types'
 
 type SectionDefinition = {
@@ -18,10 +18,13 @@ type SectionDefinition = {
   icon: LucideIcon
 }
 
-const sections: SectionDefinition[] = [
+const sectionDefinitions: SectionDefinition[] = [
   { id: 'chats', label: msg`Chats`, icon: MessageCircle },
   { id: 'settings', label: msg`Settings`, icon: Settings },
+  { id: 'admin', label: msg`Admin`, icon: ShieldCheck },
 ]
+
+const defaultSections: SidebarSection[] = ['chats', 'settings']
 
 /** Near-critically-damped spring so the thumb glides to its slot without overshoot. */
 const thumbSpring = { type: 'spring', stiffness: 500, damping: 40 } as const
@@ -31,11 +34,13 @@ type SidebarNavToggleProps = {
   onSectionChange: (section: SidebarSection) => void
   /** Vertical stack for the collapsed desktop icon rail. */
   vertical?: boolean
+  /** The segments to offer, from `useVisibleSections`. */
+  sections?: SidebarSection[]
 }
 
 /**
- * Segmented toggle that switches the sidebar between the Chats and Settings
- * sections. Icon-only segments on the bare sidebar surface; the selected
+ * Segmented toggle that switches the sidebar between the Chats, Settings and
+ * (for admins) Admin sections. Icon-only segments on the bare sidebar surface; the selected
  * state is a soft accent square (rounded-xl, matching the New Chat menu
  * button) that slides between segments (shared `layoutId`).
  *
@@ -44,8 +49,14 @@ type SidebarNavToggleProps = {
  * in the content area. Only one orientation mounts at a time, so the thumb
  * keeps its `layoutId` and animates across the collapse/expand transition.
  */
-export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: SidebarNavToggleProps) => {
+export const SidebarNavToggle = ({
+  activeSection,
+  onSectionChange,
+  vertical,
+  sections = defaultSections,
+}: SidebarNavToggleProps) => {
   const { i18n, t } = useLingui()
+  const segments = sectionDefinitions.filter(({ id }) => sections.includes(id))
   const { triggerSelection } = useHaptics()
   const reducedMotion = useReducedMotion()
 
@@ -100,7 +111,7 @@ export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: S
   if (vertical) {
     return (
       <nav aria-label={t`Sidebar sections`} className="flex justify-center">
-        <div className="flex w-fit flex-col items-center">{sections.map(renderSegment)}</div>
+        <div className="flex w-fit flex-col items-center">{segments.map(renderSegment)}</div>
       </nav>
     )
   }
@@ -114,7 +125,7 @@ export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: S
           gap-0.5 keep the section controls compact, so both icon
           duos sit the same distance apart. */}
       <div className="flex h-[var(--touch-height-lg)] w-fit items-center gap-0.5 md:h-[var(--touch-height-default)] md:p-0.5">
-        {sections.map(renderSegment)}
+        {segments.map(renderSegment)}
       </div>
     </nav>
   )

@@ -26,6 +26,9 @@ import NotFound from '@/components/not-found'
 import { WindowControls } from '@/components/window-controls'
 import ChatLayout from '@/layout/main-layout'
 import SettingsLayout from '@/settings/layout'
+import { SectionLayout } from '@/layout/section-layout'
+import { AdminRoute } from '@/layout/admin-route'
+import { loadAdminModule } from '@/lib/admin-module'
 import WaitlistLayout from '@/waitlist/layout'
 import WaitlistPage from '@/waitlist/waitlist-page'
 import { HapticsProvider } from '@/hooks/use-haptics'
@@ -109,6 +112,8 @@ const routeChunkLoaders = {
   deviceApproval: () => import('@/components/device-approval'),
   // Reached only from an invitation email's link.
   inviteAccept: () => import('@/components/invite-accept'),
+  // The admin screens (UNLICENSED `admin/`), shown only to org admins.
+  admin: loadAdminModule,
 }
 
 const TasksPage = lazy(routeChunkLoaders.tasks)
@@ -123,6 +128,7 @@ const SkillsPage = lazy(routeChunkLoaders.skills)
 const AgentsSettingsPage = lazy(routeChunkLoaders.agents)
 const DeviceApproval = lazy(routeChunkLoaders.deviceApproval)
 const InviteAcceptPage = lazy(routeChunkLoaders.inviteAccept)
+const AdminApp = lazy(routeChunkLoaders.admin)
 
 // Voice settings is feature-flagged and hidden by default, so it's a
 // deliberately-cold chunk (outside routeChunkLoaders) — lazy but not warmed.
@@ -252,6 +258,13 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
               <Route path="projects/:projectId" element={<ProjectRedirect />} />
               <Route path="apps/:appId" element={<MiniAppPage />} />
               {import.meta.env.DEV && <Route path="message-simulator" element={<MessageSimulatorPage />} />}
+            </Route>
+
+            {/* Admin keeps its chrome in minimal mode, unlike Settings, so a minimal deployment can be administered. */}
+            <Route element={<AdminRoute />}>
+              <Route path="admin" element={<SectionLayout />}>
+                <Route path="*" element={<AdminApp />} />
+              </Route>
             </Route>
 
             {/* Settings routes with SettingsLayout */}

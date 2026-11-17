@@ -56,7 +56,7 @@ const createFakeHttpClient = (recorded: Recorded[], { fails = false } = {}): Htt
     throw new Error('not implemented')
   }
 
-  return { get, post: unsupported, delete: unsupported }
+  return { get, post: unsupported, put: unsupported, patch: unsupported, delete: unsupported }
 }
 
 const flush = async () => {

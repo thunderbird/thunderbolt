@@ -9,10 +9,12 @@ import {
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { useFormatters } from '@/i18n/use-formatters'
 import { cn } from '@/lib/utils'
 import type { MessageDescriptor } from '@lingui/core'
 import { useLingui } from '@lingui/react/macro'
@@ -20,6 +22,7 @@ import type { LucideIcon } from 'lucide-react'
 import { Fragment, type ReactNode } from 'react'
 import { useLocation } from 'react-router'
 import { SidebarNavToggle } from './nav-toggle'
+import { useVisibleSections } from './use-visible-sections'
 import { RailDivider } from './rail-divider'
 import { SidebarHeader } from './sidebar-header'
 import { SidebarHeaderActions } from './sidebar-header-actions'
@@ -35,10 +38,22 @@ export type SectionNavItem = {
   navigateTo?: string
   /** Rendered after the label, inside the button. */
   trailing?: ReactNode
+  /** A count for the item, read by a hook: null or 0 hides it, and above 99 shows `99+`. */
+  useBadge?: () => number | null
 }
 
 /** `id` carries the React key, since the label is a descriptor rather than a string. */
 export type SectionNavGroup = { id: string; label: MessageDescriptor; items: SectionNavItem[] }
+
+/** Its own component so each item's badge hook runs at a stable call site, never inside the map. */
+const NavItemBadge = ({ useBadge }: { useBadge: () => number | null }) => {
+  const count = useBadge()
+  const formatters = useFormatters()
+  if (!count) {
+    return null
+  }
+  return <SidebarMenuBadge>{count > 99 ? `${formatters.number(99)}+` : formatters.number(count)}</SidebarMenuBadge>
+}
 
 /** The shared sidebar frame for settings and optional application sections. */
 export const SectionSidebar = ({
@@ -60,10 +75,11 @@ export const SectionSidebar = ({
 }) => {
   const { i18n } = useLingui()
   const { isMobile, toggleSidebar } = useSidebar()
+  const sections = useVisibleSections()
   const location = useLocation()
   const headerControls = (
     <SidebarHeaderActions onSearchClick={onSearchClick}>
-      <SidebarNavToggle activeSection={activeSection} onSectionChange={onSectionChange} />
+      <SidebarNavToggle activeSection={activeSection} onSectionChange={onSectionChange} sections={sections} />
     </SidebarHeaderActions>
   )
   const isItemActive = ({ path, matchPrefix }: SectionNavItem) =>
@@ -80,7 +96,12 @@ export const SectionSidebar = ({
         <SidebarGroup className="pt-2 pb-0">
           <SidebarGroupContent>
             <SidebarHeaderActions vertical onSearchClick={onSearchClick}>
-              <SidebarNavToggle vertical activeSection={activeSection} onSectionChange={onSectionChange} />
+              <SidebarNavToggle
+                vertical
+                activeSection={activeSection}
+                onSectionChange={onSectionChange}
+                sections={sections}
+              />
             </SidebarHeaderActions>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -120,6 +141,7 @@ export const SectionSidebar = ({
                       <span>{i18n._(item.label)}</span>
                       {item.trailing}
                     </SidebarMenuButton>
+                    {item.useBadge && <NavItemBadge useBadge={item.useBadge} />}
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>

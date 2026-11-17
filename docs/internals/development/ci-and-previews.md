@@ -34,7 +34,7 @@ Release workflows: [RELEASE.md](../../../RELEASE.md).
 
 | Job             | Runs when                                                                      | What it does                                                                          |
 | --------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| `typescript`    | Always                                                                         | `tsc --noEmit`, `bun run lint`, `bun run test:5x`                                     |
+| `typescript`    | Always                                                                         | `tsc --noEmit`, `bun run lint`, `bun run license:check`, `bun run test:5x`            |
 | `backend`       | Always                                                                         | Backend type-check, lint, tests (5x), WS suite, `./server` smoke (OTEL off and on)    |
 | `localization`  | `src/**`, `shared/**`, i18n/build config, `backend/src/emails/**`, `bun.lock`  | `bun run i18n:check`, a catalog-compiling build, the macro tripwire                   |
 | `agent-core`    | `shared/agent-core/**`, `shared/reasoning-effort*.ts`, browser-check/Chrome scripts, `vite.config.ts`, `package.json`, `bun.lock`, `ci.yml` | `bun run test:agent-core:5x` plus the Chromium/WebKit browser check                   |
@@ -46,12 +46,15 @@ Only `typescript` and `backend` run on every PR; the rest are gated by `detect-c
 (`dorny/paths-filter`), so **"CI passed" can mean "your job never ran"**. `agent-core` runs
 on `macos-latest`: WebKit's Linux build lacks the OPFS storage API.
 
-### Not in CI: Prettier and MPL license headers
+`license:check` verifies the license notices: the MPL header on community source and the UNLICENSED
+header in `admin/`.
 
-Both run only in the `husky` pre-commit hook via
-[`.lintstagedrc.json`](../../../.lintstagedrc.json) (`bun scripts/license-headers.ts`,
-`make format`), so `--no-verify` can land unformatted code. `bun run check` runs the full
-local set (type-check, lint, format-check, license-check).
+### Not in CI: Prettier
+
+Prettier runs only in the `husky` pre-commit hook via
+[`.lintstagedrc.json`](../../../.lintstagedrc.json) (`make format`), so `--no-verify` can land
+unformatted code. `bun run check` runs the full local set (type-check, lint, format-check,
+license-check).
 
 ## Every test job runs five times
 

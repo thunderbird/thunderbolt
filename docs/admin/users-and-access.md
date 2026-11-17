@@ -129,8 +129,8 @@ provider's job.
   account's email must be verified, or the account must already have an identity from your provider,
   and no SCIM provider may manage it. Otherwise the sign-in fails with "account not linked". An account
   that already signs in through another SSO provider links only on a domain this provider claims;
-  otherwise the sign-in fails with `LINK_REVIEW_PENDING` and waits for an admin in
-  `GET /v1/admin/link-reviews`. It also
+  otherwise the sign-in fails with `LINK_REVIEW_PENDING` and waits for an admin under
+  **Admin → Link reviews**. It also
   fails when an OIDC provider reports the email as not verified (`email_verified` false), so mark
   addresses verified at the provider. See
   [Authentication](../self-hosting/authentication.md#what-single-sign-on-looks-like-to-the-user).
@@ -138,7 +138,7 @@ provider's job.
   provisioned, matched on its `externalId`, and an existing account joins a provider only through a
   claimed domain, the person proving both identities, or an admin's approval. See
   [Provisioning](../self-hosting/provisioning.md#collisions-and-the-review-queue).
-- An admin edits a connection with `PATCH /v1/admin/connections/:id`. The name, the OIDC client
+- An admin edits a connection under **Admin → Identity providers**. The name, the OIDC client
   secret and the SAML certificate can change at any time, and nobody has to link again. The OIDC
   client ID, the discovery URL and the SAML entry point can change only while nobody has signed in
   through the connection, and the match claim only while no identity is linked or waiting in the
@@ -151,16 +151,16 @@ provider's job.
   [Authentication](../self-hosting/authentication.md#logging-in-from-the-providers-dashboard).
 
 Your provider can also provision accounts ahead of first use over SCIM 2.0, at
-`/v1/api/auth/scim/v2`. An admin creates the SCIM connection and its token through the admin API
-(`POST /v1/admin/connections/scim`); the token is shown once. On a connection with SCIM, only people
+`/v1/api/auth/scim/v2`. An admin creates the SCIM connection and its token under
+**Admin → Identity providers**; the token is shown once. On a connection with SCIM, only people
 the provider has provisioned can sign in, and deactivating or deleting them there cuts their access.
 Without SCIM, an account exists once the person signs in for the first time.
 [Provisioning](../self-hosting/provisioning.md) covers setup for Entra, Okta and Keycloak.
 
 People a provider with both SSO and SCIM manages sign in through SSO only: their email codes and
 passkey sign-in are refused, so the provider's MFA always applies. That holds after the provider
-deletes them, too, until an admin detaches the link
-(`POST /v1/admin/members/:userId/connections/:connectionId/detach`). Members of a SCIM-only
+deletes them, too, until an admin detaches the link from the member's page under **Admin → Members**.
+Members of a SCIM-only
 connection keep email codes.
 
 ## Removing access
@@ -168,10 +168,10 @@ connection keep email codes.
 | Goal                             | How                                                                                                                           |
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | Offboard someone (SSO)           | Disable or remove them in your identity provider. Without SCIM that stops new sign-ins only; block them too to end sessions   |
-| Offboard everyone a provider let in | Retire its SSO connection (`POST /v1/admin/connections/:id/retire`). Members it alone admitted lose access; anyone another source admits keeps it. Retire its SCIM side first and wait until `GET /v1/admin/connections/:id` shows `scim_retired`; the env connection `sso` can't be retired |
-| Offboard someone (any sign-in)   | Block them through the admin API (`POST /v1/admin/members/:userId/block`). It outranks every identity provider grant          |
-| Let someone the provider deleted back in locally | Detach the link (`POST /v1/admin/members/:userId/connections/:connectionId/detach`). Their other access, such as an invitation, then decides. Only a link the provider deleted, or one on a retiring or retired SCIM side, can be detached, and the provider no longer signs them in. You can't detach your own |
-| Remove a blocked member for good | Purge them through the admin API (`DELETE /v1/admin/members/:userId`), which deletes their account and data                   |
+| Offboard everyone a provider let in | Retire the connection under **Admin → Identity providers**. Members it alone admitted lose access; anyone another source admits keeps it. Retire its SCIM side first and wait until it shows as retired; the env connection `sso` can't be retired |
+| Offboard someone (any sign-in)   | Block them under **Admin → Members**. It outranks every identity provider grant                                              |
+| Let someone the provider deleted back in locally | Detach the link on their page under **Admin → Members**. Their other access, such as an invitation, then decides. Only a link the provider deleted, or one on a retiring or retired SCIM side, can be detached, and the provider no longer signs them in. You can't detach your own |
+| Remove a blocked member for good | **Delete member** on their page under **Admin → Members**, which deletes their account and data                              |
 | Cut off one lost laptop or phone | The user revokes it under **Settings → Devices**                                                                              |
 | Remove a person's data entirely  | The user does it under **Settings → Preferences → Data**, or you delete their `user` row, which cascades to their synced data |
 
@@ -182,6 +182,26 @@ copy; so does a device that stays offline. Treat device recovery as a separate s
 departure.
 
 Revoking a single device stops that device syncing and cuts its sessions. It clears its local copy the next time it connects; one that never comes back online keeps it.
+
+## Admin screens
+
+Admins see an **Admin** section in the app's sidebar. Anyone in `BOOTSTRAP_ADMIN_EMAILS` is an admin
+from their first verified sign-in, and an admin can make others admins from there.
+
+| Screen             | What an admin does there                                                                          |
+| ------------------ | ------------------------------------------------------------------------------------------------- |
+| Members            | Find people, rename them, block or unblock them, grant or revoke admin, detach a provider link, permanently delete a member who has lost access |
+| Groups             | Create local groups, add and remove members, make a group's members admins                        |
+| Invitations        | Invite people by email, revoke pending invitations                                                |
+| Identity providers | Add and edit SSO connections, add SCIM and issue or revoke its tokens, map provider groups to admin, see rejected SCIM requests, retire a connection |
+| Domains            | Add a domain, verify it with a DNS record, claim it for a connection, turn on domain enrollment   |
+| Link reviews       | Approve or reject an identity waiting to link to an existing account                              |
+| Audit log          | Read and filter the organization's audit events                                                   |
+| Break-glass        | See whether an admin can still sign in when the identity provider is down, and the email-code sign-in address to keep |
+
+Every screen calls the admin API under `/v1/admin`, which is also the way to script any of it. The
+endpoints are listed in [Provisioning](../self-hosting/provisioning.md) and
+[Identity and access](../internals/architecture/identity-and-access.md#admin-api).
 
 ## Programmatic access
 
@@ -205,8 +225,6 @@ already have a real account.
 
 ## What Thunderbolt does not have
 
-- **No administrator screens yet:** the admin API under `/v1/admin` covers members, blocking, roles,
-  local groups, connections, invitations and domains, but the app has no screens for it.
 - **One role:** `admin`, granted to a member directly or mapped from a group by its id. Every other
   account can do the same things.
 - **No bulk invite or import**, and no directory sync.

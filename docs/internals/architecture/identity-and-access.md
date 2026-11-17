@@ -212,6 +212,13 @@ membership; a deactivated or deleted SCIM user holds none. `createScimGroupRoleM
 change a mapping with its audit event, then replay the projection for the whole org
 (`reconcileSCIMProjection`), so members' roles change at once rather than at the IdP's next change.
 
+The session the app reads carries the same roles as `user.roles`
+([session-roles.ts](../../../backend/src/identity/session-roles.ts)), computed on every session read,
+so a demoted admin loses the admin screens at their next read rather than their next sign-in. It only
+decides what the app shows: `useIsAdmin` and `AdminRoute` hide the admin UI from everyone else, and
+the server rechecks on every admin route. The app reads the session again whenever an admin route
+answers `ADMIN_REQUIRED`.
+
 ## Permanent purge
 
 `purgeMember` ([purge.ts](../../../backend/src/identity/purge.ts)), for the admin routes, hard-deletes a
@@ -234,7 +241,10 @@ permanent delete, so a still-listed email gets admin again at its next sign-in.
 
 The routes the admin screens call live under `/v1/admin` ([identity/admin/](../../../backend/src/identity/admin)).
 They wrap the services above and add only what had no service: member admin, local groups and their
-role mappings, domain claims, and the break-glass flag.
+role mappings, domain claims, and the break-glass flag. The screens live in
+[`admin/`](../../../admin) and share their request and response types with these routes through
+[`shared/admin-api.ts`](../../../shared/admin-api.ts); the routes are the way to script anything the
+screens do.
 
 - **The admin check.** Every route takes `{ admin: true }` (`createAdminMacro`). A signed-in
   non-admin gets 403 `ADMIN_REQUIRED` and an `admin.access_denied` event; a caller without access,
@@ -288,10 +298,15 @@ role mappings, domain claims, and the break-glass flag.
   denied attempts.
 - **Lists** page by an opaque `cursor`, at most 100 rows a page (`limit`, default 50). Domains,
   connections and role mappings are per-org configuration and come back whole.
+- **A connection's detail** (`GET /v1/admin/connections/:id`) adds its SSO settings (never the client secret or the certificate),
+  its SCIM credentials' status, expiry and last use, and `lockedFields`: the fields an edit would
+  refuse right now (the identity fields while an identity is linked, the match claim while one is
+  linked or a link review for it is pending or approved), so the screen disables them up front.
 
 ## Audit
 
-The action list is in [audit/events.ts](../../../backend/src/identity/audit/events.ts); the outcome
+The action list is `auditActions` in [shared/admin-api.ts](../../../shared/admin-api.ts), which
+[audit/events.ts](../../../backend/src/identity/audit/events.ts) re-exports; the outcome
 (`success`, `failure`, `denied`) is a separate column. Events never hold secrets, only ids: a session
 id, never its token; an API key's or SCIM credential's id, never its value; no email code, invitation
 token, IdP assertion or IdP error description. `no-secrets.test.ts` runs each such flow with the

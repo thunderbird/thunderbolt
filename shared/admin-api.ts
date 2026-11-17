@@ -82,7 +82,8 @@ export type AdminErrorCode =
   | 'LINK_REVIEW_SELF'
   | 'LINK_REVIEW_RECORD_EXISTS'
 
-export type AdminErrorBody = { code: string; message?: string }
+/** An error answer. `field` names the offending field on the SSO lock and immutable-field errors. */
+export type AdminErrorBody = { code: string; message?: string; field?: string }
 
 /** Returned by a change that left no admin who can sign in without the IdP. The change stands. */
 export type BreakGlassWarning = { warning?: 'NO_LOCAL_ADMIN' }
@@ -223,7 +224,25 @@ export type ScimCredential = {
   revokedBy: string | null
 }
 
-export type AdminConnectionDetail = AdminConnection & { scimCredentials: ScimCredential[] }
+export type OidcSettings = { protocol: 'oidc'; clientId: string; discoveryEndpoint: string | null }
+
+export type SamlSettings = { protocol: 'saml'; entityId: string; entryPoint: string; idpIssuer: string | null }
+
+/** An SSO side's settings an admin may see: never the client secret or the certificate. */
+export type SsoSettings = OidcSettings | SamlSettings
+
+/** A field that decides which IdP identity an account belongs to, so it changes only while nothing depends on it. */
+export type SsoLockableField = 'clientId' | 'discoveryEndpoint' | 'entryPoint' | 'matchClaim'
+
+export type AdminConnectionDetail = Omit<AdminConnection, 'sso'> & {
+  sso: (NonNullable<AdminConnection['sso']> & SsoSettings) | null
+  /**
+   * What an edit would refuse to change right now: the identity fields while an identity is linked,
+   * and the match claim while one is linked or a link review is open.
+   */
+  lockedFields: SsoLockableField[]
+  scimCredentials: ScimCredential[]
+}
 
 export type OidcConfig = { issuer: string; clientId: string; clientSecret: string; discoveryEndpoint?: string }
 

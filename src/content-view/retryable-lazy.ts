@@ -4,27 +4,34 @@
 
 import { type ComponentType, lazy, type LazyExoticComponent } from 'react'
 
-// A copy that is still loading has no rules yet. A second call waits on it, because a replaced copy never fires load
-// or error, and the first call would wait forever. Keyed by the copy, so one that leaves the page is never matched.
+// A stylesheet still loading has no rules yet, just like one that failed, and replacing it would strand whoever waits
+// on its load, such as Vite's preload for another viewer. So only links that fired error are fetched again. An
+// element's error event does not bubble, but it passes the document in the capture phase. The side panel imports this
+// module statically, so the listener is in place before any viewer's stylesheet is added.
+const failedLinks = new WeakSet<HTMLLinkElement>()
+document.addEventListener(
+  'error',
+  ({ target }) => {
+    if (target instanceof HTMLLinkElement) {
+      failedLinks.add(target)
+    }
+  },
+  true,
+)
+
+// A second call waits on a copy still loading, because a replaced copy never fires load or error, and the first call
+// would wait forever. Keyed by the copy, so one that leaves the page is never matched.
 const reloading = new WeakMap<Node, Promise<void>>()
 
 /**
- * Swaps each stylesheet that did not load for a fresh copy, which fetches it again. Vite's preload helper never adds a
- * chunk's stylesheet twice, and does not wait for it again, so without this a chunk that loads on a retry would render
- * without its CSS. Resolves when every copy has loaded, or right away when none failed. Rejects if a copy fails again.
+ * Swaps each stylesheet that failed to load for a fresh copy, which fetches it again. Vite's preload helper never adds
+ * a chunk's stylesheet twice, and does not wait for it again, so without this a chunk that loads on a retry would
+ * render without its CSS. Resolves when every copy has loaded, or right away when none failed. Rejects if a copy fails
+ * again; that copy is swapped on the next call.
  */
 export const reloadFailedStylesheets = () => {
-  // A stylesheet that failed has no rules, and Chromium refuses to read them. The app's stylesheets are all its own,
-  // so one that is unreadable for another reason is only fetched again.
-  const hasRules = (link: HTMLLinkElement) => {
-    try {
-      return Boolean(link.sheet?.cssRules.length)
-    } catch {
-      return false
-    }
-  }
   const failed = [...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')].filter(
-    (link) => !hasRules(link),
+    (link) => reloading.has(link) || failedLinks.has(link),
   )
   return Promise.all(
     failed.map((link) => {

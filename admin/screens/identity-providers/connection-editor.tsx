@@ -9,7 +9,6 @@ import { DetailPanel } from '@/components/detail-panel'
 import { DetailActionsMenu } from '@/components/settings/detail-actions-menu'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { DiscardCreateDialog } from '@/skills/discard-create-dialog'
-import { getAdminErrorMessage } from '../../api/error-messages'
 import { ListSkeleton } from '../../components/list-skeleton'
 import { PanelSections } from '../../components/panel-sections'
 import type { ResourcePageState } from '../../components/use-resource-page-state'
@@ -19,12 +18,13 @@ import { ScimSection } from './scim-section'
 import { SsoSettingsSection } from './sso-settings-section'
 import { SyncErrorsSection } from './sync-errors-section'
 import { useConnection } from './use-connection-queries'
+import { InlineError } from '../../components/inline-error'
 
 type Section = 'sign-in' | 'provisioning' | 'groups' | 'sync-errors'
 
 /** One connection's panel: its sign-in side, its provisioning side, and retiring it. */
 export const ConnectionEditor = ({ connectionId, page }: { connectionId: string; page: ResourcePageState }) => {
-  const { t, i18n } = useLingui()
+  const { t } = useLingui()
   const connection = useConnection(connectionId)
   const [section, setSection] = useState<Section>('sign-in')
   const [pendingSection, setPendingSection] = useState<Section | null>(null)
@@ -35,13 +35,7 @@ export const ConnectionEditor = ({ connectionId, page }: { connectionId: string;
   if (!connection.data) {
     return (
       <DetailPanel title={t`Connection`} onClose={page.close}>
-        {connection.error ? (
-          <p role="alert" className="text-destructive">
-            {i18n._(getAdminErrorMessage(connection.error))}
-          </p>
-        ) : (
-          <ListSkeleton rows={3} />
-        )}
+        {connection.error ? <InlineError error={connection.error} /> : <ListSkeleton rows={3} />}
       </DetailPanel>
     )
   }

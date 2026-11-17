@@ -9,7 +9,7 @@ import { DetailField } from '@/components/settings/detail-field'
 import { Button } from '@/components/ui/button'
 import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { adminRole, type AdminMember, type MemberRoleSource } from '@shared/admin-api'
-import { InlineError } from './inline-error'
+import { InlineError } from '../../components/inline-error'
 import { getRevokeAdminState, isAdmin } from './member-rules'
 import type { MemberPanelState } from './use-member-panel-state'
 

@@ -5,8 +5,8 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import type { LinkReview } from '@shared/admin-api'
-import { getAdminErrorMessage } from '../../api/error-messages'
 import type { LinkReviewDecision } from './use-link-review-decision'
+import { InlineError } from '../../components/inline-error'
 
 type LinkReviewConfirmDialogProps = {
   review: LinkReview
@@ -26,7 +26,7 @@ export const LinkReviewConfirmDialog = ({
   onConfirm,
   onCancel,
 }: LinkReviewConfirmDialogProps) => {
-  const { t, i18n } = useLingui()
+  const { t } = useLingui()
   const incoming = review.incomingEmail
   const subject = review.externalId
   const connection = review.connection.name
@@ -50,11 +50,7 @@ export const LinkReviewConfirmDialog = ({
               refused until an admin approves the link.
             </Trans>
           )}
-          {error !== null && (
-            <span role="alert" className="mt-2 block text-destructive">
-              {i18n._(getAdminErrorMessage(error))}
-            </span>
-          )}
+          <InlineError error={error} className="mt-2" />
         </>
       }
       confirmLabel={isApprove ? t`Approve` : t`Reject`}

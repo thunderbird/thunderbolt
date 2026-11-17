@@ -2,19 +2,18 @@
  * All rights reserved. See admin/LICENSE.
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
-import { Plural, Trans, useLingui } from '@lingui/react/macro'
-import { getAdminErrorMessage } from '../../api/error-messages'
+import { Plural, Trans } from '@lingui/react/macro'
 import { ListSkeleton } from '../../components/list-skeleton'
 import { LoadMoreFooter } from '../../components/load-more-footer'
 import { RoleMappingControl } from '../../components/role-mapping-control'
 import { useScimGroups } from './use-connection-queries'
+import { InlineError } from '../../components/inline-error'
 
 /**
  * The groups the identity provider pushed over SCIM. Read-only apart from their role mapping, which
  * names the group by id: renaming it in the provider changes nothing here.
  */
 export const ScimGroupsSection = ({ connectionId, canMap }: { connectionId: string; canMap: boolean }) => {
-  const { i18n } = useLingui()
   const groups = useScimGroups(connectionId)
 
   const list = () => {
@@ -22,11 +21,7 @@ export const ScimGroupsSection = ({ connectionId, canMap }: { connectionId: stri
       return <ListSkeleton rows={3} />
     }
     if (groups.error && groups.items.length === 0) {
-      return (
-        <p role="alert" className="text-destructive">
-          {i18n._(getAdminErrorMessage(groups.error))}
-        </p>
-      )
+      return <InlineError error={groups.error} />
     }
     if (groups.isEmpty) {
       return (

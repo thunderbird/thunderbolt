@@ -15,7 +15,7 @@ import { ListSkeleton } from '../../components/list-skeleton'
 import { LoadMoreFooter } from '../../components/load-more-footer'
 import { ResourcePageDialogs } from '../../components/resource-page-dialogs'
 import { StatusBadge } from '../../components/status-badge'
-import { InlineError } from '../members/inline-error'
+import { InlineError } from '../../components/inline-error'
 import { GroupPanel } from './group-panel'
 import { useGroupsPageState } from './use-groups-page-state'
 

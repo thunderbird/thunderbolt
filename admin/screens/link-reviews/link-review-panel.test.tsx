@@ -107,8 +107,9 @@ describe('LinkReviewPanel', () => {
   it("can't approve a link to the admin's own account", async () => {
     await renderPanel(linkReview({ candidateUserId: 'admin-1' }))
 
-    expect(screen.getByRole('button', { name: 'Approve' })).toBeDisabled()
-    expect(screen.getByText('This is your own account, so another admin has to approve the link.')).toBeInTheDocument()
+    const approve = screen.getByRole('button', { name: 'Approve' })
+    expect(approve).toBeDisabled()
+    expect(approve).toHaveAccessibleDescription('This is your own account, so another admin has to approve the link.')
     expect(screen.getByRole('button', { name: 'Reject' })).toBeEnabled()
   })
 

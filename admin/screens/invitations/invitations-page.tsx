@@ -17,7 +17,7 @@ import { LoadMoreFooter } from '../../components/load-more-footer'
 import { PanelSections } from '../../components/panel-sections'
 import { ResourcePageDialogs } from '../../components/resource-page-dialogs'
 import { StatusBadge } from '../../components/status-badge'
-import { InlineError } from '../members/inline-error'
+import { InlineError } from '../../components/inline-error'
 import { InvitePanel } from './invite-panel'
 import { useInvitationsPageState } from './use-invitations-page-state'
 

@@ -6,8 +6,8 @@ import { useLingui } from '@lingui/react/macro'
 import { useState, useTransition, type ReactNode } from 'react'
 import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { DiscardCreateDialog } from '@/skills/discard-create-dialog'
-import { getAdminErrorMessage } from '../api/error-messages'
 import type { ResourcePageState } from './use-resource-page-state'
+import { InlineError } from './inline-error'
 
 type RemoveConfirmation = {
   title: string
@@ -22,7 +22,7 @@ type RemoveConfirmation = {
  * confirm a removal (open it with `page.patch({ removeId })`).
  */
 export const ResourcePageDialogs = ({ page, remove }: { page: ResourcePageState; remove?: RemoveConfirmation }) => {
-  const { t, i18n } = useLingui()
+  const { t } = useLingui()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<unknown>(null)
 
@@ -61,11 +61,7 @@ export const ResourcePageDialogs = ({ page, remove }: { page: ResourcePageState;
           description={
             <>
               {remove.description}
-              {error !== null && (
-                <span role="alert" className="mt-2 block text-destructive">
-                  {i18n._(getAdminErrorMessage(error))}
-                </span>
-              )}
+              <InlineError error={error} className="mt-2" />
             </>
           }
           confirmLabel={remove.confirmLabel}

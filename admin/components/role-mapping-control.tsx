@@ -8,10 +8,10 @@ import { useId, useState } from 'react'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { adminRole, type BreakGlassWarning, type RoleMapping } from '@shared/admin-api'
-import { getAdminErrorMessage } from '../api/error-messages'
 import { adminQueryKeys } from '../api/query-keys'
 import { useAdminApi } from '../api/use-admin-api'
 import { BreakGlassBanner, hasBreakGlassWarning } from './break-glass-banner'
+import { InlineError } from './inline-error'
 
 export type RoleMappingTarget = { localGroupId: string } | { identityConnectionId: string; scimGroupId: string }
 
@@ -34,7 +34,7 @@ type RoleMappingControlProps = {
  * break-glass banner when removing the mapping left no admin who can sign in without the IdP.
  */
 export const RoleMappingControl = ({ target, groupName, disabled = false }: RoleMappingControlProps) => {
-  const { t, i18n } = useLingui()
+  const { t } = useLingui()
   const switchId = useId()
   const api = useAdminApi()
   const queryClient = useQueryClient()
@@ -88,11 +88,7 @@ export const RoleMappingControl = ({ target, groupName, disabled = false }: Role
           onCheckedChange={(enabled) => change.mutate(enabled)}
         />
       </div>
-      {(mappings.error ?? change.error) && (
-        <p role="alert" className="text-[length:var(--font-size-sm)] text-destructive">
-          {i18n._(getAdminErrorMessage(mappings.error ?? change.error))}
-        </p>
-      )}
+      <InlineError error={mappings.error ?? change.error} />
       {warning && <BreakGlassBanner />}
     </div>
   )

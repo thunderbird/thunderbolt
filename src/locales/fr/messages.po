@@ -1021,6 +1021,10 @@ msgstr "Vérifiez votre connexion et rouvrez le fichier, ou téléchargez-le pou
 msgid "Check your connection and open the file again, or download it to open it in a word processor."
 msgstr "Vérifiez votre connexion et rouvrez le fichier, ou téléchargez-le pour l'ouvrir dans un traitement de texte."
 
+#: src/content-view/viewer-load-failure.tsx
+msgid "Check your connection and reload the app, or download the file."
+msgstr "Vérifiez votre connexion et rechargez l'application, ou téléchargez le fichier."
+
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/waitlist/waitlist-content.tsx
 msgid "Check your email"
@@ -6084,6 +6088,7 @@ msgid "The passkey check was cancelled. Try again when you're ready."
 msgstr ""
 
 #: src/components/xlsx-preview/xlsx-preview.tsx
+#: src/content-view/viewer-load-failure.tsx
 #: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "The preview couldn't load"
 msgstr "Impossible de charger l'aperçu"

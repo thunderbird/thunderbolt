@@ -132,6 +132,28 @@ test('when the preview code does not load, the panel says so and Download still 
   expect(await readFile(await download.path())).toEqual(buffer)
 })
 
+test('when the side panel viewer does not load, the panel says so and the rest of the app stays up', async ({
+  page,
+}) => {
+  // The viewer is a lazy chunk: the dev server serves its source module, a build its `/assets/` script and styles.
+  await page.route(/\/pdf-sidebar-viewer[^/]*\.(?:tsx|js|css)(?:\?|$)/, (route) => route.abort())
+  const name = 'e2e-viewer-offline.docx'
+  const buffer = await sampleBuffer()
+  await sendDocument(page, name, buffer, sampleDocxText.title)
+
+  await page.locator(`button[title="${name}"]`).click()
+  await expect(contentView(page).getByText("The preview couldn't load")).toBeVisible()
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    contentView(page).getByRole('button', { name: 'Download' }).click(),
+  ])
+  expect(download.suggestedFilename()).toBe(name)
+  expect(await readFile(await download.path())).toEqual(buffer)
+
+  await contentView(page).getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(page.locator('textarea')).toBeVisible()
+})
+
 test('in a private window an attached file still downloads whole', async ({ browser, baseURL }, testInfo) => {
   // The WebKit Nightly runs each test in a saved profile. A new context keeps storage in memory, like Safari's private
   // browsing.

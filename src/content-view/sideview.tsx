@@ -7,6 +7,8 @@ import { Loader2 } from 'lucide-react'
 import { parseDocumentSideviewId } from '@/types/citation'
 import { getFileType } from '@/widgets/document-result/file-type'
 import { useSideview } from './context'
+import { ViewerErrorBoundary } from './viewer-error-boundary'
+import { LocalViewerLoadFailure, ViewerLoadFailure } from './viewer-load-failure'
 
 // Lazy-load the PDF viewer so its react-pdf + pdfjs payload only ships when a
 // document sideview is opened. The DOCX and PPTX renderers are dynamically
@@ -37,14 +39,17 @@ const loadingFallback = (
 export const Sideview = () => {
   const { sideviewType, sideviewId } = useSideview()
 
-  // Each viewer is keyed by its file id, so switching files starts fresh: a failed save, or one still pending, for
-  // one file never shows on the next. Not by page, which only scrolls the same file.
+  // Each viewer's error boundary is keyed by its file id, so switching files starts fresh: a failed save, a pending
+  // one, or a viewer that did not load never carries over to the next file. Not by page, which only scrolls the same
+  // file. When a viewer's chunk does not load, as on a broken network, the panel shows a notice with Download.
   if (sideviewType === 'document' && sideviewId) {
     const { fileId, fileName, pageNumber } = parseDocumentSideviewId(sideviewId)
     return (
-      <Suspense fallback={loadingFallback}>
-        <PdfSidebarViewer key={fileId} fileId={fileId} fileName={fileName} initialPage={pageNumber} />
-      </Suspense>
+      <ViewerErrorBoundary key={fileId} fallback={<ViewerLoadFailure fileId={fileId} fileName={fileName} />}>
+        <Suspense fallback={loadingFallback}>
+          <PdfSidebarViewer fileId={fileId} fileName={fileName} initialPage={pageNumber} />
+        </Suspense>
+      </ViewerErrorBoundary>
     )
   }
 
@@ -52,13 +57,15 @@ export const Sideview = () => {
   if (sideviewType === 'local-file' && sideviewId) {
     const { fileId, fileName, pageNumber } = parseDocumentSideviewId(sideviewId)
     return (
-      <Suspense fallback={loadingFallback}>
-        {getFileType(fileName) === 'xlsx' ? (
-          <LocalXlsxSidebarViewer key={fileId} localFileId={fileId} fileName={fileName} />
-        ) : (
-          <LocalPdfSidebarViewer key={fileId} localFileId={fileId} fileName={fileName} initialPage={pageNumber} />
-        )}
-      </Suspense>
+      <ViewerErrorBoundary key={fileId} fallback={<LocalViewerLoadFailure fileId={fileId} fileName={fileName} />}>
+        <Suspense fallback={loadingFallback}>
+          {getFileType(fileName) === 'xlsx' ? (
+            <LocalXlsxSidebarViewer localFileId={fileId} fileName={fileName} />
+          ) : (
+            <LocalPdfSidebarViewer localFileId={fileId} fileName={fileName} initialPage={pageNumber} />
+          )}
+        </Suspense>
+      </ViewerErrorBoundary>
     )
   }
 

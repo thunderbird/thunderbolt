@@ -341,6 +341,62 @@ const editableProviderFields = {
   saml: { settable: ['cert', 'entryPoint'], locked: ['entryPoint'] },
 } as const
 
+/** A field that decides which IdP identity an account belongs to, so it changes only while nothing depends on it. */
+export type SsoLockableField = 'clientId' | 'discoveryEndpoint' | 'entryPoint' | 'matchClaim'
+
+/**
+ * The fields of an SSO connection that can't change now: its identity fields while an identity is
+ * linked through it, and its match claim while one is linked or a link review is open. The edit
+ * enforces exactly this, and the admin detail shows it.
+ */
+export const getSsoLockedFields = async (
+  database: Pick<typeof DbType, '$count'>,
+  {
+    protocol,
+    providerId,
+    identityConnectionId,
+  }: { protocol: 'oidc' | 'saml'; providerId: string; identityConnectionId: string },
+): Promise<SsoLockableField[]> => {
+  const [linked, reviewed] = await Promise.all([
+    database.$count(account, eq(account.providerId, providerId)),
+    database.$count(
+      linkReview,
+      and(
+        eq(linkReview.identityConnectionId, identityConnectionId),
+        inArray(linkReview.status, ['pending', 'approved']),
+      ),
+    ),
+  ])
+  if (linked > 0) {
+    return [...editableProviderFields[protocol].locked, 'matchClaim']
+  }
+  return reviewed > 0 ? ['matchClaim'] : []
+}
+
+export type SsoSettings =
+  | { protocol: 'oidc'; clientId: string; discoveryEndpoint: string | null }
+  | { protocol: 'saml'; entityId: string; entryPoint: string; idpIssuer: string | null }
+
+/** The settings an admin may see on a provider row: never the client secret or the certificate. */
+export const readSsoSettings = (provider: { oidcConfig: string | null; samlConfig: string | null }): SsoSettings => {
+  if (provider.oidcConfig) {
+    const config = parseConfig(provider.oidcConfig)
+    return {
+      protocol: 'oidc',
+      clientId: String(config.clientId ?? ''),
+      discoveryEndpoint: typeof config.discoveryEndpoint === 'string' ? config.discoveryEndpoint : null,
+    }
+  }
+  const config = parseConfig(provider.samlConfig)
+  const idpIssuer = (config.idpMetadata as { entityID?: unknown } | undefined)?.entityID
+  return {
+    protocol: 'saml',
+    entityId: String(config.issuer ?? ''),
+    entryPoint: String(config.entryPoint ?? ''),
+    idpIssuer: typeof idpIssuer === 'string' ? idpIssuer : null,
+  }
+}
+
 const isChange = (next: unknown, current: unknown) => next !== undefined && next !== current
 
 const ssoConnectionNotFound = () =>
@@ -445,21 +501,19 @@ export const updateSsoConnection = async (
     const lockedField = locked.find((field) => field in updates)
     const matchClaimChanged = isChange(matchClaim, connection.matchClaim)
     if (lockedField || matchClaimChanged) {
-      const linked = (await tx.$count(account, eq(account.providerId, provider.providerId))) > 0
-      if (lockedField && linked) {
+      const lockedNow = await getSsoLockedFields(tx, {
+        protocol,
+        providerId: provider.providerId,
+        identityConnectionId: connection.id,
+      })
+      if (lockedField && lockedNow.includes(lockedField)) {
         throw new APIError('CONFLICT', {
           message: `The ${lockedField} can't change while identities are linked through this connection`,
           code: 'SSO_IDENTITY_FIELD_LOCKED',
           field: lockedField,
         })
       }
-      const reviewed =
-        matchClaimChanged &&
-        (await tx.$count(
-          linkReview,
-          and(eq(linkReview.identityConnectionId, connection.id), inArray(linkReview.status, ['pending', 'approved'])),
-        )) > 0
-      if (matchClaimChanged && (linked || reviewed)) {
+      if (matchClaimChanged && lockedNow.includes('matchClaim')) {
         throw new APIError('CONFLICT', {
           message: "The match claim can't change while identities are linked or awaiting review",
           code: 'SSO_MATCH_CLAIM_LOCKED',

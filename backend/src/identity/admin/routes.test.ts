@@ -1183,6 +1183,55 @@ describe('admin API', () => {
           expect((await edit(connectionId, rotation)).status).toBe(200)
         })
 
+        it('shows the settings without the secret or certificate, and the fields a link locks', async () => {
+          const oidcId = await create(oidcBody('okta'))
+          const samlId = await create(samlBody('adfs'))
+          const detail = (connectionId: string) => call('GET', `/v1/admin/connections/${connectionId}`)
+
+          const oidcText = await (await detail(oidcId)).text()
+          expect(JSON.parse(oidcText)).toMatchObject({
+            sso: { protocol: 'oidc', clientId: expect.any(String), discoveryEndpoint: expect.any(String) },
+            lockedFields: [],
+          })
+          expect(oidcText).not.toContain(String((await storedConfig('okta')).clientSecret))
+          const samlText = await (await detail(samlId)).text()
+          expect(JSON.parse(samlText)).toMatchObject({
+            sso: {
+              protocol: 'saml',
+              entityId: 'thunderbolt-sp',
+              entryPoint: 'https://adfs.test/sso',
+              idpIssuer: 'https://adfs.test',
+            },
+            lockedFields: [],
+          })
+          expect(samlText).not.toContain('first-cert')
+
+          await linkAccount('okta')
+          await linkAccount('adfs')
+          expect(await json(await detail(oidcId))).toMatchObject({
+            lockedFields: ['clientId', 'discoveryEndpoint', 'matchClaim'],
+          })
+          expect(await json(await detail(samlId))).toMatchObject({ lockedFields: ['entryPoint', 'matchClaim'] })
+        })
+
+        it('locks only the match claim while a link review is open', async () => {
+          const connectionId = await create(oidcBody('entra'))
+          await harness.db.insert(linkReview).values({
+            id: crypto.randomUUID(),
+            orgId,
+            identityConnectionId: connectionId,
+            trigger: 'sso_sign_in',
+            externalId: 'oid-2',
+            incomingEmail: 'someone@example.com',
+            candidateUserId: adminId,
+            lastSeenAt: new Date(),
+          })
+
+          expect(await json(await call('GET', `/v1/admin/connections/${connectionId}`))).toMatchObject({
+            lockedFields: ['matchClaim'],
+          })
+        })
+
         it('changes the client id of a connection nothing is linked through yet', async () => {
           const connectionId = await create(oidcBody('okta'))
 

@@ -332,6 +332,19 @@ describe('buildStepOverrides', () => {
     expect(result?.messages?.[result.messages.length - 1]?.content).toBe(nudgeMessages.finalStep)
   })
 
+  test('applies activeTools to every step except the final one', () => {
+    const activeTools = ['search', 'load_tools']
+    const messages = [{ role: 'user', content: 'hello' }]
+
+    expect(buildStepOverrides({ ...baseParams, steps: [], messages, activeTools })).toEqual({ activeTools })
+    expect(buildStepOverrides({ ...baseParams, steps: toolCallSteps(6), messages, activeTools })?.activeTools).toEqual(
+      activeTools,
+    )
+    expect(buildStepOverrides({ ...baseParams, steps: toolCallSteps(19), messages, activeTools })?.activeTools).toEqual(
+      [],
+    )
+  })
+
   test('adds preventive nudge at threshold', () => {
     const result = buildStepOverrides({
       ...baseParams,

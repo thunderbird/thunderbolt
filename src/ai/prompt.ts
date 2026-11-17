@@ -27,7 +27,7 @@ export type PromptParams = {
   integrationStatus: string
   /** Names of tools actually exposed for this request, after filtering and discovery. */
   availableToolNames: readonly string[]
-  /** Summary of connected MCP servers (name + tool count) */
+  /** Connected MCP servers' tool names, one `- <prefix>: <tool>, …` line per server */
   mcpServersSummary?: string
   /** Enabled skills available to the model */
   skills?: readonly SkillDefinition[]
@@ -156,7 +156,7 @@ Think about what widget components to show the user, then work backwards to the 
 Widget components are \`<widget:…>\` tags you write inline in your reply; load the matching skill to get a widget's exact syntax before using it. When a widget covers what was asked, emit its tag — never rebuild it as an HTML artifact.
 Don't mention tool names unless asked.
 ${toolsOverride ? `\n${toolsOverride}` : ''}
-${mcpServersSummary ? `\n## Connected MCP Servers\nYou have tools from these external services (tool names prefixed by server name):\n${mcpServersSummary}\nUse these when the user asks about these services.` : ''}
+${mcpServersSummary ? `\n## Connected MCP Servers\nTools from these external services must be loaded before use (tool names prefixed by server name):\n${mcpServersSummary}\nWhen the user asks about one of these services, call \`load_tools\` with the exact names you need unless an earlier \`load_tools\` call in this chat already loaded them, then call them. Loaded tools stay available for the rest of the chat.` : ''}
 ${skillDisclosure ? `\n${skillDisclosure}` : ''}
 
 ## Link Previews

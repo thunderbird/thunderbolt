@@ -735,6 +735,7 @@ describe('resolvePiModel — Tinfoil', () => {
       toolset: {},
       skills: [],
       mcpToolsMetadata: undefined,
+      connectionToolNames: new Set<string>(),
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
       embeddedSurface: null,
@@ -788,6 +789,7 @@ describe('createBuiltInAdapter engine telemetry', () => {
       toolset: {},
       skills: [],
       mcpToolsMetadata: undefined,
+      connectionToolNames: new Set<string>(),
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
       embeddedSurface: null,
@@ -828,6 +830,7 @@ describe('createBuiltInAdapter persistent harness', () => {
       toolset: {},
       skills: [],
       mcpToolsMetadata: undefined,
+      connectionToolNames: new Set<string>(),
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
       embeddedSurface: null,
@@ -896,6 +899,7 @@ describe('createBuiltInAdapter persistent harness', () => {
       toolset: { weather: {} as never },
       skills: [],
       mcpToolsMetadata: undefined,
+      connectionToolNames: new Set<string>(),
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
       embeddedSurface: null,
@@ -943,6 +947,102 @@ describe('createBuiltInAdapter persistent harness', () => {
     expect(aiFetch).toHaveBeenCalledTimes(0)
   })
 
+  it('keeps connection tools inactive until load_tools loads them, in history or mid-turn', async () => {
+    const model = tinfoilModel({ toolUsage: 1 })
+    const toolNames = ['weather', 'load_tools', 'notion_search', 'notion_fetch', 'notion_create']
+    const config = {
+      model,
+      profile: null,
+      supportsTools: true,
+      sourceCollector: [],
+      toolset: Object.fromEntries(toolNames.map((name) => [name, {} as never])),
+      skills: [],
+      mcpToolsMetadata: undefined,
+      connectionToolNames: new Set(['notion_search', 'notion_fetch', 'notion_create']),
+      stableSystemPrompt: 'stable',
+      volatileSystemPrompt: 'volatile',
+      embeddedSurface: null,
+    } satisfies PreparedAiRequestConfig
+    const active = { names: [] as string[] }
+    const activeCalls: string[][] = []
+    let toolResult: ((event: unknown) => Promise<unknown>) | undefined
+    const harness = {
+      ...compactionStub,
+      getTools: () => [{ name: 'read' } as AgentTool],
+      getActiveTools: () => active.names.map((name) => ({ name }) as AgentTool),
+      setTools: async (_tools: AgentTool[], names: string[]) => {
+        active.names = names
+        activeCalls.push(names)
+      },
+      setActiveTools: async (names: string[]) => {
+        active.names = names
+        activeCalls.push(names)
+      },
+      prompt: async () => {
+        await toolResult?.({ toolName: 'load_tools', input: { names: ['notion_fetch', 'nope'] }, isError: false })
+        await toolResult?.({ toolName: 'load_tools', input: { names: ['notion_create'] }, isError: true })
+      },
+      waitForIdle: async () => {},
+      on: (type: string, handler: (event: unknown) => Promise<unknown>) => {
+        if (type === 'tool_result') {
+          toolResult = handler
+        }
+        return () => {
+          toolResult = undefined
+        }
+      },
+      abort: async () => ({ aborted: true }),
+      env: { remove: async () => {} },
+    }
+    const agentCore = {
+      ...tinfoilAgentCore,
+      buildAppHarness: async () => harness as never,
+      workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
+      writeAgentWorkspaceFiles: async () => [],
+      toPiAgentTools: async () => toolNames.map((name) => ({ name }) as AgentTool),
+      piHarnessToUiMessageStream: (_harness: AgentHarness, runPrompt: () => Promise<void>) =>
+        new ReadableStream<Uint8Array>({
+          start: async (controller) => {
+            await runPrompt()
+            controller.close()
+          },
+        }),
+    } as never
+    const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
+      aiFetch: mock(async () => new Response('legacy')),
+      loadAgentCore: async () => agentCore,
+      prepareConfig: async () => config,
+      getSystemTinfoilClient: async () => createAttestedClient(),
+    })
+    const loadPart = {
+      type: 'tool-load_tools',
+      toolCallId: 'call-1',
+      state: 'output-available',
+      input: { names: ['notion_search'] },
+      output: { loaded: ['notion_search'], notFound: [] },
+    }
+
+    const response = await adapter.fetch(
+      {
+        body: JSON.stringify({
+          messages: [
+            { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'search notion' }] },
+            { id: 'a1', role: 'assistant', parts: [loadPart, { type: 'text', text: 'found it' }] },
+            { id: 'u2', role: 'user', parts: [{ type: 'text', text: 'open it' }] },
+          ],
+        }),
+      },
+      tinfoilContext(model),
+    )
+    await response.text()
+
+    expect(activeCalls).toEqual([
+      ['read', 'weather', 'load_tools', 'notion_search'],
+      ['read', 'weather', 'load_tools', 'notion_search', 'notion_fetch'],
+    ])
+    expect(toolResult).toBeUndefined()
+  })
+
   it('refreshes prompt/tools, rebuilds for regeneration, and applies the Pi web-budget floor', async () => {
     const model = {
       id: 'model-1',
@@ -973,6 +1073,7 @@ describe('createBuiltInAdapter persistent harness', () => {
           },
         ],
         mcpToolsMetadata: undefined,
+        connectionToolNames: new Set<string>(),
         stableSystemPrompt: 'stable prompt',
         volatileSystemPrompt: `timestamp ${index + 1}`,
         embeddedSurface: null,
@@ -1204,6 +1305,7 @@ const createBudgetAdapter = (
     ),
     skills: [{ name: 'research', description: 'Research', instruction: 'Research within the current web budget.' }],
     mcpToolsMetadata: undefined,
+    connectionToolNames: new Set<string>(),
     stableSystemPrompt: 'Complete the report.',
     volatileSystemPrompt: 'Now.',
     embeddedSurface: null,
@@ -1595,6 +1697,7 @@ describe('createBuiltInAdapter stop', () => {
       toolset: {} as PreparedAiRequestConfig['toolset'],
       skills: [],
       mcpToolsMetadata: undefined,
+      connectionToolNames: new Set<string>(),
       stableSystemPrompt: 'stable prompt',
       volatileSystemPrompt: 'volatile prompt',
       embeddedSurface: null,
@@ -1855,6 +1958,7 @@ describe('Mini App reads on the persistent harness', () => {
       toolset: {},
       skills: [],
       mcpToolsMetadata: undefined,
+      connectionToolNames: new Set<string>(),
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
       embeddedSurface: 'mini-app',
@@ -1947,6 +2051,7 @@ describe('attachments in the harness workspace', () => {
       toolset: {},
       skills: [],
       mcpToolsMetadata: undefined,
+      connectionToolNames: new Set<string>(),
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
       embeddedSurface: null,
@@ -2077,6 +2182,7 @@ describe('built-in adapter lifetime ownership', () => {
       volatileSystemPrompt: 'volatile',
       embeddedSurface: null,
       mcpToolsMetadata: undefined,
+      connectionToolNames: new Set<string>(),
     }
     const listeners = new Set<(event: AgentHarnessEvent) => void>()
     const run = Promise.withResolvers<void>()

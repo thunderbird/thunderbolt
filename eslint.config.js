@@ -14,6 +14,35 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import globals from 'globals'
 import { sharedParserOptions, sharedRules } from './shared/eslint/base.js'
 
+const noDefaultReactImport = {
+  name: 'react',
+  importNames: ['default'],
+  message: 'Do not import default React. Use named imports instead.',
+}
+
+const frontendRestrictedSyntax = [
+  {
+    selector: "ExpressionStatement > Literal[value='use client']",
+    message: "'use client' is not needed in Vite — remove it.",
+  },
+  {
+    selector: "MemberExpression[object.name='React']",
+    message:
+      "React namespace access is not allowed. Use direct imports instead (e.g. import { type ReactNode } from 'react').",
+  },
+  {
+    selector: "TSQualifiedName[left.name='React']",
+    message:
+      "React namespace access in types is not allowed. Use direct imports instead (e.g. import { type ReactNode } from 'react').",
+  },
+]
+
+/** A dynamic `import()` of the repo-root `admin/`; `no-restricted-imports` sees only static imports. */
+const adminDynamicImport = {
+  selector: 'ImportExpression[source.value=/(^|\\/)admin(\\/|$)/]',
+  message: 'Load admin/ through src/lib/admin-module.ts.',
+}
+
 export default [
   // Global ignores (object with only `ignores` applies repo-wide). The generated
   // wasm-bindgen glue is a build artifact — never lint it.
@@ -21,7 +50,7 @@ export default [
   js.configs.recommended,
   prettier,
   {
-    files: ['src/**/*.{ts,tsx}'],
+    files: ['src/**/*.{ts,tsx}', 'admin/**/*.{ts,tsx}'],
     ignores: ['node_modules', 'dist', 'dist-isolation', 'dist-e2e', 'src-tauri', 'thunderbird-*', 'backend'],
     languageOptions: {
       parser: typescriptParser,
@@ -57,31 +86,23 @@ export default [
       'react-hooks/exhaustive-deps': 'warn',
 
       // Frontend-specific restrictions
+      'no-restricted-imports': ['error', noDefaultReactImport],
+      'no-restricted-syntax': ['error', ...frontendRestrictedSyntax],
+    },
+  },
+  {
+    // Licensing boundary: MPL code reaches the UNLICENSED admin/ only through its one lazy loader.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/lib/admin-module.ts'],
+    rules: {
       'no-restricted-imports': [
         'error',
         {
-          name: 'react',
-          importNames: ['default'],
-          message: 'Do not import default React. Use named imports instead.',
+          paths: [noDefaultReactImport],
+          patterns: [{ group: ['**/admin', '**/admin/*'], message: 'Load admin/ through src/lib/admin-module.ts.' }],
         },
       ],
-      'no-restricted-syntax': [
-        'error',
-        {
-          selector: "ExpressionStatement > Literal[value='use client']",
-          message: "'use client' is not needed in Vite — remove it.",
-        },
-        {
-          selector: "MemberExpression[object.name='React']",
-          message:
-            "React namespace access is not allowed. Use direct imports instead (e.g. import { type ReactNode } from 'react').",
-        },
-        {
-          selector: "TSQualifiedName[left.name='React']",
-          message:
-            "React namespace access in types is not allowed. Use direct imports instead (e.g. import { type ReactNode } from 'react').",
-        },
-      ],
+      'no-restricted-syntax': ['error', ...frontendRestrictedSyntax, adminDynamicImport],
     },
   },
   {
@@ -99,7 +120,7 @@ export default [
     plugins: {
       '@typescript-eslint': typescript,
     },
-    rules: sharedRules,
+    rules: { ...sharedRules, 'no-restricted-syntax': ['error', adminDynamicImport] },
   },
   {
     // Playwright specs and their harness. Node-side test code that also runs

@@ -3,8 +3,11 @@
 ## Running Tests
 
 ```sh
-# Run frontend tests (src/ + shared/ non-agent-core tests + selected scripts and .github script tests)
+# Run frontend tests (src/ + admin/ + shared/ non-agent-core tests + selected scripts and .github script tests)
 bun run test
+
+# Run only the admin screens' tests (admin/, preloaded by admin/bunfig.toml)
+bun run test:admin
 
 # Run the isolated shared/agent-core module's unit tests (NOT part of `bun run test`)
 bun run test:agent-core

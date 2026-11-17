@@ -18,9 +18,9 @@ export const DomainVerificationSection = ({ domain }: { domain: OrgDomain }) => 
   const { i18n } = useLingui()
   const formatters = useFormatters()
   const verify = useVerifyDomain(domain.id)
+  const lastChecked = domain.lastCheckedAt && formatters.relativeTime(domain.lastCheckedAt)
   const checkError = domain.lastCheckError
   const reason = checkError && getDomainCheckErrorMessage(checkError)
-  const lastChecked = domain.lastCheckedAt && formatters.relativeTime(domain.lastCheckedAt)
 
   return (
     <DetailField label={<Trans>Verification</Trans>}>
@@ -46,7 +46,7 @@ export const DomainVerificationSection = ({ domain }: { domain: OrgDomain }) => 
           <AlertTitle>
             <Trans>The last check failed</Trans>
           </AlertTitle>
-          <AlertDescription>{reason ? i18n._(reason) : checkError}</AlertDescription>
+          <AlertDescription>{reason ? i18n._(reason) : <code>{checkError}</code>}</AlertDescription>
         </Alert>
       )}
       <InlineError error={verify.error} className="mt-2" />

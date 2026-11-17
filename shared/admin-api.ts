@@ -332,7 +332,7 @@ export type OrgDomain = {
   domain: string
   verifiedAt: Timestamp | null
   lastCheckedAt: Timestamp | null
-  lastCheckError: string | null
+  lastCheckError: DomainCheckError | null
   enrollmentEnabled: boolean
   claimedBy: { id: string; name: string } | null
   /** The TXT record that verifies the domain. */

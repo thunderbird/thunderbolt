@@ -114,7 +114,10 @@ export type IdpManagedField = 'email' | 'name' | 'scimGroups' | 'scimRoles' | 's
 export type MemberRoleSource = {
   role: string
   from: 'local' | 'bootstrap' | 'local_group' | 'scim'
+  /** The group's id: the key. */
   groupId?: string
+  /** The group's name, a display label only: a local group's name or a SCIM group's displayName. */
+  groupName?: string
   connectionId?: string
 }
 
@@ -132,6 +135,8 @@ export type AdminMember = {
   }[]
   /** Every role the member holds and where it comes from. Usable only while `access` allows them in. */
   roles: MemberRoleSource[]
+  /** The local groups the member is in, by name. */
+  groups: { id: string; name: string }[]
   /** Null when no IdP manages the member. */
   idpManaged: { connections: { id: string; name: string }[]; fields: IdpManagedField[] } | null
   requiresSso: boolean

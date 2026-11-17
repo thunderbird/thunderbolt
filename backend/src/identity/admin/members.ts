@@ -7,10 +7,12 @@ import {
   account,
   groupRoleMapping,
   identityConnection,
+  localGroup,
   localGroupMember,
   memberRoleGrant,
   membershipSource,
   orgMembership,
+  scimGroup,
   scimIdentityTombstone,
   scimProjectionGrant,
   session,
@@ -39,7 +41,10 @@ export const idpManagedFields = ['email', 'name', 'scimGroups', 'scimRoles', 'st
 export type MemberRoleSource = {
   role: string
   from: 'local' | 'bootstrap' | 'local_group' | 'scim'
+  /** The group's id: the key. */
   groupId?: string
+  /** The group's name, a display label only: a local group's name or a SCIM group's displayName. */
+  groupName?: string
   connectionId?: string
 }
 
@@ -57,6 +62,8 @@ export type MemberView = {
   }[]
   /** Every role the member holds and where it comes from. Usable only while `access` allows them in. */
   roles: MemberRoleSource[]
+  /** The local groups the member is in, by name. */
+  groups: { id: string; name: string }[]
   /** Null when no IdP manages the member. */
   idpManaged: { connections: { id: string; name: string }[]; fields: typeof idpManagedFields } | null
   requiresSso: boolean
@@ -104,7 +111,7 @@ const toMemberViews = async (database: QueryableDatabase, rows: MembershipWithUs
   const orgId = getCurrentOrganizationId()
   const membershipIds = rows.map((row) => row.membershipId)
   const scimJoins = liveScimGrantJoins(orgId)
-  const [sources, grants, groupRoles, scimGrants] = await Promise.all([
+  const [sources, grants, groupRoles, scimGrants, groups] = await Promise.all([
     database
       .select({
         id: membershipSource.id,
@@ -138,11 +145,13 @@ const toMemberViews = async (database: QueryableDatabase, rows: MembershipWithUs
         userId: scimProjectionGrant.userId,
         role: scimProjectionGrant.role,
         groupId: scimProjectionGrant.sourceId,
+        groupName: scimGroup.displayName,
         connectionId: identityConnection.id,
       })
       .from(scimProjectionGrant)
       .innerJoin(identityConnection, scimJoins.connection)
       .innerJoin(groupRoleMapping, scimJoins.mapping)
+      .leftJoin(scimGroup, eq(scimGroup.id, scimProjectionGrant.sourceId))
       .where(
         and(
           eq(scimProjectionGrant.provisioningDomainId, orgId),
@@ -152,7 +161,14 @@ const toMemberViews = async (database: QueryableDatabase, rows: MembershipWithUs
           ),
         ),
       ),
+    database
+      .select({ membershipId: localGroupMember.membershipId, id: localGroup.id, name: localGroup.name })
+      .from(localGroupMember)
+      .innerJoin(localGroup, eq(localGroup.id, localGroupMember.localGroupId))
+      .where(and(eq(localGroupMember.orgId, orgId), inArray(localGroupMember.membershipId, membershipIds)))
+      .orderBy(asc(localGroup.name)),
   ])
+  const groupNameById = new Map(groups.map((group) => [group.id, group.name]))
   const connectionIds = [...new Set(sources.flatMap((source) => source.identityConnectionId ?? []))]
   const connections =
     connectionIds.length === 0
@@ -189,13 +205,19 @@ const toMemberViews = async (database: QueryableDatabase, rows: MembershipWithUs
         .map((grant) => ({ role: grant.role, from: grant.source })),
       ...groupRoles
         .filter((mapping) => mapping.membershipId === row.membershipId)
-        .map((mapping) => ({ role: mapping.role, from: 'local_group' as const, groupId: mapping.groupId })),
+        .map((mapping) => ({
+          role: mapping.role,
+          from: 'local_group' as const,
+          groupId: mapping.groupId,
+          groupName: groupNameById.get(mapping.groupId),
+        })),
       ...scimGrants
         .filter((grant) => grant.userId === row.userId)
         .map((grant) => ({
           role: grant.role,
           from: 'scim' as const,
           groupId: grant.groupId,
+          groupName: grant.groupName ?? undefined,
           connectionId: grant.connectionId,
         })),
     ]
@@ -212,6 +234,9 @@ const toMemberViews = async (database: QueryableDatabase, rows: MembershipWithUs
         connection: connectionRef(source.identityConnectionId),
       })),
       roles,
+      groups: groups
+        .filter((group) => group.membershipId === row.membershipId)
+        .map((group) => ({ id: group.id, name: group.name })),
       idpManaged:
         managing.length === 0
           ? null

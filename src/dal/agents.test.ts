@@ -80,6 +80,8 @@ const makeHttpClient = (impl: () => unknown): HttpClient => {
     get,
     head: get,
     post: get,
+    put: get,
+    patch: get,
     delete: get,
   }
 }

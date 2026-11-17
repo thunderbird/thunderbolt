@@ -107,7 +107,7 @@ export const IdentityProvidersPage = () => {
         panel={panel}
         onClose={page.close}
       >
-        <p className="text-sm text-muted-foreground">
+        <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
           <Trans>Connect your identity provider to sign people in and keep accounts in step with it.</Trans>
         </p>
         {body()}

@@ -3,6 +3,7 @@
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getClock } from '@/testing-library'
 import type { Invitation, InvitationStatus } from '@shared/admin-api'
 import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
@@ -80,6 +81,17 @@ describe('InvitationsPage', () => {
     expect(screen.getByText('accepted@example.com')).toBeInTheDocument()
     expect(screen.queryByText('pending@example.com')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Revoke invitation to/ })).not.toBeInTheDocument()
+  })
+
+  it('says a pending invitation past its expiry has expired', async () => {
+    getClock().setSystemTime(new Date('2026-11-30T00:00:00.000Z'))
+    await renderPage()
+    expect(within(screen.getByLabelText('pending@example.com')).getByText(/^Expired /)).toBeInTheDocument()
+
+    cleanup()
+    getClock().setSystemTime(new Date('2026-11-20T00:00:00.000Z'))
+    await renderPage()
+    expect(within(screen.getByLabelText('pending@example.com')).getByText(/^Expires /)).toBeInTheDocument()
   })
 
   it('revokes a pending invitation after a confirm', async () => {

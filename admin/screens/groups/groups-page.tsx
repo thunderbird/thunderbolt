@@ -43,7 +43,7 @@ export const GroupsPage = () => {
           )
         }
       >
-        <p className="text-sm text-muted-foreground">
+        <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
           <Trans>
             Group members to manage them together. A group mapped to the admin role makes its members admins.
           </Trans>

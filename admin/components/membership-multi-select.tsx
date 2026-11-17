@@ -106,12 +106,16 @@ export const MembershipMultiSelect = ({
                 <span className="min-w-0">
                   <span className="block truncate">{item.label}</span>
                   {item.description && (
-                    <span className="block truncate text-xs text-muted-foreground">{item.description}</span>
+                    <span className="block truncate text-[length:var(--font-size-xs)] text-muted-foreground">
+                      {item.description}
+                    </span>
                   )}
                 </span>
               </Label>
             ))}
-            {matches.length === 0 && <p className="px-2 py-3 text-sm text-muted-foreground">{emptyMessage}</p>}
+            {matches.length === 0 && (
+              <p className="px-2 py-3 text-[length:var(--font-size-sm)] text-muted-foreground">{emptyMessage}</p>
+            )}
           </div>
         </PopoverContent>
       </Popover>

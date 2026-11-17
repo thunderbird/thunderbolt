@@ -10,10 +10,10 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { isSsoMode } from '@/lib/auth-mode'
 import { isTauri } from '@/lib/platform'
 import type { BreakGlassStatus } from '@shared/admin-api'
-import { getAdminErrorMessage } from '../../api/error-messages'
 import { adminQueryKeys } from '../../api/query-keys'
 import { useAdminApi } from '../../api/use-admin-api'
 import { AdminPage } from '../../components/admin-page'
+import { InlineError } from '../../components/inline-error'
 import { ListSkeleton } from '../../components/list-skeleton'
 import { EmailCodeSignIn } from './email-code-sign-in'
 
@@ -63,7 +63,7 @@ const StatusAlert = ({ status }: { status: BreakGlassStatus }) => {
 
 /** Whether an admin can still sign in while the identity provider is down. */
 export const BreakGlassPage = () => {
-  const { t, i18n } = useLingui()
+  const { t } = useLingui()
   const api = useAdminApi()
   const status = useQuery({ queryKey: adminQueryKeys.breakGlass, queryFn: api.breakGlass.get })
 
@@ -72,11 +72,7 @@ export const BreakGlassPage = () => {
       return <ListSkeleton rows={2} />
     }
     if (status.isError) {
-      return (
-        <Alert variant="destructive">
-          <AlertDescription>{i18n._(getAdminErrorMessage(status.error))}</AlertDescription>
-        </Alert>
-      )
+      return <InlineError error={status.error} />
     }
     return <StatusAlert status={status.data} />
   }

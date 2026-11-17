@@ -12,7 +12,7 @@ Enterprise support and licensing are available: **info@thunderbolt.io**.
 
 UNLICENSED means no software license is granted for that implementation by
 publication; it does not mean public domain or The Unlicense. Shared MPL
-components remain MPL when the admin proposal imports them. Previously
+components remain MPL when the admin code imports them. Previously
 published MPL versions retain their existing grants.
 
 The source-header tool selects notices by repository-relative path.

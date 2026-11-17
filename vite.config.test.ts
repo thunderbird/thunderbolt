@@ -73,6 +73,7 @@ describe('vite server.fs allowlist', () => {
 
   it('allows frontend source directories', () => {
     expect(resolvedAllow).toContain(path.resolve(ROOT, 'src'))
+    expect(resolvedAllow).toContain(path.resolve(ROOT, 'admin'))
     expect(resolvedAllow).toContain(path.resolve(ROOT, 'shared'))
     expect(resolvedAllow).toContain(path.resolve(ROOT, 'public'))
     expect(resolvedAllow).toContain(path.resolve(ROOT, 'node_modules'))

@@ -153,7 +153,8 @@ describe('admin API with IdP-managed members', () => {
   it('refuses edits to what the IdP manages, with the reason', async () => {
     const { connection, scim } = await newConnection()
     const { scimId, userId } = await provision(scim)
-    const groupId = await createGroup(scim, `Admins ${uniqueSuffix()}`, [scimId])
+    const groupName = `Admins ${uniqueSuffix()}`
+    const groupId = await createGroup(scim, groupName, [scimId])
 
     // A group named "Admins" grants nothing on its own.
     expect(await (await call('GET', `/admin/members/${userId}`)).json()).toMatchObject({ roles: [] })
@@ -167,7 +168,7 @@ describe('admin API with IdP-managed members', () => {
       target: { kind: 'scim_group', connectionId: connection.id, scimGroupId: groupId },
     })
     expect(await (await call('GET', `/admin/members/${userId}`)).json()).toMatchObject({
-      roles: [{ role: 'admin', from: 'scim', groupId, connectionId: connection.id }],
+      roles: [{ role: 'admin', from: 'scim', groupId, groupName, connectionId: connection.id }],
       idpManaged: { connections: [{ id: connection.id }] },
     })
     expect(await (await call('GET', `/admin/connections/${connection.id}/scim-groups`)).json()).toMatchObject({

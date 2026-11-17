@@ -726,9 +726,26 @@ describe.each([
       ['deck.pptx', false],
     ])
     expect(output.notes).toEqual([
-      '"budget-2027.docx" is a new file: this run read "template.docx", not a file with that name. If the user asked you to edit "budget-2027.docx", that file is not in this chat. Say so in your reply, and do not present this file as the edited one.',
+      '"budget-2027.docx" is a new file made from "template.docx", not an edit of a file with that name. If the user asked you to edit "budget-2027.docx", list that exact name in `inputs`: the tool then reads that file or says it does not exist. Do not present this file as the edited one.',
     ])
     expect((await runOk(docxScript('report.docx'))).notes).toBeUndefined()
+  })
+
+  it('does not call a file missing when the chat has it but the run did not read it', async () => {
+    const template = storeAttachment('template.docx', await fixture('testComment.docx'))
+    const report = storeAttachment('report.docx', await fixture('testComment.docx'))
+
+    const output = await okFiles(
+      call(
+        { listThreadFiles: async () => [template, report] },
+        `saveFile('report.docx', ${editedCopy('template.docx')})`,
+        ['template.docx'],
+      ),
+    )
+
+    expect(output.notes).toEqual([
+      '"report.docx" is a new file made from "template.docx", not an edit of a file with that name. If the user asked you to edit "report.docx", list that exact name in `inputs`: the tool then reads that file or says it does not exist. Do not present this file as the edited one.',
+    ])
   })
 
   it('refuses files that would take the ones it made in this chat past the limit, saving none', async () => {

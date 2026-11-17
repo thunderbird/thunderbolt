@@ -72,8 +72,8 @@ const extensionOf = (name: string) => name.slice(name.lastIndexOf('.') + 1).toLo
 
 /**
  * The note for a new file when the run read files of its type, or `undefined` when it read none. Asked to edit a
- * file the chat does not have, a model tends to edit another attachment and save it under the requested name; the
- * note tells it this file is not that one.
+ * file, a model sometimes edits another one and saves it under the requested name. The note says this file is new
+ * and sends the model to `inputs` for the named one; whether that file exists is left to the input resolver.
  */
 const newFileNote = (filename: string, inputFilenames: string[]) => {
   const sameType = [...new Set(inputFilenames.filter((name) => extensionOf(name) === extensionOf(filename)))]
@@ -81,7 +81,7 @@ const newFileNote = (filename: string, inputFilenames: string[]) => {
     return undefined
   }
   const name = promptFileName(filename)
-  return `${name} is a new file: this run read ${sameType.map(promptFileName).join(', ')}, not a file with that name. If the user asked you to edit ${name}, that file is not in this chat. Say so in your reply, and do not present this file as the edited one.`
+  return `${name} is a new file made from ${sameType.map(promptFileName).join(', ')}, not an edit of a file with that name. If the user asked you to edit ${name}, list that exact name in \`inputs\`: the tool then reads that file or says it does not exist. Do not present this file as the edited one.`
 }
 
 /** The thread's files this tool made, once each: only those carry the name the script gave them. */

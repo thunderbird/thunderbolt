@@ -3,7 +3,7 @@
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import type { AdminConnection, OrgDomain } from '@shared/admin-api'
+import type { AdminConnection, DomainCheckError, OrgDomain } from '@shared/admin-api'
 import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
@@ -18,7 +18,7 @@ type Backend = {
   domain: OrgDomain
   connections?: AdminConnection[]
   /** The DNS check's result: null passes. */
-  check?: string | null
+  check?: DomainCheckError | null
   /** Answers a change instead of the stateful backend. */
   refuse?: (request: FakeRequest) => FakeReply | undefined
 }
@@ -132,11 +132,12 @@ describe('DomainEditor', () => {
     expect(screen.getByRole('link', { name: 'Okta' })).toHaveAttribute('href', '/admin/identity-providers?edit=c1')
   })
 
-  it.each([
+  it.each<[DomainCheckError, string]>([
     ['TXT_RECORD_NOT_FOUND', 'No verification record was found. DNS changes can take a while to appear.'],
     ['TXT_RECORD_MISMATCH', "A verification record was found, but its value doesn't match."],
     ['DNS_LOOKUP_FAILED', 'The DNS lookup failed. Try again later.'],
-    ['SOMETHING_NEW', 'SOMETHING_NEW'],
+    // An older app can get a code a newer backend added: it shows the code.
+    ['SOMETHING_NEW' as DomainCheckError, 'SOMETHING_NEW'],
   ])('shows why verification failed: %s', async (check, message) => {
     const harness = createBackend({ domain: makeDomain(), check })
     await openDomain(harness)

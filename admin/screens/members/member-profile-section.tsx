@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label'
 import { useFormatters } from '@/i18n/use-formatters'
 import type { AdminMember } from '@shared/admin-api'
 import { StatusBadge } from '../../components/status-badge'
-import { InlineError } from './inline-error'
+import { InlineError } from '../../components/inline-error'
 import { getRenameState } from './member-rules'
 import type { MemberPanelState } from './use-member-panel-state'
 

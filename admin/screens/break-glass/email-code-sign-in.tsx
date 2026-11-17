@@ -3,11 +3,8 @@
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { Check, Copy } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { ssoEmailCodePath } from '@/lib/sso-paths'
+import { CopyableField } from '../../components/copyable-field'
 
 type EmailCodeSignInProps = {
   /** The web app's origin, or null where there's none to give (the desktop app). */
@@ -19,7 +16,6 @@ type EmailCodeSignInProps = {
 /** Where a break-glass admin signs in by email code: the address to copy, or just the path without an `origin`. */
 export const EmailCodeSignIn = ({ origin, ssoMode }: EmailCodeSignInProps) => {
   const { t } = useLingui()
-  const { copy, isCopied } = useCopyToClipboard()
   const path = ssoMode ? ssoEmailCodePath : '/'
   const url = origin && origin + path
 
@@ -36,18 +32,7 @@ export const EmailCodeSignIn = ({ origin, ssoMode }: EmailCodeSignInProps) => {
         )}
       </p>
       {url ? (
-        <div className="flex items-center gap-2">
-          <Input readOnly aria-label={t`Email-code sign-in address`} value={url} className="min-w-0 flex-1 font-mono" />
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            aria-label={t`Copy the sign-in address`}
-            onClick={() => void copy(url)}
-          >
-            {isCopied ? <Check className="size-4 text-success" /> : <Copy className="size-4" />}
-          </Button>
-        </div>
+        <CopyableField label={t`Email-code sign-in address`} copyLabel={t`Copy the sign-in address`} value={url} />
       ) : (
         <p className="text-[length:var(--font-size-sm)]">
           <Trans>

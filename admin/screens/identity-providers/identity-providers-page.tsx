@@ -9,7 +9,6 @@ import { SettingsEmptyState } from '@/components/settings/settings-empty-state'
 import { SettingsSelectableRow } from '@/components/settings/settings-list'
 import { PageCreateAction } from '@/components/ui/page-create-action'
 import type { AdminConnection } from '@shared/admin-api'
-import { getAdminErrorMessage } from '../../api/error-messages'
 import { AdminPage } from '../../components/admin-page'
 import { ListSkeleton } from '../../components/list-skeleton'
 import { ResourcePageDialogs } from '../../components/resource-page-dialogs'
@@ -20,6 +19,7 @@ import { connectionBadge, envOwnedLabel, scimLabels, ssoLabels } from './connect
 import { describeConnection } from './connection-status'
 import { NewConnectionEditor } from './new-connection-editor'
 import { useConnections, useRetireConnection } from './use-connection-queries'
+import { InlineError } from '../../components/inline-error'
 
 const ConnectionRow = ({
   connection,
@@ -58,7 +58,7 @@ const ConnectionRow = ({
 
 /** The org's identity providers: each connection's sign-in and provisioning, and adding new ones. */
 export const IdentityProvidersPage = () => {
-  const { t, i18n } = useLingui()
+  const { t } = useLingui()
   const page = useResourcePageState()
   const connections = useConnections()
   const retire = useRetireConnection()
@@ -79,11 +79,7 @@ export const IdentityProvidersPage = () => {
       return <ListSkeleton />
     }
     if (connections.error) {
-      return (
-        <p role="alert" className="text-destructive">
-          {i18n._(getAdminErrorMessage(connections.error))}
-        </p>
-      )
+      return <InlineError error={connections.error} />
     }
     if (connections.data.length === 0) {
       return (

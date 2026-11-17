@@ -8,10 +8,10 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { useFormatters } from '@/i18n/use-formatters'
 import type { OrgDomain } from '@shared/admin-api'
-import { getAdminErrorMessage } from '../../api/error-messages'
 import { getDomainCheckErrorMessage } from './domain-rules'
 import { DomainStatusBadge } from './domain-status-badge'
 import { useVerifyDomain } from './use-domains'
+import { InlineError } from '../../components/inline-error'
 
 /** The domain's status, the last DNS check and why it failed, and the button that checks again. */
 export const DomainVerificationSection = ({ domain }: { domain: OrgDomain }) => {
@@ -49,11 +49,7 @@ export const DomainVerificationSection = ({ domain }: { domain: OrgDomain }) => 
           <AlertDescription>{reason ? i18n._(reason) : checkError}</AlertDescription>
         </Alert>
       )}
-      {verify.error && (
-        <p role="alert" className="mt-2 text-[length:var(--font-size-sm)] text-destructive">
-          {i18n._(getAdminErrorMessage(verify.error))}
-        </p>
-      )}
+      <InlineError error={verify.error} className="mt-2" />
     </DetailField>
   )
 }

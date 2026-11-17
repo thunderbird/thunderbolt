@@ -4,13 +4,8 @@
 
 import { msg } from '@lingui/core/macro'
 import type { MessageDescriptor } from '@lingui/core'
+import type { Availability } from '../../components/guarded-action'
 import { adminRole, type AdminMember, type ConnectionStatus, type MemberRoleSource } from '@shared/admin-api'
-
-/**
- * Whether an action on a member can go through, and why not when it can't. These mirror the API's
- * refusals, so the panel disables an action up front instead of letting it fail.
- */
-export type Availability = { available: true } | { available: false; reason: MessageDescriptor }
 
 type MemberSource = AdminMember['sources'][number]
 

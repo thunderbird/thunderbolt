@@ -9,9 +9,9 @@ import { DetailField } from '@/components/settings/detail-field'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { OrgDomain } from '@shared/admin-api'
-import { getAdminErrorMessage } from '../../api/error-messages'
 import { getConnectionKindLabel } from './domain-rules'
 import { useClaimDomain, useClaimableConnections, useReleaseDomain } from './use-domains'
+import { InlineError } from '../../components/inline-error'
 
 const hintClass = 'text-[length:var(--font-size-sm)] text-muted-foreground'
 
@@ -73,17 +73,12 @@ const ClaimPicker = ({ domain }: { domain: OrgDomain }) => {
           <Trans>Verify this domain before an identity provider can claim it.</Trans>
         )}
       </p>
-      {(connections.error ?? claim.error) && (
-        <p role="alert" className="text-[length:var(--font-size-sm)] text-destructive">
-          {i18n._(getAdminErrorMessage(connections.error ?? claim.error))}
-        </p>
-      )}
+      <InlineError error={connections.error ?? claim.error} />
     </>
   )
 }
 
 const ClaimHolder = ({ domain, claimedBy }: { domain: OrgDomain; claimedBy: NonNullable<OrgDomain['claimedBy']> }) => {
-  const { i18n } = useLingui()
   const release = useReleaseDomain(domain.id)
   const name = claimedBy.name
   return (
@@ -104,11 +99,7 @@ const ClaimHolder = ({ domain, claimedBy }: { domain: OrgDomain; claimedBy: NonN
       <p className={hintClass}>
         <Trans>Release the claim before removing this domain.</Trans>
       </p>
-      {release.error && (
-        <p role="alert" className="text-[length:var(--font-size-sm)] text-destructive">
-          {i18n._(getAdminErrorMessage(release.error))}
-        </p>
-      )}
+      <InlineError error={release.error} />
     </>
   )
 }

@@ -2,10 +2,13 @@
  * All rights reserved. See admin/LICENSE.
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
+import type { MessageDescriptor } from '@lingui/core'
 import { useLingui } from '@lingui/react/macro'
 import { useId, type ComponentProps } from 'react'
 import { Button } from '@/components/ui/button'
-import type { Availability } from './member-rules'
+
+/** Whether an action can go through, and why not when it can't, so a screen can disable it up front. */
+export type Availability = { available: true } | { available: false; reason: MessageDescriptor }
 
 type GuardedActionProps = ComponentProps<typeof Button> & { availability: Availability }
 

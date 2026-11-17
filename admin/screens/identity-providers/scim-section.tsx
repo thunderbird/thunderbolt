@@ -12,22 +12,13 @@ import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { useFormatters } from '@/i18n/use-formatters'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { AdminConnectionDetail, ScimCredential } from '@shared/admin-api'
-import { getAdminErrorMessage } from '../../api/error-messages'
 import { CopyOnceSecret } from '../../components/copy-once-secret'
+import { InlineError } from '../../components/inline-error'
 import { describeConnection } from './connection-status'
 import { ExpiryField } from './expiry-field'
 import { ScimCredentialList, shortCredentialId } from './scim-credential-list'
 import { scimBaseUrl } from './setup-urls'
 import { useScimSectionState } from './use-scim-section-state'
-
-const ErrorText = ({ error }: { error: unknown }) => {
-  const { i18n } = useLingui()
-  return (
-    <span role="alert" className="block text-destructive">
-      {i18n._(getAdminErrorMessage(error))}
-    </span>
-  )
-}
 
 /** A token just issued, with what to paste beside it. Shown once. */
 export const IssuedScimToken = ({
@@ -94,7 +85,7 @@ export const ScimSection = ({
             </Alert>
           )}
           <ExpiryField value={scim.expiry} onChange={scim.setExpiry} />
-          {scim.issueError !== null && <ErrorText error={scim.issueError} />}
+          <InlineError error={scim.issueError} />
           <div>
             <Button type="button" disabled={!scim.canIssue} isLoading={scim.isIssuing} onClick={scim.enable}>
               <Trans>Turn on SCIM</Trans>
@@ -142,7 +133,7 @@ export const ScimSection = ({
           </Trans>
         </p>
         <ExpiryField value={scim.expiry} onChange={scim.setExpiry} />
-        {scim.issueError !== null && <ErrorText error={scim.issueError} />}
+        <InlineError error={scim.issueError} />
         <div className="flex flex-wrap justify-between gap-2">
           <Button
             type="button"
@@ -173,7 +164,7 @@ export const ScimSection = ({
         description={
           <>
             <Trans>Its token stops working at once.</Trans>
-            {scim.revokeError !== null && <ErrorText error={scim.revokeError} />}
+            <InlineError error={scim.revokeError} />
           </>
         }
         confirmLabel={t`Revoke`}
@@ -190,7 +181,7 @@ export const ScimSection = ({
               Its tokens stop working at once, and people lose the access it gave them. Cleanup runs in the background.
               This can't be undone.
             </Trans>
-            {scim.retireError !== null && <ErrorText error={scim.retireError} />}
+            <InlineError error={scim.retireError} />
           </>
         }
         confirmLabel={t`Retire SCIM`}

@@ -14,12 +14,12 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { AdminConnectionDetail, SsoProtocol } from '@shared/admin-api'
-import { getAdminErrorMessage } from '../../api/error-messages'
 import { describeConnection } from './connection-status'
 import { describedBy, FormField, ReadOnlyField } from './form-field'
 import { oidcRedirectUri, samlAcsUrl, samlMetadataUrl } from './setup-urls'
 import { SsoConnectionForm } from './sso-connection-form'
 import { useSsoSettingsState, type SsoConnectionDetail, type SsoSettingsField } from './use-sso-settings-state'
+import { InlineError } from '../../components/inline-error'
 
 type SectionProps = { detail: AdminConnectionDetail; onDirty: (dirty: boolean) => void }
 
@@ -184,11 +184,7 @@ const SsoSettingsForm = ({ detail, onDirty }: { detail: SsoConnectionDetail; onD
           <Trans>To retire this connection, retire its SCIM provisioning first.</Trans>
         </p>
       ) : null}
-      {form.formError && (
-        <p role="alert" className="text-destructive">
-          {i18n._(getAdminErrorMessage(form.formError))}
-        </p>
-      )}
+      <InlineError error={form.formError} />
       {form.isSaved && !form.hasChanges && (
         <p role="status" className="text-[length:var(--font-size-sm)] text-muted-foreground">
           <Trans>Saved.</Trans>

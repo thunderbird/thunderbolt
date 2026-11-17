@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { Invitation } from '@shared/admin-api'
-import { InlineError } from '../members/inline-error'
+import { InlineError } from '../../components/inline-error'
 import { useInvitePanelState } from './use-invite-panel-state'
 
 type InvitePanelProps = {

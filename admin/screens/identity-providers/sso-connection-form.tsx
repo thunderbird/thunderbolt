@@ -13,12 +13,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { AdminConnectionDetail, SsoProtocol } from '@shared/admin-api'
-import { getAdminErrorMessage } from '../../api/error-messages'
 import { describedBy, FormField } from './form-field'
 import { providerPresets, type ProviderPreset } from './provider-presets'
 import { oidcRedirectUri, samlAcsUrl } from './setup-urls'
 import type { SsoFormField } from './sso-field-errors'
 import { useSsoConnectionForm, type SsoAttachTarget, type SsoCreateTextField } from './use-sso-connection-form'
+import { InlineError } from '../../components/inline-error'
 
 type SsoConnectionFormProps = {
   protocol: SsoProtocol
@@ -168,11 +168,7 @@ export const SsoConnectionForm = ({ protocol, attachTo, onCreated, onCancel, onD
           </AlertDescription>
         </Alert>
       )}
-      {form.formError && (
-        <p role="alert" className="text-destructive">
-          {i18n._(getAdminErrorMessage(form.formError))}
-        </p>
-      )}
+      <InlineError error={form.formError} />
       <FormFooter>
         <Button type="button" variant="outline" onClick={onCancel}>
           <Trans>Cancel</Trans>

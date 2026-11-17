@@ -20,7 +20,7 @@ import { ListSkeleton } from '../../components/list-skeleton'
 import { LoadMoreFooter } from '../../components/load-more-footer'
 import { MembershipMultiSelect } from '../../components/membership-multi-select'
 import { RoleMappingControl } from '../../components/role-mapping-control'
-import { InlineError } from '../members/inline-error'
+import { InlineError } from '../../components/inline-error'
 import { useGroupPanelState, type GroupPanelState } from './use-group-panel-state'
 
 type GroupDetailsFormProps = {

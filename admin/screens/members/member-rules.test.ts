@@ -13,9 +13,9 @@ import {
   getRevokeAdminState,
   isAdmin,
   isSelfDemotingGroupRemoval,
-  type Availability,
   type ConnectionStatusById,
 } from './member-rules'
+import type { Availability } from '../../components/guarded-action'
 
 /** The refusal's English text, or null when the action can go through. */
 const reasonOf = (state: Availability | null) => (state && !state.available ? i18n._(state.reason) : null)

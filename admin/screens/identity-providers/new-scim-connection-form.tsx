@@ -7,12 +7,12 @@ import { useId, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { FormFooter } from '@/components/ui/form-footer'
 import { Input } from '@/components/ui/input'
-import { getAdminErrorMessage } from '../../api/error-messages'
 import { toExpiresAt } from './credential-expiry'
 import { ExpiryField } from './expiry-field'
 import { describedBy, FormField } from './form-field'
 import { IssuedScimToken } from './scim-section'
 import { useCreateScimConnection } from './use-connection-queries'
+import { InlineError } from '../../components/inline-error'
 
 type NewScimConnectionFormProps = {
   onCreated: (connectionId: string) => void
@@ -22,7 +22,7 @@ type NewScimConnectionFormProps = {
 
 /** A connection that only provisions: its name and first credential, whose token is shown once. */
 export const NewScimConnectionForm = ({ onCreated, onCancel, onDirty }: NewScimConnectionFormProps) => {
-  const { t, i18n } = useLingui()
+  const { t } = useLingui()
   const id = useId()
   const [name, setName] = useState('')
   const [expiry, setExpiry] = useState('')
@@ -72,11 +72,7 @@ export const NewScimConnectionForm = ({ onCreated, onCancel, onDirty }: NewScimC
           onDirty(true)
         }}
       />
-      {create.error && (
-        <p role="alert" className="text-destructive">
-          {i18n._(getAdminErrorMessage(create.error))}
-        </p>
-      )}
+      <InlineError error={create.error} />
       <FormFooter>
         <Button type="button" variant="outline" onClick={onCancel}>
           <Trans>Cancel</Trans>

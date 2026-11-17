@@ -2,18 +2,25 @@
  * All rights reserved. See admin/LICENSE.
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
+import { msg } from '@lingui/core/macro'
 import { Plural, Trans, useLingui } from '@lingui/react/macro'
 import { useState, type ReactNode } from 'react'
-import { DetailDivider, DetailPanel, DetailSectionTitle } from '@/components/detail-panel'
+import { DetailPanel, DetailSectionTitle } from '@/components/detail-panel'
 import { Button } from '@/components/ui/button'
 import { FormFooter } from '@/components/ui/form-footer'
 import { useAuth } from '@/contexts/auth-context'
 import { useFormatters } from '@/i18n/use-formatters'
 import type { LinkReview } from '@shared/admin-api'
+import { type Availability, GuardedAction } from '../../components/guarded-action'
 import { StatusBadge } from '../../components/status-badge'
 import { LinkReviewConfirmDialog } from './link-review-confirm-dialog'
 import { linkReviewStatusLabels, linkReviewStatusTones, linkReviewTriggerLabels } from './link-review-labels'
 import { type LinkReviewDecision, useLinkReviewDecision } from './use-link-review-decision'
+
+const ownAccount: Availability = {
+  available: false,
+  reason: msg`This is your own account, so another admin has to approve the link.`,
+}
 
 const Fact = ({ label, children }: { label: string; children: ReactNode }) => (
   <div className="flex flex-col gap-0.5">
@@ -95,15 +102,6 @@ export const LinkReviewPanel = ({ review, onClose, onDecided }: LinkReviewPanelP
         </Identity>
       </div>
 
-      {canApprove && isOwnAccount && (
-        <>
-          <DetailDivider />
-          <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
-            <Trans>This is your own account, so another admin has to approve the link.</Trans>
-          </p>
-        </>
-      )}
-
       {(canApprove || canReject) && (
         <FormFooter>
           {canReject && (
@@ -112,9 +110,14 @@ export const LinkReviewPanel = ({ review, onClose, onDecided }: LinkReviewPanelP
             </Button>
           )}
           {canApprove && (
-            <Button type="button" disabled={isOwnAccount} onClick={() => setConfirming('approve')}>
+            <GuardedAction
+              variant="default"
+              size="default"
+              availability={isOwnAccount ? ownAccount : { available: true }}
+              onClick={() => setConfirming('approve')}
+            >
               <Trans>Approve</Trans>
-            </Button>
+            </GuardedAction>
           )}
         </FormFooter>
       )}

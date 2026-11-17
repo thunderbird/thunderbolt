@@ -2,15 +2,15 @@
  * All rights reserved. See admin/LICENSE.
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
-import { Trans, useLingui } from '@lingui/react/macro'
+import { Trans } from '@lingui/react/macro'
 import { useId } from 'react'
 import { DetailField } from '@/components/settings/detail-field'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import type { OrgDomain } from '@shared/admin-api'
-import { getAdminErrorMessage } from '../../api/error-messages'
 import { getEnrollmentLock } from './domain-rules'
 import { useSetDomainEnrollment } from './use-domains'
+import { InlineError } from '../../components/inline-error'
 
 const EnrollmentLockReason = ({ domain }: { domain: OrgDomain }) => {
   if (getEnrollmentLock(domain) === 'unverified') {
@@ -27,7 +27,6 @@ const EnrollmentLockReason = ({ domain }: { domain: OrgDomain }) => {
 
 /** The switch that lets anyone with a verified email on the domain join, and why it's locked. */
 export const DomainEnrollmentField = ({ domain }: { domain: OrgDomain }) => {
-  const { i18n } = useLingui()
   const switchId = useId()
   const descriptionId = useId()
   const reasonId = useId()
@@ -59,11 +58,7 @@ export const DomainEnrollmentField = ({ domain }: { domain: OrgDomain }) => {
           <EnrollmentLockReason domain={domain} />
         </p>
       )}
-      {setEnrollment.error && (
-        <p role="alert" className="mt-2 text-[length:var(--font-size-sm)] text-destructive">
-          {i18n._(getAdminErrorMessage(setEnrollment.error))}
-        </p>
-      )}
+      <InlineError error={setEnrollment.error} className="mt-2" />
     </DetailField>
   )
 }

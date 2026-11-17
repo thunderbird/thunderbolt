@@ -9,7 +9,6 @@ import { SettingsNoResults } from '@/components/settings/settings-empty-state'
 import { SettingsSelectableRow } from '@/components/settings/settings-list'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useFormatters } from '@/i18n/use-formatters'
-import { getAdminErrorMessage } from '../../api/error-messages'
 import { AdminPage } from '../../components/admin-page'
 import { ListSkeleton } from '../../components/list-skeleton'
 import { LoadMoreFooter } from '../../components/load-more-footer'
@@ -18,6 +17,7 @@ import { StatusBadge } from '../../components/status-badge'
 import { linkReviewStatusLabels, linkReviewStatusTones } from './link-review-labels'
 import { LinkReviewPanel } from './link-review-panel'
 import { linkReviewStatuses, useLinkReviewsPageState } from './use-link-reviews-page-state'
+import { InlineError } from '../../components/inline-error'
 
 // Radix Select can't hold an empty value.
 const allConnections = 'all'
@@ -34,11 +34,7 @@ export const LinkReviewsPage = () => {
       return <ListSkeleton />
     }
     if (reviews.error && reviews.items.length === 0) {
-      return (
-        <p role="alert" className="text-destructive">
-          {i18n._(getAdminErrorMessage(reviews.error))}
-        </p>
-      )
+      return <InlineError error={reviews.error} />
     }
     if (reviews.isEmpty) {
       return (
@@ -78,11 +74,7 @@ export const LinkReviewsPage = () => {
             />
           )
         })}
-        {reviews.error && (
-          <p role="alert" className="text-destructive">
-            {i18n._(getAdminErrorMessage(reviews.error))}
-          </p>
-        )}
+        <InlineError error={reviews.error} />
         <LoadMoreFooter hasMore={reviews.hasMore} isLoading={reviews.isLoadingMore} onLoadMore={reviews.loadMore} />
       </>
     )

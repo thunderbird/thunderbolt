@@ -9,7 +9,6 @@ import { SettingsEmptyState } from '@/components/settings/settings-empty-state'
 import { SettingsSelectableRow } from '@/components/settings/settings-list'
 import { PageCreateAction } from '@/components/ui/page-create-action'
 import type { OrgDomain } from '@shared/admin-api'
-import { getAdminErrorMessage } from '../../api/error-messages'
 import { AdminPage } from '../../components/admin-page'
 import { ListSkeleton } from '../../components/list-skeleton'
 import { ResourcePageDialogs } from '../../components/resource-page-dialogs'
@@ -19,6 +18,7 @@ import { DomainEditor } from './domain-editor'
 import { getDomainStatus } from './domain-rules'
 import { DomainStatusBadge } from './domain-status-badge'
 import { useDomains, useRemoveDomain } from './use-domains'
+import { InlineError } from '../../components/inline-error'
 
 const newDomainId = 'new'
 
@@ -36,7 +36,7 @@ const DomainSubtitle = ({ domain }: { domain: OrgDomain }) => {
 }
 
 export const DomainsPage = () => {
-  const { t, i18n } = useLingui()
+  const { t } = useLingui()
   const page = useResourcePageState()
   const domains = useDomains()
   // A selection that no longer matches a row (a stale link, a removed domain) opens nothing.
@@ -74,11 +74,7 @@ export const DomainsPage = () => {
         <Trans>Verify the domains your organization owns, then decide how people on each one join.</Trans>
       </p>
       {domains.isPending && <ListSkeleton />}
-      {domains.error && (
-        <p role="alert" className="text-sm text-destructive">
-          {i18n._(getAdminErrorMessage(domains.error))}
-        </p>
-      )}
+      <InlineError error={domains.error} />
       {domains.data?.length === 0 && (
         <SettingsEmptyState
           icon={<Globe className="size-6 text-muted-foreground" />}

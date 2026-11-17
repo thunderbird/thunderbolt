@@ -9,13 +9,13 @@ import type { ReactNode } from 'react'
 import { useFormatters } from '@/i18n/use-formatters'
 import type { AuditActorType, AuditEvent, AuditEventQuery, AuditOutcome } from '@shared/admin-api'
 import { getAuditActionLabel, getAuditTargetLabel } from '../api/audit-action-labels'
-import { getAdminErrorMessage } from '../api/error-messages'
 import { adminQueryKeys } from '../api/query-keys'
 import { useAdminApi } from '../api/use-admin-api'
 import { useCursorList } from '../api/use-cursor-list'
 import { ListSkeleton } from './list-skeleton'
 import { LoadMoreFooter } from './load-more-footer'
 import { StatusBadge, type StatusTone } from './status-badge'
+import { InlineError } from './inline-error'
 
 const actorLabels: Record<AuditActorType, MessageDescriptor> = {
   user: msg`Person`,
@@ -60,11 +60,7 @@ export const AuditEventList = ({ filters, renderDetails, emptyMessage }: AuditEv
     return <ListSkeleton />
   }
   if (list.error && list.items.length === 0) {
-    return (
-      <p role="alert" className="text-destructive">
-        {i18n._(getAdminErrorMessage(list.error))}
-      </p>
-    )
+    return <InlineError error={list.error} />
   }
   if (list.isEmpty) {
     return <p className="text-muted-foreground">{emptyMessage ?? <Trans>No events.</Trans>}</p>
@@ -108,11 +104,7 @@ export const AuditEventList = ({ filters, renderDetails, emptyMessage }: AuditEv
           )
         })}
       </ul>
-      {list.error && (
-        <p role="alert" className="text-destructive">
-          {i18n._(getAdminErrorMessage(list.error))}
-        </p>
-      )}
+      <InlineError error={list.error} />
       <LoadMoreFooter hasMore={list.hasMore} isLoading={list.isLoadingMore} onLoadMore={list.loadMore} />
     </div>
   )

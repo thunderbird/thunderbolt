@@ -18,7 +18,7 @@ import { AddDomainEditor } from './add-domain-editor'
 import { DomainEditor } from './domain-editor'
 import { getDomainStatus } from './domain-rules'
 import { DomainStatusBadge } from './domain-status-badge'
-import { useDomains } from './use-domains'
+import { useDomains, useRemoveDomain } from './use-domains'
 
 const newDomainId = 'new'
 
@@ -41,6 +41,9 @@ export const DomainsPage = () => {
   const domains = useDomains()
   // A selection that no longer matches a row (a stale link, a removed domain) opens nothing.
   const selected = domains.data?.find((domain) => domain.id === page.selectedId)
+  const removing = domains.data?.find((domain) => domain.id === page.removeId)
+  const remove = useRemoveDomain()
+  const removingName = removing?.domain ?? ''
 
   const panel =
     page.selectedId === newDomainId ? (
@@ -50,7 +53,14 @@ export const DomainsPage = () => {
         onClose={page.close}
       />
     ) : (
-      selected && <DomainEditor key={selected.id} domain={selected} onClose={page.close} />
+      selected && (
+        <DomainEditor
+          key={selected.id}
+          domain={selected}
+          onRemove={() => page.patch({ removeId: selected.id })}
+          onClose={page.close}
+        />
+      )
     )
 
   return (
@@ -94,7 +104,19 @@ export const DomainsPage = () => {
           onSelect={() => page.requestSelect(page.selectedId === domain.id ? null : domain.id)}
         />
       ))}
-      <ResourcePageDialogs page={page} />
+      <ResourcePageDialogs
+        page={page}
+        remove={{
+          title: t`Remove ${removingName}?`,
+          description: (
+            <Trans>
+              People who joined through this domain stay members. Adding it again needs a new verification record.
+            </Trans>
+          ),
+          confirmLabel: t`Remove domain`,
+          onConfirm: (id) => remove.mutateAsync(id),
+        }}
+      />
     </AdminPage>
   )
 }

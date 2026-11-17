@@ -4,7 +4,7 @@
 
 import { msg } from '@lingui/core/macro'
 import type { MessageDescriptor } from '@lingui/core'
-import { adminRole, type AdminMember, type ConnectionStatus } from '@shared/admin-api'
+import { adminRole, type AdminMember, type ConnectionStatus, type MemberRoleSource } from '@shared/admin-api'
 
 /**
  * Whether an action on a member can go through, and why not when it can't. These mirror the API's
@@ -23,9 +23,24 @@ const unavailable = (reason: MessageDescriptor): Availability => ({ available: f
 /** Whether the member holds the admin role from any source. */
 export const isAdmin = (member: AdminMember) => member.roles.some((source) => source.role === adminRole)
 
+const isAdminGrant = (source: MemberRoleSource) => source.from === 'local' || source.from === 'bootstrap'
+
 /** The member's own grant of admin, local or bootstrap: the only kind a revoke removes. */
 const hasAdminGrant = (member: AdminMember) =>
-  member.roles.some((source) => source.role === adminRole && (source.from === 'local' || source.from === 'bootstrap'))
+  member.roles.some((source) => source.role === adminRole && isAdminGrant(source))
+
+/** Whether every admin source the member has matches `isSource`, so losing those takes admin away. */
+const holdsAdminOnlyThrough = (member: AdminMember, isSource: (source: MemberRoleSource) => boolean) => {
+  const adminSources = member.roles.filter((source) => source.role === adminRole)
+  return adminSources.length > 0 && adminSources.every(isSource)
+}
+
+/**
+ * Whether removing the signed-in admin from a local group takes admin away from them: the group
+ * maps to admin, and nothing else makes them one.
+ */
+export const isSelfDemotingGroupRemoval = (self: AdminMember, groupId: string) =>
+  holdsAdminOnlyThrough(self, (source) => source.from === 'local_group' && source.groupId === groupId)
 
 /** An IdP mirrors a managed member's name, and would overwrite an edit. */
 export const getRenameState = (member: AdminMember): Availability =>
@@ -49,10 +64,10 @@ export const getRevokeAdminState = (member: AdminMember, selfId: string | null):
   if (!hasAdminGrant(member)) {
     return { available: false, reason: msg`Admin comes from a group. Change the group to take it away.` }
   }
-  const otherSources = member.roles.filter(
-    (source) => source.role === adminRole && source.from !== 'local' && source.from !== 'bootstrap',
-  )
-  return { available: true, confirmSelfDemotion: member.userId === selfId && otherSources.length === 0 }
+  return {
+    available: true,
+    confirmSelfDemotion: member.userId === selfId && holdsAdminOnlyThrough(member, isAdminGrant),
+  }
 }
 
 /**

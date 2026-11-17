@@ -4,7 +4,7 @@
 
 import { Trans, useLingui } from '@lingui/react/macro'
 import { ContentViewHeader } from '@/content-view/header'
-import { useContentView } from '@/content-view/context'
+import { useSideview } from '@/content-view/context'
 import { Button } from '@/components/ui/button'
 import { i18n } from '@/i18n'
 import { downloadFile, saveErrorMessage } from '@/lib/download'
@@ -29,10 +29,8 @@ type DocumentPreviewFrameProps = {
  */
 export const DocumentPreviewFrame = ({ fileName, state, children }: DocumentPreviewFrameProps) => {
   const { t } = useLingui()
-  const { close } = useContentView()
+  const { opener, closeSideview: close } = useSideview()
   const [saveError, setSaveError] = useState<string | null>(null)
-  // What had focus when the preview opened, most often its card in the chat, which gets it back on Escape.
-  const [opener] = useState(() => document.activeElement)
   const blob = state.status === 'ready' ? state.blob : null
 
   const handleKeyDown = (event: KeyboardEvent) => {

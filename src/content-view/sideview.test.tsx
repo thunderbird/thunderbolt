@@ -9,6 +9,7 @@ import * as attachmentStorage from '@/lib/file-blob-storage'
 import { createClient } from '@/lib/http'
 import { getClock } from '@/testing-library'
 import { buildDocumentSideviewId } from '@/types/citation'
+import * as documentBlobs from '@/widgets/document-result/use-document-blob'
 import { ContentViewProvider, useShowSideview } from './context'
 import { Sideview } from './sideview'
 // Loaded up front, so the side view's lazy imports resolve within the fake clock's ticks.
@@ -151,6 +152,48 @@ describe('Sideview', () => {
       expect(document.activeElement).toBe(card)
       cleanup()
     }
+  })
+
+  it('gives focus back to the second card on Escape after switching files', async () => {
+    store('file-a', 'notes.txt', new Blob(['notes'], { type: 'text/plain' }))
+    store('file-b', 'notes.txt', new Blob(['other'], { type: 'text/plain' }))
+    const open = renderSideview('local-file', 'notes.txt')
+    screen.getByRole('button', { name: 'open file-a' }).focus()
+    await open('file-a')
+    const second = screen.getByRole('button', { name: 'open file-b' })
+    second.focus()
+    await open('file-b')
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Close' }), { key: 'Escape' })
+
+    expect(document.activeElement).toBe(second)
+  })
+
+  it('gives focus back to the card on Escape after Try again loaded the viewer', async () => {
+    // The viewer throws, as it does when its chunk did not load, so the panel shows Try again. The notice also loads
+    // the file, as `unsupported`, so Download works.
+    const { useDocumentBlob } = documentBlobs
+    const viewerBlob = spyOn(documentBlobs, 'useDocumentBlob').mockImplementation((...args) => {
+      if (args[1] !== 'unsupported') {
+        throw new Error('Failed to fetch dynamically imported module')
+      }
+      return useDocumentBlob(...args)
+    })
+    const open = renderSideview('document', 'q1.xlsx')
+    const card = screen.getByRole('button', { name: 'open file-a' })
+    card.focus()
+    await open('file-a')
+    viewerBlob.mockRestore()
+    // Clicking moves focus to Try again, which goes away with the notice.
+    const tryAgain = screen.getByRole('button', { name: 'Try again' })
+    tryAgain.focus()
+    fireEvent.click(tryAgain)
+    await flush()
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Close' }), { key: 'Escape' })
+
+    expect(screen.queryByRole('button', { name: 'Download' })).toBeNull()
+    expect(document.activeElement).toBe(card)
   })
 
   it('leaves Escape to a dialog that handled it first', async () => {

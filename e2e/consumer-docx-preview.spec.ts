@@ -142,7 +142,10 @@ test('when the side panel viewer does not load, the panel says so, the rest of t
   const buffer = await sampleBuffer()
   await sendDocument(page, name, buffer, sampleDocxText.title)
 
-  await page.locator(`button[title="${name}"]`).click()
+  // Opened from the keyboard so the card holds focus. Safari does not focus a button on click.
+  const card = page.locator(`button[title="${name}"]`)
+  await card.focus()
+  await page.keyboard.press('Enter')
   await expect(contentView(page).getByText("The preview couldn't load")).toBeVisible()
   const [download] = await Promise.all([
     page.waitForEvent('download'),
@@ -156,7 +159,15 @@ test('when the side panel viewer does not load, the panel says so, the rest of t
   await contentView(page).getByRole('button', { name: 'Try again' }).click()
   await expect(contentView(page).frameLocator(`iframe[title="${name}"]`).getByText(sampleDocxText.title)).toBeVisible()
 
-  await contentView(page).getByRole('button', { name: 'Close', exact: true }).click()
+  const close = contentView(page).getByRole('button', { name: 'Close', exact: true })
+  // On desktop, Escape still gives focus back to the card after Try again remounted the viewer.
+  if ((page.viewportSize()?.width ?? 1280) < 768) {
+    await close.click()
+  } else {
+    await close.focus()
+    await page.keyboard.press('Escape')
+    await expect(card).toBeFocused()
+  }
   await expect(page.locator('textarea')).toBeVisible()
 })
 

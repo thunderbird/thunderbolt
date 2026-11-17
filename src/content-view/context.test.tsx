@@ -32,7 +32,11 @@ describe('ContentView sideview mode', () => {
 
     expect(result.current.state.type).toBe('sideview')
     if (result.current.state.type === 'sideview') {
-      expect(result.current.state.data).toEqual({ sideviewType: 'document', sideviewId: 'file-1:report.pdf' })
+      expect(result.current.state.data).toEqual({
+        sideviewType: 'document',
+        sideviewId: 'file-1:report.pdf',
+        opener: document.body,
+      })
     }
     expect(result.current.isOpen).toBe(true)
   })

@@ -6,7 +6,8 @@ import { type ComponentType, lazy, type LazyExoticComponent } from 'react'
 
 /**
  * Swaps each stylesheet that did not load for a fresh copy, which fetches it again. Vite's preload helper never adds a
- * chunk's stylesheet twice, so without this a chunk that loads on a retry would render without its CSS.
+ * chunk's stylesheet twice, and does not wait for it again, so without this a chunk that loads on a retry would render
+ * without its CSS. Resolves when every copy has loaded, or right away when none failed. Rejects if a copy fails again.
  */
 export const reloadFailedStylesheets = () => {
   // A stylesheet that failed has no rules, and Chromium refuses to read them. The app's stylesheets are all its own,
@@ -18,11 +19,22 @@ export const reloadFailedStylesheets = () => {
       return false
     }
   }
-  for (const link of document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')) {
-    if (!hasRules(link)) {
-      link.replaceWith(link.cloneNode())
-    }
-  }
+  const failed = [...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')].filter(
+    (link) => !hasRules(link),
+  )
+  return Promise.all(
+    failed.map((link) => {
+      const copy = link.cloneNode()
+      const loaded = new Promise<void>((resolve, reject) => {
+        copy.addEventListener('load', () => resolve(), { once: true })
+        copy.addEventListener('error', () => reject(new Error(`Stylesheet failed to load: ${link.href}`)), {
+          once: true,
+        })
+      })
+      link.replaceWith(copy)
+      return loaded
+    }),
+  )
 }
 
 /**
@@ -36,11 +48,10 @@ export const reloadFailedStylesheets = () => {
 export const retryableLazy = <P extends object>(load: () => Promise<{ default: ComponentType<P> }>) => {
   const create = (isRetry: boolean): LazyExoticComponent<ComponentType<P>> =>
     lazy(async () => {
-      if (isRetry) {
-        reloadFailedStylesheets()
-      }
       try {
-        return await load()
+        // A stylesheet that fails again fails the import, so the panel offers Try again instead of an unstyled viewer.
+        const [module] = await Promise.all([load(), isRetry ? reloadFailedStylesheets() : null])
+        return module
       } catch (error) {
         current = create(true)
         throw error

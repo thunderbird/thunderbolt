@@ -26,6 +26,11 @@ export type ObjectViewData = {
 export type SideviewData = {
   sideviewType: string
   sideviewId: string
+  /**
+   * What had focus when the file opened, usually its card in the chat. It gets focus back when Escape closes the panel.
+   * Kept here and not in the viewer, because Try again remounts the viewer.
+   */
+  opener: Element | null
 }
 
 /** A verified HTML artifact shown in the side panel. */
@@ -152,7 +157,7 @@ export const ContentViewProvider = ({
         return
       }
       trackEvent('content_view_open', { view_type: 'sideview', sideview_type: sideviewType })
-      setState({ type: 'sideview', data: { sideviewType, sideviewId } })
+      setState({ type: 'sideview', data: { sideviewType, sideviewId, opener: document.activeElement } })
     },
     [trackEvent],
   )
@@ -254,6 +259,7 @@ export const useSideview = () => {
   return {
     sideviewType: state.type === 'sideview' ? state.data.sideviewType : null,
     sideviewId: state.type === 'sideview' ? state.data.sideviewId : null,
+    opener: state.type === 'sideview' ? state.data.opener : null,
     showSideview,
     closeSideview: close,
   }

@@ -5,7 +5,7 @@
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import type { AdminConnection, AdminConnectionDetail } from '@shared/admin-api'
 import '@testing-library/jest-dom'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { createAdminTestHarness, flush, type FakeReply, type FakeRequest } from '../../test-utils'
 import { IdentityProvidersPage } from './identity-providers-page'
@@ -136,5 +136,38 @@ describe('IdentityProvidersPage', () => {
 
     expect(screen.getByLabelText('Provider ID')).toHaveAttribute('aria-invalid', 'true')
     expect(screen.getByRole('alert')).toHaveTextContent('A connection with this provider ID already exists.')
+  })
+  it('retires a connection after confirming, and offers no retire while SCIM is active', async () => {
+    const own: AdminConnection = { ...created, id: 'c3' }
+    const withScim: AdminConnectionDetail = { ...created, id: 'c4', name: 'Both', scim: { scimConnectionId: 's4' } }
+    const harness = renderPage(({ method, path }) => {
+      if (method === 'GET' && path === 'admin/connections') {
+        return { body: { items: [own, withScim] } }
+      }
+      if (path === 'admin/connections/c4') {
+        return { body: withScim }
+      }
+      return { body: created }
+    })
+    await flush()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Both' }))
+    await flush()
+    expect(screen.getByText('To retire this connection, retire its SCIM provisioning first.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'More' })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Okta' }))
+    await flush()
+    await act(async () => {
+      fireEvent.pointerDown(screen.getByRole('button', { name: 'More' }), { button: 0 })
+    })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Retire connection' }))
+    await flush()
+    expect(screen.getByText(/Nobody can sign in through it any more/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Retire connection' }))
+    await flush()
+    expect(
+      harness.requests.some((request) => request.method === 'POST' && request.path === 'admin/connections/c3/retire'),
+    ).toBe(true)
   })
 })

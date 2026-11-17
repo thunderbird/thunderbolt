@@ -391,6 +391,23 @@ describe('admin API', () => {
         })
       })
 
+      it("lists a member's local groups and labels a group's role with its name", async () => {
+        const other = await addMember()
+        const admins = await json<{ id: string }>(await call('POST', '/v1/admin/groups', { name: 'Admins' }))
+        const support = await json<{ id: string }>(await call('POST', '/v1/admin/groups', { name: 'Support' }))
+        await call('POST', '/v1/admin/role-mappings', { localGroupId: admins.id, role: 'admin' })
+        await call('POST', `/v1/admin/groups/${admins.id}/members`, { userId: other })
+        await call('POST', `/v1/admin/groups/${support.id}/members`, { userId: other })
+
+        expect(await json(await call('GET', `/v1/admin/members/${other}`))).toMatchObject({
+          groups: [
+            { id: admins.id, name: 'Admins' },
+            { id: support.id, name: 'Support' },
+          ],
+          roles: [{ role: 'admin', from: 'local_group', groupId: admins.id, groupName: 'Admins' }],
+        })
+      })
+
       it('refuses to revoke a role held only through a local group, naming the group', async () => {
         const other = await addMember()
         const group = await json<{ id: string }>(await call('POST', '/v1/admin/groups', { name: 'Admins' }))

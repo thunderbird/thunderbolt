@@ -18,7 +18,7 @@ export const sendInvitationEmail = async ({ email, inviteUrl, locale }: SendInvi
   console.info('📧 Sending invitation email')
 
   if (shouldSkipEmail()) {
-    console.info(`🔗 [DEV] Invitation URL (no email sent): ${inviteUrl}`)
+    console.info(`🔗 [DEV] Invitation URL for ${email} (no email sent): ${inviteUrl}`)
     return
   }
 

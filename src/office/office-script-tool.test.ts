@@ -706,6 +706,31 @@ describe.each([
     ])
   })
 
+  it('notes each new file whose type matches a file the run read', async () => {
+    const attached = storeAttachment('template.docx', await fixture('testComment.docx'))
+
+    const output = await okFiles(
+      call(
+        { listThreadFiles: async () => [attached] },
+        `
+        saveFile('template.docx', ${editedCopy('template.docx')})
+        saveFile('budget-2027.docx', ${editedCopy('template.docx')})
+        ${pptxScript}`,
+        ['template.docx', attached.id],
+      ),
+    )
+
+    expect(output.files.map(({ filename, edited }) => [filename, edited])).toEqual([
+      ['template.docx', true],
+      ['budget-2027.docx', false],
+      ['deck.pptx', false],
+    ])
+    expect(output.notes).toEqual([
+      '"budget-2027.docx" is a new file: this run read "template.docx", not a file with that name. If the user asked you to edit "budget-2027.docx", that file is not in this chat. Say so in your reply, and do not present this file as the edited one.',
+    ])
+    expect((await runOk(docxScript('report.docx'))).notes).toBeUndefined()
+  })
+
   it('refuses files that would take the ones it made in this chat past the limit, saving none', async () => {
     const before = attachmentStore.size
     const earlier: ThreadFile = {

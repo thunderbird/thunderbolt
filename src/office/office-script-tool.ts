@@ -16,13 +16,14 @@ import { type ReadWorkspaceFile, resolveInputs, type ThreadFile } from './script
 
 /**
  * A file the tool added to the attachment store, as listed in its result. The chips are built from this list.
- * `edited` is true when the script read a file of the same type, whatever name it saved this one under. `savedAs`
- * is the name the script gave it before cleaning, so a later run asking for that name finds this file.
+ * `edited` is true when the file keeps the name of a file the script read. `savedAs` is the name the script gave it
+ * before cleaning, so a later run asking for that name finds this file.
  */
 export type CreatedFile = { id: string; filename: string; mimeType: string; edited: boolean; savedAs?: string }
 
+/** `notes` flag saved files that are new even though the run read a file of their type. */
 export type OfficeScriptOutput =
-  | { ok: true; files: CreatedFile[]; logs: string; formulaErrors?: FileFormulaError[] }
+  | { ok: true; files: CreatedFile[]; logs: string; formulaErrors?: FileFormulaError[]; notes?: string[] }
   | { ok: false; error: string; logs: string }
 
 /** A `run_office_script` tool call, whether emitted as a typed `tool-<name>` or a `dynamic-tool` part. */
@@ -65,6 +66,22 @@ type DeliverableFile = SavedFile & { mimeType: string; savedAs: string }
 const cleanName = (name: string) => {
   const { stem, extension } = safeFileName(name)
   return `${stem}.${extension}`
+}
+
+const extensionOf = (name: string) => name.slice(name.lastIndexOf('.') + 1).toLowerCase()
+
+/**
+ * The note for a new file when the run read files of its type, or `undefined` when it read none. Asked to edit a
+ * file the chat does not have, a model tends to edit another attachment and save it under the requested name; the
+ * note tells it this file is not that one.
+ */
+const newFileNote = (filename: string, inputFilenames: string[]) => {
+  const sameType = [...new Set(inputFilenames.filter((name) => extensionOf(name) === extensionOf(filename)))]
+  if (sameType.length === 0) {
+    return undefined
+  }
+  const name = promptFileName(filename)
+  return `${name} is a new file: this run read ${sameType.map(promptFileName).join(', ')}, not a file with that name. If the user asked you to edit ${name}, that file is not in this chat. Say so in your reply, and do not present this file as the edited one.`
 }
 
 /** The thread's files this tool made, once each: only those carry the name the script gave them. */
@@ -162,7 +179,7 @@ const describeTool = (hasWorkspace: boolean) =>
     `For a workbook, start with \`const f = excelize.NewFile()\` or \`const f = excelize.OpenReader(readFile(name))\`, then call its methods, such as \`f.SetCellValue("Sheet1", "B2", 1200)\`, \`f.SetCellFormula("Sheet1", "B5", "SUM(B2:B4)")\`, \`f.SetCellStyle("Sheet1", "B2", "B5", f.NewStyle({ NumFmt: 4 }).style)\` and \`f.AddChart(...)\`. They are synchronous and return what excelize-wasm returns; a call that fails throws an Error with the reason. For money, set the format with \`CustomNumFmt\` and quote the symbol or give a locale tag, such as \`f.NewStyle({ CustomNumFmt: '"R$" #,##0.00' })\` or \`'[$€-407] #,##0.00'\`: \`NumFmt\` 5 to 8 are not saved, and an unquoted \`R$\` shows as a plain number. Opening a workbook keeps what the script does not change, including styles, charts, images, pivot tables and macros. When the workbook is saved, every formula is computed and its result stored, so the file shows numbers even where nothing recalculates. A formula that could not be computed is listed with its sheet and cell in \`formulaErrors\` of what \`WriteToBuffer\` returns, so log that instead of saving a test file, and again in the tool result with its file (at most ${maxFormulaErrors}); the file is saved anyway. Never rebuild an attached workbook from its extracted text or the copy in your workspace: that loses its formulas and formatting. Open it with excelize, or tell the user why you cannot. \`excelize.OpenReader(bytes, { Password: "..." })\` opens a password-encrypted workbook, but \`WriteToBuffer\` takes no options and saves an unencrypted copy, so tell the user the copy no longer asks for a password; sheet and workbook protection (\`ProtectSheet\`, \`ProtectWorkbook\`) stay. This tool never adds macros: \`AddVBAProject\` throws, and a .xlsm can be saved only from a .xlsm the run read, under its own extension. Save every other workbook as .xlsx, including one opened from a .xlsx. excelize opens workbooks of up to ${mib(sandboxLimits.maxWorkbookBytes)} MiB; for a larger one, tell the user it is too large to edit here instead of working around the limit. The chat cannot attach a .xlsm, so do not ask the user to upload one; a .xlsm this tool saved earlier in the chat${hasWorkspace ? ' or one in your workspace' : ''} can still be read and edited.`,
     `To read a file, list it in \`inputs\` and call \`readFile(name)\`, which returns its bytes as a Uint8Array. The files you can read are the ones attached in this chat and the ones this tool made earlier in it. Name a file by its file name to get the newest file with that name, or by its id to get that exact file, such as an older version.${hasWorkspace ? ' A name that matches none of them is read from your workspace, as a path relative to it, so a script can use data you prepared there.' : ''}`,
     'When the user names a file, list that exact name in `inputs`, even when another file is attached. If no file has that name, the call fails and lists the files there are: ask the user which one they mean. Never edit a different file in its place, and never save under the name of a file that does not exist unless the user asked for a new file.',
-    'To edit a file, read it, change it, and save the result under exactly the same name, without a suffix such as "_edited" or "_v2": the user gets an edited copy, the original stays as it was, and the next edit finds the newest version by that name. `await docx.patchDocument({ outputType: "uint8array", data: readFile(name), patches })` replaces `{{key}}` placeholders and keeps everything else, including comments and tracked changes. For changes docx and PptxGenJS cannot make, such as adding a tracked change or copying a slide, unzip the file with `fflate.unzipSync`, edit its XML parts with `xmldom.DOMParser` and `xmldom.XMLSerializer` (`fflate.strFromU8` and `fflate.strToU8` convert the bytes), and zip it again with `fflate.zipSync`. Only the sync fflate functions work here.',
+    'To edit a file, read it, change it, and save the result under exactly the same name, without a suffix such as "_edited" or "_v2": the user gets an edited copy, the original stays as it was, and the next edit finds the newest version by that name. A file saved under another name is a new file, and `notes` in the result say so. `await docx.patchDocument({ outputType: "uint8array", data: readFile(name), patches })` replaces `{{key}}` placeholders and keeps everything else, including comments and tracked changes. For changes docx and PptxGenJS cannot make, such as adding a tracked change or copying a slide, unzip the file with `fflate.unzipSync`, edit its XML parts with `xmldom.DOMParser` and `xmldom.XMLSerializer` (`fflate.strFromU8` and `fflate.strToU8` convert the bytes), and zip it again with `fflate.zipSync`. Only the sync fflate functions work here.',
     `Every saved file is checked before it is stored. If a zip does not open, unzips to more than ${mib(sandboxLimits.unzipBytes)} MiB or has a part name that is not a plain path inside it, or an XML part does not parse or holds a DDE field, nothing is saved, and the error names the file and, for XML, the part. The same goes for a file that adds a remote template, an external link or an OLE object that no file of its type the run read had, and for a file saved with no change from a file the run read. Leave the parts you were not asked to change as they are, even when their XML declares an encoding such as windows-1252.`,
     'The sandbox has no network, no DOM, no fetch and no imports, so write all new content into the script.',
     'Each saved file appears in the chat for the user to download, so save only the files the user asked for (check your work with console.log, not with test files), and do not paste their contents into your reply.',
@@ -243,7 +260,16 @@ export const createOfficeScriptTool = ({
         edited: inputNames.has(filename),
         savedAs,
       }))
-      return { ok: true, files, logs: result.logs, formulaErrors: result.formulaErrors }
+      const notes = files
+        .filter(({ edited }) => !edited)
+        .flatMap(({ filename }) => newFileNote(filename, resolved.filenames) ?? [])
+      return {
+        ok: true,
+        files,
+        logs: result.logs,
+        formulaErrors: result.formulaErrors,
+        notes: notes.length > 0 ? notes : undefined,
+      }
     },
   }
 }

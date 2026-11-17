@@ -35,5 +35,19 @@ describe('withFuturePrefixes', () => {
     expect(withFuturePrefixes('LET(f,LAMBDA(n,n*2),f(A1))')).toBe(
       '_xlfn.LET(_xlpm.f,_xlfn.LAMBDA(_xlpm.n,_xlpm.n*2),_xlpm.f(A1))',
     )
+    expect(withFuturePrefixes('LET(x,1,LET(y,x,x+y))+y')).toBe(
+      '_xlfn.LET(_xlpm.x,1,_xlfn.LET(_xlpm.y,_xlpm.x,_xlpm.x+_xlpm.y))+y',
+    )
+  })
+
+  it('leaves sheet names, and names on a named sheet, alone when they match a declared name', () => {
+    expect(withFuturePrefixes('LET(x,1,x!A1+x)')).toBe('_xlfn.LET(_xlpm.x,1,x!A1+_xlpm.x)')
+    expect(withFuturePrefixes('LET(x,1,y,2,SUM(x:y!A1)+x:y)')).toBe(
+      '_xlfn.LET(_xlpm.x,1,_xlpm.y,2,SUM(x:y!A1)+_xlpm.x:_xlpm.y)',
+    )
+    expect(withFuturePrefixes("LET(rate,1,Sheet2!rate+'My Sheet'!rate+rate)")).toBe(
+      "_xlfn.LET(_xlpm.rate,1,Sheet2!rate+'My Sheet'!rate+_xlpm.rate)",
+    )
+    expect(withFuturePrefixes('LET(x,1,[Book.xlsx]x!A1+x)')).toBe('_xlfn.LET(_xlpm.x,1,[Book.xlsx]x!A1+_xlpm.x)')
   })
 })

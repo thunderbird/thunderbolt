@@ -121,10 +121,11 @@ const worksheetFunctions = new Set(['FILTER', 'SORT'])
 
 /**
  * A formula's tokens: text in double quotes, a quoted sheet name, a bracketed table or workbook reference, an array
- * constant, a name (with the character after it when that is `(` or a `,`), or a parenthesis or comma.
+ * constant, a name (with what follows it when that is `(`, a `,`, or the `!` or `:Sheet3!` that makes it a sheet
+ * name), or a parenthesis or comma. A name right after `!` lives on that sheet, so it is not a token.
  */
 const formulaToken =
-  /"(?:[^"]|"")*"|'(?:[^']|'')*'|\[(?:[^[\]']|'.|\[(?:[^\]']|'.)*\])*\]|\{(?:"(?:[^"]|"")*"|[^}"])*\}|(?<![\w.$])([A-Za-z_][\w.]*)(?=(\(|\s*,)?)|[(),]/g
+  /"(?:[^"]|"")*"|'(?:[^']|'')*'|\[(?:[^[\]']|'.|\[(?:[^\]']|'.)*\])*\]|\{(?:"(?:[^"]|"")*"|[^}"])*\}|(?<![\w.$!])([A-Za-z_][\w.]*)(?=(\(|\s*,|(?::[A-Za-z_][\w.]*)?!)?)|[(),]/g
 
 /**
  * A formula with each function added after Excel 2007 written as the file format stores it, such as
@@ -151,7 +152,7 @@ export const withFuturePrefixes = (formula: string) => {
       frames.length = Math.max(1, frames.length - 1)
       return token
     }
-    if (name === undefined) {
+    if (name === undefined || next?.endsWith('!')) {
       return token
     }
     const upper = name.toUpperCase()

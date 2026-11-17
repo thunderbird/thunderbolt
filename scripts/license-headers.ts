@@ -11,13 +11,13 @@
  * Idempotent — running it twice is a no-op.
  *
  * Modes:
- *   bun scripts/license-headers.ts                  Add header to any missing tracked source files
+ *   bun scripts/license-headers.ts                  Add a header to every source file git doesn't ignore
  *   bun scripts/license-headers.ts --check          Verify only, exit 1 if any are missing (CI mode)
  *   bun scripts/license-headers.ts <path> [<path>]  Operate on specific files (used by lint-staged)
  *
  * Wired up in two places:
  *   - .lintstagedrc → runs on staged source files in pre-commit hook
- *   - package.json `license:check` → wired into `bun run check` for CI
+ *   - package.json `license:check` → `bun run check`, and the CI `typescript` job
  */
 
 import { execSync } from 'node:child_process'
@@ -187,7 +187,8 @@ const applyAstroHeader = (content: string, linesForPath: string[]): string => {
   return renderHeader('html', linesForPath) + '\n' + content
 }
 
-const listTrackedFiles = (): string[] =>
+/** Tracked and untracked files, minus what git ignores. */
+const listSourceFiles = (): string[] =>
   execSync('git ls-files --cached --others --exclude-standard', { cwd: repoRoot, encoding: 'utf8' })
     .split('\n')
     .filter(Boolean)
@@ -197,7 +198,7 @@ const main = () => {
   const checkOnly = args.includes('--check')
   const explicitPaths = args.filter((a) => !a.startsWith('--'))
 
-  const candidates = (explicitPaths.length > 0 ? explicitPaths : listTrackedFiles()).filter(isInScope)
+  const candidates = (explicitPaths.length > 0 ? explicitPaths : listSourceFiles()).filter(isInScope)
 
   const missing: string[] = []
   let touched = 0

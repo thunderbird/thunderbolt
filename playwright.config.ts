@@ -88,7 +88,7 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,
-  // Each CI runner hosts 8 app servers (4 frontend/backend pairs), a fake provider and 2 mock IdPs on 4 vCPUs. Dev
+  // Each CI runner hosts 10 app servers (5 frontend/backend pairs), a fake provider and 4 mock IdPs on 4 vCPUs. Dev
   // servers transpile on first request, and a second worker starved that cold transpile, so they get one worker.
   // Prebuilt frontends serve static files, leaving the CPU to the browsers and backends.
   workers: prebuilt ? 3 : 1,

@@ -8,7 +8,7 @@ Use SCIM if you need offboarding to happen without anyone acting in Thunderbolt.
 
 A connection is one identity provider scope: one Entra tenant, one Okta org, one Keycloak realm. Each has an SSO side, a SCIM side, or both, and several connections can provision into the same deployment. Each connection has its own credentials and identifiers, so the same `externalId` arriving from two connections is two different people, and one connection's token can't read or change another's users or groups.
 
-An admin creates connections through the admin API:
+An admin creates and edits connections under **Admin → Identity providers** in the app: **Sign-in** holds the SSO side, **Provisioning** the SCIM side and its tokens, **Groups** its SCIM groups' role mappings, and **Sync errors** the rejected SCIM requests. The same steps through the admin API, for scripts:
 
 | Step                          | Call                                                                                    |
 | ----------------------------- | --------------------------------------------------------------------------------------- |
@@ -19,20 +19,20 @@ An admin creates connections through the admin API:
 | Revoke a token                | `POST /v1/admin/connections/:id/scim/credentials/:credentialId/revoke`                  |
 | Stop provisioning             | `POST /v1/admin/connections/:id/scim/retire`                                            |
 
-The SSO provider you configure through `OIDC_*` or `SAML_*` is connection `sso`; give it a SCIM side the same way. Its SSO side follows those settings and can't be edited through the API.
+The SSO provider you configure through `OIDC_*` or `SAML_*` is connection `sso`; give it a SCIM side the same way. Its SSO side follows those settings and can't be edited in the app or through the API.
 
 A new client secret or certificate takes effect at the next sign-in, and nobody needs to link again. The provider id, the OIDC issuer and the SAML entity ids never change (`SSO_IDENTITY_FIELD_IMMUTABLE`): retire the connection and create another instead. The client id, the discovery URL and the entry point decide which of the provider's identities an account belongs to, so they change only while nobody has signed in through the connection (`SSO_IDENTITY_FIELD_LOCKED`). The match claim also waits for the review queue to hold nothing pending or approved for it (`SSO_MATCH_CLAIM_LOCKED`). A discovery URL must be on a trusted origin, as at sign-in.
 
 ### Tokens
 
-- A token is shown once, in the response that issues it. Thunderbolt keeps only a keyed digest.
+- A token is shown once, on screen or in the response that issues it. Thunderbolt keeps only a keyed digest.
 - Tokens expire after 365 days. Issue the next one before then: the old one keeps working until it is revoked or expires, so you can switch your provider over without a gap.
 - **Rotating `BETTER_AUTH_SECRET` invalidates every SCIM token.** The digest key is derived from it. Issue new tokens and update each provider in the same change.
-- `GET /v1/admin/connections/:id` shows each token's status, expiry and last use.
+- The connection's **Provisioning** tab (or `GET /v1/admin/connections/:id`) shows each token's status, expiry and last use.
 
 ### Domains
 
-An admin adds each email domain (`POST /v1/admin/domains`), publishes the TXT record the response names, verifies it, and then claims it for a connection (`PUT /v1/admin/domains/:id/claim`). A claim does two things: the sign-in screen sends that domain straight to the connection, and it lets an existing account on that domain link to the connection's identity without an admin (see [Collisions](#collisions-and-the-review-queue)). On a connection with SCIM that happens when the provider provisions the account. On a connection without SCIM it matters only for an account that already signs in through another provider; any other account links by its verified email, as [Authentication](./authentication.md#what-single-sign-on-looks-like-to-the-user) describes. A claimed domain is closed to domain enrollment, so nobody gets back in that way after your provider removes them.
+An admin adds each email domain under **Admin → Domains** (`POST /v1/admin/domains`), publishes the TXT record it names, verifies it, and then claims it for a connection (`PUT /v1/admin/domains/:id/claim`). A claim does two things: the sign-in screen sends that domain straight to the connection, and it lets an existing account on that domain link to the connection's identity without an admin (see [Collisions](#collisions-and-the-review-queue)). On a connection with SCIM that happens when the provider provisions the account. On a connection without SCIM it matters only for an account that already signs in through another provider; any other account links by its verified email, as [Authentication](./authentication.md#what-single-sign-on-looks-like-to-the-user) describes. A claimed domain is closed to domain enrollment, so nobody gets back in that way after your provider removes them.
 
 **Each subdomain is claimed on its own.** A claim on `corp.com` doesn't cover `eu.corp.com`; subdomains are never trusted implicitly.
 
@@ -63,18 +63,18 @@ The Entra and Okta rows come from the providers' documentation and have not been
 | create again after `DELETE`, same `externalId` | The same account, with no trusted device: the person needs their recovery phrase or a passkey to read their old data. Once an admin detached the link, it is a new identity with an existing email instead |
 | group changes         | Groups and their members. A group grants Thunderbolt roles only through a mapping an admin made to its id, never its name |
 
-A member managed by a connection that has an SSO side signs in through SSO only: email codes and passkey sign-in are refused, so your provider's MFA and conditional access always apply. Members of a connection with only a SCIM side keep email codes. A member stays managed after `DELETE` until an admin detaches the link (`POST /v1/admin/members/:userId/connections/:connectionId/detach`), so they still can't use an email code or delete their own account in the meantime. Detaching works only once your provider has deleted them, or once the connection's SCIM side is retiring or retired; while the provider still provisions the connection, a suspended or active member is refused. An admin can't detach their own link. Afterwards their other access, such as an invitation, decides whether they get in, and the connection no longer signs them in. If your provider creates them again, the create is joined to their account only as any new identity with an existing email would be (see [Collisions and the review queue](#collisions-and-the-review-queue)).
+A member managed by a connection that has an SSO side signs in through SSO only: email codes and passkey sign-in are refused, so your provider's MFA and conditional access always apply. Members of a connection with only a SCIM side keep email codes, until an SSO side is added to it. A member stays managed after `DELETE` until an admin detaches the link on their page under **Admin → Members** (`POST /v1/admin/members/:userId/connections/:connectionId/detach`), so they still can't use an email code or delete their own account in the meantime. Detaching works only once your provider has deleted them, or once the connection's SCIM side is retiring or retired; while the provider still provisions the connection, a suspended or active member is refused. An admin can't detach their own link. Afterwards their other access, such as an invitation, decides whether they get in, and the connection no longer signs them in. If your provider creates them again, the create is joined to their account only as any new identity with an existing email would be (see [Collisions and the review queue](#collisions-and-the-review-queue)).
 
 **Revocation is not a remote wipe.** A revoked device clears its local data the next time it reaches the server. A device that stays offline keeps what it has.
 
-Retained data after `DELETE` is readable only by the person, with their recovery phrase or passkey, unless [organizational key escrow](./configuration.md#organizational-key-escrow) is on; see [Devices and Accounts](../admin/devices.md#organizational-key-escrow) for what escrow changes. Only an admin can delete a removed member's data for good (`DELETE /v1/admin/members/:userId`).
+Retained data after `DELETE` is readable only by the person, with their recovery phrase or passkey, unless [organizational key escrow](./configuration.md#organizational-key-escrow) is on; see [Devices and Accounts](../admin/devices.md#organizational-key-escrow) for what escrow changes. Only an admin can delete a removed member's data for good, with **Delete member** on their page (`DELETE /v1/admin/members/:userId`).
 
 ## Collisions and the review queue
 
 An identity arriving with the email of an existing account is joined to that account in one of two ways, and never by email alone:
 
 1. **Domain:** the email's domain is verified and claimed by the connection it arrives on.
-2. **Review:** anything else waits for an admin in `GET /v1/admin/link-reviews`. The provider's create gets a `409` until an admin approves (`POST /v1/admin/link-reviews/:id/approve`); its next retry then links.
+2. **Review:** anything else waits for an admin under **Admin → Link reviews** (`GET /v1/admin/link-reviews`). The provider's create gets a `409` until an admin approves (`POST /v1/admin/link-reviews/:id/approve`); its next retry then links.
 
 Two existing accounts are never merged, and a link never changes someone's devices. When two providers manage one person, the first to link keeps managing their name and email.
 
@@ -124,7 +124,7 @@ Access is decided from Thunderbolt's own records, so an identity provider outage
 
 When Thunderbolt is unreachable, your provider keeps the changes and sends them when it can reach Thunderbolt again; nothing is lost on Thunderbolt's side. Where to look when provisioning stalls:
 
-- Thunderbolt records the SCIM requests it refuses from a valid token: `GET /v1/admin/audit-events?connectionId=…&action=scim.request&outcome=failure`. It doesn't record a `401`, since the caller isn't known; nor a rate-limit refusal; and it stops after 60 failures per token per hour.
+- Thunderbolt records the SCIM requests it refuses from a valid token. The connection's **Sync errors** tab lists them, from `GET /v1/admin/audit-events?connectionId=…&action=scim.request&outcome=failure`. It doesn't record a `401`, since the caller isn't known; nor a rate-limit refusal; and it stops after 60 failures per token per hour.
 - So a provider whose token stopped working leaves nothing in the audit log. That is what happens to every provider after a `BETTER_AUTH_SECRET` rotation. Watch for it through the token's last use and the provider's own log, below.
-- A token's last use (`GET /v1/admin/connections/:id`) going stale means the provider stopped sending.
+- A token's last use (the **Provisioning** tab, or `GET /v1/admin/connections/:id`) going stale means the provider stopped sending.
 - Requests that never reach Thunderbolt show only at the provider: Entra and Okta provisioning logs, or for Keycloak its server log (`SCIM work pending … reason=…`) and the extension's own tables.

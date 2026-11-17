@@ -19,7 +19,7 @@ The design comes from Chris Roth's admin prototype (PR #1379), which adapted wor
 - `admin-routes.tsx` and `admin-sidebar.tsx`: the route table and the sidebar config.
 - `screens/<area>/`: one folder per screen.
 - `components/`: the admin UI kit shared by the screens.
-- `api/`: the client, query keys, paged lists and error messages.
+- `api/`: the client, query keys, shared queries, paged lists and error messages.
 
 ## Tests
 

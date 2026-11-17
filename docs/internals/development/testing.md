@@ -263,35 +263,46 @@ The Playwright suite in [`e2e/`](../../../e2e) covers what a unit test cannot: b
 
 ### Projects
 
-[`playwright.config.ts`](../../../playwright.config.ts) splits the suite into four projects, and **a spec's filename decides which one it joins**, along with its servers and `baseURL`. Run one with `bunx playwright test --project=oidc`.
+[`playwright.config.ts`](../../../playwright.config.ts) splits the suite into seven projects, and **a spec's filename decides which one it joins**, along with its servers and `baseURL`. Run one with `bunx playwright test --project=oidc`.
 
 | Project            | `testMatch`                             | `baseURL`               | Backing servers                                                  |
 | ------------------ | --------------------------------------- | ----------------------- | ---------------------------------------------------------------- |
+| `consumer`         | `/consumer-.*\.spec\.ts$/`              | `http://localhost:1424` | Email-code frontend + backend, fake model provider               |
 | `oidc`             | `/(?:oidc\|acp-\|proxy-).*\.spec\.ts$/` | `http://localhost:1421` | OIDC frontend + backend, mock OIDC IdP                           |
 | `saml`             | `/saml.*\.spec\.ts$/`                   | `http://localhost:1422` | SAML frontend + backend, mock SAML IdP                           |
 | `min-version-gate` | `/min-version-gate\.spec\.ts$/`         | `http://localhost:1421` | Both the ungated OIDC pair and the gated pair on 1423/8004       |
+| `admin`            | `/\/admin-[^/]*\.spec\.ts$/`            | `http://localhost:1427` | Admin frontend + backend, two login-hint IdPs                    |
+| `admin-narrow`     | the same                                | `http://localhost:1427` | The same, in a 400 x 860 viewport                                |
 | `artifact`         | `/\/artifact-[^/]*\.spec\.ts$/`         | none                    | Playwright serves the host page at `https://artifact-host.test/` |
 
 Each anchor records a breakage:
 
 - `.spec.ts$` stops the non-spec files under `e2e/` (`helpers.ts`, `mock-saml-idp.ts`, `saml-test-certs.ts`) being collected as tests. A bare `/saml/` matched them and broke `playwright test --list` with "test file should not import test file".
 - The `artifact` pattern requires a leading `/` and forbids `/` inside the name, so it matches the _filename_, not a worktree directory containing `artifact-`.
+- Every other project ignores `admin-*.spec.ts` (`testIgnore`), so an admin spec runs only in `admin` and `admin-narrow`: once at desktop width and once at phone width.
 - `min-version-gate` points `baseURL` at the **ungated** frontend on 1421 so `loginViaOidc` drives the run-normally, runtime-flip and header-coverage scenarios. Hard-block navigates to 1423 by absolute URL; exempt-route probes the gated backend on 8004 directly.
 
 ### What the Config Spins Up
 
-[`e2e/global-setup.ts`](../../../e2e/global-setup.ts) starts two mock identity providers; the config declares six web servers.
+[`e2e/global-setup.ts`](../../../e2e/global-setup.ts) starts four mock identity providers and a fake model provider; the config declares ten web servers.
 
 | Component                 | Port   | Notes                                                                                                                                                         |
 | ------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Mock OIDC IdP             | `9876` | [`oauth2-mock-server`](https://www.npmjs.com/package/oauth2-mock-server); every issued token is signed for `sub=e2e-test-user` / `email=e2e@thunderbolt.test` |
 | Mock SAML IdP             | `9877` | [`e2e/mock-saml-idp.ts`](../../../e2e/mock-saml-idp.ts), with self-signed certs from [`e2e/saml-test-certs.ts`](../../../e2e/saml-test-certs.ts)              |
+| Fake model provider       | `9878` | [`e2e/fake-provider.ts`](../../../e2e/fake-provider.ts), the Anthropic API root of the consumer backend                                                       |
+| Admin env IdP             | `9882` | [`e2e/admin/mock-idp.ts`](../../../e2e/admin/mock-idp.ts); signs in whoever the login hint names, backs the admin backend's `sso` connection                  |
+| Admin spare IdP           | `9883` | the same, free for a spec to register as a new connection; accepts only client secrets starting `e2e-valid-`                                                  |
 | OIDC frontend             | `1421` | `bun run dev -- --port 1421`, `VITE_AUTH_MODE=sso`, `VITE_SKIP_ONBOARDING=true`                                                                               |
 | OIDC backend              | `8002` | `cd backend && bun run --watch src/index.ts`, `AUTH_MODE=oidc`, rate limiting off, `DATABASE_DRIVER=pglite`                                                   |
 | SAML frontend             | `1422` | as above, pointed at the SAML backend                                                                                                                         |
 | SAML backend              | `8003` | `AUTH_MODE=saml`, `SAML_ENTRY_POINT` at the mock IdP                                                                                                          |
 | Min-version-gate frontend | `1423` | pointed at the gated backend, so its `/config` fetch returns a `minAppVersion`                                                                                |
 | Min-version-gate backend  | `8004` | `MIN_APP_VERSION=99.0.0`, pinned above the build-fixed `VITE_APP_VERSION`                                                                                     |
+| Consumer frontend         | `1424` | `VITE_AUTH_MODE=thunderbolt`, email-code sign-in, no anonymous session                                                                                        |
+| Consumer backend          | `8005` | `AUTH_MODE=consumer`, `NODE_ENV=test` for the fixed sign-in code                                                                                              |
+| Admin frontend            | `1427` | `VITE_AUTH_MODE=sso`, pointed at the admin backend                                                                                                            |
+| Admin backend             | `8008` | `AUTH_MODE=oidc` on the admin env IdP, open sign-up, a bootstrap admin per project and worker; its log is teed to `e2e/admin/backend.log`                     |
 
 - **The 800x band is deliberate.** 8002 is off :8000 so e2e doesn't collide with `make dev`. Locally a warm e2e backend is reused across runs (`reuseExistingServer: !isCI`), safe only because :8000 can never be the one reused.
 - **The gate needs its own backend.** Backend env is per-`webServer` and fixed for its life, so an out-of-date client cannot be simulated by flipping a variable mid-run.
@@ -309,6 +320,14 @@ Each anchor records a breakage:
 - **`loginViaEmailCode(page)`**: requests a sign-in code for a unique `@thunderbolt.test` address, enters the fixed code `12345678`, waits for the chat textarea, and returns the address. A fresh address per call avoids the per-email OTP cooldown, and `WAITLIST_AUTO_APPROVE_DOMAINS=thunderbolt.test` is required because a pending waitlist user's sign-in codes are deleted.
 - **`openSidebarOnMobile(page)`**: opens the mobile drawer before a test selects sidebar content; a no-op on desktop, which already renders it.
 - **`collectPageErrors(page)`**: subscribes to `pageerror` and returns an errors array, filtering harmless Tauri-only noise (`__TAURI__`, `convertFileSrc`).
+
+`e2e/admin/helpers.ts` does the same for the admin specs. Every admin spec, in every worker, shares one organization, so use unique names and emails and never assert counts or positions.
+
+- **`adminTest`**: signs this worker's bootstrap admin in once; each test gets a `page` signed in as that admin, `memberPage` for a fresh member, and `adminApi`, which seeds over HTTP (`seedMember`, `seedGroup`, `seedOidcConnection`, `seedScimConnection`, `grantAdmin`, `request` for anything else).
+- **`retireConnection(adminApi, id)`**: retires a connection a test created, SCIM side first, so the shared org keeps only live connections.
+- **`signInByEmailCode(page, email)`** and **`requestEmailCodeSignIn(request, email)`**: sign in with the fixed code `e2eSignInCode`, in the browser or over HTTP. The browser one waits out the code cooldown (`otpCooldownMs`) once; the HTTP one never retries.
+- **`adminRouteStatus(request, token)`**: 200 while a member's token is an admin's, 403 once it isn't.
+- **`routeIdpIdentity(page, identity)`**, **`readInviteUrl(email)`**, **`openAdminSection(page)`**: pick who the mock IdP signs in, read an invitation's link from the backend log, open the admin sidebar section.
 
 For a German browser, use `deTest` from `e2e/test.ts` instead of `test.use({ locale: 'de-DE' })`. Chromium applies `locale` only to pages Playwright is attached to, so the page a redirect leaves reads the host's languages (`en-US` on CI) and can write them into storage for the next page. `deTest` also passes `--accept-lang=de-DE,de`, which makes the browser itself German. A test for another non-English locale needs the same launch option.
 
@@ -349,7 +368,7 @@ For a German browser, use `deTest` from `e2e/test.ts` instead of `test.use({ loc
 
 ### Writing New Specs
 
-- Name the file to match its project: `oidc-*`, `acp-*`, `proxy-*`, `saml-*`, `min-version-gate`, `artifact-*`. A file matching no pattern is silently never run.
+- Name the file to match its project: `consumer-*`, `oidc-*`, `acp-*`, `proxy-*`, `saml-*`, `min-version-gate`, `admin-*`, `artifact-*`. A file matching no pattern is silently never run.
 - Start any test needing an authenticated user with `loginViaOidc(page)`, `loginViaSaml(page)` or `loginViaEmailCode(page)`.
 - Run `bun run e2e:check-collected` after adding a spec. [`scripts/check-e2e-specs-collected.ts`](../../../scripts/check-e2e-specs-collected.ts) checks the union of [`playwright.config.ts`](../../../playwright.config.ts), [`playwright.preview.config.ts`](../../../playwright.preview.config.ts) and [`playwright.extended.config.ts`](../../../playwright.extended.config.ts), and CI fails on an uncollected spec, which is what stops a silently-never-run file from shipping.
 - Call `collectPageErrors(page)` and assert the array is empty at the end; some regressions surface only as uncaught exceptions.

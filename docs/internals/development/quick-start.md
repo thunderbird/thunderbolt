@@ -98,7 +98,7 @@ Other distributions: [Tauri Linux prerequisites](https://v2.tauri.app/start/prer
 
 `make help` lists the full set.
 
-The license-header step is the part of `make check` a first contribution most often trips on: every source file needs the three-line MPL-2.0 header. `bun run license:fix` adds it; `scripts/license-headers.ts` knows the comment syntax for `.ts`, `.tsx`, `.js`, `.jsx`, `.cjs`, `.mjs`, `.css`, `.scss`, `.rs`, `.kt`, `.kts`, `.sh`, `.sql`, `.html`, `.astro`. The pre-commit hook runs it over staged files, so the failure usually only surfaces when committing outside the hook.
+The license-header step is the part of `make check` a first contribution most often trips on: every source file needs its license header, the three-line MPL-2.0 header or, under `admin/`, the UNLICENSED one. `bun run license:fix` adds it; `scripts/license-headers.ts` knows the comment syntax for `.ts`, `.tsx`, `.js`, `.jsx`, `.cjs`, `.mjs`, `.css`, `.scss`, `.rs`, `.kt`, `.kts`, `.sh`, `.sql`, `.html`, `.astro`. The pre-commit hook runs it over staged files, so the failure usually only surfaces when committing outside the hook.
 
 ## Next Steps
 

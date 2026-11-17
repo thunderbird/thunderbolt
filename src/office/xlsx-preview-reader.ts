@@ -3,11 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Font, Style } from 'excelize-wasm'
-import { strFromU8, unzipSync } from 'fflate'
+import { unzipWithinLimits, ZipLimitError } from '@/files/unzip-within-limits'
+import { strFromU8 } from 'fflate'
 import { sandboxLimits, xlsxPreviewLimits } from './constants'
 import type { Excelize, ExcelizeEngine } from './excelize-engine'
 import { columnName, columnNumber, decodeXml, type WorkbookParts } from './formula-cache'
-import { rasterType } from './raster-type'
+import { maxPicturePixels, rasterPixels } from './raster-pixels'
 import {
   type Anchor,
   attributeText,
@@ -62,8 +63,8 @@ export type Overlay = Box &
 /** A chart or picture as the grid gets it, whether a cap cut part of its data, and how many values it draws. */
 type PlacedOverlay = { overlay: Overlay; cut: boolean; points: number }
 
-/** The values a sheet's charts may still draw, whether a chart had to drop any, and the series read so far. */
-type ChartBudget = { left: number; cut: boolean; series: ChartSeriesValues[] }
+/** The values a chart may still draw, and the series read so far. */
+type ChartBudget = { left: number; series: ChartSeriesValues[] }
 
 /** The overlays placed on a sheet so far, and the values its charts may still draw. */
 type SheetOverlays = { left: number; placed: PlacedOverlay[] }
@@ -286,29 +287,58 @@ const largestFonts = (xml: string, fontSize: (style: number) => number) => {
   return largest
 }
 
+const styleTags = new Set(['fills', 'fill', 'fgColor', 'cellStyleXfs', 'cellXfs', 'xf', 'dxfs'])
+
 /**
- * Unzip under a ceiling, counting each entry at the larger of its packed and declared size. Parts are named with `/`
- * as Excelize names them; two entries for one part are refused, since Excelize could read the other one.
+ * The cell styles whose fill colour is an RGB value of neither 6 nor 8 digits, such as `FFFFD9E1F2`. Excelize reads
+ * one as indexed colour 0, black, which would hide the cell's text; the preview draws no fill instead.
+ */
+const unreadableFills = (xml: string) => {
+  // Whether each fill's colour is unreadable, and each cell style's fill, in the order the part lists them.
+  const fills: boolean[] = []
+  const styleFills: number[] = []
+  const inside = { section: '' }
+  visitStartTags(xml, styleTags, (tag, attributes) => {
+    if (tag === 'fill' && inside.section === 'fills') {
+      fills.push(false)
+    } else if (tag === 'fgColor' && inside.section === 'fills') {
+      const rgb = lastValue(attributes, 'rgb')
+      const named = lastValue(attributes, 'theme') ?? lastValue(attributes, 'indexed')
+      fills[fills.length - 1] = rgb !== undefined && rgb.length !== 6 && rgb.length !== 8 && named === undefined
+    } else if (tag === 'xf' && inside.section === 'cellXfs') {
+      styleFills.push(Number(lastValue(attributes, 'fillId') ?? 0))
+    } else if (tag !== 'fill' && tag !== 'fgColor' && tag !== 'xf') {
+      inside.section = tag
+    }
+    return true
+  })
+  return new Set(styleFills.flatMap((fill, style) => (fills[fill] ? [style] : [])))
+}
+
+/**
+ * Unzip under a ceiling, counting each entry at the larger of its packed and declared size and inflating none past the
+ * size it declares. Parts are named with `/` as Excelize names them; two entries for one part are refused, since
+ * Excelize could read the other one.
  */
 const unzipBounded = (bytes: Uint8Array, limit: number): WorkbookParts => {
-  let total = 0
   const names = new Set<string>()
-  const entries = unzipSync(bytes, {
-    filter: ({ name, size, originalSize }) => {
-      total += Math.max(size, originalSize)
-      if (total > limit) {
-        throw new WorkbookTooLargeError(`The workbook unzips to more than ${limit} bytes.`)
-      }
-      const part = name.replaceAll('\\', '/')
-      if (names.has(part)) {
-        throw new Error(`The workbook holds ${part} twice.`)
-      }
-      names.add(part)
-      // A part by this name would replace the prototype of the parts object.
-      return name !== '__proto__'
-    },
-  })
-  return Object.fromEntries(Object.entries(entries).map(([name, data]) => [name.replaceAll('\\', '/'), data]))
+  const keep = (name: string) => {
+    const part = name.replaceAll('\\', '/')
+    if (names.has(part)) {
+      throw new Error(`The workbook holds ${part} twice.`)
+    }
+    names.add(part)
+    // A part by this name would replace the prototype of the parts object.
+    return name !== '__proto__'
+  }
+  try {
+    const entries = unzipWithinLimits(bytes, { bytes: limit, parts: 0xffff }, keep)
+    return Object.fromEntries([...entries].map(([name, data]) => [name.replaceAll('\\', '/'), data]))
+  } catch (error) {
+    throw error instanceof ZipLimitError
+      ? new WorkbookTooLargeError(`The workbook unzips to more than ${limit} bytes.`)
+      : error
+  }
 }
 
 /** What the parts unzip to, leaving out pictures: Excelize parses any part a workbook relationship names. */
@@ -384,6 +414,7 @@ export const openPreviewWorkbook = (
     throw new Error('Excelize reads other sheets than the workbook lists.')
   }
   const sharedStrings = parts[workbook.sharedStrings ?? ''] ?? new Uint8Array()
+  const blankFills = unreadableFills(scannableXml(strFromU8(parts[workbook.styles ?? ''] ?? new Uint8Array())))
   // Twice the cells the grid shows: more than that cost more memory than the preview has.
   const maxCells = 2 * limits.rows * limits.columns
   // Every worksheet, hidden ones too, since a chart can read any of them.
@@ -413,6 +444,20 @@ export const openPreviewWorkbook = (
   const sentStyles = new Set<number>()
   const fontSizes = new Map<number, number>()
   const rangeValues = new Map<string, string[]>()
+  const definedNames = settle(file.GetDefinedName()).definedNames
+
+  /**
+   * What a chart's workbook-wide defined name, such as `Sales` or `[0]!Sales`, refers to. A name a sheet also defines
+   * for itself gives `undefined`, since Excel would read the sheet's own one on that sheet.
+   */
+  const namedRange = (ref: string) => {
+    const name = ref
+      .trim()
+      .replace(/^\[0\]!/, '')
+      .toLowerCase()
+    const [only, ...others] = definedNames.filter(({ Name }) => Name?.toLowerCase() === name)
+    return only?.Scope === 'Workbook' && others.length === 0 ? only.RefersTo : undefined
+  }
 
   /** A style's font size in points, read once per style. A style the file does not define has the default. */
   const fontSizeOf = (id: number) => {
@@ -477,9 +522,16 @@ export const openPreviewWorkbook = (
     return values
   }
 
-  /** The chart's saved values when it saved some; otherwise the range it reads. At most `count` of them. */
-  const valuesOf = (data: SeriesData, raw: boolean, count: number) =>
-    data.cache ? expandPoints(data.cache, count) : readRange(data.ref, raw, count)
+  /**
+   * At most `count` values of a series part, from the cells its range reads, as Excel recalculates a chart on open:
+   * the values a chart saved go stale once a cell changes. They are drawn only when the range cannot be read.
+   */
+  const valuesOf = (data: SeriesData, raw: boolean, count: number) => {
+    const ref = data.ref && (namedRange(data.ref) ?? data.ref)
+    const parsed = ref ? parseReference(ref) : undefined
+    const readsCells = parsed && readable.get(parsed.sheet.toLowerCase()) === true
+    return readsCells || !data.cache ? readRange(ref, raw, count) : expandPoints(data.cache, count)
+  }
 
   /** A value as a chart draws it: one that is not a finite number, `Infinity` included, draws as zero. */
   const chartNumber = (value: string) => {
@@ -488,34 +540,36 @@ export const openPreviewWorkbook = (
   }
 
   /**
-   * A chart drawing at most `left` values across its series, whether that cut any, and how many it draws. One with
-   * none left, or whose ranges cannot be read, becomes a placeholder rather than a chart of zeros.
+   * A chart drawing at most `left` values across its series, and how many it draws. One with more values than that,
+   * or whose ranges cannot be read, becomes a placeholder rather than a cut chart or a chart of zeros.
    */
   const chartOf = (object: Extract<DrawingObject, { type: 'chart' }>, box: Box, left: number): PlacedOverlay => {
     const { kind, stacking, title } = object
     const placeholder = { ...box, type: 'placeholder', kind, title } satisfies Overlay
+    // A chart drawn with part of its data could be read as the whole of it.
+    const cutChart = { overlay: placeholder, cut: true, points: 0 }
     if (left <= 0) {
-      return { overlay: placeholder, cut: true, points: 0 }
+      return cutChart
     }
     try {
-      const drawn: ChartBudget = { left, cut: false, series: [] }
+      const drawn: ChartBudget = { left, series: [] }
       for (const { name, values } of object.series) {
         if (drawn.left <= 0) {
-          drawn.cut = true
-          break
+          return cutChart
         }
         const read = valuesOf(values, true, drawn.left + 1)
-        const kept = read.slice(0, drawn.left).map(chartNumber)
+        if (read.length > drawn.left) {
+          return cutChart
+        }
         // An empty series still costs one: each draws a line or a legend entry.
-        drawn.left -= Math.max(1, kept.length)
-        drawn.cut ||= read.length > kept.length
-        drawn.series.push({ name: valuesOf(name, false, 1)[0] ?? '', values: kept })
+        drawn.left -= Math.max(1, read.length)
+        drawn.series.push({ name: valuesOf(name, false, 1)[0] ?? '', values: read.map(chartNumber) })
       }
       const longest = drawn.series.reduce((most, { values }) => Math.max(most, values.length), 0)
       const categories = object.series[0] ? valuesOf(object.series[0].categories, false, longest) : []
       return {
         overlay: { ...box, type: 'chart', kind, stacking, title, categories, series: drawn.series },
-        cut: drawn.cut,
+        cut: false,
         points: left - drawn.left,
       }
     } catch (error) {
@@ -600,10 +654,23 @@ export const openPreviewWorkbook = (
     const top = edgeOf(rowHeights, shownRows, defaultRowPixels)
     const [gridWidth, gridHeight] = [left(colCount), top(rowCount)]
     // Charts and pictures past the last row or column shown, or past the most one sheet draws, are counted as left
-    // out. The sheet's charts share one budget of values. A picture that is no raster image, or whose bytes the file
-    // does not hold, is counted apart: the preview draws none of them.
+    // out. The sheet's charts share one budget of values. A picture that is no raster image, whose bytes the file
+    // does not hold, or whose size the header does not give or that the sheet's budget of pixels cannot hold, is
+    // counted apart: the preview draws none of them.
     const chartsAndPictures = objects.filter(({ type }) => type !== 'shape')
-    const drawable = chartsAndPictures.filter((object) => object.type !== 'image' || rasterType(object.bytes))
+    const pictures = { pixelsLeft: maxPicturePixels, decoded: new Set<Uint8Array>() }
+    const drawable = chartsAndPictures.filter((object) => {
+      if (object.type !== 'image' || pictures.decoded.has(object.bytes)) {
+        return true
+      }
+      const pixels = rasterPixels(object.bytes) ?? Infinity
+      if (pixels > pictures.pixelsLeft) {
+        return false
+      }
+      pictures.pixelsLeft -= pixels
+      pictures.decoded.add(object.bytes)
+      return true
+    })
     const { placed } = drawable
       .filter(({ anchor }) => anchor.from.row < rowCount && anchor.from.col < colCount)
       .slice(0, maxOverlays)
@@ -674,7 +741,8 @@ export const openPreviewWorkbook = (
         if (id === 0 && read.error) {
           return [id, {}]
         }
-        const { style } = settle(read)
+        const { style: fileStyle } = settle(read)
+        const style = blankFills.has(id) ? { ...fileStyle, Fill: undefined } : fileStyle
         return [id, style.Font ? { ...style, Font: { ...style.Font, Color: fontColorOf(style.Font) } } : style]
       })
     return { rows: read, styles }

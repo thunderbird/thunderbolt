@@ -87,7 +87,7 @@ const WorkbookPreview = ({ blob, fileId, createClient }: Required<XlsxPreviewPro
         role="tabpanel"
         id={panelId}
         aria-labelledby={`${panelId}-tab-${sheetIndex}`}
-        className="flex min-h-0 flex-1 flex-col bg-white"
+        className="flex min-h-0 flex-1 flex-col"
       >
         {sheetBody()}
       </div>

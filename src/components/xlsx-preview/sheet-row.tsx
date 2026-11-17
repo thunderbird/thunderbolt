@@ -58,7 +58,7 @@ export const SheetRow = memo(({ grid, row, activeCol }: SheetRowProps) => {
       {loading && (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-y-0 end-0 z-[2] bg-[#f3f3f3]"
+          className="pointer-events-none absolute inset-y-0 end-0 z-[1] bg-[#f3f3f3]"
           style={{ insetInlineStart: rowHeaderWidth }}
         />
       )}

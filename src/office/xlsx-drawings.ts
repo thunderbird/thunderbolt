@@ -433,9 +433,9 @@ const relationshipIdOf = (attributes: XmlAttribute[], rootBindings: [string, str
 
 /**
  * The names of the workbook's sheets in tab order, its worksheets with their parts, the parts its relationships name
- * and its shared strings part. `workbook.xml` is scanned for its `<sheet>` tags alone, so 32,000 defined names cost
- * no more than their bytes. A workbook that gives one relationship Id twice, or two sheets one name, is refused:
- * Excel never writes one, and Excelize could read a different part from the one the preview scans.
+ * and its shared strings and styles parts. `workbook.xml` is scanned for its `<sheet>` tags alone, so 32,000 defined
+ * names cost no more than their bytes. A workbook that gives one relationship Id twice, or two sheets one name, is
+ * refused: Excel never writes one, and Excelize could read a different part from the one the preview scans.
  */
 export const workbookParts = (parts: WorkbookParts) => {
   const workbookPart = relationshipsOf(parts, '').find(({ type }) => type.endsWith('/officeDocument'))?.target ?? ''
@@ -468,6 +468,7 @@ export const workbookParts = (parts: WorkbookParts) => {
     ),
     targets: rels.map(({ target }) => target),
     sharedStrings: rels.find(({ type }) => type.endsWith('/sharedStrings'))?.target,
+    styles: rels.find(({ type }) => type.endsWith('/styles'))?.target,
   }
 }
 

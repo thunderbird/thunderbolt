@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 import { columnName } from '@/office/formula-cache'
 import { type KeyboardEvent, type MouseEvent, useId, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import { Virtualizer, type VirtualizerHandle } from 'virtua'
+import { type CustomItemComponentProps, Virtualizer, type VirtualizerHandle } from 'virtua'
 import { sheetFontStack } from './cell-style'
 import {
   cellKey,
@@ -30,6 +30,16 @@ type SheetGridProps = { name: string; sheet: SheetView }
  * grid can tell which merges are taller than it and keep them mounted.
  */
 const virtuaBufferSize = 200
+
+/**
+ * A virtualized row's wrapper without the layout containment the virtualizer gives it. Containment makes each row a
+ * stacking context, which would put the charts and pictures over its sticky row header and frozen columns.
+ */
+const RowItem = ({ style, children, ref }: CustomItemComponentProps) => (
+  <div ref={ref} style={{ ...style, contain: undefined }}>
+    {children}
+  </div>
+)
 
 /**
  * The grid of one sheet: sticky column and row headers, frozen panes, merged cells, pictures and charts, with
@@ -189,6 +199,7 @@ export const SheetGrid = ({ name, sheet }: SheetGridProps) => {
             bufferSize={virtuaBufferSize}
             keepMounted={keepMounted}
             onScroll={onScroll}
+            item={RowItem}
             data={body}
           >
             {(row) => (

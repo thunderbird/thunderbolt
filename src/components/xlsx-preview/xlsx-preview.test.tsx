@@ -283,12 +283,14 @@ describe('the spreadsheet preview', () => {
       await showWorkbook(new Uint8Array(xlsxPreviewLimits.fileBytes + 1))
       // The app's saver makes its own URL from the bytes; this one fails.
       objectUrls.mockImplementationOnce(() => {
-        throw new Error('The disk is full.')
+        throw new Error('No space left on device (os error 28)')
       })
       fireEvent.click(screen.getByRole('button', { name: 'Download' }))
       await flush()
 
-      expect(screen.getByRole('alert').textContent).toBe("Couldn't save: The disk is full.")
+      expect(screen.getByRole('alert').textContent).toBe(
+        "Couldn't save: There is not enough free space on this device.",
+      )
     } finally {
       consoleError.mockRestore()
     }
@@ -421,6 +423,16 @@ describe('the spreadsheet preview', () => {
 
     const content = screen.getByRole('grid', { name: 'Budget' }).firstElementChild
     expect(content?.className).toContain('overflow-clip')
+  })
+
+  it('gives scrolling rows no layout containment, so charts pass under their row headers and frozen columns', async () => {
+    await showWorkbook(styled)
+    const bodyRow = screen
+      .getByRole('grid', { name: 'Budget' })
+      .querySelector<HTMLElement>('[role="row"][aria-rowindex="5"]')?.parentElement
+
+    expect(bodyRow?.style.position).toBe('absolute')
+    expect(bodyRow?.style.contain).toBe('')
   })
 
   it('leaves the grid without an active cell when every column it reaches is hidden', async () => {

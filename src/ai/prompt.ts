@@ -10,6 +10,7 @@ import { currentDateTimeLine } from '@shared/i18n/current-date-time'
 import { languageInstruction } from '@shared/i18n/language-instruction'
 import { sourceLocale, type AppLocale } from '@shared/i18n/locales'
 import type { ModelMessage } from 'ai'
+import { loadToolsToolName } from './load-tools-tool'
 
 /** Parameters to build the system prompt */
 export type PromptParams = {
@@ -156,7 +157,7 @@ Think about what widget components to show the user, then work backwards to the 
 Widget components are \`<widget:…>\` tags you write inline in your reply; load the matching skill to get a widget's exact syntax before using it. When a widget covers what was asked, emit its tag — never rebuild it as an HTML artifact.
 Don't mention tool names unless asked.
 ${toolsOverride ? `\n${toolsOverride}` : ''}
-${mcpServersSummary ? `\n## Connected MCP Servers\nTools from these external services must be loaded before use (tool names prefixed by server name):\n${mcpServersSummary}\nWhen the user asks about one of these services, call \`load_tools\` with the exact names you need unless an earlier \`load_tools\` call in this chat already loaded them, then call them. Loaded tools stay available for the rest of the chat.` : ''}
+${mcpServersSummary ? `\n## Connected MCP Servers\nTools from these external services must be loaded before use (tool names prefixed by server name):\n${mcpServersSummary}\nWhen the user asks about one of these services, call \`${loadToolsToolName}\` with the exact names you need unless an earlier \`load_tools\` call in this chat already loaded them, then call them. Loaded tools stay available for the rest of the chat.` : ''}
 ${skillDisclosure ? `\n${skillDisclosure}` : ''}
 
 ## Link Previews

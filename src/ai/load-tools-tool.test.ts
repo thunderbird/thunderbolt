@@ -55,17 +55,6 @@ describe('createLoadToolsTool', () => {
 
     expect(loadTools.execute?.({ names: ['nope'] }, toolCallOptions)).rejects.toThrow('No connection tools match: nope')
   })
-
-  it('reads the connection set at call time', async () => {
-    const names = new Set<string>()
-    const loadTools = createLoadToolsTool(names)
-    names.add('late_tool')
-
-    expect(await loadTools.execute?.({ names: ['late_tool'] }, toolCallOptions)).toEqual({
-      loaded: ['late_tool'],
-      notFound: [],
-    })
-  })
 })
 
 describe('loadedToolNamesFromHistory', () => {

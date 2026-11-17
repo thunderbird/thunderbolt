@@ -86,19 +86,7 @@ export const nudgeMessages: NudgeMessages = {
   webBudget: 'Web tool budget for this turn is spent. Respond now using the results already gathered.',
 }
 
-/** Per-step overrides returned to the AI SDK's `prepareStep`. */
-export type StepOverrides<TMessage> = {
-  system?: string
-  activeTools?: string[]
-  toolChoice?: 'none'
-  messages?: (TMessage | { role: 'user'; content: string })[]
-}
-
-/**
- * Compute the prepareStep overrides for a single step of the agentic loop.
- * `activeTools`, when given, applies to every step except the final one, which
- * disables all tools.
- */
+/** Compute the prepareStep overrides for a single step of the agentic loop */
 export const buildStepOverrides = <TMessage>({
   steps,
   messages,
@@ -108,7 +96,6 @@ export const buildStepOverrides = <TMessage>({
   nudgeThreshold,
   activeNudges,
   webBudgetProbe,
-  activeTools,
 }: {
   steps: Step[]
   messages: TMessage[]
@@ -118,9 +105,7 @@ export const buildStepOverrides = <TMessage>({
   nudgeThreshold: number
   activeNudges: NudgeMessages
   webBudgetProbe?: WebToolBudgetProbe
-  activeTools?: string[]
-}): StepOverrides<TMessage> | undefined => {
-  const base: StepOverrides<TMessage> = activeTools ? { activeTools } : {}
+}) => {
   const hadToolCallSteps = steps.some((s) => s.finishReason === 'tool-calls')
   const citationSystem =
     profile?.citationReinforcementEnabled === 1 && hadToolCallSteps
@@ -137,7 +122,6 @@ export const buildStepOverrides = <TMessage>({
 
   if (webBudgetProbe?.isExhausted && webBudgetProbe.exhaustedAttempts > 0) {
     return {
-      ...base,
       system: citationSystem,
       toolChoice: 'none' as const,
       messages: [...messages, { role: 'user' as const, content: activeNudges.webBudget }],
@@ -146,17 +130,14 @@ export const buildStepOverrides = <TMessage>({
 
   if (shouldShowPreventiveNudge(steps, nudgeThreshold)) {
     return {
-      ...base,
       system: citationSystem,
       messages: [...messages, { role: 'user' as const, content: activeNudges.preventive }],
     }
   }
 
   if (citationSystem) {
-    return { ...base, system: citationSystem }
+    return { system: citationSystem }
   }
-
-  return activeTools ? base : undefined
 }
 
 /** Default inference config applied when no profile override exists */

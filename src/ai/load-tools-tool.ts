@@ -41,7 +41,7 @@ export const resolveToolNames = (
 }
 
 /** Read `names` from a `load_tools` call's input, which may come from history or a weak model. */
-export const namesFromLoadToolsInput = (input: unknown): unknown[] => {
+const namesFromLoadToolsInput = (input: unknown): unknown[] => {
   const names = (input as { names?: unknown } | null | undefined)?.names
   return Array.isArray(names) ? names : []
 }
@@ -74,6 +74,21 @@ export const createLoadToolsTool = (
   })
 
 /**
+ * Connection tools loaded by the given successful `load_tools` calls.
+ *
+ * @param calls - finished tool calls, from history or either engine
+ * @param connectionToolNames - every registered connection tool name
+ */
+export const loadedToolNamesFromCalls = (
+  calls: readonly { readonly toolName: string; readonly input: unknown }[],
+  connectionToolNames: ReadonlySet<string>,
+): string[] =>
+  resolveToolNames(
+    calls.filter((call) => call.toolName === loadToolsToolName).flatMap((call) => namesFromLoadToolsInput(call.input)),
+    connectionToolNames,
+  ).loaded
+
+/**
  * Connection tools loaded by finished `load_tools` calls in the chat history.
  *
  * Names are re-resolved against the current connections, so a tool from a
@@ -85,16 +100,17 @@ export const createLoadToolsTool = (
 export const loadedToolNamesFromHistory = (
   messages: readonly ThunderboltUIMessage[],
   connectionToolNames: ReadonlySet<string>,
-): string[] => {
-  const requested = messages.flatMap((message) =>
-    message.parts.flatMap((part) =>
-      isToolUIPart(part) && getToolName(part) === loadToolsToolName && part.state === 'output-available'
-        ? namesFromLoadToolsInput(part.input)
-        : [],
+): string[] =>
+  loadedToolNamesFromCalls(
+    messages.flatMap((message) =>
+      message.parts.flatMap((part) =>
+        isToolUIPart(part) && part.state === 'output-available'
+          ? [{ toolName: getToolName(part), input: part.input }]
+          : [],
+      ),
     ),
+    connectionToolNames,
   )
-  return resolveToolNames(requested, connectionToolNames).loaded
-}
 
 /**
  * Active tool names: every non-connection tool plus the loaded connection tools.
@@ -111,18 +127,3 @@ export const selectActiveToolNames = (
   const loadedSet = new Set(loaded)
   return allToolNames.filter((name) => !connectionToolNames.has(name) || loadedSet.has(name))
 }
-
-/**
- * Connection tools loaded by successful `load_tools` calls made during the current turn.
- *
- * @param calls - the turn's finished tool calls, from either engine
- * @param connectionToolNames - every registered connection tool name
- */
-export const loadedToolNamesFromCalls = (
-  calls: readonly { readonly toolName: string; readonly input: unknown }[],
-  connectionToolNames: ReadonlySet<string>,
-): string[] =>
-  resolveToolNames(
-    calls.filter((call) => call.toolName === loadToolsToolName).flatMap((call) => namesFromLoadToolsInput(call.input)),
-    connectionToolNames,
-  ).loaded

@@ -201,6 +201,9 @@ const defaultMcpReconnectTimeoutMs = 3_000
  * `- <prefix>: <tool>, <tool>, …` per server (undefined when no MCP tools were
  * added), injected into the system prompt so the model can load tools by name.
  *
+ * `connectionToolNames` lists every merged tool. `load_tools` is reserved: no
+ * connection tool may take that name, so the caller can register it afterwards.
+ *
  * Also returns `mcpTools`, mapping each namespaced tool name (`<prefix>_<tool>`)
  * to its owning server's `{ name, url }` plus the bare `toolName`. This is the
  * only place that knows the exact name→server ownership (it builds the names and
@@ -214,7 +217,12 @@ export const mergeMcpTools = async (
   mcpClients: NamedMCPClient[],
   reconnectClient: ReconnectClient,
   { reconnectTimeoutMs = defaultMcpReconnectTimeoutMs }: { reconnectTimeoutMs?: number } = {},
-): Promise<{ toolset: Record<string, Tool>; summary?: string; mcpTools: UIMessageMetadata['mcpTools'] }> => {
+): Promise<{
+  toolset: Record<string, Tool>
+  summary?: string
+  mcpTools: UIMessageMetadata['mcpTools']
+  connectionToolNames: ReadonlySet<string>
+}> => {
   const takenPrefixes = new Set<string>()
   const mcpServerEntries: string[] = []
   const mcpTools: NonNullable<UIMessageMetadata['mcpTools']> = {}
@@ -229,7 +237,7 @@ export const mergeMcpTools = async (
     const added: string[] = []
     for (const [name, tool] of Object.entries(tools)) {
       const prefixedName = `${prefix}_${name}`
-      if (toolset[prefixedName]) {
+      if (toolset[prefixedName] || prefixedName === loadToolsToolName) {
         console.warn(`MCP tool "${prefixedName}" from "${server.name}" conflicts with an existing tool and was skipped`)
         continue
       }
@@ -311,10 +319,12 @@ export const mergeMcpTools = async (
     }
   })
 
+  const connectionToolNames = new Set(Object.keys(mcpTools))
   return {
     toolset,
     summary: mcpServerEntries.length > 0 ? mcpServerEntries.join('\n') : undefined,
-    mcpTools: Object.keys(mcpTools).length > 0 ? mcpTools : undefined,
+    mcpTools: connectionToolNames.size > 0 ? mcpTools : undefined,
+    connectionToolNames,
   }
 }
 
@@ -737,22 +747,13 @@ export const prepareAiRequestConfig = async ({
     appToolset[name] = miniAppTool
     registeredMiniAppTools.add(name)
   }
-  // Registered before the merge so a connection tool can't take its name, and
-  // filled after it; dropped again when no connection contributed a tool.
-  const connectionToolNames = new Set<string>()
-  if (supportsTools && mcpClients.length > 0) {
-    appToolset[loadToolsToolName] = createLoadToolsTool(connectionToolNames)
-  }
   telemetry?.startPhase('mcp_discovery')
   const merged = supportsTools
     ? await mergeMcpTools(appToolset, mcpClients, reconnectClient)
-    : { toolset: appToolset, summary: undefined, mcpTools: undefined }
+    : { toolset: appToolset, summary: undefined, mcpTools: undefined, connectionToolNames: new Set<string>() }
   telemetry?.endPhase('mcp_discovery')
-  for (const name of Object.keys(merged.mcpTools ?? {})) {
-    connectionToolNames.add(name)
-  }
-  if (connectionToolNames.size === 0) {
-    delete merged.toolset[loadToolsToolName]
+  if (merged.connectionToolNames.size > 0) {
+    merged.toolset[loadToolsToolName] = createLoadToolsTool(merged.connectionToolNames)
   }
   const miniAppContextNote =
     miniAppContextPromise && miniApp ? buildMiniAppContextNote(miniApp, await miniAppContextPromise) : null
@@ -815,7 +816,7 @@ export const prepareAiRequestConfig = async ({
     toolset: merged.toolset,
     skills,
     mcpToolsMetadata: merged.mcpTools,
-    connectionToolNames,
+    connectionToolNames: merged.connectionToolNames,
     stableSystemPrompt: prompt.stablePrompt,
     // The note rides the volatile prompt rather than a separate field so every
     // engine that composes stable + volatile (this file and the ACP harness)
@@ -926,17 +927,15 @@ export const aiFetchStreamingResponse = async ({
 
   const activeNudges = getNudgeMessagesFromProfile(profile)
   const historyLoadedTools = loadedToolNamesFromHistory(messages, connectionToolNames)
-  /** Active tools for a step, or undefined (all tools) when no connection tools exist. */
-  const selectStepActiveTools = (steps: readonly StepResult<ToolSet>[]): string[] | undefined =>
-    connectionToolNames.size === 0
-      ? undefined
-      : selectActiveToolNames(Object.keys(toolset), connectionToolNames, [
-          ...historyLoadedTools,
-          ...loadedToolNamesFromCalls(
-            steps.flatMap((step) => step.toolResults),
-            connectionToolNames,
-          ),
-        ])
+  /** Every tool except connection tools not yet loaded in this chat or turn. */
+  const selectStepActiveTools = (steps: readonly StepResult<ToolSet>[]): string[] =>
+    selectActiveToolNames(Object.keys(toolset), connectionToolNames, [
+      ...historyLoadedTools,
+      ...loadedToolNamesFromCalls(
+        steps.flatMap((step) => step.toolResults),
+        connectionToolNames,
+      ),
+    ])
 
   try {
     const baseModel = await createModel(model, getProxyFetch)
@@ -1013,17 +1012,20 @@ export const aiFetchStreamingResponse = async ({
           if (isFinalStep(steps.length, maxSteps)) {
             console.info(`Final step ${stepNumber} - telling model to wrap it up...`)
           }
-          return buildStepOverrides({
-            steps,
-            messages: stepMessages,
-            currentSystemPrompt: input.system,
-            profile,
-            maxSteps,
-            nudgeThreshold,
-            activeNudges,
-            webBudgetProbe: webToolBudget?.probe,
+          // Overrides spread last so the final step's `activeTools: []` wins.
+          return {
             activeTools: selectStepActiveTools(steps),
-          })
+            ...buildStepOverrides({
+              steps,
+              messages: stepMessages,
+              currentSystemPrompt: input.system,
+              profile,
+              maxSteps,
+              nudgeThreshold,
+              activeNudges,
+              webBudgetProbe: webToolBudget?.probe,
+            }),
+          }
         },
 
         abortSignal,

@@ -3,7 +3,6 @@
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { useQuery } from '@tanstack/react-query'
 import { SlidersHorizontal, X } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
@@ -21,8 +20,7 @@ import {
 import { cn } from '@/lib/utils'
 import type { AuditEventQuery, AuditOutcome } from '@shared/admin-api'
 import { auditActionLabels, getAuditTargetLabel } from '../../api/audit-action-labels'
-import { adminQueryKeys } from '../../api/query-keys'
-import { useAdminApi } from '../../api/use-admin-api'
+import { useConnections } from '../../api/use-connections'
 import { AuditActorPicker } from './audit-actor-picker'
 import { toDayInput, toRangeEnd, toRangeStart } from './audit-date-range'
 import { auditActionGroups, auditTargetTypes } from './audit-filter-options'
@@ -49,9 +47,8 @@ const Field = ({ id, label, children }: { id: string; label: string; children: R
 /** The audit log's filters. Narrow screens fold them behind a "Filters" button. */
 export const AuditLogFilters = ({ filters, onChange, actions }: AuditLogFiltersProps) => {
   const { t, i18n } = useLingui()
-  const api = useAdminApi()
   const [open, setOpen] = useState(false)
-  const connections = useQuery({ queryKey: adminQueryKeys.connections.list(), queryFn: api.connections.list })
+  const connections = useConnections()
   const activeCount = Object.values(filters).filter(Boolean).length
 
   const { targetId } = filters

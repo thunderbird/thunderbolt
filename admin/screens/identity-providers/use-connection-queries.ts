@@ -17,11 +17,6 @@ import { useCursorList } from '../../api/use-cursor-list'
 /** How often a connection whose SCIM side is retiring is read again, until the background job ends. */
 export const retiringPollMs = 2000
 
-export const useConnections = () => {
-  const api = useAdminApi()
-  return useQuery({ queryKey: adminQueryKeys.connections.list(), queryFn: () => api.connections.list() })
-}
-
 export const useConnection = (connectionId: string) => {
   const api = useAdminApi()
   return useQuery({

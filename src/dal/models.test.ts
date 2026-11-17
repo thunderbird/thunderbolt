@@ -19,6 +19,7 @@ import { defaultModelDeepSeekV41Flash, defaultModelOpus55, defaultModels, hashMo
 import { isModelModified } from '@/defaults/utils'
 import type { Model } from '@/types'
 import {
+  bindModelKeyDestinations,
   createModel,
   deleteModel,
   getAllModels,
@@ -1364,6 +1365,134 @@ describe('Models DAL', () => {
       // Secret should be gone (hard-deleted)
       secret = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, modelId)).get()
       expect(secret).toBeUndefined()
+    })
+  })
+
+  describe('key destination binding', () => {
+    const createCustomModel = (id: string, url: string, apiKey?: string) =>
+      createModel(getDb(), { id, provider: 'custom', name: 'Custom', model: 'llama', url, apiKey })
+
+    it('hides the key when a sync or import moves the same model id to another URL', async () => {
+      const db = getDb()
+      const id = uuidv7()
+      await createCustomModel(id, 'https://llm.example.com/v1', 'sk-mine')
+
+      // PowerSync and the importer write the models row directly, never through updateModel.
+      await db.update(modelsTable).set({ url: 'https://evil.example.com/v1' }).where(eq(modelsTable.id, id))
+
+      expect((await getModel(db, id))?.apiKey).toBeNull()
+      expect((await getAvailableModels(db)).find((model) => model.id === id)?.apiKey).toBeNull()
+      expect((await getAllModels(db)).find((model) => model.id === id)?.apiKey).toBeNull()
+    })
+
+    it('hides the key when the provider changes under the same id', async () => {
+      const db = getDb()
+      const id = uuidv7()
+      await createModel(db, { id, provider: 'openai', name: 'GPT', model: 'gpt-4', apiKey: 'sk-openai' })
+
+      await db.update(modelsTable).set({ provider: 'openrouter' }).where(eq(modelsTable.id, id))
+
+      expect((await getModel(db, id))?.apiKey).toBeNull()
+    })
+
+    it('keeps the key across edits that do not move it', async () => {
+      const db = getDb()
+      const id = uuidv7()
+      await createCustomModel(id, 'https://llm.example.com', 'sk-mine')
+
+      await db.update(modelsTable).set({ name: 'Renamed' }).where(eq(modelsTable.id, id))
+      await updateModel(db, id, { url: 'HTTPS://LLM.example.com:443/v1/' })
+
+      expect((await getModel(db, id))?.apiKey).toBe('sk-mine')
+      const secret = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, id)).get()
+      expect(secret?.url).toBe('HTTPS://LLM.example.com:443/v1/')
+    })
+
+    it('leaves the key behind when an edit moves the model to another endpoint', async () => {
+      const db = getDb()
+      const id = uuidv7()
+      await createCustomModel(id, 'https://llm.example.com/v1', 'sk-mine')
+
+      await updateModel(db, id, { url: 'https://evil.example.com/v1' })
+      expect((await getModel(db, id))?.apiKey).toBeNull()
+
+      await updateModel(db, id, { url: 'https://llm.example.com/v1' })
+      expect((await getModel(db, id))?.apiKey).toBe('sk-mine')
+    })
+
+    it('does not follow a scheme downgrade', async () => {
+      const db = getDb()
+      const id = uuidv7()
+      await createCustomModel(id, 'https://llm.example.com/v1', 'sk-mine')
+
+      await updateModel(db, id, { url: 'http://llm.example.com/v1' })
+
+      expect((await getModel(db, id))?.apiKey).toBeNull()
+    })
+
+    it('binds a key typed with a new URL to that URL', async () => {
+      const db = getDb()
+      const id = uuidv7()
+      await createCustomModel(id, 'https://llm.example.com/v1', 'sk-old')
+
+      await updateModel(db, id, { url: 'https://other.example.com/v1', apiKey: 'sk-new' })
+
+      expect((await getModel(db, id))?.apiKey).toBe('sk-new')
+      const secret = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, id)).get()
+      expect(secret).toMatchObject({ provider: 'custom', url: 'https://other.example.com/v1' })
+    })
+
+    it('never gives a model the key saved under another id', async () => {
+      const db = getDb()
+      const keyed = uuidv7()
+      const keyless = uuidv7()
+      await createCustomModel(keyed, 'https://llm.example.com/v1', 'sk-mine')
+      await createCustomModel(keyless, 'https://llm.example.com/v1')
+
+      expect((await getModel(db, keyless))?.apiKey).toBeNull()
+    })
+
+    describe('bindModelKeyDestinations', () => {
+      it('binds a key saved before binding to the current destination and drops orphans', async () => {
+        const db = getDb()
+        const id = uuidv7()
+        await createCustomModel(id, 'https://llm.example.com/v1')
+        await db.insert(modelsSecretsTable).values([
+          { modelId: id, apiKey: 'sk-legacy' },
+          { modelId: 'gone', apiKey: 'sk-orphan' },
+        ])
+        expect((await getModel(db, id))?.apiKey).toBeNull()
+
+        await bindModelKeyDestinations(db)
+
+        expect((await getModel(db, id))?.apiKey).toBe('sk-legacy')
+        expect(
+          await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, 'gone')).get(),
+        ).toBeUndefined()
+      })
+
+      it('lets a key follow its model to another spelling of the same endpoint', async () => {
+        const db = getDb()
+        const id = uuidv7()
+        await createCustomModel(id, 'https://llm.example.com/v1', 'sk-mine')
+        await db.update(modelsTable).set({ url: 'HTTPS://LLM.example.com:443/v1/' }).where(eq(modelsTable.id, id))
+        expect((await getModel(db, id))?.apiKey).toBeNull()
+
+        await bindModelKeyDestinations(db)
+
+        expect((await getModel(db, id))?.apiKey).toBe('sk-mine')
+      })
+
+      it('leaves a key bound to an old destination where it is', async () => {
+        const db = getDb()
+        const id = uuidv7()
+        await createCustomModel(id, 'https://llm.example.com/v1', 'sk-mine')
+        await db.update(modelsTable).set({ url: 'https://evil.example.com/v1' }).where(eq(modelsTable.id, id))
+
+        await bindModelKeyDestinations(db)
+
+        expect((await getModel(db, id))?.apiKey).toBeNull()
+      })
     })
   })
 

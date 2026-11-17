@@ -4,7 +4,8 @@
 
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, test } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test'
+import * as platform from '@/lib/platform'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -326,6 +327,27 @@ describe('SafeLink contact and unsupported links', () => {
 })
 
 describe('ExternalLinkDialogProvider — externalLinkBehavior routing', () => {
+  test.each(['ask', 'sidebar'] as const)(
+    'Linux %s keeps confirmation without offering a native sidebar',
+    async (behavior) => {
+      const os = spyOn(platform, 'getPlatform').mockReturnValue('linux')
+      try {
+        useLocalSettingsStore.getState().setLocalSetting('externalLinkBehavior', behavior)
+        const open = stubWindowOpen()
+        fireEvent.click(renderLink('https://example.com', { isDesktopPlatform: () => true }))
+        expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'Open in Sidebar' })).not.toBeInTheDocument()
+        expect(screen.getByTestId('preview-state')).toHaveTextContent('none')
+        expect(open).not.toHaveBeenCalled()
+        fireEvent.click(screen.getByRole('button', { name: 'Open Link' }))
+        await act(async () => {})
+        expect(open).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer')
+      } finally {
+        os.mockRestore()
+      }
+    },
+  )
+
   const renderLink = (
     url = 'https://example.com',
     {

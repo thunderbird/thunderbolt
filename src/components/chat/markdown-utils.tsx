@@ -22,7 +22,7 @@ import { ExternalLinkDialog } from '@/components/chat/external-link-dialog'
 import { useSetPreviewHidden, useShowPreview } from '@/content-view/context'
 import { useExternalLinkDialog } from '@/hooks/use-external-link-dialog'
 import { resolveLinkAction } from '@/lib/external-link-behavior'
-import { isDesktop } from '@/lib/platform'
+import { getPlatform, isDesktop } from '@/lib/platform'
 import { isContactUrl, isSafeUrl } from '@/lib/url-utils'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { CitationMap } from '@/types/citation'
@@ -196,7 +196,7 @@ export const ExternalLinkDialogProvider = memo(
 
     const showPreview = useShowPreview()
     const setPreviewHidden = useSetPreviewHidden()
-    const desktop = isDesktopPlatform() && !!showPreview
+    const desktop = isDesktopPlatform() && getPlatform() !== 'linux' && !!showPreview
     const linkBehavior = useLocalSettingsStore((s) => s.externalLinkBehavior)
 
     const openExternalLink = useCallback(

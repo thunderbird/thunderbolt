@@ -93,7 +93,11 @@ describe('MCP form submission ownership', () => {
     })
     const [saved] = await getAllMcpServers(getDb())
     expect(saved.type).toBe('http')
-    expect(await getMcpServerCredentials(getDb(), saved.id)).toEqual({ type: 'bearer', token: 'submitted-token' })
+    expect(await getMcpServerCredentials(getDb(), saved.id)).toEqual({
+      type: 'bearer',
+      token: 'submitted-token',
+      approvedUrl: 'https://example.com/mcp',
+    })
   })
 
   it.each(['add', 'importConfig'] as const)('admits only one synchronous %s submission', async (action) => {

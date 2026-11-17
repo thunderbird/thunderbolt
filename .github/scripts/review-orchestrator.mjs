@@ -41,6 +41,7 @@
 // =============================================================================
 
 import { appendFile, readFile, writeFile } from 'node:fs/promises';
+import { existsSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { argv } from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -111,14 +112,83 @@ const GENERATED_CATALOG_OR_LOCKFILE_RE = /(?:^|\/)(?:[^/]+\.lock|package-lock\.j
 const isGeneratedFile = (filename) => GENERATED_CATALOG_OR_LOCKFILE_RE.test(filename) ||
   /^backend\/drizzle\/meta\/[^/]+_snapshot\.json$/.test(filename) || filename.startsWith('src/acp/iroh/pkg/');
 
-/** Files whose volume should not trigger extra model passes. */
+/** Files whose volume should not trigger extra model passes. Skill/agent prompts under `.claude/` and `.agents/` count as code. */
 const excludesExtraPasses = (filename = '') =>
-  (!filename?.startsWith('.claude/') && !/(?:^|\/)(?:AGENTS|CLAUDE)\.md$/.test(filename) && /\.mdx?$/.test(filename)) ||
+  (!/^\.(?:claude|agents)\//.test(filename ?? '') && !/(?:^|\/)(?:AGENTS|CLAUDE)\.md$/.test(filename) && /\.mdx?$/.test(filename)) ||
   /^docs\//.test(filename) ||
   GENERATED_CATALOG_OR_LOCKFILE_RE.test(filename) || /\.po$/.test(filename);
 
 const matchesSecurityPath = (filename = '') =>
   !excludesExtraPasses(filename) && SECURITY_PATH_MATCHERS.some((m) => m(filename ?? ''));
+
+// Lane routing. Deterministic, like the deep-mode and security gates: code decides
+// which of the skill's category lanes (A to K) spend, never the model. Conservative:
+// a lane runs whenever any changed file could hold its kind of issue. Lane D (React)
+// is never emitted because `react-effect-reviewer` carries its checks and runs on
+// exactly the same files.
+const PROSE_OR_ASSET_RE = /\.(?:mdx?|txt|rst|po|png|jpe?g|gif|webp|ico|svg|pdf|woff2?|ttf)$/i;
+const JS_FAMILY_RE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
+const LOCKFILE_RE = /(?:^|\/)(?:[^/]+\.lock|package-lock\.json)$/;
+const isTestFile = (p) => /^e2e\/|\.(?:test|spec)\.[^/]+$/.test(p);
+/** Everything except prose, docs, assets and generated output. Unknown kinds (Makefile, Dockerfile, YAML) count as code. */
+const isCodeFile = (p) => p !== '' && !/^docs\//.test(p) && !PROSE_OR_ASSET_RE.test(p) && !isGeneratedFile(p);
+/** An added line importing a package (not a relative or `@/` path) can add a dependency. */
+const addsPackageImport = (patch = '') =>
+  /^\+[^\n]*(?:\bfrom\s+|\bimport\s*\(?\s*|\brequire\(\s*)['"](?![./]|@\/)/m.test(patch ?? '');
+
+const LANE_RULES = {
+  A: (f) => isCodeFile(f.filename),
+  B: (f) => isCodeFile(f.filename),
+  C: (f) => JS_FAMILY_RE.test(f.filename),
+  E: (f) => isCodeFile(f.filename),
+  F: (f) => isTestFile(f.filename) || JS_FAMILY_RE.test(f.filename) || /\.rs$/.test(f.filename),
+  G: (f) => f.filename === 'src/app.tsx' || LOCKFILE_RE.test(f.filename) ||
+    /(?:^|\/)(?:package\.json|Cargo\.toml|vite\.config\.[cm]?[jt]s)$/.test(f.filename) ||
+    (JS_FAMILY_RE.test(f.filename) && addsPackageImport(f.patch)),
+  H: (f) => isCodeFile(f.filename) && !isTestFile(f.filename),
+  I: () => true,
+  J: (f) => isCodeFile(f.filename),
+  K: (f) => /^src\/.*\.tsx?$/.test(f.filename) || /\.po$/.test(f.filename) ||
+    f.filename.startsWith('backend/src/emails/') || f.filename.startsWith('shared/i18n/') ||
+    (f.filename.startsWith('backend/src/') && /^\+[^\n]*@lingui/m.test(f.patch ?? '')),
+};
+
+const POWERSYNC_PATH_PREFIXES = [
+  'shared/powersync-tables.ts', 'powersync-service/', 'deploy/config/powersync-config.yaml',
+  'deploy/k8s/templates/configmaps.yaml', 'backend/drizzle/', 'backend/src/db/', 'backend/src/api/account',
+  'backend/src/api/powersync', 'backend/src/dal/powersync', 'backend/src/dal/devices', 'backend/src/dal/users',
+  'src/db/', 'src/dal/', 'src/drizzle/', 'src/defaults/', 'shared/defaults/', 'src/lib/reconcile-defaults',
+  'src/lib/pick-defaults', 'src/lib/data-migrations/',
+];
+/** A patch whose lines call a React hook or import React, so a plain `.ts` store or handler still gets the React lens. */
+const touchesReact = (patch = '') =>
+  /\buse[A-Z]\w*\(/.test(patch ?? '') || /\bfrom\s+['"]react(?:-dom)?(?:\/[^'"]*)?['"]/.test(patch ?? '');
+const DOMAIN_REVIEWER_RULES = {
+  'powersync-sync-reviewer': (f) => POWERSYNC_PATH_PREFIXES.some((prefix) => f.filename.startsWith(prefix)),
+  // Tests and CI scripts mention hooks in fixture strings, so the content check skips them.
+  'react-effect-reviewer': (f) => /\.tsx$/.test(f.filename) || /(?:^|\/)use[-A-Z][^/]*\.[jt]sx?$/.test(f.filename) ||
+    (JS_FAMILY_RE.test(f.filename) && !isTestFile(f.filename) && !f.filename.startsWith('.github/') &&
+      (touchesReact(f.patch) || touchesReact(f.headContent))),
+};
+
+/** The head version of a changed file from the checked-out working tree; '' when it is gone (deleted or renamed away). */
+const readHeadFile = (filename) => (existsSync(filename) ? readFileSync(filename, 'utf8') : '');
+
+/**
+ * Which category lanes and domain reviewers the diff needs. Lane I runs on any non-empty diff.
+ * A hunk can sit inside a `useEffect` without showing the hook, so JS/TS files are also judged by their head content.
+ */
+const selectLanes = (files, readContent = readHeadFile) => {
+  const named = files.map((f) => {
+    const filename = f.filename ?? '';
+    return { ...f, filename, headContent: JS_FAMILY_RE.test(filename) ? readContent(filename) : '' };
+  });
+  return {
+    lanes: Object.keys(LANE_RULES).filter((lane) => named.some(LANE_RULES[lane])),
+    domainReviewers: Object.keys(DOMAIN_REVIEWER_RULES)
+      .filter((name) => named.some(DOMAIN_REVIEWER_RULES[name])),
+  };
+};
 
 // PR files list caps at 3000 files. Past the file cap we switch to bounded mode.
 const PR_FILES_TRUNCATION_CAP = 3000;
@@ -387,6 +457,7 @@ const computeDeepMode = (files, truncated) => {
     boundedMode: truncated, // past the file cap, review a bounded subset only.
     securityMode: sensitiveFiles.length > 0,
     sensitiveFiles,
+    ...selectLanes(files),
     fileCount,
     totalFileCount: files.length,
     changedLines,
@@ -1180,7 +1251,7 @@ const runPre = async () => {
     writeFile(DEEPMODE_FILE, JSON.stringify(deepInfo, null, 2)),
   ]);
   if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `skip=${deepInfo.skip}\n`);
-  log(`pre: wrote ${reviewedFiles.length}-file ${scope.incremental ? 'incremental' : 'full'} diff (${omittedFiles.length} generated files omitted); skip=${deepInfo.skip}; deepMode=${deepInfo.deepMode} (${deepInfo.reason}); securityMode=${deepInfo.securityMode} (${deepInfo.sensitiveFiles.length} crypto path(s)).`);
+  log(`pre: wrote ${reviewedFiles.length}-file ${scope.incremental ? 'incremental' : 'full'} diff (${omittedFiles.length} generated files omitted); skip=${deepInfo.skip}; deepMode=${deepInfo.deepMode} (${deepInfo.reason}); securityMode=${deepInfo.securityMode} (${deepInfo.sensitiveFiles.length} crypto path(s)); lanes=${deepInfo.lanes.join('')}; domainReviewers=${deepInfo.domainReviewers.join(',') || 'none'}.`);
 };
 
 /**
@@ -1341,6 +1412,7 @@ export {
   buildUnifiedDiff,
   computeDeepMode,
   matchesSecurityPath,
+  selectLanes,
   normalizeFindings,
   findingHash,
   classifyFindings,

@@ -1,0 +1,3 @@
+[test]
+preload = ["./test/setup.ts", "./test/render.tsx"]
+timeout = 5000

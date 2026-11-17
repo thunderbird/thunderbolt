@@ -99,7 +99,7 @@ On EKS only `betterAuthSecret` reaches the cluster. The other five are not passe
 
 This section applies to the Fargate target only. By default the load balancer answers on its own AWS address over plain HTTP, and requests are routed by path: `/v1/` to the API, `/auth/` and `/realms/` to Keycloak, `/powersync/` to the sync service, everything else to the app. The marketing and docs site has no path of its own and is unreachable in this mode. That is enough to evaluate the deployment. Don't serve users from it.
 
-Setting any hostname switches the deployment to one subdomain per service, routed by the host name in the request:
+To use distinct host-based routing, set all five service hostnames:
 
 ```bash
 pulumi config set marketingHostname  thunderbolt.example.com
@@ -112,6 +112,12 @@ pulumi config set --secret cloudflareApiToken <token>
 ```
 
 **DNS automation is Cloudflare only.** The deployment creates a proxied CNAME record per hostname and relies on Cloudflare to terminate TLS at the edge; there is no certificate attached to the load balancer itself. Setting a hostname without a Cloudflare zone ID and API token fails the deployment rather than producing an unreachable stack. Using another DNS provider means creating the records yourself against the load balancer address the stack reports, and terminating TLS in front of it.
+
+Fargate stacks with Cloudflare hostnames accept HTTP connections to the ALB only from [Cloudflare's published IPv4 ranges](https://www.cloudflare.com/ips-v4/), including stacks with a legacy shared hostname. Their backend trusts `CF-Connecting-IP` for rate limits. Every service needs a hostname: set all five service hostnames, or use `subdomain`/`hostnames` as a fallback for any unset service. Pulumi rejects partial configurations before creating resources. Keep every DNS record proxied; a direct request to the ALB from another address is blocked, including external uptime probes. Pulumi reads the ranges from Cloudflare on each deploy, including the weekly shared-preview update; a failed lookup aborts the update. The ALB currently accepts IPv4 only. If it changes to dualstack, add Cloudflare's IPv6 ranges to the security group before enabling IPv6 ingress.
+
+When all five service hostnames are distinct, the ALB also routes only those hostnames. Complete configurations with shared hostnames keep their host rules, where marketing wins on an overlapping host, and the path-based fallback for any other host. Direct enterprise Fargate stacks without Cloudflare hostnames keep public ALB ingress and do not trust `CF-Connecting-IP`. The `previews-shared` stack always requires `cloudflareZoneId` and `cloudflareApiToken`; the official workflow checks both before deployment.
+
+Cloudflare's IP ranges are shared across accounts, so the source-range rule is not proof that a request came through your own zone. A malicious Cloudflare Worker can send a subrequest toward this origin and control `CF-Connecting-IP` in some circumstances. Five-distinct-host stacks reject requests addressed to the raw ALB hostname; shared-host stacks retain path routing. Zone-specific origin authentication would require an HTTPS origin and [zone-level Authenticated Origin Pulls](https://developers.cloudflare.com/ssl/origin-configuration/authenticated-origin-pull/).
 
 ## Settings
 

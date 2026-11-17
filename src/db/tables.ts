@@ -154,6 +154,10 @@ export const modelsTable = sqliteTable(
 export const modelsSecretsTable = sqliteTable('models_secrets', {
   modelId: text('id').primaryKey(),
   apiKey: text('api_key'),
+  /** The model's provider and URL when the key was saved. The key is read only while the
+   *  model still has them, so a changed endpoint (edit, sync or import) never receives it. */
+  provider: text('provider'),
+  url: text('url'),
   oauthProvider: text('oauth_provider', { enum: ['tinfoil'] }),
   providerDefault: integer('provider_default'),
 })
@@ -191,7 +195,7 @@ export const integrationsSecretsTable = sqliteTable('integrations_secrets', {
 /** Local-only table for MCP server credentials (bearer tokens / API keys). Never synced via PowerSync. */
 export const mcpSecretsTable = sqliteTable('mcp_secrets', {
   id: text('id').primaryKey(), // = mcp_servers.id
-  credentials: text('credentials'), // JSON blob (e.g. { type: 'bearer', token })
+  credentials: text('credentials'), // JSON blob (e.g. { type: 'bearer', token, approvedUrl })
 })
 
 export const mcpServersTable = sqliteTable(

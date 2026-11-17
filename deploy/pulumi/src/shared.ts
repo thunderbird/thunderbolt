@@ -5,6 +5,7 @@
 import * as aws from '@pulumi/aws'
 import * as cloudflare from '@pulumi/cloudflare'
 import * as pulumi from '@pulumi/pulumi'
+import { previewCloudflareProxy } from './alb-ingress'
 import { createVpc } from './vpc'
 import { createStorage } from './storage'
 import { createCluster } from './cluster'
@@ -23,10 +24,10 @@ export type SharedStackArgs = {
   imagePrefix: string
   /** GHCR PAT for pulling images. */
   ghcrToken?: pulumi.Output<string>
-  /** Cloudflare zone ID for the auth subdomain CNAME. Optional. */
-  cloudflareZoneId?: pulumi.Input<string>
-  /** Cloudflare API token (paired with cloudflareZoneId). Optional. */
-  cloudflareApiToken?: pulumi.Output<string>
+  /** Cloudflare zone ID for the auth subdomain CNAME. */
+  cloudflareZoneId: pulumi.Input<string>
+  /** Cloudflare API token for the proxied auth CNAME. */
+  cloudflareApiToken: pulumi.Output<string>
   /**
    * Public hostname for the shared Keycloak (e.g. "auth.shared.preview.thunderbolt.io").
    * Per-PR backends use `${authHostname}/realms/thunderbolt` as the OIDC issuer.
@@ -132,7 +133,10 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
   const { name, version, imagePrefix, ghcrToken } = args
 
   // -------- 1. Networking + storage + cluster (existing helpers) --------
-  const { vpc, publicSubnets, privateSubnets, albSg, servicesSg } = createVpc(name)
+  const { vpc, publicSubnets, privateSubnets, albSg, servicesSg } = createVpc(
+    name,
+    previewCloudflareProxy.restrictIngress,
+  )
   const { efs, pgAccessPoint } = createStorage(
     name,
     vpc.id,
@@ -226,23 +230,21 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
 
   // Cloudflare CNAME for the shared auth subdomain. Per-PR stacks own their
   // marketing/app/api/powersync CNAMEs.
-  if (args.cloudflareZoneId && args.cloudflareApiToken) {
-    const cfProvider = new cloudflare.Provider(`${name}-cf`, {
-      apiToken: args.cloudflareApiToken,
-    })
-    new cloudflare.Record(
-      `${name}-cname-auth`,
-      {
-        zoneId: args.cloudflareZoneId,
-        name: args.authHostname,
-        type: 'CNAME',
-        content: alb.dnsName,
-        proxied: true,
-        ttl: 1,
-      },
-      { provider: cfProvider },
-    )
-  }
+  const cfProvider = new cloudflare.Provider(`${name}-cf`, {
+    apiToken: args.cloudflareApiToken,
+  })
+  new cloudflare.Record(
+    `${name}-cname-auth`,
+    {
+      zoneId: args.cloudflareZoneId,
+      name: args.authHostname,
+      type: 'CNAME',
+      content: alb.dnsName,
+      proxied: true,
+      ttl: 1,
+    },
+    { provider: cfProvider },
+  )
 
   // -------- 4. IAM roles (shared exec + task roles) --------
   const execRole = new aws.iam.Role(`${name}-exec-role`, {
@@ -264,7 +266,11 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
       Statement: [
         {
           Effect: 'Allow',
-          Action: ['elasticfilesystem:ClientMount', 'elasticfilesystem:ClientWrite', 'elasticfilesystem:ClientRootAccess'],
+          Action: [
+            'elasticfilesystem:ClientMount',
+            'elasticfilesystem:ClientWrite',
+            'elasticfilesystem:ClientRootAccess',
+          ],
           Resource: '*',
         },
       ],
@@ -335,7 +341,9 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
     ['exaApiKey', `${name}-exa-api-key`],
     ['tinfoilApiKey', `${name}-tinfoil-api-key`],
   ]
-  const aiSecretArns: Record<keyof SharedStackArgs['aiSecrets'], pulumi.Output<string>> = {} as ReturnType<typeof Object>
+  const aiSecretArns: Record<keyof SharedStackArgs['aiSecrets'], pulumi.Output<string>> = {} as ReturnType<
+    typeof Object
+  >
   for (const [key, secretName] of aiSecretSpecs) {
     const secret = new aws.secretsmanager.Secret(secretName, { tags: { Name: secretName } })
     new aws.secretsmanager.SecretVersion(`${secretName}-version`, {
@@ -356,11 +364,7 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
         {
           Effect: 'Allow',
           Action: ['secretsmanager:GetSecretValue'],
-          Resource: [
-            postgresPasswordSecret.arn,
-            powersyncDbPasswordSecret.arn,
-            powersyncJwtSecretSecret.arn,
-          ],
+          Resource: [postgresPasswordSecret.arn, powersyncDbPasswordSecret.arn, powersyncJwtSecretSecret.arn],
         },
       ],
     }),
@@ -503,16 +507,20 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
     ]),
   })
 
-  new aws.ecs.Service(`${name}-kc-svc`, {
-    cluster: cluster.arn,
-    taskDefinition: kcTaskDef.arn,
-    desiredCount: 1,
-    launchType: 'FARGATE',
-    healthCheckGracePeriodSeconds: 300,
-    networkConfiguration: { subnets: privateSubnets.map((s) => s.id), securityGroups: [servicesSg.id] },
-    serviceRegistries: { registryArn: discovery.keycloak.arn },
-    loadBalancers: [{ targetGroupArn: keycloakTg.arn, containerName: 'keycloak', containerPort: 8080 }],
-  }, { dependsOn: [listener] })
+  new aws.ecs.Service(
+    `${name}-kc-svc`,
+    {
+      cluster: cluster.arn,
+      taskDefinition: kcTaskDef.arn,
+      desiredCount: 1,
+      launchType: 'FARGATE',
+      healthCheckGracePeriodSeconds: 300,
+      networkConfiguration: { subnets: privateSubnets.map((s) => s.id), securityGroups: [servicesSg.id] },
+      serviceRegistries: { registryArn: discovery.keycloak.arn },
+      loadBalancers: [{ targetGroupArn: keycloakTg.arn, containerName: 'keycloak', containerPort: 8080 }],
+    },
+    { dependsOn: [listener] },
+  )
 
   // -------- 9. Outputs --------
   return {

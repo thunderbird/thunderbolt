@@ -15,17 +15,19 @@ import { legacySearchStorageKey, migrateSearchProviderConnections } from './sear
 
 const legacy = (state: Record<string, unknown>) =>
   localStorage.setItem(legacySearchStorageKey, JSON.stringify({ state, version: 0 }))
-beforeAll(setupTestDatabase)
-beforeEach(() => {
+/** Back to the default selection, also after the last test, so the next test file does not inherit one. */
+const resetSearchSelection = () => {
   useSearchProviderStore.getState().clearSearchProvider()
   localStorage.removeItem(searchSelectionStorageKey)
   localStorage.removeItem(legacySearchStorageKey)
-})
+}
+beforeAll(setupTestDatabase)
+beforeEach(resetSearchSelection)
 afterAll(teardownTestDatabase)
 afterEach(async () => {
   mock.restore()
   await resetTestDatabase()
-  localStorage.removeItem(legacySearchStorageKey)
+  resetSearchSelection()
 })
 it.each(['exa', 'brave', 'tavily'] as const)(
   'moves the legacy %s key durably and removes it from localStorage',

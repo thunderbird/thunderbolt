@@ -11,6 +11,7 @@ import type { PowerSyncDatabase, WebPowerSyncDatabaseOptions } from '@powersync/
 import { wrapPowerSyncWithDrizzle } from '@powersync/drizzle-driver'
 import type { DatabaseInterface, AnyDrizzleDatabase, InitialSyncOutcome } from '../database-interface'
 import { isSyncEnabled } from './sync-state'
+import { bindCredentialDestinations } from '@/dal/credential-destinations'
 import { getDeviceId } from '@/lib/auth-token'
 import { AppSchema, drizzleSchema } from './schema'
 import { ThunderboltConnector } from './connector'
@@ -269,8 +270,22 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     // Registered before the background connect so a 426 arriving mid-connect is caught.
     this.startVersionBlockListener()
 
+    void this.connectAfterBindingCredentials()
+  }
+
+  /**
+   * Binds stored credentials to their destinations, then connects sync when it is
+   * enabled. Credentials saved by an older version take the URL their row has as this
+   * device left it, so a row moved by the next sync download never gets them.
+   */
+  async connectAfterBindingCredentials(): Promise<void> {
+    try {
+      await bindCredentialDestinations(this.db)
+    } catch (error) {
+      console.error('[PowerSync] Failed to bind credential destinations:', error)
+    }
     if (isSyncEnabled()) {
-      void this.connectToSync()
+      await this.connectToSync()
     }
   }
 

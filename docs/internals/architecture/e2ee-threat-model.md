@@ -74,7 +74,12 @@ falsify, not a fact.
   refused rather than rewritten; and `devices` is exempt from the quarantine outright — its rows
   are inserted by the backend at registration with the plaintext name a keyless device sent, a
   structural plaintext writer — so a server-rewritten `devices.name` (a display label, no routing
-  or content payoff) is accepted. RULE for future schema work: adding a column or table to
+  or content payoff) is accepted. The quarantine cannot refuse a validly encrypted `models.url`
+  from a still-trusted device, so `models_secrets` also stores the provider and URL each key was
+  saved for, and the join returns the key only while the row still has them. Keys saved by an
+  older version are bound when the database opens, before sync connects. A trusted device can
+  still point a model somewhere new and receive the next prompt sent to it, but this device's BYOK
+  key stays behind. RULE for future schema work: adding a column or table to
   `encryptedColumnsMap` while plaintext rows for it already exist server-side requires a
   re-encryption migration in the same change (the `reencrypt-agents` shape), or established
   accounts' history is quarantined on every device enrolled afterwards.

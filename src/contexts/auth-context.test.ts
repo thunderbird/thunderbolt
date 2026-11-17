@@ -22,6 +22,7 @@ import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { act, cleanup, render } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import {
+  AuthProvider,
   authRequestHeaders,
   buildFetchOptions,
   createAuthClientInstance,
@@ -984,6 +985,23 @@ describe('AuthProvider — local data ownership (THU-963)', () => {
     await openLocalData()
     atom.set(session('user-a'))
     expect(isLocalDataOwnedBy('user-a')).toBe(true)
+  })
+
+  it('keeps the app working when a server change replaces the auth client', () => {
+    // React's development build logs changed props, and turning a Better Auth client's `.name` into a string throws.
+    spyOn(globalThis, 'fetch').mockImplementation(
+      Object.assign(async () => Response.json({ user: { id: 'user-a' }, session: { id: 'session-user-a' } }), {
+        preconnect: () => {},
+      }),
+    )
+    const app = (cloudUrl: string) =>
+      createElement(AuthProvider, { cloudUrl, children: createElement('p', null, 'app content') })
+    const view = render(app('https://api.test/v1'), { wrapper: createTestProvider() })
+
+    useLocalSettingsStore.setState({ cloudUrl: 'https://another.test/v1' })
+    view.rerender(app('https://another.test/v1'))
+
+    expect(view.queryByText('app content')).not.toBeNull()
   })
 
   /** What Better Auth stores when a session request fails with this status. */

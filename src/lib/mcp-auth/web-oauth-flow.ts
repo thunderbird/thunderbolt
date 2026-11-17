@@ -506,5 +506,6 @@ export const completeMcpOAuthFlow = async (
     issuer: metadata.issuer,
     tokenEndpoint: metadata.token_endpoint,
     scope: tokens.scope,
+    approvedUrl: handshake.serverUrl,
   })
 }

@@ -9,6 +9,7 @@ import { isRecord } from '@/lib/utils'
 import { eq } from 'drizzle-orm'
 import { getTableConfig, type SQLiteColumn, type SQLiteTable } from 'drizzle-orm/sqlite-core'
 import { exportFormat, exportSchemaVersion, exportedTableNames, includedTables, type IncludedTableName } from './export'
+import { bindCredentialDestinations } from './credential-destinations'
 import { providerConnectionsTable } from '@/db/tables'
 import { credentialBinding } from '@/providers/credentials'
 import { providerTypes } from '@/providers/types'
@@ -89,6 +90,12 @@ export class ImportFormatError extends Error {
     this.name = 'ImportFormatError'
   }
 }
+
+/**
+ * Local-only credential tables. A file row replaces the local row outright, so
+ * a partial row can never keep a local key while rewriting where it is bound.
+ */
+const secretTableNames: ReadonlySet<string> = new Set(['models_secrets', 'mcp_secrets', 'agents_secrets'])
 
 const isIncludedTableName = (name: string): name is IncludedTableName =>
   (exportedTableNames as readonly string[]).includes(name)
@@ -264,6 +271,10 @@ const sanitizeRowForImport = (
  *   ownership. Tables without `user_id` (the secret tables) are unaffected.
  * - **Soft-deleted rows preserved.** `deletedAt` is written verbatim, so a
  *   row exported in the trash stays in the trash after import.
+ * - **Secrets stay bound to their destination.** A secret row in the file
+ *   replaces the local one outright instead of merging. A local secret the file
+ *   omits stays bound to the URL it was saved for, so a parent row the file
+ *   points elsewhere no longer reads it.
  * - **Atomic.** Wrapped in a single `db.transaction`; any per-row failure
  *   rolls back every preceding write in this call.
  * - **Forward-compatible.** Table keys the importer doesn't recognize (e.g.
@@ -301,6 +312,9 @@ export const importUserData = async (
   const tableCounts: Partial<Record<IncludedTableName, { upserted: number }>> = {}
 
   await db.transaction(async (tx) => {
+    // Before the upsert local credentials bind to the URLs they had; after it, rows from an
+    // older backup bind to the restored URLs and re-spelled URLs keep their credential.
+    await bindCredentialDestinations(tx)
     // Metadata must be restored before checking credential bindings, regardless of JSON key order.
     const entries = Object.entries(fileTables).sort(
       ([a], [b]) => Number(b === 'provider_connections') - Number(a === 'provider_connections'),
@@ -317,6 +331,7 @@ export const importUserData = async (
       const table = includedTables[tableName]
       const { pk, hasUserId } = tableImportSpecs[tableName]
       const { column: pkColumn, field: pkField } = pk
+      const isSecret = secretTableNames.has(tableName)
 
       for (const row of rows) {
         if (!isRecord(row)) {
@@ -337,7 +352,10 @@ export const importUserData = async (
           continue
         }
         const existing = await tx.select({ pk: pkColumn }).from(table).where(eq(pkColumn, pkValue)).get()
-        if (existing) {
+        if (existing && isSecret) {
+          await tx.delete(table).where(eq(pkColumn, pkValue))
+        }
+        if (existing && !isSecret) {
           await tx.update(table).set(sanitized).where(eq(pkColumn, pkValue))
         } else {
           await tx.insert(table).values(sanitized)
@@ -346,6 +364,7 @@ export const importUserData = async (
         tableCounts[tableName] = { upserted: count + 1 }
       }
     }
+    await bindCredentialDestinations(tx)
   })
 
   return {

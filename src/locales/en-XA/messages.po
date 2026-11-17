@@ -5799,6 +5799,18 @@ msgstr ""
 msgid "The request was denied. You can safely close this page."
 msgstr ""
 
+#: src/settings/models/edit-model-form.tsx
+msgid "The saved API key is only sent to the URL it was saved for. Enter it again to use this URL."
+msgstr ""
+
+#: src/settings/connections/mcp-server-form.tsx
+msgid "The saved authorization only works with the previous URL. Authorize again after saving."
+msgstr ""
+
+#: src/settings/connections/mcp-server-form.tsx
+msgid "The saved credential is only sent to the URL it was saved for. Enter it again to use this URL."
+msgstr ""
+
 #: src/integrations/standalone-search/content.ts
 #~ msgid "The search provider could not retrieve this page."
 #~ msgstr ""
@@ -7244,6 +7256,10 @@ msgstr ""
 
 #: src/components/unsaved-recovery-phrase-prompt.tsx
 msgid "Your recovery phrase was never saved"
+msgstr ""
+
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "Your recovery phrase was replaced on another of your devices. Use the new phrase you saved there; the old one no longer works. If this wasn't you, review your devices from an approved device."
 msgstr ""
 
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx

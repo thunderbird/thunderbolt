@@ -42,4 +42,14 @@ describe('useResourcePageState', () => {
     expect(result.current.page.selectedId).toBe('g3')
     expect(result.current.page.dirty).toBe(false)
   })
+
+  it('keeps the other search params when the panel opens and closes', () => {
+    const { result } = renderState('/admin/link-reviews?status=rejected&connection=c1')
+
+    act(() => result.current.page.select('r1'))
+    expect(result.current.params[0].toString()).toBe('status=rejected&connection=c1&edit=r1')
+
+    act(() => result.current.page.close())
+    expect(result.current.params[0].toString()).toBe('status=rejected&connection=c1')
+  })
 })

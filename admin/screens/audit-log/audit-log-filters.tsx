@@ -31,8 +31,6 @@ const any = 'any'
 type AuditLogFiltersProps = {
   filters: AuditEventQuery
   onChange: (filters: AuditEventQuery) => void
-  /** Page actions at the end of the toolbar, such as Refresh. */
-  actions?: ReactNode
 }
 
 const Field = ({ id, label, children }: { id: string; label: string; children: ReactNode }) => (
@@ -45,7 +43,7 @@ const Field = ({ id, label, children }: { id: string; label: string; children: R
 )
 
 /** The audit log's filters. Narrow screens fold them behind a "Filters" button. */
-export const AuditLogFilters = ({ filters, onChange, actions }: AuditLogFiltersProps) => {
+export const AuditLogFilters = ({ filters, onChange }: AuditLogFiltersProps) => {
   const { t, i18n } = useLingui()
   const [open, setOpen] = useState(false)
   const connections = useConnections()
@@ -94,7 +92,6 @@ export const AuditLogFilters = ({ filters, onChange, actions }: AuditLogFiltersP
             <Trans>Clear filters</Trans>
           </Button>
         )}
-        {actions && <div className="ml-auto flex items-center gap-2">{actions}</div>}
       </div>
 
       <div className={cn('grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4', !open && 'max-md:hidden')}>

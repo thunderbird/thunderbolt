@@ -7,9 +7,11 @@ import { DetailPanelSurface } from '@/components/detail-panel'
 import { SettingsListBody, SettingsListPane, settingsListBodyRowsClass } from '@/components/settings/settings-list'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSearch } from '@/components/ui/page-search'
+import { useIsMobile } from '@/hooks/use-mobile'
 
 type AdminPageProps = {
   title: string
+  /** Beside the title; on phones, at the top of the list, since the floating header has no room for it. */
   action?: ReactNode
   actionsClassName?: string
   search?: { placeholder: string; label: string; onSearch: (value: string) => void }
@@ -21,10 +23,11 @@ type AdminPageProps = {
 
 /** The settings list layout, header and detail surface, shared by every admin screen. */
 export const AdminPage = ({ title, action, actionsClassName, search, panel, onClose, children }: AdminPageProps) => {
+  const { isMobile } = useIsMobile()
   const header = (
     <PageHeader title={title} actionsClassName={actionsClassName}>
       {search && <PageSearch.Button />}
-      {action}
+      {!isMobile && action}
     </PageHeader>
   )
   return (
@@ -44,7 +47,12 @@ export const AdminPage = ({ title, action, actionsClassName, search, panel, onCl
           ) : (
             header
           )}
-          <SettingsListBody className={settingsListBodyRowsClass}>{children}</SettingsListBody>
+          <SettingsListBody className={settingsListBodyRowsClass}>
+            {/* The header's in-flow actions would sit under this scrolling body on phones. `PageCreateAction`
+                portals itself out, leaving the row empty. */}
+            {isMobile && action && <div className="flex justify-end gap-2 empty:hidden">{action}</div>}
+            {children}
+          </SettingsListBody>
         </SettingsListPane>
       </div>
       {onClose && (

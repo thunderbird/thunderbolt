@@ -22,24 +22,21 @@ export const AuditLogPage = () => {
   const filters = parseAuditLogSearch(params)
 
   return (
-    // Refresh sits in the toolbar, not the page header: on phones the header renders its actions in
-    // flow, under the scrolling list.
-    <AdminPage title={t`Audit log`}>
-      <AuditLogFilters
-        filters={filters}
-        onChange={(next) => navigate(auditLogPath(next), { replace: true })}
-        actions={
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => void queryClient.invalidateQueries({ queryKey: adminQueryKeys.auditEvents.all })}
-          >
-            <RefreshCw />
-            <Trans>Refresh</Trans>
-          </Button>
-        }
-      />
+    <AdminPage
+      title={t`Audit log`}
+      action={
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => void queryClient.invalidateQueries({ queryKey: adminQueryKeys.auditEvents.all })}
+        >
+          <RefreshCw />
+          <Trans>Refresh</Trans>
+        </Button>
+      }
+    >
+      <AuditLogFilters filters={filters} onChange={(next) => navigate(auditLogPath(next), { replace: true })} />
       <AuditEventList filters={filters} emptyMessage={<Trans>No events match these filters.</Trans>} />
     </AdminPage>
   )

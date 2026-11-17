@@ -82,7 +82,7 @@ describe('Sideview', () => {
   /** Click Download with the app's saver set to fail. */
   const failDownload = async () => {
     objectUrls.mockImplementationOnce(() => {
-      throw new Error('The disk is full.')
+      throw new Error('No space left on device (os error 28)')
     })
     fireEvent.click(screen.getByRole('button', { name: 'Download' }))
     await flush()
@@ -103,7 +103,9 @@ describe('Sideview', () => {
       const open = renderSideview(type, fileName)
       await open('file-a')
       await failDownload()
-      expect(screen.getByRole('alert').textContent).toBe("Couldn't save: The disk is full.")
+      expect(screen.getByRole('alert').textContent).toBe(
+        "Couldn't save: There is not enough free space on this device.",
+      )
 
       await open('file-b')
 
@@ -133,5 +135,33 @@ describe('Sideview', () => {
     await flush()
 
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('closes on Escape from its controls and gives focus back to the card that opened it', async () => {
+    for (const { type, fileName, blob } of cases) {
+      store('file-a', fileName, blob())
+      const open = renderSideview(type, fileName)
+      const card = screen.getByRole('button', { name: 'open file-a' })
+      card.focus()
+      await open('file-a')
+
+      fireEvent.keyDown(screen.getByRole('button', { name: 'Close' }), { key: 'Escape' })
+
+      expect(screen.queryByRole('button', { name: 'Download' })).toBeNull()
+      expect(document.activeElement).toBe(card)
+      cleanup()
+    }
+  })
+
+  it('leaves Escape to a dialog that handled it first', async () => {
+    store('file-a', 'notes.txt', new Blob(['notes'], { type: 'text/plain' }))
+    const open = renderSideview('local-file', 'notes.txt')
+    await open('file-a')
+
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    escape.preventDefault()
+    screen.getByRole('button', { name: 'Close' }).dispatchEvent(escape)
+
+    expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument()
   })
 })

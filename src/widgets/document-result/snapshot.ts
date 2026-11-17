@@ -3,6 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { unzipWithinLimits, ZipLimitError } from '@/files/unzip-within-limits'
+import { maxPicturePixels, rasterPixels } from '@/office/raster-pixels'
+import { rasterType } from '@/office/raster-type'
 
 const mib = 1024 * 1024
 
@@ -16,13 +18,71 @@ export const snapshotLimits = {
   unzipBytes: 32 * mib,
   /** The most parts a classic zip lists. A ZIP64 directory can claim more than it holds. */
   parts: 65_535,
+  /** The most pixels the file's pictures decode to, as a workbook's sheet allows. A picture past it is left out. */
+  picturePixels: maxPicturePixels,
 }
 
-/** A file's pages or slides as markup for the sandboxed frame, with their width in CSS pixels, or why there are none. */
+/** A transparent GIF of one pixel, drawn in place of a picture left out. */
+const blankPicture = Uint8Array.from(atob('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'), (char) =>
+  char.charCodeAt(0),
+)
+
+/** An empty SVG, drawn in place of an SVG left out. */
+const blankSvg = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"/>')
+
+/** A part's text as a browser reads an SVG: UTF-16 when its first bytes say so, UTF-8 otherwise. */
+const partText = (data: Uint8Array) => {
+  const [first, second] = data
+  if ((first === 0xff && second === 0xfe) || (first === 0x3c && second === 0)) {
+    return new TextDecoder('utf-16le').decode(data)
+  }
+  if ((first === 0xfe && second === 0xff) || (first === 0 && second === 0x3c)) {
+    return new TextDecoder('utf-16be').decode(data)
+  }
+  return new TextDecoder().decode(data)
+}
+
+/**
+ * Whether a part is an SVG that could embed a picture: a `data:` URL, or a character reference, an entity or a CSS
+ * escape that could spell one. The pixel count cannot see such a picture, so it could decode to any size. The vector
+ * drawings Office writes contain none of these.
+ */
+const isSvgWithPicture = (data: Uint8Array) => {
+  const text = partText(data)
+  // A URL drops tabs and line breaks wherever they are.
+  return /<([\w.-]+:)?svg[\s/>]/.test(text) && /data:|&#|<!entity|\\/i.test(text.replace(/[\t\n\r]/g, ''))
+}
+
+/**
+ * The parts, with blanks in place of each SVG that could embed a picture and each raster picture that gives no size
+ * in its header or would take the total past {@link snapshotLimits.picturePixels}, counted in zip order. A few
+ * kilobytes of picture can claim a gigabyte of bitmap.
+ */
+const withinPictureLimit = (parts: Map<string, Uint8Array>) => {
+  const pixels = { left: snapshotLimits.picturePixels }
+  return [...parts].map(([name, data]): [string, Uint8Array] => {
+    if (!rasterType(data)) {
+      return [name, isSvgWithPicture(data) ? blankSvg : data]
+    }
+    const picture = rasterPixels(data) ?? Infinity
+    if (picture > pixels.left) {
+      return [name, blankPicture]
+    }
+    pixels.left -= picture
+    return [name, data]
+  })
+}
+
+/**
+ * A file's pages or slides as markup for the sandboxed frame, with their width in CSS pixels, or why there are none:
+ * past the limits, unreadable, or the renderer's code did not load, as on a broken network. Pages that `reflow` lay
+ * their text out again in a frame narrower than they are; the others only scale down.
+ */
 export type DocumentSnapshot =
-  | { kind: 'pages'; html: string; width: number }
+  | { kind: 'pages'; html: string; width: number; reflows: boolean }
   | { kind: 'tooLarge' }
   | { kind: 'unreadable' }
+  | { kind: 'notLoaded' }
 
 /** Thrown for a file past one of the preview's limits. */
 export class PastLimitsError extends Error {}
@@ -54,7 +114,7 @@ export const unpackWithinLimits = async (blob: Blob): Promise<Record<string, Uin
     parts: snapshotLimits.parts,
   })
   // A later part with the same resolved name replaces an earlier one, as in the zip reader.
-  return Object.fromEntries([...parts].map(([name, data]) => [resolvePartName(name), data]))
+  return Object.fromEntries(withinPictureLimit(parts).map(([name, data]) => [resolvePartName(name), data]))
 }
 
 /** The snapshot's own policy: its styles, and pictures and fonts embedded as `data:` URLs. Nothing else loads. */
@@ -62,19 +122,19 @@ export const snapshotPolicy = "default-src 'none'; style-src 'unsafe-inline'; im
 
 /**
  * Renders a file into a static page for a frame with `sandbox=""`, whose policy loads nothing outside it. `render`
- * returns the page's head and body and its width. A file past the limits gets `tooLarge`; one the renderer cannot
- * read, damaged or using something it does not handle, gets `unreadable`. Download works for both.
+ * returns the page's head and body, its width and whether it reflows. A file past the limits gets `tooLarge`; one the
+ * renderer cannot read, damaged or using something it does not handle, gets `unreadable`. Download works for both.
  */
 export const renderSnapshot = async (
   label: string,
-  render: () => Promise<{ head: string; body: string; width: number }>,
+  render: () => Promise<{ head: string; body: string; width: number; reflows: boolean }>,
 ): Promise<DocumentSnapshot> => {
   try {
-    const { head, body, width } = await render()
+    const { head, body, width, reflows } = await render()
     const html =
       `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="${snapshotPolicy}">` +
       `${head}</head><body>${body}</body></html>`
-    return { kind: 'pages', html, width }
+    return { kind: 'pages', html, width, reflows }
   } catch (error) {
     if (error instanceof PastLimitsError || error instanceof ZipLimitError) {
       return { kind: 'tooLarge' }

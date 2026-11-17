@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useViewSize } from '@/hooks/use-view-size'
 import { useRef } from 'react'
 import type { DocumentSnapshot } from './snapshot'
@@ -12,13 +13,16 @@ type SnapshotPagesProps = {
 }
 
 /**
- * A document's pages or a deck's slides in a frame with `sandbox=""`. Pages wider than the panel, as on a phone,
- * scale down to its width: the frame keeps the pages' own width and is drawn smaller, and it scrolls the pages itself.
+ * A document's pages or a deck's slides in a frame with `sandbox=""`, which scrolls them itself. Pages wider than the
+ * panel scale down to its width: the frame keeps the pages' own width and is drawn smaller. On a phone, pages that
+ * reflow take the panel's width instead, so their text stays readable.
  */
 export const SnapshotPages = ({ title, snapshot }: SnapshotPagesProps) => {
   const ref = useRef<HTMLDivElement>(null)
   const view = useViewSize(ref)
-  const scale = view.width > 0 && view.width < snapshot.width ? view.width / snapshot.width : 1
+  const { isMobile } = useIsMobile()
+  const scales = view.width > 0 && view.width < snapshot.width && !(isMobile && snapshot.reflows)
+  const scale = scales ? view.width / snapshot.width : 1
   const size =
     scale < 1
       ? { width: snapshot.width, height: view.height / scale, transform: `scale(${scale})` }

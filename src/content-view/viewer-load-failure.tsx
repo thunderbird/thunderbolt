@@ -32,7 +32,7 @@ const LoadFailure = ({ fileName, state, onRetry }: LoadFailureProps) => (
           </Button>
         }
       >
-        <Trans>Check your connection and try again, or download the file.</Trans>
+        <Trans>Try again, or download the file.</Trans>
       </PreviewNotice>
     )}
   </DocumentPreviewFrame>

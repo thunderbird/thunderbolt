@@ -81,7 +81,7 @@ describe('LocalViewerLoadFailure', () => {
     await flush()
 
     expect(screen.getByText("The preview couldn't load")).toBeInTheDocument()
-    expect(screen.getByText('Check your connection and try again, or download the file.')).toBeInTheDocument()
+    expect(screen.getByText('Try again, or download the file.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Download' })).toBeEnabled()
     expect(getAttachment).toHaveBeenCalledWith('file-a')
   })

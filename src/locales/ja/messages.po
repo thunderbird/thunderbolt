@@ -985,10 +985,6 @@ msgstr "接続を確認してファイルを開き直すか、ファイルをダ
 msgid "Check your connection and open the file again, or download it to open it in a word processor."
 msgstr "接続を確認してファイルを開き直すか、ファイルをダウンロードして文書作成アプリで開いてください。"
 
-#: src/content-view/viewer-load-failure.tsx
-msgid "Check your connection and try again, or download the file."
-msgstr "接続を確認してもう一度お試しいただくか、ファイルをダウンロードしてください。"
-
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/waitlist/waitlist-content.tsx
 msgid "Check your email"
@@ -6692,6 +6688,10 @@ msgstr "信頼済みのデバイス"
 #: src/webview-recovery/index.ts
 msgid "Try again"
 msgstr "再試行"
+
+#: src/content-view/viewer-load-failure.tsx
+msgid "Try again, or download the file."
+msgstr "もう一度お試しいただくか、ファイルをダウンロードしてください。"
 
 #: src/webview-recovery/index.ts
 msgid "Try again, or install available system updates and reopen Thunderbolt if the problem continues."

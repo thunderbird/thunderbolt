@@ -1003,10 +1003,6 @@ msgstr "Check your connection and open the file again, or download it to open it
 msgid "Check your connection and open the file again, or download it to open it in a word processor."
 msgstr "Check your connection and open the file again, or download it to open it in a word processor."
 
-#: src/content-view/viewer-load-failure.tsx
-msgid "Check your connection and try again, or download the file."
-msgstr "Check your connection and try again, or download the file."
-
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/waitlist/waitlist-content.tsx
 msgid "Check your email"
@@ -6710,6 +6706,10 @@ msgstr "Trusted devices"
 #: src/webview-recovery/index.ts
 msgid "Try again"
 msgstr "Try again"
+
+#: src/content-view/viewer-load-failure.tsx
+msgid "Try again, or download the file."
+msgstr "Try again, or download the file."
 
 #: src/webview-recovery/index.ts
 msgid "Try again, or install available system updates and reopen Thunderbolt if the problem continues."

@@ -1003,10 +1003,6 @@ msgstr ""
 msgid "Check your connection and open the file again, or download it to open it in a word processor."
 msgstr ""
 
-#: src/content-view/viewer-load-failure.tsx
-msgid "Check your connection and try again, or download the file."
-msgstr ""
-
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/waitlist/waitlist-content.tsx
 msgid "Check your email"
@@ -6709,6 +6705,10 @@ msgstr ""
 #: src/content-view/viewer-load-failure.tsx
 #: src/webview-recovery/index.ts
 msgid "Try again"
+msgstr ""
+
+#: src/content-view/viewer-load-failure.tsx
+msgid "Try again, or download the file."
 msgstr ""
 
 #: src/webview-recovery/index.ts

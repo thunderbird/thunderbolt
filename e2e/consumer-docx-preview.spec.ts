@@ -147,6 +147,7 @@ test('when the side panel viewer does not load, the panel says so, the rest of t
   await card.focus()
   await page.keyboard.press('Enter')
   await expect(contentView(page).getByText("The preview couldn't load")).toBeVisible()
+  await expect(contentView(page).getByText('Try again, or download the file.')).toBeVisible()
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     contentView(page).getByRole('button', { name: 'Download' }).click(),

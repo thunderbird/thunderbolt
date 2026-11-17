@@ -1021,10 +1021,6 @@ msgstr "Vérifiez votre connexion et rouvrez le fichier, ou téléchargez-le pou
 msgid "Check your connection and open the file again, or download it to open it in a word processor."
 msgstr "Vérifiez votre connexion et rouvrez le fichier, ou téléchargez-le pour l'ouvrir dans un traitement de texte."
 
-#: src/content-view/viewer-load-failure.tsx
-msgid "Check your connection and try again, or download the file."
-msgstr "Vérifiez votre connexion et réessayez, ou téléchargez le fichier."
-
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/waitlist/waitlist-content.tsx
 msgid "Check your email"
@@ -6728,6 +6724,10 @@ msgstr "Appareils de confiance"
 #: src/webview-recovery/index.ts
 msgid "Try again"
 msgstr "Réessayer"
+
+#: src/content-view/viewer-load-failure.tsx
+msgid "Try again, or download the file."
+msgstr "Réessayez ou téléchargez le fichier."
 
 #: src/webview-recovery/index.ts
 msgid "Try again, or install available system updates and reopen Thunderbolt if the problem continues."

@@ -87,6 +87,18 @@ describe('reloadFailedStylesheets', () => {
 
     expect(outcomes[0]?.map((outcome) => outcome.status)).toEqual([status, status])
   })
+
+  it('fetches a stylesheet again when the copy still loading left the page', async () => {
+    addStylesheet('/assets/viewer.css', () => null)
+    void reloadFailedStylesheets()
+    stylesheetCopy().remove()
+    addStylesheet('/assets/viewer.css', () => null)
+
+    const reloaded = reloadFailedStylesheets()
+    stylesheetCopy().dispatchEvent(new Event('load'))
+
+    expect(await reloaded).toEqual([undefined])
+  })
 })
 
 describe('retryableLazy', () => {

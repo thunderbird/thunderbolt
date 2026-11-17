@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { useFormatters } from '@/i18n/use-formatters'
+import { useAppName } from '@/lib/branding-selectors'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { AdminConnectionDetail, ScimCredential } from '@shared/admin-api'
 import { CopyOnceSecret } from '../../components/copy-once-secret'
@@ -36,10 +37,11 @@ export const IssuedScimToken = ({
   return (
     <CopyOnceSecret
       label={t`SCIM token`}
+      copyLabel={t`Copy SCIM token`}
       secret={token}
       details={[
-        { label: t`SCIM base URL`, value: scimBaseUrl(cloudUrl) },
-        { label: t`Expires`, value: formatters.date(credential.expiresAt) },
+        { label: t`SCIM base URL`, copyLabel: t`Copy SCIM base URL`, value: scimBaseUrl(cloudUrl) },
+        { label: t`Expires`, copyLabel: t`Copy expiry date`, value: formatters.date(credential.expiresAt) },
       ]}
       onDone={onDone}
     />
@@ -55,6 +57,7 @@ export const ScimSection = ({
   onDirty: (dirty: boolean) => void
 }) => {
   const { t } = useLingui()
+  const appName = useAppName()
   const cloudUrl = useLocalSettingsStore((state) => state.cloudUrl)
   const scim = useScimSectionState(detail, onDirty)
   const summary = describeConnection(detail)
@@ -72,7 +75,7 @@ export const ScimSection = ({
       return (
         <>
           <p className="text-muted-foreground">
-            <Trans>With SCIM, your identity provider creates, updates and removes people in Thunderbolt.</Trans>
+            <Trans>With SCIM, your identity provider creates, updates and removes people in {appName}.</Trans>
           </p>
           {detail.sso && (
             <Alert>

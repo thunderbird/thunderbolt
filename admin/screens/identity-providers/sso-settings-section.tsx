@@ -32,16 +32,24 @@ const SetupUrls = ({ detail }: { detail: SsoConnectionDetail }) => {
   const { providerId, protocol } = detail.sso
   const urls =
     protocol === 'oidc'
-      ? [{ label: t`Redirect URI`, url: oidcRedirectUri(cloudUrl, providerId) }]
+      ? [{ label: t`Redirect URI`, copyLabel: t`Copy redirect URI`, url: oidcRedirectUri(cloudUrl, providerId) }]
       : [
-          { label: t`Assertion consumer service URL`, url: samlAcsUrl(cloudUrl, providerId) },
-          { label: t`Service provider metadata`, url: samlMetadataUrl(cloudUrl, providerId) },
+          {
+            label: t`Assertion consumer service URL`,
+            copyLabel: t`Copy assertion consumer service URL`,
+            url: samlAcsUrl(cloudUrl, providerId),
+          },
+          {
+            label: t`Service provider metadata`,
+            copyLabel: t`Copy service provider metadata URL`,
+            url: samlMetadataUrl(cloudUrl, providerId),
+          },
         ]
   return (
     <>
-      {urls.map(({ label, url }) => (
+      {urls.map(({ label, copyLabel, url }) => (
         <DetailField key={label} label={label}>
-          <CopyCommandRow command={url} label={t`Copy ${label}`} />
+          <CopyCommandRow command={url} label={copyLabel} />
         </DetailField>
       ))}
     </>
@@ -199,7 +207,6 @@ const SsoSettingsForm = ({ detail, onDirty }: { detail: SsoConnectionDetail; onD
   )
 }
 
-/** A SCIM-only connection: no rename (the API has none for it), but it can take an SSO side. */
 /** What attaching an SSO side does to the members this connection already provisions. */
 const AttachSsoWarning = () => (
   <Alert>
@@ -212,6 +219,7 @@ const AttachSsoWarning = () => (
   </Alert>
 )
 
+/** A SCIM-only connection: no rename (the API has none for it), but it can take an SSO side. */
 const AddSso = ({ detail, onDirty }: SectionProps) => {
   const [protocol, setProtocol] = useState<SsoProtocol | null>(null)
   const { retired } = describeConnection(detail)

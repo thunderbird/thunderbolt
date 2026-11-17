@@ -6,6 +6,7 @@ import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
 import type { ReactNode } from 'react'
+import { SettingsNoResults } from '@/components/settings/settings-empty-state'
 import { useFormatters } from '@/i18n/use-formatters'
 import type { AuditActorType, AuditEvent, AuditEventQuery, AuditOutcome } from '@shared/admin-api'
 import { getAuditActionLabel, getAuditTargetLabel } from '../api/audit-action-labels'
@@ -63,7 +64,7 @@ export const AuditEventList = ({ filters, renderDetails, emptyMessage }: AuditEv
     return <InlineError error={list.error} />
   }
   if (list.isEmpty) {
-    return <p className="text-muted-foreground">{emptyMessage ?? <Trans>No events.</Trans>}</p>
+    return <SettingsNoResults>{emptyMessage ?? <Trans>No events.</Trans>}</SettingsNoResults>
   }
 
   return (
@@ -88,16 +89,16 @@ export const AuditEventList = ({ filters, renderDetails, emptyMessage }: AuditEv
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-[length:var(--font-size-sm)] text-muted-foreground">
                 <span>
                   {i18n._(actorLabels[event.actorType])}
-                  {event.actorId && <code className="ml-1">{event.actorId}</code>}
+                  {event.actorId && <code className="ml-1 break-all">{event.actorId}</code>}
                 </span>
                 {event.targetType && (
                   <span>
                     <TargetType type={event.targetType} />
-                    {event.targetId && <code className="ml-1">{event.targetId}</code>}
+                    {event.targetId && <code className="ml-1 break-all">{event.targetId}</code>}
                   </span>
                 )}
                 {event.ipAddress && <span>{event.ipAddress}</span>}
-                {event.userAgent && <span className="truncate">{event.userAgent}</span>}
+                {event.userAgent && <span className="max-w-full truncate">{event.userAgent}</span>}
               </div>
               {renderDetails?.(event)}
             </li>

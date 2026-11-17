@@ -21,7 +21,14 @@ const RotateCredential = () => {
       </button>
     )
   }
-  return <CopyOnceSecret label="SCIM token" secret={rotate.data.token} onDone={() => rotate.reset()} />
+  return (
+    <CopyOnceSecret
+      label="SCIM token"
+      copyLabel="Copy SCIM token"
+      secret={rotate.data.token}
+      onDone={() => rotate.reset()}
+    />
+  )
 }
 
 describe('CopyOnceSecret', () => {
@@ -36,8 +43,15 @@ describe('CopyOnceSecret', () => {
     render(
       <CopyOnceSecret
         label="SCIM token"
+        copyLabel="Copy SCIM token"
         secret="scim-token-123"
-        details={[{ label: 'SCIM base URL', value: 'https://example.com/v1/api/auth/scim/v2' }]}
+        details={[
+          {
+            label: 'SCIM base URL',
+            copyLabel: 'Copy SCIM base URL',
+            value: 'https://example.com/v1/api/auth/scim/v2',
+          },
+        ]}
         onDone={onDone}
       />,
       { wrapper: createAdminTestHarness().wrapper },

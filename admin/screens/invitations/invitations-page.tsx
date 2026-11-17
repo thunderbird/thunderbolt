@@ -28,16 +28,26 @@ const InvitationRow = ({ invitation, onRevoke }: { invitation: Invitation; onRev
   const invitedOn = formatters.date(invitation.createdAt)
   const expiresOn = formatters.date(invitation.expiresAt)
 
+  const when = () => {
+    if (invitation.status !== 'pending') {
+      return <Trans>Invited {invitedOn}</Trans>
+    }
+    // The backend leaves an unused invitation pending past its expiry; its link no longer works.
+    return Date.parse(invitation.expiresAt) <= Date.now() ? (
+      <Trans>Expired {expiresOn}</Trans>
+    ) : (
+      <Trans>Expires {expiresOn}</Trans>
+    )
+  }
+
   return (
     <Card className="flex-row items-center gap-3 border-border px-4 py-3" aria-label={email}>
       <IconTile>
         <Mail className="size-5 text-muted-foreground" />
       </IconTile>
       <div className="min-w-0 flex-1">
-        <span className="block truncate text-base font-medium">{email}</span>
-        <span className="block truncate text-[length:var(--font-size-sm)] text-muted-foreground">
-          {invitation.status === 'pending' ? <Trans>Expires {expiresOn}</Trans> : <Trans>Invited {invitedOn}</Trans>}
-        </span>
+        <span className="block truncate text-[length:var(--font-size-body)] font-medium">{email}</span>
+        <span className="block truncate text-[length:var(--font-size-sm)] text-muted-foreground">{when()}</span>
       </div>
       {invitation.idpOverride && (
         <StatusBadge tone="warning">
@@ -80,7 +90,7 @@ export const InvitationsPage = () => {
           )
         }
       >
-        <p className="text-sm text-muted-foreground">
+        <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
           <Trans>Invite people by email. Each invitation link works once and expires after seven days.</Trans>
         </p>
         <PanelSections sections={sections} value={status} onChange={setStatus} label={t`Invitation status`} />

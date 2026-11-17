@@ -65,7 +65,7 @@ export const MembersPage = () => {
           )
         }
       >
-        <p className="text-sm text-muted-foreground">
+        <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
           <Trans>Manage who can sign in, their admin role, and the identity providers they come from.</Trans>
         </p>
         {list.isLoading && <ListSkeleton />}

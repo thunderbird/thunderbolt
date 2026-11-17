@@ -4,6 +4,10 @@
 
 import { type ComponentType, lazy, type LazyExoticComponent } from 'react'
 
+// A copy that is still loading has no rules yet. A second call waits on it, because a replaced copy never fires load
+// or error, and the first call would wait forever.
+const reloading = new Map<string, Promise<void>>()
+
 /**
  * Swaps each stylesheet that did not load for a fresh copy, which fetches it again. Vite's preload helper never adds a
  * chunk's stylesheet twice, and does not wait for it again, so without this a chunk that loads on a retry would render
@@ -24,13 +28,25 @@ export const reloadFailedStylesheets = () => {
   )
   return Promise.all(
     failed.map((link) => {
+      const { href } = link
+      const pending = reloading.get(href)
+      if (pending) {
+        return pending
+      }
       const copy = link.cloneNode()
       const loaded = new Promise<void>((resolve, reject) => {
-        copy.addEventListener('load', () => resolve(), { once: true })
-        copy.addEventListener('error', () => reject(new Error(`Stylesheet failed to load: ${link.href}`)), {
-          once: true,
-        })
+        const settle = (done: () => void) => () => {
+          reloading.delete(href)
+          done()
+        }
+        copy.addEventListener('load', settle(resolve), { once: true })
+        copy.addEventListener(
+          'error',
+          settle(() => reject(new Error(`Stylesheet failed to load: ${href}`))),
+          { once: true },
+        )
       })
+      reloading.set(href, loaded)
       link.replaceWith(copy)
       return loaded
     }),

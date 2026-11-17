@@ -71,6 +71,22 @@ describe('reloadFailedStylesheets', () => {
 
     expect(settled).toBe(true)
   })
+
+  it.each<[string, PromiseSettledResult<unknown>['status']]>([
+    ['load', 'fulfilled'],
+    ['error', 'rejected'],
+  ])('settles a second call on the copy still loading when it fires %s', async (event, status) => {
+    addStylesheet('/assets/viewer.css', () => null)
+    const outcomes: PromiseSettledResult<unknown>[][] = []
+    void Promise.allSettled([reloadFailedStylesheets(), reloadFailedStylesheets()]).then((results) =>
+      outcomes.push(results),
+    )
+
+    stylesheetCopy().dispatchEvent(new Event(event))
+    await flush()
+
+    expect(outcomes[0]?.map((outcome) => outcome.status)).toEqual([status, status])
+  })
 })
 
 describe('retryableLazy', () => {

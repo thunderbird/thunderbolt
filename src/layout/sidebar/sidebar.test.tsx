@@ -24,12 +24,18 @@ import { v7 as uuidv7 } from 'uuid'
 import Sidebar from './index'
 import type { ReactNode } from 'react'
 
+const adminSession = { user: { id: 'admin-1', email: 'admin@example.com', roles: ['member', 'admin'] } }
+
 const createSidebarWrapper =
-  ({ path = '/chats/new', defaultOpen = true } = {}) =>
+  ({
+    path = '/chats/new',
+    defaultOpen = true,
+    session = null,
+  }: { path?: string; defaultOpen?: boolean; session?: typeof adminSession | null } = {}) =>
   ({ children }: { children: ReactNode }) => (
     <DatabaseProvider db={getDb()}>
       <HttpClientProvider httpClient={createMockHttpClient([])}>
-        <AuthProvider authClient={createMockAuthClient()}>
+        <AuthProvider authClient={createMockAuthClient({ session })}>
           <SignInModalProvider>
             <MemoryRouter initialEntries={[path]}>
               <SidebarProvider defaultOpen={defaultOpen}>
@@ -221,6 +227,31 @@ describe('Sidebar reactivity', () => {
       act(() => useConfigStore.getState().updateConfig({ minimalMode: false }))
 
       expect(screen.getByLabelText('Settings')).toBeInTheDocument()
+    })
+
+    it('offers Admin to admins only', () => {
+      useConfigStore.setState({ config: { minimalMode: false }, configLoaded: true })
+      renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
+      expect(screen.queryByLabelText('Admin')).not.toBeInTheDocument()
+
+      cleanup()
+      renderWithReactivity(<Sidebar />, {
+        tables: ['chat_threads'],
+        wrapper: createSidebarWrapper({ session: adminSession }),
+      })
+      expect(screen.getByLabelText('Admin')).toBeInTheDocument()
+    })
+
+    it('keeps Admin, without Settings, for admins in minimal mode', async () => {
+      useConfigStore.setState(minimalConfig)
+      renderWithReactivity(<Sidebar />, {
+        tables: ['chat_threads'],
+        wrapper: createSidebarWrapper({ path: '/admin/members', session: adminSession }),
+      })
+
+      expect(await waitForElement(() => screen.queryByRole('button', { name: 'Audit log' }))).toBeInTheDocument()
+      expect(screen.getByLabelText('Admin')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Settings')).not.toBeInTheDocument()
     })
 
     it('shows no section toggle until the config has loaded', () => {

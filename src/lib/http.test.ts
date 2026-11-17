@@ -121,6 +121,15 @@ describe('createClient', () => {
     expect(await outcome).toBe('TimeoutError')
   })
 
+  it.each(['PUT', 'PATCH'] as const)('makes %s requests with JSON body', async (method) => {
+    const fetch = mockFetch()
+    const client = createClient({ fetch })
+    await client[method === 'PUT' ? 'put' : 'patch']('https://example.com/api', { json: { name: 'test' } })
+    const req = fetch.mock.calls[0][0] as Request
+    expect(req.method).toBe(method)
+    expect(await req.json()).toEqual({ name: 'test' })
+  })
+
   it('appends search params', async () => {
     const fetch = mockFetch()
     const client = createClient({ fetch })

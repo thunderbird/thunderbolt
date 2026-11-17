@@ -5,10 +5,18 @@
 import { useState } from 'react'
 import type { SidebarSection } from './types'
 
+/** The sidebar section a route belongs to: `/admin/*`, `/settings/*`, or chats for everything else. */
+const sectionForPath = (pathname: string): SidebarSection => {
+  if (pathname === '/admin' || pathname.startsWith('/admin/')) {
+    return 'admin'
+  }
+  return pathname.startsWith('/settings') ? 'settings' : 'chats'
+}
+
 /**
- * Resolves which sidebar section (Chats vs Settings) is visible.
+ * Resolves which sidebar section (Chats, Settings or Admin) is visible.
  *
- * Normally derived from the route (`/settings/*` → settings). The nav toggle
+ * Normally derived from the route (`/settings/*` → settings, `/admin/*` → admin). The nav toggle
  * can override this without navigating — the current page stays until the
  * user picks an entry from the new sidebar. The override is keyed to the
  * pathname it was set on, so any navigation invalidates it and the section
@@ -17,7 +25,7 @@ import type { SidebarSection } from './types'
 export const useSidebarSection = (pathname: string) => {
   const [override, setOverride] = useState<{ section: SidebarSection; pathname: string } | null>(null)
 
-  const routeSection: SidebarSection = pathname.startsWith('/settings') ? 'settings' : 'chats'
+  const routeSection = sectionForPath(pathname)
   const activeSection = override?.pathname === pathname ? override.section : routeSection
 
   const setActiveSection = (section: SidebarSection) => {

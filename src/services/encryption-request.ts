@@ -65,6 +65,8 @@ export const createEncryptionOperationClient = (
     get: scoped(client.get),
     head: scoped(client.head),
     post: scoped(client.post),
+    put: scoped(client.put),
+    patch: scoped(client.patch),
     delete: scoped(client.delete),
   }
 }

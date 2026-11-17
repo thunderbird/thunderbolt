@@ -3,11 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { expect, type Browser, type Page, type ViewportSize } from '@playwright/test'
-import type { AdminConnectionDetail, Page as ApiPage, AdminMember } from '../shared/admin-api'
+import type { Page as ApiPage, AdminMember } from '../shared/admin-api'
 import {
   adminAppUrl,
   adminIdpUrls,
   adminTest as test,
+  retireConnection,
   routeIdpIdentity,
   uniqueEmail,
   uniqueName,
@@ -16,23 +17,6 @@ import {
 import { adminSpareIdpSecretPrefix } from './admin/mock-idp'
 
 const seeded: string[] = []
-
-/** Retire what a test created, SCIM side first, so the shared org keeps only live connections. */
-const retireConnection = async (adminApi: AdminApiRequest, connectionId: string) => {
-  const detail = await adminApi.request<AdminConnectionDetail>('GET', `admin/connections/${connectionId}`)
-  if (detail.status === 'active' && detail.scim) {
-    await adminApi.request('POST', `admin/connections/${connectionId}/scim/retire`)
-  }
-  if (!detail.sso || detail.status === 'retired') {
-    return
-  }
-  await expect
-    .poll(
-      async () => (await adminApi.request<AdminConnectionDetail>('GET', `admin/connections/${connectionId}`)).status,
-    )
-    .not.toBe('scim_retiring')
-  await adminApi.request('POST', `admin/connections/${connectionId}/retire`)
-}
 
 test.afterEach(async ({ adminApi }) => {
   for (const connectionId of seeded.splice(0)) {

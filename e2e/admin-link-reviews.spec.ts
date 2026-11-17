@@ -9,6 +9,7 @@ import {
   adminAppUrl,
   type AdminApiRequest,
   adminTest as test,
+  retireConnection,
   routeIdpIdentity,
   uniqueEmail,
   uniqueName,
@@ -92,7 +93,7 @@ test.beforeEach(async ({ adminApi }) => {
 
 test.afterEach(async ({ adminApi }) => {
   for (const connection of connections) {
-    await adminApi.request('POST', `admin/connections/${connection.id}/retire`)
+    await retireConnection(adminApi, connection.id)
   }
 })
 

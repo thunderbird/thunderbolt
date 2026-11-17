@@ -8,9 +8,9 @@ import {
   adminApiBaseUrl,
   adminIdpUrls,
   adminTest as test,
+  retireConnection,
   uniqueEmail,
   uniqueName,
-  type AdminApiRequest,
 } from './admin/helpers'
 import { adminSpareIdpSecretPrefix } from './admin/mock-idp'
 
@@ -29,20 +29,6 @@ const listUsersStatus = async (request: APIRequestContext, token: string) =>
   (await scim(request, token, 'GET', '/Users?count=1')).status()
 
 const seeded: string[] = []
-
-/** Retire what a test created, SCIM side first, so the shared org keeps only live connections. */
-const retireConnection = async (adminApi: AdminApiRequest, connectionId: string) => {
-  const read = () => adminApi.request<AdminConnectionDetail>('GET', `admin/connections/${connectionId}`)
-  const detail = await read()
-  if (detail.status === 'active' && detail.scim) {
-    await adminApi.request('POST', `admin/connections/${connectionId}/scim/retire`)
-  }
-  if (!detail.sso || detail.status === 'retired') {
-    return
-  }
-  await expect.poll(async () => (await read()).status).not.toBe('scim_retiring')
-  await adminApi.request('POST', `admin/connections/${connectionId}/retire`)
-}
 
 test.afterEach(async ({ adminApi }) => {
   for (const connectionId of seeded.splice(0)) {

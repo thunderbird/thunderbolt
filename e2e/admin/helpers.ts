@@ -30,7 +30,7 @@ import { openSidebarOnMobile } from '../helpers'
 import { adminSpareIdpSecretPrefix, encodeLoginHint, type IdpIdentity } from './mock-idp'
 
 // Matches testSignInOtp in backend/src/auth/otp-constants.ts (NODE_ENV=test only).
-const e2eSignInCode = '12345678'
+export const e2eSignInCode = '12345678'
 
 export const adminAppUrl = 'http://localhost:1427'
 export const adminBackendUrl = 'http://localhost:8008'
@@ -64,7 +64,7 @@ const readStoredToken = (storageState: StorageState) => {
 }
 
 /** The backend refuses a second code for one address within 15 s; past that, it answers again. */
-const otpCooldownMs = 15_250
+export const otpCooldownMs = 15_250
 
 /**
  * Sign in by email code on the SSO deployment's fallback page, then wait for the chat UI. When the
@@ -86,18 +86,27 @@ export const signInByEmailCode = async (page: Page, email: string) => {
   await expect(page.locator('textarea')).toBeVisible({ timeout: 30_000 })
 }
 
-/** Sign an address in over HTTP, without a browser. */
-const signInByApi = async (request: APIRequestContext, email: string): Promise<SeededMember> => {
+/**
+ * Ask for an email code for `email` and sign in with it, over HTTP. Answers the sign-in response, or the
+ * code request's when the backend refused to send one (a 429 within `otpCooldownMs`). It never retries.
+ */
+export const requestEmailCodeSignIn = async (request: APIRequestContext, email: string) => {
   const headers = { Origin: adminAppUrl }
-  const join = await request.post(`${adminBackendUrl}/v1/waitlist/join`, { data: { email }, headers })
-  expect(join.ok()).toBe(true)
+  const join = await request.post(`${adminApiBaseUrl}/waitlist/join`, { data: { email }, headers })
+  if (!join.ok()) {
+    return join
+  }
   const { challengeToken } = (await join.json()) as { challengeToken?: string }
-  expect(challengeToken).toBeTruthy()
-  const signIn = await request.post(`${adminBackendUrl}/v1/api/auth/sign-in/email-otp`, {
+  return request.post(`${adminApiBaseUrl}/api/auth/sign-in/email-otp`, {
     data: { email, otp: e2eSignInCode },
     headers: { ...headers, 'x-challenge-token': challengeToken ?? '' },
   })
-  expect(signIn.ok()).toBe(true)
+}
+
+/** Sign an address in over HTTP, without a browser. */
+const signInByApi = async (request: APIRequestContext, email: string): Promise<SeededMember> => {
+  const signIn = await requestEmailCodeSignIn(request, email)
+  expect(signIn.ok(), `${new URL(signIn.url()).pathname} answered ${signIn.status()}`).toBe(true)
   const token = signIn.headers()['set-auth-token']
   const { user } = (await signIn.json()) as { user: { id: string } }
   return { userId: user.id, email, token }
@@ -158,6 +167,26 @@ export const createAdminApiRequest = (request: APIRequestContext, token: string)
 }
 
 export type AdminApiRequest = ReturnType<typeof createAdminApiRequest>
+
+/** Retire a connection a test created, SCIM side first, so the shared org keeps only live connections. */
+export const retireConnection = async (adminApi: AdminApiRequest, connectionId: string) => {
+  const read = () => adminApi.request<AdminConnectionDetail>('GET', `admin/connections/${connectionId}`)
+  const detail = await read()
+  if (detail.status === 'active' && detail.scim) {
+    await adminApi.request('POST', `admin/connections/${connectionId}/scim/retire`)
+  }
+  if (!detail.sso || detail.status === 'retired') {
+    return
+  }
+  await expect.poll(async () => (await read()).status).not.toBe('scim_retiring')
+  await adminApi.request('POST', `admin/connections/${connectionId}/retire`)
+}
+
+/** The status a member's token gets from an admin route: 200 while they're an admin, 403 once they aren't. */
+export const adminRouteStatus = async (request: APIRequestContext, token: string) =>
+  (
+    await request.get(`${adminApiBaseUrl}/admin/members?limit=1`, { headers: { Authorization: `Bearer ${token}` } })
+  ).status()
 
 /** The admin backend's stdout, as `playwright.config.ts` tees it. */
 const adminBackendLog = new URL('./backend.log', import.meta.url)

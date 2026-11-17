@@ -6,7 +6,7 @@ import type { QueryableDatabase } from '@/db/client'
 import { identityConnection, invitation, orgDomain } from '@/db/schema'
 import { and, asc, desc, eq, gt, ilike, lte } from 'drizzle-orm'
 import { getCurrentOrganizationId } from '../current-organization'
-import { verificationRecordName, verificationRecordValue } from '../domains'
+import { type DomainCheckError, verificationRecordName, verificationRecordValue } from '../domains'
 import { escapeLike } from './members'
 import { beforeTimestampCursor, exactTimestamp, type Page, toPage } from './pagination'
 
@@ -79,7 +79,7 @@ export type DomainView = {
   domain: string
   verifiedAt: Date | null
   lastCheckedAt: Date | null
-  lastCheckError: string | null
+  lastCheckError: DomainCheckError | null
   enrollmentEnabled: boolean
   claimedBy: { id: string; name: string } | null
   /** The TXT record that verifies the domain. */

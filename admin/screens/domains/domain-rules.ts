@@ -25,7 +25,10 @@ export const getEnrollmentLock = (domain: OrgDomain): 'unverified' | 'claimed' |
   return domain.claimedBy ? 'claimed' : null
 }
 
-/** The reason for a failed verification check, or null for a code this client doesn't know. */
+/**
+ * The reason for a failed verification check, or null for a code this build doesn't know: an older app
+ * can get a code a newer backend added.
+ */
 export const getDomainCheckErrorMessage = (code: string): MessageDescriptor | null =>
   Object.hasOwn(domainCheckErrorMessages, code) ? domainCheckErrorMessages[code as DomainCheckError] : null
 

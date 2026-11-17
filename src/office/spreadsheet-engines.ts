@@ -4,6 +4,7 @@
 
 import initIronCalc, { Model } from '@ironcalc/wasm'
 import { type Excelize, loadExcelize } from './excelize-engine'
+import { explainTypeErrors } from './excelize-type-errors'
 
 /** Excelize opens and saves workbooks; IronCalc computes their formulas. Both run outside the sandbox VM. */
 export type SpreadsheetEngines = {
@@ -13,11 +14,15 @@ export type SpreadsheetEngines = {
   ironcalc: typeof Model
 }
 
-/** Start Excelize and IronCalc from their WebAssembly files. The spreadsheet preview loads Excelize alone. */
+/**
+ * Start Excelize and IronCalc from their WebAssembly files, with Excelize's type errors made specific for the script
+ * (see `explainTypeErrors`). The spreadsheet preview loads Excelize alone.
+ */
 export const loadSpreadsheetEngines = async (
   excelizeWasm: Uint8Array<ArrayBuffer>,
   ironcalcWasm: BufferSource,
 ): Promise<SpreadsheetEngines> => {
   await initIronCalc({ module_or_path: ironcalcWasm })
-  return { ...(await loadExcelize(excelizeWasm)), ironcalc: Model }
+  const { excelize, excelizeMemory } = await loadExcelize(excelizeWasm)
+  return { excelize: explainTypeErrors(excelize), excelizeMemory, ironcalc: Model }
 }

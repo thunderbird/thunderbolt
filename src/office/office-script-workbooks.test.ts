@@ -178,7 +178,7 @@ saveFile('partly.xlsx', f.WriteToBuffer().buffer)
 `)
     expect(output.ok).toBe(true)
     expect(output.ok && output.formulaErrors).toEqual([
-      { file: 'partly.xlsx', sheet: 'Sheet1', cell: 'B1', formula: 'AGGREGATE(9,6,A1:A2)', error: '#NAME?' },
+      { file: 'partly.xlsx', sheet: 'Sheet1', cell: 'B1', formula: '_xlfn.AGGREGATE(9,6,A1:A2)', error: '#NAME?' },
     ])
     const [{ data }] = await rowsOf(attachmentStore.get(output.ok ? output.files[0].id : '')!)
     expect(data[1][1]).toBe(10)
@@ -234,6 +234,22 @@ f.SetCellFormula('Sheet1', 'A1', '=SUM(1,2)')
 saveFile('equals.xlsx', f.WriteToBuffer().buffer)
 `)
     expect(textOf(await partsOf(file), 'xl/worksheets/sheet1.xml')).toContain('<c r="A1"><f>SUM(1,2)</f><v>3</v></c>')
+  })
+
+  it('stores the functions Excel added after 2007 with the prefix Excel needs, and still computes them', async () => {
+    const { file } = await runOk(`
+const f = excelize.NewFile()
+f.SetCellFormula('Sheet1', 'A1', 'concat("a","AGGREGATE(1)")&IFS(TRUE,"b")')
+f.SetCellFormula('Sheet1', 'A2', '_xlfn.CONCAT("c",SUM(1,2))')
+f.SetCellFormula('Sheet1', 'A3', 'ROWS(FILTER(B1:B2,B1:B2=0))')
+saveFile('future.xlsx', f.WriteToBuffer().buffer)
+`)
+    const sheet = textOf(await partsOf(file), 'xl/worksheets/sheet1.xml')
+    expect(sheet).toContain(
+      '<f>_xlfn.CONCAT(&#34;a&#34;,&#34;AGGREGATE(1)&#34;)&amp;_xlfn.IFS(TRUE,&#34;b&#34;)</f><v>aAGGREGATE(1)b</v>',
+    )
+    expect(sheet).toContain('<f>_xlfn.CONCAT(&#34;c&#34;,SUM(1,2))</f><v>c3</v>')
+    expect(sheet).toContain('<f>ROWS(_xlfn._xlws.FILTER(B1:B2,B1:B2=0))</f>')
   })
 
   it('escapes control characters in a text result, so the sheet stays valid XML', async () => {
@@ -381,24 +397,81 @@ saveFile('locked.xlsx', f.WriteToBuffer().buffer)
     )
   })
 
-  it('saves a workbook with macros only as .xlsm', async () => {
+  it('never adds macros to a workbook', async () => {
     storeAttachment('SimpleMacro.xlsm', await fixture('SimpleMacro.xlsm'))
-    const addMacros = (name: string) => `
+    const addMacros = `
 const vba = fflate.unzipSync(readFile('SimpleMacro.xlsm'))['xl/vbaProject.bin']
 const f = excelize.NewFile()
 f.AddVBAProject(vba)
-saveFile(${JSON.stringify(name)}, f.WriteToBuffer().buffer)
+saveFile('macros.xlsm', f.WriteToBuffer().buffer)
 `
-    const { file } = await runOk(addMacros('macros.xlsm'), ['SimpleMacro.xlsm'])
-    expect(textOf(await partsOf(file), '[Content_Types].xml')).toContain('macroEnabled.main+xml')
-    expect(await errorOf(addMacros('macros.xlsx'), ['SimpleMacro.xlsm'])).toBe(
-      '"macros.xlsx" holds macros, and Excel opens a workbook with macros only as .xlsm. Save it as .xlsm, then call the tool again.',
+    expect(await errorOf(addMacros, ['SimpleMacro.xlsm'])).toContain(
+      'TypeError: This tool does not add macros to a workbook.',
     )
-    expect(
-      await errorOf(`saveFile('plain.xlsm', excelize.NewFile().WriteToBuffer().buffer)`, ['SimpleMacro.xlsm']),
-    ).toBe(
+    expect(await errorOf(`saveFile('plain.xlsm', excelize.NewFile().WriteToBuffer().buffer)`)).toBe(
       '"plain.xlsm" has no macros, and Excel opens an .xlsm file only when it has them. Save it as .xlsx, then call the tool again.',
     )
+  })
+
+  it('saves a .xlsx that holds a macro project as .xlsx, and refuses to turn it into a .xlsm', async () => {
+    const parts = unzipSync(await fixture('SimpleMacro.xlsm'))
+    const types = textOf(parts, '[Content_Types].xml').replace(
+      'application/vnd.ms-excel.sheet.macroEnabled.main+xml',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml',
+    )
+    storeAttachment('budget.xlsx', zipSync({ ...parts, '[Content_Types].xml': strToU8(types) }))
+    const edit = (name: string) => `
+const f = excelize.OpenReader(readFile('budget.xlsx'))
+f.SetCellValue(f.GetSheetList().list[0], 'B2', 1200)
+saveFile(${JSON.stringify(name)}, f.WriteToBuffer().buffer)
+`
+    const { output, file } = await runOk(edit('budget.xlsx'), ['budget.xlsx'])
+    expect(output.files[0]).toMatchObject({ filename: 'budget.xlsx', mimeType: xlsxMime, edited: true })
+    expect(textOf(await partsOf(file), '[Content_Types].xml')).not.toContain('macroEnabled')
+
+    expect(await errorOf(edit('budget.xlsm'), ['budget.xlsx'])).toBe(
+      '"budget.xlsm" has no macros, and Excel opens an .xlsm file only when it has them. Save it as .xlsx, then call the tool again.',
+    )
+  })
+
+  it('refuses a .xlsm unless the run read one, even when the script marks it as having macros', async () => {
+    const marked = `
+const parts = fflate.unzipSync(excelize.NewFile().WriteToBuffer().buffer)
+parts['xl/vbaProject.bin'] = new Uint8Array(16)
+const types = fflate.strFromU8(parts['[Content_Types].xml'])
+parts['[Content_Types].xml'] = fflate.strToU8(types.replace('sheet.main+xml', 'sheet.macroEnabled.main+xml'))
+saveFile('tool.xlsm', fflate.zipSync(parts))
+`
+    expect(await errorOf(marked)).toBe(
+      '"tool.xlsm" would be a workbook with macros, but this run read none. This tool keeps the macros of a workbook that has them and never adds any, so save it as .xlsx.',
+    )
+  })
+
+  it('refuses macros the script added to or changed in a .xlsm it read', async () => {
+    const withoutMacros = unzipSync(await fixture('SimpleMacro.xlsm'))
+    delete withoutMacros['xl/vbaProject.bin']
+    storeAttachment('plain.xlsm', zipSync(withoutMacros))
+    storeAttachment('SimpleMacro.xlsm', await fixture('SimpleMacro.xlsm'))
+    const save = (input: string, macros: string) => `
+const parts = fflate.unzipSync(readFile('${input}'))
+parts['xl/vbaProject.bin'] = ${macros}
+saveFile('${input}', fflate.zipSync(parts))
+`
+    for (const [input, macros] of [
+      ['plain.xlsm', 'new Uint8Array(16)'],
+      ['SimpleMacro.xlsm', `parts['xl/vbaProject.bin'].slice().reverse()`],
+    ]) {
+      expect(await errorOf(save(input, macros), [input])).toStartWith(
+        `"${input}" was not saved: the script added or changed the macros in xl/vbaProject.bin.`,
+      )
+    }
+  })
+
+  it('refuses a workbook marked as having macros under a .xlsx name, without asking for .xlsm', async () => {
+    storeAttachment('SimpleMacro.xlsm', await fixture('SimpleMacro.xlsm'))
+    const error = await errorOf(`saveFile('copy.xlsx', readFile('SimpleMacro.xlsm'))`, ['SimpleMacro.xlsm'])
+    expect(error).toStartWith('"copy.xlsx" is marked as a workbook with macros, which Excel does not open as .xlsx.')
+    expect(error).not.toContain('as .xlsm')
   })
 
   it('edits an attached workbook, keeping its styles, charts, conditional formats and app name', async () => {
@@ -543,7 +616,7 @@ saveFile('empty.xlsx', f.WriteToBuffer().buffer)
         'A workbook has no method constructor.',
         'excelize.init is not a function.',
         'Workbook calls take strings, numbers, booleans, arrays, objects and Uint8Array bytes.',
-        'SetCellValue: invalid argument data type',
+        'SetCellValue: invalid argument data type: argument 3 is null, where Excelize takes a string or a number or a boolean',
         'undefined undefined function function',
         '',
       ].join('\n'),

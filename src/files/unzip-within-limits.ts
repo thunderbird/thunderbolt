@@ -120,6 +120,26 @@ const readParts = (zip: Uint8Array, limits: UnzipLimits, keep: (name: string) =>
 }
 
 /**
+ * Each part's CRC-32 and unpacked size, by name, read from the zip's central directory without inflating anything.
+ * Two zips with the same entries hold the same parts, however each was compressed. A damaged zip throws.
+ */
+export const partChecksums = (zip: Uint8Array): Map<string, string> => {
+  const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength)
+  const end = findEnd(view)
+  const sums = new Map<string, string>()
+  for (let index = 0, at = view.getUint32(end + 16, true); index < view.getUint16(end + 10, true); index++) {
+    if (view.getUint32(at, true) !== signatures.central) {
+      throw new Error('The zip directory is damaged')
+    }
+    const nameLength = view.getUint16(at + 28, true)
+    const name = strFromU8(zip.subarray(at + 46, at + 46 + nameLength))
+    sums.set(name, `${view.getUint32(at + 16, true)}:${view.getUint32(at + 24, true)}`)
+    at += 46 + nameLength + view.getUint16(at + 30, true) + view.getUint16(at + 32, true)
+  }
+  return sums
+}
+
+/**
  * The parts `keep` selects, by name, read through the zip's central directory as unzip tools and JSZip read it.
  * `fflate.unzipSync` sizes a part's buffer by what the zip declares, then inflates the whole part and drops what does
  * not fit, so a file can declare tiny parts and inflate a thousand times its size, at about twelve seconds of the

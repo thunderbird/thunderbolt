@@ -14,6 +14,10 @@ export const sandboxLimits = {
   memoryBytes: 64 * 1024 * 1024,
   textOutputBytes: 4 * 1024 * 1024,
   maxFiles: 20,
+  /** Largest unzipped size of a saved file, so a small file cannot unpack into gigabytes in the program that opens it. */
+  unzipBytes: 128 * 1024 * 1024,
+  /** Most space the files this tool makes in one chat may take in the attachment store, about four runs' worth. */
+  threadFileBytes: 256 * 1024 * 1024,
   /** Largest workbook Excelize opens. It holds about 1.2 KB per cell, outside the VM's memory. */
   maxWorkbookBytes: 2 * 1024 * 1024,
   /** Largest unzipped size of a workbook Excelize opens, so a small zip cannot unpack into gigabytes. */

@@ -98,6 +98,82 @@ const relationshipsOf = (parts: WorkbookParts, part: string) => {
   }))
 }
 
+/** Functions added to Excel after 2007, which a file stores as `_xlfn.NAME` or Excel shows #NAME?. */
+const futureFunctions = new Set(
+  `ACOT ACOTH AGGREGATE ARABIC ARRAYTOTEXT BASE BETA.DIST BETA.INV BINOM.DIST BINOM.DIST.RANGE BINOM.INV BITAND
+  BITLSHIFT BITOR BITRSHIFT BITXOR BYCOL BYROW CEILING.MATH CEILING.PRECISE CHISQ.DIST CHISQ.DIST.RT CHISQ.INV
+  CHISQ.INV.RT CHISQ.TEST CHOOSECOLS CHOOSEROWS COMBINA CONCAT CONFIDENCE.NORM CONFIDENCE.T COT COTH COVARIANCE.P
+  COVARIANCE.S CSC CSCH DAYS DECIMAL DROP ECMA.CEILING ENCODEURL ERF.PRECISE ERFC.PRECISE EXPAND EXPON.DIST F.DIST
+  F.DIST.RT F.INV F.INV.RT F.TEST FILTERXML FLOOR.MATH FLOOR.PRECISE FORECAST.ETS FORECAST.ETS.CONFINT
+  FORECAST.ETS.SEASONALITY FORECAST.ETS.STAT FORECAST.LINEAR FORMULATEXT GAMMA GAMMA.DIST GAMMA.INV GAMMALN.PRECISE
+  GAUSS HSTACK HYPGEOM.DIST IFNA IFS IMCOSH IMCOT IMCSC IMCSCH IMSEC IMSECH IMSINH IMTAN ISFORMULA ISO.CEILING
+  ISOMITTED ISOWEEKNUM LAMBDA LET LOGNORM.DIST LOGNORM.INV MAKEARRAY MAP MAXIFS MINIFS MODE.MULT MODE.SNGL MUNIT
+  NEGBINOM.DIST NETWORKDAYS.INTL NORM.DIST NORM.INV NORM.S.DIST NORM.S.INV NUMBERVALUE PDURATION PERCENTILE.EXC
+  PERCENTILE.INC PERCENTRANK.EXC PERCENTRANK.INC PERMUTATIONA PHI POISSON.DIST QUARTILE.EXC QUARTILE.INC RANDARRAY
+  RANK.AVG RANK.EQ REDUCE REGEXEXTRACT REGEXREPLACE REGEXTEST RRI SCAN SEC SECH SEQUENCE SHEET SHEETS SKEW.P SORTBY
+  STDEV.P STDEV.S SWITCH T.DIST T.DIST.2T T.DIST.RT T.INV T.INV.2T T.TEST TAKE TEXTAFTER TEXTBEFORE TEXTJOIN
+  TEXTSPLIT TOCOL TOROW UNICHAR UNICODE UNIQUE VALUETOTEXT VAR.P VAR.S VSTACK WEBSERVICE WEIBULL.DIST WORKDAY.INTL
+  WRAPCOLS WRAPROWS XLOOKUP XMATCH XOR Z.TEST`.split(/\s+/),
+)
+
+/** Worksheet functions that carry a second prefix. */
+const worksheetFunctions = new Set(['FILTER', 'SORT'])
+
+/**
+ * A formula's tokens: text in double quotes, a quoted sheet name, a bracketed table or workbook reference, an array
+ * constant, a name (with the character after it when that is `(` or a `,`), or a parenthesis or comma.
+ */
+const formulaToken =
+  /"(?:[^"]|"")*"|'(?:[^']|'')*'|\[(?:[^[\]']|'.|\[(?:[^\]']|'.)*\])*\]|\{(?:"(?:[^"]|"")*"|[^}"])*\}|(?<![\w.$])([A-Za-z_][\w.]*)(?=(\(|\s*,)?)|[(),]/g
+
+/**
+ * A formula with each function added after Excel 2007 written as the file format stores it, such as
+ * `_xlfn.AGGREGATE(...)`, and the names a `LET` or `LAMBDA` declares written `_xlpm.name` wherever they are used.
+ * Text in quotes, sheet names, bracketed references and names already prefixed are left as they are.
+ */
+export const withFuturePrefixes = (formula: string) => {
+  // One frame per open parenthesis: the function it calls, which argument the scan is in, and the declared names in scope.
+  const frames = [{ call: '', argument: 0, names: new Set<string>() }]
+  let call = ''
+  return formula.replace(formulaToken, (token: string, name?: string, next?: string) => {
+    const frame = frames[frames.length - 1]
+    const opening = call
+    call = ''
+    if (token === '(') {
+      frames.push({ call: opening, argument: 0, names: new Set(frame.names) })
+      return token
+    }
+    if (token === ',') {
+      frame.argument++
+      return token
+    }
+    if (token === ')') {
+      frames.length = Math.max(1, frames.length - 1)
+      return token
+    }
+    if (name === undefined) {
+      return token
+    }
+    const upper = name.toUpperCase()
+    const declares =
+      next?.endsWith(',') && (frame.call === 'LAMBDA' || (frame.call === 'LET' && frame.argument % 2 === 0))
+    if (declares) {
+      frame.names.add(upper)
+    }
+    if (declares || frame.names.has(upper)) {
+      return `_xlpm.${name}`
+    }
+    if (next !== '(') {
+      return name
+    }
+    call = upper.replace(/^_XLFN\./, '')
+    if (worksheetFunctions.has(upper)) {
+      return `_xlfn._xlws.${upper}`
+    }
+    return futureFunctions.has(upper) ? `_xlfn.${upper}` : name
+  })
+}
+
 /** A column's number from its letters: `A` is 1, `AA` is 27. */
 export const columnNumber = (letters: string) =>
   [...letters.toUpperCase()].reduce((n, c) => n * 26 + c.charCodeAt(0) - 64, 0)

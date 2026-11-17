@@ -73,6 +73,10 @@ parts['word/document.xml'] = fflate.strToU8(xml.replace(${JSON.stringify(from)},
 saveFile(${JSON.stringify(saveAs)}, fflate.zipSync(parts))
 `
 
+/** A script expression for the bytes of the Word input `reference` with a comment added, so the copy is a change. */
+const editedCopy = (reference: string) =>
+  `(() => { const parts = fflate.unzipSync(readFile(${JSON.stringify(reference)})); parts['word/document.xml'] = fflate.strToU8(fflate.strFromU8(parts['word/document.xml']) + '<!-- edited -->'); return fflate.zipSync(parts) })()`
+
 // Stands in for the IndexedDB attachment store, whose Blob values don't survive fake-indexeddb under happy-dom.
 const attachmentStore = new Map<string, StoredFile>()
 const storeFiles = async (files: StoredFile[]) => {
@@ -292,14 +296,14 @@ describe.each([
         `
         const text = (name) => fflate.strFromU8(fflate.unzipSync(readFile(name))['word/document.xml'])
         console.log(text('notes.docx').includes('Newer notes'), text(${JSON.stringify(older.id)}).includes('Older notes'))
-        saveFile('summary.docx', readFile('notes.docx'))
+        saveFile('summary.docx', ${editedCopy('notes.docx')})
         `,
         ['notes.docx', older.id],
       ),
     )
 
     expect(logs).toBe('true true\n')
-    expect(files[0]).toMatchObject({ filename: 'summary.docx', edited: true })
+    expect(files[0]).toMatchObject({ filename: 'summary.docx', edited: false })
   })
 
   it('reads data the agent prepared in its workspace, and writes nothing there', async () => {
@@ -351,7 +355,7 @@ describe.each([
 
     expect(result).toEqual({
       ok: false,
-      error: `No file "data/sales.json" in this chat. The files in this chat, newest first: "brief.docx" (id ${attached.id}). Name an input by its file name or its id.`,
+      error: `No file "data/sales.json" in this chat. The files in this chat, newest first: "brief.docx" (id ${attached.id}). Name an input by its file name or its id. If the user named this file, tell them it is not here and ask which file they mean; do not edit another file in its place.`,
       logs: '',
     })
   })
@@ -533,6 +537,132 @@ describe.each([
     )
   })
 
+  it('saves an edit to an attached file whose untouched part declares windows-1252, leaving that part as it was', async () => {
+    // "Café" in windows-1252, where é is the single byte 0xE9.
+    const app = new Uint8Array([
+      ...strToU8('<?xml version="1.0" encoding="windows-1252"?><Properties><Company>Caf'),
+      0xe9,
+      ...strToU8('</Company></Properties>'),
+    ])
+    const attached = storeAttachment(
+      'legacy.docx',
+      zipSync({
+        'word/document.xml': strToU8('<w:document xmlns:w="urn:w"><w:body/></w:document>'),
+        'docProps/app.xml': app,
+      }),
+    )
+
+    const { files } = await okFiles(
+      call(
+        { listThreadFiles: async () => [attached] },
+        replaceTextScript('legacy.docx', '<w:body/>', '<w:body><w:p/></w:body>'),
+        ['legacy.docx'],
+      ),
+    )
+
+    const saved = await zipOf(stored(files[0].id))
+    expect(await saved.file('docProps/app.xml')?.async('uint8array')).toEqual(app)
+    expect(await checkErrorOf(zipWith('<?xml version="1.0" encoding="windows-1252"?><a></b>'))).toContain(
+      'its part word/document.xml is not valid XML',
+    )
+  })
+
+  it('refuses a DDE field or link, even split across runs or in a simple field', async () => {
+    const run = (text: string) => `<w:r><w:instrText xml:space="preserve">${text}</w:instrText></w:r>`
+    const mark = (type: string) => `<w:r><w:fldChar w:fldCharType="${type}"/></w:r>`
+    const field = (...codes: string[]) => `${mark('begin')}${codes.map(run).join('')}${mark('separate')}${mark('end')}`
+    const documents = [
+      `<w:document xmlns:w="urn:w"><w:body><w:p>${run(' DD')}${run('EAUTO c:\\\\windows\\\\system32\\\\cmd.exe ')}</w:p></w:body></w:document>`,
+      `<w:document xmlns:w="urn:w"><w:body><w:p>${field(' DD', 'EAUTO cmd ')}</w:p></w:body></w:document>`,
+      `<w:document xmlns:w="urn:w"><w:body><w:p>${field('PAGE')}${field('DDEAUTO cmd')}</w:p></w:body></w:document>`,
+      '<w:document xmlns:w="urn:w"><w:body><w:p><w:fldSimple w:instr="DDE &quot;calc&quot; x"/></w:p></w:body></w:document>',
+    ]
+    for (const xml of documents) {
+      expect(await checkErrorOf(zipWith(xml))).toStartWith(
+        '"a.docx" has a DDE field in word/document.xml, which can run a program when the file opens',
+      )
+    }
+    const ddeLink = zipSync({
+      '[Content_Types].xml': strToU8('<Types/>'),
+      'xl/externalLinks/externalLink1.xml': strToU8(
+        '<externalLink xmlns="urn:x"><ddeLink ddeService="cmd" ddeTopic="/c calc"/></externalLink>',
+      ),
+    })
+    expect(await checkErrorOf(ddeLink)).toStartWith('"a.docx" has a DDE field in xl/externalLinks/externalLink1.xml')
+
+    const ordinary = `<w:document xmlns:w="urn:w"><w:body><w:p>${run(' PAGE ')}${field(' HYPERLINK "https://example.com/DDE" ')}<w:fldSimple w:instr="PAGE"/></w:p></w:body></w:document>`
+    const page = storeAttachment('page.docx', zipWith(ordinary))
+    const script = `saveFile('page.docx', ${editedCopy('page.docx')})`
+    expect((await okFiles(call({ listThreadFiles: async () => [page] }, script, ['page.docx']))).files).toHaveLength(1)
+  })
+
+  it('refuses a file saved without any change, however it was zipped again', async () => {
+    const attached = storeAttachment('memo.docx', zipWith('<w:document xmlns:w="urn:w"/>'))
+    const script = `saveFile('memo.docx', fflate.zipSync(fflate.unzipSync(readFile('memo.docx')), { level: 0 }))`
+
+    const result = await call({ listThreadFiles: async () => [attached] }, script, ['memo.docx'])
+
+    expect(result).toMatchObject({
+      ok: false,
+      error:
+        '"memo.docx" is the same as a file this run read: the edit changed nothing, so it was not saved. Make the change the user asked for, or tell the user that nothing changed.',
+    })
+  })
+
+  it('refuses a remote template, an external link or an OLE object the script added, but keeps the ones the file had', async () => {
+    const relationships = (type: string, external: boolean) =>
+      `<Relationships xmlns="urn:r"><Relationship Id="r1" Type="urn:t/${type}" Target="https://example.com/x"${external ? ' TargetMode="External"' : ''}/></Relationships>`
+    const withRelationship = (type: string, external: boolean, text = '') =>
+      zipSync({
+        '[Content_Types].xml': strToU8('<Types/>'),
+        'word/document.xml': strToU8(`<w:document xmlns:w="urn:w">${text}</w:document>`),
+        'word/_rels/settings.xml.rels': strToU8(relationships(type, external)),
+      })
+    const plain = storeAttachment('plain.docx', zipWith('<w:document xmlns:w="urn:w"/>'))
+    const added = [
+      ['attachedTemplate', true, 'a template linked from outside the file'],
+      ['image', true, 'a link to content outside the file'],
+      ['oleObject', false, 'an OLE object'],
+    ] as const
+    for (const [type, external, what] of added) {
+      const bytes = withRelationship(type, external)
+      const script = `readFile('plain.docx'); saveFile('a.docx', new Uint8Array([${bytes.join(',')}]))`
+      const result = await call({ listThreadFiles: async () => [plain] }, script, ['plain.docx'])
+      expect(result.ok ? '' : result.error).toStartWith(`"a.docx" was not saved: the script added ${what}, which`)
+    }
+
+    const hyperlink = withRelationship('hyperlink', true)
+    const linked = `saveFile('a.docx', new Uint8Array([${hyperlink.join(',')}]))`
+    expect((await okFiles(call({}, linked))).files).toHaveLength(1)
+
+    const template = storeAttachment('template.docx', withRelationship('attachedTemplate', true))
+    const script = `saveFile('template.docx', ${editedCopy('template.docx')})`
+    expect(
+      (await okFiles(call({ listThreadFiles: async () => [template] }, script, ['template.docx']))).files,
+    ).toHaveLength(1)
+  })
+
+  it('refuses a part name that is not a plain path inside the zip', async () => {
+    for (const name of ['../../evil.xml', '/abs.bin', 'C:\\evil.bin', 'word/./a.bin', 'word//a.bin']) {
+      const bytes = zipSync({ '[Content_Types].xml': strToU8('<Types/>'), [name]: new Uint8Array([1]) })
+      expect(await checkErrorOf(bytes)).toStartWith(`"a.docx" has a part named ${JSON.stringify(name)}`)
+    }
+  })
+
+  it('refuses a file whose parts unzip past the limit, binary parts included, without unzipping them', async () => {
+    const bytes = zipSync({ '[Content_Types].xml': strToU8('<Types/>'), 'word/media/blob.bin': new Uint8Array(16) })
+    expect(await checkErrorOf(claimSize(bytes, sandboxLimits.unzipBytes + 1))).toBe(
+      `"a.docx" unzips to more than ${sandboxLimits.unzipBytes / mib} MiB, the most a saved file may hold. Make it smaller, for example with smaller images, then call the tool again.`,
+    )
+  })
+
+  it('refuses a binary part that unzips to more than it claims', async () => {
+    const bytes = zipSync({ '[Content_Types].xml': strToU8('<Types/>'), 'word/media/blob.bin': new Uint8Array(mib) })
+    expect(await checkErrorOf(claimSize(bytes, 16))).toStartWith(
+      '"a.docx" does not open as a zip (A part of the zip unpacks to more than it declares)',
+    )
+  })
+
   it('refuses XML parts that claim more than the check can hold, without unzipping them', async () => {
     expect(await checkErrorOf(claimSize(zipWith('<a/>'), 300 * mib))).toBe(tooLargeToCheck)
   })
@@ -552,21 +682,77 @@ describe.each([
     expect(await checkErrorOf(longStream, { timeoutMs: 300 })).toBe(checkOutOfTime(0.3))
   })
 
-  it('marks each saved file of a type the script read as edited, under any name', async () => {
-    const attached = storeAttachment(`${'a'.repeat(300)}.DOCX`, await fixture('testComment.docx'))
+  it('marks as edited only a saved file that keeps the name of a file the script read', async () => {
+    const attached = storeAttachment('REPORT.DOCX', await fixture('testComment.docx'))
+    const long = storeAttachment(`${'a'.repeat(300)}.docx`, await fixture('testComment.docx'))
 
     const { files } = await okFiles(
       call(
-        { listThreadFiles: async () => [attached] },
-        `saveFile('report_edited.docx', readFile(${JSON.stringify(attached.id)}))\n${pptxScript}`,
-        [attached.id],
+        { listThreadFiles: async () => [attached, long] },
+        `
+        saveFile('REPORT.DOCX', ${editedCopy('REPORT.DOCX')})
+        saveFile('report_edited.docx', ${editedCopy('REPORT.DOCX')})
+        saveFile('summary.docx', ${editedCopy(long.id)})
+        ${pptxScript}`,
+        ['REPORT.DOCX', long.id],
       ),
     )
 
     expect(files).toMatchObject([
-      { filename: 'report_edited.docx', edited: true },
+      { filename: 'REPORT.docx', edited: true },
+      { filename: 'report_edited.docx', edited: false },
+      { filename: 'summary.docx', edited: false },
       { filename: 'deck.pptx', edited: false },
     ])
+  })
+
+  it('refuses files that would take the ones it made in this chat past the limit, saving none', async () => {
+    const before = attachmentStore.size
+    const earlier: ThreadFile = {
+      ...storeAttachment('big.docx', zipWith('<a/>')),
+      size: sandboxLimits.threadFileBytes - 10,
+      savedAs: 'big.docx',
+    }
+
+    const result = await call({ listThreadFiles: async () => [earlier, earlier] }, docxScript('more.docx'))
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining(`past the ${sandboxLimits.threadFileBytes / mib} MiB one chat may hold`),
+    })
+    expect(attachmentStore.size).toBe(before + 1)
+    // An attachment of the user's own does not count.
+    const attachment = { ...earlier, savedAs: undefined }
+    expect((await call({ listThreadFiles: async () => [attachment] }, docxScript('more.docx'))).ok).toBe(true)
+  })
+
+  it('counts the files of a call still being stored against the limit of a call made at the same time', async () => {
+    const earlier: ThreadFile = {
+      ...storeAttachment('big.docx', zipWith('<a/>')),
+      size: sandboxLimits.threadFileBytes - 30,
+      savedAs: 'big.docx',
+    }
+    // Each call saves a 22-byte zip: one fits, two do not. Storing waits until both scripts have finished.
+    let finishedRuns = 0
+    const concurrent = createOfficeScriptTool({
+      runScript: async (job) => {
+        const result = await runner(job, sandboxLimits)
+        finishedRuns++
+        return result
+      },
+      storeFiles: async (files) => {
+        while (finishedRuns < 2) {
+          await Bun.sleep(1)
+        }
+        await storeFiles(files)
+      },
+      listThreadFiles: async () => [earlier],
+    })
+    const save = () => concurrent.execute({ script: `saveFile('a.docx', ${emptyZip})` }) as Promise<OfficeScriptOutput>
+
+    const results = await Promise.all([save(), save()])
+
+    expect(results.map(({ ok }) => ok).sort()).toEqual([false, true])
   })
 
   it('reads the newest edit by the name the user gave, though the edit is stored under a cleaned name', async () => {

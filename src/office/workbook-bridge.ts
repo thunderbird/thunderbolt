@@ -2,11 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
+import { unzipSync, zipSync } from 'fflate'
 import type { QuickJS } from 'quickjs-wasi'
 import { z } from 'zod'
 import type { SandboxLimits } from './constants'
-import { cacheFormulaResults, type FormulaError, type WorkbookParts } from './formula-cache'
+import { cacheFormulaResults, type FormulaError, withFuturePrefixes, type WorkbookParts } from './formula-cache'
 import type { Excelize, ExcelizeFile } from './excelize-engine'
 import type { SpreadsheetEngines } from './spreadsheet-engines'
 
@@ -65,10 +65,10 @@ const parseOptions = (call: string, value: WorkbookValue) => {
 
 const formulaArguments = z.tuple([z.string(), z.string(), z.string()]).rest(workbookValue)
 
-type WorkbookFunction = (...args: WorkbookValue[]) => WorkbookValue
+export type WorkbookFunction = (...args: WorkbookValue[]) => WorkbookValue
 
 /** An Excelize object's own functions, by name, bound to it. */
-const functionsOf = (target: Excelize | ExcelizeFile) =>
+export const functionsOf = (target: Excelize | ExcelizeFile) =>
   new Map<string, WorkbookFunction>(
     Object.entries(target).flatMap(([name, value]) => (value instanceof Function ? [[name, value.bind(target)]] : [])),
   )
@@ -108,20 +108,6 @@ const settle = <T>(call: string, result: T): T => {
     throw new Error(`${call}: ${failed.data.error}`)
   }
   return result
-}
-
-const workbookType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml'
-const macroWorkbookType = 'application/vnd.ms-excel.sheet.macroEnabled.main+xml'
-
-/**
- * Excelize's buffer keeps the workbook's content type, even after `AddVBAProject`, and Excel opens a workbook with
- * macros only under the macro type. The output check then holds the file name to it: .xlsm for this type.
- */
-const markMacros = (parts: WorkbookParts) => {
-  const types = strFromU8(parts['[Content_Types].xml'] ?? new Uint8Array())
-  if (Object.keys(parts).some((name) => /(^|\/)vbaProject\.bin$/i.test(name)) && types.includes(workbookType)) {
-    parts['[Content_Types].xml'] = strToU8(types.replace(workbookType, macroWorkbookType))
-  }
 }
 
 /** True when two byte arrays hold the same bytes. */
@@ -228,7 +214,6 @@ export const installWorkbooks = (
     const parts = unzipSync(buffer)
     const copiedParts = copiedFrom(workbook.input, parts)
     const formulaErrors = cacheFormulaResults(workbook.file, parts, ironcalc)
-    markMacros(parts)
     const saved = { bytes: zipSync(parts), formulaErrors, copiedParts }
     saves.push(saved)
     while (saves.reduce((total, { bytes }) => total + bytes.byteLength, 0) > limits.memoryBytes) {
@@ -264,6 +249,12 @@ export const installWorkbooks = (
     if (method === 'WriteToBuffer') {
       return (options) => save(workbook, options ?? undefined)
     }
+    // A workbook keeps the macros it was opened with, but this tool never adds any.
+    if (method === 'AddVBAProject') {
+      throw new TypeError(
+        'This tool does not add macros to a workbook. Tell the user it cannot add macros, and save the workbook without them.',
+      )
+    }
     return (...args) => {
       const formula = method === 'SetCellFormula' ? formulaArguments.safeParse(args) : undefined
       if (!formula?.success) {
@@ -271,7 +262,7 @@ export const installWorkbooks = (
       }
       // Excelize's own examples start a formula with "=", which it keeps and Excel then refuses.
       const [sheet, cell, text, ...rest] = formula.data
-      return settle(method, workbookCall(sheet, cell, text.replace(/^=/, ''), ...rest))
+      return settle(method, workbookCall(sheet, cell, withFuturePrefixes(text.replace(/^=/, '')), ...rest))
     }
   }
 

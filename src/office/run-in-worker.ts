@@ -67,7 +67,9 @@ export const runInSandboxWorker = (
   }
   worker.onerror = (event) => {
     event.preventDefault()
-    resolve({ ok: false, error: `The sandbox failed to start: ${event.message}`, logs: '' })
+    // A Worker whose file did not load (offline, blocked) fires an error with no message.
+    const cause = event.message || 'its code did not load, for example because the app is offline'
+    resolve({ ok: false, error: `The sandbox failed to start: ${cause}. Call the tool again.`, logs: '' })
   }
   worker.postMessage(
     job,

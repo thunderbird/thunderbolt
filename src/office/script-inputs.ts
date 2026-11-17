@@ -4,6 +4,7 @@
 
 import type { WorkspaceFileRead } from '@shared/agent-core'
 import type { StoredFile } from '@/lib/file-blob-storage'
+import { promptFileName } from '@/lib/safe-file-name'
 import type { SandboxInput } from './sandbox'
 
 /** Reads a file from the agent's workspace by its workspace-relative path, refusing one over `maxBytes` unread. */
@@ -32,12 +33,14 @@ const readStored = async (file: StoredFile, maxBytes: number): Promise<Workspace
 
 const notFound = (name: string, files: ThreadFile[], hasWorkspace: boolean) => {
   const listed = newestFirst(files)
-    .map(({ filename, id }) => `"${filename}" (id ${id})`)
+    .map(({ filename, id }) => `${promptFileName(filename)} (id ${id})`)
     .join(', ')
   const known = listed ? `The files in this chat, newest first: ${listed}.` : 'This chat has no files.'
+  const ask =
+    'If the user named this file, tell them it is not here and ask which file they mean; do not edit another file in its place.'
   return hasWorkspace
-    ? `No file "${name}" in this chat or in your workspace. ${known} Name an input by its file name, its id, or its path in your workspace.`
-    : `No file "${name}" in this chat. ${known} Name an input by its file name or its id.`
+    ? `No file ${promptFileName(name)} in this chat or in your workspace. ${known} Name an input by its file name, its id, or its path in your workspace. ${ask}`
+    : `No file ${promptFileName(name)} in this chat. ${known} Name an input by its file name or its id. ${ask}`
 }
 
 /**

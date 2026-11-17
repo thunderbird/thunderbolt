@@ -4,7 +4,7 @@
 
 import { docxMime, pptxMime, xlsmMime, xlsxMime } from '@/files/transformers'
 import { putAttachments, type StoredFile } from '@/lib/file-blob-storage'
-import { safeFileName } from '@/lib/safe-file-name'
+import { promptFileName, safeFileName } from '@/lib/safe-file-name'
 import { parseToolOutput } from '@/lib/tool-output'
 import type { ToolConfig } from '@/types'
 import { type DynamicToolUIPart, getToolName, isToolOrDynamicToolUIPart, type ToolUIPart, type UIMessage } from 'ai'
@@ -61,12 +61,24 @@ const maxFilenameLength = 200
 
 type DeliverableFile = SavedFile & { mimeType: string; savedAs: string }
 
+/** A file name as the tool stores it. */
+const cleanName = (name: string) => {
+  const { stem, extension } = safeFileName(name)
+  return `${stem}.${extension}`
+}
+
+/** The thread's files this tool made, once each: only those carry the name the script gave them. */
+const madeByTool = (files: ThreadFile[]) => [
+  ...new Map(files.filter(({ savedAs }) => savedAs !== undefined).map((file) => [file.id, file])).values(),
+]
+
 /**
  * Sanitize each saved file's name and pair it with its type, or say (to the model) why the files cannot be
  * delivered. The sanitized name is the one stored, listed and shown.
  */
 const toDeliverableFiles = (
   files: SavedFile[],
+  inputFilenames: string[],
 ): { ok: true; files: DeliverableFile[] } | { ok: false; error: string } => {
   if (files.length === 0) {
     return {
@@ -80,7 +92,7 @@ const toDeliverableFiles = (
     if (file.filename.length > maxFilenameLength) {
       return {
         ok: false,
-        error: `A file name starting "${file.filename.slice(0, 40)}" is too long. Keep names under ${maxFilenameLength} characters.`,
+        error: `A file name starting ${promptFileName(file.filename.slice(0, 40))} is too long. Keep names under ${maxFilenameLength} characters.`,
       }
     }
     const { stem, extension } = safeFileName(file.filename)
@@ -88,7 +100,14 @@ const toDeliverableFiles = (
     if (!type || /[/\\]/.test(file.filename)) {
       return {
         ok: false,
-        error: `"${file.filename}" is not a valid file name. Use a name without folders that ends in .docx, .xlsx, .xlsm or .pptx.`,
+        error: `${promptFileName(file.filename)} is not a valid file name. Use a name without folders that ends in .docx, .xlsx, .xlsm or .pptx.`,
+      }
+    }
+    // The output check requires a .xlsm to have macros, so a .xlsm made from scratch or from a .xlsx would gain some.
+    if (extension === 'xlsm' && !inputFilenames.some((name) => /\.xlsm$/i.test(name))) {
+      return {
+        ok: false,
+        error: `${promptFileName(file.filename)} would be a workbook with macros, but this run read none. This tool keeps the macros of a workbook that has them and never adds any, so save it as .xlsx.`,
       }
     }
     const filename = `${stem}.${extension}`
@@ -98,8 +117,8 @@ const toDeliverableFiles = (
         ok: false,
         error:
           earlier === file.filename
-            ? `"${filename}" was saved twice. Give each file its own name.`
-            : `"${earlier}" and "${file.filename}" both save as "${filename}". Give each file its own name.`,
+            ? `${promptFileName(filename)} was saved twice. Give each file its own name.`
+            : `${promptFileName(earlier)} and ${promptFileName(file.filename)} both save as ${promptFileName(filename)}. Give each file its own name.`,
       }
     }
     seen.set(filename, file.filename)
@@ -137,16 +156,17 @@ const mib = (bytes: number) => bytes / 1024 / 1024
 
 const describeTool = (hasWorkspace: boolean) =>
   [
-    'Create or edit a Word document (.docx), an Excel workbook (.xlsx, or .xlsm when it has macros) or a PowerPoint presentation (.pptx) that the user can download.',
+    'Create or edit a Word document (.docx), an Excel workbook (.xlsx, or .xlsm when you edit one that has macros) or a PowerPoint presentation (.pptx) that the user can download.',
     'Write a short JavaScript script. It runs in a sandbox where these libraries are already loaded: `docx` (global `docx`), `pptxgenjs` (global `PptxGenJS`), `excelize-wasm` (global `excelize`), `fflate` (global `fflate`) and `@xmldom/xmldom` (global `xmldom`).',
     'Pass each finished file to `saveFile(filename, bytes)`. The name must end in .docx, .xlsx, .xlsm or .pptx. Get the bytes from `await docx.Packer.toArrayBuffer(doc)`, `await pres.write({ outputType: "uint8array" })` or `f.WriteToBuffer().buffer`; `Packer.toBuffer`, `Packer.toBlob` and `pres.writeFile` do not work here.',
-    `For a workbook, start with \`const f = excelize.NewFile()\` or \`const f = excelize.OpenReader(readFile(name))\`, then call its methods, such as \`f.SetCellValue("Sheet1", "B2", 1200)\`, \`f.SetCellFormula("Sheet1", "B5", "SUM(B2:B4)")\`, \`f.SetCellStyle("Sheet1", "B2", "B5", f.NewStyle({ NumFmt: 4 }).style)\` and \`f.AddChart(...)\`. They are synchronous and return what excelize-wasm returns; a call that fails throws an Error with the reason. For money, set the format with \`CustomNumFmt\` and quote the symbol or give a locale tag, such as \`f.NewStyle({ CustomNumFmt: '"R$" #,##0.00' })\` or \`'[$€-407] #,##0.00'\`: \`NumFmt\` 5 to 8 are not saved, and an unquoted \`R$\` shows as a plain number. Opening a workbook keeps what the script does not change, including styles, charts, images, pivot tables and macros. When the workbook is saved, every formula is computed and its result stored, so the file shows numbers even where nothing recalculates. A formula that could not be computed is listed with its sheet and cell in \`formulaErrors\` of what \`WriteToBuffer\` returns, so log that instead of saving a test file, and again in the tool result with its file (at most ${maxFormulaErrors}); the file is saved anyway. Never rebuild an attached workbook from its extracted text or the copy in your workspace: that loses its formulas and formatting. Open it with excelize, or tell the user why you cannot. \`excelize.OpenReader(bytes, { Password: "..." })\` opens a password-encrypted workbook, but \`WriteToBuffer\` takes no options and saves an unencrypted copy, so tell the user the copy no longer asks for a password; sheet and workbook protection (\`ProtectSheet\`, \`ProtectWorkbook\`) stay. Save a workbook that has macros as .xlsm, and one without as .xlsx. excelize opens workbooks of up to ${mib(sandboxLimits.maxWorkbookBytes)} MiB; for a larger one, tell the user it is too large to edit here instead of working around the limit. The chat cannot attach a .xlsm, so do not ask the user to upload one; a .xlsm this tool saved earlier in the chat${hasWorkspace ? ' or one in your workspace' : ''} can still be read and edited.`,
+    `For a workbook, start with \`const f = excelize.NewFile()\` or \`const f = excelize.OpenReader(readFile(name))\`, then call its methods, such as \`f.SetCellValue("Sheet1", "B2", 1200)\`, \`f.SetCellFormula("Sheet1", "B5", "SUM(B2:B4)")\`, \`f.SetCellStyle("Sheet1", "B2", "B5", f.NewStyle({ NumFmt: 4 }).style)\` and \`f.AddChart(...)\`. They are synchronous and return what excelize-wasm returns; a call that fails throws an Error with the reason. For money, set the format with \`CustomNumFmt\` and quote the symbol or give a locale tag, such as \`f.NewStyle({ CustomNumFmt: '"R$" #,##0.00' })\` or \`'[$€-407] #,##0.00'\`: \`NumFmt\` 5 to 8 are not saved, and an unquoted \`R$\` shows as a plain number. Opening a workbook keeps what the script does not change, including styles, charts, images, pivot tables and macros. When the workbook is saved, every formula is computed and its result stored, so the file shows numbers even where nothing recalculates. A formula that could not be computed is listed with its sheet and cell in \`formulaErrors\` of what \`WriteToBuffer\` returns, so log that instead of saving a test file, and again in the tool result with its file (at most ${maxFormulaErrors}); the file is saved anyway. Never rebuild an attached workbook from its extracted text or the copy in your workspace: that loses its formulas and formatting. Open it with excelize, or tell the user why you cannot. \`excelize.OpenReader(bytes, { Password: "..." })\` opens a password-encrypted workbook, but \`WriteToBuffer\` takes no options and saves an unencrypted copy, so tell the user the copy no longer asks for a password; sheet and workbook protection (\`ProtectSheet\`, \`ProtectWorkbook\`) stay. This tool never adds macros: \`AddVBAProject\` throws, and a .xlsm can be saved only from a .xlsm the run read, under its own extension. Save every other workbook as .xlsx, including one opened from a .xlsx. excelize opens workbooks of up to ${mib(sandboxLimits.maxWorkbookBytes)} MiB; for a larger one, tell the user it is too large to edit here instead of working around the limit. The chat cannot attach a .xlsm, so do not ask the user to upload one; a .xlsm this tool saved earlier in the chat${hasWorkspace ? ' or one in your workspace' : ''} can still be read and edited.`,
     `To read a file, list it in \`inputs\` and call \`readFile(name)\`, which returns its bytes as a Uint8Array. The files you can read are the ones attached in this chat and the ones this tool made earlier in it. Name a file by its file name to get the newest file with that name, or by its id to get that exact file, such as an older version.${hasWorkspace ? ' A name that matches none of them is read from your workspace, as a path relative to it, so a script can use data you prepared there.' : ''}`,
+    'When the user names a file, list that exact name in `inputs`, even when another file is attached. If no file has that name, the call fails and lists the files there are: ask the user which one they mean. Never edit a different file in its place, and never save under the name of a file that does not exist unless the user asked for a new file.',
     'To edit a file, read it, change it, and save the result under exactly the same name, without a suffix such as "_edited" or "_v2": the user gets an edited copy, the original stays as it was, and the next edit finds the newest version by that name. `await docx.patchDocument({ outputType: "uint8array", data: readFile(name), patches })` replaces `{{key}}` placeholders and keeps everything else, including comments and tracked changes. For changes docx and PptxGenJS cannot make, such as adding a tracked change or copying a slide, unzip the file with `fflate.unzipSync`, edit its XML parts with `xmldom.DOMParser` and `xmldom.XMLSerializer` (`fflate.strFromU8` and `fflate.strToU8` convert the bytes), and zip it again with `fflate.zipSync`. Only the sync fflate functions work here.',
-    'Every saved file is checked before it is stored. If a zip does not open or an XML part does not parse, nothing is saved, and the error names the file and, for XML, the part.',
+    `Every saved file is checked before it is stored. If a zip does not open, unzips to more than ${mib(sandboxLimits.unzipBytes)} MiB or has a part name that is not a plain path inside it, or an XML part does not parse or holds a DDE field, nothing is saved, and the error names the file and, for XML, the part. The same goes for a file that adds a remote template, an external link or an OLE object that no file of its type the run read had, and for a file saved with no change from a file the run read. Leave the parts you were not asked to change as they are, even when their XML declares an encoding such as windows-1252.`,
     'The sandbox has no network, no DOM, no fetch and no imports, so write all new content into the script.',
     'Each saved file appears in the chat for the user to download, so save only the files the user asked for (check your work with console.log, not with test files), and do not paste their contents into your reply.',
-    `Limits per run: ${sandboxLimits.timeoutMs / 1000} seconds of script time (loading the libraries does not count), ${mib(sandboxLimits.memoryBytes)} MiB of memory, ${mib(sandboxLimits.workbookMemoryBytes)} MiB of memory for excelize, ${mib(sandboxLimits.textOutputBytes)} MiB of console output and ${sandboxLimits.maxFiles} files. If the result is { ok: false }, read the error: fix the script when the error is about it, then call the tool again.`,
+    `Limits per run: ${sandboxLimits.timeoutMs / 1000} seconds of script time (loading the libraries does not count), ${mib(sandboxLimits.memoryBytes)} MiB of memory, ${mib(sandboxLimits.workbookMemoryBytes)} MiB of memory for excelize, ${mib(sandboxLimits.textOutputBytes)} MiB of console output and ${sandboxLimits.maxFiles} files. The files this tool makes in one chat may take ${mib(sandboxLimits.threadFileBytes)} MiB in all. If the result is { ok: false }, read the error: fix the script when the error is about it, then call the tool again.`,
   ].join(' ')
 
 /**
@@ -161,6 +181,8 @@ export const createOfficeScriptTool = ({
   readWorkspaceFile,
 }: OfficeScriptToolDeps = {}): ToolConfig => {
   const madeThisSend: ThreadFile[] = []
+  // Bytes that calls in this send are still storing, so calls running together cannot pass the chat's limit.
+  let storingBytes = 0
   return {
     name: officeScriptToolName,
     description: describeTool(readWorkspaceFile !== undefined),
@@ -170,7 +192,7 @@ export const createOfficeScriptTool = ({
       { script, inputs = [] }: OfficeScriptInput,
       options?: { abortSignal?: AbortSignal },
     ): Promise<OfficeScriptOutput> => {
-      const threadFiles = inputs.length > 0 ? [...(await listThreadFiles()), ...madeThisSend] : []
+      const threadFiles = [...(await listThreadFiles()), ...madeThisSend]
       const resolved = await resolveInputs(inputs, threadFiles, readWorkspaceFile, sandboxLimits.memoryBytes)
       if (!resolved.ok) {
         return { ok: false, error: resolved.error, logs: '' }
@@ -179,9 +201,20 @@ export const createOfficeScriptTool = ({
       if (!result.ok) {
         return result
       }
-      const deliverable = toDeliverableFiles(result.files)
+      const deliverable = toDeliverableFiles(result.files, resolved.filenames)
       if (!deliverable.ok) {
         return { ok: false, error: deliverable.error, logs: result.logs }
+      }
+      // Counted after the script, to include calls that finished or started storing while it ran.
+      const storedBytes =
+        madeByTool([...threadFiles, ...madeThisSend]).reduce((total, file) => total + file.size, 0) + storingBytes
+      const newBytes = deliverable.files.reduce((total, { bytes }) => total + bytes.byteLength, 0)
+      if (storedBytes + newBytes > sandboxLimits.threadFileBytes) {
+        return {
+          ok: false,
+          error: `The files this tool made in this chat take ${mib(storedBytes).toFixed(1)} MiB, and these would take it past the ${mib(sandboxLimits.threadFileBytes)} MiB one chat may hold. Nothing was saved. Tell the user, and suggest a new chat for more files.`,
+          logs: result.logs,
+        }
       }
       const saved = deliverable.files.map(({ filename, mimeType, bytes, savedAs }) => ({
         record: {
@@ -194,18 +227,20 @@ export const createOfficeScriptTool = ({
         },
         savedAs,
       }))
-      await storeFiles(saved.map(({ record }) => record))
-      madeThisSend.push(...saved.map(({ record, savedAs }) => ({ ...record, savedAs })))
-      // Models often rename the copy they edit, so the file type decides, not the name. The extension is at the
-      // end, so the end of a long name is enough.
-      const inputExtensions = new Set(
-        resolved.filenames.map((name) => safeFileName(name.slice(-maxFilenameLength)).extension),
-      )
+      storingBytes += newBytes
+      try {
+        await storeFiles(saved.map(({ record }) => record))
+        madeThisSend.push(...saved.map(({ record, savedAs }) => ({ ...record, savedAs })))
+      } finally {
+        storingBytes -= newBytes
+      }
+      // An edit keeps the name of the file it was read from; a new file made from one gets a name of its own.
+      const inputNames = new Set(resolved.filenames.filter((name) => name.length <= maxFilenameLength).map(cleanName))
       const files = saved.map(({ record: { id, filename, mimeType }, savedAs }) => ({
         id,
         filename,
         mimeType,
-        edited: inputExtensions.has(safeFileName(filename).extension),
+        edited: inputNames.has(filename),
         savedAs,
       }))
       return { ok: true, files, logs: result.logs, formulaErrors: result.formulaErrors }

@@ -132,11 +132,12 @@ test('when the preview code does not load, the panel says so and Download still 
   expect(await readFile(await download.path())).toEqual(buffer)
 })
 
-test('when the side panel viewer does not load, the panel says so and the rest of the app stays up', async ({
+test('when the side panel viewer does not load, the panel says so, the rest of the app stays up, and Try again loads it', async ({
   page,
 }) => {
   // The viewer is a lazy chunk: the dev server serves its source module, a build its `/assets/` script and styles.
-  await page.route(/\/pdf-sidebar-viewer[^/]*\.(?:tsx|js|css)(?:\?|$)/, (route) => route.abort())
+  const viewerChunk = /\/pdf-sidebar-viewer[^/]*\.(?:tsx|js|css)(?:\?|$)/
+  await page.route(viewerChunk, (route) => route.abort())
   const name = 'e2e-viewer-offline.docx'
   const buffer = await sampleBuffer()
   await sendDocument(page, name, buffer, sampleDocxText.title)
@@ -149,6 +150,11 @@ test('when the side panel viewer does not load, the panel says so and the rest o
   ])
   expect(download.suggestedFilename()).toBe(name)
   expect(await readFile(await download.path())).toEqual(buffer)
+
+  // Back online, Try again loads the viewer without reloading the app.
+  await page.unroute(viewerChunk)
+  await contentView(page).getByRole('button', { name: 'Try again' }).click()
+  await expect(contentView(page).frameLocator(`iframe[title="${name}"]`).getByText(sampleDocxText.title)).toBeVisible()
 
   await contentView(page).getByRole('button', { name: 'Close', exact: true }).click()
   await expect(page.locator('textarea')).toBeVisible()

@@ -13,8 +13,8 @@ type ViewerErrorBoundaryState = { failed: boolean }
 
 /**
  * Shows `fallback` in place of a side view viewer that throws, most often because its lazy chunk did not load on a
- * broken network. The failure stays in the panel and the rest of the app keeps running. Key it by file so the next
- * file starts fresh. It is a class because React has no hook for catching render errors.
+ * broken network. The failure stays in the panel and the rest of the app keeps running. Key it by file and attempt, so
+ * the next file and Try again start fresh. It is a class because React has no hook for catching render errors.
  */
 export class ViewerErrorBoundary extends Component<ViewerErrorBoundaryProps, ViewerErrorBoundaryState> {
   state: ViewerErrorBoundaryState = { failed: false }

@@ -1022,8 +1022,8 @@ msgid "Check your connection and open the file again, or download it to open it 
 msgstr "Verifique sua conexão e abra o arquivo de novo, ou baixe o arquivo para abrir em um editor de texto."
 
 #: src/content-view/viewer-load-failure.tsx
-msgid "Check your connection and reload the app, or download the file."
-msgstr "Verifique sua conexão e recarregue o app, ou baixe o arquivo."
+msgid "Check your connection and try again, or download the file."
+msgstr "Verifique sua conexão e tente novamente, ou baixe o arquivo."
 
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/waitlist/waitlist-content.tsx
@@ -6724,6 +6724,7 @@ msgstr "Dispositivos confiáveis"
 #: src/components/sso-error.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
+#: src/content-view/viewer-load-failure.tsx
 #: src/webview-recovery/index.ts
 msgid "Try again"
 msgstr "Tentar novamente"

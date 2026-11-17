@@ -1004,8 +1004,8 @@ msgid "Check your connection and open the file again, or download it to open it 
 msgstr "Prüfen Sie Ihre Verbindung und öffnen Sie die Datei erneut, oder laden Sie sie herunter, um sie in einer Textverarbeitung zu öffnen."
 
 #: src/content-view/viewer-load-failure.tsx
-msgid "Check your connection and reload the app, or download the file."
-msgstr "Prüfen Sie Ihre Verbindung und laden Sie die App neu, oder laden Sie die Datei herunter."
+msgid "Check your connection and try again, or download the file."
+msgstr "Prüfen Sie Ihre Verbindung und versuchen Sie es erneut, oder laden Sie die Datei herunter."
 
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/waitlist/waitlist-content.tsx
@@ -6706,6 +6706,7 @@ msgstr "Vertrauenswürdige Geräte"
 #: src/components/sso-error.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
+#: src/content-view/viewer-load-failure.tsx
 #: src/webview-recovery/index.ts
 msgid "Try again"
 msgstr "Erneut versuchen"

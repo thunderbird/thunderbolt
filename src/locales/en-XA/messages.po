@@ -1004,7 +1004,7 @@ msgid "Check your connection and open the file again, or download it to open it 
 msgstr ""
 
 #: src/content-view/viewer-load-failure.tsx
-msgid "Check your connection and reload the app, or download the file."
+msgid "Check your connection and try again, or download the file."
 msgstr ""
 
 #: src/components/sign-in/sign-in-otp-step.tsx
@@ -6706,6 +6706,7 @@ msgstr ""
 #: src/components/sso-error.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
+#: src/content-view/viewer-load-failure.tsx
 #: src/webview-recovery/index.ts
 msgid "Try again"
 msgstr ""

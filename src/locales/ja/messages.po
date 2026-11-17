@@ -986,8 +986,8 @@ msgid "Check your connection and open the file again, or download it to open it 
 msgstr "接続を確認してファイルを開き直すか、ファイルをダウンロードして文書作成アプリで開いてください。"
 
 #: src/content-view/viewer-load-failure.tsx
-msgid "Check your connection and reload the app, or download the file."
-msgstr "接続を確認してアプリを再読み込みするか、ファイルをダウンロードしてください。"
+msgid "Check your connection and try again, or download the file."
+msgstr "接続を確認してもう一度お試しいただくか、ファイルをダウンロードしてください。"
 
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/waitlist/waitlist-content.tsx
@@ -6688,6 +6688,7 @@ msgstr "信頼済みのデバイス"
 #: src/components/sso-error.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
+#: src/content-view/viewer-load-failure.tsx
 #: src/webview-recovery/index.ts
 msgid "Try again"
 msgstr "再試行"

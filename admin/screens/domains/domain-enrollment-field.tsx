@@ -1,0 +1,69 @@
+/* UNLICENSED — license TBD. This file is not licensed under MPL-2.0.
+ * All rights reserved. See admin/LICENSE.
+ * Enterprise support and licensing: contact info@thunderbolt.io. */
+
+import { Trans, useLingui } from '@lingui/react/macro'
+import { useId } from 'react'
+import { DetailField } from '@/components/settings/detail-field'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import type { OrgDomain } from '@shared/admin-api'
+import { getAdminErrorMessage } from '../../api/error-messages'
+import { getEnrollmentLock } from './domain-rules'
+import { useSetDomainEnrollment } from './use-domains'
+
+const EnrollmentLockReason = ({ domain }: { domain: OrgDomain }) => {
+  if (getEnrollmentLock(domain) === 'unverified') {
+    return <Trans>Verify this domain before opening it to enrollment.</Trans>
+  }
+  const name = domain.claimedBy?.name
+  return (
+    <Trans>
+      {name} claims this domain, so people on it sign in through that identity provider. Release the claim to open
+      enrollment.
+    </Trans>
+  )
+}
+
+/** The switch that lets anyone with a verified email on the domain join, and why it's locked. */
+export const DomainEnrollmentField = ({ domain }: { domain: OrgDomain }) => {
+  const { i18n } = useLingui()
+  const switchId = useId()
+  const descriptionId = useId()
+  const reasonId = useId()
+  const setEnrollment = useSetDomainEnrollment(domain.id)
+  const lock = getEnrollmentLock(domain)
+  const name = domain.domain
+
+  return (
+    <DetailField label={<Trans>Enrollment</Trans>}>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col gap-0.5">
+          <Label htmlFor={switchId}>
+            <Trans>Open to enrollment</Trans>
+          </Label>
+          <p id={descriptionId} className="text-[length:var(--font-size-sm)] text-muted-foreground">
+            <Trans>Anyone with a verified email on {name} can join as a member.</Trans>
+          </p>
+        </div>
+        <Switch
+          id={switchId}
+          aria-describedby={lock ? `${descriptionId} ${reasonId}` : descriptionId}
+          checked={domain.enrollmentEnabled}
+          disabled={lock !== null || setEnrollment.isPending}
+          onCheckedChange={(enabled) => setEnrollment.mutate(enabled)}
+        />
+      </div>
+      {lock && (
+        <p id={reasonId} className="mt-2 text-[length:var(--font-size-sm)] text-muted-foreground">
+          <EnrollmentLockReason domain={domain} />
+        </p>
+      )}
+      {setEnrollment.error && (
+        <p role="alert" className="mt-2 text-[length:var(--font-size-sm)] text-destructive">
+          {i18n._(getAdminErrorMessage(setEnrollment.error))}
+        </p>
+      )}
+    </DetailField>
+  )
+}

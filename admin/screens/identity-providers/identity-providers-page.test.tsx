@@ -170,4 +170,45 @@ describe('IdentityProvidersPage', () => {
       harness.requests.some((request) => request.method === 'POST' && request.path === 'admin/connections/c3/retire'),
     ).toBe(true)
   })
+  it('creates a SCIM-only connection and shows its token once', async () => {
+    const credential = {
+      credentialId: 'cred-1',
+      status: 'active',
+      scopes: [],
+      expiresAt: '2027-11-17T00:00:00.000Z',
+      createdAt: '2026-11-17T00:00:00.000Z',
+      createdBy: 'admin-1',
+      lastUsedAt: null,
+      revokedAt: null,
+      revokedBy: null,
+    }
+    const harness = renderPage(({ method, path }) =>
+      method === 'POST' && path === 'admin/connections/scim'
+        ? { body: { connection: { id: 'c9' }, credential, token: 'scim-token-9' } }
+        : backend([])({ method, path } as FakeRequest),
+    )
+    await flush()
+    fireEvent.click(screen.getByRole('button', { name: 'Add connection' }))
+    fireEvent.click(screen.getByRole('button', { name: 'SCIM provisioning only' }))
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Okta SCIM' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create connection' }))
+    await flush()
+
+    expect(harness.requests.find((request) => request.path === 'admin/connections/scim')?.body).toEqual({
+      name: 'Okta SCIM',
+    })
+    expect(screen.getByRole('textbox', { name: 'SCIM token' })).toHaveValue('scim-token-9')
+
+    // Closing before Done asks first, so the token isn't dropped unseen.
+    fireEvent.click(screen.getByRole('button', { name: 'Close details' }))
+    await flush()
+    expect(screen.getByText('Discard unsaved changes?')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }))
+    await flush()
+    expect(screen.getByRole('textbox', { name: 'SCIM token' })).toHaveValue('scim-token-9')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    await flush()
+    expect(screen.queryByRole('textbox', { name: 'SCIM token' })).toBeNull()
+  })
 })

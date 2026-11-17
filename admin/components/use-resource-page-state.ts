@@ -27,7 +27,15 @@ export const useResourcePageState = () => {
     patch({ selectedId, dirty: false, pendingSelection: null })
   }
   const select = (id: string | null) => {
-    setParams(id === null ? {} : { edit: id })
+    setParams((current) => {
+      const next = new URLSearchParams(current)
+      if (id === null) {
+        next.delete('edit')
+      } else {
+        next.set('edit', id)
+      }
+      return next
+    })
     patch({ dirty: false, pendingSelection: null })
   }
   const requestSelect = (id: string | null) => {

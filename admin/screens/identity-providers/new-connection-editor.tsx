@@ -8,13 +8,19 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import { useState } from 'react'
 import { DetailPanel } from '@/components/detail-panel'
 import { SettingsSelectableRow } from '@/components/settings/settings-list'
+import { NewScimConnectionForm } from './new-scim-connection-form'
 import { SsoConnectionForm } from './sso-connection-form'
 
-type ConnectionKind = 'oidc' | 'saml'
+type ConnectionKind = 'oidc' | 'saml' | 'scim'
 
 const kinds: { id: ConnectionKind; title: MessageDescriptor; description: MessageDescriptor }[] = [
   { id: 'oidc', title: msg`Single sign-on with OIDC`, description: msg`Entra ID, Okta, Keycloak and most providers.` },
   { id: 'saml', title: msg`Single sign-on with SAML`, description: msg`For providers that only offer SAML 2.0.` },
+  {
+    id: 'scim',
+    title: msg`SCIM provisioning only`,
+    description: msg`Your identity provider creates and updates people. You can add sign-in later.`,
+  },
 ]
 
 type NewConnectionEditorProps = {
@@ -46,6 +52,8 @@ export const NewConnectionEditor = ({ onClose, onCreated, onDirty }: NewConnecti
             />
           ))}
         </div>
+      ) : kind === 'scim' ? (
+        <NewScimConnectionForm onCreated={onCreated} onCancel={onClose} onDirty={onDirty} />
       ) : (
         <SsoConnectionForm
           protocol={kind}

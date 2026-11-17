@@ -32,6 +32,28 @@ const gateVitePort = 1423
 const gateBackendPort = 8004
 const gateMinAppVersion = '99.0.0'
 
+// Admin screens: an OIDC-mode backend whose env `sso` connection points at one login-hint IdP,
+// with a second IdP free for specs that register their own connection.
+const adminVitePort = 1427
+export const adminBackendPort = 8008
+const adminEnvIdpPort = Number(process.env.ADMIN_ENV_IDP_PORT ?? 9882)
+const adminSpareIdpPort = Number(process.env.ADMIN_SPARE_IDP_PORT ?? 9883)
+/**
+ * One bootstrap admin per admin project and worker slot; see `e2e/admin/helpers.ts`. The helper keys
+ * the email on `metadata.adminKey`, not the project name, which the extended config's browser
+ * fan-out rewrites.
+ */
+const adminKeys = { desktop: 'admin', narrow: 'admin-narrow' }
+const adminBootstrapEmails = Object.values(adminKeys)
+  .flatMap((project) => Array.from({ length: 8 }, (_, index) => `${project}-${index}@thunderbolt.test`))
+  .join(',')
+
+/** The admin backend's stdout, gitignored by `*.log`. Kept out of `test-results/`, which Playwright clears. */
+const adminBackendLog = 'e2e/admin/backend.log'
+
+/** Admin specs are `e2e/admin-<area>.spec.ts` and run only in the admin projects. */
+const adminSpecs = /\/admin-[^/]*\.spec\.ts$/
+
 const desktopChrome = { ...devices['Desktop Chrome'], launchOptions: getChromeLaunchOptions() }
 
 // CI serves each frontend as a prebuilt bundle on `vite preview` (E2E_PREBUILT=false opts out); locally the dev
@@ -86,6 +108,7 @@ export default defineConfig({
   projects: [
     {
       name: 'consumer',
+      testIgnore: adminSpecs,
       testMatch: /consumer-.*\.spec\.ts$/,
       use: {
         ...desktopChrome,
@@ -94,6 +117,7 @@ export default defineConfig({
     },
     {
       name: 'oidc',
+      testIgnore: adminSpecs,
       // ACP + proxy specs use the OIDC mock IdP via `loginViaOidc`, so they
       // belong in this project alongside the auth flow tests. Anchor to
       // `.spec.ts$` so non-spec helpers under e2e/ (mock-saml-idp.ts,
@@ -106,6 +130,7 @@ export default defineConfig({
     },
     {
       name: 'saml',
+      testIgnore: adminSpecs,
       // Anchor to `.spec.ts$` — a bare /saml/ also matched the helper files
       // (mock-saml-idp.ts, saml-test-certs.ts), making Playwright treat them as
       // test files and break `playwright test --list` ("test file should not
@@ -123,11 +148,25 @@ export default defineConfig({
       // navigates to the GATED frontend (:1423) by absolute URL and the
       // exempt-route scenario probes the gated backend (:8004) directly.
       name: 'min-version-gate',
+      testIgnore: adminSpecs,
       testMatch: /min-version-gate\.spec\.ts$/,
       use: {
         ...desktopChrome,
         baseURL: `http://localhost:${oidcVitePort}`,
       },
+    },
+    {
+      name: 'admin',
+      testMatch: adminSpecs,
+      metadata: { adminKey: adminKeys.desktop },
+      use: { ...desktopChrome, baseURL: `http://localhost:${adminVitePort}` },
+    },
+    {
+      // The phone-width layout: every admin spec runs here too.
+      name: 'admin-narrow',
+      testMatch: adminSpecs,
+      metadata: { adminKey: adminKeys.narrow },
+      use: { ...desktopChrome, viewport: { width: 400, height: 860 }, baseURL: `http://localhost:${adminVitePort}` },
     },
     {
       // Playwright serves the artifact host page so the sandboxed iframe has a parent
@@ -271,6 +310,46 @@ export default defineConfig({
         // The lever under test: pin the server minimum above the build-fixed
         // VITE_APP_VERSION so this build is always below-min against this backend.
         MIN_APP_VERSION: gateMinAppVersion,
+      },
+    },
+    // --- Admin frontend ---
+    {
+      command: `bun run dev -- --port ${adminVitePort}`,
+      url: `http://localhost:${adminVitePort}`,
+      reuseExistingServer: !isCI,
+      timeout: 120_000,
+      env: {
+        VITE_AUTH_MODE: 'sso',
+        VITE_SKIP_ONBOARDING: 'true',
+        VITE_THUNDERBOLT_CLOUD_URL: `http://localhost:${adminBackendPort}/v1`,
+      },
+    },
+    // --- Admin backend ---
+    {
+      // Teed so specs can read the dev log, e.g. an invitation's link (`readInviteUrl`).
+      command: `cd backend && bun run --watch src/index.ts 2>&1 | tee ../${adminBackendLog}`,
+      url: `http://localhost:${adminBackendPort}/v1/health`,
+      reuseExistingServer: !isCI,
+      timeout: 120_000,
+      env: {
+        PORT: String(adminBackendPort),
+        AUTH_MODE: 'oidc',
+        OIDC_CLIENT_ID: 'thunderbolt-app',
+        OIDC_CLIENT_SECRET: 'thunderbolt-dev-secret',
+        OIDC_ISSUER: `http://localhost:${adminEnvIdpPort}`,
+        BOOTSTRAP_ADMIN_EMAILS: adminBootstrapEmails,
+        // Every email-code sign-in becomes a member, so specs can seed members without invitations.
+        OPEN_SIGNUP_ENABLED: 'true',
+        NODE_ENV: 'test',
+        BETTER_AUTH_URL: `http://localhost:${adminBackendPort}`,
+        BETTER_AUTH_SECRET: 'e2e-test-secret-at-least-32-characters-long',
+        APP_URL: `http://localhost:${adminVitePort}`,
+        CORS_ORIGINS: `http://localhost:${adminVitePort}`,
+        TRUSTED_ORIGINS: [adminVitePort, adminEnvIdpPort, adminSpareIdpPort]
+          .map((port) => `http://localhost:${port}`)
+          .join(','),
+        RATE_LIMIT_ENABLED: 'false',
+        DATABASE_DRIVER: 'pglite',
       },
     },
   ],

@@ -6,6 +6,9 @@ import type { OAuth2Server } from 'oauth2-mock-server'
 import type { Server } from 'node:http'
 
 const globalTeardown = async () => {
+  const adminIdps = (globalThis as typeof globalThis & { __adminIdps?: OAuth2Server[] }).__adminIdps ?? []
+  await Promise.all(adminIdps.map((idp) => idp.stop()))
+
   const oidcServer = (globalThis as Record<string, unknown>).__oidcServer as OAuth2Server | undefined
   if (oidcServer) {
     await oidcServer.stop()

@@ -18,7 +18,8 @@ import { ConnectionEditor } from './connection-editor'
 import { connectionBadge, envOwnedLabel, scimLabels, ssoLabels } from './connection-labels'
 import { describeConnection } from './connection-status'
 import { NewConnectionEditor } from './new-connection-editor'
-import { useConnections, useRetireConnection } from './use-connection-queries'
+import { useConnections } from '../../api/use-connections'
+import { useRetireConnection } from './use-connection-queries'
 import { InlineError } from '../../components/inline-error'
 
 const ConnectionRow = ({

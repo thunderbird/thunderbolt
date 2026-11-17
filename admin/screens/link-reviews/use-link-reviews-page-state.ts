@@ -2,11 +2,11 @@
  * All rights reserved. See admin/LICENSE.
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
-import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 import type { LinkReviewStatus } from '@shared/admin-api'
 import { adminQueryKeys } from '../../api/query-keys'
 import { useAdminApi } from '../../api/use-admin-api'
+import { useConnections } from '../../api/use-connections'
 import { useCursorList } from '../../api/use-cursor-list'
 import { useResourcePageState } from '../../components/use-resource-page-state'
 
@@ -42,7 +42,7 @@ export const useLinkReviewsPageState = () => {
     queryKey: adminQueryKeys.linkReviews.list(query),
     fetchPage: (cursor) => api.linkReviews.list({ ...query, cursor }),
   })
-  const connections = useQuery({ queryKey: adminQueryKeys.connections.list(), queryFn: api.connections.list })
+  const connections = useConnections()
 
   return {
     page,

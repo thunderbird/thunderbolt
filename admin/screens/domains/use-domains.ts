@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import type { OrgDomain } from '@shared/admin-api'
 import { adminQueryKeys } from '../../api/query-keys'
 import { useAdminApi } from '../../api/use-admin-api'
+import { useConnections } from '../../api/use-connections'
 import { claimableConnections } from './domain-rules'
 
 const listKey = adminQueryKeys.domains.list()
@@ -26,14 +27,7 @@ export const useDomains = () => {
 }
 
 /** The connections that may claim a domain. */
-export const useClaimableConnections = () => {
-  const api = useAdminApi()
-  return useQuery({
-    queryKey: adminQueryKeys.connections.list(),
-    queryFn: () => api.connections.list(),
-    select: claimableConnections,
-  })
-}
+export const useClaimableConnections = () => useConnections(claimableConnections)
 
 export const useAddDomain = () => {
   const api = useAdminApi()

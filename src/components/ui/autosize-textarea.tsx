@@ -36,20 +36,24 @@ export const useAutosizeTextArea = ({
     if (textAreaElement) {
       // Measuring collapses the field for one layout. Holding its box keeps that collapse from reaching the
       // page, where Safari would clamp a scrolled view next to it (a chat resting at its end jumps up).
-      const box = textAreaElement.parentElement
-      box?.style.setProperty('min-height', `${box.offsetHeight}px`)
-      textAreaElement.style.minHeight = `${minHeight + offsetBorder}px`
-      textAreaElement.style.maxHeight = maxHeight > minHeight ? `${maxHeight}px` : ''
-      textAreaElement.style.height = `${minHeight + offsetBorder}px`
-      const scrollHeight = textAreaElement.scrollHeight
-      if (scrollHeight > maxHeight) {
-        textAreaElement.style.height = `${maxHeight}px`
-        textAreaElement.style.overflowY = 'auto'
-      } else {
-        textAreaElement.style.height = `${scrollHeight + offsetBorder}px`
-        textAreaElement.style.overflowY = 'hidden'
+      const box = textAreaElement.parentElement!
+      const held = [box.style.getPropertyValue('min-height'), box.style.getPropertyPriority('min-height')] as const
+      box.style.setProperty('min-height', `${box.offsetHeight}px`)
+      try {
+        textAreaElement.style.minHeight = `${minHeight + offsetBorder}px`
+        textAreaElement.style.maxHeight = maxHeight > minHeight ? `${maxHeight}px` : ''
+        textAreaElement.style.height = `${minHeight + offsetBorder}px`
+        const scrollHeight = textAreaElement.scrollHeight
+        if (scrollHeight > maxHeight) {
+          textAreaElement.style.height = `${maxHeight}px`
+          textAreaElement.style.overflowY = 'auto'
+        } else {
+          textAreaElement.style.height = `${scrollHeight + offsetBorder}px`
+          textAreaElement.style.overflowY = 'hidden'
+        }
+      } finally {
+        box.style.setProperty('min-height', ...held)
       }
-      box?.style.removeProperty('min-height')
     }
   }, [textAreaRef.current, triggerAutoSize, minHeight, maxHeight])
 }

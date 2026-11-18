@@ -22,6 +22,8 @@ export type ObjectViewContent = ToolUIPart | DynamicToolUIPart | ReasoningUIPart
 
 export type ObjectViewData = {
   title: string
+  /** The call's arguments; tool calls only. */
+  input?: string
   output: string
 }
 
@@ -132,7 +134,7 @@ export const ContentViewProvider = ({
         view_type: 'object-view',
         tool_name: content.type === 'dynamic-tool' ? 'mcp' : toolName,
       })
-      setState({ type: 'object-view', data: { title, output } })
+      setState({ type: 'object-view', data: { title, input: formatToolOutput(content.input), output } })
     },
     [trackEvent],
   )

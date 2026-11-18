@@ -148,24 +148,43 @@ describe('ContentView sideview mode', () => {
     expect(result.current.objectContent?.output).toBe('Upstream 500')
   })
 
+  test('object-view shows the arguments a tool call ran with, alongside its result', () => {
+    const { result } = renderHook(() => useObjectView(), { wrapper })
+    const input = { script: 's', inputs: ['a.csv'] }
+    const officeRun: ToolUIPart = {
+      type: 'tool-run_office_script',
+      toolCallId: 'call-3',
+      state: 'output-available',
+      input,
+      output: { ok: true },
+    }
+
+    act(() => {
+      result.current.openObjectSidebar(officeRun)
+    })
+
+    expect(result.current.objectContent?.input).toBe(JSON.stringify(input, null, 2))
+    expect(result.current.objectContent?.output).toBe(JSON.stringify({ ok: true }, null, 2))
+  })
+
   test('object-view resolves an MCP tool title from the tool map', () => {
-    const trackEvent = mock((_eventName: EventType, _properties?: Record<string, unknown>) => {})
+    const trackEvent = mock<typeof defaultTrackEvent>(() => {})
     const trackingWrapper = ({ children }: { children: ReactNode }) => (
       <ContentViewProvider trackEvent={trackEvent}>{children}</ContentViewProvider>
     )
     const { result } = renderHook(() => useObjectView(), { wrapper: trackingWrapper })
 
-    const mcpTool = {
+    const mcpTool: DynamicToolUIPart = {
       type: 'dynamic-tool',
       toolName: 'render_list_services',
       toolCallId: 'call-2',
       state: 'output-available',
       input: {},
       output: { ok: true },
-    } as unknown as DynamicToolUIPart
+    }
 
     act(() => {
-      result.current.openObjectSidebar(mcpTool as ObjectViewContent, {
+      result.current.openObjectSidebar(mcpTool, {
         render_list_services: { name: 'Render', url: 'https://render.com', toolName: 'list_services' },
       })
     })

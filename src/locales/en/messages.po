@@ -3362,6 +3362,10 @@ msgstr "In your own words: what were you trying to do, and what did the agent do
 msgid "Include the version prefix (e.g. /v1). Then hit “Load models” to populate the pickers below."
 msgstr "Include the version prefix (e.g. /v1). Then hit “Load models” to populate the pickers below."
 
+#: src/content-view/object-sidebar-content.tsx
+msgid "Input"
+msgstr "Input"
+
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Install"
 msgstr "Install"
@@ -4938,6 +4942,10 @@ msgstr "Restart Now"
 #: src/hooks/use-desktop-update.ts
 msgid "Restart to update"
 msgstr "Restart to update"
+
+#: src/content-view/object-sidebar-content.tsx
+msgid "Result"
+msgstr "Result"
 
 #: src/components/context-usage/compaction-summary-content.tsx
 msgid "Retained messages and tool results"

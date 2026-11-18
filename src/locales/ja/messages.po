@@ -3344,6 +3344,10 @@ msgstr ""
 msgid "Include the version prefix (e.g. /v1). Then hit “Load models” to populate the pickers below."
 msgstr "バージョンのプレフィックス（例: /v1）を含めてください。その後「モデルを読み込む」を押すと、下の選択肢が設定されます。"
 
+#: src/content-view/object-sidebar-content.tsx
+msgid "Input"
+msgstr "入力"
+
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Install"
 msgstr "インストール"
@@ -4920,6 +4924,10 @@ msgstr "今すぐ再起動"
 #: src/hooks/use-desktop-update.ts
 msgid "Restart to update"
 msgstr "再起動して更新"
+
+#: src/content-view/object-sidebar-content.tsx
+msgid "Result"
+msgstr "結果"
 
 #: src/components/context-usage/compaction-summary-content.tsx
 msgid "Retained messages and tool results"

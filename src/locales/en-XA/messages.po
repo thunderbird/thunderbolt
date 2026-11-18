@@ -3362,6 +3362,10 @@ msgstr ""
 msgid "Include the version prefix (e.g. /v1). Then hit “Load models” to populate the pickers below."
 msgstr ""
 
+#: src/content-view/object-sidebar-content.tsx
+msgid "Input"
+msgstr ""
+
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Install"
 msgstr ""
@@ -4937,6 +4941,10 @@ msgstr ""
 
 #: src/hooks/use-desktop-update.ts
 msgid "Restart to update"
+msgstr ""
+
+#: src/content-view/object-sidebar-content.tsx
+msgid "Result"
 msgstr ""
 
 #: src/components/context-usage/compaction-summary-content.tsx

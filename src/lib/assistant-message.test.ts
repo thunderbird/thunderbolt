@@ -190,6 +190,65 @@ describe('assistant-message utilities', () => {
     })
   })
 
+  describe('groupMessageParts — run_office_script', () => {
+    const officeCall = (output?: ToolUIPart['output']): ToolUIPart =>
+      output === undefined
+        ? { type: 'tool-run_office_script', toolCallId: 'o1', state: 'input-available', input: { script: 's' } }
+        : {
+            type: 'tool-run_office_script',
+            toolCallId: 'o1',
+            state: 'output-available',
+            input: { script: 's' },
+            output,
+          }
+    const createdReport = {
+      ok: true,
+      files: [{ id: 'f1', filename: 'report.docx', mimeType: 'application/docx', edited: false }],
+      logs: '',
+    }
+
+    it('keeps a run that created files as a step and shows its chips right after the group', () => {
+      const bash = createToolPart('bash')
+      const office = officeCall(createdReport)
+      const text: TextUIPart = { type: 'text', text: 'Done' }
+
+      expect(groupMessageParts([bash, office, text])).toEqual([
+        {
+          type: 'reasoning_group',
+          items: [
+            { type: 'tool', content: bash, id: bash.toolCallId },
+            { type: 'tool', content: office, id: office.toolCallId },
+          ],
+        },
+        office,
+        text,
+      ])
+    })
+
+    it('keeps the step in place when the running call finishes, so a one-call turn keeps its group', () => {
+      const running = officeCall()
+      const finished = officeCall(createdReport)
+      const runningGroup = groupMessageParts([running])
+      const finishedGroup = groupMessageParts([finished])
+
+      expect(runningGroup).toEqual([
+        { type: 'reasoning_group', items: [{ type: 'tool', content: running, id: running.toolCallId }] },
+      ])
+      expect(finishedGroup).toEqual([
+        { type: 'reasoning_group', items: [{ type: 'tool', content: finished, id: finished.toolCallId }] },
+        finished,
+      ])
+    })
+
+    it('shows no chips for a failed run, only its step', () => {
+      const failed = officeCall({ ok: false, error: 'boom', logs: '' })
+
+      expect(groupMessageParts([failed])).toEqual([
+        { type: 'reasoning_group', items: [{ type: 'tool', content: failed, id: failed.toolCallId }] },
+      ])
+    })
+  })
+
   describe('filterMessageParts', () => {
     it('retains supported parts and prunes unsupported or empty text entries', () => {
       const textPart: TextUIPart = { type: 'text', text: 'assistant output' }

@@ -119,7 +119,7 @@ export const mountMessageParts = (
         )
         break
       case 'tool': {
-        // groupMessageParts lifts only render_html parts and run_office_script parts with files out of the group.
+        // Standalone tool parts are render_html artifacts and the chips that follow a run_office_script step.
         const toolPart = part as ToolOrDynamicToolUIPart
         const createdFiles = isOfficeScriptPart(toolPart) ? officeScriptFiles(toolPart) : undefined
         partElements.push(

@@ -495,6 +495,8 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
           { name: 'KC_HTTP_PORT', value: '8080' },
           { name: 'KC_HOSTNAME', value: kcAuthUrl },
           { name: 'KC_PROXY_HEADERS', value: 'xforwarded' },
+          // Also set in the image; repeated here so stacks pinned to an older `version` get it.
+          { name: 'JDK_JAVA_OPTIONS', value: '-XX:-UseBASE64Intrinsics' },
           { name: 'KC_DB', value: 'postgres' },
           { name: 'KC_DB_URL', value: `jdbc:postgresql://${postgresHost}:5432/keycloak` },
           { name: 'KC_DB_USERNAME', value: 'postgres' },

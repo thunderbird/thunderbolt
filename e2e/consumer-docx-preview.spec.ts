@@ -299,7 +299,25 @@ test('on a phone, a preview reopened before its close reached history stays open
   await expect.poll(() => previewHistoryEntry(page)).toBeNull()
 })
 
-test('on desktop, the side panel adds no history entry and Back leaves the chat', async ({ page }) => {
+test('on a rotated phone, Back closes the side panel without leaving the chat', async ({ page, isMobile }) => {
+  test.skip(!isMobile, 'Only a phone or a tablet closes the side panel on Back.')
+  // Wide enough for the side panel, as a phone in landscape.
+  await page.setViewportSize({ width: 915, height: 412 })
+  const name = 'e2e-back-landscape.docx'
+  await sendDocument(page, name, await sampleBuffer(), sampleDocxText.title)
+  const chatUrl = page.url()
+  const lengthBefore = await historyLength(page)
+
+  await openPreview(page, name)
+  await expect(contentView(page)).toBeVisible()
+  expect(await historyLength(page)).toBe(lengthBefore + 1)
+  await page.goBack()
+  await expect(contentView(page)).toBeHidden()
+  expect(page.url()).toBe(chatUrl)
+})
+
+test('on desktop, the side panel adds no history entry and Back leaves the chat', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'On a phone or a tablet, Back closes the side panel at any width.')
   await page.setViewportSize({ width: 1280, height: 800 })
   const name = 'e2e-back-desktop.docx'
   await sendDocument(page, name, await sampleBuffer(), sampleDocxText.title)

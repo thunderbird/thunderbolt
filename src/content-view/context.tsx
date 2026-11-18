@@ -7,6 +7,7 @@ import { i18n } from '@lingui/core'
 import { useChatStore } from '@/chats/chat-store'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { getMcpToolDisplay } from '@/lib/mcp-tool-display'
+import { isTouchPlatform } from '@/lib/platform'
 import { trackEvent as defaultTrackEvent } from '@/lib/posthog'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
 import { formatToolOutput } from '@/lib/utils'
@@ -210,9 +211,10 @@ export const ContentViewProvider = ({
     dispatch({ type: 'show', view: closedView })
   }, [state.type, trackEvent])
 
-  // Below the breakpoint the view is a full-window dialog, so Back closes it like any other screen.
+  // Below the breakpoint the view is a full-window dialog, so Back closes it like any other screen. On a phone or a
+  // tablet it does at any width: Android's Back closes what is on top, the side panel of a rotated phone included.
   const { isMobile } = useIsMobile()
-  useBackClosesView(isMobile && state.type !== null, close)
+  useBackClosesView((isMobile || isTouchPlatform()) && state.type !== null, close)
 
   const showCompactionSummary = useCallback(
     (checkpoint: CompactionSummary) => {

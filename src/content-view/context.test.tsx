@@ -109,6 +109,26 @@ describe('ContentView sideview mode', () => {
     expect(window.history.length).toBe(before)
   })
 
+  test('on a rotated Android phone, Back closes the side panel too', () => {
+    const userAgent = navigator.userAgent
+    Object.defineProperty(navigator, 'userAgent', {
+      configurable: true,
+      value: 'Mozilla/5.0 (Linux; Android 16; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0 Mobile',
+    })
+    try {
+      window.history.replaceState({ idx: 1 }, '')
+      const { result } = renderHook(() => useContentView(), { wrapper })
+
+      act(() => result.current.showSideview('local-file', 'file-1:report.docx'))
+      act(() => window.history.back())
+
+      expect(result.current.isOpen).toBe(false)
+      expect(window.history.state).toEqual({ idx: 1 })
+    } finally {
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: userAgent })
+    }
+  })
+
   test('useSideview reports the active sideview', () => {
     const { result } = renderHook(
       () => {

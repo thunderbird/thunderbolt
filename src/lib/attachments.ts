@@ -28,10 +28,16 @@ export type AttachmentPart = {
 export const undeliverableAttachmentsNote = (filenames: string[]): string =>
   filenames.map((name) => `[Attachment ${promptFileName(name)} could not be delivered to this agent]`).join('\n')
 
+// A reader's error can quote the broken file, megabytes of it, so a note keeps only the start of the reason.
+const maxReasonChars = 300
+
 /** Model-facing note in place of an attachment whose content failed to load or
  *  extract. It carries the reason so the model can tell the user what went wrong. */
-export const unreadableAttachmentNote = (filename: string, cause: unknown): string =>
-  `[Attachment ${promptFileName(filename)} could not be read: ${cause instanceof Error ? cause.message : String(cause)}]`
+export const unreadableAttachmentNote = (filename: string, cause: unknown): string => {
+  const reason = cause instanceof Error ? cause.message : String(cause)
+  const shown = reason.length > maxReasonChars ? `${reason.slice(0, maxReasonChars)}…` : reason
+  return `[Attachment ${promptFileName(filename)} could not be read: ${shown}]`
+}
 
 /** The label that opens an attachment's content in a prompt, as in `[Attachment: "report.pdf"]`. */
 export const attachmentLabel = (filename: string): string => `[Attachment: ${promptFileName(filename)}]`

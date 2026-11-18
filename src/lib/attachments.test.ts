@@ -14,6 +14,7 @@ import {
   type HydrationDeps,
   isAttachmentPart,
   undeliverableAttachmentsNote,
+  unreadableAttachmentNote,
 } from './attachments'
 
 const data = { localFileId: 'f1', filename: 'doc.pdf', mimeType: 'application/pdf' }
@@ -22,6 +23,14 @@ describe('attachment labels', () => {
   test('labels attachments with the quoted name', () => {
     expect(attachmentLabel('doc.pdf')).toBe('[Attachment: "doc.pdf"]')
     expect(undeliverableAttachmentsNote(['a.png'])).toBe('[Attachment "a.png" could not be delivered to this agent]')
+  })
+
+  test('keeps a short reason whole and only the start of a reason that quotes megabytes of the file', () => {
+    expect(unreadableAttachmentNote('a.docx', new Error('Too big.'))).toBe(
+      '[Attachment "a.docx" could not be read: Too big.]',
+    )
+    const note = unreadableAttachmentNote('a.docx', new Error(`parse error: ${'a'.repeat(4 * 1024 * 1024)}`))
+    expect(note).toBe(`[Attachment "a.docx" could not be read: parse error: ${'a'.repeat(287)}…]`)
   })
 })
 

@@ -19,11 +19,12 @@ import { copyPowerSyncAssets } from './scripts/copy-powersync-assets'
 import { officeSandboxScriptPlugin } from './scripts/office-sandbox-script'
 import {
   addWebKitCompatToAsset,
+  resolvePreloadDependencies,
   webkitCompatAssetFileNames,
   webkitCompatPlugin,
   webkitCompatScript,
 } from './scripts/webkit-compat'
-const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url))
+const dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
 const host = process.env.TAURI_DEV_HOST
@@ -67,6 +68,7 @@ export default defineConfig({
   },
   build: {
     sourcemap,
+    modulePreload: { resolveDependencies: resolvePreloadDependencies },
     rolldownOptions: {
       input: {
         app: path.resolve(dirname, 'index.html'),

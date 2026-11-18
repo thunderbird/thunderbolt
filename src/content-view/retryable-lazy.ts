@@ -63,10 +63,10 @@ export const reloadFailedStylesheets = () => {
  * `lazy()` that can retry a failed import. `lazy()` keeps a rejected import, so a viewer whose chunk did not load on a
  * broken network would fail on every later render until the app reloads. After a failure this swaps in a new `lazy()`,
  * so the next render imports again, stylesheets included: Try again, or opening the file again.
+ * The chunk must be listed in `importsWithoutPreload` in scripts/webkit-compat.ts: WebKit keeps a module preload that
+ * failed until the page reloads, so a chunk that was preloaded could not load on a retry.
  * Returns a getter. Call it during render to get the current component.
  */
-// shortcut: WebKit remembers a `<link rel="modulepreload">` that failed, so in Safari the retry fails until a new tab
-// opens; dropping script modulepreload for lazy chunks in vite.config.ts fixes it, at one more round trip per chunk.
 export const retryableLazy = <P extends object>(load: () => Promise<{ default: ComponentType<P> }>) => {
   const create = (isRetry: boolean): LazyExoticComponent<ComponentType<P>> =>
     lazy(async () => {

@@ -53,3 +53,24 @@ export const webkitCompatPlugin = (): Plugin => ({
     }
   },
 })
+
+/**
+ * Dynamically imported modules whose script chunks are not preloaded, by chunk name: the module's file name, or its
+ * folder's for an `index`. WebKit keeps a `<link rel="modulepreload">` that failed for as long as the page lives, and
+ * every later import of that chunk fails with it, so the side panel's Try again could not load a viewer once the
+ * network came back. An import that fetches its chunks itself can be retried. The card thumbnails and the DOCX and PPTX
+ * renderers are here because they preload chunks the viewers need.
+ */
+export const importsWithoutPreload = [
+  'pdf-sidebar-viewer',
+  'xlsx-preview',
+  'pdf-thumbnail',
+  'docx-snapshot',
+  'pptx-snapshot',
+]
+
+const chunksWithoutPreload = new RegExp(`/(?:${importsWithoutPreload.join('|')})-[^/]*\\.js$`)
+
+/** `build.modulePreload.resolveDependencies`: no script preloads for those chunks, the usual ones for the rest. */
+export const resolvePreloadDependencies = (filename: string, deps: string[]): string[] =>
+  chunksWithoutPreload.test(filename) ? [] : deps

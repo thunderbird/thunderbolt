@@ -38,6 +38,9 @@ const tauriFs: FileSystem = {
  */
 export const readsFilesByPath = (): boolean => getPlatform() === 'linux'
 
+/** The http and https URLs among URIs the OS handed over, such as a link dragged or copied from a browser. */
+export const httpLinks = (uris: string[]): string[] => uris.filter((uri) => /^https?:\/\//i.test(uri))
+
 /**
  * The regular files among the paths the OS handed over, from a native drag or
  * a file manager copy, without reading their bytes. A path it cannot stat is

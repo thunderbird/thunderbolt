@@ -15,6 +15,7 @@ import { useIsMobile as useIsMobile_default } from '@/hooks/use-mobile'
 import { isMobile as isPlatformMobile } from '@/lib/platform'
 import {
   filesAtPaths,
+  httpLinks,
   readCopiedFiles as readCopiedFiles_default,
   readsFilesByPath as readsFilesByPath_default,
   type PathFile,
@@ -770,17 +771,32 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
         // no text when that type is present, so the files come from the OS clipboard.
         if (readsFilesByPath() && e.clipboardData.types.includes('text/uri-list')) {
           e.preventDefault()
-          void pasteCopiedFiles(e.currentTarget, e.clipboardData.getData('text/plain'))
+          // GTK reads text from `UTF8_STRING` and the like, never bare `text/plain`, so a link offered only that
+          // way reads empty here; its `text/uri-list` still holds it.
+          const text =
+            e.clipboardData.getData('text/plain') ||
+            httpLinks(e.clipboardData.getData('text/uri-list').split(/\r?\n/)).join('\n')
+          void pasteCopiedFiles(e.currentTarget, text)
         }
       },
       [acceptsAttachments, addFiles, pasteCopiedFiles, readsFilesByPath],
     )
 
+    // Listens for every agent: the native handler takes a dragged link from the page even where files are refused.
     useNativeFileDrop({
       zoneRef: dropZoneRef,
-      enabled: acceptsAttachments && readsFilesByPath(),
-      onHoverChange: setIsDragging,
-      onDrop: async (paths) => addFiles(await filesAtPaths(paths)),
+      enabled: readsFilesByPath(),
+      onHoverChange: (hovering) => setIsDragging(hovering && acceptsAttachments),
+      onDrop: async (paths, links) => {
+        const field = getTextarea()
+        if (field && links.length > 0) {
+          field.focus()
+          document.execCommand('insertText', false, links.join('\n'))
+        }
+        if (acceptsAttachments && paths.length > 0) {
+          await addFiles(await filesAtPaths(paths))
+        }
+      },
     })
 
     const removeAttachment = useCallback((localFileId: string) => {

@@ -90,8 +90,12 @@ const setUpCloud = async () => {
 /** Drive the X pointer and keyboard as a person would. */
 const xdotool = (...args: string[]) => execFileSync('xdotool', args)
 
-/** Offer `path` the way a file manager does (see file-source.py) while `act` runs. */
-const whileOffering = async (mode: 'drag' | 'copy', path: string, act: () => Promise<void>) => {
+/** Offer `path` the way a file manager does, or a link the way a browser does (see file-source.py), while `act` runs. */
+const whileOffering = async (
+  mode: 'drag' | 'copy' | 'drag-link' | 'copy-link',
+  path: string,
+  act: () => Promise<void>,
+) => {
   const source = Bun.spawn(['python3', 'e2e/native-smoke/file-source.py', mode, path])
   try {
     assert.equal((await source.stdout.getReader().read()).done, false, `file-source.py ${mode} exited early`)
@@ -142,6 +146,26 @@ const attachFromFileManager = async (composer: ChainablePromiseElement) => {
     xdotool('key', 'ctrl+v')
     await removeAttachment('pasted.txt')
   })
+  // The native drop handler takes a dragged link from the page, and GTK reads a link offered as bare text/plain as
+  // empty, so the composer types both links itself.
+  const link = 'https://example.com/native-smoke?x=1'
+  for (const mode of ['drag-link', 'copy-link'] as const) {
+    await whileOffering(mode, link, async () => {
+      await composer.click()
+      if (mode === 'drag-link') {
+        await dragOnto(composer)
+      } else {
+        xdotool('key', 'ctrl+v')
+      }
+      await browser.waitUntil(async () => (await composer.getValue()) !== '', {
+        timeout: 30_000,
+        timeoutMsg: `A link from ${mode} was not typed into the composer`,
+      })
+      await browser.pause(500) // A second insertion would land right after the first.
+      assert.equal(await composer.getValue(), link, `A link from ${mode} should be typed once, unchanged`)
+      xdotool('key', 'ctrl+a', 'BackSpace')
+    })
+  }
   const locked = file('locked.txt')
   chmodSync(locked, 0)
   assert.throws(() => readFileSync(locked), 'Run the smoke as a user that file permissions apply to')

@@ -48,7 +48,7 @@ describe('useNativeFileDrop', () => {
   const setup = (enabled = true) => {
     const webview = fakeWebview()
     const onHoverChange = mock((_hovering: boolean) => {})
-    const onDrop = mock((_paths: string[]) => {})
+    const onDrop = mock((_paths: string[], _links: string[]) => {})
     const hook = renderHook(
       ({ on }) =>
         useNativeFileDrop({ zoneRef: { current: zone }, enabled: on, onHoverChange, onDrop, listen: webview.listen }),
@@ -72,8 +72,29 @@ describe('useNativeFileDrop', () => {
 
     emit({ type: 'drop', paths: ['/home/ana/deck.pptx'], position: inside })
 
-    expect(onDrop).toHaveBeenCalledWith(['/home/ana/deck.pptx'])
+    expect(onDrop).toHaveBeenCalledWith(['/home/ana/deck.pptx'], [])
     expect(onHoverChange).toHaveBeenLastCalledWith(false)
+  })
+
+  it('shows no drop hint for a drag that carries only a link', () => {
+    const { emit, onHoverChange } = setup()
+
+    emit({ type: 'enter', paths: ['https://example.com/page?x=1'], position: inside })
+    emit({ type: 'over', position: inside })
+
+    expect(onHoverChange.mock.calls).toEqual([[false], [false]])
+  })
+
+  it('hands over a dropped link apart from the files, with the escapes the native handler decoded put back', () => {
+    const { emit, onDrop } = setup()
+
+    emit({
+      type: 'drop',
+      paths: ['/home/ana/deck.pptx', 'https://example.com/Q3 deck/é?x=1', 'mailto:ana@example.com'],
+      position: inside,
+    })
+
+    expect(onDrop).toHaveBeenCalledWith(['/home/ana/deck.pptx'], ['https://example.com/Q3%20deck/%C3%A9?x=1'])
   })
 
   it('ignores a drop outside the zone', () => {

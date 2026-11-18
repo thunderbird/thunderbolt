@@ -1264,7 +1264,11 @@ describe('ChatPromptInput', () => {
       })
 
       /** Renders the composer as on Linux, with `copied` standing in for the OS clipboard's file manager entry. */
-      const renderOnLinux = (copied: PathFile[], readCopiedFiles = async () => copied) => {
+      const renderOnLinux = (
+        copied: PathFile[],
+        readCopiedFiles = async () => copied,
+        useNativeFileDrop: (options: { onDrop: (paths: string[], links: string[]) => void }) => void = () => {},
+      ) => {
         const { mockUseChat } = setupStore()
         render(
           <ChatPromptInput
@@ -1272,7 +1276,7 @@ describe('ChatPromptInput', () => {
             useIsMobile={createMockUseIsMobile()}
             readsFilesByPath={() => true}
             readCopiedFiles={readCopiedFiles}
-            useNativeFileDrop={() => {}}
+            useNativeFileDrop={useNativeFileDrop}
           />,
           { wrapper: TestWrapper },
         )
@@ -1280,13 +1284,13 @@ describe('ChatPromptInput', () => {
       }
 
       /** Pastes what WebKitGTK shows for a file manager copy or a copied link: `text/uri-list`, no file items. */
-      const pasteUriList = (textarea: HTMLTextAreaElement, text: string) => {
+      const pasteUriList = (textarea: HTMLTextAreaElement, text: string, uriList = '') => {
         const pasteEvent = createEvent.paste(textarea, {
           clipboardData: {
             items: [],
             files: [],
             types: ['text/uri-list', 'text/plain'],
-            getData: (type: string) => (type === 'text/plain' ? text : ''),
+            getData: (type: string) => ({ 'text/plain': text, 'text/uri-list': uriList })[type] ?? '',
           },
         })
         const preventDefaultSpy = mock(() => {})
@@ -1305,6 +1309,37 @@ describe('ChatPromptInput', () => {
 
         expect(preventDefaultSpy).toHaveBeenCalled()
         expect(execCommand).toHaveBeenCalledWith('insertText', false, 'https://example.com/report')
+      })
+
+      it('pastes the links of the uri-list when the plain text reads empty', async () => {
+        const textarea = renderOnLinux([])
+        pasteUriList(
+          textarea,
+          '',
+          '# copied links\r\nhttps://example.com/a?x=1\r\nfile:///etc/passwd\r\nhttps://b.example\r\n',
+        )
+        await flushAttachments()
+
+        expect(execCommand).toHaveBeenCalledWith('insertText', false, 'https://example.com/a?x=1\nhttps://b.example')
+      })
+
+      it('pastes nothing for a uri-list of local files that no file manager copied', async () => {
+        const textarea = renderOnLinux([])
+        pasteUriList(textarea, '', 'file:///etc/passwd\r\n')
+        await flushAttachments()
+
+        expect(execCommand).not.toHaveBeenCalled()
+        expect(screen.queryByLabelText(/^Remove /)).not.toBeInTheDocument()
+      })
+
+      it('types a dragged link into the composer', async () => {
+        const drop = Promise.withResolvers<(paths: string[], links: string[]) => void>()
+        const textarea = renderOnLinux([], undefined, ({ onDrop }) => drop.resolve(onDrop))
+        const onDrop = await drop.promise
+        await act(async () => onDrop([], ['https://example.com/a?x=1']))
+
+        expect(document.activeElement).toBe(textarea)
+        expect(execCommand).toHaveBeenCalledWith('insertText', false, 'https://example.com/a?x=1')
       })
 
       it('drops the text when focus left the composer before the clipboard answered', async () => {

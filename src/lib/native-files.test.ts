@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, mock } from 'bun:test'
-import { filesAtPaths } from './native-files'
+import { filesAtPaths, httpLinks } from './native-files'
 
 const files = new Map([
   ['/home/ana/Q3 deck.pptx', 'deck'],
@@ -65,5 +65,13 @@ describe('filesAtPaths', () => {
 
     expect(locked.name).toBe('locked.docx')
     expect(await locked.read()).toBeNull()
+  })
+})
+
+describe('httpLinks', () => {
+  it('keeps only http and https URLs', () => {
+    const uris = ['https://example.com/page?x=1', 'HTTP://example.com', 'file:///etc/passwd', '/home/ana/deck.pptx']
+
+    expect(httpLinks([...uris, '# a uri-list comment', 'mailto:ana@example.com', ''])).toEqual(uris.slice(0, 2))
   })
 })

@@ -12,7 +12,7 @@ import { getToolMetadataSync } from '@/lib/tool-metadata'
 import { formatToolOutput } from '@/lib/utils'
 import type { UIMessageMetadata } from '@/types'
 import { getToolName, type DynamicToolUIPart, type ReasoningUIPart, type ToolUIPart } from 'ai'
-import { createContext, type ReactNode, useCallback, useContext, useState } from 'react'
+import { createContext, type ReactNode, useCallback, useContext, useReducer } from 'react'
 import type { SidebarWebviewConfig } from './use-sidebar-webview'
 import { useBackClosesView } from './use-back-closes-view'
 import type { CompactionSummary } from '@/components/context-usage'
@@ -64,6 +64,27 @@ type ContentViewState =
   | { type: 'artifact'; data: ArtifactViewData }
   | { type: 'compaction-summary'; data: CompactionSummary }
 
+const closedView: ContentViewState = { type: null, data: null }
+
+type ProviderState = { view: ContentViewState; previewHidden: boolean; sessionId: string | null }
+
+type ProviderAction =
+  | { type: 'show'; view: ContentViewState }
+  | { type: 'hide-preview'; hidden: boolean }
+  | { type: 'switch-chat'; sessionId: string | null }
+
+/** The open view, whether its preview is hidden, and the chat it belongs to. Switching chats closes the view. */
+const providerReducer = (state: ProviderState, action: ProviderAction): ProviderState => {
+  switch (action.type) {
+    case 'show':
+      return { ...state, view: action.view }
+    case 'hide-preview':
+      return { ...state, previewHidden: action.hidden }
+    case 'switch-chat':
+      return { ...state, sessionId: action.sessionId, view: closedView }
+  }
+}
+
 type ContentViewContextType = {
   state: ContentViewState
   showObjectView: (content: ObjectViewContent, mcpTools?: UIMessageMetadata['mcpTools']) => void
@@ -102,15 +123,17 @@ export const ContentViewProvider = ({
   children: ReactNode
   trackEvent?: typeof defaultTrackEvent
 }) => {
-  const [state, setState] = useState<ContentViewState>({ type: null, data: null })
-  const [previewHidden, setPreviewHidden] = useState(false)
   // The provider sits above the routes, so a view would outlive the chat it shows a file from: switching chats closes it.
   const currentSessionId = useChatStore((store) => store.currentSessionId)
-  const [viewSessionId, setViewSessionId] = useState(currentSessionId)
-  if (viewSessionId !== currentSessionId) {
-    setViewSessionId(currentSessionId)
-    setState({ type: null, data: null })
+  const [{ view: state, previewHidden, sessionId }, dispatch] = useReducer(providerReducer, {
+    view: closedView,
+    previewHidden: false,
+    sessionId: currentSessionId,
+  })
+  if (sessionId !== currentSessionId) {
+    dispatch({ type: 'switch-chat', sessionId: currentSessionId })
   }
+  const setPreviewHidden = useCallback((hidden: boolean) => dispatch({ type: 'hide-preview', hidden }), [])
 
   const showObjectView = useCallback(
     (content: ObjectViewContent, mcpTools?: UIMessageMetadata['mcpTools']) => {
@@ -118,7 +141,10 @@ export const ContentViewProvider = ({
         trackEvent('content_view_open', { view_type: 'object-view', reasoning: true })
         // Resolved eagerly in the click handler: the title is a snapshot stored
         // in state, so it uses the `i18n` singleton rather than `useLingui`.
-        setState({ type: 'object-view', data: { title: i18n._(reasoningViewTitle), output: content.text } })
+        dispatch({
+          type: 'show',
+          view: { type: 'object-view', data: { title: i18n._(reasoningViewTitle), output: content.text } },
+        })
         return
       }
 
@@ -134,7 +160,10 @@ export const ContentViewProvider = ({
         view_type: 'object-view',
         tool_name: content.type === 'dynamic-tool' ? 'mcp' : toolName,
       })
-      setState({ type: 'object-view', data: { title, input: formatToolOutput(content.input), output } })
+      dispatch({
+        type: 'show',
+        view: { type: 'object-view', data: { title, input: formatToolOutput(content.input), output } },
+      })
     },
     [trackEvent],
   )
@@ -143,12 +172,9 @@ export const ContentViewProvider = ({
     (url: string) => {
       trackEvent('content_view_open', { view_type: 'preview' })
       trackEvent('preview_open')
-      setState({
-        type: 'preview',
-        data: {
-          url,
-          onClose: () => setState({ type: null, data: null }),
-        },
+      dispatch({
+        type: 'show',
+        view: { type: 'preview', data: { url, onClose: () => dispatch({ type: 'show', view: closedView }) } },
       })
     },
     [trackEvent],
@@ -157,11 +183,14 @@ export const ContentViewProvider = ({
   const showSideview = useCallback(
     (sideviewType: string | null, sideviewId: string | null) => {
       if (sideviewType === null || sideviewId === null) {
-        setState({ type: null, data: null })
+        dispatch({ type: 'show', view: closedView })
         return
       }
       trackEvent('content_view_open', { view_type: 'sideview', sideview_type: sideviewType })
-      setState({ type: 'sideview', data: { sideviewType, sideviewId, opener: document.activeElement } })
+      dispatch({
+        type: 'show',
+        view: { type: 'sideview', data: { sideviewType, sideviewId, opener: document.activeElement } },
+      })
     },
     [trackEvent],
   )
@@ -169,7 +198,7 @@ export const ContentViewProvider = ({
   const showArtifact = useCallback(
     (data: ArtifactViewData) => {
       trackEvent('content_view_open', { view_type: 'artifact' })
-      setState({ type: 'artifact', data })
+      dispatch({ type: 'show', view: { type: 'artifact', data } })
     },
     [trackEvent],
   )
@@ -178,7 +207,7 @@ export const ContentViewProvider = ({
     if (state.type !== null) {
       trackEvent('content_view_close', { view_type: state.type })
     }
-    setState({ type: null, data: null })
+    dispatch({ type: 'show', view: closedView })
   }, [state.type, trackEvent])
 
   // Below the breakpoint the view is a full-window dialog, so Back closes it like any other screen.
@@ -188,7 +217,7 @@ export const ContentViewProvider = ({
   const showCompactionSummary = useCallback(
     (checkpoint: CompactionSummary) => {
       trackEvent('content_view_open', { view_type: 'compaction-summary' })
-      setState({ type: 'compaction-summary', data: checkpoint })
+      dispatch({ type: 'show', view: { type: 'compaction-summary', data: checkpoint } })
     },
     [trackEvent],
   )

@@ -70,6 +70,7 @@ it('names only modules the app imports dynamically, and imports each once the se
         /(\bimportWhenReachable\(\s*\(\)\s*=>\s*)?import\(\s*['"]([^'"]+)['"]\s*\)/g,
       ),
       ([, wrapper, spec]) => ({
+        spec,
         target: spec.startsWith('@/') ? path.join('src', spec.slice(2)) : path.join(path.dirname(file), spec),
         file,
         waitsForServer: wrapper !== undefined,
@@ -85,4 +86,9 @@ it('names only modules the app imports dynamically, and imports each once the se
   expect(missing).toEqual([])
   // An import that Safari saw fail once never loads again, so none may start while the server is down.
   expect(listed.filter(({ waitsForServer }) => !waitsForServer).map(({ file }) => file)).toEqual([])
+  // Imports outside the viewers whose chunks a viewer also loads, as the build's chunk graph showed: each waits too.
+  const sharedWithViewers = ['pdfjs-dist', '@/office/xlsx-drawings', '@/office/sheet-grid', './pptx-to-text']
+  const shared = imports.filter(({ spec }) => sharedWithViewers.includes(spec))
+  expect(sharedWithViewers.filter((spec) => !shared.some((entry) => entry.spec === spec))).toEqual([])
+  expect(shared.filter(({ waitsForServer }) => !waitsForServer).map(({ file }) => file)).toEqual([])
 })

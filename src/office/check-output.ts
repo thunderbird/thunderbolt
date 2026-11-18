@@ -85,7 +85,12 @@ const checker = (maxXmlBytes: number, maxUnzipBytes: number) => `(() => {
     fieldCodes(doc).some((code) => /^\\s*DDE(AUTO)?\\b/i.test(code))
   // Code that Office runs: a VBA project or an Excel 4.0 macro sheet, known by the content type the package gives it.
   const isMacroType = (type) => /^application\\/vnd\\.ms-(office\\.vbaproject|excel\\.(intl)?macrosheet\\+xml)$/i.test(type ?? '')
-  const macroPartNames = (types, names) => {
+  // Only application/ and text/ types: an image/svg+xml picture holds no fields, and a strict parse refuses valid ones.
+  const isXmlType = (type) => /^(application|text)\\/([^\\/;]*\\+)?xml\\s*(;.*)?$/i.test(type ?? '')
+  // OPC compares part names without case, so Office finds the content types under any capitalization.
+  const isContentTypes = (name) => /^\\[content_types\\]\\.xml$/i.test(name)
+  // Each part's content type as Office resolves it: an Override by part name, else a Default by extension.
+  const contentTypes = (types) => {
     const typeOf = new Map()
     for (const node of Array.from(types.getElementsByTagNameNS('*', 'Default'))) {
       typeOf.set('.' + (node.getAttribute('Extension') ?? '').toLowerCase(), node.getAttribute('ContentType'))
@@ -93,10 +98,14 @@ const checker = (maxXmlBytes: number, maxUnzipBytes: number) => `(() => {
     for (const node of Array.from(types.getElementsByTagNameNS('*', 'Override'))) {
       typeOf.set((node.getAttribute('PartName') ?? '').toLowerCase(), node.getAttribute('ContentType'))
     }
-    return names.filter((name) => {
+    return (name) => {
       const lower = name.toLowerCase()
-      return isMacroType(typeOf.get('/' + lower) ?? typeOf.get(lower.slice(lower.lastIndexOf('.'))))
-    })
+      return typeOf.get('/' + lower) ?? typeOf.get(lower.slice(lower.lastIndexOf('.')))
+    }
+  }
+  const macroPartNames = (types, names) => {
+    const typeOf = contentTypes(types)
+    return names.filter((name) => isMacroType(typeOf(name)))
   }
   const macroParts = (bytes, types, names) => {
     const wanted = macroPartNames(types, names)
@@ -180,21 +189,25 @@ const checker = (maxXmlBytes: number, maxUnzipBytes: number) => `(() => {
     const bytes = __savedFile(index)
     const all = []
     const names = []
+    const sizes = new Map()
     let declared = 0
     let total = 0
     let badName
     let types
     // Excelize rewrites an external link it read, so its parts are parsed for a DDE link however the file was made.
     const parsed = (name) =>
-      only === null || only.includes(name) || name === '[Content_Types].xml' || /^xl\\/externalLinks\\//.test(name)
+      only === null || only.includes(name) || isContentTypes(name) || /^xl\\/externalLinks\\//.test(name)
     try {
       fflate.unzipSync(bytes, {
         filter: ({ name, originalSize }) => {
           all.push(name)
+          sizes.set(name, originalSize)
           badName ??= isBadName(name) ? name : undefined
           total += originalSize
           if (isXmlPart(name) && parsed(name)) {
-            names.push(name)
+            // The content types come first: they name the other parts that are XML whatever their name.
+            if (isContentTypes(name)) names.unshift(name)
+            else names.push(name)
             declared += originalSize
           }
           return false
@@ -230,11 +243,19 @@ const checker = (maxXmlBytes: number, maxUnzipBytes: number) => `(() => {
       if (hasDde(doc)) {
         return { part: name, dde: true }
       }
-      if (name === '[Content_Types].xml') {
+      if (isContentTypes(name)) {
         if (macros !== null && text.includes('macroEnabled.main+xml') !== macros) {
           return { macros }
         }
         types = doc
+        // Office reads a part as XML when its content type says so, so a script cannot hide one under another name.
+        const typeOf = contentTypes(doc)
+        const typedXml = all.filter((part) => !isXmlPart(part) && parsed(part) && isXmlType(typeOf(part)))
+        declared = typedXml.reduce((sum, part) => sum + sizes.get(part), declared)
+        if (declared > ${maxXmlBytes}) {
+          return { tooLarge: true }
+        }
+        names.push(...typedXml)
       }
     }
     const added = activeContent(bytes).find(({ key }) => !inputKeys(inputs).has(key))

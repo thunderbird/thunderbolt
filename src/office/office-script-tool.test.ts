@@ -590,6 +590,62 @@ describe.each([
     })
     expect(await checkErrorOf(ddeLink)).toStartWith('"a.docx" has a DDE field in xl/externalLinks/externalLink1.xml')
 
+    // Office reads a part as XML by its declared content type, whatever its name says.
+    const typed = (types: string, parts: Record<string, string>, typesName = '[Content_Types].xml') =>
+      zipSync({
+        [typesName]: strToU8(
+          `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">${types}</Types>`,
+        ),
+        '_rels/.rels': strToU8(
+          '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.dat"/></Relationships>',
+        ),
+        ...Object.fromEntries(Object.entries(parts).map(([name, xml]) => [name, strToU8(xml)])),
+      })
+    const mainType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml'
+    const ddeDocument =
+      '<w:document xmlns:w="urn:w"><w:body><w:p><w:fldSimple w:instr="DDEAUTO cmd"/></w:p></w:body></w:document>'
+    for (const types of [
+      `<Override PartName="/word/document.dat" ContentType="${mainType}"/>`,
+      `<Default Extension="DAT" ContentType="${mainType}"/>`,
+    ]) {
+      expect(await checkErrorOf(typed(types, { 'word/document.dat': ddeDocument }))).toStartWith(
+        '"a.docx" has a DDE field in word/document.dat',
+      )
+    }
+    // OPC part names ignore case, so the content types still count under another capitalization.
+    const upperTypes = typed(
+      `<Override PartName="/word/document.dat" ContentType="${mainType}"/>`,
+      { 'word/document.dat': ddeDocument },
+      '[CONTENT_TYPES].XML',
+    )
+    expect(await checkErrorOf(upperTypes)).toStartWith('"a.docx" has a DDE field in word/document.dat')
+    const externalLink = typed(
+      '<Override PartName="/xl/externalLinks/externalLink1.bin" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.externalLink+xml"/>',
+      {
+        'xl/externalLinks/externalLink1.bin':
+          '<externalLink xmlns="urn:x"><ddeLink ddeService="cmd" ddeTopic="/c calc"/></externalLink>',
+      },
+    )
+    expect(await checkErrorOf(externalLink)).toStartWith(
+      '"a.docx" has a DDE field in xl/externalLinks/externalLink1.bin',
+    )
+    const broken = typed('<Default Extension="bin" ContentType="application/xml"/>', { 'word/custom.bin': '<a></b>' })
+    expect(await checkErrorOf(broken)).toStartWith(
+      '"a.docx" would not open: its part word/custom.bin is not valid XML (',
+    )
+    // A picture typed image/svg+xml is not parsed: a valid SVG may declare entities the strict parser refuses.
+    const renamed = typed(
+      `<Override PartName="/word/document.dat" ContentType="${mainType}"/><Default Extension="svg" ContentType="image/svg+xml"/>`,
+      {
+        'word/document.dat':
+          '<w:document xmlns:w="urn:w"><w:body><w:p><w:fldSimple w:instr="PAGE"/></w:p></w:body></w:document>',
+        'word/media/image1.svg':
+          '<!DOCTYPE svg [<!ENTITY ns "http://www.w3.org/2000/svg">]><svg xmlns="&ns;"><rect width="1" height="1"/></svg>',
+      },
+    )
+    const harmless = `saveFile('a.docx', new Uint8Array([${renamed.join(',')}]))`
+    expect((await okFiles(call({}, harmless))).files).toHaveLength(1)
+
     const ordinary = `<w:document xmlns:w="urn:w"><w:body><w:p>${run(' PAGE ')}${field(' HYPERLINK "https://example.com/DDE" ')}<w:fldSimple w:instr="PAGE"/></w:p></w:body></w:document>`
     const page = storeAttachment('page.docx', zipWith(ordinary))
     const script = `saveFile('page.docx', ${editedCopy('page.docx')})`

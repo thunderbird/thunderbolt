@@ -35,8 +35,9 @@ const limitMessages = {
   parts: `This document has more than ${maxEntries} parts, over the limit for reading it.`,
 }
 
-// A tag cannot hold a `<`, not even quoted, so no match runs past the next one.
-const startTags = /<([^\s/>!?<]+)((?:[^<>"']|"[^"]*"|'[^']*')*)>/g
+// A tag cannot hold a `<`, not even quoted, so no match runs past the next one. The rest starts at a separator, so a
+// name that runs on with no `>` is not scanned again for every character it gives back.
+const startTags = /<([^\s/>!?<]+)((?:[\s/](?:[^<>"']|"[^"]*"|'[^']*')*)?)>/g
 // A name starts only after white space or a quote, so a long run with no `=` is tried once, not at every character.
 const attributePattern = /(?<![^\s"'])([^\s="']+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g
 

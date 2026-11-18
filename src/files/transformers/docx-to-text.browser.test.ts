@@ -158,7 +158,21 @@ describe('docx-to-text in the browser build', () => {
     const zip = await editedDocx((parts) => withBody(parts, `<w:p xmlns ${'a'.repeat(200_000)}/>`))
 
     const started = performance.now()
-    await Promise.allSettled([docx.docxToText(asFile(new Blob([zip])))])
+    await expect(docx.docxToText(asFile(new Blob([zip])))).rejects.toThrow('[xmldom warning]')
+
+    expect(performance.now() - started).toBeLessThan(2_000)
+  })
+
+  test('scans past a tag name that runs on with no end, in one pass, and still checks the tags after it', async () => {
+    // Retrying such a name cost about 0.5 s, after which the engine gave up and the scan missed every later tag.
+    const zip = await editedDocx((parts) =>
+      withBody(parts, `<w:p><${'a'.repeat(20_000)}</w:p><w:p xmlns:x="urn:${'a'.repeat(1_000)}"/>`),
+    )
+
+    const started = performance.now()
+    await expect(docx.docxToText(asFile(new Blob([zip])))).rejects.toThrow(
+      'This document declares a namespace longer than 256 characters, over the limit for reading it.',
+    )
 
     expect(performance.now() - started).toBeLessThan(2_000)
   })

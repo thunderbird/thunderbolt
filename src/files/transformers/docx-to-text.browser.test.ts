@@ -102,4 +102,100 @@ describe('docx-to-text in the browser build', () => {
 
     await expect(docx.docxToText(asFile(new Blob([zip])))).rejects.toThrow('more than 65535 parts')
   })
+
+  test('refuses a namespace longer than Word writes, which the reader would copy into every element name', async () => {
+    const declared = (length: number) =>
+      editedDocx((parts) =>
+        withBody(parts, `<w:p xmlns:x="urn:${'a'.repeat(length - 4)}">${'<x:e/>'.repeat(400)}</w:p>`),
+      )
+
+    await expect(docx.docxToText(asFile(new Blob([await declared(256)])))).resolves.toEqual({ text: '' })
+    await expect(docx.docxToText(asFile(new Blob([await declared(64 * 1024)])))).rejects.toThrow(
+      'This document declares a namespace longer than 256 characters, over the limit for reading it.',
+    )
+  })
+
+  test('refuses over 1,000 different elements to warn about, since comparing the warnings grows with their square', async () => {
+    const byName = await editedDocx((parts) =>
+      withBody(parts, Array.from({ length: 1_001 }, (_, index) => `<e${index}/>`).join('')),
+    )
+    const byNamespace = await editedDocx((parts) =>
+      withBody(
+        parts,
+        Array.from({ length: 1_001 }, (_, index) => `<p${index}:br xmlns:p${index}="urn:${index}"/>`).join(''),
+      ),
+    )
+
+    for (const zip of [byName, byNamespace]) {
+      await expect(docx.docxToText(asFile(new Blob([zip])))).rejects.toThrow(
+        'This document has over 1000 different kinds of markup, the limit for reading it.',
+      )
+    }
+  })
+
+  test('counts the break types, symbols and styles the reader quotes in its warnings, not only element names', async () => {
+    const quoted = (index: number) =>
+      `<w:br w:type="t${index}"/><w:sym w:font="f${index}" w:char="41"/><w:p><w:pPr><w:pStyle w:val="s${index}"/></w:pPr></w:p>`
+    const zip = await editedDocx((parts) =>
+      withBody(parts, Array.from({ length: 400 }, (_, index) => quoted(index)).join('')),
+    )
+
+    await expect(docx.docxToText(asFile(new Blob([zip])))).rejects.toThrow('over 1000 different kinds of markup')
+  })
+
+  test('refuses a prefix given two namespaces in one part, which would let one written name stand for many', async () => {
+    const zip = await editedDocx((parts) =>
+      withBody(parts, '<w:p xmlns:x="urn:a"><x:e/></w:p><w:p xmlns:x="urn:b"><x:e/></w:p>'),
+    )
+
+    await expect(docx.docxToText(asFile(new Blob([zip])))).rejects.toThrow(
+      'This document gives one namespace prefix two different namespaces, so it cannot be read.',
+    )
+  })
+
+  test('reads a main document stored under another name, found through its relationship as the reader finds it', async () => {
+    const zip = await editedDocx((parts) => {
+      const rename = (from: string, to: string) => {
+        parts[to] = parts[from]
+        delete parts[from]
+      }
+      rename('word/document.xml', 'word/document.dat')
+      rename('word/_rels/document.xml.rels', 'word/_rels/document.dat.rels')
+      for (const path of ['_rels/.rels', '[Content_Types].xml']) {
+        parts[path] = strToU8(strFromU8(parts[path]).replace('word/document.xml', 'word/document.dat'))
+      }
+    })
+
+    const { text } = await docx.docxToText(asFile(new Blob([zip])))
+
+    expect(text).toBe(sampleText)
+  })
+
+  test('reads a document whose large custom XML part counts toward no limit, since the reader never opens it', async () => {
+    const zip = await editedDocx((parts) => {
+      parts['customXml/item1.xml'] = strToU8(`<data>${'<v>1</v>'.repeat((5 * mib) / 8)}</data>`)
+    })
+
+    const { text } = await docx.docxToText(asFile(new Blob([zip])))
+
+    expect(text).toBe(sampleText)
+  })
+
+  test('counts a part once for each role the reader reads it in: 40,000 empty paragraphs fit once, not six times', async () => {
+    const roles = ['styles', 'numbering', 'footnotes', 'endnotes', 'comments']
+    const relationships = roles.map(
+      (role, index) =>
+        `<Relationship Id="r${index}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/${role}" Target="document.xml"/>`,
+    )
+    const once = await editedDocx((parts) => withBody(parts, '<w:p/>'.repeat(40_000)))
+    const sixTimes = await editedDocx((parts) => {
+      withBody(parts, '<w:p/>'.repeat(40_000))
+      parts['word/_rels/document.xml.rels'] = strToU8(
+        `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relationships.join('')}</Relationships>`,
+      )
+    })
+
+    await expect(docx.docxToText(asFile(new Blob([once])))).resolves.toEqual({ text: '' })
+    await expect(docx.docxToText(asFile(new Blob([sixTimes])))).rejects.toThrow('would take over 400 MiB of memory')
+  })
 })

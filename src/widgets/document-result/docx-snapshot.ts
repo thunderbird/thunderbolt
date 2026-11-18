@@ -140,12 +140,14 @@ const prepareForMarkup = (wrapper: HTMLDivElement, css: string) => {
 }
 
 /**
- * In a frame narrower than the pages, as on a phone, each page takes the frame's width and its text wraps to it, at
- * the size the document sets. Scaling a page down to a phone's width would make its text about 5 pixels tall and
- * drop the thin borders of its tables. A picture shrinks to fit; a table too wide scrolls across its page.
+ * On a phone, in a frame narrower than the pages, each page takes the frame's width and its text wraps to it at the
+ * size the document sets. Scaled down to a phone's width instead, its text would be about 5 pixels tall. A picture
+ * shrinks to fit; a table too wide scrolls across its page. With no container on the root, the table borders meant
+ * for pages drawn smaller stay off, since the pages are at full size.
  */
 const reflowStyle = (width: number) =>
   `<style>@media (max-width: ${width - 1}px) {` +
+  'html { container-type: normal; } body { zoom: 1; }' +
   '.docx-wrapper { padding: 8px 8px 0 !important; align-items: stretch !important; }' +
   '.docx-wrapper > section.docx { width: auto !important; min-height: 0 !important; padding: 24px 16px !important;' +
   ' margin-bottom: 8px !important; overflow-x: auto !important; }' +
@@ -154,7 +156,7 @@ const reflowStyle = (width: number) =>
 
 /**
  * Renders a DOCX into a static page for a frame with `sandbox=""`, whose policy loads nothing outside it. Links lose
- * their targets: a snapshot cannot follow them. Its pages reflow in a frame narrower than they are.
+ * their targets: a snapshot cannot follow them. Its pages can reflow in a frame narrower than they are.
  */
 export const renderDocxSnapshot = (blob: Blob): Promise<DocumentSnapshot> =>
   renderSnapshot('docx preview', async () => {
@@ -164,10 +166,9 @@ export const renderDocxSnapshot = (blob: Blob): Promise<DocumentSnapshot> =>
     return {
       head:
         '<style>body { margin: 0; background: gray; } svg { overflow: visible; }</style>' +
-        styles.map(styleMarkup).join('') +
-        reflowStyle(width),
+        styles.map(styleMarkup).join(''),
       body: wrapper.outerHTML,
       width,
-      reflows: true,
+      reflowStyle: reflowStyle(width),
     }
   })

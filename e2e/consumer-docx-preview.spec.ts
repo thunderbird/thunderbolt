@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { readFile } from 'node:fs/promises'
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import {
   hostileAltChunkText,
   hostileDocx,
@@ -77,6 +77,80 @@ test('on a phone the pages reflow to the width of the screen, and the text keeps
     .getByText(sampleDocxText.bullets[0])
     .evaluate((element) => parseFloat(getComputedStyle(element).fontSize))
   expect(fontSize).toBeGreaterThanOrEqual(12)
+})
+
+/**
+ * Counts the lines `table` draws on screen, across and down, in a screenshot of `container`, which must hold the whole
+ * table. A line is a row or column of pixels that is dark along nearly all of the table's inside, so a border drawn
+ * too thin or too faint is not counted.
+ */
+const tableLines = async (page: Page, table: Locator, container: Locator) => {
+  const [tableBox, containerBox] = await Promise.all([table.boundingBox(), container.boundingBox()])
+  if (!tableBox || !containerBox) {
+    throw new Error('The table or its container is not on screen')
+  }
+  const box = { ...tableBox, x: tableBox.x - containerBox.x, y: tableBox.y - containerBox.y }
+  expect(box.x).toBeGreaterThanOrEqual(0)
+  expect(box.x + box.width).toBeLessThanOrEqual(containerBox.width)
+  const screenshot = (await container.screenshot({ animations: 'disabled' })).toString('base64')
+  return page.evaluate(
+    async ({ png, table, width }) => {
+      const bitmap = await createImageBitmap(
+        new Blob([Uint8Array.from(atob(png), (char) => char.charCodeAt(0))], { type: 'image/png' }),
+      )
+      const canvas = document.createElement('canvas')
+      Object.assign(canvas, { width: bitmap.width, height: bitmap.height })
+      const context = canvas.getContext('2d', { willReadFrequently: true })!
+      context.drawImage(bitmap, 0, 0)
+      const pixels = context.getImageData(0, 0, bitmap.width, bitmap.height).data
+      const dark = (x: number, y: number) => {
+        const at = 4 * (y * bitmap.width + x)
+        return pixels[at] + pixels[at + 1] + pixels[at + 2] < 3 * 160
+      }
+      const scale = bitmap.width / width
+      // The device pixels from `start` to `end`, given in CSS pixels, kept within the screenshot.
+      const span = (start: number, end: number, limit: number) => {
+        const from = Math.max(0, Math.round(start * scale))
+        return Array.from({ length: Math.min(limit, Math.round(end * scale)) - from }, (_, index) => from + index)
+      }
+      // A collapsed border lies half outside the table's box, so look 2px past it, but measure only its inside.
+      const rows = span(table.y - 2, table.y + table.height + 2, bitmap.height)
+      const columns = span(table.x - 2, table.x + table.width + 2, bitmap.width)
+      const insideRows = span(table.y + 1, table.y + table.height - 1, bitmap.height)
+      const insideColumns = span(table.x + 1, table.x + table.width - 1, bitmap.width)
+      const isLine = (line: boolean[]) => line.filter(Boolean).length > 0.9 * line.length
+      const count = (lines: boolean[]) => lines.filter((line, index) => line && !lines[index - 1]).length
+      return {
+        across: count(rows.map((y) => isLine(insideColumns.map((x) => dark(x, y))))),
+        down: count(columns.map((x) => isLine(insideRows.map((y) => dark(x, y))))),
+      }
+    },
+    { png: screenshot, table: box, width: containerBox.width },
+  )
+}
+
+test("a table's thin borders still draw where its pages are drawn smaller, on the card and in the side panel", async ({
+  page,
+}) => {
+  const name = 'e2e-borders.docx'
+  await sendDocument(page, name, await sampleBuffer(), sampleDocxText.title)
+  // The sample's table has two rows and two columns, with the default borders: 0.5pt, under a pixel at full size.
+  const twoByTwo = { across: 3, down: 3 }
+
+  const card = page.locator(`button[title="${name}"]`)
+  const thumbnailTable = card.locator('iframe').contentFrame().locator('table')
+  await expect(thumbnailTable).toBeVisible()
+  expect(await tableLines(page, thumbnailTable, card)).toEqual(twoByTwo)
+
+  // A phone held upright lays the pages out again at full size; held sideways, its side panel draws them smaller.
+  if ((page.viewportSize()?.width ?? 1280) < 768) {
+    await page.setViewportSize({ width: 844, height: 390 })
+  }
+  const preview = await openPreview(page, name)
+  const table = preview.contentFrame().locator('table')
+  await expect(table).toBeVisible()
+  await table.scrollIntoViewIfNeeded()
+  expect(await tableLines(page, table, preview)).toEqual(twoByTwo)
 })
 
 test('a DOCX card opens from the keyboard, and Escape on the Close button closes the preview', async ({ page }) => {

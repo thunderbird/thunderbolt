@@ -75,11 +75,12 @@ const withinPictureLimit = (parts: Map<string, Uint8Array>) => {
 
 /**
  * A file's pages or slides as markup for the sandboxed frame, with their width in CSS pixels, or why there are none:
- * past the limits, unreadable, or the renderer's code did not load, as on a broken network. Pages that `reflow` lay
- * their text out again in a frame narrower than they are; the others only scale down.
+ * past the limits, unreadable, or the renderer's code did not load, as on a broken network. In a frame narrower than
+ * they are, the pages scale down to its width. Pages with a `reflowStyle`, added after the markup, lay their text out
+ * again at the frame's width instead.
  */
 export type DocumentSnapshot =
-  | { kind: 'pages'; html: string; width: number; reflows: boolean }
+  | { kind: 'pages'; html: string; width: number; reflowStyle?: string }
   | { kind: 'tooLarge' }
   | { kind: 'unreadable' }
   | { kind: 'notLoaded' }
@@ -121,20 +122,45 @@ export const unpackWithinLimits = async (blob: Blob): Promise<Record<string, Uin
 export const snapshotPolicy = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:"
 
 /**
+ * The frame's width (the root's, without its scroll bar) divided by `width`. `tan(atan2(a, b))` gives `a / b` as a
+ * plain number.
+ */
+const fitZoom = (width: number) => `min(1, tan(atan2(100cqw, ${width}px)))`
+
+/**
+ * Keeps pages that are `width` CSS pixels wide within the frame. CSS `zoom` lays them out again at that size, so a thin
+ * border still covers a whole device pixel; Firefox drops such a border from a frame scaled with `transform`.
+ * WebKit at 3 device pixels per CSS pixel, as on an iPhone, drops a collapsed table border that zoom makes thinner
+ * than 2 device pixels, so pages drawn smaller there give their tables separate borders, which it draws. The
+ * renderers set `border-collapse` on the table itself, hence `!important`; a table's own spacing is kept.
+ */
+const fitStyle = (width: number) =>
+  `<style>html { container-type: inline-size; } body { zoom: ${fitZoom(width)}; }` +
+  `@media (min-resolution: 3dppx) { @container (width < ${width}px) {` +
+  ' table { border-collapse: separate !important; border-spacing: 0; } } }</style>'
+
+/**
+ * Whether this browser scales the pages down with their own style. One that lacks container units or that `zoom`
+ * value, such as Safari before 16, drops the style, so the frame must keep the pages' width and be drawn smaller.
+ */
+export const pagesZoomToFit = () => CSS.supports('zoom', fitZoom(1))
+
+/**
  * Renders a file into a static page for a frame with `sandbox=""`, whose policy loads nothing outside it. `render`
- * returns the page's head and body, its width and whether it reflows. A file past the limits gets `tooLarge`; one the
- * renderer cannot read, damaged or using something it does not handle, gets `unreadable`. Download works for both.
+ * returns the page's head and body, its width in CSS pixels, and the style that makes the pages reflow, if they can.
+ * A file past the limits gets `tooLarge`; one the renderer cannot read, damaged or using something it does not handle,
+ * gets `unreadable`. Download works for both.
  */
 export const renderSnapshot = async (
   label: string,
-  render: () => Promise<{ head: string; body: string; width: number; reflows: boolean }>,
+  render: () => Promise<{ head: string; body: string; width: number; reflowStyle?: string }>,
 ): Promise<DocumentSnapshot> => {
   try {
-    const { head, body, width, reflows } = await render()
+    const { head, body, width, reflowStyle } = await render()
     const html =
       `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="${snapshotPolicy}">` +
-      `${head}</head><body>${body}</body></html>`
-    return { kind: 'pages', html, width, reflows }
+      `${fitStyle(width)}${head}</head><body>${body}</body></html>`
+    return { kind: 'pages', html, width, reflowStyle }
   } catch (error) {
     if (error instanceof PastLimitsError || error instanceof ZipLimitError) {
       return { kind: 'tooLarge' }

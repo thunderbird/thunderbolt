@@ -5,7 +5,7 @@
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useViewSize } from '@/hooks/use-view-size'
 import { useRef } from 'react'
-import type { DocumentSnapshot } from './snapshot'
+import { type DocumentSnapshot, pagesZoomToFit } from './snapshot'
 
 type SnapshotPagesProps = {
   title: string
@@ -13,15 +13,17 @@ type SnapshotPagesProps = {
 }
 
 /**
- * A document's pages or a deck's slides in a frame with `sandbox=""`, which scrolls them itself. Pages wider than the
- * panel scale down to its width: the frame keeps the pages' own width and is drawn smaller. On a phone, pages that
- * reflow take the panel's width instead, so their text stays readable.
+ * A document's pages or a deck's slides in a frame with `sandbox=""` that fills the panel and scrolls them itself.
+ * Pages wider than the panel scale down to its width; in a browser that cannot do it inside the frame, the frame keeps
+ * the pages' width and is drawn smaller. On a phone, pages that reflow take its width instead, so their text stays
+ * readable.
  */
 export const SnapshotPages = ({ title, snapshot }: SnapshotPagesProps) => {
   const ref = useRef<HTMLDivElement>(null)
   const view = useViewSize(ref)
   const { isMobile } = useIsMobile()
-  const scales = view.width > 0 && view.width < snapshot.width && !(isMobile && snapshot.reflows)
+  const reflowStyle = isMobile ? (snapshot.reflowStyle ?? '') : ''
+  const scales = !reflowStyle && !pagesZoomToFit() && view.width > 0 && view.width < snapshot.width
   const scale = scales ? view.width / snapshot.width : 1
   const size =
     scale < 1
@@ -32,7 +34,8 @@ export const SnapshotPages = ({ title, snapshot }: SnapshotPagesProps) => {
       <iframe
         title={title}
         sandbox=""
-        srcDoc={snapshot.html}
+        // A style after the end of the markup still applies: the parser moves it into the body.
+        srcDoc={snapshot.html + reflowStyle}
         className="absolute left-0 top-0 origin-top-left border-0"
         style={size}
       />

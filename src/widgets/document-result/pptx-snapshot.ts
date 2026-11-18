@@ -270,9 +270,8 @@ export const renderPptxSnapshot = (blob: Blob): Promise<DocumentSnapshot> =>
       return {
         head: `<style>body { margin: 0; padding: ${gap}px; background: gray; } body > * { margin: 0 auto ${gap}px; }</style>`,
         body: slides.join(''),
+        // Slides place each shape at a fixed point, so they have no reflow style: they only scale.
         width: presentation.width + 2 * gap,
-        // Slides place each shape at a fixed point, so they only scale.
-        reflows: false,
       }
     } finally {
       for (const handle of handles) {

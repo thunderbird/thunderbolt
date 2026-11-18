@@ -26,7 +26,7 @@ const makeHttpClient = (resolve: { blob?: Blob; error?: Error }): HttpClient =>
   })
 
 /** What the renderer resolves to in these tests: one page of markup. */
-const pages: DocumentSnapshot = { kind: 'pages', html: '<p>Document preview</p>', width: 854, reflows: true }
+const pages: DocumentSnapshot = { kind: 'pages', html: '<p>Document preview</p>', width: 854 }
 
 /** Flushes the hook's async fetch + reducer dispatch. */
 const flush = async () => {

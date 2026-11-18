@@ -10,7 +10,7 @@ For production / on-prem detail beyond the local quick-start, see the
 ## Quick Start (Local)
 
 This walkthrough takes you from "no cluster" to a working Thunderbolt at
-`http://localhost` using [`kind`](https://kind.sigs.k8s.io/) (Kubernetes-in-Docker).
+`http://localhost:8080` using [`kind`](https://kind.sigs.k8s.io/) (Kubernetes-in-Docker).
 Total time: ~5 minutes.
 
 ### 1. Get a local cluster
@@ -25,49 +25,22 @@ brew install kind helm   # or your platform's equivalent
 Other options that work with this chart: Docker Desktop's built-in Kubernetes,
 `minikube`, `k3d`. The rest of this guide assumes `kind`.
 
-Create a cluster with port mappings for the ingress controller (the chart's
-ingress binds to host ports `:80` and `:443`):
+Create a cluster:
 
 ```bash
-cat > /tmp/kind-thunderbolt.yaml <<'EOF'
-kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
-nodes:
-  - role: control-plane
-    kubeadmConfigPatches:
-      - |
-        kind: InitConfiguration
-        nodeRegistration:
-          kubeletExtraArgs:
-            node-labels: "ingress-ready=true"
-    extraPortMappings:
-      - containerPort: 80
-        hostPort: 80
-        protocol: TCP
-      - containerPort: 443
-        hostPort: 443
-        protocol: TCP
-EOF
-
-kind create cluster --name thunderbolt --config /tmp/kind-thunderbolt.yaml
+kind create cluster --name thunderbolt
 ```
 
-### 2. Install nginx-ingress (kind flavor)
+### 2. Install Traefik
 
-`kind` requires a specific ingress-nginx manifest that binds to the
-`ingress-ready=true` node we just labeled. The official kind manifest:
+Run this from the repository root:
 
 ```bash
-kubectl apply -f https://kind.sigs.k8s.io/examples/ingress/deploy-ingress-nginx.yaml
-
-kubectl wait --namespace ingress-nginx \
-  --for=condition=ready pod \
-  --selector=app.kubernetes.io/component=controller \
-  --timeout=120s
+helm upgrade --install traefik traefik \
+  --repo https://traefik.github.io/charts --version 42.4.1 \
+  --namespace traefik --create-namespace --skip-crds \
+  -f deploy/config/traefik-values.yaml
 ```
-
-> **Other clusters:** if you're not using `kind`, install ingress-nginx via the
-> standard chart instead: `helm install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx --create-namespace --set controller.service.type=LoadBalancer`.
 
 ### 3. Generate the required secret
 
@@ -81,8 +54,10 @@ BETTER_AUTH_SECRET=$(openssl rand -base64 32 | tr -d '\n' | base64)
 ### 4. Install Thunderbolt
 
 ```bash
-helm install thunderbolt . \
+helm install thunderbolt deploy/k8s \
   -n thunderbolt --create-namespace \
+  --set ingress.className=traefik-nginx \
+  --set appUrl=http://localhost:8080 \
   --set backend.betterAuthSecretBase64="$BETTER_AUTH_SECRET"
 ```
 
@@ -105,7 +80,11 @@ First boot takes 1–2 minutes. Expected sequence:
 
 ### 6. Sign in
 
-Open `http://localhost` in a private window. Click sign-in. You'll be redirected
+```bash
+kubectl port-forward -n traefik svc/traefik 8080:80
+```
+
+Open `http://localhost:8080` in a private window. Click sign-in. You'll be redirected
 to Keycloak. Demo credentials: `demo@thunderbolt.io` / `demo`. That account comes
 from `keycloak.demoUserEnabled`, which production deploys should turn off — see
 [Values](#values).
@@ -202,7 +181,7 @@ keeps its identity and the data stays where it is.
 
 ```bash
 kubectl delete statefulset postgres -n thunderbolt --cascade=orphan
-helm upgrade thunderbolt . -n thunderbolt --reuse-values --set postgres.storage=10Gi
+helm upgrade thunderbolt deploy/k8s -n thunderbolt --reuse-values --set postgres.storage=10Gi
 ```
 
 That updates the template. On a StorageClass with `allowVolumeExpansion: true`,
@@ -237,7 +216,7 @@ kubectl delete pvc pg-data-postgres-0 -n thunderbolt
 
 # 4. Recreate on the new class, with the writers still down. The upgrade resets
 #    both replica counts, so pin them to 0 here.
-helm upgrade thunderbolt . -n thunderbolt --reuse-values \
+helm upgrade thunderbolt deploy/k8s -n thunderbolt --reuse-values \
   --set postgres.storageClassName=<class> \
   --set backend.replicas=0 --set powersync.replicas=0
 
@@ -250,7 +229,7 @@ kubectl rollout status statefulset/postgres -n thunderbolt --timeout=10m
 #    stopped: pass the counts you were running before.
 kubectl exec -i -n thunderbolt postgres-0 -- \
   pg_restore -U postgres -d postgres --clean --if-exists < thunderbolt.dump
-helm upgrade thunderbolt . -n thunderbolt --reuse-values \
+helm upgrade thunderbolt deploy/k8s -n thunderbolt --reuse-values \
   --set postgres.storageClassName=<class> \
   --set backend.replicas=1 --set powersync.replicas=1
 ```
@@ -273,7 +252,7 @@ provider you use, register this callback URL with it:
 ```
 
 ```bash
-helm upgrade thunderbolt . -n thunderbolt \
+helm upgrade thunderbolt deploy/k8s -n thunderbolt \
   --reuse-values \
   --set keycloak.enabled=false \
   --set oidc.issuer=https://idp.example.com/application/o/thunderbolt/ \
@@ -294,8 +273,8 @@ process list.
 ## Testing the chart
 
 ```bash
-helm lint . --set backend.betterAuthSecretBase64=dGVzdA==
-helm unittest .
+helm lint deploy/k8s --set backend.betterAuthSecretBase64=dGVzdA==
+helm unittest deploy/k8s
 ```
 
 The suites live in [`tests/`](tests/) and run in CI whenever the chart changes. Plugin setup, how to write a test, and how to simulate `helm upgrade --reuse-values` are in [Helm chart tests](../../docs/internals/development/testing.md#helm-chart-tests).

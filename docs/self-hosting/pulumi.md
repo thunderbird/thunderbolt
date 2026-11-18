@@ -21,7 +21,7 @@ Both targets get the same network: a VPC on `10.0.0.0/16` across two availabilit
 
 Fargate adds an ECS cluster, one task per service, an Application Load Balancer, internal service discovery so the services can find each other by name, an EFS filesystem for the database, CloudWatch logs with 7-day retention, and AWS Secrets Manager entries for the database, session, sync, and AI provider credentials.
 
-EKS adds the cluster (two `t3.medium` nodes, in a group sized between one and three), the EBS CSI driver with `gp3` as the default storage class, an nginx ingress controller, and the Thunderbolt Helm release.
+EKS adds the cluster (two `t3.medium` nodes, in a group sized between one and three), the EBS CSI driver with `gp3` as the default storage class, a Traefik ingress controller, and the Thunderbolt Helm release.
 
 Six services run either way: the app, the API, PostgreSQL, the sync service, Keycloak, and the marketing and docs site.
 
@@ -74,7 +74,7 @@ On Fargate, the stack reports a `url` (your hostname if you configured one, othe
 On EKS the stack reports only a kubeconfig, because the address belongs to the ingress controller:
 
 ```bash
-kubectl get svc -n ingress-nginx ingress-nginx-controller \
+kubectl get svc -n traefik traefik \
   -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"
 ```
 

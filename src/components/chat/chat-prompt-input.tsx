@@ -189,6 +189,16 @@ const withClipboardFilename = (file: File, index: number): File => {
   return new File([file], `pasted-image-${Date.now()}-${index}.${ext}`, { type: file.type })
 }
 
+/** The files a file manager copied, or none when the clipboard cannot be read. */
+const copiedFilesOrNone = async (readCopiedFiles: typeof readCopiedFiles_default) => {
+  try {
+    return await readCopiedFiles()
+  } catch (error) {
+    console.error('Failed to read the files a file manager copied:', error)
+    return []
+  }
+}
+
 const connectionFailed = msg`Connection failed`
 
 /** Wraps a server-supplied string as a descriptor with no catalog entry, so the
@@ -734,7 +744,8 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
 
     const pasteCopiedFiles = useCallback(
       async (field: HTMLTextAreaElement, text: string) => {
-        const files = await readCopiedFiles()
+        // The paste is already prevented, so a clipboard that cannot be read falls back to pasting the text.
+        const files = await copiedFilesOrNone(readCopiedFiles)
         if (files.length > 0) {
           await addFiles(files)
           return

@@ -1311,6 +1311,19 @@ describe('ChatPromptInput', () => {
         expect(execCommand).toHaveBeenCalledWith('insertText', false, 'https://example.com/report')
       })
 
+      it('pastes the text when the clipboard cannot be read for copied files', async () => {
+        const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+        const textarea = renderOnLinux([], async () => {
+          throw new Error('no clipboard')
+        })
+        pasteUriList(textarea, 'https://example.com/report')
+        await flushAttachments()
+
+        expect(execCommand).toHaveBeenCalledWith('insertText', false, 'https://example.com/report')
+        expect(consoleError).toHaveBeenCalled()
+        consoleError.mockRestore()
+      })
+
       it('pastes the links of the uri-list when the plain text reads empty', async () => {
         const textarea = renderOnLinux([])
         pasteUriList(

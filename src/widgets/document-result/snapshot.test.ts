@@ -61,12 +61,41 @@ describe('pagesZoomToFit', () => {
     mock.restore()
   })
 
-  /** The browser draws the probe's 400px block `width` wide, and its 20px line of text `height` tall. */
-  const drawProbe = (width: number, height: number) =>
-    spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, width, height))
+  type Browser = { appliesZoom: boolean; minimumTextPx: number }
+
+  /**
+   * The zoom of an element and its ancestors, as a browser computes it: the fit zoom resolves `100cqw` against the
+   * nearest ancestor with `container-type: inline-size`, and with no such ancestor, or any other zoom, it is 1.
+   */
+  const zoomOf = (element: HTMLElement | null, browser: Browser): number => {
+    if (!element) {
+      return 1
+    }
+    const width = /^min\(1, tan\(atan2\(100cqw, (\d+)px\)\)\)$/.exec(element.style.zoom)?.[1]
+    const container = element.parentElement?.closest<HTMLElement>('[style*="container-type: inline-size"]')
+    const own = browser.appliesZoom && width && container ? Math.min(1, parseFloat(container.style.width) / +width) : 1
+    return own * zoomOf(element.parentElement, browser)
+  }
+
+  /**
+   * Draws whatever the probe mounts, so the probe must hold its own CSS: an element's width and its text's font size
+   * and line height, times the zoom of the element and its ancestors. Text is never drawn below `minimumTextPx`.
+   */
+  const layOut = (browser: Browser) =>
+    spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      const zoom = zoomOf(this, browser)
+      const fontSize = parseFloat(this.style.fontSize)
+      const text = fontSize ? Math.max(fontSize * zoom, browser.minimumTextPx) : 0
+      return new DOMRect(
+        0,
+        0,
+        (parseFloat(this.style.width) || 0) * zoom,
+        text * (Number(this.style.lineHeight) || 1.2),
+      )
+    })
 
   it('holds where the zoom draws the block at its container width and the text a quarter of its size', () => {
-    drawProbe(100, 5)
+    layOut({ appliesZoom: true, minimumTextPx: 0 })
     const children = document.body.children.length
 
     expect(pagesZoomToFit()).toBe(true)
@@ -74,10 +103,10 @@ describe('pagesZoomToFit', () => {
   })
 
   it.each([
-    ['holds the zoomed text to a minimum size, as Safari does', 100, 9],
-    ['computes the zoom wrong or ignores it', 400, 20],
-  ])('fails where the browser %s', (_, width, height) => {
-    drawProbe(width, height)
+    ['holds the zoomed text to a minimum size, as Safari does', { appliesZoom: true, minimumTextPx: 9 }],
+    ['ignores the zoom', { appliesZoom: false, minimumTextPx: 0 }],
+  ])('fails where the browser %s', (_, browser) => {
+    layOut(browser)
 
     expect(pagesZoomToFit()).toBe(false)
   })

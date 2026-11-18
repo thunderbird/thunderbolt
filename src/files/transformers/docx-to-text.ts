@@ -37,7 +37,8 @@ const limitMessages = {
 
 // A tag cannot hold a `<`, not even quoted, so no match runs past the next one.
 const startTags = /<([^\s/>!?<]+)((?:[^<>"']|"[^"]*"|'[^']*')*)>/g
-const attributePattern = /([^\s=]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g
+// A name starts only after white space or a quote, so a long run with no `=` is tried once, not at every character.
+const attributePattern = /(?<![^\s"'])([^\s="']+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g
 
 /** The name and value of each attribute in the text of a tag after its name. */
 const attributesOf = (tagRest: string) =>

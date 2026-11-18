@@ -153,6 +153,16 @@ describe('docx-to-text in the browser build', () => {
     )
   })
 
+  test('scans a broken tag with a long run and no value in one pass, so it cannot freeze the chat', async () => {
+    // Retrying at every character took about 4 s for 80 KB, and grows with the square of the length.
+    const zip = await editedDocx((parts) => withBody(parts, `<w:p xmlns ${'a'.repeat(200_000)}/>`))
+
+    const started = performance.now()
+    await Promise.allSettled([docx.docxToText(asFile(new Blob([zip])))])
+
+    expect(performance.now() - started).toBeLessThan(2_000)
+  })
+
   test('reads a main document stored under another name, found through its relationship as the reader finds it', async () => {
     const zip = await editedDocx((parts) => {
       const rename = (from: string, to: string) => {

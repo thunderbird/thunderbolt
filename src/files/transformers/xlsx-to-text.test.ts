@@ -133,22 +133,48 @@ describe('reading a workbook', () => {
 
     test('refuses a sheet whose two values sit at A1 and XFD1048576, naming the sheet and its size', async () => {
       await expect(readXlsxSheets(withSheetData(corners('XFD', 1_048_576)))).rejects.toThrow(
-        'Sheet "Sheet1" spans 1048576 rows by 16384 columns, which takes this spreadsheet to 17179869184 cells, over the 6000000-cell limit for reading it.',
+        'Sheet "Sheet1" spans 1048576 rows by 16384 columns, which takes this spreadsheet to 17180917760 cells and rows, over the 6000000 limit for reading it.',
       )
     })
 
     test('counts the sheets together and names the one that passes the limit', async () => {
-      // 1,000 rows by 4,000 columns: four million cells each, under the limit alone.
+      // 1,000 rows by 4,000 columns: four million cells and a thousand rows each, under the limit alone.
       await expect(xlsxToText(withSheetData(corners('EWV', 1_000), corners('EWV', 1_000)))).rejects.toThrow(
-        'Sheet "Sheet2" spans 1000 rows by 4000 columns, which takes this spreadsheet to 8000000 cells',
+        'Sheet "Sheet2" spans 1000 rows by 4000 columns, which takes this spreadsheet to 8002000 cells and rows',
       )
     })
 
     test('reads a sheet at the limit', async () => {
-      // 1,000 rows by 6,000 columns.
-      const { text } = await xlsxToText(withSheetData(corners('HVT', 1_000)))
+      // 1,000 rows by 5,999 columns, and the 1,000 rows.
+      const { text } = await xlsxToText(withSheetData(corners('HVS', 1_000)))
 
       expect(text.split('\n').at(-1)).toStartWith('Row 1000: , , ')
+    })
+
+    test('counts the empty rows the reader builds at the end of each sheet, though it drops them', async () => {
+      const lastRowOnly = '<row r="1048576"/>'
+
+      await expect(readXlsxSheets(withSheetData(...Array.from({ length: 6 }, () => lastRowOnly)))).rejects.toThrow(
+        'Sheet "Sheet6" spans 1048576 rows by 0 columns, which takes this spreadsheet to 6291456 cells and rows',
+      )
+    })
+
+    test('reads a sheet whose far corner holds a formula without a value', async () => {
+      const data =
+        '<row r="1"><c r="A1"><v>42</v></c></row><row r="1048576"><c r="XFD1048576"><f>A1*2</f><v/></c></row>'
+
+      expect(await xlsxToText(withSheetData(data))).toEqual({ text: '## Sheet: Sheet1\nRow 1: 42' })
+    })
+
+    test('reads a row with space around the = of its height as it reads one without', async () => {
+      const [spaced, plain] = await Promise.all(
+        ['ht = "20"', 'ht="20"'].map((height) =>
+          xlsxToText(withSheetData(`<row r="1" ${height}><c r="A1"><v>42</v></c></row>`)),
+        ),
+      )
+
+      expect(spaced).toEqual(plain)
+      expect(spaced).toEqual({ text: '## Sheet: Sheet1\nRow 1: 42' })
     })
 
     test('reads a sheet whose dimension claims the whole sheet but holds one cell', async () => {
@@ -162,6 +188,41 @@ describe('reading a workbook', () => {
         '<row r="1"><c r="A1"><v>1</v></c><c r="XFD1" s="1"/></row><row r="1048576" ht="20" customHeight="1"/>'
 
       expect(await xlsxToText(withSheetData(data))).toEqual({ text: '## Sheet: Sheet1\nRow 1: 1' })
+    })
+  })
+
+  describe('the text the cells hold', () => {
+    /** A workbook whose one sheet has `cells` cells in column A that all show one shared string of `length` characters. */
+    const sharedString = (length: number, cells: number): StoredFile => {
+      const parts = unzipSync(workbook([['a']]))
+      parts['xl/sharedStrings.xml'] = strToU8(`<sst><si><t>${'x'.repeat(length)}</t></si></sst>`)
+      parts['xl/_rels/workbook.xml.rels'] = strToU8(
+        strFromU8(parts['xl/_rels/workbook.xml.rels']).replace(
+          '</Relationships>',
+          '<Relationship Id="rIdStrings" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/></Relationships>',
+        ),
+      )
+      const rows = Array.from(
+        { length: cells },
+        (_, i) => `<row r="${i + 1}"><c r="A${i + 1}" t="s"><v>0</v></c></row>`,
+      )
+      parts['xl/worksheets/sheet1.xml'] = strToU8(`<worksheet><sheetData>${rows.join('')}</sheetData></worksheet>`)
+      const bytes = zipSync(parts)
+      return { ...asFile(), size: bytes.byteLength, blob: new Blob([bytes]) }
+    }
+
+    test('refuses a workbook whose cells repeat one short shared string into more text than the limit', async () => {
+      // 2,000 cells of 10,000 characters: 20 million characters from a few KiB of strings.
+      await expect(readXlsxSheets(sharedString(10_000, 2_000))).rejects.toThrow(
+        'The cells of this spreadsheet hold 20000000 characters of text, over the 16777216-character limit for reading it.',
+      )
+    })
+
+    test('reads a workbook whose cells hold text up to the limit', async () => {
+      const sheets = await readXlsxSheets(sharedString(16_384, 1_024))
+
+      expect(sheets[0].rows).toHaveLength(1_024)
+      expect(sheets[0].rows[1_023][0]).toHaveLength(16_384)
     })
   })
 

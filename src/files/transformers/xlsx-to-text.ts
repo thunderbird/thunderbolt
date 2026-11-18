@@ -110,28 +110,46 @@ const checkEntries = (entries: readonly UnzipFileInfo[]): void => {
 }
 
 // The sheet reader's grid costs WebKit about 80 bytes a cell when every row holds a value, so this keeps it near
-// 0.5 GiB, as `maxUnpackedMib` keeps the cells themselves.
+// 0.5 GiB, as `maxUnpackedMib` keeps the cells themselves. Each row it builds, even one it drops, costs about a cell.
 const maxGridCells = 6_000_000
 
 /**
  * Throws, with a message for the model, when the grids the sheet reader would build hold more than `maxGridCells`
- * cells together, naming the sheet that takes them past it.
+ * cells and rows together, naming the sheet that takes them past it.
  */
 const checkGrids = (grids: readonly SheetGrid[], sheetName: (part: string) => string): void => {
   const total = { cells: 0 }
-  for (const { part, rows, cols } of grids) {
-    total.cells += rows * cols
+  for (const { part, rows, cols, cells } of grids) {
+    total.cells += cells + rows
     if (total.cells > maxGridCells) {
       throw new Error(
-        `Sheet "${sheetName(part)}" spans ${rows} rows by ${cols} columns, which takes this spreadsheet to ${total.cells} cells, over the ${maxGridCells}-cell limit for reading it.`,
+        `Sheet "${sheetName(part)}" spans ${rows} rows by ${cols} columns, which takes this spreadsheet to ${total.cells} cells and rows, over the ${maxGridCells} limit for reading it.`,
       )
     }
   }
 }
 
+// The reader keeps one copy of a shared string however many cells use it, but the text and each sheet's `.tsv` repeat
+// it in every cell, so a few KiB of strings can make GiB of text. The largest real workbooks tried hold about 6 million.
+const maxTextChars = 16 * mib
+
+/** Throws, with a message for the model, when the sheets' cells hold more than `maxTextChars` characters together. */
+const checkText = (sheets: readonly SpreadsheetSheet[]): void => {
+  const chars = sheets.reduce(
+    (total, { rows }) => rows.reduce((sum, row) => row.reduce((cells, cell) => cells + cell.length, sum), total),
+    0,
+  )
+  if (chars > maxTextChars) {
+    throw new Error(
+      `The cells of this spreadsheet hold ${chars} characters of text, over the ${maxTextChars}-character limit for reading it.`,
+    )
+  }
+}
+
 /**
  * Reads every worksheet of an XLSX blob as text cells, once {@link checkEntries} accepts its zip and
- * {@link checkGrids} the grids its sheets make. The zip and sheet readers are imported lazily.
+ * {@link checkGrids} the grids its sheets make, and returns them once {@link checkText} accepts the text they hold.
+ * The zip and sheet readers are imported lazily.
  */
 export const readXlsxSheets = async (file: StoredFile): Promise<SpreadsheetSheet[]> => {
   const [
@@ -170,13 +188,15 @@ export const readXlsxSheets = async (file: StoredFile): Promise<SpreadsheetSheet
   // The app's CSP blocks the `blob:` Workers the reader starts to inflate compressed sheets, so store every entry.
   const sheets = await readXlsxFile(zipSync(Object.fromEntries(parts), { level: 0 }).buffer)
   const hidden = hiddenSheets(strFromU8(parts.get('xl/workbook.xml') ?? new Uint8Array()), visitStartTags)
-  return sheets.map(({ sheet, data }, index) => ({
+  const read = sheets.map(({ sheet, data }, index) => ({
     name: sheet,
     hidden: hidden[index] ?? false,
     // The reader pads a blank row to the sheet's width with null, its value for every empty cell; an empty array keeps
     // the row one byte in a `.tsv`.
     rows: data.map((row) => (row.every((cell) => cell === null) ? [] : row.map(cellText))),
   }))
+  checkText(read)
+  return read
 }
 
 /**

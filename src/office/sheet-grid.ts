@@ -32,8 +32,13 @@ export const cellReference = (ref: string) => {
 
 // Every start tag the text reader could take for one of these: it cuts an element name at its first colon.
 const readerTag = /<(?:[^\s<>/:!?="']*:)?(sheetData|row|c|v|is)(?=[\s/>])/g
-// The same tag as XML writes it, the only form in which the reader and `readAttributes` find the same attributes.
-const wellFormedTag = /<[^\s<>/!?="']*((?:[\t\n\r ]+[^\s=<>"'/]+=(?:"[^"<]*"|'[^'<]*'))*)[\t\n\r ]*\/?>/y
+// The same tag as XML writes it, the only form in which the reader and `readAttributes` find the same attributes. The
+// reader skips an attribute with space around its `=`, and finds no attribute in its value while that holds no `=`.
+// The two forms of an attribute must not overlap, or a tag that fails at its end backtracks exponentially.
+const wellFormedTag =
+  /<[^\s<>/!?="']*((?:[\t\n\r ]+[^\s=<>"'/]+(?:=(?:"[^"<]*"|'[^'<]*')|(?:[\t\n\r ]+=[\t\n\r ]*|=[\t\n\r ]+)(?:"[^"<=]*"|'[^'<=]*')))*)[\t\n\r ]*\/?>/y
+// An `r` with space around its `=`: the reader skips it, so it numbers nothing there.
+const spacedReference = /[\s:]r(?:[\t\n\r ]+=|=[\t\n\r ]+)/
 
 /**
  * The values of a tag the text reader could take for its `r`: of two attributes with one name it keeps the first, and
@@ -52,19 +57,27 @@ const unreadable = () =>
 const referencesAt = (xml: string, index: number) => {
   wellFormedTag.lastIndex = index
   const [, attributeText] = wellFormedTag.exec(xml) ?? []
-  if (attributeText === undefined) {
+  if (attributeText === undefined || spacedReference.test(attributeText)) {
     throw unreadable()
   }
   return references(readAttributes(attributeText))
 }
 
+/** Whether the value tag at `index` is written empty, `<v/>` or `<v></v>`, which the reader takes for no value. */
+const emptyAt = (xml: string, index: number) => {
+  wellFormedTag.lastIndex = index
+  const [tag] = wellFormedTag.exec(xml) ?? []
+  return tag !== undefined && (tag.endsWith('/>') || xml.startsWith('</', index + tag.length))
+}
+
 /**
- * The rows and columns of the grid the text reader builds from a sheet part, counted without building it. The reader
- * adds a row for every row number it skips and fills each row out to the last column that holds a value anywhere in
- * the sheet, so values at A1 and XFD1048576 make 17 billion cells. It ignores `<dimension>`, and drops the rows after
- * the last one with a value unless none of them is numbered. Where the reader could read the part otherwise, the count
- * runs high or the part is refused: every `r` of a tag counts, a cell's row can number its row, a value belongs to the
- * last cell before it, and a tag written in a form XML forbids, a second `sheetData` or a row past Excel's last
+ * The rows the text reader builds from a sheet part, the columns it fills them out to and the cells of the grid it
+ * keeps, counted without building it. The reader adds a row for every row number it skips and fills each kept row out
+ * to the last column that holds a value anywhere in the sheet, so values at A1 and XFD1048576 make 17 billion cells.
+ * It ignores `<dimension>`, and drops the rows after the last one with a value unless none of them is numbered, but
+ * only once it has built them. Where the reader could read the part otherwise, the count runs high or the part is
+ * refused: every `r` of a tag counts, a cell's row can number its row, a value that is not written empty belongs to
+ * the last cell before it, and a tag written in a form XML forbids, a second `sheetData` or a row past Excel's last
  * refuses the part. Run on {@link scannableXml}'s output.
  */
 export const readerGrid = (xml: string) => {
@@ -86,7 +99,7 @@ export const readerGrid = (xml: string) => {
       }
     } else if (tag === 'sheetData') {
       grid.sheetData += 1
-    } else {
+    } else if (!emptyAt(xml, index)) {
       grid.cols = Math.max(grid.cols, grid.cellCol)
       grid.dataRows = grid.rows
       grid.unnumbered = 0
@@ -95,7 +108,7 @@ export const readerGrid = (xml: string) => {
   if (grid.sheetData > 1 || grid.rows > maxRow) {
     throw unreadable()
   }
-  return { rows: grid.dataRows + grid.unnumbered, cols: grid.cols }
+  return { rows: grid.rows, cols: grid.cols, cells: (grid.dataRows + grid.unnumbered) * grid.cols }
 }
 
 /**

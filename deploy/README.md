@@ -338,7 +338,7 @@ See `deploy/k8s/values.yaml` for all configurable values. Key ones:
 | `backend.replicas`  | `1`                | Backend replica count                        |
 | `postgres.storage`  | `5Gi`              | Postgres PVC size                            |
 | `ingress.enabled`   | `true`             | Create Ingress resource                      |
-| `ingress.className` | `nginx`            | Ingress class                                |
+| `ingress.className` | `nginx`            | Defaults to `nginx` for existing installations. Set `traefik-nginx` for the supplied Traefik controller. |
 | `ingress.host`      | `""`               | Set for production (empty = default rule)    |
 
 ### Known caveats

@@ -10,6 +10,7 @@ providers:
     enabled: true
     controllerClass: traefik.io/ingress-nginx
     ingressClass: traefik-nginx
+    # Match the namespace of the Thunderbolt Helm release.
     watchNamespace: thunderbolt
     publishService:
       enabled: true

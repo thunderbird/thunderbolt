@@ -181,7 +181,7 @@ keeps its identity and the data stays where it is.
 
 ```bash
 kubectl delete statefulset postgres -n thunderbolt --cascade=orphan
-helm upgrade thunderbolt . -n thunderbolt --reuse-values --set postgres.storage=10Gi
+helm upgrade thunderbolt deploy/k8s -n thunderbolt --reuse-values --set postgres.storage=10Gi
 ```
 
 That updates the template. On a StorageClass with `allowVolumeExpansion: true`,
@@ -216,7 +216,7 @@ kubectl delete pvc pg-data-postgres-0 -n thunderbolt
 
 # 4. Recreate on the new class, with the writers still down. The upgrade resets
 #    both replica counts, so pin them to 0 here.
-helm upgrade thunderbolt . -n thunderbolt --reuse-values \
+helm upgrade thunderbolt deploy/k8s -n thunderbolt --reuse-values \
   --set postgres.storageClassName=<class> \
   --set backend.replicas=0 --set powersync.replicas=0
 
@@ -229,7 +229,7 @@ kubectl rollout status statefulset/postgres -n thunderbolt --timeout=10m
 #    stopped: pass the counts you were running before.
 kubectl exec -i -n thunderbolt postgres-0 -- \
   pg_restore -U postgres -d postgres --clean --if-exists < thunderbolt.dump
-helm upgrade thunderbolt . -n thunderbolt --reuse-values \
+helm upgrade thunderbolt deploy/k8s -n thunderbolt --reuse-values \
   --set postgres.storageClassName=<class> \
   --set backend.replicas=1 --set powersync.replicas=1
 ```
@@ -252,7 +252,7 @@ provider you use, register this callback URL with it:
 ```
 
 ```bash
-helm upgrade thunderbolt . -n thunderbolt \
+helm upgrade thunderbolt deploy/k8s -n thunderbolt \
   --reuse-values \
   --set keycloak.enabled=false \
   --set oidc.issuer=https://idp.example.com/application/o/thunderbolt/ \
@@ -273,8 +273,8 @@ process list.
 ## Testing the chart
 
 ```bash
-helm lint . --set backend.betterAuthSecretBase64=dGVzdA==
-helm unittest .
+helm lint deploy/k8s --set backend.betterAuthSecretBase64=dGVzdA==
+helm unittest deploy/k8s
 ```
 
 The suites live in [`tests/`](tests/) and run in CI whenever the chart changes. Plugin setup, how to write a test, and how to simulate `helm upgrade --reuse-values` are in [Helm chart tests](../../docs/internals/development/testing.md#helm-chart-tests).

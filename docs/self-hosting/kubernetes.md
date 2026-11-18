@@ -67,6 +67,8 @@ helm install thunderbolt deploy/k8s \
 
 Each release also publishes the chart to `oci://ghcr.io/thunderbird/charts/thunderbolt`, so you can install without cloning. Every image the chart pulls is public and no pull secret is needed: the app, the API and the landing page come from `ghcr.io/thunderbird/thunderbolt/`, while PostgreSQL, Keycloak and the sync service come from their projects' own registries. Don't depend on a deployment running `latest`: the tag is rebuilt continuously. Pin `<component>.image.tag` to a published version instead. See [Upgrading](./upgrading.md).
 
+The supplied Traefik configuration watches the `thunderbolt` namespace. If you install Thunderbolt in another namespace, set `providers.kubernetesIngressNGINX.watchNamespace` to that namespace when installing Traefik.
+
 Past a handful of flags we recommend copying the chart's `values.yaml`, which documents every option, and passing it with `-f`.
 
 For an existing community `ingress-nginx` installation, follow the [Traefik migration guide](https://doc.traefik.io/traefik/migrate/nginx-to-traefik/). The values above create the separate `traefik-nginx` class. Switch Thunderbolt to that class and retire the old controller once the new endpoint is serving traffic. While the old controller is reachable, set `use-http2: "false"` in its ConfigMap to mitigate the two HTTP/2 CVEs.
@@ -136,7 +138,7 @@ Whichever you choose, set `appUrl` to the `https://` URL. It decides which brows
 | `appUrl`                              | `http://localhost`      | Public base URL. CORS, auth callbacks, Keycloak redirect URIs.                                                                                                   |
 | `ingress.enabled`                     | `true`                  | Whether the chart creates an Ingress at all.                                                                                                                     |
 | `ingress.host`                        | empty                   | Hostname for the path-based rules. Empty means any host.                                                                                                         |
-| `ingress.className`                   | `nginx`                 | Which ingress controller claims the resource.                                                                                                                    |
+| `ingress.className`                   | `nginx`                 | Defaults to `nginx` for existing installations. Set `traefik-nginx` when using the supplied Traefik configuration.                                                                                                                    |
 | `ingress.hostnames`                   | empty                   | Per-service hostnames. See [Routing](#routing).                                                                                                                  |
 | `powersync.jwt.secretBase64`          | a published dev secret  | Base64url of the sync signing secret. Replace it.                                                                                                                |
 | `postgres.storage`                    | `5Gi`                   | Size of the database volume. Set it before install, not after.                                                                                                   |
@@ -234,7 +236,7 @@ Encode the secret with `printf %s '<secret>' | base64 | tr -d '\n'`, because GNU
 ## Upgrades and rollbacks
 
 ```bash
-helm upgrade thunderbolt . -n thunderbolt -f my-values.yaml
+helm upgrade thunderbolt deploy/k8s -n thunderbolt -f my-values.yaml
 helm rollback thunderbolt -n thunderbolt
 ```
 

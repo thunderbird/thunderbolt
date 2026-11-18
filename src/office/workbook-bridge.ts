@@ -291,6 +291,12 @@ export const installWorkbooks = (
   let lastResult: ReturnType<QuickJS['hostToHandle']> | undefined
   const host = vm.newFunction('__workbook', (handle, method, json, ...bytesHandles) => {
     const run = target(handle.toNumber(), method.toString())
+    // Each copy below is made outside the VM's memory limit, and no Excelize call takes more than one Uint8Array.
+    if (bytesHandles.length > 1) {
+      throw new TypeError(
+        'A workbook call takes at most one Uint8Array. Pass the bytes once, in the one argument that takes them.',
+      )
+    }
     const bytes = bytesHandles.map((bytesHandle) => new Uint8Array(bytesHandle.toArrayBuffer()))
     const result = run(...parseArguments(json.toString(), bytes))
     if (excelizeMemory.buffer.byteLength > limits.workbookMemoryBytes) {

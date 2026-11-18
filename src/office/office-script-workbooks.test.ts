@@ -602,6 +602,7 @@ const tries = [
   () => __workbook(1, 'constructor', '[]'),
   () => __workbook(0, 'init', '["excelize.wasm.gz"]'),
   () => __workbook(0, 'ColumnNumberToName', '{'),
+  () => __workbook(0, 'OpenReader', '[{"__bytes":0}]', new Uint8Array(4), new Uint8Array(4)),
   // JSON drops a function, so it arrives as null.
   () => f.SetCellValue('Sheet1', 'A1', () => 1),
 ]
@@ -616,6 +617,7 @@ saveFile('empty.xlsx', f.WriteToBuffer().buffer)
         'A workbook has no method constructor.',
         'excelize.init is not a function.',
         'Workbook calls take strings, numbers, booleans, arrays, objects and Uint8Array bytes.',
+        'A workbook call takes at most one Uint8Array. Pass the bytes once, in the one argument that takes them.',
         'SetCellValue: invalid argument data type: argument 3 is null, where Excelize takes a string or a number or a boolean',
         'undefined undefined function function',
         '',

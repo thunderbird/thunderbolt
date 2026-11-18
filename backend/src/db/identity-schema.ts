@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { DomainCheckError } from '@shared/admin-api'
 import { sql } from 'drizzle-orm'
 import {
   boolean,
@@ -222,7 +223,7 @@ export const orgDomain = pgTable(
     verificationToken: text('verification_token').notNull(),
     verifiedAt: timestamp('verified_at'),
     lastCheckedAt: timestamp('last_checked_at'),
-    lastCheckError: text('last_check_error'),
+    lastCheckError: text('last_check_error').$type<DomainCheckError>(),
     enrollmentEnabled: boolean('enrollment_enabled').default(false).notNull(),
     enrollmentRole: text('enrollment_role').default('member').notNull(),
     claimedByConnectionId: text('claimed_by_connection_id').references(() => identityConnection.id, {

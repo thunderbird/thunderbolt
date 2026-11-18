@@ -18,8 +18,9 @@ COPY package.json bun.lock ./
 COPY shared ./shared
 RUN bun install --frozen-lockfile
 
-# Copy frontend source
+# Copy frontend source. admin/ is the lazy-loaded admin screens (src/lib/admin-module.ts).
 COPY src ./src
+COPY admin ./admin
 COPY public ./public
 COPY index.html webview-recovery.html ./
 # lingui.config.ts is load-bearing: @lingui/vite-plugin resolves it at build

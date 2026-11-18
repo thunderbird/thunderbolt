@@ -367,6 +367,23 @@ describe('admin API', () => {
         })
       })
 
+      it("lists a member's local groups and labels a group's role with its name", async () => {
+        const other = await addMember()
+        const admins = await json<{ id: string }>(await call('POST', '/v1/admin/groups', { name: 'Admins' }))
+        const support = await json<{ id: string }>(await call('POST', '/v1/admin/groups', { name: 'Support' }))
+        await call('POST', '/v1/admin/role-mappings', { localGroupId: admins.id, role: 'admin' })
+        await call('POST', `/v1/admin/groups/${admins.id}/members`, { userId: other })
+        await call('POST', `/v1/admin/groups/${support.id}/members`, { userId: other })
+
+        expect(await json(await call('GET', `/v1/admin/members/${other}`))).toMatchObject({
+          groups: [
+            { id: admins.id, name: 'Admins' },
+            { id: support.id, name: 'Support' },
+          ],
+          roles: [{ role: 'admin', from: 'local_group', groupId: admins.id, groupName: 'Admins' }],
+        })
+      })
+
       it('refuses to revoke a role held only through a local group, naming the group', async () => {
         const other = await addMember()
         const group = await json<{ id: string }>(await call('POST', '/v1/admin/groups', { name: 'Admins' }))
@@ -1089,6 +1106,55 @@ describe('admin API', () => {
           // A secret or certificate still rotates.
           const rotation = 'oidc' in body ? { oidc: { clientSecret: 'new' } } : { saml: { cert: 'new' } }
           expect((await edit(connectionId, rotation)).status).toBe(200)
+        })
+
+        it('shows the settings without the secret or certificate, and the fields a link locks', async () => {
+          const oidcId = await create(oidcBody('okta'))
+          const samlId = await create(samlBody('adfs'))
+          const detail = (connectionId: string) => call('GET', `/v1/admin/connections/${connectionId}`)
+
+          const oidcText = await (await detail(oidcId)).text()
+          expect(JSON.parse(oidcText)).toMatchObject({
+            sso: { protocol: 'oidc', clientId: expect.any(String), discoveryEndpoint: expect.any(String) },
+            lockedFields: [],
+          })
+          expect(oidcText).not.toContain(String((await storedConfig('okta')).clientSecret))
+          const samlText = await (await detail(samlId)).text()
+          expect(JSON.parse(samlText)).toMatchObject({
+            sso: {
+              protocol: 'saml',
+              entityId: 'thunderbolt-sp',
+              entryPoint: 'https://adfs.test/sso',
+              idpIssuer: 'https://adfs.test',
+            },
+            lockedFields: [],
+          })
+          expect(samlText).not.toContain('first-cert')
+
+          await linkAccount('okta')
+          await linkAccount('adfs')
+          expect(await json(await detail(oidcId))).toMatchObject({
+            lockedFields: ['clientId', 'discoveryEndpoint', 'matchClaim'],
+          })
+          expect(await json(await detail(samlId))).toMatchObject({ lockedFields: ['entryPoint', 'matchClaim'] })
+        })
+
+        it('locks only the match claim while a link review is open', async () => {
+          const connectionId = await create(oidcBody('entra'))
+          await harness.db.insert(linkReview).values({
+            id: crypto.randomUUID(),
+            orgId,
+            identityConnectionId: connectionId,
+            trigger: 'sso_sign_in',
+            externalId: 'oid-2',
+            incomingEmail: 'someone@example.com',
+            candidateUserId: adminId,
+            lastSeenAt: new Date(),
+          })
+
+          expect(await json(await call('GET', `/v1/admin/connections/${connectionId}`))).toMatchObject({
+            lockedFields: ['matchClaim'],
+          })
         })
 
         it('changes the client id of a connection nothing is linked through yet', async () => {

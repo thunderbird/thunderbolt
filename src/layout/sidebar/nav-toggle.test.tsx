@@ -50,6 +50,20 @@ describe('SidebarNavToggle', () => {
     cleanup()
   })
 
+  it('offers Admin only when asked to', () => {
+    renderToggle()
+    expect(screen.queryByRole('button', { name: 'Admin' })).not.toBeInTheDocument()
+    cleanup()
+
+    const onSectionChange = mock((_section: SidebarSection) => {})
+    render(<SidebarNavToggle activeSection="chats" onSectionChange={onSectionChange} sections={['chats', 'admin']} />, {
+      wrapper: Wrapper,
+    })
+    expect(screen.queryByRole('button', { name: 'Settings' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Admin' }))
+    expect(onSectionChange).toHaveBeenCalledWith('admin')
+  })
+
   it('renders Chats and Settings segments', () => {
     renderToggle()
 

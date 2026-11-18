@@ -21,7 +21,7 @@ const createFakeHttpClient = (payload: unknown, recorded: RecordedRequest[]): Ht
     throw new Error('not implemented')
   }
 
-  return { get, post: unsupported, delete: unsupported }
+  return { get, post: unsupported, put: unsupported, patch: unsupported, delete: unsupported }
 }
 
 const munich = {
@@ -105,6 +105,12 @@ describe('fetchEnglishLocationName', () => {
         return rejected
       },
       post: () => {
+        throw new Error('not implemented')
+      },
+      put: () => {
+        throw new Error('not implemented')
+      },
+      patch: () => {
         throw new Error('not implemented')
       },
       delete: () => {

@@ -44,6 +44,7 @@ import { MoveChatToProjectDialog } from '@/projects/move-chat-to-project-dialog'
 import { useMoveChatToProject } from '@/projects/use-move-chat-to-project'
 import { ChatList } from './chat-list'
 import { SidebarNavToggle } from './nav-toggle'
+import { useVisibleSections } from './use-visible-sections'
 import { SidebarHeader } from './sidebar-header'
 import { SidebarHeaderActions } from './sidebar-header-actions'
 import type { ChatThread, SidebarSection } from './types'
@@ -149,6 +150,7 @@ export const ChatSidebarContent = ({
   const configLoaded = useConfigStore(selectConfigSettled)
   // Projects wait for `/config` like the section toggle, so they never paint and vanish.
   const showProjects = configLoaded && !minimalMode
+  const sections = useVisibleSections()
   const { projects, isLoading: projectsLoading } = useProjectsState()
   const projectIds = new Set(projects.map((project) => project.id))
   const sharedScrollRef = useRef<HTMLDivElement>(null)
@@ -166,11 +168,16 @@ export const ChatSidebarContent = ({
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   // Minimal mode has no Settings section to switch to (see `selectMinimalMode`),
-  // so the toggle's slots stay empty. They also stay empty until `/config`
-  // answers, rather than showing a control that then disappears.
+  // so the toggle's slots stay empty unless the user is an admin. They also stay
+  // empty until `/config` answers, rather than showing a control that then disappears.
   const sectionControl = (vertical = false) =>
-    showProjects ? (
-      <SidebarNavToggle vertical={vertical} activeSection={activeSection} onSectionChange={onSectionChange} />
+    configLoaded && sections.length > 1 ? (
+      <SidebarNavToggle
+        vertical={vertical}
+        activeSection={activeSection}
+        onSectionChange={onSectionChange}
+        sections={sections}
+      />
     ) : null
 
   const headerControls = !isCollapsed ? (

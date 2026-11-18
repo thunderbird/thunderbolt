@@ -25,7 +25,7 @@ import { createRateLimitConsumer, type RateLimitSet } from '@/middleware/rate-li
 import { extractClientIp, getTrustedIpHeaders, withTrustedClientIp } from '@/utils/request'
 import { captchaTokenHeader, captchaVerificationFailedCode } from '@shared/captcha'
 import { createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
-import { betterAuth } from 'better-auth'
+import { betterAuth, type BetterAuthOptions } from 'better-auth'
 import { makeSignature } from 'better-auth/crypto'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { anonymous, bearer, deviceAuthorization, emailOTP, type TimeString } from 'better-auth/plugins'
@@ -39,6 +39,7 @@ import {
 import { admitsWithoutWaitlist } from '@/identity/admission'
 import { apiKeyOwnerHasAccess } from '@/identity/api-key-access'
 import { identity } from '@/identity/plugin'
+import { sessionRolesPlugin } from '@/identity/session-roles'
 import { refuseSignIn } from '@/identity/sign-in-audit'
 import { buildScimPlugins } from '@/identity/scim/plugin'
 import { buildSsoPlugins, isForeignSsoRequest } from '@/identity/sso'
@@ -151,7 +152,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
   // real `getSession` endpoint runs the full pipeline. Assigned once `auth` exists.
   let resolveSession: (headers: Headers) => Promise<SessionLookup> = async () => null
 
-  const auth = betterAuth({
+  const options = {
     basePath: authBasePath,
     database: drizzleAdapter(database, {
       provider: 'pg',
@@ -587,6 +588,12 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       ...buildSsoPlugins(settings, database),
       ...buildScimPlugins(settings, database),
     ],
+  } satisfies BetterAuthOptions
+
+  const auth = betterAuth({
+    ...options,
+    // Last, and given the options, so the session type keeps every plugin's fields.
+    plugins: [...options.plugins, sessionRolesPlugin(database, options)],
   })
 
   resolveSession = (headers) => auth.api.getSession({ headers, query: { disableRefresh: true } })

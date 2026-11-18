@@ -235,6 +235,12 @@ describe('useLocationSearch', () => {
         post: () => {
           throw new Error('not implemented')
         },
+        put: () => {
+          throw new Error('not implemented')
+        },
+        patch: () => {
+          throw new Error('not implemented')
+        },
         delete: () => {
           throw new Error('not implemented')
         },

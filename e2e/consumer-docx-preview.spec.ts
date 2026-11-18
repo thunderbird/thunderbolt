@@ -188,6 +188,125 @@ test('a DOCX card opens from the keyboard, and Escape on the Close button closes
   expect(errors).toEqual([])
 })
 
+const historyLength = (page: Page) => page.evaluate(() => window.history.length)
+const previewHistoryEntry = (page: Page) => page.evaluate(() => window.history.state?.contentViewOpen ?? null)
+
+test('on a phone, Back closes the preview without leaving the chat, and closing it leaves history as it was', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const name = 'e2e-back.docx'
+  await sendDocument(page, name, await sampleBuffer(), sampleDocxText.title)
+  const chatUrl = page.url()
+  const lengthBefore = await historyLength(page)
+  const dialog = contentView(page)
+
+  await openPreview(page, name)
+  await expect(dialog).toBeVisible()
+  expect(await historyLength(page)).toBe(lengthBefore + 1)
+  await page.goBack()
+  await expect(dialog).toBeHidden()
+  expect(page.url()).toBe(chatUrl)
+
+  // Closing with the button or with Escape removes the preview's history entry.
+  for (const close of [
+    () => dialog.getByRole('button', { name: 'Close', exact: true }).first().click(),
+    () => page.keyboard.press('Escape'),
+  ]) {
+    await openPreview(page, name)
+    await expect(dialog).toBeVisible()
+    await close()
+    await expect(dialog).toBeHidden()
+    await expect.poll(() => previewHistoryEntry(page)).toBeNull()
+    expect(page.url()).toBe(chatUrl)
+  }
+
+  // With the preview closed, Back leaves the chat as it did before.
+  await page.goBack()
+  await expect(page).toHaveURL(/\/chats\/new$/)
+})
+
+test('on a phone, leaving the chat from the search palette over the preview costs no extra Back or Forward', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const name = 'e2e-palette.docx'
+  await sendDocument(page, name, await sampleBuffer(), sampleDocxText.title)
+  const chatUrl = page.url()
+
+  const preview = await openPreview(page, name)
+  await expect(preview).toBeVisible()
+  // The palette opens over the preview, which keeps its history entry under the new route.
+  await page.keyboard.press('ControlOrMeta+k')
+  await page.getByRole('dialog', { name: 'Search', exact: true }).getByRole('option', { name: 'New chat' }).click()
+  await expect(page).toHaveURL(/\/chats\/new$/)
+  await expect(preview).toBeHidden()
+
+  await page.goBack()
+  await expect(page).toHaveURL(chatUrl)
+  await expect.poll(() => previewHistoryEntry(page)).toBeNull()
+  // The next Back leaves the chat: none is spent on the entry the preview left behind.
+  await page.goBack()
+  await expect(page).toHaveURL(/\/chats\/new$/)
+  await page.goForward()
+  await expect(page).toHaveURL(chatUrl)
+  await expect.poll(() => previewHistoryEntry(page)).toBeNull()
+})
+
+test('on a phone, a preview reopened before its close reached history stays open, and Back closes it', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const name = 'e2e-reopen.docx'
+  await sendDocument(page, name, await sampleBuffer(), sampleDocxText.title)
+  const chatUrl = page.url()
+  const dialog = contentView(page)
+
+  await openPreview(page, name)
+  await expect(dialog).toBeVisible()
+  // The close calls history.back() in a microtask, and the reopen lands before the browser carries the Back out.
+  const beforeReopen = await page.evaluate(async (fileName) => {
+    const back = history.back.bind(history)
+    const calls = { back: 0 }
+    history.back = () => {
+      calls.back += 1
+      back()
+    }
+    const close = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(
+      (button) => button.textContent?.trim() === 'Close',
+    )
+    close!.click()
+    await Promise.resolve()
+    await Promise.resolve()
+    const state = { backCalls: calls.back, previewEntry: history.state?.contentViewOpen ?? null }
+    document.querySelector<HTMLButtonElement>(`button[title="${fileName}"]`)!.click()
+    return state
+  }, name)
+  expect(beforeReopen).toEqual({ backCalls: 1, previewEntry: true })
+  await expect(dialog).toBeVisible()
+  await expect.poll(() => previewHistoryEntry(page)).toBe(true)
+
+  await page.goBack()
+  await expect(dialog).toBeHidden()
+  expect(page.url()).toBe(chatUrl)
+  await expect.poll(() => previewHistoryEntry(page)).toBeNull()
+})
+
+test('on desktop, the side panel adds no history entry and Back leaves the chat', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  const name = 'e2e-back-desktop.docx'
+  await sendDocument(page, name, await sampleBuffer(), sampleDocxText.title)
+  const lengthBefore = await historyLength(page)
+
+  await openPreview(page, name)
+  await expect(contentView(page)).toBeVisible()
+  expect(await historyLength(page)).toBe(lengthBefore)
+  expect(await previewHistoryEntry(page)).toBeNull()
+
+  await page.goBack()
+  await expect(page).toHaveURL(/\/chats\/new$/)
+})
+
 test('when the preview code does not load, the panel says so and Download still saves the file', async ({ page }) => {
   // The renderer is its own module, so a broken connection can fail it alone.
   await page.route(/\/docx-snapshot[^/]*\.(?:ts|js)(?:\?|$)/, (route) => route.abort())

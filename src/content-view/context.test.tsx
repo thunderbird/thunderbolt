@@ -5,22 +5,18 @@
 import '@/testing-library'
 import { act, render, renderHook, fireEvent } from '@testing-library/react'
 import type { DynamicToolUIPart, ToolUIPart } from 'ai'
-import { describe, expect, mock, test } from 'bun:test'
+import { afterEach, describe, expect, mock, test } from 'bun:test'
 import { useChatStore } from '@/chats/chat-store'
-import type { EventType } from '@/lib/posthog'
+import type { trackEvent as defaultTrackEvent } from '@/lib/posthog'
+import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import { memo, type ReactNode } from 'react'
-import {
-  ContentViewProvider,
-  type ObjectViewContent,
-  useContentView,
-  useObjectView,
-  useSideview,
-  useShowCompactionSummary,
-} from './context'
+import { ContentViewProvider, useContentView, useObjectView, useSideview, useShowCompactionSummary } from './context'
 
 const wrapper = ({ children }: { children: ReactNode }) => <ContentViewProvider>{children}</ContentViewProvider>
 
 describe('ContentView sideview mode', () => {
+  afterEach(() => restoreViewport())
+
   test('showSideview transitions state to sideview', () => {
     const { result } = renderHook(() => useContentView(), { wrapper })
 
@@ -84,6 +80,35 @@ describe('ContentView sideview mode', () => {
     expect(result.current.isOpen).toBe(false)
   })
 
+  test('on a phone, Back closes the full-window view and the close button leaves no extra history entry', () => {
+    forceMobileViewport()
+    window.history.replaceState({ idx: 1 }, '')
+    const before = window.history.length
+    const { result } = renderHook(() => useContentView(), { wrapper })
+
+    act(() => result.current.showSideview('local-file', 'file-1:report.docx'))
+    act(() => result.current.showSideview('local-file', 'file-2:sheet.xlsx'))
+    expect(window.history.length).toBe(before + 1)
+
+    act(() => window.history.back())
+    expect(result.current.isOpen).toBe(false)
+    expect(window.history.state).toEqual({ idx: 1 })
+
+    act(() => result.current.showSideview('local-file', 'file-1:report.docx'))
+    act(() => result.current.close())
+    expect(result.current.isOpen).toBe(false)
+    expect(window.history.state).toEqual({ idx: 1 })
+  })
+
+  test('on desktop, opening the side panel adds no history entry', () => {
+    const before = window.history.length
+    const { result } = renderHook(() => useContentView(), { wrapper })
+
+    act(() => result.current.showSideview('local-file', 'file-1:report.docx'))
+
+    expect(window.history.length).toBe(before)
+  })
+
   test('useSideview reports the active sideview', () => {
     const { result } = renderHook(
       () => {
@@ -108,13 +133,13 @@ describe('ContentView sideview mode', () => {
   test('object-view surfaces errorText for a failed tool call', () => {
     const { result } = renderHook(() => useObjectView(), { wrapper })
 
-    const failedTool = {
+    const failedTool: ToolUIPart = {
       type: 'tool-search',
       toolCallId: 'call-1',
       state: 'output-error',
       input: {},
       errorText: 'Upstream 500',
-    } as unknown as ToolUIPart
+    }
 
     act(() => {
       result.current.openObjectSidebar(failedTool)

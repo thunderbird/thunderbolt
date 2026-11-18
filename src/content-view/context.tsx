@@ -5,6 +5,7 @@
 import { msg } from '@lingui/core/macro'
 import { i18n } from '@lingui/core'
 import { useChatStore } from '@/chats/chat-store'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { getMcpToolDisplay } from '@/lib/mcp-tool-display'
 import { trackEvent as defaultTrackEvent } from '@/lib/posthog'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
@@ -13,6 +14,7 @@ import type { UIMessageMetadata } from '@/types'
 import { getToolName, type DynamicToolUIPart, type ReasoningUIPart, type ToolUIPart } from 'ai'
 import { createContext, type ReactNode, useCallback, useContext, useState } from 'react'
 import type { SidebarWebviewConfig } from './use-sidebar-webview'
+import { useBackClosesView } from './use-back-closes-view'
 import type { CompactionSummary } from '@/components/context-usage'
 
 /** A tool call (built-in or MCP dynamic-tool) or a reasoning part shown in the object view. */
@@ -176,6 +178,10 @@ export const ContentViewProvider = ({
     }
     setState({ type: null, data: null })
   }, [state.type, trackEvent])
+
+  // Below the breakpoint the view is a full-window dialog, so Back closes it like any other screen.
+  const { isMobile } = useIsMobile()
+  useBackClosesView(isMobile && state.type !== null, close)
 
   const showCompactionSummary = useCallback(
     (checkpoint: CompactionSummary) => {

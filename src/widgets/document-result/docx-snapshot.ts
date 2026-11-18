@@ -142,12 +142,10 @@ const prepareForMarkup = (wrapper: HTMLDivElement, css: string) => {
 /**
  * On a phone, in a frame narrower than the pages, each page takes the frame's width and its text wraps to it at the
  * size the document sets. Scaled down to a phone's width instead, its text would be about 5 pixels tall. A picture
- * shrinks to fit; a table too wide scrolls across its page. With no container on the root, the table borders meant
- * for pages drawn smaller stay off, since the pages are at full size.
+ * shrinks to fit; a table too wide scrolls across its page.
  */
 const reflowStyle = (width: number) =>
   `<style>@media (max-width: ${width - 1}px) {` +
-  'html { container-type: normal; } body { zoom: 1; }' +
   '.docx-wrapper { padding: 8px 8px 0 !important; align-items: stretch !important; }' +
   '.docx-wrapper > section.docx { width: auto !important; min-height: 0 !important; padding: 24px 16px !important;' +
   ' margin-bottom: 8px !important; overflow-x: auto !important; }' +

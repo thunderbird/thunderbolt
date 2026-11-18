@@ -55,19 +55,18 @@ describe('renderDocxSnapshot', () => {
     expectSampleDocxPreview(html)
     // An A4 page is 595.3pt, 794px; the wrapper adds 30px on each side. A narrower frame scales or reflows the pages.
     expect(width).toBe(854)
-    expect(html).toContain('atan2(100cqw, 854px)')
     expect(reflowStyle).toStartWith('<style>@media (max-width: 853px) {')
     expect(html).not.toContain('max-width: 853px')
+    // The view adds the style that zooms the pages, only in a browser that draws them zoomed as they are.
+    expect(html).not.toContain('100cqw')
   })
 
-  it('gives tables separate borders on a dense screen only while the pages are drawn smaller', async () => {
-    const { html, reflowStyle } = await pagesOf(await sampleDocx())
+  it('gives tables separate borders on a screen with 3 device pixels per CSS pixel, however the pages are drawn', async () => {
+    const { html } = await pagesOf(await sampleDocx())
 
     expect(html).toContain(
-      '@media (min-resolution: 3dppx) { @container (width < 854px) { table { border-collapse: separate !important;',
+      '<style>@media (min-resolution: 3dppx) { table { border-collapse: separate !important; border-spacing: 0; } }</style>',
     )
-    // Reflowed pages are at full size, and with no container the rule stays off.
-    expect(reflowStyle).toContain('html { container-type: normal; }')
   })
 
   it('lets the page load nothing but its own styles and its data: pictures and fonts', async () => {
@@ -326,13 +325,12 @@ describe('renderDocxSnapshot', () => {
   })
 
   it('gives pages with no width of their own a Letter width, so the thumbnail still has one to scale to', async () => {
-    const { html, width } = await pagesOf(
+    const { width } = await pagesOf(
       new Blob([docx({ 'word/document.xml': body('<w:p><w:r><w:t>No size</w:t></w:r></w:p>') })]),
     )
 
     // 612pt is 816px; the wrapper adds 30px on each side.
     expect(width).toBe(876)
-    expect(html).toContain('atan2(100cqw, 876px)')
   })
 
   it('drops the size the renderer measures for a legacy drawing, which is 0 with no layout', async () => {

@@ -62,23 +62,6 @@ test('an attached DOCX previews as pages on its card and in the side panel', asy
   expect(errors).toEqual([])
 })
 
-test('on a phone the pages reflow to the width of the screen, and the text keeps its size', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 })
-  const name = 'e2e-phone.docx'
-  await sendDocument(page, name, await sampleBuffer(), sampleDocxText.title)
-
-  const preview = await openPreview(page, name)
-  const pages = preview.contentFrame()
-  await expect(pages.getByText(sampleDocxText.title)).toBeVisible()
-  // The frame is as wide as the screen and drawn at full size, so the text is not scaled down.
-  expect(await preview.evaluate((frame: HTMLIFrameElement) => frame.offsetWidth)).toBeLessThanOrEqual(390)
-  expect(await preview.evaluate((frame: HTMLIFrameElement) => frame.style.transform)).toBe('')
-  const fontSize = await pages
-    .getByText(sampleDocxText.bullets[0])
-    .evaluate((element) => parseFloat(getComputedStyle(element).fontSize))
-  expect(fontSize).toBeGreaterThanOrEqual(12)
-})
-
 /**
  * Counts the lines `table` draws on screen, across and down, in a screenshot of `container`, which must hold the whole
  * table. A line is a row or column of pixels that is dark along nearly all of the table's inside, so a border drawn
@@ -129,13 +112,37 @@ const tableLines = async (page: Page, table: Locator, container: Locator) => {
   )
 }
 
+/** The lines of the sample's table: two rows and two columns, with the default borders, 0.5pt, under a pixel. */
+const twoByTwo = { across: 3, down: 3 }
+
+test('on a phone the pages reflow to the width of the screen, the text keeps its size, and table borders draw', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const name = 'e2e-phone.docx'
+  await sendDocument(page, name, await sampleBuffer(), sampleDocxText.title)
+
+  const preview = await openPreview(page, name)
+  const pages = preview.contentFrame()
+  await expect(pages.getByText(sampleDocxText.title)).toBeVisible()
+  // The frame is as wide as the screen and drawn at full size, so the text is not scaled down.
+  expect(await preview.evaluate((frame: HTMLIFrameElement) => frame.offsetWidth)).toBeLessThanOrEqual(390)
+  expect(await preview.evaluate((frame: HTMLIFrameElement) => frame.style.transform)).toBe('')
+  const fontSize = await pages
+    .getByText(sampleDocxText.bullets[0])
+    .evaluate((element) => parseFloat(getComputedStyle(element).fontSize))
+  expect(fontSize).toBeGreaterThanOrEqual(12)
+  // At full size too, WebKit at 3 device pixels per CSS pixel drops such a border unless the table's are separate.
+  const table = pages.locator('table')
+  await table.scrollIntoViewIfNeeded()
+  expect(await tableLines(page, table, preview)).toEqual(twoByTwo)
+})
+
 test("a table's thin borders still draw where its pages are drawn smaller, on the card and in the side panel", async ({
   page,
 }) => {
   const name = 'e2e-borders.docx'
   await sendDocument(page, name, await sampleBuffer(), sampleDocxText.title)
-  // The sample's table has two rows and two columns, with the default borders: 0.5pt, under a pixel at full size.
-  const twoByTwo = { across: 3, down: 3 }
 
   const card = page.locator(`button[title="${name}"]`)
   const thumbnailTable = card.locator('iframe').contentFrame().locator('table')

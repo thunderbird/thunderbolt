@@ -2,10 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { strToU8, strFromU8, zipSync } from 'fflate'
 import { pngHeader } from '@/office/xlsx-preview-test-runtime'
-import { unpackWithinLimits } from './snapshot'
+import { fitStyle, pagesZoomToFit, unpackWithinLimits } from './snapshot'
 
 const svg = (inner: string) => `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">${inner}</svg>`
 
@@ -45,5 +45,40 @@ describe('unpackWithinLimits', () => {
       'word/media/image1.svg': drawing,
       'word/document.xml': body,
     })
+  })
+})
+
+describe('fitStyle', () => {
+  it('zooms pages to the width of the frame, and never past their own size', () => {
+    expect(fitStyle(854)).toBe(
+      '<style>html { container-type: inline-size; } body { zoom: min(1, tan(atan2(100cqw, 854px))); }</style>',
+    )
+  })
+})
+
+describe('pagesZoomToFit', () => {
+  afterEach(() => {
+    mock.restore()
+  })
+
+  /** The browser draws the probe's 400px block `width` wide, and its 20px line of text `height` tall. */
+  const drawProbe = (width: number, height: number) =>
+    spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, width, height))
+
+  it('holds where the zoom draws the block at its container width and the text a quarter of its size', () => {
+    drawProbe(100, 5)
+    const children = document.body.children.length
+
+    expect(pagesZoomToFit()).toBe(true)
+    expect(document.body.children.length).toBe(children)
+  })
+
+  it.each([
+    ['holds the zoomed text to a minimum size, as Safari does', 100, 9],
+    ['computes the zoom wrong or ignores it', 400, 20],
+  ])('fails where the browser %s', (_, width, height) => {
+    drawProbe(width, height)
+
+    expect(pagesZoomToFit()).toBe(false)
   })
 })

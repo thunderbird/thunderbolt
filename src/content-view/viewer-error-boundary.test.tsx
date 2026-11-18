@@ -121,8 +121,6 @@ describe('LocalViewerLoadFailure', () => {
 
     beforeEach(() => {
       spyOn(console, 'error').mockImplementation(() => {})
-      // The app's server answers the check made before each import.
-      spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null))
     })
 
     afterEach(() => mock.restore())

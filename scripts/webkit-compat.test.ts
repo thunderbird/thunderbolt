@@ -62,15 +62,20 @@ it('builds the side panel viewers without script preloads and keeps them for eve
 it('names only modules the app imports dynamically, and imports each once the server answers', () => {
   const root = path.join(import.meta.dir, '..')
   const sources = Array.from(new Glob('src/**/*.{ts,tsx}').scanSync(root)).filter((file) => !/\.test\.tsx?$/.test(file))
-  // Each `import('…')` target as a path from the root, without its extension, with the file that imports it.
-  const imports = sources.flatMap((file) => {
-    const code = readFileSync(path.join(root, file), 'utf8')
-    return Array.from(code.matchAll(/import\(\s*['"]([^'"]+)['"]\s*\)/g), ([, spec]) => ({
-      target: spec.startsWith('@/') ? path.join('src', spec.slice(2)) : path.join(path.dirname(file), spec),
-      file,
-      waitsForServer: /\b(?:importWhenReachable|retryableLazy)\(/.test(code),
-    }))
-  })
+  // Each `import('…')` target as a path from the root, without its extension, with the file that imports it, and
+  // whether that very import is the loader passed to `importWhenReachable`.
+  const imports = sources.flatMap((file) =>
+    Array.from(
+      readFileSync(path.join(root, file), 'utf8').matchAll(
+        /(\bimportWhenReachable\(\s*\(\)\s*=>\s*)?import\(\s*['"]([^'"]+)['"]\s*\)/g,
+      ),
+      ([, wrapper, spec]) => ({
+        target: spec.startsWith('@/') ? path.join('src', spec.slice(2)) : path.join(path.dirname(file), spec),
+        file,
+        waitsForServer: wrapper !== undefined,
+      }),
+    ),
+  )
   const isModule = (target: string) =>
     ['.ts', '.tsx', '/index.ts'].some((suffix) => existsSync(path.join(root, target + suffix)))
   const listed = imports.filter(

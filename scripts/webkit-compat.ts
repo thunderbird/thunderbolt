@@ -58,9 +58,10 @@ export const webkitCompatPlugin = (): Plugin => ({
  * Dynamically imported modules whose script chunks are not preloaded, by chunk name: the module's file name, or its
  * folder's for an `index`. Safari keeps every module fetch that failed for as long as the page lives, a module preload
  * included, and every later import of that chunk fails with it. So these imports start only once the app's server
- * answers (`importWhenReachable` in src/content-view/retryable-lazy.ts), and their chunks are not preloaded either: a
+ * answers (`importWhenReachable` in src/lib/import-when-reachable.ts), and their chunks are not preloaded either: a
  * preload runs beside the import and can fail on its own, for example while the viewer's stylesheet is still loading.
- * The card thumbnails and the DOCX and PPTX renderers are here because they load chunks the viewers need.
+ * The card thumbnails and the DOCX and PPTX renderers are here because they load chunks the viewers need. An import
+ * elsewhere that fetches one of these chunks first, such as pdfjs for the PDF transformers, waits for the server too.
  */
 export const importsWithoutPreload = [
   'pdf-sidebar-viewer',

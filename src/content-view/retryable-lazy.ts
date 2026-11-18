@@ -3,41 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { type ComponentType, lazy, type LazyExoticComponent } from 'react'
-import { isTauri } from '@/lib/platform'
-
-/**
- * Resolves once the server that hosts the app's chunks answers. Safari keeps every module that failed to load for as
- * long as the page lives, the module an `import()` asked for included, so an import tried while the server is down
- * fails again on every retry. This module's own URL is on that server. The desktop and mobile apps load their chunks
- * from the device, so they never check.
- */
-const chunksReachable = async () => {
-  if (isTauri()) {
-    return
-  }
-  const response = await fetch(import.meta.url, { method: 'HEAD', cache: 'no-store' })
-  if (!response.ok) {
-    throw new Error(`The app's server answered ${response.status}`)
-  }
-}
-
-/**
- * Wraps a dynamic import so it starts only after the app's server answered, which costs one round trip. Once it has
- * loaded, later calls return it without checking again. After a failure, the next call checks again.
- */
-export const importWhenReachable = <T>(load: () => Promise<T>) => {
-  let loaded: Promise<T> | null = null
-  const attempt = async () => {
-    try {
-      await chunksReachable()
-      return await load()
-    } catch (error) {
-      loaded = null
-      throw error
-    }
-  }
-  return (): Promise<T> => (loaded ??= attempt())
-}
 
 // A stylesheet still loading has no rules yet, just like one that failed, and replacing it would strand whoever waits
 // on its load, such as Vite's preload for another viewer. So only links that fired error are fetched again. An
@@ -98,17 +63,16 @@ export const reloadFailedStylesheets = () => {
  * `lazy()` that can retry a failed import. `lazy()` keeps a rejected import, so a viewer whose chunk did not load on a
  * broken network would fail on every later render until the app reloads. After a failure this swaps in a new `lazy()`,
  * so the next render imports again, stylesheets included: Try again, or opening the file again.
- * The import starts only once the app's server answers (`importWhenReachable`). The chunk must also be listed in
- * `importsWithoutPreload` in scripts/webkit-compat.ts, so that no preload of its scripts can fail on its own.
- * Returns a getter. Call it during render to get the current component.
+ * `load` takes the module from a loader made with `importWhenReachable`, so the import starts only once the app's
+ * server answers. The chunk must also be listed in `importsWithoutPreload` in scripts/webkit-compat.ts, so that no
+ * preload of its scripts can fail on its own. Returns a getter. Call it during render to get the current component.
  */
 export const retryableLazy = <P extends object>(load: () => Promise<{ default: ComponentType<P> }>) => {
-  const loadWhenReachable = importWhenReachable(load)
   const create = (isRetry: boolean): LazyExoticComponent<ComponentType<P>> =>
     lazy(async () => {
       try {
         // A stylesheet that fails again fails the import, so the panel offers Try again instead of an unstyled viewer.
-        const [module] = await Promise.all([loadWhenReachable(), isRetry ? reloadFailedStylesheets() : null])
+        const [module] = await Promise.all([load(), isRetry ? reloadFailedStylesheets() : null])
         return module
       } catch (error) {
         current = create(true)

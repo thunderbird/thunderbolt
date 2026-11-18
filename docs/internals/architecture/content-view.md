@@ -133,6 +133,13 @@ defers react-pdf and pdfjs; its DOCX branch defers docx-preview until a DOCX ope
 [`docx-snapshot.ts`](../../../src/widgets/document-result/docx-snapshot.ts), and its PPTX branch defers the slide
 renderer until a deck opens, in [`pptx-snapshot.ts`](../../../src/widgets/document-result/pptx-snapshot.ts).)
 
+A viewer whose code does not load shows a notice with **Try again**. Wrap it in
+[`retryableLazy`](../../../src/content-view/retryable-lazy.ts), fed by one
+[`importWhenReachable`](../../../src/lib/import-when-reachable.ts) loader per module: Safari never loads a module
+again once it failed to fetch it, so the import waits for a HEAD of the app's server. Try again
+still cannot help when the network drops between that check and the import, or when a deploy has removed the old
+chunks; only reloading the page does.
+
 **A whole new kind:** extend the `ContentViewState` union and the context type, add a `showX` action
 that emits `content_view_open`, and add the render branch in `main-layout.tsx`. Only when the payload
 cannot be expressed as a sideview id: anything addressable by identity belongs in a sideview.

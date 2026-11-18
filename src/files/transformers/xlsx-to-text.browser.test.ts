@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test'
 import { join } from 'node:path'
 import { unzipSync, zipSync } from 'fflate'
 import type { StoredFile } from '@/lib/file-blob-storage'
+import { stubAppServer } from '@/test-utils/app-server'
 import { bundleForBrowser } from '@/test-utils/bundle-for-browser'
 import { workbook } from '@/test-utils/xlsx-workbook'
 import { centralSignature, overlappingStoredEntries, withZip64Count } from '@/test-utils/zip-fixtures'
@@ -67,10 +68,13 @@ describe('xlsx-to-text in the browser build, with Workers blocked', () => {
     // compressed entries in `blob:` Workers.
     xlsx = await bundleForBrowser<typeof XlsxToText>(join(import.meta.dir, 'xlsx-to-text.ts'))
     Object.defineProperty(globalThis, 'Worker', { configurable: true, writable: true, value: BlockedWorker })
+    // The app's server answers the check made before the sheet readers are imported, made from the bundle's own URL.
+    stubAppServer('up', (url) => /\/browser-bundle-\w+\/xlsx-to-text\.mjs$/.test(url))
   })
 
   afterAll(() => {
     Object.defineProperty(globalThis, 'Worker', { configurable: true, writable: true, value: realWorker })
+    mock.restore()
   })
 
   test('reads a 5,000-row, 50-column workbook without starting a Worker', async () => {

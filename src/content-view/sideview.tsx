@@ -7,24 +7,30 @@ import { Loader2 } from 'lucide-react'
 import { parseDocumentSideviewId } from '@/types/citation'
 import { getFileType } from '@/widgets/document-result/file-type'
 import { useSideview } from './context'
+import { importWhenReachable } from '@/lib/import-when-reachable'
 import { retryableLazy } from './retryable-lazy'
 import { ViewerErrorBoundary } from './viewer-error-boundary'
 import { LocalViewerLoadFailure, ViewerLoadFailure } from './viewer-load-failure'
 
 // Lazy-load the PDF viewer so its react-pdf + pdfjs payload only ships when a
 // document sideview is opened. The DOCX and PPTX renderers are dynamically
-// imported inside the viewer itself, each for its own file type.
+// imported inside the viewer itself, each for its own file type. Both PDF viewers
+// share one loader, so once one has loaded, the other opens without the network.
+const pdfSidebarViewerModule = importWhenReachable(() => import('@/widgets/document-result/pdf-sidebar-viewer'))
+
 const pdfSidebarViewer = retryableLazy(async () => ({
-  default: (await import('@/widgets/document-result/pdf-sidebar-viewer')).PdfSidebarViewer,
+  default: (await pdfSidebarViewerModule()).PdfSidebarViewer,
 }))
 
 const localPdfSidebarViewer = retryableLazy(async () => ({
-  default: (await import('@/widgets/document-result/pdf-sidebar-viewer')).LocalPdfSidebarViewer,
+  default: (await pdfSidebarViewerModule()).LocalPdfSidebarViewer,
 }))
 
 // A chunk apart from react-pdf, so the grid and the Worker that downloads Excelize load only when a workbook opens.
+const xlsxPreviewModule = importWhenReachable(() => import('@/components/xlsx-preview'))
+
 const localXlsxSidebarViewer = retryableLazy(async () => ({
-  default: (await import('@/components/xlsx-preview')).LocalXlsxSidebarViewer,
+  default: (await xlsxPreviewModule()).LocalXlsxSidebarViewer,
 }))
 
 const loadingFallback = (

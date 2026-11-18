@@ -6,6 +6,7 @@ import '@/testing-library'
 
 import type { HttpClient } from '@/contexts'
 import { createClient } from '@/lib/http'
+import { stubAppServer } from '@/test-utils/app-server'
 import { getClock } from '@/testing-library'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { act, cleanup, renderHook } from '@testing-library/react'
@@ -41,7 +42,7 @@ describe('useDocumentBlob', () => {
   beforeEach(() => {
     revokeSpy = spyOn(URL, 'revokeObjectURL')
     // The app's server answers the check made before the renderer is imported.
-    spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null))
+    stubAppServer()
   })
 
   afterEach(() => {

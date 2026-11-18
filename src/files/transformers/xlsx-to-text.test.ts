@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test'
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 import type { StoredFile } from '@/lib/file-blob-storage'
+import { stubAppServer } from '@/test-utils/app-server'
 import { workbook, type WorkbookRows } from '@/test-utils/xlsx-workbook'
 import { readXlsxSheets, sheetsToText, xlsxToText } from './xlsx-to-text'
 
@@ -51,6 +52,12 @@ describe('sheetsToText', () => {
 })
 
 describe('reading a workbook', () => {
+  // The app's server answers the check made before the sheet readers are imported.
+  beforeAll(() => {
+    stubAppServer()
+  })
+  afterAll(() => mock.restore())
+
   // Rows 1 to 3 and 5 hold data and row 4 is blank, the layout where the model used to read Cedar as row 4.
   const blankRow4: WorkbookRows = [['Name', 'Cost'], ['Orchid', 137], ['Maple', 286], [], ['Cedar', 59]]
 

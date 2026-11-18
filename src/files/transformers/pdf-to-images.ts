@@ -4,6 +4,7 @@
 
 import type { StoredFile } from '@/lib/file-blob-storage'
 import type { TransformImage } from './index'
+import { loadPdfjs } from './load-pdfjs'
 
 /** Cap pages so a huge scan doesn't blast hundreds of images at the model. */
 const maxPages = 10
@@ -18,7 +19,7 @@ const renderScale = 2
  * vision model as image parts. Capped at {@link maxPages} pages.
  */
 export const pdfToImages = async (file: StoredFile): Promise<{ images: TransformImage[] }> => {
-  const pdfjs = await import('pdfjs-dist')
+  const pdfjs = await loadPdfjs()
   // Mirror the viewer's Vite worker-URL pattern so both share one worker build.
   pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
 

@@ -4,9 +4,10 @@
 
 import '@/testing-library'
 
-import { describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { docxMime, getTransformer, pptxMime, xlsxMime } from '@/files/transformers'
 import type { StoredFile } from '@/lib/file-blob-storage'
+import { stubAppServer } from '@/test-utils/app-server'
 import { samplePptx } from '@/test-utils/sample-pptx'
 import type { ThunderboltUIMessage } from '@/types'
 import type { SeedTurn } from '@shared/agent-core'
@@ -36,6 +37,8 @@ const message = (role: 'user' | 'assistant', parts: ThunderboltUIMessage['parts'
 })
 
 describe('prepareBuiltInConversation', () => {
+  afterEach(() => mock.restore())
+
   it('replays only turns after the latest checkpoint and drops a deleted checkpoint on regeneration', async () => {
     const checkpoint = {
       version: 1 as const,
@@ -484,6 +487,8 @@ describe('prepareBuiltInConversation', () => {
     })
 
     it('gives the model an attached deck as the text of each slide, in order, with its speaker notes', async () => {
+      // The app's server answers the check made before the deck reader is imported.
+      stubAppServer()
       const blob = new Blob([await samplePptx()], { type: pptxMime })
       const file: StoredFile = {
         id: 'd1',

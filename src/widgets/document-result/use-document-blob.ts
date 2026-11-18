@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useLingui } from '@lingui/react/macro'
-import { importWhenReachable } from '@/content-view/retryable-lazy'
+import { importWhenReachable } from '@/lib/import-when-reachable'
 import type { HttpClient } from '@/contexts'
 import { getAttachment } from '@/lib/file-blob-storage'
 import { useEffect, useReducer, useRef } from 'react'

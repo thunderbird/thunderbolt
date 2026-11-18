@@ -5,9 +5,10 @@
 import { retryableLazy } from '@/content-view/retryable-lazy'
 import { ViewerErrorBoundary } from '@/content-view/viewer-error-boundary'
 import { useOnScreen } from '@/hooks/use-on-screen'
+import { importWhenReachable } from '@/lib/import-when-reachable'
 import { Suspense, useRef } from 'react'
 
-const pdfThumbnail = retryableLazy(() => import('./pdf-thumbnail'))
+const pdfThumbnail = retryableLazy(importWhenReachable(() => import('./pdf-thumbnail')))
 
 /** Start PDF decoding near the viewport and retain it when the card scrolls away. */
 export const DeferredPdfThumbnail = ({ localFileId }: { localFileId: string }) => {

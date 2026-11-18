@@ -6,6 +6,7 @@ import { cleanup, render } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } from 'bun:test'
 import { docxMime } from '@/files/transformers'
 import * as attachmentStorage from '@/lib/file-blob-storage'
+import { stubAppServer } from '@/test-utils/app-server'
 import { expectSampleDocxPreview, waitForPreviewFrame } from '@/test-utils/docx-preview'
 import { sampleDocx } from '@/test-utils/sample-docx'
 import { parseXmlWithXmlDom } from '@/test-utils/xml-dom-parser'
@@ -16,7 +17,7 @@ describe('FileCard with a DOCX', () => {
   beforeAll(async () => {
     const blob = await sampleDocx()
     // The app's server answers the check made before the renderer is imported.
-    spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null))
+    stubAppServer()
     spyOn(attachmentStorage, 'getAttachment').mockResolvedValue({
       id: 'local-1',
       filename: 'report.docx',

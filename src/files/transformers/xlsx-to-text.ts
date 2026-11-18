@@ -3,10 +3,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { StoredFile } from '@/lib/file-blob-storage'
+import { importWhenReachable } from '@/lib/import-when-reachable'
 import type { readerGrids } from '@/office/sheet-grid'
 import type { visitStartTags } from '@/office/xlsx-drawings'
 import type { UnzipFileInfo } from 'fflate'
 import type { CellValue } from 'read-excel-file/browser'
+
+// They share chunks with the workbook preview, which Safari never loads once a fetch of them failed, so they wait for
+// the app's server.
+const xlsxDrawingsModule = importWhenReachable(() => import('@/office/xlsx-drawings'))
+const sheetGridModule = importWhenReachable(() => import('@/office/sheet-grid'))
 
 /**
  * Renders a spreadsheet date as ISO 8601: `2026-09-01`, or `2026-09-01 14:30`
@@ -138,8 +144,8 @@ export const readXlsxSheets = async (file: StoredFile): Promise<SpreadsheetSheet
     import('read-excel-file/browser'),
     import('fflate'),
     import('@/files/unzip-within-limits'),
-    import('@/office/xlsx-drawings'),
-    import('@/office/sheet-grid'),
+    xlsxDrawingsModule(),
+    sheetGridModule(),
   ])
   const zip = new Uint8Array(await file.blob.arrayBuffer())
   const entries: UnzipFileInfo[] = []

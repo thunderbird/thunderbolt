@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { StoredFile } from '@/lib/file-blob-storage'
+import { importWhenReachable } from '@/lib/import-when-reachable'
 
 /**
  * Client-side transformer registry: turns a stored attachment into a form a
@@ -110,6 +111,10 @@ export const resolveTextMimeType = (filename: string, declaredType: string): str
 export const defaultDeliveryMode = (mime: string): TransformTarget | undefined =>
   isPlainTextMime(mime) || mime === xlsxMime || mime === pptxMime ? 'text' : undefined
 
+// It shares a chunk with the workbook preview, which Safari never loads once a fetch of it failed, so it waits for the
+// app's server.
+const pptxToTextModule = importWhenReachable(() => import('./pptx-to-text'))
+
 /**
  * Lazy loaders keyed by `"<source-mime>-><target>"`. Adding a transformer is a
  * one-line entry here plus its module — nothing else in the pipeline needs to
@@ -120,7 +125,7 @@ const loaders: Partial<Record<TransformerKey, () => Promise<Transformer>>> = {
   [`${docxMime}->text`]: async () => (await import('./docx-to-text')).docxToText,
   'application/pdf->images': async () => (await import('./pdf-to-images')).pdfToImages,
   [`${xlsxMime}->text`]: async () => (await import('./xlsx-to-text')).xlsxToText,
-  [`${pptxMime}->text`]: async () => (await import('./pptx-to-text')).pptxToText,
+  [`${pptxMime}->text`]: async () => (await pptxToTextModule()).pptxToText,
 }
 
 /** True if a transformer exists for this source MIME → target. Sync, for routing decisions. */

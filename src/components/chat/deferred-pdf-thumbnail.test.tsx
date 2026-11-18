@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import * as attachmentStorage from '@/lib/file-blob-storage'
+import { stubAppServer } from '@/test-utils/app-server'
 import { getClock } from '@/testing-library'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn, type Mock } from 'bun:test'
@@ -85,7 +86,7 @@ describe('deferred PDF thumbnails', () => {
   })
 
   it('loads once near the viewport and retains the preview after scrolling away', async () => {
-    spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null))
+    stubAppServer()
     const card = <FileCard localFileId="visible-pdf" filename="report.pdf" mimeType="application/pdf" />
     const { rerender, unmount } = render(card)
     await flush()

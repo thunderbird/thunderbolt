@@ -10,6 +10,7 @@ import { docxMime, pptxMime } from '@/files/transformers'
 import * as download from '@/lib/download'
 import * as attachmentStorage from '@/lib/file-blob-storage'
 import { createClient } from '@/lib/http'
+import { stubAppServer } from '@/test-utils/app-server'
 import { expectSampleDocxPreview, waitForPreviewFrame } from '@/test-utils/docx-preview'
 import { sampleDocx } from '@/test-utils/sample-docx'
 import { parseXmlWithXmlDom } from '@/test-utils/xml-dom-parser'
@@ -66,7 +67,7 @@ describe('DOCX preview in the side panel', () => {
   beforeAll(async () => {
     docx = await sampleDocx()
     // The app's server answers the check made before the renderer is imported.
-    spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null))
+    stubAppServer()
     spyOn(attachmentStorage, 'getAttachment').mockResolvedValue({
       id: 'local-1',
       filename: 'report.docx',
@@ -149,7 +150,7 @@ describe('DOCX preview in the side panel', () => {
 describe('PPTX preview in the side panel', () => {
   // The app's server answers the check made before the renderer is imported.
   beforeAll(() => {
-    spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null))
+    stubAppServer()
   })
   afterEach(cleanup)
   afterAll(() => mock.restore())

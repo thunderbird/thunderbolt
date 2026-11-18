@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { readFile } from 'node:fs/promises'
-import type { Locator, Page } from '@playwright/test'
+import type { Locator, Page, Route } from '@playwright/test'
 import {
   hostileAltChunkText,
   hostileDocx,
@@ -392,6 +392,27 @@ test('while the app server does not answer, the side panel asks for no viewer co
   await expect(contentView(page).getByText("The preview couldn't load")).toBeVisible()
   // Safari never fetches a module again once it saw it fail, so the viewer must not be asked for while the server is down.
   expect(viewerRequests).toEqual([])
+
+  await page.unroute(appServer)
+  await contentView(page).getByRole('button', { name: 'Try again' }).click()
+  await expect(contentView(page).frameLocator(`iframe[title="${name}"]`).getByText(sampleDocxText.title)).toBeVisible()
+})
+
+test('when the app server takes the request and never answers, the panel stops waiting, and Try again loads the viewer once it answers', async ({
+  page,
+  baseURL,
+}) => {
+  const name = 'e2e-server-silent.docx'
+  await sendDocument(page, name, await sampleBuffer(), sampleDocxText.title)
+  const appServer = (url: URL) => url.origin === new URL(baseURL!).origin
+  const pending: Route[] = []
+  // Held, never answered, like a server that accepts the connection and hangs.
+  await page.route(appServer, (route) => void pending.push(route))
+
+  await page.locator(`button[title="${name}"]`).click()
+  // The check before the import gives up after five seconds.
+  await expect(contentView(page).getByText("The preview couldn't load")).toBeVisible({ timeout: 10_000 })
+  expect(pending.map((route) => route.request().method())).toContain('HEAD')
 
   await page.unroute(appServer)
   await contentView(page).getByRole('button', { name: 'Try again' }).click()

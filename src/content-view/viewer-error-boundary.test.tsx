@@ -87,8 +87,6 @@ describe('LocalViewerLoadFailure', () => {
   })
 
   describe('once the viewer loads again', () => {
-    let consoleError: Mock<typeof console.error>
-
     /** The side view's wiring around a viewer whose first import fails, as on a broken network, and later ones load. */
     const panelWithBrokenFirstLoad = () => {
       const load = mock(async () => ({ default: ({ fileId }: { fileId: string }) => <p>{`viewer ${fileId}`}</p> }))
@@ -122,10 +120,12 @@ describe('LocalViewerLoadFailure', () => {
     }
 
     beforeEach(() => {
-      consoleError = spyOn(console, 'error').mockImplementation(() => {})
+      spyOn(console, 'error').mockImplementation(() => {})
+      // The app's server answers the check made before each import.
+      spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null))
     })
 
-    afterEach(() => consoleError.mockRestore())
+    afterEach(() => mock.restore())
 
     it('shows the viewer after Try again', async () => {
       const { load, Panel } = panelWithBrokenFirstLoad()

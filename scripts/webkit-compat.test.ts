@@ -59,19 +59,25 @@ it('builds the side panel viewers without script preloads and keeps them for eve
   expect(resolvePreloadDependencies('assets/settings-BqQwqGjR.js', deps)).toEqual(deps)
 })
 
-it('names only modules the app imports dynamically', () => {
+it('names only modules the app imports dynamically, and imports each once the server answers', () => {
   const root = path.join(import.meta.dir, '..')
   const sources = Array.from(new Glob('src/**/*.{ts,tsx}').scanSync(root)).filter((file) => !/\.test\.tsx?$/.test(file))
-  // Each `import('…')` target as a path from the root, without its extension.
-  const targets = sources.flatMap((file) =>
-    Array.from(readFileSync(path.join(root, file), 'utf8').matchAll(/import\(\s*['"]([^'"]+)['"]\s*\)/g), ([, spec]) =>
-      spec.startsWith('@/') ? path.join('src', spec.slice(2)) : path.join(path.dirname(file), spec),
-    ),
-  )
+  // Each `import('…')` target as a path from the root, without its extension, with the file that imports it.
+  const imports = sources.flatMap((file) => {
+    const code = readFileSync(path.join(root, file), 'utf8')
+    return Array.from(code.matchAll(/import\(\s*['"]([^'"]+)['"]\s*\)/g), ([, spec]) => ({
+      target: spec.startsWith('@/') ? path.join('src', spec.slice(2)) : path.join(path.dirname(file), spec),
+      file,
+      waitsForServer: /\b(?:importWhenReachable|retryableLazy)\(/.test(code),
+    }))
+  })
   const isModule = (target: string) =>
     ['.ts', '.tsx', '/index.ts'].some((suffix) => existsSync(path.join(root, target + suffix)))
-  const missing = importsWithoutPreload.filter(
-    (name) => !targets.some((target) => path.basename(target) === name && isModule(target)),
+  const listed = imports.filter(
+    ({ target }) => importsWithoutPreload.includes(path.basename(target)) && isModule(target),
   )
+  const missing = importsWithoutPreload.filter((name) => !listed.some(({ target }) => path.basename(target) === name))
   expect(missing).toEqual([])
+  // An import that Safari saw fail once never loads again, so none may start while the server is down.
+  expect(listed.filter(({ waitsForServer }) => !waitsForServer).map(({ file }) => file)).toEqual([])
 })

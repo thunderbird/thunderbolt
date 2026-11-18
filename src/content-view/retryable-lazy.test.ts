@@ -3,13 +3,56 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { act, cleanup, render, screen } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, type Mock, mock, spyOn } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { type ComponentType, createElement, Suspense } from 'react'
 import { getClock } from '@/testing-library'
-import { reloadFailedStylesheets, retryableLazy } from './retryable-lazy'
+import { importWhenReachable, reloadFailedStylesheets, retryableLazy } from './retryable-lazy'
 import { ViewerErrorBoundary } from './viewer-error-boundary'
 
 const flush = () => act(async () => void (await getClock().tickAsync(20)))
+
+/** The app's server as the check before an import sees it: up, answering with an error, or not there at all. */
+const stubServer = (answer: 'up' | 'error' | 'down') => {
+  const server = spyOn(globalThis, 'fetch')
+  return answer === 'down'
+    ? server.mockRejectedValue(new TypeError('Load failed'))
+    : server.mockResolvedValue(new Response(null, { status: answer === 'up' ? 200 : 503 }))
+}
+
+describe('importWhenReachable', () => {
+  afterEach(() => mock.restore())
+
+  it.each(['down', 'error'] as const)(
+    'never imports while the server is %s, and imports once it is up',
+    async (answer) => {
+      const load = mock(async () => 'module')
+      const loadWhenReachable = importWhenReachable(load)
+      const server = stubServer(answer)
+      await expect(loadWhenReachable()).rejects.toThrow()
+      expect(load).not.toHaveBeenCalled()
+
+      stubServer('up')
+      expect(await loadWhenReachable()).toBe('module')
+      expect(await loadWhenReachable()).toBe('module')
+      // One check while it was not up and one once it was: after the import loaded, it does not ask again.
+      expect(server).toHaveBeenCalledTimes(2)
+      expect(load).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it('checks and imports again after the import failed', async () => {
+    const load = mock(async () => 'module')
+    load.mockImplementationOnce(async () => {
+      throw new Error('Importing a module script failed.')
+    })
+    const loadWhenReachable = importWhenReachable(load)
+    const server = stubServer('up')
+    await expect(loadWhenReachable()).rejects.toThrow('Importing a module script failed.')
+
+    expect(await loadWhenReachable()).toBe('module')
+    expect(server).toHaveBeenCalledTimes(2)
+  })
+})
 
 /** The page's only stylesheet: once a retry swapped it, the fresh copy the browser is fetching again. */
 const stylesheetCopy = () => document.head.querySelector<HTMLLinkElement>('link[rel="stylesheet"]')!
@@ -116,16 +159,15 @@ describe('reloadFailedStylesheets', () => {
 })
 
 describe('retryableLazy', () => {
-  let consoleError: Mock<typeof console.error>
-
   beforeEach(() => {
-    consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    spyOn(console, 'error').mockImplementation(() => {})
+    stubServer('up')
   })
 
   afterEach(() => {
     cleanup()
     document.head.innerHTML = ''
-    consoleError.mockRestore()
+    mock.restore()
   })
 
   /** Renders the component the getter hands out now, as the side view does on each attempt. */

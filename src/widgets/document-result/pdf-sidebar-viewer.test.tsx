@@ -65,6 +65,8 @@ describe('DOCX preview in the side panel', () => {
 
   beforeAll(async () => {
     docx = await sampleDocx()
+    // The app's server answers the check made before the renderer is imported.
+    spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null))
     spyOn(attachmentStorage, 'getAttachment').mockResolvedValue({
       id: 'local-1',
       filename: 'report.docx',
@@ -145,7 +147,12 @@ describe('DOCX preview in the side panel', () => {
 })
 
 describe('PPTX preview in the side panel', () => {
+  // The app's server answers the check made before the renderer is imported.
+  beforeAll(() => {
+    spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null))
+  })
   afterEach(cleanup)
+  afterAll(() => mock.restore())
 
   test('refuses a deck past the size limit, and Download still saves it', async () => {
     const bytes = new Uint8Array(pptxPreviewLimits.fileBytes + 1)

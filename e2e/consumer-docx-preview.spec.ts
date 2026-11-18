@@ -332,11 +332,12 @@ test('when the preview code does not load, the panel says so and Download still 
   expect(await readFile(await download.path())).toEqual(buffer)
 })
 
+// The viewer is a lazy chunk: the dev server serves its source module, a build its `/assets/` script and styles.
+const viewerChunk = /\/pdf-sidebar-viewer[^/]*\.(?:tsx|js|css)(?:\?|$)/
+
 test('when the side panel viewer does not load, the panel says so, the rest of the app stays up, and Try again loads it', async ({
   page,
 }) => {
-  // The viewer is a lazy chunk: the dev server serves its source module, a build its `/assets/` script and styles.
-  const viewerChunk = /\/pdf-sidebar-viewer[^/]*\.(?:tsx|js|css)(?:\?|$)/
   await page.route(viewerChunk, (route) => route.abort())
   const name = 'e2e-viewer-offline.docx'
   const buffer = await sampleBuffer()
@@ -370,6 +371,31 @@ test('when the side panel viewer does not load, the panel says so, the rest of t
     await expect(card).toBeFocused()
   }
   await expect(page.locator('textarea')).toBeVisible()
+})
+
+test('while the app server does not answer, the side panel asks for no viewer code, and Try again loads it once it does', async ({
+  page,
+  baseURL,
+}) => {
+  const name = 'e2e-server-down.docx'
+  await sendDocument(page, name, await sampleBuffer(), sampleDocxText.title)
+  const viewerRequests: string[] = []
+  page.on('request', (request) => {
+    if (viewerChunk.test(request.url())) {
+      viewerRequests.push(request.url())
+    }
+  })
+  const appServer = (url: URL) => url.origin === new URL(baseURL!).origin
+  await page.route(appServer, (route) => route.abort())
+
+  await page.locator(`button[title="${name}"]`).click()
+  await expect(contentView(page).getByText("The preview couldn't load")).toBeVisible()
+  // Safari never fetches a module again once it saw it fail, so the viewer must not be asked for while the server is down.
+  expect(viewerRequests).toEqual([])
+
+  await page.unroute(appServer)
+  await contentView(page).getByRole('button', { name: 'Try again' }).click()
+  await expect(contentView(page).frameLocator(`iframe[title="${name}"]`).getByText(sampleDocxText.title)).toBeVisible()
 })
 
 test('in a private window an attached file still downloads whole', async ({ browser, baseURL }, testInfo) => {

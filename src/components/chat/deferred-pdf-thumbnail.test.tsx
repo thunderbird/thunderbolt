@@ -10,9 +10,14 @@ import { FileCard } from './file-card'
 
 const observers: VisibilityObserver[] = []
 
-class VisibilityObserver {
+class VisibilityObserver implements IntersectionObserver {
   readonly disconnect = mock()
+  readonly root = null
   readonly rootMargin: string
+  readonly scrollMargin = '0px'
+  readonly thresholds = []
+  readonly takeRecords = () => []
+  readonly unobserve = mock()
   private readonly callback: IntersectionObserverCallback
   private target?: Element
 
@@ -28,10 +33,7 @@ class VisibilityObserver {
   }
 
   emit(isIntersecting: boolean) {
-    this.callback(
-      [{ isIntersecting, target: this.target } as IntersectionObserverEntry],
-      this as unknown as IntersectionObserver,
-    )
+    this.callback([{ isIntersecting, target: this.target } as IntersectionObserverEntry], this)
   }
 }
 
@@ -43,7 +45,7 @@ describe('deferred PDF thumbnails', () => {
 
   beforeEach(() => {
     originalObserver = globalThis.IntersectionObserver
-    globalThis.IntersectionObserver = VisibilityObserver as unknown as typeof IntersectionObserver
+    globalThis.IntersectionObserver = VisibilityObserver
     attachment = spyOn(attachmentStorage, 'getAttachment').mockResolvedValue(null)
   })
 
@@ -51,7 +53,7 @@ describe('deferred PDF thumbnails', () => {
     cleanup()
     globalThis.IntersectionObserver = originalObserver
     observers.length = 0
-    attachment.mockRestore()
+    mock.restore()
   })
 
   it('keeps offscreen file actions usable without reading or decoding the PDF', async () => {
@@ -83,6 +85,7 @@ describe('deferred PDF thumbnails', () => {
   })
 
   it('loads once near the viewport and retains the preview after scrolling away', async () => {
+    spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null))
     const card = <FileCard localFileId="visible-pdf" filename="report.pdf" mimeType="application/pdf" />
     const { rerender, unmount } = render(card)
     await flush()

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useLingui } from '@lingui/react/macro'
+import { importWhenReachable } from '@/content-view/retryable-lazy'
 import type { HttpClient } from '@/contexts'
 import { getAttachment } from '@/lib/file-blob-storage'
 import { useEffect, useReducer, useRef } from 'react'
@@ -32,10 +33,14 @@ const reducer = (_state: DocumentBlobState, action: DocumentBlobAction): Documen
   }
 }
 
+// Each import starts only once the app's server answers, so a renderer tried while it was down still loads later.
+const docxSnapshotModule = importWhenReachable(() => import('./docx-snapshot'))
+const pptxSnapshotModule = importWhenReachable(() => import('./pptx-snapshot'))
+
 /** Loads the renderer for a DOCX or a PPTX, each only for its own type, which keeps both out of the entry chunk. */
 export const snapshotRenderers = {
-  docx: async () => (await import('./docx-snapshot')).renderDocxSnapshot,
-  pptx: async () => (await import('./pptx-snapshot')).renderPptxSnapshot,
+  docx: async () => (await docxSnapshotModule()).renderDocxSnapshot,
+  pptx: async () => (await pptxSnapshotModule()).renderPptxSnapshot,
 }
 
 /** The renderer for the file type, or null when its code does not load, as on a broken network. */

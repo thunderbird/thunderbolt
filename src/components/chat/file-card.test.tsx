@@ -15,6 +15,8 @@ describe('FileCard with a DOCX', () => {
   parseXmlWithXmlDom()
   beforeAll(async () => {
     const blob = await sampleDocx()
+    // The app's server answers the check made before the renderer is imported.
+    spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null))
     spyOn(attachmentStorage, 'getAttachment').mockResolvedValue({
       id: 'local-1',
       filename: 'report.docx',

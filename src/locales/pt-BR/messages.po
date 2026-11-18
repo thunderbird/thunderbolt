@@ -2068,6 +2068,10 @@ msgstr "Não foi possível fixar {name}."
 msgid "Couldn't reach Thunderbolt Cloud. Try again, or set up without a server for now."
 msgstr ""
 
+#: src/components/chat/chat-prompt-input.tsx
+msgid "Couldn't read \"{filename}\"."
+msgstr "Não foi possível ler “{filename}”."
+
 #: src/settings/encryption/use-remove-passkey.ts
 msgid "Couldn't remove the passkey. Please try again."
 msgstr "Não foi possível remover a chave de acesso. Tente novamente."

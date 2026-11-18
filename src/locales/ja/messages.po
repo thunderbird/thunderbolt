@@ -2032,6 +2032,10 @@ msgstr "{name} をピン留めできませんでした。"
 msgid "Couldn't reach Thunderbolt Cloud. Try again, or set up without a server for now."
 msgstr ""
 
+#: src/components/chat/chat-prompt-input.tsx
+msgid "Couldn't read \"{filename}\"."
+msgstr "「{filename}」を読み込めませんでした。"
+
 #: src/settings/encryption/use-remove-passkey.ts
 msgid "Couldn't remove the passkey. Please try again."
 msgstr "パスキーを削除できませんでした。もう一度お試しください。"

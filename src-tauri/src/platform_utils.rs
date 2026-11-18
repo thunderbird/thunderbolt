@@ -239,6 +239,58 @@ fn mark_from_internet(_path: &Path) -> std::io::Result<()> {
 #[cfg(all(desktop, not(any(windows, target_os = "macos"))))]
 const MARK_HINT: &str = "";
 
+/// Returns the files a file manager copied and opens them to plugin-fs, as a
+/// dropped file is, so the composer can attach them. WebKitGTK shows a copied
+/// file to the page only as `text/uri-list` text. This reads only
+/// `x-special/gnome-copied-files`, which file managers write (GNOME Files,
+/// Nemo, Caja, PCManFM, Thunar) and web pages cannot. It never reads
+/// `text/uri-list`, where any page can put a `file://` path.
+/// GTK reads the clipboard on the main thread, and the request there must not
+/// block: a blocking wait runs a nested loop that delivers the paste twice.
+#[cfg(target_os = "linux")]
+#[command]
+async fn copied_files<R: Runtime>(app: AppHandle<R>) -> Result<Vec<PathBuf>, String> {
+    use gtk::gdk;
+    use tauri_plugin_fs::FsExt;
+
+    let (sender, mut receiver) = tauri::async_runtime::channel(1);
+    app.run_on_main_thread(move || {
+        let target = gdk::Atom::intern("x-special/gnome-copied-files");
+        gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD).request_contents(
+            &target,
+            move |_, contents| {
+                let _ = sender.try_send(String::from_utf8_lossy(&contents.data()).into_owned());
+            },
+        );
+    })
+    .map_err(|error| error.to_string())?;
+    let paths = copied_file_paths(&receiver.recv().await.unwrap_or_default());
+    let scope = app.fs_scope();
+    for path in &paths {
+        let _ = scope.allow_file(path);
+    }
+    Ok(paths)
+}
+
+/// The local files named in an `x-special/gnome-copied-files` entry: `copy` or
+/// `cut`, then one `file://` URI per line. Only regular files on this host are
+/// kept, so a folder, device or pipe never reaches a read.
+/// File managers end the entry with a NUL, which `filename_from_uri` would
+/// panic on.
+#[cfg(target_os = "linux")]
+fn copied_file_paths(entry: &str) -> Vec<PathBuf> {
+    let mut lines = entry.trim_end_matches('\0').lines();
+    if !matches!(lines.next(), Some("copy" | "cut")) {
+        return Vec::new();
+    }
+    lines
+        .filter(|uri| !uri.contains('\0'))
+        .filter_map(|uri| gtk::glib::filename_from_uri(uri).ok())
+        .filter(|(path, host)| host.is_none() && path.is_file())
+        .map(|(path, _)| path)
+        .collect()
+}
+
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     // A command the Rust handler matches never reaches Kotlin, so
     // save_to_downloads must not be registered here on Android. iOS has no
@@ -247,8 +299,30 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
         get_android_insets,
         set_bar_color,
         #[cfg(desktop)]
-        save_to_downloads
+        save_to_downloads,
+        #[cfg(target_os = "linux")]
+        copied_files
     ]);
+
+    // plugin-fs opens a dropped file only on a window-level drop, but the
+    // `unstable` feature makes the main webview a child, which reports
+    // webview-level drops. Open only the regular files the drop handed over,
+    // never a folder, device or pipe.
+    #[cfg(target_os = "linux")]
+    let builder = builder.on_event(|app, event| {
+        use tauri_plugin_fs::FsExt;
+
+        if let tauri::RunEvent::WebviewEvent {
+            event: tauri::WebviewEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }),
+            ..
+        } = event
+        {
+            let scope = app.fs_scope();
+            for path in paths.iter().filter(|path| path.is_file()) {
+                let _ = scope.allow_file(path);
+            }
+        }
+    });
 
     #[cfg(target_os = "android")]
     let builder = builder.setup(|_app, api| {
@@ -430,6 +504,30 @@ mod tests {
         assert_eq!(with_suffix("report.final.html", 2), "report.final (2).html");
         assert_eq!(with_suffix("noext", 1), "noext (1)");
         assert_eq!(with_suffix(".hidden", 1), ".hidden (1)");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn reads_only_the_local_files_a_file_manager_copied() {
+        let folder = temp_folder("copied-files");
+        let deck = folder.join("Q3 deck.pptx");
+        std::fs::write(&deck, b"deck").unwrap();
+        let deck_uri = gtk::glib::filename_to_uri(&deck, None).unwrap();
+        let folder_uri = gtk::glib::filename_to_uri(&folder, None).unwrap();
+
+        let other_host = deck_uri.replacen("file://", "file://host", 1);
+        let only_deck = vec![deck];
+        for entry in [
+            format!("copy\n{deck_uri}\n{folder_uri}\nfile:///dev/zero\nhttps://example.com/a.pptx\n{other_host}"),
+            format!("cut\n{deck_uri}"),
+            format!("copy\n{deck_uri}\0"),
+            format!("copy\n{deck_uri}\0x\n{deck_uri}"),
+        ] {
+            assert_eq!(copied_file_paths(&entry), only_deck);
+        }
+        assert!(copied_file_paths(&deck_uri).is_empty());
+        assert!(copied_file_paths("").is_empty());
+        std::fs::remove_dir_all(&folder).unwrap();
     }
 
     #[cfg(windows)]

@@ -13,6 +13,12 @@ import { estimateTokensForText } from '@/ai/tokenizers'
 import { useContextTracking as useContextTracking_default } from '@/hooks/use-context-tracking'
 import { useIsMobile as useIsMobile_default } from '@/hooks/use-mobile'
 import { isMobile as isPlatformMobile } from '@/lib/platform'
+import {
+  filesAtPaths,
+  readCopiedFiles as readCopiedFiles_default,
+  readsFilesByPath as readsFilesByPath_default,
+  type PathFile,
+} from '@/lib/native-files'
 import { trackEvent as trackEvent_default } from '@/lib/posthog'
 import { appendSlashToken } from '@/skills/compose-chat-input'
 import { buildDisplayNameToSlug, tokenForSkill } from '@/skills/display'
@@ -80,6 +86,7 @@ import { VoiceModeButton } from '@/voice/ui/voice-mode-button'
 import { VoiceModeComposer } from '@/voice/ui/voice-mode-composer'
 import { useVoiceSession } from '@/voice/ui/use-voice-session'
 import { FileCard } from './file-card'
+import { useNativeFileDrop as useNativeFileDrop_default } from './use-native-file-drop'
 import { preloadChatMessageList } from './chat-messages-loader'
 import { isBuiltInAgent } from '@/defaults/agents'
 import { useAppName } from '@/lib/branding-selectors'
@@ -157,7 +164,7 @@ const caretPastChipMarker = (e: KeyboardEvent<HTMLTextAreaElement>, ta: HTMLText
   return e.key === 'ArrowLeft' && ta.value[caret - 1] === chipMarker ? Math.max(0, caret - 2) : null
 }
 
-const isAcceptedAttachment = (file: File): boolean =>
+const isAcceptedAttachment = (file: Pick<File, 'name' | 'type'>): boolean =>
   acceptedAttachmentMimeTypes.has(file.type) ||
   acceptedAttachmentExtensions.some((ext) => file.name.toLowerCase().endsWith(ext))
 
@@ -229,6 +236,10 @@ type ChatPromptInputProps = {
   useImageSupportCheck?: typeof useImageSupportCheck_default
   /** Inject for tests that select a non-built-in agent, so the warm-up never dials it. */
   useWarmAcpCommands?: typeof useWarmAcpCommands_default
+  /** Inject for tests of the Linux path, where files dragged or copied from the OS arrive by path. */
+  readsFilesByPath?: typeof readsFilesByPath_default
+  readCopiedFiles?: typeof readCopiedFiles_default
+  useNativeFileDrop?: typeof useNativeFileDrop_default
 }
 
 const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputProps>(
@@ -245,6 +256,9 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
       isAgentAvailable = isAgentAvailable_default,
       useImageSupportCheck = useImageSupportCheck_default,
       useWarmAcpCommands = useWarmAcpCommands_default,
+      readsFilesByPath = readsFilesByPath_default,
+      readCopiedFiles = readCopiedFiles_default,
+      useNativeFileDrop = useNativeFileDrop_default,
     },
     ref,
   ) => {
@@ -382,6 +396,7 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
     const imageSupportBlocksSend = imageSupport.notice !== undefined
     const [isDragging, setIsDragging] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
+    const dropZoneRef = useRef<HTMLDivElement>(null)
     const acceptsAttachments = agentAcceptsAttachments(selectedAgent)
     // Files queued before the chat landed on an agent that takes none (discovery moved
     // it, or the user switched) stay visible so they can be removed, but hold the send.
@@ -652,7 +667,7 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
     // Store dropped/picked PDFs locally (IndexedDB) and add reference-only
     // attachments. Bytes never enter a message part — only the localFileId ref.
     const addFiles = useCallback(
-      async (files: File[]) => {
+      async (files: (File | PathFile)[]) => {
         setAttachError(null)
         // `count` tracks the running total as we add through the loop, since
         // `setAttachments` won't have flushed mid-iteration.
@@ -667,11 +682,20 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
             setAttachError(t`"${filename}" isn't a supported file type.`)
             continue
           }
+          // A file that arrives by path is read into memory, so files are read one at a time and only under the cap.
+          // shortcut: one over the cap is refused unread, so it is never shrunk; read photos and PDFs anyway if Linux
+          // users need that.
+          const loaded = file instanceof File || file.size > maxAttachmentBytes ? file : await file.read()
+          if (!loaded) {
+            const filename = file.name
+            setAttachError(t`Couldn't read "${filename}".`)
+            continue
+          }
           // Shrink large images/PDFs before the cap check, so a compressible
           // photo over the limit can slip under it instead of being rejected
           // (THU-671). Falls back to the original when it can't help.
-          const prepared = await maybeCompressAttachment(file)
-          if (prepared.size > maxAttachmentBytes) {
+          const prepared = loaded instanceof File ? await maybeCompressAttachment(loaded) : loaded
+          if (!(prepared instanceof File) || prepared.size > maxAttachmentBytes) {
             const maxMegabytes = maxAttachmentBytes / 1024 / 1024
             const filename = prepared.name
             setAttachError(t`"${filename}" is too large (max ${maxMegabytes}MB).`)
@@ -707,25 +731,57 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
       [attachments.length, t],
     )
 
+    const pasteCopiedFiles = useCallback(
+      async (field: HTMLTextAreaElement, text: string) => {
+        const files = await readCopiedFiles()
+        if (files.length > 0) {
+          await addFiles(files)
+          return
+        }
+        // No file manager copy behind the `text/uri-list`: paste its text as the browser would have.
+        // `insertText` types into whatever has focus, so text is dropped once focus has left the field.
+        if (text && document.activeElement === field) {
+          document.execCommand('insertText', false, text)
+        }
+      },
+      [addFiles, readCopiedFiles],
+    )
+
     // Intercept clipboard paste (Cmd/Ctrl+V) so copied files and pasted images
     // become attachments — the same path as drag-drop and the paperclip. Only
     // preventDefault when the clipboard actually carries files, so a normal text
     // paste falls through untouched.
     const handlePaste = useCallback(
       (e: ClipboardEvent<HTMLTextAreaElement>) => {
+        // An agent that takes no attachments lets the paste fall through untouched.
+        if (!acceptsAttachments) {
+          return
+        }
         const files = Array.from(e.clipboardData?.items ?? [])
           .filter((item) => item.kind === 'file')
           .map((item) => item.getAsFile())
           .filter((file): file is File => file != null)
-        // An agent that takes no attachments lets the paste fall through untouched.
-        if (!acceptsAttachments || files.length === 0) {
+        if (files.length > 0) {
+          e.preventDefault()
+          void addFiles(files.map(withClipboardFilename))
           return
         }
-        e.preventDefault()
-        void addFiles(files.map(withClipboardFilename))
+        // WebKitGTK shows a file manager copy only as `text/uri-list` and pastes
+        // no text when that type is present, so the files come from the OS clipboard.
+        if (readsFilesByPath() && e.clipboardData.types.includes('text/uri-list')) {
+          e.preventDefault()
+          void pasteCopiedFiles(e.currentTarget, e.clipboardData.getData('text/plain'))
+        }
       },
-      [acceptsAttachments, addFiles],
+      [acceptsAttachments, addFiles, pasteCopiedFiles, readsFilesByPath],
     )
+
+    useNativeFileDrop({
+      zoneRef: dropZoneRef,
+      enabled: acceptsAttachments && readsFilesByPath(),
+      onHoverChange: setIsDragging,
+      onDrop: async (paths) => addFiles(await filesAtPaths(paths)),
+    })
 
     const removeAttachment = useCallback((localFileId: string) => {
       setAttachments((prev) => prev.filter((a) => a.localFileId !== localFileId))
@@ -942,6 +998,7 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
     return (
       <>
         <div
+          ref={dropZoneRef}
           className="relative flex w-full flex-col rounded-3xl"
           // Default is still prevented for an agent that takes no attachments,
           // so a dropped file is ignored rather than opened by the browser in

@@ -2050,6 +2050,10 @@ msgstr "Couldn't pin {name}."
 msgid "Couldn't reach Thunderbolt Cloud. Try again, or set up without a server for now."
 msgstr "Couldn't reach Thunderbolt Cloud. Try again, or set up without a server for now."
 
+#: src/components/chat/chat-prompt-input.tsx
+msgid "Couldn't read \"{filename}\"."
+msgstr "Couldn't read \"{filename}\"."
+
 #: src/settings/encryption/use-remove-passkey.ts
 msgid "Couldn't remove the passkey. Please try again."
 msgstr "Couldn't remove the passkey. Please try again."

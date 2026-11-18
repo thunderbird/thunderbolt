@@ -77,8 +77,9 @@ export const DocumentPreviewFrame = ({ fileName, state, children }: DocumentPrev
   )
 
   return (
-    // Escape from anywhere in the panel but the sandboxed frame, whose keys never reach this page.
-    <div className="flex h-full flex-col" onKeyDown={handleKeyDown}>
+    // Escape from anywhere in the panel but the sandboxed frame, whose keys never reach this page. As a side panel, it
+    // clears the status bar of a phone in landscape, as the other side panel views do.
+    <div className="flex h-full flex-col md:pt-[var(--safe-area-top-padding)]" onKeyDown={handleKeyDown}>
       <ContentViewHeader title={fileName} onClose={close} actions={downloadAction} />
 
       {saveError && (

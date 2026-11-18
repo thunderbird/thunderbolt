@@ -96,6 +96,30 @@ test.describe('mobile chat scrolling', () => {
   })
 })
 
+test('a chat resting at the end stays at the end when the screen rotates or the column narrows', async ({ page }) => {
+  const errors = collectPageErrors(page)
+  await page.setViewportSize({ width: 412, height: 915 })
+  const scroller = await openLongConversation(page)
+  const button = page.getByRole('button', { name: 'Scroll to bottom' })
+  const distanceToEnd = () =>
+    scroller.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop)
+  await button.click()
+  await expect(button).toBeHidden()
+  await expect.poll(distanceToEnd).toBeLessThan(2)
+
+  // Turned to landscape, narrowed as an open side panel does, and turned back.
+  for (const size of [
+    { width: 915, height: 412 },
+    { width: 600, height: 412 },
+    { width: 412, height: 915 },
+  ]) {
+    await page.setViewportSize(size)
+    await expect.poll(distanceToEnd, `at ${size.width}x${size.height}`).toBeLessThan(2)
+    await expect(button, `at ${size.width}x${size.height}`).toBeHidden()
+  }
+  expect(errors).toEqual([])
+})
+
 test('wheel scrolling over the down chevron moves the chat, and keyboard activation still jumps to the bottom', async ({
   page,
   browserName,

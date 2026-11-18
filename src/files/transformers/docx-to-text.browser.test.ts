@@ -154,11 +154,16 @@ describe('docx-to-text in the browser build', () => {
   })
 
   test('scans a broken tag with a long run and no value in one pass, so it cannot freeze the chat', async () => {
-    // Retrying at every character took about 4 s for 80 KB, and grows with the square of the length.
-    const zip = await editedDocx((parts) => withBody(parts, `<w:p xmlns ${'a'.repeat(200_000)}/>`))
+    // Retrying at every character took about 4 s for 80 KB, and grows with the square of the length. The namespace
+    // after the run is refused by the scan, so the time measured is the scan's, not the reader's.
+    const zip = await editedDocx((parts) =>
+      withBody(parts, `<w:p xmlns ${'a'.repeat(200_000)} xmlns:x="urn:${'a'.repeat(1_000)}"/>`),
+    )
 
     const started = performance.now()
-    await expect(docx.docxToText(asFile(new Blob([zip])))).rejects.toThrow('[xmldom warning]')
+    await expect(docx.docxToText(asFile(new Blob([zip])))).rejects.toThrow(
+      'This document declares a namespace longer than 256 characters, over the limit for reading it.',
+    )
 
     expect(performance.now() - started).toBeLessThan(2_000)
   })

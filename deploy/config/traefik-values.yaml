@@ -1,0 +1,23 @@
+ingressClass:
+  enabled: false
+
+providers:
+  kubernetesCRD:
+    enabled: false
+  kubernetesIngress:
+    enabled: false
+  kubernetesIngressNGINX:
+    enabled: true
+    controllerClass: traefik.io/ingress-nginx
+    ingressClass: traefik-nginx
+    watchNamespace: thunderbolt
+    publishService:
+      enabled: true
+
+extraObjects:
+  - apiVersion: networking.k8s.io/v1
+    kind: IngressClass
+    metadata:
+      name: traefik-nginx
+    spec:
+      controller: traefik.io/ingress-nginx

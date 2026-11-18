@@ -78,12 +78,6 @@ kubectl get svc -n traefik traefik \
   -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"
 ```
 
-#### Migrating an existing EKS stack
-
-The stack replaces the retired community `ingress-nginx` controller with Traefik. Schedule a maintenance window if the old load balancer serves traffic. Before applying, run `pulumi preview` to check that the plan installs Traefik, updates the Thunderbolt Ingress resources to class `traefik-nginx`, and removes the old controller. Traefik's chart requires Kubernetes 1.30 or later.
-
-After `pulumi up`, get the new load balancer hostname using the command above. Update any DNS records or upstream proxy that targets the old load balancer. Move any custom TLS termination configuration to the new path before routing users to it. Verify the frontend, `/v1/health`, sign-in, and PowerSync through the new endpoint.
-
 ### Rotate the defaults
 
 | Setting                 | Default if unset                      |

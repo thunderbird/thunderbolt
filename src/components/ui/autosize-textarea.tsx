@@ -34,6 +34,10 @@ export const useAutosizeTextArea = ({
     const offsetBorder = 6
     const textAreaElement = textAreaRef.current
     if (textAreaElement) {
+      // Measuring collapses the field for one layout. Holding its box keeps that collapse from reaching the
+      // page, where Safari would clamp a scrolled view next to it (a chat resting at its end jumps up).
+      const box = textAreaElement.parentElement
+      box?.style.setProperty('min-height', `${box.offsetHeight}px`)
       textAreaElement.style.minHeight = `${minHeight + offsetBorder}px`
       textAreaElement.style.maxHeight = maxHeight > minHeight ? `${maxHeight}px` : ''
       textAreaElement.style.height = `${minHeight + offsetBorder}px`
@@ -45,6 +49,7 @@ export const useAutosizeTextArea = ({
         textAreaElement.style.height = `${scrollHeight + offsetBorder}px`
         textAreaElement.style.overflowY = 'hidden'
       }
+      box?.style.removeProperty('min-height')
     }
   }, [textAreaRef.current, triggerAutoSize, minHeight, maxHeight])
 }

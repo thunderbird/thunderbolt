@@ -4,13 +4,11 @@
 
 import { Trans, useLingui } from '@lingui/react/macro'
 import { ContentViewHeader } from '@/content-view/header'
-import { useSideview } from '@/content-view/context'
 import { Button } from '@/components/ui/button'
-import { i18n } from '@/i18n'
-import { downloadFile, saveErrorMessage } from '@/lib/download'
 import { Download, Loader2 } from 'lucide-react'
-import { type KeyboardEvent, type ReactNode, useState } from 'react'
+import type { ReactNode } from 'react'
 import type { DocumentBlobState } from './use-document-blob'
+import { useDocumentPreviewFrameState } from './use-document-preview-frame-state'
 
 type ReadyState = Extract<DocumentBlobState, { status: 'ready' }>
 
@@ -29,42 +27,12 @@ type DocumentPreviewFrameProps = {
  */
 export const DocumentPreviewFrame = ({ fileName, state, children }: DocumentPreviewFrameProps) => {
   const { t } = useLingui()
-  const { opener, closeSideview: close } = useSideview()
-  const [saveError, setSaveError] = useState<string | null>(null)
-  const blob = state.status === 'ready' ? state.blob : null
-
-  const handleKeyDown = (event: KeyboardEvent) => {
-    // On a phone the preview is a dialog, which closes on Escape itself and marks the key as handled.
-    if (event.key !== 'Escape' || event.defaultPrevented) {
-      return
-    }
-    close()
-    if (opener instanceof HTMLElement) {
-      opener.focus()
-    }
-  }
-
-  const handleDownload = async () => {
-    if (!blob) {
-      return
-    }
-    setSaveError(null)
-    try {
-      await downloadFile({
-        name: fileName,
-        contents: new Uint8Array(await blob.arrayBuffer()),
-        mimeType: blob.type || 'application/octet-stream',
-      })
-    } catch (error) {
-      console.error('[preview] Could not save the file', error)
-      setSaveError(i18n._(saveErrorMessage(error instanceof Error ? error.message : String(error))))
-    }
-  }
+  const { canDownload, saveError, close, handleKeyDown, handleDownload } = useDocumentPreviewFrameState(fileName, state)
 
   const downloadAction = (
     <Button
       onClick={() => void handleDownload()}
-      disabled={!blob}
+      disabled={!canDownload}
       variant="ghost"
       size="icon"
       className="h-8 w-8 rounded-full"

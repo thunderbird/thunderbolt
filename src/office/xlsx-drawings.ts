@@ -265,7 +265,7 @@ export const scannableXml = (xml: string) => {
     kept.push(xml.slice(at, found.index))
     const [opener] = found
     if (opener === '<!') {
-      throw new Error('A part of the workbook holds a DOCTYPE or another directive, which the preview does not read.')
+      throw new Error('A part of the workbook holds a DOCTYPE or another directive, which the app does not read.')
     }
     const closer = opener === '<!--' ? '-->' : opener === '<?' ? '?>' : ']]>'
     const bodyStart = found.index + opener.length

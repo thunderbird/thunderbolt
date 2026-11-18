@@ -109,6 +109,55 @@ describe('reading a workbook', () => {
     )
   })
 
+  describe('the grid the sheet reader builds', () => {
+    /** A workbook whose sheets hold this `sheetData` markup. */
+    const withSheetData = (...sheetData: readonly string[]): StoredFile => {
+      const parts = unzipSync(workbook(...sheetData.map(() => [['a']])))
+      sheetData.forEach((data, index) => {
+        parts[`xl/worksheets/sheet${index + 1}.xml`] = strToU8(
+          `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:XFD1048576"/><sheetData>${data}</sheetData></worksheet>`,
+        )
+      })
+      const bytes = zipSync(parts)
+      return { ...asFile(), size: bytes.byteLength, blob: new Blob([bytes]) }
+    }
+    const corners = (last: string, row: number) =>
+      `<row r="1"><c r="A1"><v>1</v></c></row><row r="${row}"><c r="${last}${row}"><v>2</v></c></row>`
+
+    test('refuses a sheet whose two values sit at A1 and XFD1048576, naming the sheet and its size', async () => {
+      await expect(readXlsxSheets(withSheetData(corners('XFD', 1_048_576)))).rejects.toThrow(
+        'Sheet "Sheet1" spans 1048576 rows by 16384 columns, which takes this spreadsheet to 17179869184 cells, over the 6000000-cell limit for reading it.',
+      )
+    })
+
+    test('counts the sheets together and names the one that passes the limit', async () => {
+      // 1,000 rows by 4,000 columns: four million cells each, under the limit alone.
+      await expect(xlsxToText(withSheetData(corners('EWV', 1_000), corners('EWV', 1_000)))).rejects.toThrow(
+        'Sheet "Sheet2" spans 1000 rows by 4000 columns, which takes this spreadsheet to 8000000 cells',
+      )
+    })
+
+    test('reads a sheet at the limit', async () => {
+      // 1,000 rows by 6,000 columns.
+      const { text } = await xlsxToText(withSheetData(corners('HVT', 1_000)))
+
+      expect(text.split('\n').at(-1)).toStartWith('Row 1000: , , ')
+    })
+
+    test('reads a sheet whose dimension claims the whole sheet but holds one cell', async () => {
+      expect(await xlsxToText(withSheetData('<row r="1"><c r="A1"><v>1</v></c></row>'))).toEqual({
+        text: '## Sheet: Sheet1\nRow 1: 1',
+      })
+    })
+
+    test('reads a sheet with a styled empty cell and a sized empty row at the far corner', async () => {
+      const data =
+        '<row r="1"><c r="A1"><v>1</v></c><c r="XFD1" s="1"/></row><row r="1048576" ht="20" customHeight="1"/>'
+
+      expect(await xlsxToText(withSheetData(data))).toEqual({ text: '## Sheet: Sheet1\nRow 1: 1' })
+    })
+  })
+
   test('renders an empty cell between two others as an empty string, not the literal "null"', async () => {
     expect(await xlsxToText(asFile([['A', null, 'C']]))).toEqual({ text: '## Sheet: Sheet1\nRow 1: A, , C' })
   })

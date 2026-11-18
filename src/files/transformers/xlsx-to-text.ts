@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { StoredFile } from '@/lib/file-blob-storage'
+import type { readerGrids } from '@/office/sheet-grid'
 import type { visitStartTags } from '@/office/xlsx-drawings'
 import type { UnzipFileInfo } from 'fflate'
 import type { CellValue } from 'read-excel-file/browser'
@@ -70,6 +71,8 @@ const hiddenSheets = (workbookXml: string, visit: typeof visitStartTags): boolea
   return hidden
 }
 
+type SheetGrid = ReturnType<typeof readerGrids>[number]
+
 const mib = 1024 * 1024
 // WebKit's peak memory while reading is about 16 times the unpacked size, so this keeps it near 0.5 GiB.
 const maxUnpackedMib = 32
@@ -100,18 +103,44 @@ const checkEntries = (entries: readonly UnzipFileInfo[]): void => {
   }
 }
 
+// The sheet reader's grid costs WebKit about 80 bytes a cell when every row holds a value, so this keeps it near
+// 0.5 GiB, as `maxUnpackedMib` keeps the cells themselves.
+const maxGridCells = 6_000_000
+
 /**
- * Reads every worksheet of an XLSX blob as text cells, once {@link checkEntries} accepts its zip. The zip and sheet
- * readers are imported lazily.
+ * Throws, with a message for the model, when the grids the sheet reader would build hold more than `maxGridCells`
+ * cells together, naming the sheet that takes them past it.
+ */
+const checkGrids = (grids: readonly SheetGrid[], sheetName: (part: string) => string): void => {
+  const total = { cells: 0 }
+  for (const { part, rows, cols } of grids) {
+    total.cells += rows * cols
+    if (total.cells > maxGridCells) {
+      throw new Error(
+        `Sheet "${sheetName(part)}" spans ${rows} rows by ${cols} columns, which takes this spreadsheet to ${total.cells} cells, over the ${maxGridCells}-cell limit for reading it.`,
+      )
+    }
+  }
+}
+
+/**
+ * Reads every worksheet of an XLSX blob as text cells, once {@link checkEntries} accepts its zip and
+ * {@link checkGrids} the grids its sheets make. The zip and sheet readers are imported lazily.
  */
 export const readXlsxSheets = async (file: StoredFile): Promise<SpreadsheetSheet[]> => {
-  const [{ default: readXlsxFile }, { strFromU8, unzipSync, zipSync }, { unzipWithinLimits }, { visitStartTags }] =
-    await Promise.all([
-      import('read-excel-file/browser'),
-      import('fflate'),
-      import('@/files/unzip-within-limits'),
-      import('@/office/xlsx-drawings'),
-    ])
+  const [
+    { default: readXlsxFile },
+    { strFromU8, unzipSync, zipSync },
+    { unzipWithinLimits },
+    { visitStartTags, workbookParts },
+    { readerGrids },
+  ] = await Promise.all([
+    import('read-excel-file/browser'),
+    import('fflate'),
+    import('@/files/unzip-within-limits'),
+    import('@/office/xlsx-drawings'),
+    import('@/office/sheet-grid'),
+  ])
   const zip = new Uint8Array(await file.blob.arrayBuffer())
   const entries: UnzipFileInfo[] = []
   unzipSync(zip, {
@@ -128,6 +157,10 @@ export const readXlsxSheets = async (file: StoredFile): Promise<SpreadsheetSheet
   // `unzipSync` inflates a part that understates its size in full before dropping what does not fit, which can freeze
   // the tab for seconds on a GiB of data. This stops each part at its declared size.
   const parts = unzipWithinLimits(zip, { bytes: maxUnpackedMib * mib, parts: maxEntries })
+  checkGrids(
+    readerGrids(parts),
+    (part) => workbookParts(Object.fromEntries(parts)).sheets.find((sheet) => sheet.part === part)?.name ?? part,
+  )
   // The app's CSP blocks the `blob:` Workers the reader starts to inflate compressed sheets, so store every entry.
   const sheets = await readXlsxFile(zipSync(Object.fromEntries(parts), { level: 0 }).buffer)
   const hidden = hiddenSheets(strFromU8(parts.get('xl/workbook.xml') ?? new Uint8Array()), visitStartTags)

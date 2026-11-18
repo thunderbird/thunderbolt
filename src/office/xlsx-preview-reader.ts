@@ -9,6 +9,7 @@ import { sandboxLimits, xlsxPreviewLimits } from './constants'
 import type { Excelize, ExcelizeEngine } from './excelize-engine'
 import { columnName, columnNumber, decodeXml, type WorkbookParts } from './formula-cache'
 import { maxPicturePixels, rasterPixels } from './raster-pixels'
+import { cellReference, rowNumber } from './sheet-grid'
 import {
   type Anchor,
   attributeText,
@@ -152,30 +153,6 @@ const clamp = (value: number, max: number) => Math.min(max, Math.max(0, value))
 // or double quotes, as XML allows, and may hold a `>`.
 
 const sheetTags = new Set(['row', 'c'])
-
-// Excel's last row and column, XFD.
-const maxRow = 1_048_576
-const maxColumn = 16_384
-
-/** A row's `r`, which must be written as Excel writes it: Excelize reads other spellings the scan would not. */
-const rowNumber = (ref: string) => {
-  const row = /^[1-9][0-9]*$/.test(ref) ? Number(ref) : 0
-  if (row < 1 || row > maxRow) {
-    throw new Error('A row of the workbook has a reference Excel never writes.')
-  }
-  return row
-}
-
-/** A cell's `r`, which must be written as Excel writes it, such as `B12`: not `b12`, `$B$12` or `B+12`. */
-const cellReference = (ref: string) => {
-  const [, letters, digits] = /^([A-Z]{1,3})([1-9][0-9]*)$/.exec(ref) ?? []
-  const col = letters ? columnNumber(letters) : 0
-  const row = digits ? Number(digits) : 0
-  if (col < 1 || col > maxColumn || row < 1 || row > maxRow) {
-    throw new Error('A cell of the workbook has a reference Excel never writes.')
-  }
-  return { row, col }
-}
 
 /**
  * Visit a sheet part's row and cell tags in order, numbering those written without an `r` as Excel does: a row after

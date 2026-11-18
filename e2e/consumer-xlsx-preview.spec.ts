@@ -2,11 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { readFile } from 'node:fs/promises'
 import type { Page, Worker } from '@playwright/test'
 import { defaultModelOpus55 } from '../shared/defaults/models'
 import { fakeProviderReply } from './fake-provider'
 import { collectPageErrors, loginViaEmailCode, sendChatPrompt } from './helpers'
-import { officeWorkbookFilename, officeWorkbookPrompt } from './office-script-fixture'
+import {
+  officeChartEditFilename,
+  officeChartEditPrompt,
+  officeWorkbookFilename,
+  officeWorkbookPrompt,
+} from './office-script-fixture'
+import { sendAttachment } from './office-preview'
 import { expect, test } from './test'
 import { hostileFilename, hostileProbeOrigin, hostileScriptText, hostileWorkbook } from './xlsx-preview-fixture'
 
@@ -71,6 +78,32 @@ test('a workbook the agent created opens in the side panel as a grid with sheet 
   expect(errors).toEqual([])
 })
 
+test('after the agent edits a value a chart reads, the preview draws the chart with the new value', async ({
+  page,
+}) => {
+  const errors = collectPageErrors(page)
+  await loginViaEmailCode(page)
+  await chooseFakeModel(page)
+  // Its line chart on Sheet2 reads Sheet1!B1:B6, whose largest value is 17, and caches those values in the chart.
+  await page.locator('input[type="file"]').setInputFiles({
+    name: officeChartEditFilename,
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    buffer: await readFile('src/office/test-fixtures/WithChart.xlsx'),
+  })
+  await sendChatPrompt(page, officeChartEditPrompt)
+
+  const reply = page.locator('[data-quotable-message-id]').last()
+  await expect(reply.getByText('Edited', { exact: true })).toBeVisible({ timeout: 60_000 })
+  await expect(reply).toContainText(fakeProviderReply)
+  await reply.getByTitle(officeChartEditFilename, { exact: true }).click()
+
+  const panel = contentView(page)
+  await panel.getByRole('tab', { name: 'Sheet2' }).click()
+  // The value axis now tops out at the edited cell's 90, not at the cached 17.
+  await expect(panel.locator('svg text', { hasText: /^90$/ })).toBeVisible({ timeout: 30_000 })
+  expect(errors).toEqual([])
+})
+
 test('a hostile workbook previews as text, runs no script and sends no request out of the app', async ({ page }) => {
   const errors = collectPageErrors(page)
   const dialogs: string[] = []
@@ -94,15 +127,16 @@ test('a hostile workbook previews as text, runs no script and sends no request o
       outsideRequests.push(url)
     }
   })
-  await loginViaEmailCode(page)
-  await chooseFakeModel(page)
-  await page.locator('input[type="file"]').setInputFiles({
-    name: hostileFilename,
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    buffer: await hostileWorkbook(),
-  })
-  await sendChatPrompt(page, 'What is in this workbook?')
-  await expect(page.locator('[data-quotable-message-id]').last()).toContainText(fakeProviderReply)
+  // Row 2 is blank, so "Row 3" in the text shows the sheet's own row numbers survive a blank row.
+  await sendAttachment(
+    page,
+    {
+      name: hostileFilename,
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      buffer: await hostileWorkbook(),
+    },
+    'Row 3: click me',
+  )
   // Sending a workbook reads it as text. Only opening its preview downloads Excelize.
   expect(excelizeRequests).toEqual([])
 

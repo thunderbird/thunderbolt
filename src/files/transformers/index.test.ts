@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it, test } from 'bun:test'
+import { afterEach, describe, expect, it, mock, test } from 'bun:test'
+import { stubAppServer } from '@/test-utils/app-server'
 
 import {
   defaultDeliveryMode,
@@ -16,6 +17,8 @@ import {
 } from './index'
 
 describe('transformer registry', () => {
+  afterEach(() => mock.restore())
+
   test('hasTransformer reports registered source→target pairs', () => {
     expect(hasTransformer('application/pdf', 'text')).toBe(true)
     expect(hasTransformer(docxMime, 'text')).toBe(true)
@@ -42,6 +45,8 @@ describe('transformer registry', () => {
   })
 
   test('getTransformer lazy-loads a callable transformer for a known type', async () => {
+    // The app's server answers the check made before the deck reader is imported.
+    stubAppServer()
     const pdf = await getTransformer('application/pdf', 'text')
     const docx = await getTransformer(docxMime, 'text')
     const xlsx = await getTransformer(xlsxMime, 'text')

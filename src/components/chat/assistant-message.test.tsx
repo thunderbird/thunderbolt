@@ -6,7 +6,7 @@ import type { GroupedUIPart, ReasoningGroupUIPart } from '@/lib/assistant-messag
 import type { ThunderboltUIMessage } from '@/types'
 import type { ReasoningUIPart, TextUIPart, ToolUIPart } from 'ai'
 import { describe, expect, it } from 'bun:test'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { getClock } from '@/testing-library'
 import { ContentViewProvider } from '@/content-view/context'
 import { AssistantMessage, mountMessageParts } from './assistant-message'
@@ -280,6 +280,39 @@ describe('AssistantMessage actions', () => {
 
     cleanup()
   })
+})
+
+it('keeps a finished office run as a step, with the chips of its files after the group', async () => {
+  const message: ThunderboltUIMessage = {
+    id: 'office',
+    role: 'assistant',
+    parts: [
+      {
+        type: 'tool-run_office_script',
+        toolCallId: 'office-call',
+        state: 'output-available',
+        input: { script: 'saveFile()' },
+        output: { ok: true, files: [{ id: 'f1', filename: 'report.docx', mimeType: 'application/docx' }], logs: '' },
+      },
+      { type: 'text', text: 'Done' },
+    ],
+  }
+  const { container } = render(
+    <ContentViewProvider>
+      <AssistantMessage message={message} isStreaming={false} />
+    </ContentViewProvider>,
+  )
+  await act(async () => void (await getClock().runAllAsync()))
+
+  const group = screen.getByText(/Completed 1 step/).closest('.tool-invocation-card')
+  expect(group).not.toBeNull()
+  expect(group?.textContent).not.toContain('report.docx')
+  expect(container.textContent).toContain('report.docx')
+
+  fireEvent.click(screen.getByText(/Completed 1 step/))
+  await act(async () => void (await getClock().runAllAsync()))
+  expect(group?.textContent).toContain('Run Office Script')
+  cleanup()
 })
 
 it('passes message streaming lifecycle to the real text renderer', () => {

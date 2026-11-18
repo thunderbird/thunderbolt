@@ -215,13 +215,14 @@ jobs:
           bun-version: 1.4.4
 
       # webkitgtk-webdriver is the 26.04 name of webkit2gtk-driver; it provides WebKitWebDriver.
+      # xdotool and python3-gi let the smoke drag and paste a file into the app as if from a file manager.
       - name: Install Linux drivers and dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev \
             build-essential curl wget file pkg-config libxdo-dev libssl-dev \
             libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev \
-            webkitgtk-webdriver xvfb ffmpeg
+            webkitgtk-webdriver xvfb ffmpeg xdotool python3-gi gir1.2-gtk-3.0
           bun install --frozen-lockfile
           cd backend && bun install --frozen-lockfile
           cargo install tauri-driver --locked

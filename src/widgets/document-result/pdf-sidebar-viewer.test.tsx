@@ -10,6 +10,7 @@ import { docxMime, pptxMime } from '@/files/transformers'
 import * as download from '@/lib/download'
 import * as attachmentStorage from '@/lib/file-blob-storage'
 import { createClient } from '@/lib/http'
+import { stubAppServer } from '@/test-utils/app-server'
 import { expectSampleDocxPreview, waitForPreviewFrame } from '@/test-utils/docx-preview'
 import { sampleDocx } from '@/test-utils/sample-docx'
 import { parseXmlWithXmlDom } from '@/test-utils/xml-dom-parser'
@@ -17,6 +18,7 @@ import { getClock } from '@/testing-library'
 import { docxPreviewLimits } from './docx-snapshot'
 import { LocalPdfSidebarViewer, PdfSidebarViewer } from './pdf-sidebar-viewer'
 import { pptxPreviewLimits } from './pptx-snapshot'
+import { snapshotRenderers } from './use-document-blob'
 
 const tick = () => act(async () => void (await getClock().tickAsync(20)))
 
@@ -64,6 +66,8 @@ describe('DOCX preview in the side panel', () => {
 
   beforeAll(async () => {
     docx = await sampleDocx()
+    // The app's server answers the check made before the renderer is imported.
+    stubAppServer()
     spyOn(attachmentStorage, 'getAttachment').mockResolvedValue({
       id: 'local-1',
       filename: 'report.docx',
@@ -144,7 +148,12 @@ describe('DOCX preview in the side panel', () => {
 })
 
 describe('PPTX preview in the side panel', () => {
+  // The app's server answers the check made before the renderer is imported.
+  beforeAll(() => {
+    stubAppServer()
+  })
   afterEach(cleanup)
+  afterAll(() => mock.restore())
 
   test('refuses a deck past the size limit, and Download still saves it', async () => {
     const bytes = new Uint8Array(pptxPreviewLimits.fileBytes + 1)
@@ -189,6 +198,37 @@ describe('PPTX preview in the side panel', () => {
       expect(screen.getByRole('button', { name: 'Download' })).toBeEnabled()
     } finally {
       logged.mockRestore()
+    }
+  })
+
+  test('says the preview did not load when its code fails to download, and Download still saves the deck', async () => {
+    const logged = spyOn(console, 'error').mockImplementation(() => {})
+    const failed = spyOn(snapshotRenderers, 'pptx').mockRejectedValue(
+      new TypeError('Failed to fetch dynamically imported module'),
+    )
+    const save = spyOn(download, 'downloadFile').mockResolvedValue('review.pptx')
+    try {
+      const bytes = new Uint8Array([1, 2, 3])
+      render(
+        <HttpClientProvider httpClient={haystackClient(new Blob([bytes], { type: pptxMime }))}>
+          <ContentViewProvider trackEvent={mock()}>
+            <PdfSidebarViewer fileId="deck-3" fileName="review.pptx" />
+          </ContentViewProvider>
+        </HttpClientProvider>,
+      )
+      for (let i = 0; i < 5; i++) {
+        await tick()
+      }
+
+      expect(screen.getByText("The preview couldn't load")).toBeInTheDocument()
+      expect(screen.queryByText(/dynamically imported module/)).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'Download' }))
+      await tick()
+      expect(save).toHaveBeenCalledWith({ name: 'review.pptx', contents: bytes, mimeType: pptxMime })
+    } finally {
+      logged.mockRestore()
+      failed.mockRestore()
+      save.mockRestore()
     }
   })
 })

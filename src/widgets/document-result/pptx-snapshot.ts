@@ -130,12 +130,83 @@ const canvasesToPictures = (slide: HTMLElement) => {
   }
 }
 
-/** Removes what would not survive as static markup: link targets. */
+/**
+ * Removes link targets, which would not survive as static markup, and lets a table show every row. The renderer clips
+ * a table to its frame, while PowerPoint grows the rows to fit their text, so a table whose rows have no height would
+ * lose its last rows.
+ */
 const prepareForMarkup = (slide: HTMLElement) => {
   for (const link of slide.querySelectorAll('a[href]')) {
     link.removeAttribute('href')
   }
+  for (const table of slide.querySelectorAll('table')) {
+    table.parentElement?.style.setProperty('overflow', 'visible')
+  }
 }
+
+const drawingNs = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+
+/** Half a turn and a full turn, in the 60,000ths of a degree a slide gives angles in. */
+const halfTurn = 10_800_000
+const fullTurn = 2 * halfTurn
+
+/** Whether a slide's XML boolean attribute is set: the format writes true as `1` or `true`. */
+const isTrue = (value: string | null) => value === '1' || value === 'true'
+
+/** The node's first child element with the local name, whatever its prefix. */
+const childElement = (parent: Node, name: string) =>
+  [...parent.childNodes].find(
+    (node): node is Element => node.nodeType === Node.ELEMENT_NODE && node.nodeName.split(':').pop() === name,
+  )
+
+/**
+ * Rewrites a slide's XML, in place, where the renderer draws it unlike PowerPoint, into XML that means the same:
+ * - Each paragraph of a numbered list carries the number the list starts at, and the renderer shows that number on
+ *   every one, so a list reads "1., 1.". Only a paragraph whose number differs from the one before keeps it, because
+ *   the list starts or restarts there; the rest count on.
+ * - A shape flipped both ways looks the same as one turned half a turn, but the renderer mirrors its text, so the
+ *   flips become a half turn.
+ */
+export const matchPowerPoint = (slide: Document) => {
+  for (const body of slide.getElementsByTagNameNS('*', 'txBody')) {
+    const listStarts = new Map<string, string | null>()
+    for (const paragraph of body.childNodes) {
+      const props = childElement(paragraph, 'pPr')
+      const number = props && childElement(props, 'buAutoNum')
+      if (!number) {
+        continue
+      }
+      const list = `${props.getAttribute('lvl') ?? 0}:${number.getAttribute('type') ?? 'arabicPeriod'}`
+      const start = number.getAttribute('startAt')
+      // A number that differs from the paragraph before is a restart, so it stays.
+      if (listStarts.get(list) === start) {
+        number.removeAttribute('startAt')
+      }
+      listStarts.set(list, start)
+    }
+  }
+  for (const transform of slide.getElementsByTagNameNS(drawingNs, 'xfrm')) {
+    // A group's flips also move its children, so only a shape's own are rewritten.
+    if (transform.parentNode?.nodeName.split(':').pop() !== 'spPr') {
+      continue
+    }
+    if (isTrue(transform.getAttribute('flipH')) && isTrue(transform.getAttribute('flipV'))) {
+      transform.setAttribute('rot', String((Number(transform.getAttribute('rot') ?? 0) + halfTurn) % fullTurn))
+      transform.removeAttribute('flipH')
+      transform.removeAttribute('flipV')
+    }
+  }
+}
+
+/** Each slide's XML put through {@link matchPowerPoint}. */
+const slidesMatchingPowerPoint = (slides: Map<string, string>) =>
+  new Map(
+    [...slides].map(([path, xml]) => {
+      const slide = new DOMParser().parseFromString(xml, 'application/xml')
+      matchPowerPoint(slide)
+      return [path, new XMLSerializer().serializeToString(slide)]
+    }),
+  )
 
 /**
  * Renders every slide of a PPTX into a static page for a frame with `sandbox=""`. The renderer lays the slides out in
@@ -147,9 +218,16 @@ export const renderPptxSnapshot = (blob: Blob): Promise<DocumentSnapshot> =>
     // The parts are already unpacked within the limits and stored, so the renderer's own zip limits add nothing.
     const parts = zipSync(await unpackWithinLimits(blob), { level: 0 })
     const files = await parseZip(parts.buffer)
-    const presentation = buildPresentation(files, { lazySlides: true })
+    const presentation = buildPresentation(
+      { ...files, slides: slidesMatchingPowerPoint(files.slides) },
+      { lazySlides: true },
+    )
     if (presentation.slides.length > pptxPreviewLimits.slides) {
       throw new PastLimitsError()
+    }
+    // A deck with no slides, or a zip that is no deck, would show an empty frame.
+    if (presentation.slides.length === 0) {
+      throw new Error('The deck has no slides')
     }
     const mediaUrls = await pictureUrls(files.media)
     const charts: NonNullable<SlideRendererOptions['chartInstances']> = new Set()
@@ -193,6 +271,7 @@ export const renderPptxSnapshot = (blob: Blob): Promise<DocumentSnapshot> =>
       return {
         head: `<style>body { margin: 0; padding: ${gap}px; background: gray; } body > * { margin: 0 auto ${gap}px; }</style>`,
         body: slides.join(''),
+        // Slides place each shape at a fixed point, so they have no reflow style: they only scale.
         width: presentation.width + 2 * gap,
       }
     } finally {

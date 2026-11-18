@@ -37,12 +37,20 @@ const findEnd = (view: DataView) => {
 }
 
 /**
- * Inflates one part into a buffer of the size it declares, which the caller has already counted. It stops once the
- * buffer is full, so input past that point, such as junk after the last block, costs nothing.
+ * No real block reads this much input without output: the longest one the inflater waits for in full is a stored
+ * block of at most 64 KiB. Longer silence is padding or junk after the stream ends, which the inflater copies again on
+ * every push.
+ */
+const maxSilentBytes = 128 * 1024
+
+/**
+ * Inflates one part into a buffer of the size it declares, which the caller has already counted. Once the buffer is
+ * full, or `maxSilentBytes` of input have passed with no output, the next chunk goes in as the last one. The stream
+ * must end inside it, so more output throws, and so does a stream that goes on. Input after that chunk is never read.
  */
 const inflatePart = (compressed: Uint8Array, declared: number) => {
   const part = new Uint8Array(declared)
-  const state = { produced: 0 }
+  const state = { produced: 0, heardAt: 0 }
   const inflater = new Inflate((chunk) => {
     if (state.produced + chunk.length > declared) {
       throw new Error('A part of the zip unpacks to more than it declares')
@@ -50,8 +58,17 @@ const inflatePart = (compressed: Uint8Array, declared: number) => {
     part.set(chunk, state.produced)
     state.produced += chunk.length
   })
-  for (let at = 0; state.produced < declared && at < compressed.length; at += inflateChunkBytes) {
-    inflater.push(compressed.subarray(at, at + inflateChunkBytes), at + inflateChunkBytes >= compressed.length)
+  for (let at = 0; ; at += inflateChunkBytes) {
+    const last =
+      at + inflateChunkBytes >= compressed.length || state.produced === declared || at - state.heardAt > maxSilentBytes
+    const produced = state.produced
+    inflater.push(compressed.subarray(at, at + inflateChunkBytes), last)
+    if (last) {
+      break
+    }
+    if (state.produced > produced) {
+      state.heardAt = at
+    }
   }
   if (state.produced !== declared) {
     throw new Error('A part of the zip unpacks to less than it declares')
@@ -111,12 +128,32 @@ const readParts = (zip: Uint8Array, limits: UnzipLimits, keep: (name: string) =>
     if (method === 0) {
       parts.set(name, compressed.slice())
     } else if (method === 8) {
-      parts.set(name, size === 0 ? new Uint8Array() : inflatePart(compressed, size))
+      parts.set(name, inflatePart(compressed, size))
     } else {
       throw new Error(`The zip uses compression method ${method}`)
     }
   }
   return parts
+}
+
+/**
+ * Each part's CRC-32 and unpacked size, by name, read from the zip's central directory without inflating anything.
+ * Two zips with the same entries hold the same parts, however each was compressed. A damaged zip throws.
+ */
+export const partChecksums = (zip: Uint8Array): Map<string, string> => {
+  const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength)
+  const end = findEnd(view)
+  const sums = new Map<string, string>()
+  for (let index = 0, at = view.getUint32(end + 16, true); index < view.getUint16(end + 10, true); index++) {
+    if (view.getUint32(at, true) !== signatures.central) {
+      throw new Error('The zip directory is damaged')
+    }
+    const nameLength = view.getUint16(at + 28, true)
+    const name = strFromU8(zip.subarray(at + 46, at + 46 + nameLength))
+    sums.set(name, `${view.getUint32(at + 16, true)}:${view.getUint32(at + 24, true)}`)
+    at += 46 + nameLength + view.getUint16(at + 30, true) + view.getUint16(at + 32, true)
+  }
+  return sums
 }
 
 /**

@@ -10,6 +10,7 @@ import PptxGenJS from 'pptxgenjs'
 import { defaultModelOpus55 } from '../shared/defaults/models'
 import { fakeProviderReply } from './fake-provider'
 import { collectPageErrors, loginViaEmailCode, sendChatPrompt } from './helpers'
+import { contentView } from './office-preview'
 import {
   officeDeckEditFilename,
   officeDeckEditMarker,
@@ -41,6 +42,15 @@ const chooseFakeModel = async (page: Page) => {
   await page.keyboard.press('Escape')
 }
 
+/** Opens the reply's only step, the Office run, and returns the panes that show its call's input and result. */
+const openOfficeStep = async (page: Page) => {
+  const group = page.locator('[data-quotable-message-id]').last().locator('.tool-invocation-card')
+  await expect(group).toHaveCount(1)
+  await group.getByText(/Completed 1 step/).click()
+  await group.getByText('Run Office Script').click()
+  return { input: page.getByTestId('object-view-input'), output: page.getByTestId('object-view-output') }
+}
+
 /**
  * The fake provider plays a model that calls `run_office_script`. Everything after that is the real app: the tool,
  * the sandbox Worker loading its WASM and library files from the app, the attachment store, the chip and the
@@ -70,6 +80,31 @@ test('the agent builds a Word document in the sandbox Worker and the user downlo
   expect(excelizeRequests).toEqual([])
 
   expect(errors).toEqual([])
+})
+
+test('a run that created a file stays a step that shows its script and result, after the turn and after a reload', async ({
+  page,
+}) => {
+  const expectStepBesideChip = async () => {
+    const reply = page.locator('[data-quotable-message-id]').last()
+    await expect(reply.getByRole('button', { name: `Download ${officeScriptFilename}` })).toBeVisible({
+      timeout: 30_000,
+    })
+    const step = await openOfficeStep(page)
+    await expect(step.input).toContainText('saveFile')
+    await expect(step.input).toContainText(officeScriptFilename)
+    await expect(step.output).toContainText(officeScriptFilename)
+  }
+  await loginViaEmailCode(page)
+  await chooseFakeModel(page)
+  await sendChatPrompt(page, officeScriptPrompt)
+
+  await expectStepBesideChip()
+  // Reload once the turn is over, so the reply is saved whole.
+  await expect(page.locator('[data-quotable-message-id]').last()).toContainText(fakeProviderReply)
+  await expect(page.getByRole('button', { name: 'Stop generating', exact: true })).toHaveCount(0)
+  await page.reload()
+  await expectStepBesideChip()
 })
 
 test('the agent builds a workbook with Excelize and the downloaded file holds the computed total', async ({ page }) => {
@@ -125,6 +160,17 @@ test('the agent edits an attached Word document and the user downloads the edite
   expect(documentXml).toContain(officeEditMarker)
   expect(documentXml).not.toContain(officeEditPlaceholder)
 
+  // The card the user attached, the first with this name, still opens the original.
+  await page.locator(`button[title="${officeEditFilename}"]`).first().click()
+  const original = contentView(page).frameLocator(`iframe[title="${officeEditFilename}"]`)
+  await expect(original.getByText(`Status: ${officeEditPlaceholder}`)).toBeVisible()
+
+  // The run's step names the attachment it read.
+  await contentView(page).getByRole('button', { name: 'Close', exact: true }).click()
+  const step = await openOfficeStep(page)
+  await expect(step.input).toContainText('"inputs"')
+  await expect(step.input).toContainText(officeEditFilename)
+
   expect(errors).toEqual([])
 })
 
@@ -149,8 +195,13 @@ test('the agent edits an attached deck, and the edited copy opens in the side pa
   })
   await expect(reply.getByText('Edited', { exact: true })).toBeVisible()
   await reply.locator(`button[title="${officeDeckEditFilename}"]`).click()
-  const slides = page.getByTestId('content-view').frameLocator(`iframe[title="${officeDeckEditFilename}"]`)
+  const slides = contentView(page).frameLocator(`iframe[title="${officeDeckEditFilename}"]`)
   await expect(slides.getByText(`Status: ${officeDeckEditMarker}`)).toBeVisible()
+
+  await contentView(page).getByRole('button', { name: 'Close', exact: true }).click()
+  await page.locator(`button[title="${officeDeckEditFilename}"]`).first().click()
+  const original = contentView(page).frameLocator(`iframe[title="${officeDeckEditFilename}"]`)
+  await expect(original.getByText(`Status: ${officeEditPlaceholder}`)).toBeVisible()
 
   expect(errors).toEqual([])
 })

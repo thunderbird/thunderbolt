@@ -18,6 +18,7 @@
  */
 
 import { attachmentDatabaseName } from './local-data-owner'
+import { promptFileName } from './safe-file-name'
 
 const storeName = 'attachments'
 const dbVersion = 1
@@ -49,20 +50,36 @@ const openDB = (): Promise<IDBDatabase> =>
   })
 
 /**
- * Copy a blob's bytes into memory, detaching it from any file on disk.
- *
- * A `File` from an `<input>` or a drop is a *reference* to a path, not bytes, and
- * IndexedDB stores it as one — so editing or moving the source afterwards
- * invalidates the snapshot, and every later read throws `NotReadableError`. That
- * poisons the whole conversation, not just the one turn: each subsequent send
- * re-reads the history's attachments. Chat attachments are meant to be a
- * point-in-time copy, so the bytes are taken here, once.
+ * What the store holds. The bytes are an `ArrayBuffer`, because WebKit's private browsing refuses to store a `Blob`
+ * in IndexedDB. Records written before that hold a `blob`, and are still read.
  */
-const detachBytes = async (blob: Blob): Promise<Blob> => new Blob([await blob.arrayBuffer()], { type: blob.type })
+type StoredRecord = Omit<StoredFile, 'blob'> & ({ bytes: ArrayBuffer } | { blob: Blob })
 
-/** Persist attachments locally, as copies of the bytes, in one transaction: all of them are stored or none. */
+/** The record as callers see it, with its bytes as a `Blob` of the file's type. */
+const toStoredFile = (record: StoredRecord): StoredFile => {
+  if ('blob' in record) {
+    return record
+  }
+  const { bytes, ...file } = record
+  return { ...file, blob: new Blob([bytes], { type: file.mimeType }) }
+}
+
+/**
+ * Persist attachments locally, as copies of the bytes, in one transaction: all of them are stored or none.
+ *
+ * A `File` from an `<input>` or a drop is a reference to a path, and IndexedDB stores it as one. Editing or moving the
+ * source afterwards would make every later read throw `NotReadableError`, which breaks the whole conversation because
+ * each send re-reads the history's attachments. Storing an `ArrayBuffer` copies the bytes here, once.
+ */
 export const putAttachments = async (files: StoredFile[]): Promise<void> => {
-  const detached = await Promise.all(files.map(async (file) => ({ ...file, blob: await detachBytes(file.blob) })))
+  const detached: StoredRecord[] = await Promise.all(
+    files.map(async ({ blob, ...file }) => ({ ...file, bytes: await blob.arrayBuffer() })),
+  )
+  const names = files.map(({ filename }) => promptFileName(filename)).join(', ')
+  const storeError = (cause: unknown) =>
+    new Error(`Could not save ${names} in this browser's local storage, so it cannot be downloaded or attached.`, {
+      cause,
+    })
   const db = await openDB()
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, 'readwrite')
@@ -73,7 +90,7 @@ export const putAttachments = async (files: StoredFile[]): Promise<void> => {
     // A failed request aborts the transaction, and so does a full disk, so `abort` covers every failure.
     tx.onabort = () => {
       db.close()
-      reject(new Error(`Failed to store attachments: ${files.map(({ id }) => id).join(', ')}`, { cause: tx.error }))
+      reject(storeError(tx.error))
     }
     const store = tx.objectStore(storeName)
     try {
@@ -81,7 +98,7 @@ export const putAttachments = async (files: StoredFile[]): Promise<void> => {
     } catch (error) {
       // A `put` that throws (e.g. a record missing its key) does not abort the transaction, so earlier puts would commit.
       tx.abort()
-      reject(new Error('Failed to store attachments', { cause: error }))
+      reject(storeError(error))
     }
   })
 }
@@ -97,7 +114,8 @@ export const getAttachment = async (id: string): Promise<StoredFile | null> => {
     const request = tx.objectStore(storeName).get(id)
     request.onsuccess = () => {
       db.close()
-      resolve((request.result as StoredFile | undefined) ?? null)
+      const record = request.result as StoredRecord | undefined
+      resolve(record ? toStoredFile(record) : null)
     }
     request.onerror = () => {
       db.close()

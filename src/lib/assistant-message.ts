@@ -69,8 +69,8 @@ export const artifactRendersStandalone = (part: ToolOrDynamicToolUIPart): boolea
  * **Context**: Called by `AssistantMessage` after filtering, to organize tool calls for display.
  * Reasoning and tool calls (like `read_file`, `grep`, etc.) are grouped into a compact panel rather
  * than scattered through the message. A streaming or verified `render_html` part is lifted out to
- * render as its own artifact instead of joining the group, and so is a `run_office_script` part
- * that created files, which renders as their chips.
+ * render as its own artifact instead of joining the group. A `run_office_script` part that created
+ * files stays in the group and is also repeated right after it, where it renders as their chips.
  *
  * **Grouping logic**:
  * - Consecutive reasoning/tool parts → grouped into a single `ReasoningGroupUIPart`
@@ -114,14 +114,12 @@ export const groupMessageParts = (parts: GroupableUIPart[]): GroupedUIPart[] => 
         grouped.push(part)
         return
       }
-      // The files a successful run created render as chips; a run in progress or a failed one stays a tool call.
+      currentItems.push({ type: 'tool', content: part, id: part.toolCallId })
+      // The files a successful run created follow its step as chips; the step stays so its call can still be opened.
       if (isOfficeScriptPart(part) && officeScriptFiles(part)) {
         flushGroup()
         grouped.push(part)
-        return
       }
-
-      currentItems.push({ type: 'tool', content: part, id: part.toolCallId })
       return
     }
 

@@ -53,11 +53,22 @@ const fontBullets = new Map([
 const fontBulletPattern = new RegExp(`[${[...fontBullets.keys()].join('')}]`, 'g')
 
 /**
- * A style element's text, with `<` escaped as CSS reads it, so text from the file cannot close the element, and with
- * Word's bullets as characters every platform draws.
+ * In a right-to-left paragraph, Word reads `left` and `right` alignment as start and end, so `left` lands on the
+ * right. The library writes them as CSS `left` and `right`, which puts Arabic and Hebrew text on the wrong side.
+ */
+const edgeAlignment = (css: string) =>
+  css.replace(/text-align: (left|right)/g, (_, side) => `text-align: ${side === 'left' ? 'start' : 'end'}`)
+
+/** The CSS with each right-to-left rule's alignment as {@link edgeAlignment} gives it. */
+const rightToLeftRules = (css: string) =>
+  css.replace(/\{[^}]*\}/g, (rule) => (rule.includes('direction: rtl') ? edgeAlignment(rule) : rule))
+
+/**
+ * A style element's text, with `<` escaped as CSS reads it, so text from the file cannot close the element, with
+ * Word's bullets as characters every platform draws, and with right-to-left paragraphs aligned as Word aligns them.
  */
 const styleMarkup = (style: HTMLStyleElement) => {
-  const css = (style.textContent ?? '').replaceAll('<', '\\3c ')
+  const css = rightToLeftRules((style.textContent ?? '').replaceAll('<', '\\3c '))
   return `<style>${css.replace(fontBulletPattern, (bullet) => fontBullets.get(bullet) ?? bullet)}</style>`
 }
 
@@ -82,10 +93,33 @@ const renderPages = async (parts: Uint8Array) => {
   return { styles: nodes.filter((node) => node instanceof HTMLStyleElement), wrapper }
 }
 
-/** Changes what would not survive as static markup: links, pictures in paragraphs, and the size of legacy drawings. */
-const prepareForMarkup = (wrapper: HTMLDivElement) => {
+/**
+ * Whether the library's CSS makes a paragraph right-to-left through its paragraph style, which the library has merged
+ * with the styles it is based on, or through the default paragraph style. The library never writes `direction: ltr`,
+ * so any of these rules wins.
+ */
+const rightToLeftByStyle = (css: string) => {
+  const selectors = [...css.matchAll(/([^{}]*)\{[^}]*direction: rtl/g)].flatMap(([, list]) =>
+    list.split(',').map((selector) => selector.trim()),
+  )
+  const classes = new Set(selectors.flatMap((selector) => /^p\.(\S+)$/.exec(selector)?.[1] ?? []))
+  const everyParagraph = selectors.includes('.docx p')
+  return (paragraph: Element) => everyParagraph || [...paragraph.classList].some((name) => classes.has(name))
+}
+
+/**
+ * Changes what would not survive as static markup: links, pictures in paragraphs, and the size of legacy drawings.
+ * Aligns right-to-left paragraphs as Word does, whether the paragraph or its style sets the direction.
+ */
+const prepareForMarkup = (wrapper: HTMLDivElement, css: string) => {
   for (const link of wrapper.querySelectorAll('a[href]')) {
     link.removeAttribute('href')
+  }
+  const styledRightToLeft = rightToLeftByStyle(css)
+  for (const element of wrapper.querySelectorAll('[style*="direction: rtl"], p[style*="text-align"]')) {
+    if (element.matches('[style*="direction: rtl"]') || styledRightToLeft(element)) {
+      element.setAttribute('style', edgeAlignment(element.getAttribute('style') ?? ''))
+    }
   }
   // The library wraps an inline picture in a <div> inside its <p>; parsed back from markup, a <div> closes the <p>.
   for (const block of wrapper.querySelectorAll('p div')) {
@@ -106,18 +140,33 @@ const prepareForMarkup = (wrapper: HTMLDivElement) => {
 }
 
 /**
+ * On a phone, in a frame narrower than the pages, each page takes the frame's width and its text wraps to it at the
+ * size the document sets. Scaled down to a phone's width instead, its text would be about 5 pixels tall. A picture
+ * shrinks to fit; a table too wide scrolls across its page.
+ */
+const reflowStyle = (width: number) =>
+  `<style>@media (max-width: ${width - 1}px) {` +
+  '.docx-wrapper { padding: 8px 8px 0 !important; align-items: stretch !important; }' +
+  '.docx-wrapper > section.docx { width: auto !important; min-height: 0 !important; padding: 24px 16px !important;' +
+  ' margin-bottom: 8px !important; overflow-x: auto !important; }' +
+  '.docx img { max-width: 100%; height: auto !important; }' +
+  '}</style>'
+
+/**
  * Renders a DOCX into a static page for a frame with `sandbox=""`, whose policy loads nothing outside it. Links lose
- * their targets: a snapshot cannot follow them.
+ * their targets: a snapshot cannot follow them. Its pages can reflow in a frame narrower than they are.
  */
 export const renderDocxSnapshot = (blob: Blob): Promise<DocumentSnapshot> =>
   renderSnapshot('docx preview', async () => {
     const { styles, wrapper } = await renderPages(await partsWithinLimits(blob))
-    prepareForMarkup(wrapper)
+    prepareForMarkup(wrapper, styles.map((style) => style.textContent).join(''))
+    const width = pagesWidth(wrapper)
     return {
       head:
         '<style>body { margin: 0; background: gray; } svg { overflow: visible; }</style>' +
         styles.map(styleMarkup).join(''),
       body: wrapper.outerHTML,
-      width: pagesWidth(wrapper),
+      width,
+      reflowStyle: reflowStyle(width),
     }
   })

@@ -6,6 +6,7 @@ import { describe, expect, it, spyOn } from 'bun:test'
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 import { xlsxPreviewLimits } from './constants'
 import type { ExcelizeFile } from './excelize-engine'
+import { withDeclaredSize } from '@/test-utils/zip-fixtures'
 import { WorkbookTooLargeError } from './xlsx-preview-client'
 import { answerRequest, createPreviewReader, openPreviewWorkbook, settle } from './xlsx-preview-reader'
 import {
@@ -13,6 +14,7 @@ import {
   hostileWorkbook,
   loadTestEngine,
   longestCellText,
+  pngHeader,
   saveWorkbook,
   styledWorkbook,
   tinyPng,
@@ -109,6 +111,17 @@ describe('the spreadsheet preview reader', () => {
     expect(workbook.rows(0, 0, 6).styles).toEqual([])
   })
 
+  it('draws no fill for a fill colour of ten digits, which Excelize would read as black', () => {
+    const parts = unzipSync(styled)
+    const styles = strFromU8(parts['xl/styles.xml'])
+    parts['xl/styles.xml'] = strToU8(styles.replace('rgb="FF1F3864"', 'rgb="FFFF1F3864"'))
+    const { styles: sent } = openPreviewWorkbook(excelize, zipSync(parts)).rows(0, 0, 6)
+
+    expect(styles).toContain('rgb="FF1F3864"')
+    expect(sent.find(([id]) => id === 1)?.[1].Fill).toBeUndefined()
+    expect(sent.find(([id]) => id === 1)?.[1].Font?.Bold).toBe(true)
+  })
+
   it('names the type of each chart: six drawn as SVG, the rest as placeholders', () => {
     const f = excelize.NewFile()
     settle(f.SetSheetRow('Sheet1', 'A1', ['Q1', 4]))
@@ -141,35 +154,64 @@ describe('the spreadsheet preview reader', () => {
     ])
   })
 
-  it('reads at most the sheet’s budget of values for a chart over a huge range, and counts it as cut', () => {
+  it('leaves out a chart whose range passes the sheet’s budget of values, and counts it', () => {
     const f = excelize.NewFile()
     settle(f.SetSheetRow('Sheet1', 'A1', ['Q1', 4]))
     settle(f.AddChart('Sheet1', 'D1', { Type: excelize.Line, Series: [{ Values: 'Sheet1!$B$1:$Z$1048576' }] }))
     // A small budget, so the range is read cell by cell no further than it allows.
     const layout = openPreviewWorkbook(excelize, saveWorkbook(f), { ...xlsxPreviewLimits, chartPoints: 100 }).sheet(0)
-    const [chart] = layout.overlays
 
-    expect(chart).toMatchObject({ type: 'chart', kind: 'line' })
-    expect(chart.type === 'chart' && chart.series[0].values).toHaveLength(100)
+    expect(layout.overlays).toMatchObject([{ type: 'placeholder', kind: 'line' }])
     expect(layout.leftOutObjects).toBe(1)
   })
 
-  it('draws a chart claiming a million saved points up to the budget, and counts it as cut', () => {
+  it('shows a chart at the budget of values in full, and one value past it as not shown', () => {
+    const chartOver = (count: number) => {
+      const f = excelize.NewFile()
+      settle(f.SetCellValue('Sheet1', 'A1', 1))
+      settle(f.AddChart('Sheet1', 'D1', { Type: excelize.Line, Series: [{ Values: `Sheet1!$A$1:$A$${count}` }] }))
+      return openPreviewWorkbook(excelize, saveWorkbook(f), { ...xlsxPreviewLimits, chartPoints: 10 }).sheet(0)
+    }
+
+    expect(chartOver(10)).toMatchObject({ overlays: [{ type: 'chart' }], leftOutObjects: 0 })
+    expect(chartOver(11)).toMatchObject({ overlays: [{ type: 'placeholder', kind: 'line' }], leftOutObjects: 1 })
+  })
+
+  it('reads a chart claiming a million saved points no further than the budget', () => {
     const f = excelize.NewFile()
     settle(f.SetSheetRow('Sheet1', 'A1', ['Q1', 4]))
     settle(f.AddChart('Sheet1', 'D1', { Type: excelize.Line, Series: [{ Values: 'Sheet1!$B$1:$B$1' }] }))
     const hostile =
-      '<numCache><ptCount val="1000000"></ptCount><pt idx="0"><v>2</v></pt><pt idx="999999"><v>9</v></pt>' +
-      '<pt idx="-3"><v>9</v></pt><pt idx="1.5"><v>9</v></pt></numCache>'
-    const bytes = patched(f, 'xl/charts/chart1.xml', (xml) => xml.replace(/<numCache>.*?<\/numCache>/, hostile))
+      '<f>SavedOnly</f><numCache><ptCount val="1000000"></ptCount><pt idx="0"><v>2</v></pt>' +
+      '<pt idx="999999"><v>9</v></pt><pt idx="-3"><v>9</v></pt><pt idx="1.5"><v>9</v></pt></numCache>'
+    const bytes = patched(f, 'xl/charts/chart1.xml', (xml) =>
+      xml.replace(/<f>Sheet1!\$B\$1:\$B\$1<\/f><numCache>.*?<\/numCache>/, hostile),
+    )
     const layout = openPreviewWorkbook(excelize, bytes).sheet(0)
-    const [chart] = layout.overlays
 
-    const values = chart.type === 'chart' ? chart.series[0].values : []
-    expect(values).toHaveLength(xlsxPreviewLimits.chartPoints)
-    expect(values[0]).toBe(2)
-    expect(values.filter((value) => value !== 0)).toEqual([2])
+    expect(layout.overlays).toMatchObject([{ type: 'placeholder', kind: 'line' }])
     expect(layout.leftOutObjects).toBe(1)
+  })
+
+  it('leaves out a picture whose header claims more pixels than a sheet decodes, and counts it', () => {
+    const f = excelize.NewFile()
+    settle(
+      f.AddPictureFromBytes('Sheet1', 'A1', {
+        Extension: '.png',
+        File: tinyPng,
+        Format: {},
+        InsertType: excelize.PictureInsertTypePlaceOverCells,
+      }),
+    )
+    const parts = unzipSync(saveWorkbook(f))
+    const [media] = Object.keys(parts).filter((name) => name.startsWith('xl/media/'))
+    const withPicture = (png: Uint8Array<ArrayBuffer>) => {
+      parts[media] = png
+      return openPreviewWorkbook(excelize, zipSync(parts)).sheet(0)
+    }
+
+    expect(withPicture(pngHeader(4000, 6000))).toMatchObject({ overlays: [{ type: 'image' }], undrawnPictures: 0 })
+    expect(withPicture(pngHeader(8192, 8192))).toMatchObject({ overlays: [], undrawnPictures: 1 })
   })
 
   it('drops a picture anchored 900 million rows down, without counting the rows one by one', () => {
@@ -195,11 +237,10 @@ describe('the spreadsheet preview reader', () => {
     expect(inGrid.overlays).toHaveLength(1)
   })
 
-  it('draws a chart from the values Excel saved in it when it saved them', async () => {
+  it('draws a chart from the cells it reads, not the stale values it saved, once a cell changed', async () => {
     const parts = unzipSync(await fixture('WithChart.xlsx'))
-    // Change the cells, so values read from the range would differ from the saved ones.
     parts['xl/worksheets/sheet1.xml'] = strToU8(
-      strFromU8(parts['xl/worksheets/sheet1.xml']).replace(/<v>1<\/v>/, '<v>100</v>'),
+      strFromU8(parts['xl/worksheets/sheet1.xml']).replace('<c r="B4"><v>9</v>', '<c r="B4"><v>90</v>'),
     )
     const layout = openPreviewWorkbook(excelize, zipSync(parts)).sheet(1)
 
@@ -208,9 +249,51 @@ describe('the spreadsheet preview reader', () => {
       kind: 'line',
       series: [
         { name: '1st Column', values: [1, 2, 3, 4, 5, 6] },
-        { name: '2nd Column', values: [10, 12, 14, 9, 15, 17] },
+        { name: '2nd Column', values: [10, 12, 14, 90, 15, 17] },
       ],
     })
+  })
+
+  it('draws a chart from the cells a defined name points at, not the values it saved', async () => {
+    const namedChart = async (ref: string, names: string) => {
+      const parts = unzipSync(await fixture('WithChart.xlsx'))
+      parts['xl/workbook.xml'] = strToU8(
+        strFromU8(parts['xl/workbook.xml']).replace('</sheets>', `</sheets><definedNames>${names}</definedNames>`),
+      )
+      parts['xl/charts/chart1.xml'] = strToU8(
+        strFromU8(parts['xl/charts/chart1.xml']).replace('<c:f>Sheet1!$B$1:$B$6</c:f>', `<c:f>${ref}</c:f>`),
+      )
+      parts['xl/worksheets/sheet1.xml'] = strToU8(
+        strFromU8(parts['xl/worksheets/sheet1.xml']).replace('<c r="B4"><v>9</v>', '<c r="B4"><v>90</v>'),
+      )
+      const [chart] = openPreviewWorkbook(excelize, zipSync(parts)).sheet(1).overlays
+      return chart.type === 'chart' && chart.series[1].values
+    }
+    const sales = '<definedName name="Sales">Sheet1!$B$1:$B$6</definedName>'
+
+    expect(await namedChart('Sales', sales)).toEqual([10, 12, 14, 90, 15, 17])
+    expect(await namedChart('[0]!sales', sales)).toEqual([10, 12, 14, 90, 15, 17])
+    // A name a sheet also defines for itself could mean either range, so the saved values stay.
+    expect(
+      await namedChart('Sales', `${sales}<definedName name="Sales" localSheetId="1">Sheet1!$A$1:$A$6</definedName>`),
+    ).toEqual([10, 12, 14, 9, 15, 17])
+    // A name that is no plain range keeps the saved values too.
+    expect(await namedChart('Sales', '<definedName name="Sales">OFFSET(Sheet1!$B$1,0,0,6,1)</definedName>')).toEqual([
+      10, 12, 14, 9, 15, 17,
+    ])
+  })
+
+  it('draws the values a chart saved when it cannot read the range they came from', async () => {
+    const parts = unzipSync(await fixture('WithChart.xlsx'))
+    parts['xl/charts/chart1.xml'] = strToU8(
+      strFromU8(parts['xl/charts/chart1.xml']).replace('<c:f>Sheet1!$B$1:$B$6</c:f>', '<c:f>SavedOnly</c:f>'),
+    )
+    parts['xl/worksheets/sheet1.xml'] = strToU8(
+      strFromU8(parts['xl/worksheets/sheet1.xml']).replace('<c r="B4"><v>9</v>', '<c r="B4"><v>90</v>'),
+    )
+    const [chart] = openPreviewWorkbook(excelize, zipSync(parts)).sheet(1).overlays
+
+    expect(chart.type === 'chart' && chart.series[1].values).toEqual([10, 12, 14, 9, 15, 17])
   })
 
   it('counts a formula with no saved result, but not one whose saved result is empty text', () => {
@@ -305,6 +388,20 @@ describe('the spreadsheet preview reader', () => {
     expect(() => openPreviewWorkbook(excelize, bytes, { ...xlsxPreviewLimits, unzipBytes: 1024 })).toThrow()
     expect(() => openPreviewWorkbook(excelize, new TextEncoder().encode('not a zip'))).toThrow()
   })
+
+  it('stops a part that unzips to far more than it declares, before inflating the rest', () => {
+    const parts = unzipSync(styled)
+    parts['xl/media/hidden.bin'] = new Uint8Array(32 * 1024 * 1024)
+    const bomb = withDeclaredSize(zipSync(parts), 'xl/media/hidden.bin', 1024)
+
+    expect(() => openPreviewWorkbook(excelize, bomb)).toThrow('unpacks to more than it declares')
+  })
+
+  it('treats a zip past the byte limit as a workbook too large', () => {
+    expect(() => openPreviewWorkbook(excelize, styled, { ...xlsxPreviewLimits, unzipBytes: 1024 })).toThrow(
+      WorkbookTooLargeError,
+    )
+  })
 })
 
 /** A one-sheet workbook whose cells are this XML, as a writer other than Excelize might put them. */
@@ -313,7 +410,10 @@ const withSheetData = (sheetData: string) =>
     xml.replace('<sheetData></sheetData>', `<sheetData>${sheetData}</sheetData>`),
   )
 
-/** A workbook with `anchors` copies of a column chart of `series` series, each saving this `numCache` content. */
+/**
+ * A workbook with `anchors` copies of a column chart of `series` series, each saving this `numCache` content. Each
+ * series reads a defined name, which the preview cannot read, so it draws the saved values.
+ */
 const chartWithCache = (cache: string, series = 1, anchors = 1) => {
   const f = excelize.NewFile()
   settle(f.SetSheetRow('Sheet1', 'A1', ['Q1', 4]))
@@ -321,7 +421,10 @@ const chartWithCache = (cache: string, series = 1, anchors = 1) => {
   const parts = unzipSync(saveWorkbook(f))
   const chart = strFromU8(parts['xl/charts/chart1.xml'])
   const ser = /<ser>[\s\S]*?<\/ser>/.exec(chart)?.[0] ?? ''
-  const cached = ser.replace(/<numCache>[\s\S]*?<\/numCache>/, `<numCache>${cache}</numCache>`)
+  const cached = ser.replace(
+    /<f>Sheet1!\$B\$1:\$B\$1<\/f><numCache>[\s\S]*?<\/numCache>/,
+    `<f>SavedOnly</f><numCache>${cache}</numCache>`,
+  )
   parts['xl/charts/chart1.xml'] = strToU8(chart.replace(ser, cached.repeat(series)))
   const drawing = strFromU8(parts['xl/drawings/drawing1.xml'])
   const anchor = /<xdr:twoCellAnchor>[\s\S]*?<\/xdr:twoCellAnchor>/.exec(drawing)?.[0] ?? ''
@@ -343,24 +446,24 @@ describe('the spreadsheet preview reader on adversarial workbooks', () => {
     )
   })
 
-  it('shares one budget of 20,000 values among the charts of a sheet, and counts a chart it cuts', () => {
+  it('shares one budget of 20,000 values among the charts of a sheet, and counts a chart past it as not shown', () => {
     const layout = openPreviewWorkbook(excelize, chartWithCache(points(2_000), 6, 2)).sheet(0)
-    const lengths = layout.overlays.map(
-      (chart) => chart.type === 'chart' && chart.series.map(({ values }) => values.length),
+    const lengths = layout.overlays.map((chart) =>
+      chart.type === 'chart' ? chart.series.map(({ values }) => values.length) : chart.type,
     )
 
-    expect(lengths).toEqual([Array(6).fill(2_000), Array(4).fill(2_000)])
+    expect(lengths).toEqual([Array(6).fill(2_000), 'placeholder'])
     expect(layout.leftOutObjects).toBe(1)
   })
 
-  it('draws saved values past 5,000 in full, within the sheet’s budget, and counts the series it cuts', () => {
-    // A budget of 5,001: the first series fills it, past the old 5,000 cap, and the second is cut.
+  it('draws saved values past 5,000 in full, within the sheet’s budget', () => {
+    // A budget of 5,001 values.
     const limits = { ...xlsxPreviewLimits, chartPoints: 5_001 }
-    const layout = openPreviewWorkbook(excelize, chartWithCache(points(5_001), 2), limits).sheet(0)
+    const layout = openPreviewWorkbook(excelize, chartWithCache(points(5_001)), limits).sheet(0)
     const [chart] = layout.overlays
 
     expect(chart.type === 'chart' && chart.series.map(({ values }) => values.length)).toEqual([5_001])
-    expect(layout.leftOutObjects).toBe(1)
+    expect(layout.leftOutObjects).toBe(0)
   })
 
   it('draws at most 50 charts and pictures on a sheet, and counts the rest', () => {
@@ -664,9 +767,8 @@ describe('the spreadsheet preview reader on adversarial workbooks', () => {
       xml.replace(/<ser>[\s\S]*<\/ser>/, '<ser><val/></ser>'.repeat(20_001)),
     )
     const layout = openPreviewWorkbook(excelize, bytes).sheet(0)
-    const [chart] = layout.overlays
 
-    expect(chart.type === 'chart' && chart.series).toHaveLength(xlsxPreviewLimits.chartPoints)
+    expect(layout.overlays).toMatchObject([{ type: 'placeholder', kind: 'line' }])
     expect(layout.leftOutObjects).toBe(1)
   })
 

@@ -107,3 +107,36 @@ test('PDF history previews wait for visibility, retain their size, and open norm
   await expect(card.locator('.react-pdf__Page canvas')).toHaveCount(1)
   expect(errors).toEqual([])
 })
+
+test('a PDF thumbnail whose code does not load leaves its card and the app up, and the next card draws one', async ({
+  page,
+}) => {
+  await loginViaEmailCode(page)
+  await page.goto('/chats/new')
+  // The thumbnail is a lazy chunk: the dev server serves its source module, a build its `/assets/` script.
+  const thumbnailChunk = /\/pdf-thumbnail[^/]*\.(?:tsx|js)(?:\?|$)/
+  await page.route(thumbnailChunk, (route) => route.abort())
+  const attachPdf = async (name: string) => {
+    const pdf = await PDFDocument.create()
+    pdf.addPage([500, 650]).drawText(name, { x: 30, y: 580, size: 18 })
+    await page.locator('input[type="file"]').setInputFiles({
+      name,
+      mimeType: 'application/pdf',
+      buffer: Buffer.from(await pdf.save()),
+    })
+    // The composer's card: the box around the file's preview and its remove button.
+    return page.getByRole('button', { name: `Remove ${name}` }).locator('..')
+  }
+
+  const failed = page.waitForEvent('requestfailed', (request) => thumbnailChunk.test(request.url()))
+  const offlineCard = await attachPdf('offline.pdf')
+  await failed
+  await expect(offlineCard).toBeVisible()
+  await expect(page.locator('textarea')).toBeVisible()
+  await expect(offlineCard.locator('.react-pdf__Document')).toHaveCount(0)
+
+  await page.unroute(thumbnailChunk)
+  const onlineCard = await attachPdf('online.pdf')
+  await expect(onlineCard.locator('.react-pdf__Page canvas')).toBeVisible()
+  await expect(page.locator('textarea')).toBeVisible()
+})

@@ -74,14 +74,16 @@ describe('resolveInputs', () => {
   it('names the files it can read when one is missing, and the workspace only when there is one', async () => {
     const listed =
       'The files in this chat, newest first: "deck.pptx" (id deck), "notes.docx" (id new), "notes.docx" (id old).'
+    const ask =
+      'If the user named this file, tell them it is not here and ask which file they mean; do not edit another file in its place.'
 
     expect(await resolveInputs(['missing.docx'], files, undefined, 1024)).toEqual({
       ok: false,
-      error: `No file "missing.docx" in this chat. ${listed} Name an input by its file name or its id.`,
+      error: `No file "missing.docx" in this chat. ${listed} Name an input by its file name or its id. ${ask}`,
     })
     expect(await resolveInputs(['missing.docx'], files, missing, 1024)).toEqual({
       ok: false,
-      error: `No file "missing.docx" in this chat or in your workspace. ${listed} Name an input by its file name, its id, or its path in your workspace.`,
+      error: `No file "missing.docx" in this chat or in your workspace. ${listed} Name an input by its file name, its id, or its path in your workspace. ${ask}`,
     })
     expect(await resolveInputs(['missing.docx'], [], undefined, 1024)).toMatchObject({
       error: expect.stringContaining('This chat has no files.'),

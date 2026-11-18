@@ -5,21 +5,18 @@
 import '@/testing-library'
 import { act, render, renderHook, fireEvent } from '@testing-library/react'
 import type { DynamicToolUIPart, ToolUIPart } from 'ai'
-import { describe, expect, mock, test } from 'bun:test'
-import type { EventType } from '@/lib/posthog'
+import { afterEach, describe, expect, mock, test } from 'bun:test'
+import { useChatStore } from '@/chats/chat-store'
+import type { trackEvent as defaultTrackEvent } from '@/lib/posthog'
+import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import { memo, type ReactNode } from 'react'
-import {
-  ContentViewProvider,
-  type ObjectViewContent,
-  useContentView,
-  useObjectView,
-  useSideview,
-  useShowCompactionSummary,
-} from './context'
+import { ContentViewProvider, useContentView, useObjectView, useSideview, useShowCompactionSummary } from './context'
 
 const wrapper = ({ children }: { children: ReactNode }) => <ContentViewProvider>{children}</ContentViewProvider>
 
 describe('ContentView sideview mode', () => {
+  afterEach(() => restoreViewport())
+
   test('showSideview transitions state to sideview', () => {
     const { result } = renderHook(() => useContentView(), { wrapper })
 
@@ -31,7 +28,11 @@ describe('ContentView sideview mode', () => {
 
     expect(result.current.state.type).toBe('sideview')
     if (result.current.state.type === 'sideview') {
-      expect(result.current.state.data).toEqual({ sideviewType: 'document', sideviewId: 'file-1:report.pdf' })
+      expect(result.current.state.data).toEqual({
+        sideviewType: 'document',
+        sideviewId: 'file-1:report.pdf',
+        opener: document.body,
+      })
     }
     expect(result.current.isOpen).toBe(true)
   })
@@ -64,6 +65,70 @@ describe('ContentView sideview mode', () => {
     expect(result.current.state.type).toBeNull()
   })
 
+  test('switching to another chat closes the view, and going back does not reopen it', () => {
+    act(() => useChatStore.getState().setCurrentSessionId('chat-a'))
+    const { result } = renderHook(() => useContentView(), { wrapper })
+
+    act(() => result.current.showSideview('document', 'file-1:report.docx'))
+    act(() => useChatStore.getState().setCurrentSessionId('chat-a'))
+    expect(result.current.state.type).toBe('sideview')
+
+    act(() => useChatStore.getState().setCurrentSessionId('chat-b'))
+    expect(result.current.state.type).toBeNull()
+
+    act(() => useChatStore.getState().setCurrentSessionId('chat-a'))
+    expect(result.current.isOpen).toBe(false)
+  })
+
+  test('on a phone, Back closes the full-window view and the close button leaves no extra history entry', () => {
+    forceMobileViewport()
+    window.history.replaceState({ idx: 1 }, '')
+    const before = window.history.length
+    const { result } = renderHook(() => useContentView(), { wrapper })
+
+    act(() => result.current.showSideview('local-file', 'file-1:report.docx'))
+    act(() => result.current.showSideview('local-file', 'file-2:sheet.xlsx'))
+    expect(window.history.length).toBe(before + 1)
+
+    act(() => window.history.back())
+    expect(result.current.isOpen).toBe(false)
+    expect(window.history.state).toEqual({ idx: 1 })
+
+    act(() => result.current.showSideview('local-file', 'file-1:report.docx'))
+    act(() => result.current.close())
+    expect(result.current.isOpen).toBe(false)
+    expect(window.history.state).toEqual({ idx: 1 })
+  })
+
+  test('on desktop, opening the side panel adds no history entry', () => {
+    const before = window.history.length
+    const { result } = renderHook(() => useContentView(), { wrapper })
+
+    act(() => result.current.showSideview('local-file', 'file-1:report.docx'))
+
+    expect(window.history.length).toBe(before)
+  })
+
+  test('on a rotated Android phone, Back closes the side panel too', () => {
+    const userAgent = navigator.userAgent
+    Object.defineProperty(navigator, 'userAgent', {
+      configurable: true,
+      value: 'Mozilla/5.0 (Linux; Android 16; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0 Mobile',
+    })
+    try {
+      window.history.replaceState({ idx: 1 }, '')
+      const { result } = renderHook(() => useContentView(), { wrapper })
+
+      act(() => result.current.showSideview('local-file', 'file-1:report.docx'))
+      act(() => window.history.back())
+
+      expect(result.current.isOpen).toBe(false)
+      expect(window.history.state).toEqual({ idx: 1 })
+    } finally {
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: userAgent })
+    }
+  })
+
   test('useSideview reports the active sideview', () => {
     const { result } = renderHook(
       () => {
@@ -88,13 +153,13 @@ describe('ContentView sideview mode', () => {
   test('object-view surfaces errorText for a failed tool call', () => {
     const { result } = renderHook(() => useObjectView(), { wrapper })
 
-    const failedTool = {
+    const failedTool: ToolUIPart = {
       type: 'tool-search',
       toolCallId: 'call-1',
       state: 'output-error',
       input: {},
       errorText: 'Upstream 500',
-    } as unknown as ToolUIPart
+    }
 
     act(() => {
       result.current.openObjectSidebar(failedTool)
@@ -103,24 +168,43 @@ describe('ContentView sideview mode', () => {
     expect(result.current.objectContent?.output).toBe('Upstream 500')
   })
 
+  test('object-view shows the arguments a tool call ran with, alongside its result', () => {
+    const { result } = renderHook(() => useObjectView(), { wrapper })
+    const input = { script: 's', inputs: ['a.csv'] }
+    const officeRun: ToolUIPart = {
+      type: 'tool-run_office_script',
+      toolCallId: 'call-3',
+      state: 'output-available',
+      input,
+      output: { ok: true },
+    }
+
+    act(() => {
+      result.current.openObjectSidebar(officeRun)
+    })
+
+    expect(result.current.objectContent?.input).toBe(JSON.stringify(input, null, 2))
+    expect(result.current.objectContent?.output).toBe(JSON.stringify({ ok: true }, null, 2))
+  })
+
   test('object-view resolves an MCP tool title from the tool map', () => {
-    const trackEvent = mock((_eventName: EventType, _properties?: Record<string, unknown>) => {})
+    const trackEvent = mock<typeof defaultTrackEvent>(() => {})
     const trackingWrapper = ({ children }: { children: ReactNode }) => (
       <ContentViewProvider trackEvent={trackEvent}>{children}</ContentViewProvider>
     )
     const { result } = renderHook(() => useObjectView(), { wrapper: trackingWrapper })
 
-    const mcpTool = {
+    const mcpTool: DynamicToolUIPart = {
       type: 'dynamic-tool',
       toolName: 'render_list_services',
       toolCallId: 'call-2',
       state: 'output-available',
       input: {},
       output: { ok: true },
-    } as unknown as DynamicToolUIPart
+    }
 
     act(() => {
-      result.current.openObjectSidebar(mcpTool as ObjectViewContent, {
+      result.current.openObjectSidebar(mcpTool, {
         render_list_services: { name: 'Render', url: 'https://render.com', toolName: 'list_services' },
       })
     })

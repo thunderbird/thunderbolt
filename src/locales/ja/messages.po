@@ -26,32 +26,28 @@ msgstr "「{filename}」はサポートされていないファイル形式で�
 #: src/components/xlsx-preview/left-out-banner.tsx
 msgid "# chart of a type the preview does not draw"
 msgid_plural "# charts of types the preview does not draw"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "プレビューで表示できない種類のグラフ # 個"
 
 #. placeholder {0}: leftOut.chartSheets
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+chart+sheet%7D+other+%7B%23+chart+sheets%7D%7D&pluralize_on=0
 #: src/components/xlsx-preview/left-out-banner.tsx
 msgid "# chart sheet"
 msgid_plural "# chart sheets"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "グラフシート # 枚"
 
 #. placeholder {0}: leftOut.missingResults
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+formula+with+no+saved+result%7D+other+%7B%23+formulas+with+no+saved+result%7D%7D&pluralize_on=0
 #: src/components/xlsx-preview/left-out-banner.tsx
 msgid "# formula with no saved result"
 msgid_plural "# formulas with no saved result"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "結果が保存されていない数式 # 個"
 
 #. placeholder {0}: leftOut.hiddenSheets
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+hidden+sheet%7D+other+%7B%23+hidden+sheets%7D%7D&pluralize_on=0
 #: src/components/xlsx-preview/left-out-banner.tsx
 msgid "# hidden sheet"
 msgid_plural "# hidden sheets"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "非表示のシート # 枚"
 
 #. placeholder {0}: items.length
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+item+selected%7D+other+%7B%23+items+selected%7D%7D&pluralize_on=0
@@ -158,7 +154,7 @@ msgstr ""
 
 #: src/components/xlsx-preview/sheet-overlay.tsx
 msgid "{kindLabel}: {title}"
-msgstr ""
+msgstr "{kindLabel}: {title}"
 
 #: src/layout/sidebar/project-drop-list.tsx
 #~ msgid "{label} — already in this project"
@@ -172,8 +168,7 @@ msgstr ""
 #: src/components/xlsx-preview/left-out-banner.tsx
 msgid "# chart or picture not shown in full"
 msgid_plural "# charts or pictures not shown in full"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "全体を表示できないグラフまたは画像 # 個"
 
 #: src/components/chat/image-support-notice.tsx
 msgid "{modelName} can't read images. Switch to a model that can, or remove the image."
@@ -223,8 +218,7 @@ msgstr[0] "# 行をインポートしました。新しいチャットが反映�
 #: src/components/xlsx-preview/left-out-banner.tsx
 msgid "# picture the preview does not draw"
 msgid_plural "# pictures the preview does not draw"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "プレビューで表示できない画像 # 個"
 
 #: src/components/context-usage/context-usage-indicator.tsx
 #~ msgid "{usedTokensLabel} of {maxTokensLabel} Context Window"
@@ -252,7 +246,7 @@ msgstr "⚠ このエクスポートは別のアカウント（{importSourceEmai
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "3-D chart"
-msgstr ""
+msgstr "3-D グラフ"
 
 #: src/settings/account/use-delete-account.ts
 msgid "A code was just sent. Wait a moment and try again."
@@ -691,7 +685,7 @@ msgstr "続行しますか？行った変更はすべて失われます。"
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Area chart"
-msgstr ""
+msgstr "面グラフ"
 
 #: src/components/chat/artifact-message-part.tsx
 msgid "Artifact"
@@ -796,7 +790,7 @@ msgstr "アプリに戻る"
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Bar chart"
-msgstr ""
+msgstr "横棒グラフ"
 
 #: src/settings/voice.tsx
 msgid "Base URL"
@@ -808,7 +802,7 @@ msgstr "Bearer トークンまたは API キー"
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Box and whisker chart"
-msgstr ""
+msgstr "箱ひげ図"
 
 #: src/components/search-provider-setup/search-provider-setup.tsx
 msgid "Brave provides search results. Choose Exa, Tavily, or Tinfoil to read full pages."
@@ -828,7 +822,7 @@ msgstr "ブラウザー"
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Bubble chart"
-msgstr ""
+msgstr "バブルチャート"
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Build it from source instead (requires Bun):"
@@ -927,11 +921,11 @@ msgstr "変更は保存されましたが、再接続に失敗しました。も
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Chart"
-msgstr ""
+msgstr "グラフ"
 
 #: src/components/xlsx-preview/sheet-overlay.tsx
 msgid "Charts and pictures"
-msgstr ""
+msgstr "グラフと画像"
 
 #: src/mini-apps/mini-app-page.tsx
 msgid "Chat"
@@ -979,9 +973,17 @@ msgstr "今すぐ確認"
 msgid "Check the backend logs"
 msgstr "バックエンドのログを確認してください"
 
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "Check your connection and open the file again, or download it to open it in a presentation app."
+msgstr "接続を確認してファイルを開き直すか、ファイルをダウンロードしてプレゼンテーションアプリで開いてください。"
+
 #: src/components/xlsx-preview/xlsx-preview.tsx
 msgid "Check your connection and open the file again, or download it to open it in a spreadsheet app."
-msgstr ""
+msgstr "接続を確認してファイルを開き直すか、ファイルをダウンロードして表計算アプリで開いてください。"
+
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
+msgid "Check your connection and open the file again, or download it to open it in a word processor."
+msgstr "接続を確認してファイルを開き直すか、ファイルをダウンロードして文書作成アプリで開いてください。"
 
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/waitlist/waitlist-content.tsx
@@ -1231,17 +1233,17 @@ msgstr "サイドバーを折りたたむ"
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Column chart"
-msgstr ""
+msgstr "縦棒グラフ"
 
 #. placeholder {0}: formatters.number(maxCols)
 #. placeholder {1}: formatters.number(cols)
 #: src/components/xlsx-preview/left-out-banner.tsx
 msgid "Columns after the first {0} in {name}, which has {1}"
-msgstr ""
+msgstr "{name} の先頭 {0} 列より後の列（全 {1} 列）"
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Combination chart"
-msgstr ""
+msgstr "組み合わせグラフ"
 
 #: src/components/chat/permission-dialog.tsx
 msgid "Command / arguments"
@@ -1313,7 +1315,7 @@ msgstr "完了しています…"
 
 #: src/components/xlsx-preview/left-out-banner.tsx
 msgid "Conditional formatting"
-msgstr ""
+msgstr "条件付き書式"
 
 #: src/components/chat/attestation/attestation-details.tsx
 #~ msgid "Confidential hardware"
@@ -2030,6 +2032,10 @@ msgstr "{name} をピン留めできませんでした。"
 msgid "Couldn't reach Thunderbolt Cloud. Try again, or set up without a server for now."
 msgstr ""
 
+#: src/components/chat/chat-prompt-input.tsx
+msgid "Couldn't read \"{filename}\"."
+msgstr "「{filename}」を読み込めませんでした。"
+
 #: src/settings/encryption/use-remove-passkey.ts
 msgid "Couldn't remove the passkey. Please try again."
 msgstr "パスキーを削除できませんでした。もう一度お試しください。"
@@ -2583,7 +2589,7 @@ msgstr "完了"
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Doughnut chart"
-msgstr ""
+msgstr "ドーナツグラフ"
 
 #: src/components/download-app-banner-mobile.tsx
 #: src/components/update-notification.tsx
@@ -2592,8 +2598,12 @@ msgid "Download"
 msgstr "ダウンロード"
 
 #: src/components/chat/created-file-card.tsx
-msgid "Download {filename}"
-msgstr ""
+#~ msgid "Download {filename}"
+#~ msgstr ""
+
+#: src/components/chat/created-file-card.tsx
+msgid "Download {shownName}"
+msgstr "{shownName} をダウンロード"
 
 #: src/search/commands/use-commands.ts
 msgid "Download app"
@@ -2610,15 +2620,15 @@ msgstr "HTML をダウンロード"
 
 #: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "Download the file to open it in a presentation app."
-msgstr ""
+msgstr "ファイルをダウンロードしてプレゼンテーションアプリで開いてください。"
 
 #: src/components/xlsx-preview/xlsx-preview.tsx
 msgid "Download the file to open it in a spreadsheet app."
-msgstr ""
+msgstr "ファイルをダウンロードして表計算アプリで開いてください。"
 
 #: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "Download the file to open it in a word processor."
-msgstr ""
+msgstr "ファイルをダウンロードして文書作成アプリで開いてください。"
 
 #: src/hooks/use-desktop-update.ts
 msgid "Download update"
@@ -2696,7 +2706,7 @@ msgstr "スキルを編集"
 
 #: src/components/chat/created-file-card.tsx
 msgid "Edited"
-msgstr ""
+msgstr "編集済み"
 
 #: src/lib/tool-metadata.ts
 msgid "Editing {fileName}…"
@@ -3079,7 +3089,7 @@ msgstr ""
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Funnel chart"
-msgstr ""
+msgstr "じょうごグラフ"
 
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Generate a new 24-word recovery phrase for your encrypted data. Your current phrase will stop working."
@@ -3230,7 +3240,7 @@ msgstr ""
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Histogram chart"
-msgstr ""
+msgstr "ヒストグラム"
 
 #: src/settings/preferences.tsx
 msgid "How {appName} salutes you"
@@ -3338,6 +3348,10 @@ msgstr ""
 msgid "Include the version prefix (e.g. /v1). Then hit “Load models” to populate the pickers below."
 msgstr "バージョンのプレフィックス（例: /v1）を含めてください。その後「モデルを読み込む」を押すと、下の選択肢が設定されます。"
 
+#: src/content-view/object-sidebar-content.tsx
+msgid "Input"
+msgstr "入力"
+
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Install"
 msgstr "インストール"
@@ -3390,15 +3404,15 @@ msgstr "iOS では安全な URL（wss://）が必要です"
 
 #: src/components/xlsx-preview/xlsx-preview.tsx
 msgid "It may be damaged or protected with a password. Download the file to open it in a spreadsheet app."
-msgstr ""
+msgstr "破損しているか、パスワードで保護されている可能性があります。ファイルをダウンロードして表計算アプリで開いてください。"
 
 #: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "It may be damaged. Download the file to open it in a presentation app."
-msgstr ""
+msgstr "破損している可能性があります。ファイルをダウンロードしてプレゼンテーションアプリで開いてください。"
 
 #: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "It may be damaged. Download the file to open it in a word processor."
-msgstr ""
+msgstr "破損している可能性があります。ファイルをダウンロードして文書作成アプリで開いてください。"
 
 #: src/components/recovery-continuity/recovery-continuity-banner.tsx
 msgid "It was created before a security update. A new phrase lets recovery confirm your keys are yours."
@@ -3516,7 +3530,7 @@ msgstr "ライトモード"
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Line chart"
-msgstr ""
+msgstr "折れ線グラフ"
 
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Listening"
@@ -3557,7 +3571,7 @@ msgstr "プレビューを読み込んでいます…"
 
 #: src/components/xlsx-preview/xlsx-preview.tsx
 msgid "Loading the workbook"
-msgstr ""
+msgstr "ブックを読み込んでいます"
 
 #: src/components/settings/iroh-pairing-panel.tsx
 msgid "Loading this app's pairing identity…"
@@ -3648,7 +3662,7 @@ msgstr "デプロイ側で管理されています — 常に利用可能で、�
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Map chart"
-msgstr ""
+msgstr "マップグラフ"
 
 #: src/widgets/map/widget.tsx
 msgid "Maps can’t be displayed here — WebGL is disabled or unavailable in this browser."
@@ -4086,7 +4100,7 @@ msgstr "プライベートチャットでは利用できません。"
 
 #: src/components/chat/created-file-card.tsx
 msgid "Not available on this device"
-msgstr ""
+msgstr "このデバイスでは利用できません"
 
 #: src/settings/devices.tsx
 msgid "Not configured"
@@ -4105,7 +4119,7 @@ msgstr "後で"
 
 #: src/components/xlsx-preview/sheet-overlay.tsx
 msgid "Not shown in this preview"
-msgstr ""
+msgstr "このプレビューには表示されません"
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Not tested"
@@ -4425,7 +4439,7 @@ msgstr "ペアリング ID"
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Pareto chart"
-msgstr ""
+msgstr "パレート図"
 
 #: src/widgets/weather-forecast/lib.ts
 msgid "Partly cloudy"
@@ -4501,15 +4515,15 @@ msgstr "もう一方のデバイスでこのコードを選んでください。
 
 #: src/components/xlsx-preview/sheet-overlay.tsx
 msgid "Picture"
-msgstr ""
+msgstr "画像"
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Pie chart"
-msgstr ""
+msgstr "円グラフ"
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Pie of pie chart"
-msgstr ""
+msgstr "補助円グラフ付き円グラフ"
 
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
@@ -4653,7 +4667,7 @@ msgstr "終了"
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Radar chart"
-msgstr ""
+msgstr "レーダーチャート"
 
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Re-authorize"
@@ -4786,6 +4800,10 @@ msgstr "削除"
 msgid "Remove {0}?"
 msgstr ""
 
+#: src/components/chat/file-card.tsx
+msgid "Remove {filename}"
+msgstr "{filename} を削除"
+
 #: src/settings/connections/integration-detail.tsx
 msgid "Remove {integrationName}?"
 msgstr ""
@@ -4911,6 +4929,10 @@ msgstr "今すぐ再起動"
 msgid "Restart to update"
 msgstr "再起動して更新"
 
+#: src/content-view/object-sidebar-content.tsx
+msgid "Result"
+msgstr "結果"
+
 #: src/components/context-usage/compaction-summary-content.tsx
 msgid "Retained messages and tool results"
 msgstr ""
@@ -4982,7 +5004,7 @@ msgstr "取り消しています…"
 #. placeholder {1}: formatters.number(rows)
 #: src/components/xlsx-preview/left-out-banner.tsx
 msgid "Rows after the first {0} in {name}, which has {1}"
-msgstr ""
+msgstr "{name} の先頭 {0} 行より後の行（全 {1} 行）"
 
 #: src/settings/preferences.tsx
 msgid "Rows that share an ID with existing data will be overwritten with the file's version and synced to your other devices. This can't be undone."
@@ -5040,6 +5062,18 @@ msgstr ""
 msgid "Save your recovery phrase"
 msgstr "リカバリーフレーズを保存してください"
 
+#: src/components/saved-file-notice.tsx
+msgid "Saved {name} to Downloads."
+msgstr "{name} を「ダウンロード」に保存しました。"
+
+#: src/components/saved-file-notice.tsx
+msgid "Saved {name} to the Files app."
+msgstr "{name} をファイルアプリに保存しました。"
+
+#: src/lib/download.ts
+msgid "Saving files needs Android 10 or later."
+msgstr "ファイルを保存するには Android 10 以降が必要です。"
+
 #: src/projects/project-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/models/edit-model-form.tsx
@@ -5057,7 +5091,7 @@ msgstr "画像から読み取る"
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Scatter chart"
-msgstr ""
+msgstr "散布図"
 
 #: src/components/chat/scroll-to-bottom-button.tsx
 msgid "Scroll to bottom"
@@ -5304,7 +5338,7 @@ msgstr "テキストとして送信しました"
 #. placeholder {0}: i + 1
 #: src/components/xlsx-preview/chart-svg.tsx
 msgid "Series {0}"
-msgstr ""
+msgstr "系列 {0}"
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Server name (used to prefix tools)"
@@ -5379,7 +5413,7 @@ msgstr ""
 
 #: src/components/xlsx-preview/left-out-banner.tsx
 msgid "Shapes and text boxes"
-msgstr ""
+msgstr "図形とテキストボックス"
 
 #: src/components/share-debug-transcript/share-debug-transcript-button.tsx
 msgid "Share debug transcript"
@@ -5391,7 +5425,7 @@ msgstr "プロジェクト内のチャットに共通の指示"
 
 #: src/components/xlsx-preview/sheet-tabs.tsx
 msgid "Sheets"
-msgstr ""
+msgstr "シート"
 
 #: src/lib/tray.ts
 msgid "Show"
@@ -5657,6 +5691,10 @@ msgstr "霧雪"
 msgid "Something went wrong"
 msgstr "問題が発生しました"
 
+#: src/lib/download.ts
+msgid "Something went wrong while saving the file."
+msgstr "ファイルの保存中に問題が発生しました。"
+
 #: src/components/chat/error-message.tsx
 #: src/components/magic-link-verify.tsx
 #: src/components/sign-in/sign-in-email-step.tsx
@@ -5674,7 +5712,7 @@ msgstr ""
 
 #: src/components/xlsx-preview/left-out-banner.tsx
 msgid "Sparklines"
-msgstr ""
+msgstr "スパークライン"
 
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Speaking"
@@ -5686,11 +5724,11 @@ msgstr "音声認識と音声合成は Thunderbolt の機密エンクレーブ�
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Stacked area chart"
-msgstr ""
+msgstr "積み上げ面グラフ"
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Stacked line chart"
-msgstr ""
+msgstr "積み上げ折れ線グラフ"
 
 #: src/components/onboarding/onboarding-dialog.tsx
 #~ msgid "Start Using {appName}"
@@ -5719,7 +5757,7 @@ msgstr "ステータス"
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Stock chart"
-msgstr ""
+msgstr "株価チャート"
 
 #: src/components/ui/prompt-input.tsx
 msgid "Stop generating"
@@ -5760,7 +5798,7 @@ msgstr ""
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Sunburst chart"
-msgstr ""
+msgstr "サンバースト"
 
 #: src/settings/models/supports-tools-switch.tsx
 msgid "Supports tools"
@@ -5768,7 +5806,7 @@ msgstr ""
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Surface chart"
-msgstr ""
+msgstr "等高線グラフ"
 
 #: src/components/ui/header.tsx
 msgid "Switch Agent"
@@ -5886,7 +5924,7 @@ msgstr "テストしています…"
 #. placeholder {0}: formatters.number(cellChars)
 #: src/components/xlsx-preview/left-out-banner.tsx
 msgid "Text past the first {0} characters of a cell"
-msgstr ""
+msgstr "セル内の先頭 {0} 文字より後のテキスト"
 
 #: src/settings/account/use-delete-account.ts
 #: src/settings/encryption/use-change-recovery-key.ts
@@ -5985,9 +6023,17 @@ msgstr ""
 msgid "The device will be signed out and lose access to your synced data. Its local copy is cleared the next time it connects; a device that never comes back online keeps what is already on it. Your recovery phrase keeps working."
 msgstr ""
 
+#: src/lib/download.ts
+msgid "The file could not be marked as downloaded from the internet, so it was not saved. The Downloads folder may be on a drive that cannot keep that mark."
+msgstr "ファイルをインターネットからダウンロードしたものとしてマークできなかったため、保存しませんでした。「ダウンロード」フォルダーが、このマークを保持できないドライブにある可能性があります。"
+
 #: src/components/approve-device/fingerprint-confirmation.tsx
 msgid "The fingerprint doesn't match. Check the fingerprint shown on the new device and try again."
 msgstr "フィンガープリントが一致しません。新しいデバイスに表示されているフィンガープリントを確認して、もう一度お試しください。"
+
+#: src/lib/download.ts
+msgid "The folder to save into does not exist."
+msgstr "保存先のフォルダーが存在しません。"
 
 #: src/components/chat/error-message.tsx
 msgid "The instructions from your skills or project are too long for this agent. Shorten a long skill or the project's instructions, then try again."
@@ -6014,12 +6060,14 @@ msgid "The passkey check was cancelled. Try again when you're ready."
 msgstr ""
 
 #: src/components/xlsx-preview/xlsx-preview.tsx
+#: src/content-view/viewer-load-failure.tsx
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "The preview couldn't load"
-msgstr ""
+msgstr "プレビューを読み込めませんでした"
 
 #: src/components/xlsx-preview/xlsx-preview.tsx
 msgid "The preview opens workbooks up to {limit} MB. Download the file to open it in a spreadsheet app."
-msgstr ""
+msgstr "プレビューで開けるのは {limit}MB までのブックです。ファイルをダウンロードして表計算アプリで開いてください。"
 
 #: src/components/local-data-switch-screen.tsx
 msgid "The previous account's data on this device could not be secured. Reload to try again."
@@ -6080,6 +6128,10 @@ msgstr ""
 #: src/settings/preferences.tsx
 msgid "Theme"
 msgstr "テーマ"
+
+#: src/lib/download.ts
+msgid "There is not enough free space on this device."
+msgstr "このデバイスの空き容量が不足しています。"
 
 #. placeholder {0}: state.modelsWithoutTools.join(', ')
 #: src/settings/models/add-provider-models.tsx
@@ -6200,11 +6252,11 @@ msgstr ""
 
 #: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "This document can't be previewed"
-msgstr ""
+msgstr "このドキュメントはプレビューできません"
 
 #: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "This document is too large to preview"
-msgstr ""
+msgstr "このドキュメントは大きすぎるためプレビューできません"
 
 #: src/settings/preferences.tsx
 msgid "This file doesn't look like a {appName} export."
@@ -6296,15 +6348,15 @@ msgstr "取り消されたブリッジの登録を完全に削除します。ブ
 
 #: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "This presentation can't be previewed"
-msgstr ""
+msgstr "このプレゼンテーションはプレビューできません"
 
 #: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "This presentation is too large to preview"
-msgstr ""
+msgstr "このプレゼンテーションは大きすぎるためプレビューできません"
 
 #: src/components/xlsx-preview/left-out-banner.tsx
 msgid "This preview leaves out"
-msgstr ""
+msgstr "このプレビューに含まれないもの"
 
 #: src/components/chat/chat-prompt-input.tsx
 #: src/voice/ui/use-voice-session.ts
@@ -6359,7 +6411,7 @@ msgstr "このサーバーは OAuth を使用します。追加して認可す�
 
 #: src/components/xlsx-preview/xlsx-preview.tsx
 msgid "This sheet is too large to preview"
-msgstr ""
+msgstr "このシートは大きすぎるためプレビューできません"
 
 #: src/lib/sso-error-messages.ts
 msgid "This sign-in did not start from {appName}. Open {appName} and sign in from there."
@@ -6436,15 +6488,15 @@ msgstr "暗号化キーをこのデバイスと共有し、データの復号と
 
 #: src/components/xlsx-preview/xlsx-preview.tsx
 msgid "This workbook can't be previewed"
-msgstr ""
+msgstr "このブックはプレビューできません"
 
 #: src/components/xlsx-preview/xlsx-preview.tsx
 msgid "This workbook has no visible sheets"
-msgstr ""
+msgstr "このブックには表示されているシートがありません"
 
 #: src/components/xlsx-preview/xlsx-preview.tsx
 msgid "This workbook is too large to preview"
-msgstr ""
+msgstr "このブックは大きすぎるためプレビューできません"
 
 #: src/components/chat/reasoning-group-title.tsx
 msgid "Thought for {duration}"
@@ -6461,6 +6513,10 @@ msgstr "Thunderbolt CLI"
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "Thunderbolt couldn't verify this device's encryption keys, so it can't update your recovery phrase or passkey. To verify it, sign out with \"Delete data from device\", sign in again, and approve it from a device that was trusted before."
 msgstr ""
+
+#: src/lib/download.ts
+msgid "Thunderbolt is not allowed to save there."
+msgstr "Thunderbolt にはその場所に保存する権限がありません。"
 
 #: src/components/sign-in/sign-in-email-step.tsx
 msgid "Thunderbolt is open-source"
@@ -6592,6 +6648,10 @@ msgstr "試行回数が多すぎます。新しいコードをリクエストし
 msgid "Too many codes didn't match on this device today, so approve with the fingerprint instead."
 msgstr "今日はこのデバイスで一致しないコードが多すぎるため、代わりにフィンガープリントで承認してください。"
 
+#: src/lib/download.ts
+msgid "Too many files with this name are already in the folder. Rename or move some of them, then try again."
+msgstr "フォルダーに同じ名前のファイルがすでに多すぎます。いくつかの名前を変更するか別の場所に移動してから、もう一度お試しください。"
+
 #: src/components/chat/error-message.tsx
 msgid "Too many requests. Please try again in a moment."
 msgstr "リクエストが多すぎます。少し待ってからもう一度お試しください。"
@@ -6622,7 +6682,7 @@ msgstr "旅行と場所"
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Treemap chart"
-msgstr ""
+msgstr "ツリーマップ"
 
 #: src/settings/devices.tsx
 msgid "Trusted devices"
@@ -6636,9 +6696,14 @@ msgstr "信頼済みのデバイス"
 #: src/components/sso-error.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
+#: src/content-view/viewer-load-failure.tsx
 #: src/webview-recovery/index.ts
 msgid "Try again"
 msgstr "再試行"
+
+#: src/content-view/viewer-load-failure.tsx
+msgid "Try again, or download the file."
+msgstr "もう一度お試しいただくか、ファイルをダウンロードしてください。"
 
 #: src/webview-recovery/index.ts
 msgid "Try again, or install available system updates and reopen Thunderbolt if the problem continues."
@@ -7102,7 +7167,7 @@ msgstr "早期アクセスをご希望ですか？"
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Waterfall chart"
-msgstr ""
+msgstr "ウォーターフォール図"
 
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "We could not send the transcript. Please check your connection and try again."

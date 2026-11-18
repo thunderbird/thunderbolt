@@ -13,8 +13,16 @@ import { expect, test } from './test'
 
 const pptxMime = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
 
-const sendDeck = (page: Page, name: string, bytes: Uint8Array) =>
-  sendAttachment(page, { name, mimeType: pptxMime, buffer: Buffer.from(bytes) })
+const sendDeck = (page: Page, name: string, bytes: Uint8Array, fileText: string) =>
+  sendAttachment(page, { name, mimeType: pptxMime, buffer: Buffer.from(bytes) }, fileText)
+
+/** One slide with a table of `rows` rows in a frame one inch high, too short for them. */
+const deckWithTallTable = async (rows: number) => {
+  const deck = new PptxGenJS()
+  const cells = Array.from({ length: rows }, (_, index) => [{ text: `Row ${index + 1}` }, { text: `${index * 10}` }])
+  deck.addSlide().addTable(cells, { x: 0.5, y: 0.5, w: 6, h: 1, fontSize: 14 })
+  return (await deck.write({ outputType: 'uint8array' })) as Uint8Array
+}
 
 /** A deck of `count` slides, each with only its number. */
 const deckOfSlides = async (count: number) => {
@@ -47,7 +55,7 @@ const pictures = (frame: FrameLocator) =>
 test('an attached PPTX shows a deck icon on its card and every slide in the side panel', async ({ page, context }) => {
   const errors = collectPageErrors(page)
   const name = 'e2e-review.pptx'
-  await sendDeck(page, name, await samplePptx())
+  await sendDeck(page, name, await samplePptx(), samplePptxText.title)
 
   await expect(page.locator(`button[title="${name}"] .lucide-presentation`)).toBeVisible()
 
@@ -77,7 +85,8 @@ test('an attached PPTX shows a deck icon on its card and every slide in the side
 
 test('a deck over 200 slides gets a refusal in place of the preview, and Download still saves it', async ({ page }) => {
   const name = 'e2e-long.pptx'
-  await sendDeck(page, name, await deckOfSlides(201))
+  // A deck this long reaches the model as a text file in its workspace, so the prompt only names it.
+  await sendDeck(page, name, await deckOfSlides(201), name)
 
   await page.locator(`button[title="${name}"]`).click()
   await expect(contentView(page).getByText('This presentation is too large to preview')).toBeVisible()
@@ -93,10 +102,30 @@ test('a deck over 200 slides gets a refusal in place of the preview, and Downloa
 test('a deck whose master picture would be copied into every slide past the limit gets a refusal', async ({ page }) => {
   // A 1.5 MB background on 30 slides is about 60 million characters of markup, over the 32 Mi limit.
   const name = 'e2e-branded.pptx'
-  await sendDeck(page, name, await deckWithBackground(30, 1_500_000))
+  await sendDeck(page, name, await deckWithBackground(30, 1_500_000), 'Slide 30')
 
   await page.locator(`button[title="${name}"]`).click()
   await expect(contentView(page).getByText('This presentation is too large to preview')).toBeVisible()
+  await expect(contentView(page).locator('iframe')).toHaveCount(0)
+})
+
+test('a table taller than its frame shows every row, since PowerPoint grows the frame to fit', async ({ page }) => {
+  const name = 'e2e-table.pptx'
+  await sendDeck(page, name, await deckWithTallTable(12), 'Row 12')
+
+  const slides = (await openPreview(page, name)).contentFrame()
+  // A row clipped by the table's frame still passes toBeVisible, but not toBeInViewport.
+  await expect(slides.getByText('Row 1', { exact: true })).toBeInViewport()
+  await expect(slides.getByText('Row 12', { exact: true })).toBeInViewport()
+})
+
+test('a deck with no slides gets a notice in place of an empty preview', async ({ page }) => {
+  const name = 'e2e-empty.pptx'
+  // The deck has no text, so the model gets only the file's name.
+  await sendDeck(page, name, await deckOfSlides(0), name)
+
+  await page.locator(`button[title="${name}"]`).click()
+  await expect(contentView(page).getByText("This presentation can't be previewed")).toBeVisible()
   await expect(contentView(page).locator('iframe')).toHaveCount(0)
 })
 
@@ -123,10 +152,11 @@ test('a hostile PPTX loads nothing from outside and runs no script, with the web
     },
   )
   const name = 'e2e-hostile.pptx'
-  await sendDeck(page, name, await hostilePptx())
+  await sendDeck(page, name, await hostilePptx(), samplePptxText.title)
 
   preview.open = true
   const frame = await openPreview(page, name)
+  await expect(frame).toHaveAttribute('sandbox', '')
   const slides = frame.contentFrame()
   await expect(slides.getByText(samplePptxText.title)).toBeVisible()
   // Markup in the deck's text shows as text.
@@ -136,6 +166,8 @@ test('a hostile PPTX loads nothing from outside and runs no script, with the web
   await expect(slides.getByText(samplePptxText.title)).toBeVisible()
   expect(await slides.locator('script, iframe, [href], [onerror]').count()).toBe(0)
   expect(await page.evaluate(() => '__pptxProbe' in window)).toBe(false)
+  // A script that ran would have set the probe in the frame's own window, not the app's.
+  expect(await slides.locator('body').evaluate(() => '__pptxProbe' in window)).toBe(false)
 
   const underCsp = await openUnderAppCsp(context, (await frame.getAttribute('srcdoc')) ?? '')
   await expect(underCsp.frame.getByText(samplePptxText.title)).toBeVisible()

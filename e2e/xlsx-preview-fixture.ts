@@ -25,7 +25,7 @@ const inlineCell = (ref: string, text: string) => `<c r="${ref}" t="inlineStr"><
 
 /**
  * A hostile workbook, written part by part: markup in cell text and in the sheet name, a `javascript:` link, and a
- * picture linked to a URL outside the file.
+ * picture linked to a URL outside the file. Row 2 is blank.
  */
 export const hostileWorkbook = async (): Promise<Buffer> => {
   const zip = new JSZip()
@@ -49,8 +49,8 @@ export const hostileWorkbook = async (): Promise<Buffer> => {
     'xl/worksheets/sheet1.xml',
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="${main}" xmlns:r="${relationships}"><sheetData>` +
       `<row r="1">${inlineCell('A1', '<img src=x onerror="window.__xlsxProbe=1">')}${inlineCell('B1', hostileScriptText)}</row>` +
-      `<row r="2">${inlineCell('A2', 'click me')}</row>` +
-      `</sheetData><hyperlinks><hyperlink ref="A2" r:id="rId1"/></hyperlinks><drawing r:id="rId2"/></worksheet>`,
+      `<row r="3">${inlineCell('A3', 'click me')}</row>` +
+      `</sheetData><hyperlinks><hyperlink ref="A3" r:id="rId1"/></hyperlinks><drawing r:id="rId2"/></worksheet>`,
   )
   zip.file(
     'xl/worksheets/_rels/sheet1.xml.rels',

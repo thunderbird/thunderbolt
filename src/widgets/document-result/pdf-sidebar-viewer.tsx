@@ -36,6 +36,10 @@ const refusals = {
       title: msg`This document can't be previewed`,
       body: msg`It may be damaged. Download the file to open it in a word processor.`,
     },
+    notLoaded: {
+      title: msg`The preview couldn't load`,
+      body: msg`Check your connection and open the file again, or download it to open it in a word processor.`,
+    },
   },
   pptx: {
     icon: Presentation,
@@ -46,6 +50,10 @@ const refusals = {
     unreadable: {
       title: msg`This presentation can't be previewed`,
       body: msg`It may be damaged. Download the file to open it in a presentation app.`,
+    },
+    notLoaded: {
+      title: msg`The preview couldn't load`,
+      body: msg`Check your connection and open the file again, or download it to open it in a presentation app.`,
     },
   },
 } satisfies Record<

@@ -49,12 +49,24 @@ const docx = (parts: Record<string, Uint8Array>) =>
   })
 
 describe('renderDocxSnapshot', () => {
-  it('renders the pages with their headings, lists, table and picture, at the page width plus the margin', async () => {
-    const { html, width } = await pagesOf(await sampleDocx())
+  it('renders the pages with their headings, lists, table and picture, fitting the page width plus the margin', async () => {
+    const { html, width, reflowStyle } = await pagesOf(await sampleDocx())
 
     expectSampleDocxPreview(html)
-    // An A4 page is 595.3pt, 794px; the wrapper adds 30px on each side.
+    // An A4 page is 595.3pt, 794px; the wrapper adds 30px on each side. A narrower frame scales or reflows the pages.
     expect(width).toBe(854)
+    expect(reflowStyle).toStartWith('<style>@media (max-width: 853px) {')
+    expect(html).not.toContain('max-width: 853px')
+    // The view adds the style that zooms the pages, only in a browser that draws them zoomed as they are.
+    expect(html).not.toContain('100cqw')
+  })
+
+  it('gives tables separate borders on a screen with 3 device pixels per CSS pixel, however the pages are drawn', async () => {
+    const { html } = await pagesOf(await sampleDocx())
+
+    expect(html).toContain(
+      '<style>@media (min-resolution: 3dppx) { table { border-collapse: separate !important; border-spacing: 0; } }</style>',
+    )
   })
 
   it('lets the page load nothing but its own styles and its data: pictures and fonts', async () => {
@@ -97,6 +109,140 @@ describe('renderDocxSnapshot', () => {
     const page = parse(html)
     expect(page.querySelectorAll('p div')).toHaveLength(0)
     expect(page.querySelector('img')?.closest('p')?.textContent).toBe('Beforeafter')
+  })
+
+  it('aligns a right-to-left paragraph set to left or right to its start or end, as Word does', async () => {
+    const paragraph = (text: string, props: string) => `<w:p><w:pPr>${props}</w:pPr><w:r><w:t>${text}</w:t></w:r></w:p>`
+    const { html } = await pagesOf(
+      new Blob([
+        docx({
+          'word/document.xml': body(
+            paragraph('مرحبا', '<w:bidi/><w:jc w:val="left"/>') +
+              paragraph('שלום', '<w:bidi/><w:jc w:val="right"/>') +
+              paragraph('Hello', '<w:jc w:val="right"/>'),
+          ),
+        }),
+      ]),
+    )
+
+    const alignments = [...parse(html).querySelectorAll<HTMLElement>('section p')].map((p) => [
+      p.textContent,
+      p.style.textAlign,
+    ])
+    expect(alignments).toEqual([
+      ['مرحبا', 'start'],
+      ['שלום', 'end'],
+      ['Hello', 'right'],
+    ])
+  })
+
+  it('aligns right-to-left paragraph styles to their start or end, as Word does', async () => {
+    const style = (id: string, props: string) =>
+      `<w:style w:type="paragraph" w:styleId="${id}"><w:pPr>${props}</w:pPr></w:style>`
+    const { html } = await pagesOf(
+      new Blob([
+        docx({
+          'word/document.xml': body('<w:p><w:pPr><w:pStyle w:val="ArabicLeft"/></w:pPr></w:p>'),
+          'word/_rels/document.xml.rels': strToU8(
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship ' +
+              'Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" ' +
+              'Target="styles.xml"/></Relationships>',
+          ),
+          'word/styles.xml': strToU8(
+            '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+              style('ArabicLeft', '<w:bidi/><w:jc w:val="left"/>') +
+              style('ArabicRight', '<w:bidi/><w:jc w:val="right"/>') +
+              style('Latin', '<w:jc w:val="left"/>') +
+              '</w:styles>',
+          ),
+        }),
+      ]),
+    )
+
+    const css = [...parse(html).querySelectorAll('style')].map((element) => element.textContent).join('')
+    expect(css).toMatch(/p\.docx_arabicleft \{[^}]*direction: rtl;[^}]*text-align: start;/)
+    expect(css).toMatch(/p\.docx_arabicright \{[^}]*direction: rtl;[^}]*text-align: end;/)
+    expect(css).toMatch(/p\.docx_latin \{[^}]*text-align: left;/)
+  })
+
+  it('aligns a paragraph set to left or right to its start or end when its style, or one it is based on, is right-to-left', async () => {
+    const style = (id: string, props: string) => `<w:style w:type="paragraph" w:styleId="${id}">${props}</w:style>`
+    const paragraph = (text: string, styleId: string, props: string) =>
+      `<w:p><w:pPr><w:pStyle w:val="${styleId}"/>${props}</w:pPr><w:r><w:t>${text}</w:t></w:r></w:p>`
+    const { html } = await pagesOf(
+      new Blob([
+        docx({
+          'word/document.xml': body(
+            paragraph('مرحبا', 'Arabic', '<w:jc w:val="left"/>') +
+              paragraph('שלום', 'Hebrew', '<w:jc w:val="right"/>') +
+              paragraph('Hello', 'Latin', '<w:jc w:val="right"/>'),
+          ),
+          'word/_rels/document.xml.rels': strToU8(
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship ' +
+              'Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" ' +
+              'Target="styles.xml"/></Relationships>',
+          ),
+          'word/styles.xml': strToU8(
+            '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+              style('Arabic', '<w:pPr><w:bidi/></w:pPr>') +
+              style('Hebrew', '<w:basedOn w:val="Arabic"/>') +
+              style('Latin', '<w:pPr><w:jc w:val="left"/></w:pPr>') +
+              '</w:styles>',
+          ),
+        }),
+      ]),
+    )
+
+    const alignments = [...parse(html).querySelectorAll<HTMLElement>('section p')].map((p) => [
+      p.textContent,
+      p.style.textAlign,
+    ])
+    expect(alignments).toEqual([
+      ['مرحبا', 'start'],
+      ['שלום', 'end'],
+      ['Hello', 'right'],
+    ])
+  })
+
+  it('aligns a paragraph to its start when the default paragraph style is right-to-left', async () => {
+    const { html } = await pagesOf(
+      new Blob([
+        docx({
+          'word/document.xml': body('<w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t>مرحبا</w:t></w:r></w:p>'),
+          'word/_rels/document.xml.rels': strToU8(
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship ' +
+              'Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" ' +
+              'Target="styles.xml"/></Relationships>',
+          ),
+          'word/styles.xml': strToU8(
+            '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+              '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:pPr><w:bidi/></w:pPr></w:style>' +
+              '</w:styles>',
+          ),
+        }),
+      ]),
+    )
+
+    expect(parse(html).querySelector<HTMLElement>('section p')?.style.textAlign).toBe('start')
+  })
+
+  it('blanks a picture whose header claims more pixels than the preview decodes, and keeps the rest', async () => {
+    const huge = pixelPng.slice()
+    const header = new DataView(huge.buffer)
+    header.setUint32(16, 8192)
+    header.setUint32(20, 8192)
+    const pictureOf = (data: Uint8Array) =>
+      new ImageRun({ type: 'png', data, transformation: { width: 24, height: 24 } })
+    const document = new Document({
+      sections: [{ children: [new Paragraph({ children: [pictureOf(pixelPng), pictureOf(huge)] })] }],
+    })
+    const { html } = await pagesOf(await Packer.toBlob(document))
+
+    const sources = [...parse(html).querySelectorAll('img')].map((picture) => picture.getAttribute('src'))
+    expect(sources).toEqual([
+      `data:image/png;base64,${btoa(String.fromCharCode(...pixelPng))}`,
+      'data:image/png;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+    ])
   })
 
   it("draws Word's Symbol bullet as a bullet, not as a private-use character only Windows draws", async () => {

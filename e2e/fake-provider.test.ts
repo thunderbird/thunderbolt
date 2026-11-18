@@ -225,7 +225,7 @@ test('plays a model that edits the attached deck with run_office_script', async 
       content: [
         {
           type: 'text',
-          text: `[Attachment: ${officeDeckEditFilename}]\n\n## Slide 1\nStatus: {{status}}\n${officeDeckEditPrompt}`,
+          text: `[Attachment: "${officeDeckEditFilename}"]\n\n## Slide 1\nStatus: {{status}}\n${officeDeckEditPrompt}`,
         },
       ],
     }

@@ -4,6 +4,7 @@
 
 import type { PreviewCell } from '@/office/xlsx-preview-reader'
 import type { CSSProperties } from 'react'
+import { sheetFontStack } from './cell-style'
 import type { MergeBox } from './sheet-geometry'
 
 const linkColor = '#0563c1'
@@ -22,6 +23,32 @@ const activeMergeOutline =
   'group-focus/grid:outline-2 group-focus/grid:-outline-offset-2 group-focus/grid:outline-primary'
 
 const justify = { left: 'flex-start', center: 'center', right: 'flex-end', justify: 'flex-start' } as const
+
+// Pixels the cell's `px-0.5` padding and `border-e` take from its width.
+const cellChrome = 5
+
+const measuringContext = document.createElement('canvas').getContext('2d')
+
+/** The width of text in pixels in a cell's font, or 0 where the page cannot measure text. */
+const textWidth = (text: string, css: CSSProperties | undefined) => {
+  if (!measuringContext) {
+    return 0
+  }
+  const { fontStyle = 'normal', fontWeight = 400, fontSize = '14.67px', fontFamily = sheetFontStack } = css ?? {}
+  measuringContext.font = `${fontStyle} ${fontWeight} ${fontSize} ${fontFamily}`
+  return measuringContext.measureText(text).width
+}
+
+/**
+ * A number or date as Excel shows it in a cell `room` pixels wide: whole, or as hashes across the cell when it does
+ * not fit, so a cut value is never read as another number.
+ */
+export const fitNumber = (text: string, room: number, measure: (text: string) => number) => {
+  if (measure(text) <= room) {
+    return text
+  }
+  return '#'.repeat(Math.max(1, Math.floor(room / (measure('#') || 1))))
+}
 
 /** The horizontal alignment of a cell's text: the file's, or else Excel's General alignment for the cell's value. */
 export const textAlignOf = (css: CSSProperties | undefined, cell: PreviewCell | undefined) => {
@@ -62,7 +89,19 @@ export const SheetCell = ({ id, col, position, width, box, merge, frozenAt, cell
     color: css?.color ?? (cell?.link ? linkColor : undefined),
     textDecoration: css?.textDecoration ?? (cell?.link ? 'underline' : undefined),
   }
-  const text = <span className="min-w-0 overflow-hidden">{cell?.text}</span>
+  // A number or date too wide for its cell shows as hashes, as in Excel; screen readers still get the value.
+  const room = (box?.width ?? width) - cellChrome - (Number(css?.paddingInlineStart) || 0)
+  const shown =
+    cell?.text && cell.align === 'end' ? fitNumber(cell.text, room, (value) => textWidth(value, css)) : cell?.text
+  const text =
+    shown === cell?.text ? (
+      <span className="min-w-0 overflow-hidden">{shown}</span>
+    ) : (
+      <span className="min-w-0 overflow-hidden">
+        <span aria-hidden="true">{shown}</span>
+        <span className="sr-only">{cell?.text}</span>
+      </span>
+    )
   const gridcell = {
     id,
     role: 'gridcell',

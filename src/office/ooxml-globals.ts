@@ -4,9 +4,22 @@
 
 /*
  * Evaluated inside the sandbox VM, never imported by the app: gives a script the zip and XML libraries it
- * needs to edit the parts of an Office file directly. Bundled into one script by `?sandbox-script`.
+ * needs to edit the parts of an Office file directly, and fixes what PptxGenJS writes. Bundled into one script
+ * by `?sandbox-script`.
  */
 import * as xmldom from '@xmldom/xmldom'
 import * as fflate from 'fflate'
+import type PptxGenJSClass from 'pptxgenjs'
+import { fixPptxGenJsOutput } from './pptxgenjs-output'
 
 Object.assign(globalThis, { fflate, xmldom })
+
+// The `PptxGenJS` global, defined by its own bundle, which runs before this one.
+// The output check's VM has no such global.
+const pptxgenjs: { value?: typeof PptxGenJSClass } | undefined = Object.getOwnPropertyDescriptor(
+  globalThis,
+  'PptxGenJS',
+)
+if (pptxgenjs?.value) {
+  fixPptxGenJsOutput(pptxgenjs.value)
+}

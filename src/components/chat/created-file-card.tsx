@@ -5,6 +5,7 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useShowSideview } from '@/content-view/context'
 import type { CreatedFile } from '@/office/office-script-tool'
+import { withoutBidiControls } from '@/lib/safe-file-name'
 import { buildDocumentSideviewId } from '@/types/citation'
 import { Check, Download } from 'lucide-react'
 import { FileCard } from './file-card'
@@ -21,7 +22,8 @@ export const CreatedFileCard = ({ file }: { file: CreatedFile }) => {
   const showSideview = useShowSideview()
   const { status, filename, mimeType, isSaved, saveError, download } = useCreatedFileCardState(file)
 
-  const downloadLabel = t`Download ${filename}`
+  const shownName = withoutBidiControls(filename)
+  const downloadLabel = t`Download ${shownName}`
   const problem =
     status === 'error' ? (
       <Trans>Not available on this device</Trans>
@@ -58,9 +60,16 @@ export const CreatedFileCard = ({ file }: { file: CreatedFile }) => {
             onClick={() => void download()}
             aria-label={downloadLabel}
             title={downloadLabel}
-            className="cursor-pointer rounded-full border bg-background p-1 text-muted-foreground shadow-sm hover:text-foreground"
+            // The touch target is the whole button; the visible circle inside stays small enough for the card's corner.
+            className="group/download flex size-[var(--touch-height-default)] cursor-pointer items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            {isSaved ? <Check className="size-3.5" /> : <Download className="size-3.5" />}
+            <span className="rounded-full border bg-background p-1 text-muted-foreground shadow-sm group-hover/download:text-foreground">
+              {isSaved ? (
+                <Check className="size-[var(--icon-size-sm)]" />
+              ) : (
+                <Download className="size-[var(--icon-size-sm)]" />
+              )}
+            </span>
           </button>
         )
       }

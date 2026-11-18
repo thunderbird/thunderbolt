@@ -264,7 +264,8 @@ const pageFurniture = new Set(['sldNum', 'dt', 'hdr', 'ftr'])
 
 /** One slide as text: a heading with its number and title, its other text, then its speaker notes. */
 const slideText = (parts: Parts, path: string, index: number, notesPath?: string) => {
-  const content = lines(parseXml(parts, path))
+  const slide = parseXml(parts, path)
+  const content = lines(slide)
   const title = content.filter(({ placeholder }) => isTitle(placeholder)).map(({ text }) => text)
   const body = content
     .filter(({ placeholder }) => !isTitle(placeholder) && !pageFurniture.has(placeholder ?? ''))
@@ -275,7 +276,11 @@ const slideText = (parts: Parts, path: string, index: number, notesPath?: string
     .map(({ text }) => text)
   // A line break in a title would push the rest of it into the body. Each run of white space is looked at once.
   const titleText = title.join(' ').replace(/\s+/g, (run) => (run.includes('\n') ? ' ' : run))
-  const heading = title.length > 0 ? `## Slide ${index + 1}: ${titleText}` : `## Slide ${index + 1}`
+  // A slide hidden from the slide show is still in the deck; saying so saves the model opening the file to check.
+  const label = ['0', 'false'].includes(slide?.getAttribute('show') ?? '')
+    ? `Slide ${index + 1} (hidden)`
+    : `Slide ${index + 1}`
+  const heading = title.length > 0 ? `## ${label}: ${titleText}` : `## ${label}`
   return [heading, ...body, ...(notes.length > 0 ? ['', 'Speaker notes:', ...notes] : [])].join('\n')
 }
 

@@ -4,11 +4,12 @@
 
 import { Trans, useLingui } from '@lingui/react/macro'
 import { ContentViewHeader } from '@/content-view/header'
-import { useContentView } from '@/content-view/context'
+import { useSideview } from '@/content-view/context'
 import { Button } from '@/components/ui/button'
-import { downloadFile } from '@/lib/download'
+import { i18n } from '@/i18n'
+import { downloadFile, saveErrorMessage } from '@/lib/download'
 import { Download, Loader2 } from 'lucide-react'
-import { type ReactNode, useState } from 'react'
+import { type KeyboardEvent, type ReactNode, useState } from 'react'
 import type { DocumentBlobState } from './use-document-blob'
 
 type ReadyState = Extract<DocumentBlobState, { status: 'ready' }>
@@ -28,9 +29,20 @@ type DocumentPreviewFrameProps = {
  */
 export const DocumentPreviewFrame = ({ fileName, state, children }: DocumentPreviewFrameProps) => {
   const { t } = useLingui()
-  const { close } = useContentView()
+  const { opener, closeSideview: close } = useSideview()
   const [saveError, setSaveError] = useState<string | null>(null)
   const blob = state.status === 'ready' ? state.blob : null
+
+  const handleKeyDown = (event: KeyboardEvent) => {
+    // On a phone the preview is a dialog, which closes on Escape itself and marks the key as handled.
+    if (event.key !== 'Escape' || event.defaultPrevented) {
+      return
+    }
+    close()
+    if (opener instanceof HTMLElement) {
+      opener.focus()
+    }
+  }
 
   const handleDownload = async () => {
     if (!blob) {
@@ -45,7 +57,7 @@ export const DocumentPreviewFrame = ({ fileName, state, children }: DocumentPrev
       })
     } catch (error) {
       console.error('[preview] Could not save the file', error)
-      setSaveError(error instanceof Error ? error.message : String(error))
+      setSaveError(i18n._(saveErrorMessage(error instanceof Error ? error.message : String(error))))
     }
   }
 
@@ -65,7 +77,9 @@ export const DocumentPreviewFrame = ({ fileName, state, children }: DocumentPrev
   )
 
   return (
-    <div className="flex h-full flex-col">
+    // Escape from anywhere in the panel but the sandboxed frame, whose keys never reach this page. As a side panel, it
+    // clears the status bar of a phone in landscape, as the other side panel views do.
+    <div className="flex h-full flex-col md:pt-[var(--safe-area-top-padding)]" onKeyDown={handleKeyDown}>
       <ContentViewHeader title={fileName} onClose={close} actions={downloadAction} />
 
       {saveError && (

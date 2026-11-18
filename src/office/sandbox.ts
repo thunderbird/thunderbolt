@@ -221,7 +221,8 @@ export const runSandboxedScript = async (
 
   const shownLogs = clip(logs)
   // Checked only after the script's VM is gone, so the two never hold memory at the same time.
-  const error = stopped ?? finished?.error ?? (await findBrokenFile(runtime, files, limits, deadline, fromExcelize))
+  const error =
+    stopped ?? finished?.error ?? (await findBrokenFile(runtime, files, limits, deadline, fromExcelize, inputs))
   if (error === undefined) {
     const listed = formulaErrors.length > 0 ? formulaErrors.slice(0, maxFormulaErrors) : undefined
     return { ok: true, files, logs: shownLogs, formulaErrors: listed }

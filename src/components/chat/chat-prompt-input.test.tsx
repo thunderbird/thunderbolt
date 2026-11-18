@@ -32,6 +32,7 @@ import * as adapterCache from '@/acp/adapter-cache'
 import * as attachmentStorage from '@/lib/file-blob-storage'
 import * as chatMessagesLoader from './chat-messages-loader'
 import type { Agent } from '@/types/acp'
+import type { PathFile } from '@/lib/native-files'
 import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
 import type { ImageSupportCheck } from './use-image-support-check'
 // The fake clock cannot wait for cold module I/O; browser coverage exercises the first lazy load.
@@ -1241,6 +1242,175 @@ describe('ChatPromptInput', () => {
       const preventDefaultSpy = pasteItems(textarea, [{ kind: 'string', type: 'text/plain', getAsFile: () => null }])
 
       expect(preventDefaultSpy).not.toHaveBeenCalled()
+    })
+
+    describe('on Linux, where files copied in a file manager arrive by path', () => {
+      const execCommand = mock(() => true)
+
+      beforeEach(() => {
+        Object.defineProperty(document, 'execCommand', { value: execCommand, configurable: true })
+      })
+
+      afterEach(() => {
+        Reflect.deleteProperty(document, 'execCommand')
+        execCommand.mockClear()
+      })
+
+      const pathFile = (name: string, size: number, read: () => Promise<File | null>) => ({
+        name,
+        type: '',
+        size,
+        read: mock(read),
+      })
+
+      /** Renders the composer as on Linux, with `copied` standing in for the OS clipboard's file manager entry. */
+      const renderOnLinux = (
+        copied: PathFile[],
+        readCopiedFiles = async () => copied,
+        useNativeFileDrop: (options: { onDrop: (paths: string[], links: string[]) => void }) => void = () => {},
+      ) => {
+        const { mockUseChat } = setupStore()
+        render(
+          <ChatPromptInput
+            useChat={mockUseChat}
+            useIsMobile={createMockUseIsMobile()}
+            readsFilesByPath={() => true}
+            readCopiedFiles={readCopiedFiles}
+            useNativeFileDrop={useNativeFileDrop}
+          />,
+          { wrapper: TestWrapper },
+        )
+        return screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
+      }
+
+      /** Pastes what WebKitGTK shows for a file manager copy or a copied link: `text/uri-list`, no file items. */
+      const pasteUriList = (textarea: HTMLTextAreaElement, text: string, uriList = '') => {
+        const pasteEvent = createEvent.paste(textarea, {
+          clipboardData: {
+            items: [],
+            files: [],
+            types: ['text/uri-list', 'text/plain'],
+            getData: (type: string) => ({ 'text/plain': text, 'text/uri-list': uriList })[type] ?? '',
+          },
+        })
+        const preventDefaultSpy = mock(() => {})
+        Object.defineProperty(pasteEvent, 'preventDefault', { value: preventDefaultSpy })
+        act(() => {
+          textarea.focus()
+          fireEvent(textarea, pasteEvent)
+        })
+        return preventDefaultSpy
+      }
+
+      it('pastes the text when no file manager copied files', async () => {
+        const textarea = renderOnLinux([])
+        const preventDefaultSpy = pasteUriList(textarea, 'https://example.com/report')
+        await flushAttachments()
+
+        expect(preventDefaultSpy).toHaveBeenCalled()
+        expect(execCommand).toHaveBeenCalledWith('insertText', false, 'https://example.com/report')
+      })
+
+      it('pastes the text when the clipboard cannot be read for copied files', async () => {
+        const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+        const textarea = renderOnLinux([], async () => {
+          throw new Error('no clipboard')
+        })
+        pasteUriList(textarea, 'https://example.com/report')
+        await flushAttachments()
+
+        expect(execCommand).toHaveBeenCalledWith('insertText', false, 'https://example.com/report')
+        expect(consoleError).toHaveBeenCalled()
+        consoleError.mockRestore()
+      })
+
+      it('pastes the links of the uri-list when the plain text reads empty', async () => {
+        const textarea = renderOnLinux([])
+        pasteUriList(
+          textarea,
+          '',
+          '# copied links\r\nhttps://example.com/a?x=1\r\nfile:///etc/passwd\r\nhttps://b.example\r\n',
+        )
+        await flushAttachments()
+
+        expect(execCommand).toHaveBeenCalledWith('insertText', false, 'https://example.com/a?x=1\nhttps://b.example')
+      })
+
+      it('pastes nothing for a uri-list of local files that no file manager copied', async () => {
+        const textarea = renderOnLinux([])
+        pasteUriList(textarea, '', 'file:///etc/passwd\r\n')
+        await flushAttachments()
+
+        expect(execCommand).not.toHaveBeenCalled()
+        expect(screen.queryByLabelText(/^Remove /)).not.toBeInTheDocument()
+      })
+
+      it('types a dragged link into the composer', async () => {
+        const drop = Promise.withResolvers<(paths: string[], links: string[]) => void>()
+        const textarea = renderOnLinux([], undefined, ({ onDrop }) => drop.resolve(onDrop))
+        const onDrop = await drop.promise
+        await act(async () => onDrop([], ['https://example.com/a?x=1']))
+
+        expect(document.activeElement).toBe(textarea)
+        expect(execCommand).toHaveBeenCalledWith('insertText', false, 'https://example.com/a?x=1')
+      })
+
+      it('drops the text when focus left the composer before the clipboard answered', async () => {
+        const clipboard = Promise.withResolvers<PathFile[]>()
+        const textarea = renderOnLinux([], () => clipboard.promise)
+        pasteUriList(textarea, 'https://example.com/report')
+        const search = document.body.appendChild(document.createElement('input'))
+        search.focus()
+
+        clipboard.resolve([])
+        await flushAttachments()
+
+        expect(execCommand).not.toHaveBeenCalled()
+        search.remove()
+      })
+
+      it('attaches the copied files instead of their text', async () => {
+        const textarea = renderOnLinux([pathFile('deck.pptx', 2, async () => new File(['PK'], 'deck.pptx'))])
+        pasteUriList(textarea, '/home/ana/deck.pptx')
+        await flushAttachments()
+
+        expect(screen.getByLabelText('Remove deck.pptx')).toBeInTheDocument()
+        expect(execCommand).not.toHaveBeenCalled()
+      })
+
+      it('refuses a copied file over the size cap without reading it', async () => {
+        const huge = pathFile('huge.pptx', 26 * 1024 * 1024, async () => new File(['PK'], 'huge.pptx'))
+        const textarea = renderOnLinux([huge])
+        pasteUriList(textarea, '')
+        await flushAttachments()
+
+        expect(screen.getByText('"huge.pptx" is too large (max 25MB).')).toBeInTheDocument()
+        expect(huge.read).not.toHaveBeenCalled()
+      })
+
+      it('names a copied file it cannot read and still attaches the rest', async () => {
+        const textarea = renderOnLinux([
+          pathFile('locked.docx', 4, async () => null),
+          pathFile('deck.pptx', 2, async () => new File(['PK'], 'deck.pptx')),
+        ])
+        pasteUriList(textarea, '')
+        await flushAttachments()
+
+        expect(screen.getByText('Couldn\'t read "locked.docx".')).toBeInTheDocument()
+        expect(screen.getByLabelText('Remove deck.pptx')).toBeInTheDocument()
+      })
+
+      it('reads no file past the attachment limit', async () => {
+        const files = Array.from({ length: 11 }, (_, index) =>
+          pathFile(`deck-${index}.pptx`, 2, async () => new File(['PK'], `deck-${index}.pptx`)),
+        )
+        const textarea = renderOnLinux(files)
+        pasteUriList(textarea, '')
+        await flushAttachments()
+
+        expect(screen.getByText('You can attach up to 10 files.')).toBeInTheDocument()
+        expect(files[10].read).not.toHaveBeenCalled()
+      })
     })
 
     it('rejects an unsupported pasted file type with an error banner', async () => {

@@ -54,6 +54,7 @@
     "store:default",
     "fs:default",
     "fs:allow-app-write-recursive",
+    "fs:allow-stat",
     {
       "identifier": "fs:allow-exists",
       "allow": [

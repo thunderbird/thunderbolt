@@ -93,7 +93,22 @@ describe('runInSandboxWorker', () => {
     const run = runInSandboxWorker(job(''), undefined, () => worker)
     worker.onerror?.(new ErrorEvent('error', { message: 'Failed to fetch' }))
 
-    expect(await run).toMatchObject({ ok: false, error: 'The sandbox failed to start: Failed to fetch' })
+    expect(await run).toMatchObject({
+      ok: false,
+      error: 'The sandbox failed to start: Failed to fetch. Call the tool again.',
+    })
+  })
+
+  it('names a likely cause when the Worker file did not load', async () => {
+    const worker = createFakeWorker()
+    const run = runInSandboxWorker(job(''), undefined, () => worker)
+    worker.onerror?.(new ErrorEvent('error'))
+
+    expect(await run).toMatchObject({
+      ok: false,
+      error:
+        'The sandbox failed to start: its code did not load, for example because the app is offline. Call the tool again.',
+    })
   })
 
   it('stops the Worker when the turn is stopped', async () => {

@@ -284,8 +284,23 @@ for a document opened from a search result. The file is untrusted, so:
   held to the 32 MiB total only.
 - A file the library cannot read, damaged or using something it does not handle (a delimiter equation with no
   properties, for one), shows that it can't be previewed, and Download still works.
-- Pages wider than the panel, as on a phone, scale down to its width
+- Pages wider than their frame, on the card or in the panel, scale down to its width. Where `pagesZoomToFit` holds,
+  the view adds `fitStyle` (both in `snapshot.ts`) after the markup, and CSS `zoom` lays the pages out again at that
+  size. That keeps thin table borders that Firefox drops from a frame scaled with `transform`. `pagesZoomToFit`
+  measures a hidden block once per view, because a syntax check is not enough. Safari 26 parses the zoom but computes
+  `tan(atan2())` wrong when one side is a container unit: the pages kept their full width, cut off on the left, or
+  shrank to a narrow column of slides. It also holds zoomed text to at least 9px, so even a right zoom would lay a
+  page's text out bigger than the rest of the page, and a card's lines would wrap early. Safari before 16 lacks
+  container units.
+  In those browsers, the macOS app and iOS included, the frame keeps the pages' width and is drawn smaller with
+  `transform`, which keeps the text and the borders in proportion. On a phone the panel lays the pages out again at
+  its width instead, so the text keeps its size
   ([`snapshot-pages.tsx`](../../../src/widgets/document-result/snapshot-pages.tsx)).
+- WebKit at 3 device pixels per CSS pixel, as on an iPhone, drops a collapsed table border thinner than 2 device
+  pixels: a document's default 0.5pt border at full size, and thin borders on pages drawn smaller with `zoom` or with
+  `transform`. So on a screen that dense, every snapshot gives its tables separate borders, which every engine draws.
+  A border two cells share is then drawn twice: 2 device pixels in WebKit, and 2 CSS pixels instead of 1 in Chromium
+  and Firefox. The text under a table moves down by a pixel or so. A table's own cell spacing is kept.
 
 The size and unpacking limits, the page's policy and the two refusals live in
 [`snapshot.ts`](../../../src/widgets/document-result/snapshot.ts), which the PPTX preview shares.

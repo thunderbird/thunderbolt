@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useLingui } from '@lingui/react/macro'
+import { importWhenReachable } from '@/lib/import-when-reachable'
 import type { HttpClient } from '@/contexts'
 import { getAttachment } from '@/lib/file-blob-storage'
 import { useEffect, useReducer, useRef } from 'react'
@@ -32,16 +33,36 @@ const reducer = (_state: DocumentBlobState, action: DocumentBlobAction): Documen
   }
 }
 
-/** Renders a DOCX's pages or a PPTX's slides for its preview; other types skip conversion. Each renderer loads only
- *  for its own type, which keeps both out of the entry chunk. */
+// Each import starts only once the app's server answers, so a renderer tried while it was down still loads later.
+const docxSnapshotModule = importWhenReachable(() => import('./docx-snapshot'))
+const pptxSnapshotModule = importWhenReachable(() => import('./pptx-snapshot'))
+
+/** Loads the renderer for a DOCX or a PPTX, each only for its own type, which keeps both out of the entry chunk. */
+export const snapshotRenderers = {
+  docx: async () => (await docxSnapshotModule()).renderDocxSnapshot,
+  pptx: async () => (await pptxSnapshotModule()).renderPptxSnapshot,
+}
+
+/** The renderer for the file type, or null when its code does not load, as on a broken network. */
+const loadRenderer = async (fileType: keyof typeof snapshotRenderers) => {
+  try {
+    return await snapshotRenderers[fileType]()
+  } catch (error) {
+    console.error('[preview] Could not load the renderer', error)
+    return null
+  }
+}
+
+/**
+ * Renders a DOCX's pages or a PPTX's slides for its preview; other types skip conversion. A renderer that does not
+ * load gives `notLoaded`, so the file stays ready and Download still saves it.
+ */
 const renderSnapshotIfNeeded = async (blob: Blob, fileType: FileType): Promise<DocumentSnapshot | null> => {
-  if (fileType === 'docx') {
-    return (await import('./docx-snapshot')).renderDocxSnapshot(blob)
+  if (fileType !== 'docx' && fileType !== 'pptx') {
+    return null
   }
-  if (fileType === 'pptx') {
-    return (await import('./pptx-snapshot')).renderPptxSnapshot(blob)
-  }
-  return null
+  const render = await loadRenderer(fileType)
+  return render ? render(blob) : { kind: 'notLoaded' }
 }
 
 /**

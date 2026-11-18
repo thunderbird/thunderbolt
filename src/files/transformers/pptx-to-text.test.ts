@@ -105,6 +105,17 @@ describe('pptxToText', () => {
     ])
   })
 
+  it('marks a slide hidden from the slide show', async () => {
+    const { text } = await read(
+      edited({ 'ppt/slides/slide2.xml': (xml) => xml.replace('<p:sld ', '<p:sld show="0" ') }),
+    )
+
+    expect(headings(text)).toEqual([
+      '## Slide 1: Title of the first slide',
+      '## Slide 2 (hidden): This is the second slide',
+    ])
+  })
+
   it('reads relationships whatever prefix their namespace has', async () => {
     const rels = 'ppt/_rels/presentation.xml.rels'
     const { text } = await read(

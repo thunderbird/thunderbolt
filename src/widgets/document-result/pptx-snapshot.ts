@@ -150,6 +150,7 @@ const drawingNs = 'http://schemas.openxmlformats.org/drawingml/2006/main'
 const halfTurn = 10_800_000
 const fullTurn = 2 * halfTurn
 
+/** Whether a slide's XML boolean attribute is set: the format writes true as `1` or `true`. */
 const isTrue = (value: string | null) => value === '1' || value === 'true'
 
 /** The node's first child element with the local name, whatever its prefix. */

@@ -261,7 +261,7 @@ The Playwright suite in [`e2e/`](../../../e2e) covers what a unit test cannot: b
 | `oidc`             | `/(?:oidc\|acp-\|proxy-).*\.spec\.ts$/` | `http://localhost:1421` | OIDC frontend + backend, mock OIDC IdP                     |
 | `saml`             | `/saml.*\.spec\.ts$/`                   | `http://localhost:1422` | SAML frontend + backend, mock SAML IdP                     |
 | `min-version-gate` | `/min-version-gate\.spec\.ts$/`         | `http://localhost:1421` | Both the ungated OIDC pair and the gated pair on 1423/8004 |
-| `artifact`         | `/\/artifact-[^/]*\.spec\.ts$/`         | none                    | none, sandboxed iframes on `about:blank`                   |
+| `artifact`         | `/\/artifact-[^/]*\.spec\.ts$/`         | none                    | Playwright serves the host page at `https://artifact-host.test/` |
 
 Each anchor records a breakage:
 

@@ -186,7 +186,7 @@ it('holds the active step while an encryption operation is in flight', () => {
 })
 
 it('keeps recovery active when Back is pressed before recovery finishes', async () => {
-  const response = Promise.withResolvers<void>()
+  const response = Promise.withResolvers<encryptionService.RecoverResult>()
   const recover = spyOn(encryptionService, 'recoverWithKey').mockImplementation(() => response.promise)
   try {
     const { result } = renderHook(() => useSyncSetup(), { wrapper: createQueryTestWrapper() })
@@ -200,7 +200,7 @@ it('keeps recovery active when Back is pressed before recovery finishes', async 
     expect(result.current.step).toBe('recovery-key-entry')
     expect(result.current.isLoading).toBe(true)
     await act(async () => {
-      response.resolve()
+      response.resolve({ outcome: 'recovered' })
       expect(await pending).toBe(true)
     })
   } finally {
@@ -259,7 +259,7 @@ describe('sync setup operation outcomes', () => {
     ensure: spyOn(encryptionService, 'ensureV2Encryption').mockResolvedValue({ outcome: 'awaiting-approval' }),
     bootstrap: spyOn(encryptionService, 'completeFirstDeviceSetup').mockResolvedValue('recovery phrase'),
     canary: spyOn(encryptionApi, 'checkCanaryExists').mockResolvedValue(true),
-    recover: spyOn(encryptionService, 'recoverWithKey').mockResolvedValue(undefined),
+    recover: spyOn(encryptionService, 'recoverWithKey').mockResolvedValue({ outcome: 'recovered' }),
     approve: spyOn(encryptionService, 'checkApprovalAndUnwrap').mockResolvedValue(true),
     prf: spyOn(passkeys, 'getPasskeyPrfOutput').mockResolvedValue(new Uint8Array([1, 2, 3])),
     unlock: spyOn(encryptionService, 'unlockWithPasskey').mockResolvedValue(undefined),

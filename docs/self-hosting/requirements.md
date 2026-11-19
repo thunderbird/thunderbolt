@@ -23,7 +23,7 @@ Thunderbolt is six services. The Kubernetes and AWS deployments run all six; the
 | Kubernetes     | A conformant cluster, Helm 3, an ingress controller, and a default StorageClass for the database disk | Teams with an existing cluster         |
 | AWS (Pulumi)   | An AWS account, the Pulumi CLI, and AWS credentials. Creates ECS Fargate or EKS                       | Green-field AWS deployments            |
 
-The Helm chart assumes an nginx ingress controller by default, and any other controller works once you set the ingress class to match.
+The [Kubernetes guide](./kubernetes.md) uses Traefik. If you supply another maintained controller, set `ingress.className` to match and ensure it strips the `/powersync` prefix before forwarding sync requests.
 
 ## CPU, memory and disk
 

@@ -59,11 +59,12 @@ describe('RecoveryContinuityStatusCard', () => {
     expect(screen.getByRole('button', { name: 'Update recovery phrase' })).toBeDisabled()
   })
 
-  it('points an untrusted device to its approved devices', () => {
+  it('sends an untrusted device to an approved one, without a device list it cannot load', () => {
     renderCard({ status: 'untrusted', phraseUpdateRequired: true, deviceTrusted: false })
     expect(fact('This device')).toHaveTextContent('Not approved yet')
+    expect(screen.getByText(/Open Thunderbolt on an approved device/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Update recovery phrase' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'View devices' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'View devices' })).toBeNull()
   })
 
   it('explains re-verification on an unverified device, even once the phrase is sealed', () => {
@@ -127,6 +128,21 @@ describe('RecoveryContinuityStatusCard', () => {
   it('offers Review devices after an update elsewhere', () => {
     renderCard({ notice: 'updatedElsewhere' })
     expect(screen.getByRole('button', { name: 'Review devices' })).toBeInTheDocument()
+  })
+
+  it('announces an update elsewhere on an unapproved device without a device list it cannot load', () => {
+    renderCard({ notice: 'updatedElsewhere', deviceTrusted: false })
+    expect(screen.getByText('Updated on another device')).toBeInTheDocument()
+    expect(screen.getByText(/review your devices from an approved device\./)).toBeInTheDocument()
+    expect(fact('This device')).toHaveTextContent('Not approved yet')
+    expect(screen.getByRole('button', { name: 'Got it' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Review devices' })).toBeNull()
+  })
+
+  it('links an unverified device to its devices once after an update elsewhere', () => {
+    renderCard({ status: 'unverified', notice: 'updatedElsewhere', deviceTrusted: false })
+    expect(screen.getByRole('button', { name: 'View devices' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Review devices' })).toBeNull()
   })
 
   it('focuses its title from the deep link, clear of the floating header', () => {

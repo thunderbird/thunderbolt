@@ -151,6 +151,15 @@ const happyUpstream = (chatFrames: Array<Record<string, unknown> | '[DONE]'>): U
 }
 
 describe('HaystackAcpServer', () => {
+  it('rejects deep JSON reparsed from text before echoing an attacker-controlled id', async () => {
+    const { server, sent } = buildServer({ upstream: async () => jsonResponse(200, {}) })
+    const id = '['.repeat(256) + '0' + ']'.repeat(256)
+    await server.handleMessage(' {"jsonrpc":"2.0","method":"initialize","id":' + id + '}')
+    const reply = JSON.parse(sent[0])
+    expect(reply.error?.code).toBe(-32600)
+    expect(reply.id).toBeNull()
+  })
+
   it('replies to initialize advertising loadSession + plaintext-only prompt capabilities', async () => {
     const { server, sent } = buildServer({ upstream: () => Promise.resolve(sseResponse(['[DONE]'])) })
     await server.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 1, method: AGENT_METHODS.initialize }))

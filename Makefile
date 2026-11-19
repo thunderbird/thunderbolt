@@ -1,4 +1,4 @@
-.PHONY: help setup setup-symlinks install build build-desktop build-desktop-local build-android build-ios clean run dev dev-desktop dev-ios dev-android dev-android-init doctor doctor-q up down nuke status thunderbot-pull thunderbot-push thunderbot-customize
+.PHONY: help setup install build build-desktop build-desktop-local build-android build-ios clean run dev dev-desktop dev-ios dev-android dev-android-init doctor doctor-q up down nuke status
 
 # Color definitions
 BLUE := \033[0;34m
@@ -24,7 +24,7 @@ help:
 	@echo "Available commands:"
 	@echo ""
 	@echo "  Setup:"
-	@echo "    make setup           - Install frontend + backend dependencies and agent symlinks"
+	@echo "    make setup           - Install frontend + backend dependencies"
 	@echo "    make install         - Frontend dependencies only (bun install)"
 	@echo "    make doctor          - Verify dev tools, env files, and mobile SDKs"
 	@echo "    make doctor-q        - Quiet doctor (only prints issues)"
@@ -58,23 +58,9 @@ help:
 	@echo "    make lint-fix        - ESLint with --fix"
 	@echo "    make format          - Format frontend, backend, Rust"
 	@echo "    make format-check    - Check formatting"
-	@echo ""
-	@echo "  Misc:"
-	@echo "    make thunderbot-pull       - Pull latest skills from thunderbot"
-	@echo "    make thunderbot-push       - Push skill changes back to thunderbot"
-	@echo "    make thunderbot-customize  - Fork a thunderbot command (FILE=name.md)"
-	@echo "    make setup-symlinks        - Create Claude Code agent symlinks"
-
-# Create agent symlinks for Claude Code
-setup-symlinks:
-	@mkdir -p .claude/commands .claude/agents
-	@for f in .thunderbot/thunder*.md; do ln -sf "../../$$f" ".claude/commands/$$(basename $$f)"; done
-	@ln -sfn ../../.thunderbot/thunderbot .claude/commands/thunderbot
-	@ln -sf ../../.thunderbot/thunderbot.md .claude/agents/thunderbot.md
-	@echo "$(GREEN)✓ Agent symlinks configured$(NC)"
 
 # Setup project - install frontend and backend dependencies
-setup: setup-symlinks
+setup:
 	@echo "$(BLUE)→ Installing frontend dependencies...$(NC)"
 	bun install
 	@echo "$(BLUE)→ Installing backend dependencies...$(NC)"
@@ -286,21 +272,3 @@ nuke:
 
 status:
 	@bash scripts/docker-status.sh
-
-# Thunderbot skill sync
-thunderbot-pull:
-	@echo "$(BLUE)→ Pulling latest skills from thunderbot...$(NC)"
-	git subtree pull --prefix=.thunderbot thunderbot main --squash
-	@$(MAKE) setup-symlinks
-	@echo "$(GREEN)✓ Skills updated!$(NC)"
-
-thunderbot-push:
-	@echo "$(BLUE)→ Pushing skill changes to thunderbot...$(NC)"
-	git subtree push --prefix=.thunderbot thunderbot main
-	@echo "$(GREEN)✓ Skills pushed!$(NC)"
-
-thunderbot-customize:
-	@if [ -z "$(FILE)" ]; then echo "Usage: make thunderbot-customize FILE=thunderfix.md"; exit 1; fi
-	@if [ ! -L ".claude/commands/$(FILE)" ]; then echo "$(YELLOW).claude/commands/$(FILE) is not a symlink — already customized or doesn't exist$(NC)"; exit 1; fi
-	@rm ".claude/commands/$(FILE)" && cp ".thunderbot/$(FILE)" ".claude/commands/$(FILE)"
-	@echo "$(GREEN)✓ .claude/commands/$(FILE) is now a local copy — edit freely$(NC)"

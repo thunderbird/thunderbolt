@@ -12,14 +12,22 @@ import { ExternalLinkToggleGroup, getBehaviorOptions } from './external-link-tog
 
 // Platform predicates are injected (per docs/internals/development/testing.md: DI over module
 // mocks), so the platform matrix is a pure test and the component test runs as web.
-const web = { isDesktop: () => false, isTauri: () => false }
-const tauriDesktop = { isDesktop: () => true, isTauri: () => true }
-const tauriMobile = { isDesktop: () => false, isTauri: () => true }
+type PlatformDeps = NonNullable<Parameters<typeof getBehaviorOptions>[0]>
+const web: PlatformDeps = { isDesktop: () => false, isTauri: () => false, getPlatform: () => 'web' }
+const tauriDesktop: PlatformDeps = { isDesktop: () => true, isTauri: () => true, getPlatform: () => 'macos' }
+const tauriMobile: PlatformDeps = { isDesktop: () => false, isTauri: () => true, getPlatform: () => 'ios' }
 
 // Options hold `msg` descriptors, so resolve through i18n rather than reading `.label`.
 const labels = (deps: typeof web) => getBehaviorOptions(deps).map((option) => i18n._(option.label))
 
 describe('getBehaviorOptions', () => {
+  it('omits Sidebar on Linux desktop', () => {
+    expect(labels({ ...tauriDesktop, getPlatform: () => 'linux' })).toEqual(['Ask', 'Browser'])
+  })
+
+  it('keeps Sidebar on Windows desktop', () => {
+    expect(labels({ ...tauriDesktop, getPlatform: () => 'windows' })).toEqual(['Ask', 'Sidebar', 'Browser'])
+  })
   it('offers Ask and New tab on web — no Sidebar without the side panel', () => {
     expect(labels(web)).toEqual(['Ask', 'New tab'])
   })

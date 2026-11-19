@@ -23,7 +23,7 @@ Thunderbolt is six services. The Kubernetes and AWS deployments run all six; the
 | Kubernetes     | A conformant cluster, Helm 3, an ingress controller, and a default StorageClass for the database disk | Teams with an existing cluster         |
 | AWS (Pulumi)   | An AWS account, the Pulumi CLI, and AWS credentials. Creates ECS Fargate or EKS                       | Green-field AWS deployments            |
 
-The Helm chart assumes an nginx ingress controller by default, and any other controller works once you set the ingress class to match.
+The [Kubernetes guide](./kubernetes.md) uses Traefik. If you supply another maintained controller, set `ingress.className` to match and ensure it strips the `/powersync` prefix before forwarding sync requests.
 
 ## CPU, memory and disk
 
@@ -107,12 +107,13 @@ Kubernetes and AWS publish no host ports. Traffic arrives at the ingress or load
 | `api.anthropic.com`                                  | Backend      | `ANTHROPIC_API_KEY` is set                  |
 | `inference.tinfoil.sh`                               | Backend      | Confidential models are in use              |
 | `api.exa.ai`                                         | Backend      | `EXA_API_KEY` is set, for web search        |
-| `api.resend.com`                                     | Backend      | `RESEND_API_KEY` is set, for sign-in email  |
+| `api.resend.com`                                     | Backend      | `RESEND_API_KEY` is set, for sign-in email |
 | `us.i.posthog.com`                                   | Backend, app | `POSTHOG_API_KEY` is set                    |
 | Your OTLP collector                                  | Backend      | `OTEL_EXPORTER_OTLP_ENDPOINT` is set        |
 | `api.open-meteo.com`, `geocoding-api.open-meteo.com` | App, backend | Weather and location results                |
 | `basemaps.cartocdn.com`                              | App          | Map tiles                                   |
 | `cdn.crabnebula.app`                                 | Desktop app  | Update checks, official desktop builds only |
+| `api.github.com`                                     | Website      | Optional: offering a desktop release newer than the one the website image was built with |
 | Public relay servers run by n0                       | App, CLI     | Connecting the command-line tool to the app |
 
 Confidential models are the ones that run inside a hardware-isolated enclave, which the app verifies before it sends anything. See [Models and providers](./models.md) for what that means in practice.

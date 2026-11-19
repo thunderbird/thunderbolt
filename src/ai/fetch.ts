@@ -104,9 +104,14 @@ fetch.preconnect = baseFetch.preconnect
 
 // Otari supports browser CORS. Keep its delegated key and prompts on the chosen
 // gateway, independent of Thunderbolt's backend/proxy or SSO cookie settings.
+// SDKs set User-Agent, which Firefox sends and lists in the preflight; Otari's
+// CORS allowlist rejects it, so drop it and let the browser send its own.
 const otariFetch: FetchFn = Object.assign(
-  (input: RequestInfo | URL, init?: RequestInit) =>
-    baseFetch(input, { ...init, credentials: 'omit', redirect: 'error' }),
+  (input: RequestInfo | URL, init?: RequestInit) => {
+    const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined))
+    headers.delete('user-agent')
+    return baseFetch(input, { ...init, headers, credentials: 'omit', redirect: 'error' })
+  },
   { preconnect: baseFetch.preconnect },
 )
 
@@ -646,11 +651,12 @@ export const prepareAiRequestConfig = async ({
   const sourceCollector = webToolBudget?.sourceCollector ?? []
   const toolCallCache: ToolCallCache = new Map()
   const availableTools = supportsTools
-    ? await getAvailableTools(httpClient, sourceCollector, {
-        settings,
-        integrationStatus,
-        ...(await loadConnectedSearchApis(db)),
-      })
+    ? await getAvailableTools(
+        httpClient,
+        sourceCollector,
+        { settings, integrationStatus, ...(await loadConnectedSearchApis(db)) },
+        webToolBudget?.priorSources,
+      )
     : []
   const appToolset = addSkillTool(
     createToolset(availableTools, toolCallCache, webToolBudget),

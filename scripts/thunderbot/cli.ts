@@ -1,0 +1,76 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import { handlePRThreads, handlePRReply } from './cli/pr-threads'
+import { handlePRComments, handlePRMinimize } from './cli/pr-comments'
+import { handleCIStatus, handleCILogs } from './cli/ci'
+
+type SubcommandHandler = (args: string[]) => Promise<void>
+
+const subcommands = {
+  'pr-threads': {
+    handler: handlePRThreads,
+    description: 'List/resolve PR review threads (--pr N [--unresolved] [--resolve-all] [--json])',
+  },
+  'pr-reply': {
+    handler: handlePRReply,
+    description: 'Reply to a review thread comment (--pr N --comment-id ID --body "text")',
+  },
+  'pr-comments': {
+    handler: handlePRComments,
+    description: 'List PR issue-level comments (--pr N [--actionable] [--json])',
+  },
+  'pr-minimize': {
+    handler: handlePRMinimize,
+    description: 'Minimize actionable issue comments (--pr N)',
+  },
+  'ci-status': {
+    handler: handleCIStatus,
+    description: 'Get CI check status (--pr N [--json])',
+  },
+  'ci-logs': {
+    handler: handleCILogs,
+    description: 'Get failed CI run logs ([--branch name])',
+  },
+} satisfies Record<string, { handler: SubcommandHandler; description: string }>
+
+/** Own-key check, so argv values like `toString` never resolve to prototype members. */
+const isSubcommand = (name: string): name is keyof typeof subcommands => Object.hasOwn(subcommands, name)
+
+const printUsage = () => {
+  console.log('Usage: bun run scripts/thunderbot/cli.ts <subcommand> [options]\n')
+  console.log('Subcommands:')
+  for (const [name, { description }] of Object.entries(subcommands)) {
+    console.log(`  ${name.padEnd(16)} ${description}`)
+  }
+}
+
+/** Parse subcommand from process.argv and route to handler */
+const main = async () => {
+  const [subcommand, ...args] = process.argv.slice(2)
+
+  if (!subcommand || subcommand === '--help' || subcommand === '-h') {
+    printUsage()
+    process.exit(subcommand ? 0 : 1)
+  }
+
+  if (!isSubcommand(subcommand)) {
+    console.error(`Unknown subcommand: ${subcommand}\n`)
+    printUsage()
+    process.exit(1)
+  }
+
+  try {
+    await subcommands[subcommand].handler(args)
+  } catch (err) {
+    console.error(`Error: ${err instanceof Error ? err.message : String(err)}`)
+    process.exit(1)
+  }
+}
+
+if (import.meta.main) {
+  await main()
+}
+
+export { main, subcommands }

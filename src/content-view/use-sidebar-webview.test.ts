@@ -4,7 +4,8 @@
 
 import { getClock } from '@/testing-library'
 import { act, renderHook } from '@testing-library/react'
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import * as platform from '@/lib/platform'
 import { type RefObject } from 'react'
 import { borderOffset, coordinateOffset, previewHeaderHeight } from './constants'
 import { useSidebarWebview, type SidebarWebviewConfig } from './use-sidebar-webview'
@@ -34,9 +35,8 @@ const mockWindow = {
 }
 
 // Mock Tauri APIs - this is necessary because the hook is tightly coupled to them
-mock.module('@tauri-apps/api/webview', () => ({
-  Webview: mock(() => mockWebview),
-}))
+const createWebview = mock(() => mockWebview)
+mock.module('@tauri-apps/api/webview', () => ({ Webview: createWebview }))
 
 mock.module('@tauri-apps/api/window', () => ({
   getCurrentWindow: mock(() => mockWindow),
@@ -54,7 +54,12 @@ mock.module('@tauri-apps/api/webviewWindow', () => ({
 }))
 
 describe('useSidebarWebview', () => {
+  let platformSpy: ReturnType<typeof spyOn<typeof platform, 'getPlatform'>>
+  afterEach(() => platformSpy.mockRestore())
+
   beforeEach(() => {
+    platformSpy = spyOn(platform, 'getPlatform').mockReturnValue('web')
+    createWebview.mockClear()
     // Reset all mocks before each test
     mockWebview.setPosition.mockClear()
     mockWebview.setSize.mockClear()
@@ -64,6 +69,96 @@ describe('useSidebarWebview', () => {
     mockWebview.once.mockClear()
     mockWindow.onResized.mockClear()
     mockWindow.onMoved.mockClear()
+  })
+
+  it.each(['http://example.com', 'https://example.com', 'HTTPS://example.com', 'http://127.0.0.1:8000'])(
+    'never creates a Linux native preview for %s',
+    async (url) => {
+      platformSpy.mockReturnValue('linux')
+      const { result } = renderHook(() => useSidebarWebview({ url }, { current: document.createElement('div') }))
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      expect(createWebview).not.toHaveBeenCalled()
+      expect(result.current.webview).toBeNull()
+      expect(result.current.isInitialized).toBe(false)
+    },
+  )
+
+  it.each(['macos', 'windows'] as const)('preserves external native previews on %s', async (os) => {
+    platformSpy.mockReturnValue(os)
+    const containerRef = { current: document.createElement('div') }
+    const { result } = renderHook(() => useSidebarWebview({ url: 'https://example.com' }, containerRef))
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(createWebview).toHaveBeenCalledTimes(1)
+    expect(result.current.isInitialized).toBe(true)
+  })
+
+  it.each(['/index.html', 'tauri://localhost/index.html'])('preserves trusted local Linux content %s', async (url) => {
+    platformSpy.mockReturnValue('linux')
+    const containerRef = { current: document.createElement('div') }
+    const { result } = renderHook(() => useSidebarWebview({ url }, containerRef))
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(createWebview).toHaveBeenCalledTimes(1)
+    expect(result.current.isInitialized).toBe(true)
+  })
+
+  it.each(['resize', 'move'])('unsubscribes a %s listener that registers after unmount', async (stage) => {
+    const pending = Promise.withResolvers<() => void>()
+    const unlisten = mock(() => {})
+    const registration = stage === 'resize' ? mockWindow.onResized : mockWindow.onMoved
+    registration.mockImplementationOnce(() => pending.promise)
+    const containerRef = { current: document.createElement('div') }
+    const { unmount } = renderHook(() => useSidebarWebview({ url: 'https://example.com' }, containerRef))
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(registration).toHaveBeenCalledTimes(1)
+    unmount()
+    await act(async () => {
+      pending.resolve(unlisten)
+    })
+    expect(unlisten).toHaveBeenCalledTimes(1)
+    if (stage === 'resize') {
+      expect(mockWindow.onMoved).not.toHaveBeenCalled()
+    }
+  })
+
+  it('does not clear a replacement webview when an earlier close finishes', async () => {
+    const pending = Promise.withResolvers<void>()
+    const old = { ...mockWebview, close: mock(() => pending.promise) }
+    const current = { ...mockWebview, close: mock(async () => {}) }
+    createWebview.mockImplementationOnce(() => old).mockImplementationOnce(() => current)
+    const containerRef = { current: document.createElement('div') }
+    const onClose = mock(() => {})
+    const { result, rerender } = renderHook((url) => useSidebarWebview({ url, onClose }, containerRef), {
+      initialProps: 'https://old.example',
+    })
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    let closing: Promise<void>
+    act(() => {
+      closing = result.current.closeWebview()
+      void result.current.closeWebview()
+    })
+    rerender('https://new.example')
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(Object.is(result.current.webview, current)).toBe(true)
+    await act(async () => {
+      pending.resolve()
+      await closing
+    })
+    expect(old.close).toHaveBeenCalledTimes(1)
+    expect(Object.is(result.current.webview, current)).toBe(true)
+    expect(result.current.isInitialized).toBe(true)
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   describe('initialization', () => {

@@ -27,7 +27,7 @@ import {
   runScenario,
 } from './runner'
 
-const model: Model = { ...defaultModelOpus55, apiKey: null }
+const model: Model = { ...defaultModelOpus55, apiKey: null, reasoningEffort: null }
 const proxyFetch: FetchFn = Object.assign(async () => new Response(), {
   preconnect: async () => false,
 })

@@ -4,14 +4,17 @@
 
 /**
  * Whether a model can read image attachments, answered without the network: the
- * shared fixed rules, then this device's cache of earlier detections. Deliberately
- * light so the composer can import it statically; the network-backed detection
- * that fills the cache lives in `image-support-detection.ts` and loads on demand.
+ * shared fixed rules over the picked models lineup, then this device's cache of
+ * earlier detections. Deliberately light so the composer can import it statically;
+ * the network-backed detection that fills the cache lives in
+ * `image-support-detection.ts` and loads on demand.
  *
  * Cached per device in localStorage rather than on the synced `models` row, so a
  * result never needs a schema change or sync-rule deploy. Each device detects once.
  */
 
+import { type AppConfig, useConfigStore } from '@/api/config-store'
+import { type ModelsDefaults, pickModelsDefaults } from '@/lib/pick-defaults'
 import { type ImageSupport, type ImageSupportModel, staticImageSupport } from '@shared/defaults/models'
 import { z } from 'zod'
 
@@ -60,6 +63,32 @@ export const clearImageSupportCache = (): void => {
   localStorage.removeItem(storageKey)
 }
 
+type ServerModelsDefaults = NonNullable<NonNullable<AppConfig['defaults']>['models']>
+
+const pickedLineups = new WeakMap<ServerModelsDefaults, ModelsDefaults>()
+
+/**
+ * The lineup image support is judged against: what `pickModelsDefaults` picks from
+ * the cached `/config`, once per payload, so its rejection warning fires once
+ * rather than on every lookup.
+ */
+export const pickImageSupportLineup = (
+  server: ServerModelsDefaults | undefined = useConfigStore.getState().config.defaults?.models,
+): ModelsDefaults => {
+  if (!server) {
+    return pickModelsDefaults(undefined)
+  }
+  const picked = pickedLineups.get(server) ?? pickModelsDefaults(server)
+  pickedLineups.set(server, picked)
+  return picked
+}
+
+/** Image support fixed by rule, judged against the picked lineup. */
+export const getStaticImageSupport = (
+  model: ImageSupportModel,
+  lineup: ModelsDefaults = pickImageSupportLineup(),
+): ImageSupport | undefined => staticImageSupport(model, lineup)
+
 /** Image support known right now without a network call, or undefined when it still needs detecting. */
 export const getKnownImageSupport = (model: ImageSupportModel): ImageSupport | undefined =>
-  staticImageSupport(model) ?? getCachedImageSupport(model)
+  getStaticImageSupport(model) ?? getCachedImageSupport(model)

@@ -1,7 +1,30 @@
 # The native counterpart of stack.spec.ts: `verify.ts replay --native` runs it three times on a fresh install of the
-# build without onboarding before any finding's flow, and if one run fails the stack is broken and no replayed
-# finding counts. It passes the same allow list as the findings' flows, which adds the appId header.
+# build without onboarding before any finding's flow. Failure marks the stack unhealthy, never a product finding.
 - launchApp
+- extendedWaitUntil:
+    visible: Connect your AI|Welcome to Thunderbolt!
+    timeout: 120000
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      visible: I agree to the Privacy Policy.*
+    commands:
+      - tapOn: I agree to the Privacy Policy.*
+      - tapOn: Continue
+      - extendedWaitUntil:
+          visible: Choose your setup
+          timeout: 120000
+- runFlow:
+    when:
+      visible: Connect your AI
+    commands:
+      - tapOn: Toggle Sidebar
+      - tapOn: Sign in
+- extendedWaitUntil:
+    visible: Cloud \(Waitlist\)
+    timeout: 120000
+- tapOn: Cloud \(Waitlist\)
+- tapOn: Continue
 - extendedWaitUntil:
     visible: Want early access?
     timeout: 120000
@@ -21,6 +44,16 @@
     visible: Check your email
     timeout: 120000
 - inputText: '12345678'
+- extendedWaitUntil:
+    visible: Set up sync|Connect Google
+    timeout: 120000
+- runFlow:
+    when:
+      visible: Set up sync
+    commands:
+      - tapOn: Close
+      - tapOn:
+          point: 95%,50%
 - extendedWaitUntil:
     visible: Ask me anything…
     timeout: 120000

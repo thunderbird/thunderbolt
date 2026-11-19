@@ -62,13 +62,20 @@ type ItemButtonProps<T> = {
 
 const ItemButton = memo(<T,>({ item, isSelected, onClick, renderItem, closeMenu }: ItemButtonProps<T>) => {
   const button = renderItem ? (
-    <button type="button" disabled={item.disabled} onClick={onClick} className="w-full min-w-0 text-left">
+    <button
+      type="button"
+      aria-current={isSelected || undefined}
+      disabled={item.disabled}
+      onClick={onClick}
+      className="w-full min-w-0 text-left"
+    >
       {renderItem(item, isSelected)}
     </button>
   ) : (
     <button
       type="button"
       disabled={item.disabled}
+      aria-current={isSelected || undefined}
       onClick={onClick}
       className={cn(
         'w-full flex items-center gap-2 px-3 py-2 max-md:min-h-[var(--touch-height-default)] rounded-lg transition-colors text-left cursor-pointer',
@@ -115,18 +122,17 @@ type GroupSectionProps<T> = {
   value?: string
   onSelect: (id: string, item: SearchableMenuItem<T>) => void
   renderItem?: (item: SearchableMenuItem<T>, isSelected: boolean) => ReactNode
-  hideLabel?: boolean
   closeMenu: () => void
 }
 
-const GroupSection = memo(<T,>({ group, value, onSelect, renderItem, hideLabel, closeMenu }: GroupSectionProps<T>) => {
+const GroupSection = memo(<T,>({ group, value, onSelect, renderItem, closeMenu }: GroupSectionProps<T>) => {
   if (group.items.length === 0) {
     return null
   }
 
   return (
     <div className="flex flex-col gap-1">
-      {!hideLabel && group.label && (
+      {group.label && (
         <div className="px-3 pt-2">
           <h3 className="text-xs font-medium text-muted-foreground">{group.label}</h3>
           {group.subtitle && <p className="text-xs text-muted-foreground/70 mt-0.5">{group.subtitle}</p>}
@@ -175,6 +181,7 @@ const DefaultTrigger = <T,>({
 }
 
 export const SearchableMenu = <T,>({
+  embedded = false,
   items,
   value,
   onValueChange,
@@ -221,7 +228,7 @@ export const SearchableMenu = <T,>({
       return items
     }
 
-    const query = searchQuery.toLowerCase()
+    const query = searchQuery.trim().toLowerCase()
 
     const matchesQuery = (item: SearchableMenuItem<T>) =>
       item.label.toLowerCase().includes(query) ||
@@ -247,7 +254,9 @@ export const SearchableMenu = <T,>({
   }
 
   const handleSelect = (id: string, item: SearchableMenuItem<T>) => {
-    closeMenu()
+    if (!embedded) {
+      closeMenu()
+    }
     onValueChange(id, item)
   }
 
@@ -264,13 +273,14 @@ export const SearchableMenu = <T,>({
 
   const contentWidth = typeof width === 'number' ? `${width}px` : width
   const menuContent = (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-col gap-2">
         {searchable && (
-          <div className="px-1 pt-1">
+          <div className="shrink-0 px-1 pt-1">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <Input
+                aria-label={searchPlaceholder}
                 placeholder={searchPlaceholder}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -282,7 +292,7 @@ export const SearchableMenu = <T,>({
         )}
 
         {showDesktopTitle && (
-          <h3 className="px-4 pt-2 text-xs font-medium text-muted-foreground max-md:hidden">{mobileTitle}</h3>
+          <h3 className="shrink-0 px-4 pt-2 text-xs font-medium text-muted-foreground max-md:hidden">{mobileTitle}</h3>
         )}
 
         <div
@@ -301,7 +311,6 @@ export const SearchableMenu = <T,>({
                   onSelect={handleSelect}
                   renderItem={renderItem}
                   closeMenu={closeMenu}
-                  hideLabel={filteredItems.length === 1}
                 />
               ))
             ) : (
@@ -323,7 +332,7 @@ export const SearchableMenu = <T,>({
       </div>
 
       {footerAction && (
-        <div className="border-t p-1 dark:border-border/50">
+        <div className="shrink-0 border-t p-1 dark:border-border/50">
           {(Array.isArray(footerAction) ? footerAction : [footerAction]).map((action) => (
             <FooterActionRow key={action.label} {...action} closeMenu={closeMenu} />
           ))}
@@ -331,6 +340,10 @@ export const SearchableMenu = <T,>({
       )}
     </div>
   )
+
+  if (embedded) {
+    return menuContent
+  }
 
   return (
     <ResponsivePopover

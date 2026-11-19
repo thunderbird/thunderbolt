@@ -185,6 +185,7 @@ describe('Encryption API (v2)', () => {
       recoveryMlkemPublicKey: signingKeyNull ? null : recoverySlot.recoveryMlkemPublicKey,
       recoveryWrappedAk: signingKeyNull ? null : recoverySlot.recoveryWrappedAK,
       recoveryAttestation: signingKeyNull ? null : recoverySlot.recoveryAttestation,
+      recoveryContinuity: signingKeyNull ? null : 'stored-seal',
       keyVersion: 1,
       primaryKeyId: initialKeyId,
       schemeVersion,
@@ -305,6 +306,35 @@ describe('Encryption API (v2)', () => {
         .from(wrappedKeysTable)
         .where(eq(wrappedKeysTable.userId, p('u')))
       expect(key.keyId).toBe(initialKeyId)
+    })
+
+    it('stores the recovery continuity seal and serves it with the metadata', async () => {
+      const keypair = await generateSigningKeypair()
+      await createUserAndSession(p('u'), p('tok'), p('d'))
+      await insertDevice(p('d'), p('u'))
+      const bootstrap = await app.handle(
+        new Request(`${baseUrl}/devices/${p('d')}/envelope`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('d')),
+          body: JSON.stringify({
+            wrappedCK: 'wrapped-ak-boot',
+            attestation: 'att',
+            canaryIv: 'boot-iv',
+            canaryCtext: 'boot-ctext',
+            signingPublicKey: await exportSigningPublicKey(keypair),
+            kdfSalt: 'boot-salt',
+            wrappedKeys: [{ keyId: initialKeyId, wrappedKey: 'wrapped-dek-0' }],
+            ...recoverySlot,
+            recoveryContinuity: 'boot-seal',
+          }),
+        }),
+      )
+      expect(bootstrap.status).toBe(200)
+
+      const metadata = await app.handle(
+        new Request(`${baseUrl}/encryption/canary`, { headers: authHeaders(p('tok'), p('d')) }),
+      )
+      expect((await metadata.json()).recovery_continuity).toBe('boot-seal')
     })
 
     it('rejects bootstrap without a wrapped key for the primary key_id "0"', async () => {
@@ -1254,6 +1284,53 @@ describe('Encryption API (v2)', () => {
       expect(metadata.recoveryWrappedAk).toBe('recovery-wrapped-new-ak')
     })
 
+    it('keeps the stored continuity seal on a silent rotation, whatever the body carries', async () => {
+      const keypair = await setupRotatable([initialKeyId])
+      const body = await rotateBody(keypair, [initialKeyId])
+      const res = await app.handle(
+        new Request(`${baseUrl}/encryption/rotate`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('caller')),
+          body: JSON.stringify({ ...body, recoveryContinuity: 'replacement-seal' }),
+        }),
+      )
+      expect(res.status).toBe(200)
+
+      const [metadata] = await db
+        .select()
+        .from(encryptionMetadataTable)
+        .where(eq(encryptionMetadataTable.userId, p('u')))
+      expect(metadata.recoveryContinuity).toBe('stored-seal')
+    })
+
+    it.each([
+      ['the new seal', 'fresh-seal', 'fresh-seal'],
+      ['no seal', undefined, null],
+    ])('stores %s on a phrase change', async (_label, sent, stored) => {
+      const keypair = await setupRotatable([initialKeyId])
+      const body = await rotateBody(keypair, [initialKeyId])
+      const otp = await mintStepUpCode(p('u'))
+      const res = await app.handle(
+        new Request(`${baseUrl}/encryption/rotate`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('caller')),
+          body: JSON.stringify({
+            ...body,
+            stepUpOtp: otp,
+            recoveryEcdhPublicKey: 'fresh-phrase-ecdh',
+            recoveryContinuity: sent,
+          }),
+        }),
+      )
+      expect(res.status).toBe(200)
+
+      const [metadata] = await db
+        .select()
+        .from(encryptionMetadataTable)
+        .where(eq(encryptionMetadataTable.userId, p('u')))
+      expect(metadata.recoveryContinuity).toBe(stored)
+    })
+
     it('accepts CHANGED recovery public keys WITH a valid step-up code — an explicit phrase change (THU-875)', async () => {
       const keypair = await setupRotatable([initialKeyId])
       const body = await rotateBody(keypair, [initialKeyId])
@@ -1495,11 +1572,11 @@ describe('Encryption API (v2)', () => {
         await insertPasskeyRow(p('u'), p('cred-1'))
         expect((await rotate({ ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot() })).status).toBe(200)
 
+        // The savepoint keeps the refused delete from aborting the test's transaction.
         await expect(
-          db
-            .delete(passkeyTable)
-            .where(eq(passkeyTable.userId, p('u')))
-            .execute(),
+          db.transaction(async (tx) => {
+            await tx.delete(passkeyTable).where(eq(passkeyTable.userId, p('u')))
+          }),
         ).rejects.toThrow()
         expect((await readMetadata()).passkeyCredentialId).toBe(p('cred-1'))
       })
@@ -1517,6 +1594,96 @@ describe('Encryption API (v2)', () => {
 
         const res = await rotate({ ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot() })
         expect(res.status).toBe(200)
+        expect((await readMetadata()).passkeyCredentialId).toBeNull()
+      })
+
+      it('stores the passkey seal sent with a new slot', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        await insertPasskeyRow(p('u'), p('cred-1'))
+
+        const res = await rotate({
+          ...(await rotateBody(keypair, [initialKeyId])),
+          ...passkeySlot(),
+          passkeyContinuity: 'passkey-seal',
+        })
+        expect(res.status).toBe(200)
+
+        expect((await readMetadata()).passkeyContinuity).toBe('passkey-seal')
+        const canary = await app.handle(new Request(`${baseUrl}/encryption/canary`, { headers: authHeaders(p('tok')) }))
+        expect((await canary.json()).passkey_continuity).toBe('passkey-seal')
+      })
+
+      it('keeps the passkey seal on a rotation with the same slot keys and ignores a sent seal', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        await insertPasskeyRow(p('u'), p('cred-1'))
+        const enroll = { ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot(), passkeyContinuity: 'seal' }
+        expect((await rotate(enroll)).status).toBe(200)
+
+        const res = await rotate({
+          ...(await rotateBody(keypair, [initialKeyId])),
+          ...passkeySlot(),
+          passkeyWrappedAK: 'passkey-wrapped-new-ak',
+          passkeyContinuity: 'replacement-seal',
+        })
+        expect(res.status).toBe(200)
+
+        const metadata = await readMetadata()
+        expect(metadata.passkeyWrappedAk).toBe('passkey-wrapped-new-ak')
+        expect(metadata.passkeyContinuity).toBe('seal')
+      })
+
+      it('replaces the passkey seal when the slot keys change and clears it when none is sent', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        await insertPasskeyRow(p('u'), p('cred-1'))
+        const enroll = { ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot(), passkeyContinuity: 'seal' }
+        expect((await rotate(enroll)).status).toBe(200)
+
+        const sealed = { ...passkeySlot(), passkeyEcdhPublicKey: 'sealed-ecdh', passkeyMlkemPublicKey: 'sealed-mlkem' }
+        const replace = { ...(await rotateBody(keypair, [initialKeyId])), ...sealed, passkeyContinuity: 'new-seal' }
+        expect((await rotate(replace)).status).toBe(200)
+        expect((await readMetadata()).passkeyContinuity).toBe('new-seal')
+
+        const unsealed = { ...passkeySlot(), passkeyEcdhPublicKey: 'other-ecdh' }
+        expect((await rotate({ ...(await rotateBody(keypair, [initialKeyId])), ...unsealed })).status).toBe(200)
+        expect((await readMetadata()).passkeyContinuity).toBeNull()
+      })
+
+      it('clears the passkey seal when the slot is removed', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        await insertPasskeyRow(p('u'), p('cred-1'))
+        const enroll = { ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot(), passkeyContinuity: 'seal' }
+        expect((await rotate(enroll)).status).toBe(200)
+
+        expect((await rotate(await rotateBody(keypair, [initialKeyId]))).status).toBe(200)
+
+        const metadata = await readMetadata()
+        expect(metadata.passkeyCredentialId).toBeNull()
+        expect(metadata.passkeyContinuity).toBeNull()
+      })
+
+      it('serves passkey_continuity as null while passkeys are off', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        await insertPasskeyRow(p('u'), p('cred-1'))
+        const enroll = { ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot(), passkeyContinuity: 'seal' }
+        expect((await rotate(enroll)).status).toBe(200)
+
+        app = appWith(false)
+        const canary = await (
+          await app.handle(new Request(`${baseUrl}/encryption/canary`, { headers: authHeaders(p('tok')) }))
+        ).json()
+        expect(canary).toHaveProperty('passkey_continuity', null)
+      })
+
+      it('rejects a passkey seal longer than 300 characters', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        await insertPasskeyRow(p('u'), p('cred-1'))
+
+        const res = await rotate({
+          ...(await rotateBody(keypair, [initialKeyId])),
+          ...passkeySlot(),
+          passkeyContinuity: 'x'.repeat(301),
+        })
+        expect(res.status).toBe(422)
         expect((await readMetadata()).passkeyCredentialId).toBeNull()
       })
 
@@ -1637,6 +1804,24 @@ describe('Encryption API (v2)', () => {
         .from(wrappedKeysTable)
         .where(eq(wrappedKeysTable.userId, p('u')))
       expect(keys.map((k) => k.keyId).sort()).toEqual([initialKeyId, legacyKeyId].sort())
+    })
+
+    it("stores the new phrase's continuity seal", async () => {
+      await setupV1()
+      const res = await app.handle(
+        new Request(`${baseUrl}/encryption/upgrade`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('caller')),
+          body: JSON.stringify(await upgradeBody({ recoveryContinuity: 'upgrade-seal' })),
+        }),
+      )
+      expect(res.status).toBe(200)
+
+      const [metadata] = await db
+        .select()
+        .from(encryptionMetadataTable)
+        .where(eq(encryptionMetadataTable.userId, p('u')))
+      expect(metadata.recoveryContinuity).toBe('upgrade-seal')
     })
 
     it('rejects a wrong possession proof (D1)', async () => {

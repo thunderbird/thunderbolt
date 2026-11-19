@@ -106,7 +106,7 @@ const ProjectBadgeContent = ({ chatThreadId, iconOnly = false, className }: Proj
               'flex shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors',
               compact
                 ? cn(
-                    'size-[var(--touch-height-sm)] max-md:size-[var(--touch-height-lg)] hover:bg-accent active:bg-muted-foreground/20',
+                    'size-[var(--touch-height-sm)] max-md:size-[var(--touch-height-lg)] hover:bg-accent md:dark:hover:bg-secondary/50 active:bg-muted-foreground/20',
                     mobileHeaderControlFillClass,
                   )
                 : 'h-[var(--touch-height-sm)] min-w-0 max-w-[14rem] gap-1.5 px-3 text-[length:var(--font-size-body)] hover:bg-accent hover:text-accent-foreground dark:hover:bg-secondary/50',

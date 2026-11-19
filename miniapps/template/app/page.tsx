@@ -10,7 +10,7 @@
  * Deliberately a real thing rather than three buttons wired to a counter
  * (THU-909). The bridge is the point of this template, and a list of `Alpha /
  * Bravo / Charlie` showed the plumbing while hiding what the plumbing is *for*:
- * a mutating tool that needs approval, a read-only one that doesn't, context
+ * a mutating tool, a read-only one (both need approval), context
  * worth publishing, and rows worth pointing at. It is still one file and one
  * `useState`.
  *
@@ -72,10 +72,10 @@ const Page = () => {
    * every render costs nothing — but memoising keeps it out of effect
    * dependencies.
    *
-   * The two annotations are the thing to copy. `set_order_status` changes data,
-   * so it omits `readOnlyHint` and Thunderbolt asks the user before running it.
-   * `summarise_book` only reads, so it declares `readOnlyHint: true` and runs
-   * straight through. Only your app knows which of those a tool is.
+   * `set_order_status` changes data and `summarise_book` only reads, and the
+   * annotations say so. Thunderbolt still asks the user before running either:
+   * a call can carry arguments the model wrote, which can hold the user's
+   * private data, so the app's own word cannot waive the prompt.
    */
   const tools = useMemo<ThunderboltTool[]>(
     () => [

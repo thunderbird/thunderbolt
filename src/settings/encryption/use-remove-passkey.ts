@@ -12,6 +12,8 @@ import { removePasskeySlot } from '@/services/encryption'
 import { msg } from '@lingui/core/macro'
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useAsyncAttempt } from '@/hooks/use-async-attempt'
+import { getCachedSession } from '@/lib/session-cache'
 
 type RemoveStatus = 'idle' | 'confirming' | 'removing'
 
@@ -37,6 +39,7 @@ type RemoveSteps = {
   deletePasskey: () => Promise<unknown>
   /** Whether this device holds the keys an AK rotation needs. */
   e2eeReady: boolean
+  isCurrent?: () => boolean
 }
 
 /**
@@ -49,12 +52,20 @@ export const removeAccountPasskey = async ({
   removeSyncSlot,
   deletePasskey: deleteRow,
   e2eeReady,
-}: RemoveSteps): Promise<'removed' | 'needs-sync'> => {
-  if (await hasSlot()) {
+  isCurrent = () => true,
+}: RemoveSteps): Promise<'removed' | 'needs-sync' | 'cancelled'> => {
+  const slotExists = await hasSlot()
+  if (!isCurrent()) {
+    return 'cancelled'
+  }
+  if (slotExists) {
     if (!e2eeReady) {
       return 'needs-sync'
     }
     await removeSyncSlot()
+  }
+  if (!isCurrent()) {
+    return 'cancelled'
   }
   await deleteRow()
   return 'removed'
@@ -73,28 +84,45 @@ export const useRemovePasskey = (passkey: PasskeyRecord) => {
   const e2eeReady = useE2eeReady()
   const [status, setStatus] = useState<RemoveStatus>('idle')
   const [error, setError] = useState<string | null>(null)
+  const operation = useAsyncAttempt()
 
   const remove = async () => {
+    const attempt = operation.begin()
+    if (!attempt) {
+      return
+    }
     setStatus('removing')
     setError(null)
+    const userId = getCachedSession()?.user?.id
     try {
       const outcome = await removeAccountPasskey({
         holdsSyncSlot: () => holdsSyncSlot(httpClient, passkey),
         removeSyncSlot: () => removePasskeySlot(httpClient),
         deletePasskey: () => deletePasskey(authClient, passkey.id),
         e2eeReady,
+        isCurrent: () => attempt.isCurrent() && getCachedSession()?.user?.id === userId,
       })
+      if (!attempt.isCurrent() || outcome === 'cancelled') {
+        return
+      }
       if (outcome === 'needs-sync') {
         setError(i18n._(msg`Turn on sync on this device to remove this passkey.`))
         setStatus('confirming')
         return
       }
       await queryClient.invalidateQueries({ queryKey: accountPasskeyQueryKey })
-      setStatus('idle')
+      if (attempt.isCurrent()) {
+        setStatus('idle')
+      }
     } catch (err) {
+      if (!attempt.isCurrent()) {
+        return
+      }
       console.error('Failed to remove passkey:', err)
       setError(i18n._(msg`Couldn't remove the passkey. Please try again.`))
       setStatus('confirming')
+    } finally {
+      attempt.finish()
     }
   }
 
@@ -105,7 +133,10 @@ export const useRemovePasskey = (passkey: PasskeyRecord) => {
       setError(null)
       setStatus('confirming')
     },
-    cancel: () => setStatus('idle'),
+    cancel: () => {
+      operation.cancel()
+      setStatus('idle')
+    },
     remove,
   }
 }

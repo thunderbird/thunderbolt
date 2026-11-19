@@ -169,6 +169,9 @@ export const listMessages = async (params: ListMessagesParams, httpClient: HttpC
   if (params.filter) {
     searchParams.set('$filter', params.filter)
   }
+  if (params.includeBodyHtml) {
+    searchParams.set('$select', 'id,subject,body,bodyPreview,from,toRecipients,receivedDateTime')
+  }
 
   const response = await httpClient
     .get(`${microsoftGraphUrl}/v1.0/me/messages`, {
@@ -176,13 +179,6 @@ export const listMessages = async (params: ListMessagesParams, httpClient: HttpC
       headers: { Authorization: `Bearer ${accessToken}` },
     })
     .json<GraphListMessagesResponse>()
-
-  if (params.includeBodyHtml && response.value) {
-    const messagesWithBodies = await Promise.all(
-      response.value.map(async (msg) => getMessage({ id: msg.id!, includeBodyHtml: true }, httpClient)),
-    )
-    return { ...response, value: messagesWithBodies }
-  }
 
   return response
 }

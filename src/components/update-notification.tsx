@@ -10,7 +10,6 @@ import { useState } from 'react'
 import { useDesktopUpdate, type DesktopUpdateState, type UpdateStatus } from '@/hooks/use-desktop-update'
 import { Button } from '@/components/ui/button'
 import { NotificationCard } from '@/components/ui/notification-card'
-import { isDesktop } from '@/lib/platform'
 
 const statusConfig = {
   initial: { icon: CheckCircle, message: null, showActions: false },
@@ -18,22 +17,22 @@ const statusConfig = {
   checking: { icon: Loader2, message: msg`Checking for updates…`, showActions: false },
   available: { icon: Download, message: msg`A new version is available!`, showActions: true },
   downloading: { icon: Loader2, message: msg`Downloading update…`, showActions: false },
+  restarting: { icon: Loader2, message: msg`Update ready! Restart to apply.`, showActions: false },
   ready: { icon: RefreshCw, message: msg`Update ready! Restart to apply.`, showActions: true },
   error: { icon: AlertCircle, message: msg`Update failed`, showActions: true },
 } satisfies Record<UpdateStatus, { icon: typeof Download; message: MessageDescriptor | null; showActions: boolean }>
 
 type UpdateNotificationContentProps = {
-  desktop: boolean
   updateState: DesktopUpdateState
 }
 
-export const UpdateNotificationContent = ({ desktop, updateState }: UpdateNotificationContentProps) => {
+export const UpdateNotificationContent = ({ updateState }: UpdateNotificationContentProps) => {
   const { i18n, t } = useLingui()
   const { status, update, error, primaryAction } = updateState
   const updateVersion = update?.version ?? ''
   const [dismissed, setDismissed] = useState(false)
 
-  if (!desktop) {
+  if (!updateState.enabled) {
     return null
   }
 
@@ -94,5 +93,5 @@ export const UpdateNotificationContent = ({ desktop, updateState }: UpdateNotifi
 export const UpdateNotification = () => {
   const updateState = useDesktopUpdate()
 
-  return <UpdateNotificationContent desktop={isDesktop()} updateState={updateState} />
+  return <UpdateNotificationContent updateState={updateState} />
 }

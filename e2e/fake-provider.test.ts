@@ -4,8 +4,12 @@
 
 import { expect, test } from 'bun:test'
 import Anthropic from '@anthropic-ai/sdk'
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
+import { generateText, streamText } from 'ai'
 import { z } from 'zod'
-import { createFakeProvider, fakeProviderReply } from './fake-provider'
+import { createFakeProvider, fakeOpenAiModelId, fakeProviderReply } from './fake-provider'
+import { miniAppToolsetName, miniAppTransferPrompt, protectedEmailBody, protectedEmailId } from './mini-app-fixture'
+import { performanceStreamPrompt, performanceStreamReply } from './streaming-fixture'
 
 test('streams a complete reply over IPv4 loopback', async () => {
   const server = await createFakeProvider(0)
@@ -24,6 +28,137 @@ test('streams a complete reply over IPv4 loopback', async () => {
       .finalMessage()
     expect(message.content).toMatchObject([{ type: 'text', text: fakeProviderReply, citations: [] }])
     expect(message.stop_reason).toBe('end_turn')
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('the named long markdown fixture preserves every character across fixed-size deltas', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const address = z.object({ port: z.number() }).parse(server.address())
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: `http://127.0.0.1:${address.port}`, maxRetries: 0 })
+    const deltas: string[] = []
+    const stream = client.messages.stream({
+      model: 'test-model',
+      max_tokens: 10_000,
+      messages: [{ role: 'user', content: [{ type: 'text', text: performanceStreamPrompt }] }],
+    })
+    stream.on('text', (text) => deltas.push(text))
+    const message = await stream.finalMessage()
+    expect(deltas.length).toBeGreaterThan(100)
+    expect(deltas.every((text) => text.length <= 24)).toBe(true)
+    expect(deltas.join('')).toBe(performanceStreamReply)
+    expect(message.content).toMatchObject([{ type: 'text', text: performanceStreamReply }])
+    expect(message.stop_reason).toBe('end_turn')
+
+    const normal = await client.messages
+      .stream({
+        model: 'test-model',
+        max_tokens: 100,
+        messages: [
+          { role: 'user', content: performanceStreamPrompt },
+          { role: 'assistant', content: 'Done.' },
+          { role: 'user', content: 'Hello again.' },
+        ],
+      })
+      .finalMessage()
+    expect(normal.content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('rejects malformed requests without breaking subsequent streams', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const baseURL = `http://127.0.0.1:${port}`
+    for (const body of ['{', 'null', '{}', '{"messages":{}}', '{"messages":[{"role":"user","content":42}]}']) {
+      const response = await fetch(`${baseURL}/v1/messages`, { method: 'POST', body })
+      expect(response.status).toBe(400)
+      expect(await response.text()).toBe('Invalid Messages request')
+    }
+    const client = new Anthropic({ apiKey: 'test-key', baseURL, maxRetries: 0 })
+    const message = await client.messages
+      .stream({ model: 'test-model', max_tokens: 100, messages: [{ role: 'user', content: 'Hello again' }] })
+      .finalMessage()
+    expect(message.content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('plays a model that reads an email and passes its body to the open Mini App', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: `http://127.0.0.1:${port}`, maxRetries: 0 })
+    const send = (messages: Anthropic.MessageParam[]) =>
+      client.messages.stream({ model: 'test-model', max_tokens: 100, messages }).finalMessage()
+    const ask: Anthropic.MessageParam = { role: 'user', content: miniAppTransferPrompt }
+
+    const read = await send([ask])
+    expect(read.stop_reason).toBe('tool_use')
+    expect(read.content).toMatchObject([
+      { type: 'tool_use', name: 'google_get_email', input: { id: protectedEmailId } },
+    ])
+
+    const toolResult = (content: string): Anthropic.MessageParam => ({
+      role: 'user',
+      content: [{ type: 'tool_result', tool_use_id: 'toolu_test', content: [{ type: 'text', text: content }] }],
+    })
+    const email = JSON.stringify({ id: protectedEmailId, body_text: protectedEmailBody })
+    const transfer = await send([ask, { role: 'assistant', content: read.content }, toolResult(email)])
+    expect(transfer.content).toMatchObject([
+      { type: 'tool_use', name: miniAppToolsetName, input: { note: protectedEmailBody } },
+    ])
+
+    const reply = await send([ask, { role: 'assistant', content: transfer.content }, toolResult('Shown.')])
+    expect(reply.content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
+
+    // Another tool's JSON result is not an email; it gets the ordinary reply.
+    const otherCall: Anthropic.MessageParam = {
+      role: 'assistant',
+      content: [{ type: 'tool_use', id: 'toolu_test', name: 'search', input: {} }],
+    }
+    const unrelated = await send([ask, otherCall, toolResult('{"count":1}')])
+    expect(unrelated.content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('serves a Local OpenAI-compatible setup: CORS, the model list, and whole or streamed replies', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const address = z.object({ port: z.number() }).parse(server.address())
+    const baseURL = `http://127.0.0.1:${address.port}/v1`
+
+    const preflight = await fetch(`${baseURL}/chat/completions`, { method: 'OPTIONS' })
+    expect(preflight.status).toBe(204)
+    expect(preflight.headers.get('access-control-allow-origin')).toBe('*')
+    const models = await fetch(`${baseURL}/models`)
+    expect(models.headers.get('access-control-allow-origin')).toBe('*')
+    expect(await models.json()).toMatchObject({ data: [{ id: fakeOpenAiModelId }] })
+
+    const model = createOpenAICompatible({ name: 'fake', baseURL, apiKey: 'test-key' }).chatModel(fakeOpenAiModelId)
+    expect((await generateText({ model, prompt: 'Hello', maxRetries: 0 })).text).toBe(fakeProviderReply)
+    const stream = streamText({ model, prompt: 'Hello', maxRetries: 0 })
+    const deltas: string[] = []
+    for await (const delta of stream.textStream) {
+      deltas.push(delta)
+    }
+    expect(deltas.length).toBeGreaterThan(1)
+    expect(deltas.join('')).toBe(fakeProviderReply)
+    expect(await stream.finishReason).toBe('stop')
+
+    const malformed = await fetch(`${baseURL}/chat/completions`, { method: 'POST', body: 'not json' })
+    expect(malformed.status).toBe(400)
   } finally {
     server.close()
     server.closeAllConnections()

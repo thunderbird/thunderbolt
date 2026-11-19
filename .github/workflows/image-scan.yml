@@ -1,0 +1,54 @@
+name: Image Scan
+
+# Scans the published images for known vulnerabilities and reports them to code scanning
+# (Security → Code scanning, one category per image and architecture). Report-only for now: findings
+# never fail the job.
+#
+# A separate workflow rather than a job in images-publish.yml, because that one is reusable and
+# its callers (nightly-images.yml, preview-deploy.yml) don't grant security-events: write. Running
+# after Nightly Images also rescans unchanged images against each day's new advisories.
+
+on:
+  workflow_run:
+    workflows: [Images Publish, Nightly Images]
+    types: [completed]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Scan ${{ matrix.image }} (${{ matrix.arch }})
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [frontend, backend, postgres, keycloak, powersync, marketing]
+        # images-publish.yml builds both; arm64 ships its own native binaries (sharp, esbuild, gosu).
+        arch: [amd64, arm64]
+    steps:
+      # Trivy runs from an image pinned by digest, not trivy-action, so a moved tag can't change
+      # what executes here (the same reasoning as the Semgrep container in security.yml).
+      # --ignore-unfixed keeps the report to what a bump can fix; distro CVEs without a patch
+      # would otherwise bury those. Trivy only reads the layers, so an arm64 image scans fine on an
+      # amd64 runner.
+      - name: Scan
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}/thunderbolt-${{ matrix.image }}:latest
+        run: |
+          docker run --rm -v "$PWD:/out" \
+            aquasec/trivy@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c \
+            image --platform linux/${{ matrix.arch }} --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
+            --format sarif --output /out/trivy.sarif "$IMAGE"
+
+      - name: Upload to code scanning
+        uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
+        with:
+          sarif_file: trivy.sarif
+          # amd64 keeps the original category so its existing alerts stay tracked.
+          category: image-${{ matrix.image }}${{ matrix.arch == 'arm64' && '-arm64' || '' }}

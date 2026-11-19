@@ -1,0 +1,57 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+.effort-track {
+  background: var(--color-accent);
+  overflow: hidden;
+}
+
+.effort-track::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--gradient-brand);
+  clip-path: inset(0 calc(100% - var(--effort-progress)) 0 0);
+}
+
+.effort-slider {
+  appearance: none;
+  height: 100%;
+  background: transparent;
+  outline: none;
+}
+
+.effort-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: var(--color-foreground);
+  border: 2px solid var(--color-popover);
+  box-shadow: 0 1px 4px #0002;
+}
+
+.effort-slider::-moz-range-thumb {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: var(--color-foreground);
+  border: 2px solid var(--color-popover);
+  box-shadow: 0 1px 4px #0002;
+}
+
+.effort-slider:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+  border-radius: 9999px;
+}
+
+/* The native range remains interactive before a level is chosen, without suggesting Low is selected. */
+.effort-slider[data-selected='false']::-webkit-slider-thumb {
+  opacity: 0;
+}
+
+.effort-slider[data-selected='false']::-moz-range-thumb {
+  opacity: 0;
+}

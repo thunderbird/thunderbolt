@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { setActiveLocale } from '@/i18n/active-locale'
 import { appVersionUnsupported, resetAppVersionBlockedForTesting } from './app-version-unsupported'
 import { createAuthenticatedClient, createClient, HttpError } from './http'
+import { invalidateAuthRequests } from './auth-token'
 
 type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
@@ -36,6 +37,41 @@ const createRelativePrefixClient = (
     window.location.href = previousUrl
   }
 }
+
+describe('authenticated client server lifetime', () => {
+  it('refuses backend requests from an obsolete client without reading the new token', () => {
+    const fetch = mockFetch()
+    const getToken = mock(() => 'new-server-token')
+    const client = createAuthenticatedClient('https://old.example/v1', getToken, { fetch, isCurrent: () => false })
+
+    expect(() => client.get('account')).toThrow('The selected server changed')
+    expect(getToken).not.toHaveBeenCalled()
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it.each([401, 403, 426])('does not apply a late %s to a newly selected server', async (status) => {
+    let current = true
+    const response = Promise.withResolvers<Response>()
+    const client = createAuthenticatedClient('https://old.example/v1', () => 'old-token', {
+      fetch: () => response.promise,
+      isCurrent: () => current,
+    })
+    const onInvalid = mock(() => {})
+    window.addEventListener('powersync_credentials_invalid', onInvalid)
+    window.addEventListener('app_version_unsupported', onInvalid)
+    try {
+      const pending = client.get('account')
+      const failure = pending.catch((error: unknown) => error)
+      current = false
+      response.resolve(Response.json({ code: 'DEVICE_DISCONNECTED' }, { status }))
+      expect(await failure).toBeInstanceOf(HttpError)
+      expect(onInvalid).not.toHaveBeenCalled()
+    } finally {
+      window.removeEventListener('powersync_credentials_invalid', onInvalid)
+      window.removeEventListener('app_version_unsupported', onInvalid)
+    }
+  })
+})
 
 describe('createClient', () => {
   it('makes GET requests', async () => {
@@ -114,6 +150,22 @@ describe('createAuthenticatedClient', () => {
     await client.get('data')
     const req = fetch.mock.calls[0][0] as Request
     expect(req.headers.get('Authorization')).toBe('Bearer app-token')
+  })
+
+  it.each([
+    'https://external.example.com/v1/models',
+    'https://api.example.com.evil.test/v1/models',
+    'https://api.example.com/v10/models',
+    'http://api.example.com/v1/models',
+  ])('never sends app credentials outside the configured API: %s', async (url) => {
+    const fetch = mockFetch()
+    const getToken = mock(() => 'app-secret')
+    const client = createAuthenticatedClient('https://api.example.com/v1', getToken, { fetch })
+    await client.get(url)
+    const request = fetch.mock.calls[0][0] as Request
+    expect(request.headers.has('Authorization')).toBe(false)
+    expect(request.headers.has('X-Device-ID')).toBe(false)
+    expect(getToken).not.toHaveBeenCalled()
   })
 
   it('does not set Authorization header when token is null', async () => {
@@ -389,14 +441,14 @@ describe('createAuthenticatedClient', () => {
       expect(dispatchSpy).not.toHaveBeenCalled()
     })
 
-    it('does not dispatch on 401 from external API even when the app accidentally attached its own token', async () => {
-      // Defense-in-depth: even if a caller forgot to override Authorization for an external URL,
-      // the prefix gate prevents a false positive.
+    it('does not dispatch on 401 from an external API without caller authorization', async () => {
+      // A caller without external authorization must not send the app token or expire its session.
       const fetch = mock<FetchFn>(() => Promise.resolve(new Response('Unauthorized', { status: 401 })))
       const client = createAuthenticatedClient('https://api.example.com', () => 'app-token', { fetch })
 
       await expect(client.get('https://other.com/data')).rejects.toBeInstanceOf(HttpError)
 
+      expect((fetch.mock.calls[0][0] as Request).headers.has('Authorization')).toBe(false)
       expect(dispatchSpy).not.toHaveBeenCalled()
     })
 
@@ -522,5 +574,60 @@ describe('app-version-unsupported detection', () => {
 
     const event = dispatchSpy.mock.calls.find((call) => (call[0] as CustomEvent).type === appVersionUnsupported)
     expect(event).toBeUndefined()
+  })
+})
+
+describe('authenticated request ownership', () => {
+  it('ignores a late revoked-device response after cookie-session cleanup begins', async () => {
+    const pending = Promise.withResolvers<Response>()
+    const client = createAuthenticatedClient('https://api.example.com', () => null, {
+      credentials: 'include',
+      fetch: () => pending.promise,
+    })
+    const invalid = mock()
+    window.addEventListener('powersync_credentials_invalid', invalid)
+    try {
+      const request = client.get('data').catch((error: unknown) => error)
+      invalidateAuthRequests()
+      pending.resolve(Response.json({ code: 'DEVICE_DISCONNECTED' }, { status: 403 }))
+      expect(await request).toBeInstanceOf(HttpError)
+      expect(invalid).not.toHaveBeenCalled()
+    } finally {
+      window.removeEventListener('powersync_credentials_invalid', invalid)
+    }
+  })
+
+  it('never sends the app bearer to another origin or outside the backend path', async () => {
+    const fetch = mockFetch()
+    const client = createAuthenticatedClient('https://api.example.com/v1', () => 'app-secret', { fetch })
+    for (const url of [
+      'https://external.example/data',
+      'https://api.example.com/v10/data',
+      'https://api.example.com/public',
+    ]) {
+      await client.get(url)
+    }
+    for (const [request] of fetch.mock.calls) {
+      expect((request as Request).headers.has('Authorization')).toBe(false)
+    }
+  })
+
+  it.each([401, 403])('ignores a late %i from the replaced session', async (status) => {
+    const pending = Promise.withResolvers<Response>()
+    const identity = { token: 'old' }
+    const client = createAuthenticatedClient('https://api.example.com', () => identity.token, {
+      fetch: () => pending.promise,
+    })
+    const invalid = mock()
+    window.addEventListener('powersync_credentials_invalid', invalid)
+    try {
+      const request = client.get('data').catch((error: unknown) => error)
+      identity.token = 'new'
+      pending.resolve(Response.json({ code: 'DEVICE_DISCONNECTED' }, { status }))
+      expect(await request).toBeInstanceOf(HttpError)
+      expect(invalid).not.toHaveBeenCalled()
+    } finally {
+      window.removeEventListener('powersync_credentials_invalid', invalid)
+    }
   })
 })

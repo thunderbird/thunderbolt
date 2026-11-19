@@ -9,7 +9,27 @@ import { expect, type Browser, type BrowserContext, type Locator, type Page } fr
 // primitives are DOM/IndexedDB-free (WebCrypto + @noble only), so they run in the
 // Playwright Node process. Absorption on the migrator (`unwrapLegacyCK`) shares
 // the same envelope derivation, which is what makes the round-trip real.
-import { encrypt, importMlKemPublicKey, importPublicKey, wrapLegacyCK } from '../../src/crypto/primitives'
+import {
+  encrypt,
+  exportMlKemPublicKey,
+  exportPublicKey,
+  generateAK,
+  generateDEK,
+  importMlKemPublicKey,
+  importPublicKey,
+  uint8ArrayToBase64,
+  wrapAK,
+  wrapDEK,
+  wrapLegacyCK,
+} from '../../src/crypto/primitives'
+import { deriveSigningKeyPair, mintCanary, signRecoveryAttestation } from '../../src/crypto/canary'
+import {
+  deriveRecoveryKeyPairFromSeed,
+  encodeRecoverySeed,
+  generateRecoverySeed,
+  sealRecoveryContinuity,
+} from '../../src/crypto/recovery-key'
+import { initialKeyId, kdfSaltLength } from '../../shared/e2ee-types'
 import {
   getCurrentOtp,
   getServerSetting,
@@ -18,7 +38,10 @@ import {
   seedV1Metadata,
   seedV1Setting,
   seedV1Task,
+  seedV2Metadata,
+  setRecoveryContinuity,
   trustDevice,
+  waitForApprovalSession,
   waitForConsumedChallenge,
   waitForDeviceState,
   waitForOtp,
@@ -151,7 +174,8 @@ export const encryptionApiRequest = async (
   page.evaluate(
     async ({ url, method, deviceId, body }) => {
       const headers: Record<string, string> = {}
-      const token = localStorage.getItem('thunderbolt_auth_token')
+      const storedToken = localStorage.getItem('thunderbolt_auth_token')
+      const token = storedToken?.startsWith('{') ? (JSON.parse(storedToken) as { token: string }).token : storedToken
       if (token) {
         headers['Authorization'] = `Bearer ${token}`
       }
@@ -172,7 +196,14 @@ export const encryptionApiRequest = async (
     { url: `${backendBaseUrl}${path}`, method: options.method, deviceId: options.deviceId, body: options.body },
   )
 
-export const completeFirstDeviceSetup = async (page: Page): Promise<string> => {
+/**
+ * Turn on sync as the account's first device and return the recovery phrase.
+ * With passkeys enabled the wizard then offers one: pass the button to press.
+ */
+export const completeFirstDeviceSetup = async (
+  page: Page,
+  passkeyOffer?: 'Create passkey' | 'Not now',
+): Promise<string> => {
   await page.goto('/settings/preferences')
   const syncSwitch = page.getByRole('switch', { name: 'Sync This Device With Cloud' })
   await expect(syncSwitch).toBeVisible()
@@ -188,7 +219,11 @@ export const completeFirstDeviceSetup = async (page: Page): Promise<string> => {
 
   await dialog.getByRole('checkbox').click()
   await dialog.getByRole('button', { name: 'Done' }).click()
-  await expect(dialog).toBeHidden()
+  if (passkeyOffer) {
+    await expect(dialog.getByText('Unlock sync with a passkey')).toBeVisible()
+    await dialog.getByRole('button', { name: passkeyOffer }).click()
+  }
+  await expect(dialog).toBeHidden({ timeout: 30_000 })
   await expect(syncSwitch).toBeChecked()
   return recoveryPhrase
 }
@@ -670,17 +705,40 @@ export const completeStepUpCode = async (page: Page, email: string): Promise<voi
 // =============================================================================
 
 /**
- * Approve the pending-device prompt on an already-trusted device. Two dialogs:
- * the notification, then a confirmation. Extracted from multi-device.spec.ts so
- * attack specs can reach full trust without restating the sequence.
+ * Open the approval on an already-trusted device: the notification's Approve, which starts the
+ * code attempt right away. Waits for the pending device's approval session first, so the trusted
+ * side never races its creation. Returns the approval dialog.
  */
-export const approvePendingDevice = async (adminPage: Page, pendingPage: Page): Promise<void> => {
-  const fingerprint = pendingPage.getByLabel('Device fingerprint', { exact: true })
-  await expect(fingerprint).toHaveText(/^(?:[A-F0-9]{4}-){15}[A-F0-9]{4}$/)
+export const openPendingApproval = async (adminPage: Page, pendingPage: Page): Promise<Locator> => {
+  await waitForApprovalSession(await getDeviceId(pendingPage))
   const notification = adminPage.getByRole('dialog').filter({ hasText: 'New device waiting' })
   await expect(notification).toBeVisible({ timeout: 30_000 })
   await notification.getByRole('button', { name: 'Approve' }).click()
   const confirmation = adminPage.getByRole('alertdialog')
+  await expect(confirmation.getByText('Which code is on the new device?')).toBeVisible()
+  return confirmation
+}
+
+/**
+ * Approve the pending-device prompt on an already-trusted device the normal way: open it, read
+ * the code the pending device shows, tap the same code among the six. Extracted so attack specs
+ * can reach full trust without restating the sequence.
+ */
+export const approvePendingDevice = async (adminPage: Page, pendingPage: Page): Promise<void> => {
+  const confirmation = await openPendingApproval(adminPage, pendingPage)
+  const code = pendingPage.getByLabel('Approval code', { exact: true })
+  await expect(code).toHaveText(/^\d{2}$/, { timeout: 30_000 })
+  const options = confirmation.getByRole('group', { name: 'Codes to choose from' })
+  await options.getByRole('button', { name: (await code.textContent())!, exact: true }).click()
+}
+
+/** The fallback path: type the pending device's 64-hex fingerprint instead of picking a code. */
+export const approvePendingDeviceWithFingerprint = async (adminPage: Page, pendingPage: Page): Promise<void> => {
+  await pendingPage.getByRole('button', { name: 'Use fingerprint instead' }).click()
+  const fingerprint = pendingPage.getByLabel('Device fingerprint', { exact: true })
+  await expect(fingerprint).toHaveText(/^(?:[A-F0-9]{4}-){15}[A-F0-9]{4}$/)
+  const confirmation = await openPendingApproval(adminPage, pendingPage)
+  await confirmation.getByRole('button', { name: 'Use fingerprint instead' }).click()
   await expect(confirmation.getByText('Approve this device?')).toBeVisible()
   await confirmation.getByLabel('Device fingerprint', { exact: true }).fill((await fingerprint.textContent())!)
   await confirmation.getByRole('button', { name: 'Approve' }).click()
@@ -878,4 +936,125 @@ export const overrideEncryptionMetadata = async (
     const body = (await response.json()) as Record<string, unknown>
     await route.fulfill({ response, json: { ...body, ...overrides } })
   })
+}
+
+// =============================================================================
+// Recovery and passkey continuity
+// =============================================================================
+
+/** A pre-seal account the test minted, and the seal a trusted device would add to it. */
+export type LegacyRecoveryAccount = {
+  phrase: string
+  /** Store a valid seal for this lineage, as a trusted device's phrase update would. */
+  seal: () => Promise<void>
+}
+
+/**
+ * Seed a scheme-2 account the way a pre-seal client left it: an untagged
+ * `kdf_salt`, no seal, and a consistent AK, DEK "0", canary, signing
+ * key and recovery attestation under a phrase the test chose. Recovering with
+ * that phrase is the real legacy path, so the device that does it is unverified.
+ * Call after sign-in (the user row must exist) and before sync setup.
+ */
+export const seedLegacyRecoveryAccount = async (userId: string): Promise<LegacyRecoveryAccount> => {
+  const seed = generateRecoverySeed()
+  const salt = crypto.getRandomValues(new Uint8Array(kdfSaltLength))
+  // The continuity tag starts with 't'; a zero first byte can never carry it.
+  salt[0] = 0
+  const kdfSalt = uint8ArrayToBase64(salt)
+  const recoveryKeys = await deriveRecoveryKeyPairFromSeed(seed, kdfSalt)
+  const recoveryEcdhPublicKey = await exportPublicKey(recoveryKeys.ecdhPublicKey)
+  const recoveryMlkemPublicKey = exportMlKemPublicKey(recoveryKeys.mlkemPublicKey)
+  const ak = await generateAK(true)
+  const dek0 = await generateDEK(true)
+  const { canaryIv, canaryCtext, canaryKey } = await mintCanary(ak, userId)
+  await seedV2Metadata(userId, {
+    canaryIv,
+    canaryCtext,
+    signingPublicKey: (await deriveSigningKeyPair(canaryKey)).publicKeySpki,
+    kdfSalt,
+    recoveryEcdhPublicKey,
+    recoveryMlkemPublicKey,
+    recoveryWrappedAk: await wrapAK(ak, recoveryKeys.ecdhPublicKey, recoveryKeys.mlkemPublicKey, initialKeyId, 1),
+    recoveryAttestation: await signRecoveryAttestation(canaryKey, {
+      userId,
+      kdfSalt,
+      recoveryEcdhPublicKey,
+      recoveryMlkemPublicKey,
+    }),
+    wrappedDek0: await wrapDEK(dek0, ak, initialKeyId),
+  })
+  return {
+    phrase: encodeRecoverySeed(seed),
+    seal: async () =>
+      setRecoveryContinuity(userId, await sealRecoveryContinuity(dek0, recoveryKeys.continuityKey, userId)),
+  }
+}
+
+/** Open the setup wizard on a signed-in device and pick recovery; returns the dialog. */
+export const startPhraseRecovery = async (page: Page): Promise<Locator> => {
+  const dialog = await startAdditionalDeviceSetup(page)
+  await dialog.getByRole('button', { name: 'Use my recovery key' }).click()
+  return dialog
+}
+
+/** Type a phrase into the open recovery step and submit it. */
+export const submitRecoveryPhrase = async (dialog: Locator, phrase: string): Promise<void> => {
+  await dialog.getByPlaceholder('word1 word2 word3 ...').fill(phrase)
+  await dialog.getByRole('button', { name: 'Submit' }).click()
+}
+
+/** The key-store entry that marks keys this device adopted without verifying them. */
+export const unverifiedMarker = 'thunderbolt_ak_unverified'
+
+/** The strip across the content column that asks for a phrase update. */
+export const securityNotice = (page: Page): Locator => page.getByRole('region', { name: 'Security notice' })
+
+/** The Preferences card that reports the phrase, the passkey and this device's trust. */
+export const recoveryStatusCard = (page: Page): Locator => page.locator('#recovery-phrase-status')
+
+/**
+ * Replace the phrase from the confirm dialog that is already open: send the
+ * step-up code, enter it, then save the new phrase. Returns the new phrase.
+ */
+export const confirmPhraseUpdate = async (page: Page, email: string): Promise<string> => {
+  const confirmation = page.getByRole('alertdialog')
+  await expect(confirmation.getByText('Update your recovery phrase?')).toBeVisible()
+  await confirmation.getByRole('button', { name: 'Send code' }).click()
+  await completeStepUpCode(page, email)
+  return acknowledgeRecoveryPhrase(page.getByRole('dialog').filter({ hasText: 'Save your new recovery phrase' }))
+}
+
+/**
+ * Attach a CTAP2.1 platform authenticator with PRF to this page, so passkey
+ * ceremonies run for real against the backend. Fails loudly when this Chromium
+ * rejects the PRF option: a skipped passkey suite would look green.
+ */
+export const addVirtualPasskeyAuthenticator = async (page: Page): Promise<void> => {
+  const session = await page.context().newCDPSession(page)
+  await session.send('WebAuthn.enable')
+  const options = {
+    protocol: 'ctap2',
+    ctap2Version: 'ctap2_1',
+    transport: 'internal',
+    hasResidentKey: true,
+    hasUserVerification: true,
+    isUserVerified: true,
+    automaticPresenceSimulation: true,
+    hasPrf: true,
+  } as const
+  await session.send('WebAuthn.addVirtualAuthenticator', { options }).catch((error: Error) => {
+    throw new Error(`This Chromium can't add a virtual authenticator with PRF: ${error.message}`)
+  })
+}
+
+/** Log out from the account menu, choosing "Delete data from device". */
+export const signOutDeletingData = async (page: Page): Promise<void> => {
+  await page.getByRole('button', { name: 'Account menu' }).click()
+  await page.getByRole('button', { name: 'Log out' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('heading', { name: 'Log out' })).toBeVisible()
+  await dialog.getByText('Delete data from device', { exact: true }).click()
+  await dialog.getByRole('button', { name: 'Log out' }).click()
+  await expect(page.getByPlaceholder('Email')).toBeVisible({ timeout: 30_000 })
 }

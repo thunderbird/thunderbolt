@@ -19,6 +19,7 @@ import { defaultModelDeepSeekV41Flash, defaultModelOpus55, defaultModels, hashMo
 import { isModelModified } from '@/defaults/utils'
 import type { Model } from '@/types'
 import {
+  bindModelKeyDestinations,
   createModel,
   deleteModel,
   getAllModels,
@@ -35,7 +36,9 @@ import { getAllPrompts, getPrompt } from './prompts'
 import { updateSettings } from './settings'
 import { nowIso } from '@/lib/utils'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
+import { saveIntegrationCredentials } from './integrations'
 import { getAllEnabledTriggers } from './triggers'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -306,6 +309,101 @@ describe('Models DAL', () => {
   })
 
   describe('getAvailableModels', () => {
+    it('keeps Otari unavailable until its preview flag is on without changing saved models or selection', async () => {
+      const db = getDb()
+      const otariId = uuidv7()
+      const fallbackId = uuidv7()
+      await db.insert(modelsTable).values([
+        { id: otariId, provider: 'otari', name: 'Otari', model: 'test', enabled: 1, isSystem: 0 },
+        { id: fallbackId, provider: 'openai', name: 'Fallback', model: 'test', enabled: 1, isSystem: 1 },
+      ])
+      await updateSettings(db, { selected_model: otariId })
+      expect((await getAvailableModels(db)).map(({ id }) => id)).toEqual([fallbackId])
+      expect((await getSelectedModel(db)).id).toBe(fallbackId)
+      await updateSettings(db, { experimental_feature_otari: true })
+      expect((await getAvailableModels(db)).map(({ id }) => id)).toEqual([fallbackId, otariId])
+      expect((await getSelectedModel(db)).id).toBe(otariId)
+      await updateSettings(db, { experimental_feature_otari: false })
+      expect((await getAvailableModels(db)).map(({ id }) => id)).toEqual([fallbackId])
+      expect((await getSelectedModel(db)).id).toBe(fallbackId)
+      expect(await getModel(db, otariId)).toMatchObject({ enabled: 1, deletedAt: null })
+    })
+    it('gates OAuth models on connection access without changing model preferences or BYOK access', async () => {
+      const db = getDb()
+      useLocalSettingsStore.setState({ cloudUrl: '' })
+      await db.insert(modelsTable).values([...defaultModels])
+      await createModel(db, {
+        id: 'oauth',
+        name: 'OAuth',
+        provider: 'tinfoil',
+        model: 'deepseek',
+        oauthProvider: 'tinfoil',
+        enabled: 1,
+      })
+      await createModel(db, {
+        id: 'disabled-oauth',
+        name: 'Disabled',
+        provider: 'tinfoil',
+        model: 'other',
+        oauthProvider: 'tinfoil',
+        enabled: 0,
+      })
+      await createModel(db, {
+        id: 'byok',
+        name: 'BYOK',
+        provider: 'tinfoil',
+        model: 'deepseek',
+        apiKey: 'key',
+        enabled: 1,
+      })
+      await updateSettings(db, { selected_model: 'oauth' })
+      for (const [enabled, credentials, expected] of [
+        [false, { access_token: 'token' }, ['byok']],
+        [true, { access_token: '' }, ['byok']],
+        [true, { access_token: 'token', reauth_required: true }, ['byok']],
+        [true, { access_token: 'token' }, ['byok', 'oauth']],
+      ] as const) {
+        await saveIntegrationCredentials(db, 'tinfoil', credentials, enabled)
+        expect((await getAvailableModels(db)).map((model) => model.id).sort()).toEqual([...expected])
+        expect((await getSelectedModel(db)).id).toBe(expected.length === 2 ? 'oauth' : 'byok')
+      }
+      expect((await getModel(db, 'disabled-oauth'))?.enabled).toBe(0)
+      expect((await getModel(db, 'oauth'))?.enabled).toBe(1)
+    })
+
+    it('offers only user-run models and prefers one over the managed default without a server', async () => {
+      useLocalSettingsStore.setState({ cloudUrl: '' })
+      const db = getDb()
+      await db.insert(modelsTable).values([...defaultModels])
+      await createModel(db, {
+        id: 'local-model',
+        provider: 'custom',
+        name: 'Local model',
+        model: 'local',
+        url: 'http://localhost:11434/v1',
+        enabled: 1,
+        isSystem: 0,
+      })
+      await updateSettings(db, { selected_model: defaultModelDeepSeekV41Flash.id })
+      expect((await getAvailableModels(db)).map(({ id }) => id)).toEqual(['local-model'])
+      expect((await getSelectedModel(db)).id).toBe('local-model')
+    })
+
+    it('keeps a non-runnable default placeholder when no user model has been added yet', async () => {
+      useLocalSettingsStore.setState({ cloudUrl: '' })
+      const db = getDb()
+      await db.insert(modelsTable).values([...defaultModels])
+      expect(await getAvailableModels(db)).toEqual([])
+      expect((await getSelectedModel(db)).id).toBe(defaultModelDeepSeekV41Flash.id)
+    })
+
+    it('does not offer server models just because a local user selected a server URL', async () => {
+      useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1', localMode: true })
+      const db = getDb()
+      await db.insert(modelsTable).values([...defaultModels])
+      expect(await getAvailableModels(db)).toEqual([])
+    })
+
     it('should return empty array when no enabled models exist', async () => {
       const db = getDb()
       const modelId = uuidv7()
@@ -433,8 +531,9 @@ describe('Models DAL', () => {
       })
 
       const lastUsedModelId = uuidv7()
-      await db.insert(modelsTable).values({
+      await createModel(db, {
         id: lastUsedModelId,
+        apiKey: 'test-key',
         provider: 'openai',
         name: 'Last Used Model',
         model: 'gpt-4',
@@ -1120,6 +1219,26 @@ describe('Models DAL', () => {
       expect(secret?.apiKey).toBe('sk-test-key')
     })
 
+    it('keeps provider-default provenance local and preserves it when credentials are cleared', async () => {
+      const db = getDb()
+      const modelId = uuidv7()
+      await createModel(db, {
+        id: modelId,
+        provider: 'openrouter',
+        name: 'Provider default',
+        model: 'default-model',
+        apiKey: 'key',
+        providerDefault: 1,
+      })
+      const raw = await db.select().from(modelsTable).where(eq(modelsTable.id, modelId)).get()
+      expect(raw).not.toHaveProperty('providerDefault')
+      expect(await getModel(db, modelId)).toMatchObject({ providerDefault: 1, apiKey: 'key' })
+      await updateModel(db, modelId, { apiKey: null })
+      expect(await getModel(db, modelId)).toMatchObject({ providerDefault: 1, apiKey: null })
+      await updateModel(db, modelId, { name: 'Renamed' })
+      expect(await getModel(db, modelId)).toMatchObject({ providerDefault: 1, name: 'Renamed' })
+    })
+
     it('should not create a secret row when apiKey is null', async () => {
       const db = getDb()
       const modelId = uuidv7()
@@ -1167,7 +1286,7 @@ describe('Models DAL', () => {
       expect(model?.apiKey).toBeNull()
     })
 
-    it('should not create a secret row when updating with null apiKey and no existing row', async () => {
+    it('keeps an explicitly cleared credential empty', async () => {
       const db = getDb()
       const modelId = uuidv7()
 
@@ -1206,7 +1325,7 @@ describe('Models DAL', () => {
       expect(model?.apiKey).toBe('sk-second')
     })
 
-    it('should delete an existing secret when apiKey is explicitly cleared', async () => {
+    it('clears an existing secret without deleting its local record', async () => {
       const db = getDb()
       const modelId = uuidv7()
       await createModel(db, {
@@ -1221,7 +1340,7 @@ describe('Models DAL', () => {
 
       expect(
         await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, modelId)).get(),
-      ).toBeUndefined()
+      ).toMatchObject({ apiKey: null, oauthProvider: null })
       expect((await getModel(db, modelId))?.apiKey).toBeNull()
     })
 
@@ -1246,6 +1365,134 @@ describe('Models DAL', () => {
       // Secret should be gone (hard-deleted)
       secret = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, modelId)).get()
       expect(secret).toBeUndefined()
+    })
+  })
+
+  describe('key destination binding', () => {
+    const createCustomModel = (id: string, url: string, apiKey?: string) =>
+      createModel(getDb(), { id, provider: 'custom', name: 'Custom', model: 'llama', url, apiKey })
+
+    it('hides the key when a sync or import moves the same model id to another URL', async () => {
+      const db = getDb()
+      const id = uuidv7()
+      await createCustomModel(id, 'https://llm.example.com/v1', 'sk-mine')
+
+      // PowerSync and the importer write the models row directly, never through updateModel.
+      await db.update(modelsTable).set({ url: 'https://evil.example.com/v1' }).where(eq(modelsTable.id, id))
+
+      expect((await getModel(db, id))?.apiKey).toBeNull()
+      expect((await getAvailableModels(db)).find((model) => model.id === id)?.apiKey).toBeNull()
+      expect((await getAllModels(db)).find((model) => model.id === id)?.apiKey).toBeNull()
+    })
+
+    it('hides the key when the provider changes under the same id', async () => {
+      const db = getDb()
+      const id = uuidv7()
+      await createModel(db, { id, provider: 'openai', name: 'GPT', model: 'gpt-4', apiKey: 'sk-openai' })
+
+      await db.update(modelsTable).set({ provider: 'openrouter' }).where(eq(modelsTable.id, id))
+
+      expect((await getModel(db, id))?.apiKey).toBeNull()
+    })
+
+    it('keeps the key across edits that do not move it', async () => {
+      const db = getDb()
+      const id = uuidv7()
+      await createCustomModel(id, 'https://llm.example.com', 'sk-mine')
+
+      await db.update(modelsTable).set({ name: 'Renamed' }).where(eq(modelsTable.id, id))
+      await updateModel(db, id, { url: 'HTTPS://LLM.example.com:443/v1/' })
+
+      expect((await getModel(db, id))?.apiKey).toBe('sk-mine')
+      const secret = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, id)).get()
+      expect(secret?.url).toBe('HTTPS://LLM.example.com:443/v1/')
+    })
+
+    it('leaves the key behind when an edit moves the model to another endpoint', async () => {
+      const db = getDb()
+      const id = uuidv7()
+      await createCustomModel(id, 'https://llm.example.com/v1', 'sk-mine')
+
+      await updateModel(db, id, { url: 'https://evil.example.com/v1' })
+      expect((await getModel(db, id))?.apiKey).toBeNull()
+
+      await updateModel(db, id, { url: 'https://llm.example.com/v1' })
+      expect((await getModel(db, id))?.apiKey).toBe('sk-mine')
+    })
+
+    it('does not follow a scheme downgrade', async () => {
+      const db = getDb()
+      const id = uuidv7()
+      await createCustomModel(id, 'https://llm.example.com/v1', 'sk-mine')
+
+      await updateModel(db, id, { url: 'http://llm.example.com/v1' })
+
+      expect((await getModel(db, id))?.apiKey).toBeNull()
+    })
+
+    it('binds a key typed with a new URL to that URL', async () => {
+      const db = getDb()
+      const id = uuidv7()
+      await createCustomModel(id, 'https://llm.example.com/v1', 'sk-old')
+
+      await updateModel(db, id, { url: 'https://other.example.com/v1', apiKey: 'sk-new' })
+
+      expect((await getModel(db, id))?.apiKey).toBe('sk-new')
+      const secret = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, id)).get()
+      expect(secret).toMatchObject({ provider: 'custom', url: 'https://other.example.com/v1' })
+    })
+
+    it('never gives a model the key saved under another id', async () => {
+      const db = getDb()
+      const keyed = uuidv7()
+      const keyless = uuidv7()
+      await createCustomModel(keyed, 'https://llm.example.com/v1', 'sk-mine')
+      await createCustomModel(keyless, 'https://llm.example.com/v1')
+
+      expect((await getModel(db, keyless))?.apiKey).toBeNull()
+    })
+
+    describe('bindModelKeyDestinations', () => {
+      it('binds a key saved before binding to the current destination and drops orphans', async () => {
+        const db = getDb()
+        const id = uuidv7()
+        await createCustomModel(id, 'https://llm.example.com/v1')
+        await db.insert(modelsSecretsTable).values([
+          { modelId: id, apiKey: 'sk-legacy' },
+          { modelId: 'gone', apiKey: 'sk-orphan' },
+        ])
+        expect((await getModel(db, id))?.apiKey).toBeNull()
+
+        await bindModelKeyDestinations(db)
+
+        expect((await getModel(db, id))?.apiKey).toBe('sk-legacy')
+        expect(
+          await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, 'gone')).get(),
+        ).toBeUndefined()
+      })
+
+      it('lets a key follow its model to another spelling of the same endpoint', async () => {
+        const db = getDb()
+        const id = uuidv7()
+        await createCustomModel(id, 'https://llm.example.com/v1', 'sk-mine')
+        await db.update(modelsTable).set({ url: 'HTTPS://LLM.example.com:443/v1/' }).where(eq(modelsTable.id, id))
+        expect((await getModel(db, id))?.apiKey).toBeNull()
+
+        await bindModelKeyDestinations(db)
+
+        expect((await getModel(db, id))?.apiKey).toBe('sk-mine')
+      })
+
+      it('leaves a key bound to an old destination where it is', async () => {
+        const db = getDb()
+        const id = uuidv7()
+        await createCustomModel(id, 'https://llm.example.com/v1', 'sk-mine')
+        await db.update(modelsTable).set({ url: 'https://evil.example.com/v1' }).where(eq(modelsTable.id, id))
+
+        await bindModelKeyDestinations(db)
+
+        expect((await getModel(db, id))?.apiKey).toBeNull()
+      })
     })
   })
 

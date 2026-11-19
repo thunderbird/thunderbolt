@@ -26,11 +26,13 @@ export const ProjectCreateDialog = ({
   const db = useDatabase()
   const { isMobile } = useIsMobile()
   const inputRef = useRef<HTMLInputElement>(null)
-  const form = useProjectCreateState(async (values) => {
-    const project = await createProject(db, values)
-    onClose()
-    await onCreated(project.id)
-  })
+  const form = useProjectCreateState(
+    (values) => createProject(db, values),
+    async (project) => {
+      onClose()
+      await onCreated(project.id)
+    },
+  )
   const content = <ProjectCreateForm form={form} inputRef={inputRef} onCancel={onClose} />
 
   if (isMobile) {

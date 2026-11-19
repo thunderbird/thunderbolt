@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { sql } from 'drizzle-orm'
-import { bigint, check, index, integer, pgTable, primaryKey, text, timestamp } from 'drizzle-orm/pg-core'
+import { bigint, boolean, check, index, integer, pgTable, primaryKey, text, timestamp } from 'drizzle-orm/pg-core'
 import { user } from './auth-schema'
 
 export const inferencePrices = pgTable(
@@ -37,6 +37,11 @@ export const inferenceUsage = pgTable(
     completionTokens: integer('completion_tokens').notNull(),
     totalTokens: integer('total_tokens').notNull(),
     costNanoUsd: bigint('cost_nano_usd', { mode: 'bigint' }).notNull(),
+    /**
+     * False while the row is the hold of a request still running: its maximum cost, capped at what was left of the
+     * limit. Usage settles the hold, and a request that ends without usage retains it. Both set this to true.
+     */
+    settled: boolean('settled').default(true).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [

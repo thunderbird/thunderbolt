@@ -6,6 +6,7 @@
 module.exports = {
   ci: {
     collect: {
+      // Audit the signed-out entry flow, including SSO redirects. The performance harness measures signed-in chat.
       numberOfRuns: 3,
       settings: {
         // Skip audits that aren't relevant for an SPA behind auth

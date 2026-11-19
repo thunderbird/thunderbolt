@@ -6,7 +6,7 @@ import { user } from '@/db/auth-schema'
 import { inferencePrices, inferenceUsage } from '@/db/inference-usage-schema'
 import { createTestDb } from '@/test-utils/db'
 import { and, eq, sql } from 'drizzle-orm'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { resolve } from 'path'
 import {
   calculateInferenceCost,
@@ -18,6 +18,9 @@ import {
   loadInferencePrice,
   maxPostgresInteger,
   recordInferenceUsage,
+  releaseInferenceHold,
+  releaseInferenceHolds,
+  retainInferenceHold,
   type InferenceDatabase,
   type ManagedInferenceIdentity,
   type InferencePrice,
@@ -57,6 +60,9 @@ const usageInput = (
   price: InferencePrice,
   counts: InferenceTokenCounts = { promptTokens: 10, completionTokens: 20, totalTokens: 30 },
 ): RecordInferenceUsageInput => ({ id, userId, price, counts })
+
+/** A hold of a fixed amount, whatever the price. */
+const fixedHold = (id: string, maxCostNanoUsd: bigint) => ({ id, maxCostNanoUsd: () => maxCostNanoUsd })
 
 describe('inference usage ledger', () => {
   let database: TestDatabase
@@ -351,7 +357,13 @@ describe('inference usage ledger', () => {
       await insertUser(database, 'fireworks-admission-user')
 
       expect(
-        await checkManagedInferenceAdmission(database, fireworksGlmIdentity, 'fireworks-admission-user', limits),
+        await checkManagedInferenceAdmission(
+          database,
+          fireworksGlmIdentity,
+          'fireworks-admission-user',
+          limits,
+          fixedHold('fireworks-glm-hold', 1n),
+        ),
       ).toEqual({
         outcome: 'allowed',
         price: {
@@ -362,7 +374,13 @@ describe('inference usage ledger', () => {
         },
       })
       expect(
-        await checkManagedInferenceAdmission(database, fireworksMinimaxIdentity, 'fireworks-admission-user', limits),
+        await checkManagedInferenceAdmission(
+          database,
+          fireworksMinimaxIdentity,
+          'fireworks-admission-user',
+          limits,
+          fixedHold('fireworks-minimax-hold', 1n),
+        ),
       ).toEqual({
         outcome: 'allowed',
         price: {
@@ -726,27 +744,195 @@ describe('inference usage ledger', () => {
       expect(selectCalls).toBe(1)
     })
 
-    it('starts the current-price and quota reads concurrently', async () => {
-      let selectCalls = 0
-      const concurrentDatabase = {
-        insert: database.insert,
-        select: ((fields) => {
-          selectCalls += 1
-          return database.select(fields)
-        }) as InferenceDatabase['select'],
-      }
+    describe('holds', () => {
+      const limits = { fiveHourCents: 10, sevenDayCents: 100 }
+      const sixCents = 6n * oneCentNanoUsd
+      const sixCentCounts = { promptTokens: 200_000, completionTokens: 0, totalTokens: 200_000 }
+      const admit = (userId: string, id: string, maxCostNanoUsd = sixCents) =>
+        checkManagedInferenceAdmission(database, deepseekIdentity, userId, limits, fixedHold(id, maxCostNanoUsd))
+      const holdRow = async (id: string) =>
+        (await database.select().from(inferenceUsage).where(eq(inferenceUsage.id, id)))[0]
 
-      const admissionPromise = checkManagedInferenceAdmission(
-        concurrentDatabase,
-        deepseekIdentity,
-        'concurrent-admission-user',
-        { fiveHourCents: 1, sevenDayCents: 1 },
-      )
+      it('admits one of two concurrent requests whose holds together would pass the limit', async () => {
+        const userId = 'concurrent-holds-user'
+        await insertUser(database, userId)
+        await insertSpend(userId, 'concurrent-holds-spend', 4n * oneCentNanoUsd, '1 hour')
 
-      expect(selectCalls).toBe(2)
-      expect(await admissionPromise).toEqual({
-        outcome: 'allowed',
-        price: { ...deepseekIdentity, inputNanoUsdPerToken: 300n, outputNanoUsdPerToken: 700n },
+        const outcomes = await Promise.all([admit(userId, 'concurrent-a'), admit(userId, 'concurrent-b')])
+
+        expect(outcomes.map(({ outcome }) => outcome).sort()).toEqual(['allowed', 'request-in-progress'])
+        const rows = await database.select().from(inferenceUsage).where(eq(inferenceUsage.userId, userId))
+        expect(rows.filter(({ settled }) => !settled).map(({ costNanoUsd }) => costNanoUsd)).toEqual([sixCents])
+      })
+
+      it('admits a request beside held ones only when its whole hold fits in what is left', async () => {
+        const crowded = 'crowded-holds-user'
+        const roomy = 'roomy-holds-user'
+        await insertUser(database, crowded)
+        await insertUser(database, roomy)
+        await insertSpend(crowded, 'crowded-holds-spend', 4n * oneCentNanoUsd, '1 hour')
+        const fourCents = 4n * oneCentNanoUsd
+
+        const crowdedOutcomes = await Promise.all([
+          admit(crowded, 'crowded-a', fourCents),
+          admit(crowded, 'crowded-b', fourCents),
+        ])
+        const roomyOutcomes = await Promise.all([
+          admit(roomy, 'roomy-a', fourCents),
+          admit(roomy, 'roomy-b', fourCents),
+        ])
+
+        expect(crowdedOutcomes.map(({ outcome }) => outcome).sort()).toEqual(['allowed', 'request-in-progress'])
+        expect(roomyOutcomes.map(({ outcome }) => outcome)).toEqual(['allowed', 'allowed'])
+        expect((await checkInferenceQuota(database, roomy, limits)).fiveHourSpentNanoUsd).toBe(2n * fourCents)
+      })
+
+      it('holds a lone request at most what is left, down to the last nano-dollar', async () => {
+        const userId = 'capped-hold-user'
+        await insertUser(database, userId)
+        await insertSpend(userId, 'capped-hold-spend', 10n * oneCentNanoUsd - 1n, '1 hour')
+
+        expect((await admit(userId, 'capped-hold', 50n * oneCentNanoUsd)).outcome).toBe('allowed')
+        expect(await holdRow('capped-hold')).toMatchObject({ settled: false, costNanoUsd: 1n })
+        // The capped hold fills the limit only while its request runs, so the next one is told to wait.
+        expect((await admit(userId, 'beside-capped-hold', 1n)).outcome).toBe('request-in-progress')
+      })
+
+      it('takes the per-user advisory lock before it reads the spend it decides on', async () => {
+        const userId = 'locked-admission-user'
+        await insertUser(database, userId)
+        const statements: string[] = []
+        const query = client.query.bind(client)
+        const querySpy = spyOn(client, 'query').mockImplementation((statement, ...rest) => {
+          statements.push(statement)
+          return query(statement, ...rest)
+        })
+
+        try {
+          await admit(userId, 'locked-admission')
+        } finally {
+          querySpy.mockRestore()
+        }
+
+        const indexOf = (fragment: string) => statements.findIndex((statement) => statement.includes(fragment))
+        expect(indexOf('pg_advisory_xact_lock')).toBeGreaterThan(-1)
+        expect(indexOf('pg_advisory_xact_lock')).toBeLessThan(indexOf('sum("cost_nano_usd")'))
+        expect(indexOf('sum("cost_nano_usd")')).toBeLessThan(indexOf('insert into "inference_usage"'))
+      })
+
+      it('admits up to the exact limit one at a time, then refuses', async () => {
+        const userId = 'sequential-holds-user'
+        await insertUser(database, userId)
+        await insertSpend(userId, 'sequential-holds-spend', 4n * oneCentNanoUsd, '1 hour')
+        const price = await loadRequiredPrice(database, deepseekIdentity)
+
+        expect((await admit(userId, 'sequential-a')).outcome).toBe('allowed')
+        await recordInferenceUsage(database, usageInput('sequential-a', userId, price, sixCentCounts))
+        const decision = await checkInferenceQuota(database, userId, limits)
+        expect(decision.fiveHourSpentNanoUsd).toBe(10n * oneCentNanoUsd)
+        expect((await admit(userId, 'sequential-b')).outcome).toBe('quota-exceeded')
+        expect(await holdRow('sequential-b')).toBeUndefined()
+      })
+
+      it('charges a hold in full until its usage settles it, once', async () => {
+        const userId = 'settled-hold-user'
+        await insertUser(database, userId)
+        const price = await loadRequiredPrice(database, deepseekIdentity)
+
+        await admit(userId, 'settled-hold')
+        expect(await holdRow('settled-hold')).toMatchObject({ settled: false, costNanoUsd: sixCents, totalTokens: 0 })
+        expect((await checkInferenceQuota(database, userId, limits)).fiveHourSpentNanoUsd).toBe(sixCents)
+
+        expect(await recordInferenceUsage(database, usageInput('settled-hold', userId, price))).toBe('inserted')
+        expect(
+          await recordInferenceUsage(
+            database,
+            usageInput('settled-hold', userId, price, { promptTokens: 9, completionTokens: 9, totalTokens: 18 }),
+          ),
+        ).toBe('duplicate')
+        expect(await holdRow('settled-hold')).toMatchObject({ settled: true, costNanoUsd: 17_000n, totalTokens: 30 })
+      })
+
+      it('releases an unsettled hold and never a settled row', async () => {
+        const userId = 'released-hold-user'
+        await insertUser(database, userId)
+        const price = await loadRequiredPrice(database, deepseekIdentity)
+
+        await admit(userId, 'released-hold')
+        await releaseInferenceHold(database, 'released-hold')
+        expect(await holdRow('released-hold')).toBeUndefined()
+
+        await admit(userId, 'kept-usage')
+        await recordInferenceUsage(database, usageInput('kept-usage', userId, price))
+        await releaseInferenceHold(database, 'kept-usage')
+        expect(await holdRow('kept-usage')).toMatchObject({ settled: true, costNanoUsd: 17_000n })
+      })
+
+      it('keeps a retained hold charged, as spent quota rather than a request still running', async () => {
+        const userId = 'retained-hold-user'
+        await insertUser(database, userId)
+        const price = await loadRequiredPrice(database, deepseekIdentity)
+        await admit(userId, 'retained-hold', 10n * oneCentNanoUsd)
+
+        await retainInferenceHold(database, 'retained-hold')
+        expect(await holdRow('retained-hold')).toMatchObject({ settled: true, costNanoUsd: 10n * oneCentNanoUsd })
+        expect((await admit(userId, 'after-retained-hold')).outcome).toBe('quota-exceeded')
+
+        await admit(userId, 'settled-before-retain', 1n)
+        await recordInferenceUsage(database, usageInput('settled-before-retain', userId, price))
+        await retainInferenceHold(database, 'settled-before-retain')
+        expect(await holdRow('settled-before-retain')).toMatchObject({ settled: true, costNanoUsd: 17_000n })
+      })
+
+      it('releases several holds at once and never a settled row', async () => {
+        const userId = 'released-holds-user'
+        await insertUser(database, userId)
+        await admit(userId, 'released-a', oneCentNanoUsd)
+        await admit(userId, 'released-b', oneCentNanoUsd)
+        await retainInferenceHold(database, 'released-b')
+
+        await releaseInferenceHolds(database, ['released-a', 'released-b'])
+        expect(await holdRow('released-a')).toBeUndefined()
+        expect(await holdRow('released-b')).toMatchObject({ settled: true })
+      })
+
+      it('counts a hold left by a process that died as running until it leaves the 5-hour window', async () => {
+        const userId = 'abandoned-hold-user'
+        await insertUser(database, userId)
+        await admit(userId, 'abandoned-hold', 10n * oneCentNanoUsd)
+
+        expect((await admit(userId, 'after-abandoned-hold')).outcome).toBe('request-in-progress')
+
+        await database
+          .update(inferenceUsage)
+          .set({ createdAt: sql`now() - interval '5 hours 1 millisecond'` })
+          .where(eq(inferenceUsage.id, 'abandoned-hold'))
+        // Out of the 5-hour window, the hold no longer counts as running: a request whose maximum cost passes the
+        // whole limit is admitted alone, held at what is left. The 7-day window still charges the old hold.
+        expect((await admit(userId, 'after-window', 50n * oneCentNanoUsd)).outcome).toBe('allowed')
+        expect(await holdRow('after-window')).toMatchObject({ settled: false, costNanoUsd: 10n * oneCentNanoUsd })
+        expect((await checkInferenceQuota(database, userId, limits)).sevenDaySpentNanoUsd).toBe(20n * oneCentNanoUsd)
+      })
+
+      it('holds and admits against the 7-day window when it has less left', async () => {
+        const userId = 'seven-day-holds-user'
+        await insertUser(database, userId)
+        await insertSpend(userId, 'seven-day-holds-spend', 4n * oneCentNanoUsd, '6 hours')
+        const sevenDayLimits = { fiveHourCents: 100, sevenDayCents: 10 }
+        const admitWeekly = (id: string, maxCostNanoUsd: bigint) =>
+          checkManagedInferenceAdmission(
+            database,
+            deepseekIdentity,
+            userId,
+            sevenDayLimits,
+            fixedHold(id, maxCostNanoUsd),
+          )
+
+        expect((await admitWeekly('seven-day-a', 3n * oneCentNanoUsd)).outcome).toBe('allowed')
+        expect((await admitWeekly('seven-day-b', 4n * oneCentNanoUsd)).outcome).toBe('request-in-progress')
+        await releaseInferenceHold(database, 'seven-day-a')
+        expect((await admitWeekly('seven-day-c', 50n * oneCentNanoUsd)).outcome).toBe('allowed')
+        expect(await holdRow('seven-day-c')).toMatchObject({ costNanoUsd: 6n * oneCentNanoUsd })
       })
     })
 
@@ -764,10 +950,13 @@ describe('inference usage ledger', () => {
         )
 
       expect(
-        await checkManagedInferenceAdmission(database, deepseekIdentity, userId, {
-          fiveHourCents: 1,
-          sevenDayCents: 1,
-        }),
+        await checkManagedInferenceAdmission(
+          database,
+          deepseekIdentity,
+          userId,
+          { fiveHourCents: 1, sevenDayCents: 1 },
+          fixedHold('missing-price-hold', 1n),
+        ),
       ).toEqual({ outcome: 'price-unavailable' })
     })
 

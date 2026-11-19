@@ -21,17 +21,11 @@ export {
 } from './anthropic-model.ts'
 export {
   buildConfidentialModel,
-  createReceiptLifecycle,
   isConfidentialModelError,
-  isNonnegativeSafeInteger,
   resolveConfidentialModelCompatibility,
   type BuildConfidentialModelOptions,
-  type CompletedProviderStep,
   type ConfidentialModelError,
   type ConfidentialModelErrorCode,
-  type CreateReceiptLifecycleOptions,
-  type ReceiptCapture,
-  type ReceiptLifecycle,
 } from './confidential-model.ts'
 export {
   buildOpenAiCompatModel,
@@ -45,9 +39,11 @@ export {
   writeAgentWorkspaceFiles,
   type BuildAppHarnessOptions,
   type PiModelDescriptor,
+  type AppHarness,
   type WorkspaceFile,
   type WorkspaceWriteFailure,
 } from './build-app-harness.ts'
+export type { CompactionCheckpoint, CompactionStatus, HarnessCompaction } from './compaction.ts'
 export { ensureBufferPolyfill } from './ensure-buffer.ts'
 export { toPiAgentTools } from './mcp-tools.ts'
 export type { SeedTurn } from './seed-history.ts'

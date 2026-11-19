@@ -223,12 +223,11 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
           />
         </div>
 
-        <div className="flex justify-between items-end w-full">
-          <div className="flex items-center gap-2">{footerStartElements}</div>
+        <div className="flex items-end gap-2 w-full">
+          {footerStartElements}
 
-          {/* min-w-0 lets the model selector's label truncate when the composer
-              is narrow, instead of the cluster wrapping or overflowing. */}
-          <div className="flex min-w-0 gap-2 items-center">
+          {/* Keep the fixed-size actions outside the shrinking model/status text. */}
+          <div className="ml-auto flex min-w-0 gap-2 items-center">
             {footerEndElements}
             {showModelSelect && (
               <ModelSelector
@@ -240,9 +239,8 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
                 align="end"
               />
             )}
-
-            {submitButton}
           </div>
+          {submitButton}
         </div>
       </>
     )

@@ -15,22 +15,23 @@ const microsoftBaseUrl = loopbackOrigin(import.meta.env.VITE_MICROSOFT_BASE_URL)
 export const microsoftLoginUrl = microsoftBaseUrl ?? 'https://login.microsoftonline.com'
 export const microsoftGraphUrl = microsoftBaseUrl ?? 'https://graph.microsoft.com'
 
-let cachedConfig: AuthProviderBackendConfig | null = null
+let cachedConfigs = new WeakMap<HttpClient, AuthProviderBackendConfig>()
 
 const fetchBackendConfig = async (httpClient: HttpClient): Promise<AuthProviderBackendConfig> => {
+  const cachedConfig = cachedConfigs.get(httpClient)
   if (cachedConfig) {
     return cachedConfig
   }
   const result = await httpClient.get('auth/microsoft/config').json<AuthProviderBackendConfig>()
   if (result.configured) {
-    cachedConfig = result
+    cachedConfigs.set(httpClient, result)
   }
   return result
 }
 
 /** Test-only: clears the in-memory backend config cache so each test starts fresh. */
 export const resetBackendConfigCacheForTests = (): void => {
-  cachedConfig = null
+  cachedConfigs = new WeakMap()
 }
 
 export const getOAuthConfig = async (httpClient: HttpClient): Promise<OAuthConfig> => {
@@ -100,6 +101,12 @@ export const getUserInfo = async (accessToken: string): Promise<MicrosoftUserInf
   }
 }
 
-export const refreshAccessToken = async (httpClient: HttpClient, refreshToken: string): Promise<OAuthTokens> => {
-  return await httpClient.post('auth/microsoft/refresh', { json: { refresh_token: refreshToken } }).json<OAuthTokens>()
+export const refreshAccessToken = async (
+  httpClient: HttpClient,
+  refreshToken: string,
+  signal?: AbortSignal,
+): Promise<OAuthTokens> => {
+  return await httpClient
+    .post('auth/microsoft/refresh', { json: { refresh_token: refreshToken }, signal })
+    .json<OAuthTokens>()
 }

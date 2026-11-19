@@ -78,8 +78,5 @@
         }
       ]
     }
-  ],
-  "remote": {
-    "urls": ["http://localhost:1420/*"]
-  }
+  ]
 }

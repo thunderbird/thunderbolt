@@ -48,6 +48,8 @@ type DetailPanelProps = {
   onClose: () => void
   /** Hide when the containing modal supplies its own close control. */
   showCloseButton?: boolean
+  /** Fill the available height when content owns its scroller, with outer scrolling as a short-screen fallback. */
+  bodyLayout?: 'scroll' | 'fill'
   children: ReactNode
 }
 
@@ -64,6 +66,7 @@ export const DetailPanel = ({
   actions,
   onClose,
   showCloseButton = true,
+  bodyLayout = 'scroll',
   children,
 }: DetailPanelProps) => {
   const { t } = useLingui()
@@ -121,7 +124,8 @@ export const DetailPanel = ({
           fits and iOS has panned its focused field awkwardly. */}
       <div
         className={cn(
-          "flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto md:pt-4 max-md:pt-[calc(var(--modal-top-inset)+1rem)] max-md:pb-[calc(var(--touch-height-default)+var(--modal-footer-inset))] max-md:after:h-[var(--kb,0px)] max-md:after:shrink-0 max-md:after:content-['']",
+          'flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto md:pt-4 max-md:pt-[calc(var(--modal-top-inset)+1rem)] max-md:pb-[calc(var(--touch-height-default)+var(--modal-footer-inset))]',
+          bodyLayout === 'scroll' && "max-md:after:h-[var(--kb,0px)] max-md:after:shrink-0 max-md:after:content-['']",
           floatingFormFooterClass,
         )}
       >

@@ -2,14 +2,34 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it, test } from 'bun:test'
+import { getDb } from '@/db/database'
+import { saveProviderConnection, disconnectProviderConnection } from '@/dal/provider-connections'
+import { updateSettings } from '@/dal'
+import { setAuthToken, clearAuthToken } from '@/lib/auth-token'
+import { clearCachedSession } from '@/lib/session-cache'
+import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { createRecordingClient } from '@/test-utils/http-client'
+import { createTinfoilWebApi } from '@/integrations/tinfoil-search/api'
+import { createOtariWebApi } from '@/integrations/otari-search/api'
+import { stubJsonResponse } from '@/test-utils/http'
+import type { SourceMetadata } from '@/types/source'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn, test } from 'bun:test'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { toPiAgentTools } from '@shared/agent-core/mcp-tools'
 import type { ToolCallOptions } from 'ai'
 import { z } from 'zod'
 import type { HttpClient } from '@/contexts'
 import type { ToolConfig } from '@/types'
 import { createWebToolBudget, webToolCaps } from '@/ai/web-tool-budget'
-import { createTool, createToolset, getAvailableTools, type ToolAvailabilityContext, type ToolCallCache } from './tools'
+import {
+  createTool,
+  createToolset,
+  getAvailableTools,
+  loadConnectedSearchApis,
+  type ToolAvailabilityContext,
+  type ToolCallCache,
+} from './tools'
 
 const options: ToolCallOptions = { toolCallId: 't1', messages: [] }
 
@@ -227,53 +247,6 @@ const context = (overrides: Partial<ToolAvailabilityContext> = {}): ToolAvailabi
   ...overrides,
 })
 
-// These run WITHOUT a test database set up. The injected context must fully
-// drive availability, so any reintroduced `getSettings`/`getIntegrationStatus`
-// read (the duplicate the DI removed) would surface here. This locks in the
-// dedup from the hot send path (`aiFetchStreamingResponse`).
-describe('getAvailableTools (injected context)', () => {
-  it('returns only the always-available render_html tool when every gate is disabled', async () => {
-    const tools = await getAvailableTools(stubHttpClient, undefined, context())
-    expect(tools.map((tool) => tool.name)).toEqual(['render_html'])
-  })
-
-  it('includes task tools when experimentalFeatureTasks is enabled', async () => {
-    const tools = await getAvailableTools(
-      stubHttpClient,
-      undefined,
-      context({ settings: { experimentalFeatureTasks: true, integrationsProIsEnabled: false } }),
-    )
-    expect(tools.length).toBeGreaterThan(0)
-  })
-
-  it('includes Google tools only when the Google integration is enabled', async () => {
-    const tools = await getAvailableTools(
-      stubHttpClient,
-      undefined,
-      context({ integrationStatus: integrationStatus({ googleEnabled: true }) }),
-    )
-    expect(tools.some((tool) => tool.name.startsWith('google'))).toBe(true)
-  })
-
-  it('includes Microsoft tools only when the Microsoft integration is enabled', async () => {
-    const tools = await getAvailableTools(
-      stubHttpClient,
-      undefined,
-      context({ integrationStatus: integrationStatus({ microsoftEnabled: true }) }),
-    )
-    expect(tools.some((tool) => tool.name.startsWith('microsoft'))).toBe(true)
-  })
-
-  it('includes Pro tools when the Pro integration is enabled', async () => {
-    const tools = await getAvailableTools(
-      stubHttpClient,
-      undefined,
-      context({ settings: { experimentalFeatureTasks: false, integrationsProIsEnabled: true } }),
-    )
-    expect(tools.some((tool) => tool.name === 'search')).toBe(true)
-  })
-})
-
 test('web results expose live remaining calls through the real Pi bridge without changing source IDs or cached data', async () => {
   const budget = createWebToolBudget('auto', true)
   const { config, calls } = makeConfig({
@@ -309,4 +282,257 @@ test('web results expose live remaining calls through the real Pi bridge without
   })
   expect(promoted.details).toEqual(first.details)
   expect(budget.consumed).toBe(webToolCaps.auto)
+})
+
+describe('selected connection discovery', () => {
+  beforeAll(setupTestDatabase)
+  afterAll(teardownTestDatabase)
+  beforeEach(async () => {
+    await updateSettings(getDb(), { experimental_feature_otari: true })
+    await saveProviderConnection(getDb(), {
+      id: 'otari',
+      provider: 'otari',
+      name: 'Otari',
+      url: 'https://otari.example/api/v1',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'key' },
+    })
+    useSearchProviderStore.getState().configureProviderSearch('otari', 'available')
+  })
+  afterEach(async () => {
+    mock.restore()
+    useSearchProviderStore.getState().clearSearchProvider()
+    await resetTestDatabase()
+  })
+  it.each(['none', 'cloud', 'auto'] as const)('does not contact an unselected gateway for %s', async (selection) => {
+    const fetch = spyOn(globalThis, 'fetch')
+    useSearchProviderStore.getState().selectSearchProvider(selection)
+    expect(await loadConnectedSearchApis(getDb())).toEqual({})
+    expect(fetch).not.toHaveBeenCalled()
+  })
+  it('discovers the exact selected connection and retries cached unavailable capabilities', async () => {
+    useSearchProviderStore.getState().configureProviderSearch('otari', 'unknown')
+    const fetch = spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json({ data: [{ id: 'otari_web_search', direct_available: true }] }),
+    )
+    expect(await loadConnectedSearchApis(getDb())).toMatchObject({
+      searchConnectionId: 'otari',
+      searchApi: { search: expect.any(Function) },
+    })
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+  it('preserves hidden Otari selection without credentials, discovery or Cloud fallback', async () => {
+    await updateSettings(getDb(), { experimental_feature_otari: false })
+    useLocalSettingsStore.setState({ cloudUrl: 'https://cloud.example/v1', localMode: false })
+    setAuthToken('session')
+    try {
+      const fetch = spyOn(globalThis, 'fetch')
+      const available = await loadConnectedSearchApis(getDb())
+      expect(available).toEqual({ searchConnectionId: 'otari', searchApi: undefined })
+      const tools = await getAvailableTools(
+        stubHttpClient,
+        [],
+        context({ ...available, settings: { experimentalFeatureTasks: false, integrationsProIsEnabled: true } }),
+      )
+      expect(tools.map(({ name }) => name)).toEqual(['render_html'])
+      expect(fetch).not.toHaveBeenCalled()
+      expect(useSearchProviderStore.getState()).toMatchObject({ selection: 'connection', connectionId: 'otari' })
+    } finally {
+      clearAuthToken()
+    }
+  })
+  it('does not discover Otari when another named connection is selected', async () => {
+    await saveProviderConnection(getDb(), {
+      id: 'exa',
+      provider: 'exa',
+      name: 'Exa',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'key' },
+    })
+    useSearchProviderStore.getState().selectSearchConnection('exa')
+    const fetch = spyOn(globalThis, 'fetch')
+    expect((await loadConnectedSearchApis(getDb())).searchConnectionId).toBe('exa')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+  it('does not offer a disconnected connection or fall back to the server', async () => {
+    await disconnectProviderConnection(getDb(), 'otari')
+    const available = await loadConnectedSearchApis(getDb())
+    const tools = await getAvailableTools(
+      stubHttpClient,
+      [],
+      context({ ...available, settings: { experimentalFeatureTasks: false, integrationsProIsEnabled: true } }),
+    )
+    expect(tools.map(({ name }) => name)).toEqual(['render_html'])
+  })
+})
+
+describe('getAvailableTools with injected availability', () => {
+  beforeEach(() => {
+    clearCachedSession()
+    useLocalSettingsStore.setState({ cloudUrl: 'https://cloud.example/v1', localMode: false })
+    setAuthToken('session')
+  })
+  afterEach(() => {
+    useSearchProviderStore.getState().clearSearchProvider()
+    clearAuthToken()
+  })
+  it.each(['signed-out', 'no-server'] as const)(
+    'keeps connected Google/Microsoft tools, but excludes cloud search with %s',
+    async (state) => {
+      if (state === 'signed-out') {
+        clearAuthToken()
+      } else {
+        useLocalSettingsStore.setState({ cloudUrl: '' })
+      }
+      const tools = await getAvailableTools(
+        stubHttpClient,
+        undefined,
+        context({
+          settings: { experimentalFeatureTasks: false, integrationsProIsEnabled: true },
+          integrationStatus: integrationStatus({ googleEnabled: true, microsoftEnabled: true }),
+        }),
+      )
+      expect(tools.some(({ name }) => name.startsWith('google'))).toBe(true)
+      expect(tools.some(({ name }) => name.startsWith('microsoft'))).toBe(true)
+      expect(tools.some(({ name }) => name === 'search' || name === 'fetch_content')).toBe(false)
+    },
+  )
+  it('includes only render_html by default and task tools when enabled', async () => {
+    expect((await getAvailableTools(stubHttpClient, undefined, context())).map(({ name }) => name)).toEqual([
+      'render_html',
+    ])
+    expect(
+      (
+        await getAvailableTools(
+          stubHttpClient,
+          undefined,
+          context({ settings: { experimentalFeatureTasks: true, integrationsProIsEnabled: false } }),
+        )
+      ).length,
+    ).toBeGreaterThan(1)
+  })
+  it.each(['googleEnabled', 'microsoftEnabled'] as const)('includes integration tools only when %s', async (flag) => {
+    const tools = await getAvailableTools(
+      stubHttpClient,
+      undefined,
+      context({ integrationStatus: integrationStatus({ [flag]: true }) }),
+    )
+    expect(tools.some(({ name }) => name.startsWith(flag === 'googleEnabled' ? 'google' : 'microsoft'))).toBe(true)
+  })
+  it('exposes Tinfoil through Pi with the same private source collector and no extra key', async () => {
+    useSearchProviderStore.getState().selectSearchConnection('private')
+    useLocalSettingsStore.setState({ cloudUrl: '' })
+    const api = createTinfoilWebApi(
+      async () => 'token',
+      async () => ({
+        structuredContent: { results: [{ title: 'Evidence', url: 'https://example.com', content: 'A fact' }] },
+      }),
+    )
+    const sources: SourceMetadata[] = []
+    const tools = await getAvailableTools(
+      stubHttpClient,
+      sources,
+      context({ searchApi: api, searchConnectionId: 'private' }),
+    )
+    const search = (await toPiAgentTools(createToolset(tools))).find(({ name }) => name === 'search')!
+    expect(JSON.stringify((await search.execute('call', { query: 'test' })).content)).toContain('Source 1')
+    expect(sources).toMatchObject([{ url: 'https://example.com', index: 1, allowRemoteImages: false }])
+  })
+  it('exposes Otari search and page reading, stopping when another account is selected', async () => {
+    useSearchProviderStore.getState().selectSearchConnection('work')
+    const post = mock(() =>
+      stubJsonResponse({ results: [{ title: 'Page', url: 'https://example.com', snippet: 'Summary' }] }),
+    )
+    const api = createOtariWebApi('https://otari.example/api/v1', async () => 'key', { ...stubHttpClient, post })
+    const tools = await getAvailableTools(stubHttpClient, [], context({ searchConnectionId: 'work', searchApi: api }))
+    expect(tools.some(({ name }) => name === 'fetch_content')).toBe(true)
+    await tools.find(({ name }) => name === 'search')!.execute({ query: 'test' })
+    useSearchProviderStore.getState().selectSearchConnection('personal')
+    await expect(tools.find(({ name }) => name === 'search')!.execute({ query: 'private' })).rejects.toThrow(
+      'Search provider changed',
+    )
+    expect(post).toHaveBeenCalledTimes(1)
+  })
+  it('rejects stale construction context after the selection changes', async () => {
+    const api = createTinfoilWebApi(
+      async () => 'token',
+      async () => ({ structuredContent: { results: [] } }),
+    )
+    useSearchProviderStore.getState().selectSearchConnection('new-account')
+    expect(
+      (await getAvailableTools(stubHttpClient, [], context({ searchConnectionId: 'old-account', searchApi: api }))).map(
+        ({ name }) => name,
+      ),
+    ).toEqual(['render_html'])
+  })
+  it.each(['none', 'cloud', 'auto'] as const)(
+    'stops an existing private tool after selecting %s',
+    async (selection) => {
+      useSearchProviderStore.getState().selectSearchConnection('private')
+      const call = mock(async () => ({ structuredContent: { results: [] } }))
+      const api = createTinfoilWebApi(async () => 'token', call)
+      const tools = await getAvailableTools(
+        stubHttpClient,
+        [],
+        context({ searchConnectionId: 'private', searchApi: api }),
+      )
+      useSearchProviderStore.getState().selectSearchProvider(selection)
+      await expect(tools.find(({ name }) => name === 'search')!.execute({ query: 'private' })).rejects.toThrow(
+        'Search provider changed',
+      )
+      expect(call).not.toHaveBeenCalled()
+    },
+  )
+})
+
+describe('live Cloud routing', () => {
+  beforeAll(setupTestDatabase)
+  afterAll(teardownTestDatabase)
+  beforeEach(async () => {
+    await updateSettings(getDb(), { integrations_pro_is_enabled: true })
+    clearCachedSession()
+    useLocalSettingsStore.setState({ cloudUrl: 'https://cloud.example/v1', localMode: false })
+    setAuthToken('session')
+  })
+  afterEach(async () => {
+    mock.restore()
+    clearAuthToken()
+    useSearchProviderStore.getState().clearSearchProvider()
+    await resetTestDatabase()
+  })
+  const settings = { experimentalFeatureTasks: false, integrationsProIsEnabled: true }
+  const response = JSON.stringify({ results: [{ title: 'Cloud', pageUrl: 'https://example.com/' }] })
+  it.each(['disable', 'sign-out', 'private', 'none'] as const)('stops Cloud calls after %s', async (change) => {
+    const { client, requests } = createRecordingClient(() => response)
+    const tools = await getAvailableTools(client, [], context({ settings }))
+    const search = tools.find(({ name }) => name === 'search')!
+    await search.execute({ query: 'before' })
+    if (change === 'disable') {
+      await updateSettings(getDb(), { integrations_pro_is_enabled: false })
+    }
+    if (change === 'sign-out') {
+      clearAuthToken()
+    }
+    if (change === 'private') {
+      useSearchProviderStore.getState().configureProviderSearch('private', 'available')
+    }
+    if (change === 'none') {
+      useSearchProviderStore.getState().selectSearchProvider('none')
+    }
+    await expect(search.execute({ query: 'after' })).rejects.toThrow('Search provider changed')
+    expect(requests).toEqual(['search'])
+  })
+  it('keeps explicit Cloud routing when another unused connection is saved', async () => {
+    useSearchProviderStore.getState().selectSearchProvider('cloud')
+    const { client, requests } = createRecordingClient(() => response)
+    const tools = await getAvailableTools(client, [], context({ settings }))
+    await saveProviderConnection(getDb(), {
+      provider: 'tinfoil',
+      name: 'Private',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'key' },
+    })
+    await tools.find(({ name }) => name === 'search')!.execute({ query: 'explicit cloud' })
+    expect(requests).toEqual(['search'])
+  })
 })

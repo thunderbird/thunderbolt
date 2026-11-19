@@ -172,7 +172,8 @@ describe('useAuthGate — require="authenticated"', () => {
     const { result, rerender } = renderHook(() => useAuthGate('authenticated'), { wrapper })
 
     expect(result.current).toEqual({ status: 'loading' })
-    await waitFor(() => expect(signInSpy).toHaveBeenCalledTimes(1))
+    await act(async () => {})
+    expect(signInSpy).toHaveBeenCalledTimes(1)
     rerender()
     await waitFor(() => expect(result.current).toEqual({ status: 'allowed' }))
   })
@@ -256,7 +257,8 @@ describe('useAuthGate — require="authenticated"', () => {
     const wrapper = wrapInStrictMode(baseWrapper)
     const { result, rerender } = renderHook(() => useAuthGate('authenticated'), { wrapper })
 
-    await waitFor(() => expect(signInSpy).toHaveBeenCalledTimes(1))
+    await act(async () => {})
+    expect(signInSpy).toHaveBeenCalledTimes(1)
     rerender()
     rerender()
     await waitFor(() => expect(result.current).toEqual({ status: 'allowed' }))
@@ -284,7 +286,7 @@ const createCaptchaClients = (params: {
   signInHeld?: Promise<void>
   challengeHeld?: Promise<void>
 }) => {
-  const sessionRef: { current: typeof anonymousSession | null } = { current: null }
+  const sessionRef: { current: typeof anonymousSession | typeof realSession | null } = { current: null }
   const signInCalls: Array<SignInOptions | undefined> = []
   const challenges: string[] = []
   const challengeSignals: AbortSignal[] = []
@@ -333,7 +335,7 @@ const createCaptchaClients = (params: {
     return Response.json(challenge)
   }
   const httpClient = createClient({ fetch: fetchChallenge, prefixUrl: 'http://test-api.local' })
-  return { authClient, httpClient, signInCalls, challenges, challengeSignals }
+  return { authClient, httpClient, signInCalls, challenges, challengeSignals, sessionRef }
 }
 
 /** Render the gate under an error boundary, recording every status it renders and the latest state. */
@@ -477,6 +479,40 @@ describe('useAuthGate with VITE_CAPTCHA_PROVIDER=altcha', () => {
     unmount()
     expect(signal?.aborted).toBe(true)
     signInHeld.resolve()
+  })
+
+  it('retires a pending challenge when a real session arrives', async () => {
+    const held = Promise.withResolvers<void>()
+    const clients = createCaptchaClients({ results: [null], challengeHeld: held.promise })
+    const { result, rerender } = renderHook(() => useAuthGate('authenticated'), {
+      wrapper: createTestProvider(clients),
+    })
+    await waitFor(() => expect(clients.challengeSignals).toHaveLength(1))
+    clients.sessionRef.current = realSession
+    rerender()
+    expect(result.current.status).toBe('allowed')
+    expect(clients.challengeSignals[0].aborted).toBe(true)
+    held.resolve()
+    await waitFor(() => expect(clients.challenges).toHaveLength(1))
+    expect(clients.signInCalls).toHaveLength(0)
+  })
+
+  it('cancels sign-in without CAPTCHA when the route no longer requires authentication', async () => {
+    delete env.VITE_CAPTCHA_PROVIDER
+    const held = Promise.withResolvers<void>()
+    const clients = createCaptchaClients({ results: [captchaFailed], signInHeld: held.promise })
+    const { result, rerender } = renderHook(({ require }) => useAuthGate(require), {
+      initialProps: { require: 'authenticated' as 'authenticated' | 'unauthenticated' },
+      wrapper: createTestProvider(clients),
+    })
+    await waitFor(() => expect(clients.signInCalls).toHaveLength(1))
+    rerender({ require: 'unauthenticated' })
+    expect(clients.signInCalls[0]?.fetchOptions?.signal?.aborted).toBe(true)
+    await act(async () => {
+      held.resolve()
+      await held.promise
+    })
+    expect(result.current.status).toBe('allowed')
   })
 
   it('offers a retry without signing in when the challenge fetch hits a network error', async () => {

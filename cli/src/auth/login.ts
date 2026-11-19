@@ -33,9 +33,11 @@ export const performLogin = async (deps: LoginDeps): Promise<RegisteredCliAuth> 
       qrBlock,
     })
     await deps.presentation.promptToOpenBrowser?.(code.verificationUriComplete)
+    deps.signal?.throwIfAborted()
     deps.presentation.showStatus('waiting', 'Waiting for approval…')
 
     const bearer = await pollForToken(code, deps.transport, deps.clock, deps.signal)
+    deps.signal?.throwIfAborted()
     const registered = await deps.ensureRegistered(bearer)
     deps.signal?.throwIfAborted()
     const message = deps.patToken ? `Login successful. ${patRemainsActiveNote}` : 'Login successful.'

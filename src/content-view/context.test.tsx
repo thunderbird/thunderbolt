@@ -3,12 +3,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import '@/testing-library'
-import { act, renderHook } from '@testing-library/react'
+import { act, render, renderHook, fireEvent } from '@testing-library/react'
 import type { DynamicToolUIPart, ToolUIPart } from 'ai'
 import { describe, expect, mock, test } from 'bun:test'
 import type { EventType } from '@/lib/posthog'
-import { type ReactNode } from 'react'
-import { ContentViewProvider, type ObjectViewContent, useContentView, useObjectView, useSideview } from './context'
+import { memo, type ReactNode } from 'react'
+import {
+  ContentViewProvider,
+  type ObjectViewContent,
+  useContentView,
+  useObjectView,
+  useSideview,
+  useShowCompactionSummary,
+} from './context'
 
 const wrapper = ({ children }: { children: ReactNode }) => <ContentViewProvider>{children}</ContentViewProvider>
 
@@ -139,5 +146,32 @@ describe('ContentView sideview mode', () => {
       result.current.showSideview('document', 'file-1:a.pdf')
     })
     expect(result.current.state.type).toBe('sideview')
+  })
+})
+
+describe('summary action subscription', () => {
+  test('does not render action-only consumers when the side panel changes', () => {
+    const renderAction = mock()
+    const Action = memo(() => {
+      const show = useShowCompactionSummary()
+      renderAction()
+      return <button onClick={() => show({ summary: 'Saved', retainedTail: [] })}>Summary</button>
+    })
+    const Panel = () => {
+      const { state, close } = useContentView()
+      return <button onClick={close}>{state.type ?? 'Closed'}</button>
+    }
+    const view = render(
+      <ContentViewProvider>
+        <Action />
+        <Panel />
+      </ContentViewProvider>,
+    )
+    const initialRenders = renderAction.mock.calls.length
+    fireEvent.click(view.getByText('Summary'))
+    expect(view.getByText('compaction-summary')).toBeTruthy()
+    fireEvent.click(view.getByText('compaction-summary'))
+    expect(view.getByText('Closed')).toBeTruthy()
+    expect(renderAction).toHaveBeenCalledTimes(initialRenders)
   })
 })

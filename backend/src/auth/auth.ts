@@ -6,7 +6,7 @@ import {
   approveWaitlistEntry,
   getOrCreateOtpChallenge,
   createWaitlistEntry,
-  deleteOtpChallengesForEmail,
+  consumeOtpChallenge,
   deletePersistedSignInOtp,
   getUserByEmail,
   getWaitlistByEmail,
@@ -22,7 +22,7 @@ import { normalizeEmail } from '@/lib/email'
 import { resolveEmailLocale } from '@/emails/i18n'
 import { getPasskeyAndroidOriginsList, getSettings, isPasskeyEnabled, getPasskeyRpName } from '@/config/settings'
 import { createRateLimitConsumer, type RateLimitSet } from '@/middleware/rate-limit'
-import { extractClientIp, getTrustedIpHeaders } from '@/utils/request'
+import { extractClientIp, getTrustedIpHeaders, withTrustedClientIp } from '@/utils/request'
 import { captchaTokenHeader, captchaVerificationFailedCode } from '@shared/captcha'
 import { createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import { betterAuth, type User } from 'better-auth'
@@ -103,6 +103,15 @@ const isForeignSsoRequest = (path: string, request: SsoRequest) => {
   const part = ssoRouteProviderPart.get(path)
   return part === undefined || request[part]?.providerId !== configuredSsoProviderId
 }
+
+const samlAcsPath = '/sso/saml2/sp/acs/:providerId'
+
+/**
+ * Name each cookie with its RelayState so a browser can hold several pending logins.
+ * Over HTTPS, `__Host-` prevents another subdomain from setting the cookie.
+ */
+const samlLoginCookie = (relayState: string, isHttps: boolean) =>
+  `${isHttps ? '__Host-' : ''}thunderbolt_saml_login_${relayState}`
 
 type SsoUserResolution = Parameters<NonNullable<SSOOptions['resolveUser']>>[0]
 
@@ -265,12 +274,13 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
   if (!settings.trustedProxy && process.env.NODE_ENV === 'production') {
     console.warn(
       'TRUSTED_PROXY is not set. Better Auth rate limiting will use x-forwarded-for ' +
-        'which is spoofable without a trusted proxy. Set TRUSTED_PROXY=cloudflare (or akamai) ' +
+        'which is spoofable without a trusted proxy. Set TRUSTED_PROXY=cloudflare, akamai, or the fixed proxy hop count ' +
         'to ensure rate limiting uses the correct client IP header.',
     )
   }
 
   const ssoEnabled = settings.authMode === 'oidc' || settings.authMode === 'saml'
+  const isHttps = settings.betterAuthUrl.startsWith('https://')
 
   // This before-hook runs ahead of every plugin hook, bearer included, so
   // `getSessionFromCtx` can't see a bearer-only session here. Going through the
@@ -359,6 +369,24 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         if (ssoEnabled && isForeignSsoRequest(ctx.path, ctx)) {
           console.warn(`Refused ${ctx.path}: only the configured SSO provider is available`)
           throw ctx.error('FORBIDDEN', { message: 'Only the configured SSO provider is available' })
+        }
+
+        // Better Auth checks RelayState and InResponseTo against rows shared by all browsers. Require this
+        // browser's cookie when RelayState is present. With IdP-initiated login enabled, responses without
+        // RelayState remain unbound and retain that mode's documented login-CSRF risk.
+        if (settings.authMode === 'saml' && ctx.path === samlAcsPath && ctx.body?.SAMLResponse) {
+          const relayState = ctx.body.RelayState
+          const bound =
+            typeof relayState === 'string' &&
+            relayState !== '' &&
+            ctx.getCookie(samlLoginCookie(relayState, isHttps)) !== null
+          if (!bound && (relayState || !settings.samlAllowIdpInitiated)) {
+            console.warn('Refused a SAML response for a login this browser did not start')
+            // Use the plugin's existing landing for an unsolicited response.
+            const landing = new URL(settings.appUrl)
+            landing.searchParams.set('error', 'unsolicited_response')
+            throw ctx.redirect(landing.toString())
+          }
         }
 
         // Guard: prevent session fixation. A real (non-anonymous) user MUST NOT be
@@ -471,6 +499,22 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         // (after hook) or by expiry. This allows the 3-attempt limit to work correctly.
       }),
       after: createAuthMiddleware(async (ctx) => {
+        if (settings.authMode === 'saml' && ctx.path === '/sign-in/sso') {
+          const url = (ctx.context.returned as { url?: string } | undefined)?.url
+          const relayState = url && new URL(url).searchParams.get('RelayState')
+          if (relayState) {
+            // Set directly to keep it host-only; createAuthCookie can add Domain. Cross-site ACS POSTs
+            // need SameSite=None over HTTPS. Match the plugin's five-minute requestTTL.
+            ctx.setCookie(samlLoginCookie(relayState, isHttps), '1', {
+              path: '/',
+              httpOnly: true,
+              maxAge: 300,
+              ...(isHttps ? { secure: true, sameSite: 'none' } : { sameSite: 'lax' }),
+            })
+          }
+          return
+        }
+
         if (ctx.path === deviceTokenPath) {
           const sessionToken = ctx.context.newSession?.session.token
           if (!sessionToken) {
@@ -503,8 +547,9 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         }
 
         const email = (ctx.body as { email?: string })?.email
-        if (email) {
-          await deleteOtpChallengesForEmail(database, normalizeEmail(email))
+        const challengeToken = ctx.headers?.get(challengeTokenHeader)
+        if (email && challengeToken) {
+          await consumeOtpChallenge(database, normalizeEmail(email), challengeToken)
         }
 
         const sessionUser = newSession.user
@@ -653,7 +698,10 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
 
   resolveSession = (headers) => auth.api.getSession({ headers, query: { disableRefresh: true } })
 
-  return auth
+  // Better Auth exposes its request handler under two names. Both get the resolved client IP,
+  // so no caller can reach it with a client-supplied one.
+  const handler = (request: Request) => auth.handler(withTrustedClientIp(request, settings.trustedProxy))
+  return { ...auth, handler, fetch: handler }
 }
 
 export type Auth = ReturnType<typeof createAuth>

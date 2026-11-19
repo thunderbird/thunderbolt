@@ -9,6 +9,7 @@ import {
   storeKeyPair,
   getKeyPair,
   storeAK,
+  getAKKeyVersion,
   getAK,
   storeDEK,
   getDEK,
@@ -20,8 +21,11 @@ import {
   storeKeyVersion,
   getKeyVersion,
   clearAllKeys,
+  isAKUnverified,
+  markAKUnverified,
 } from './key-storage'
 import { generateAK, generateDEK, generateKeyPair, generateMlKemKeyPair, wrapDEK } from './primitives'
+import { withKeyStoreLock } from './key-store-lock'
 import type { EncryptedBytes } from './primitives'
 
 const dbName = 'thunderbolt-keys'
@@ -144,7 +148,9 @@ describe('WS1.5 — v1 plaintext ML-KEM secret read-migration', () => {
     const first = await getKeyPair()
     expect(first?.mlkemSecretKey).toEqual(mlkem.secretKey)
 
-    // The read-migration re-encrypted it in place.
+    // Ordinary reads stay read-only; a writer explicitly owns the migration.
+    expect(await readRaw('thunderbolt_mlkem_secret_key')).toBeInstanceOf(Uint8Array)
+    await withKeyStoreLock((lock) => getKeyPair(lock))
     const raw = (await readRaw('thunderbolt_mlkem_secret_key')) as EncryptedBytes
     expect(raw).not.toBeInstanceOf(Uint8Array)
     expect(raw.iv.length).toBe(12)
@@ -172,7 +178,7 @@ describe('non-destructive v1→v2 upgrade', () => {
 describe('storeAK / getAK', () => {
   it('round-trips the AK as a non-extractable AES-GCM CryptoKey usable as the keyring gate', async () => {
     const ak = await generateAK()
-    await storeAK(ak)
+    await storeAK(ak, { keyVersion: null, primaryKeyId: '0' })
 
     const stored = await getAK()
     expect(stored?.algorithm.name).toBe('AES-GCM')
@@ -182,6 +188,23 @@ describe('storeAK / getAK', () => {
 
   it('returns null when no AK is stored', async () => {
     expect(await getAK()).toBeNull()
+  })
+
+  it('stores the sealed key_version and pointer with the AK, recording 0 for an unversioned envelope', async () => {
+    expect(await getAKKeyVersion()).toBeNull()
+    await storeAK(await generateAK(), { keyVersion: 4, primaryKeyId: '2' })
+    expect(await getAKKeyVersion()).toBe(4)
+    expect(await getPrimaryKeyId()).toBe('2')
+    await storeAK(await generateAK(), { keyVersion: null, primaryKeyId: '3' })
+    expect(await getAKKeyVersion()).toBe(0)
+    expect(await getPrimaryKeyId()).toBe('3')
+  })
+
+  it('keeps the pointer in force when the sealed one is not mintable', async () => {
+    await storeAK(await generateAK(), { keyVersion: 1, primaryKeyId: '1' })
+    await storeAK(await generateAK(), { keyVersion: 2, primaryKeyId: 'v1' })
+    expect(await getPrimaryKeyId()).toBe('1')
+    expect(await getAKKeyVersion()).toBe(2)
   })
 })
 
@@ -213,7 +236,7 @@ describe('DEK keyring entries', () => {
   })
 
   it('listDEKs ignores non-DEK entries', async () => {
-    await storeAK(await generateAK())
+    await storeAK(await generateAK(), { keyVersion: null, primaryKeyId: '0' })
     await storeDEK('0', 'blob-0')
     expect(await listDEKs()).toEqual([{ keyId: '0', wrappedKey: 'blob-0' }])
   })
@@ -236,7 +259,7 @@ describe('DEK keyring entries', () => {
   })
 
   it('pruneStagedDEKs leaves non-DEK entries alone', async () => {
-    await storeAK(await generateAK())
+    await storeAK(await generateAK(), { keyVersion: null, primaryKeyId: '0' })
     await storeDEK('0', 'blob-0')
     await pruneStagedDEKs([])
     expect(await listDEKs()).toEqual([])
@@ -280,12 +303,28 @@ describe('primary key_id + key_version pointers', () => {
   })
 })
 
+describe('unverified account-key marker', () => {
+  it('reports an unmarked account key as verified', async () => {
+    await storeAK(await generateAK(), { keyVersion: null, primaryKeyId: '0' })
+    expect(await isAKUnverified()).toBe(false)
+  })
+
+  it('remembers the marker until the key store is cleared', async () => {
+    await storeAK(await generateAK(), { keyVersion: null, primaryKeyId: '0' })
+    await markAKUnverified()
+    expect(await isAKUnverified()).toBe(true)
+
+    await clearAllKeys()
+    expect(await isAKUnverified()).toBe(false)
+  })
+})
+
 describe('clearAllKeys', () => {
   it('wipes the AK, key pair, and every dynamically-named DEK entry', async () => {
     const ecdh = await generateKeyPair()
     const mlkem = generateMlKemKeyPair()
     await storeKeyPair(ecdh.privateKey, ecdh.publicKey, mlkem.publicKey, mlkem.secretKey)
-    await storeAK(await generateAK())
+    await storeAK(await generateAK(), { keyVersion: null, primaryKeyId: '0' })
     await storeKeyVersion(2)
     await stageWrappedDEKs([
       { keyId: '0', wrappedKey: 'blob-0' },
@@ -300,5 +339,34 @@ describe('clearAllKeys', () => {
     expect(await getAK()).toBeNull()
     expect(await listDEKs()).toEqual([])
     expect(await getKeyVersion()).toBeNull()
+  })
+})
+
+describe('key-store reset ownership', () => {
+  it('rejects a pending database write when a wipe begins before its database opens', async () => {
+    const key = await generateAK()
+    const writing = storeAK(key, { keyVersion: null, primaryKeyId: '0' })
+    const outcome = writing.then(
+      () => null,
+      (error: unknown) => error,
+    )
+    await clearAllKeys()
+    expect(await outcome).toMatchObject({ name: 'EncryptionOperationCancelledError' })
+    expect(await getAK()).toBeNull()
+    await storeAK(key, { keyVersion: null, primaryKeyId: '0' })
+    expect(await getAK()).not.toBeNull()
+  })
+
+  it('rejects transport keys whose encryption completes after a wipe begins', async () => {
+    const ecdh = await generateKeyPair()
+    const mlkem = generateMlKemKeyPair()
+    const writing = storeKeyPair(ecdh.privateKey, ecdh.publicKey, mlkem.publicKey, mlkem.secretKey)
+    const outcome = writing.then(
+      () => null,
+      (error: unknown) => error,
+    )
+    await clearAllKeys()
+    expect(await outcome).toMatchObject({ name: 'EncryptionOperationCancelledError' })
+    expect(await getKeyPair()).toBeNull()
   })
 })

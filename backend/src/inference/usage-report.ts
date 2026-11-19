@@ -65,8 +65,10 @@ const addTotals = (a: UsageTotals, b: UsageTotals): UsageTotals => ({
  * Adoption and spend for one time window, read from the usage ledger.
  *
  * Counts only: the ledger holds no message content, and no user id leaves this
- * function. A turn is one ledger row, which is one managed model request; for
- * the hosted agent that is one answered message.
+ * function. A turn is one settled ledger row, which is one managed model request;
+ * for the hosted agent that is one answered message. The hold of a request still
+ * running is left out. A request whose usage never arrived keeps its hold as a
+ * settled row, so it counts as a turn with no tokens at the cost it held.
  *
  * Ledger rows are deleted with their user (`ON DELETE CASCADE`), so a purge of
  * idle users takes their history with it. Run the report before any purge.
@@ -79,7 +81,11 @@ export const getUsageReport = async (
   database: UsageReportDatabase,
   window: UsageReportWindow,
 ): Promise<UsageReport> => {
-  const inWindow = and(gte(inferenceUsage.createdAt, window.from), lt(inferenceUsage.createdAt, window.to))
+  const inWindow = and(
+    eq(inferenceUsage.settled, true),
+    gte(inferenceUsage.createdAt, window.from),
+    lt(inferenceUsage.createdAt, window.to),
+  )
   const day = sql<string>`to_char(${inferenceUsage.createdAt}, 'YYYY-MM-DD')`
   // Grouped on the instant and labelled with its offset, so the hour a
   // fall-back repeats stays two hours instead of merging into one.

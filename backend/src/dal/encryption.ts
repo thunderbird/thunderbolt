@@ -103,6 +103,11 @@ export type RecoverySlot = {
    * own key material rather than trusting them.
    */
   recoveryAttestation: string
+  /**
+   * DEK `"0"` sealed to the recovery phrase, written when a phrase is minted.
+   * `undefined` on a rotation keeps the stored seal; `null` clears it.
+   */
+  recoveryContinuity?: string | null
 }
 
 /**
@@ -136,11 +141,13 @@ export const getEncryptionMetadata = async (database: QueryableDatabase, userId:
       recoveryMlkemPublicKey: encryptionMetadataTable.recoveryMlkemPublicKey,
       recoveryWrappedAk: encryptionMetadataTable.recoveryWrappedAk,
       recoveryAttestation: encryptionMetadataTable.recoveryAttestation,
+      recoveryContinuity: encryptionMetadataTable.recoveryContinuity,
       passkeyCredentialId: encryptionMetadataTable.passkeyCredentialId,
       passkeyEcdhPublicKey: encryptionMetadataTable.passkeyEcdhPublicKey,
       passkeyMlkemPublicKey: encryptionMetadataTable.passkeyMlkemPublicKey,
       passkeyWrappedAk: encryptionMetadataTable.passkeyWrappedAk,
       passkeyAttestation: encryptionMetadataTable.passkeyAttestation,
+      passkeyContinuity: encryptionMetadataTable.passkeyContinuity,
       keyVersion: encryptionMetadataTable.keyVersion,
       primaryKeyId: encryptionMetadataTable.primaryKeyId,
       schemeVersion: encryptionMetadataTable.schemeVersion,
@@ -180,6 +187,7 @@ export const insertEncryptionMetadataIfNotExists = async (
       recoveryMlkemPublicKey: metadata.recoveryMlkemPublicKey,
       recoveryWrappedAk: metadata.recoveryWrappedAk,
       recoveryAttestation: metadata.recoveryAttestation,
+      recoveryContinuity: metadata.recoveryContinuity ?? null,
       primaryKeyId: metadata.primaryKeyId ?? undefined,
       schemeVersion: 2,
     })
@@ -202,6 +210,8 @@ export const replaceEncryptionMetadata = async (
     signingPublicKey: string
     kdfSalt: string
     passkeySlot: PasskeySlot | null
+    /** `undefined` keeps the stored passkey seal; `null` clears it. */
+    passkeyContinuity?: string | null
   },
 ) =>
   database
@@ -215,11 +225,14 @@ export const replaceEncryptionMetadata = async (
       recoveryMlkemPublicKey: metadata.recoveryMlkemPublicKey,
       recoveryWrappedAk: metadata.recoveryWrappedAk,
       recoveryAttestation: metadata.recoveryAttestation,
+      // Drizzle skips an undefined column, so a same-key rotation keeps the seal.
+      recoveryContinuity: metadata.recoveryContinuity,
       passkeyCredentialId: metadata.passkeySlot?.passkeyCredentialId ?? null,
       passkeyEcdhPublicKey: metadata.passkeySlot?.passkeyEcdhPublicKey ?? null,
       passkeyMlkemPublicKey: metadata.passkeySlot?.passkeyMlkemPublicKey ?? null,
       passkeyWrappedAk: metadata.passkeySlot?.passkeyWrappedAk ?? null,
       passkeyAttestation: metadata.passkeySlot?.passkeyAttestation ?? null,
+      passkeyContinuity: metadata.passkeyContinuity,
     })
     .where(eq(encryptionMetadataTable.userId, metadata.userId))
     .returning()
@@ -255,6 +268,7 @@ export const flipSchemeToV2 = async (
       recoveryMlkemPublicKey: metadata.recoveryMlkemPublicKey,
       recoveryWrappedAk: metadata.recoveryWrappedAk,
       recoveryAttestation: metadata.recoveryAttestation,
+      recoveryContinuity: metadata.recoveryContinuity ?? null,
       primaryKeyId: metadata.primaryKeyId,
       schemeVersion: 2,
       keyVersion: sql`${encryptionMetadataTable.keyVersion} + 1`,

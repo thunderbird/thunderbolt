@@ -65,6 +65,13 @@ describe('Google buildAuthUrl', () => {
     expect(callCount()).toBe(2)
   })
 
+  it('does not reuse another relay’s OAuth client configuration', async () => {
+    const first = createMockHttpClient([{ client_id: 'first-id', configured: true }]).client
+    const second = createMockHttpClient([{ client_id: 'second-id', configured: true }]).client
+    expect(new URL(await buildAuthUrl(first, 'state', 'cc')).searchParams.get('client_id')).toBe('first-id')
+    expect(new URL(await buildAuthUrl(second, 'state', 'cc')).searchParams.get('client_id')).toBe('second-id')
+  })
+
   it('reuses cache after a configured: true response', async () => {
     const { client, callCount } = createMockHttpClient([{ client_id: 'real-id', configured: true }])
     await buildAuthUrl(client, 'state', 'cc')

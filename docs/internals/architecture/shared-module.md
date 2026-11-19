@@ -32,7 +32,8 @@ A shared module runs in three places: a Vite browser bundle, a long-lived Bun se
 `src/cluster.ts` with `bun build --compile`), and cross-compiled binaries (`cli/package.json` `build:darwin-arm64`,
 `build:linux-x64`, `build:linux-arm64`). Three consequences:
 
-- **No dependencies.** Outside `shared/agent-core`, nothing imports a non-sibling; tests import `bun:test` only. Root,
+- **No runtime package dependencies.** Outside `shared/agent-core`, keep package imports type-only;
+  `reasoning-effort.ts` uses Pi’s public thinking-level type without loading Pi at runtime. Root,
   `backend/`, and `cli/` are three installs from three lockfiles (`bun.lock`, `backend/bun.lock`, `cli/bun.lock`), so
   an npm import that resolves for the frontend can fail the CLI build.
 - **No React, no DOM.** Nothing in `shared/` imports `react`; `eslint.config.js` gives `shared/**` its own block with
@@ -76,12 +77,12 @@ no packages, so `eslint.config.js` and `backend/eslint.config.js` each resolve p
 `node_modules`.
 
 **CI path-gates the CLI, not the other two.** `typescript` and `backend` carry no `if:`; `cli` and `agent-core` run
-only when their path filters match (`.github/workflows/ci.yml:302-304`, `:258-260`). The `cli` filter lists four shared
-paths (`:59-62`):
+only when their path filters match. The shared paths in the
+[`cli` filter](../../../.github/workflows/ci.yml) are:
 
 | In the `cli` filter                                                                                         | Imported by the CLI but unlisted                                                                               |
 | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `shared/agent-core/**`, `shared/cli-device-id.ts`, `shared/defaults/models.ts`, `shared/inference-usage.ts` | `shared/agent-tool-permissions.ts`, `shared/ip-classification.ts`, `shared/iroh.ts`, `shared/lib/is-record.ts` |
+| `shared/agent-core/**`, `shared/reasoning-effort*.ts`, `shared/cli-device-id.ts`, `shared/defaults/models.ts`, `shared/inference-usage.ts` | `shared/agent-tool-permissions.ts`, `shared/ip-classification.ts`, `shared/iroh.ts`, `shared/lib/is-record.ts` |
 
 Change an unlisted module and the CLI's typecheck, 5× test run, and binary build never run. Add the path in the same
 PR.

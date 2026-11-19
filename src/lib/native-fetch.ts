@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
-import { isLocalNetworkAddress, parseIpAddress } from '@shared/ip-classification'
+import { isLocalNetworkHost } from '@shared/ip-classification'
 import { redirectStatuses } from '@shared/proxy-protocol'
 
 /** Upgrade public HTTP targets while allowing device-local HTTP servers. */
@@ -12,15 +12,7 @@ const upgradeNativeTarget = (input: RequestInfo | URL): RequestInfo | URL => {
   if (url.protocol !== 'http:') {
     return input
   }
-  const host = url.hostname.replace(/\.$/, '')
-  const ip = parseIpAddress(host)
-  if (
-    (ip && isLocalNetworkAddress(ip)) ||
-    host === 'localhost' ||
-    host.endsWith('.localhost') ||
-    host === 'host.docker.internal' ||
-    host.endsWith('.local')
-  ) {
+  if (isLocalNetworkHost(url.hostname)) {
     return input
   }
   // Arbitrary split-DNS private FQDNs are upgraded too; the hosted proxy also upgraded and SSRF-blocked them.

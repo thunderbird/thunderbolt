@@ -296,7 +296,9 @@ falsify, not a fact.
   so it can be neither minted in cleartext nor replayed as a proof.
 - **C7 — Migration is atomic and lossless.** Exactly one migrator wins the CAS; a 409 loser degrades
   cleanly; nothing is persisted locally before HTTP 200; the recovery phrase is shown only on 200. A
-  hostile flip from a stolen session is a recoverable DoS — never plaintext exposure or data loss.
+  hostile flip from a stolen session alone is a recoverable DoS — never plaintext exposure or data
+  loss. A session plus the leaked v1 canary secret plus the account's inbox can do worse; see the
+  C8 residual.
   **Lossless now also holds against A2 (THU-877).** The migrator used to absorb the legacy CK from
   its v1 envelope having checked it only against the server-supplied canary — and A2 authors both,
   so a self-consistent forged pair passed and sealed every pre-migration row under a key nobody
@@ -322,15 +324,39 @@ falsify, not a fact.
   pending/denied row state and CLI/bridge/revoked rows remain unchanged. Every change
   rolls back together on failure. The migrator shows a new recovery phrase, replacing
   the previous one. Siblings regain access through verified approval, that new phrase
-  or a passkey enrolled for sync.
-- **C8 — Possession proof is meaningful against A4/A5.** `hash(canarySecret) == canary_secret_hash`
-  proves CK possession to an adversary that cannot rewrite the DB — a stolen session (A5) or a
-  key-holding device (A4) — and A5 (no keys) cannot satisfy it. It does **not** bind against A2, who
+  or a passkey enrolled for sync. The migrator is normally a trusted device; a pending
+  device recovering with the v1 phrase may migrate too, under the step-up gate in C8; then its
+  regular siblings end untrusted and not pending, so it is never prompted to approve the lost one.
+- **C8 — Possession proof binds only a caller who never saw the secret.** `hash(canarySecret) ==
+  canary_secret_hash` stops an adversary that cannot rewrite the DB and never saw the v1 canary
+  secret — a stolen session (A5) with no v1-era traffic or device to draw on. It is not proof of
+  the CK (see below). It does **not** bind against A2, who
   authors `canary_secret_hash` and can forge a self-consistent `(secret, hash, canary)` triple. That
   concession stands, but it is no longer sufficient for the attack: since THU-877 the migrator
   additionally verifies the offered CK against material A2 does not author and refuses it otherwise,
   so a forged triple yields a refused migration rather than an orphaned account (see C7). Same scope
   for the follower-side continuity check. (A9 was listed here in error — it has no DB-write power.)
+  **The proof is replayable, so it never trusts a device on its own.** The canary secret is static
+  and every v1 client sent it in plain on approve, deny, revoke and node-id requests: anyone who
+  ever saw it (request logs, a v1-era device, a script in a v1 client) can present it without the
+  CK. A trusted device needs nothing more. A pending device may also migrate, which is recovery with
+  the v1 phrase (BIP-39 of the raw CK), meant for when no CK-holding device is left (the server does
+  not check that). For that caller `/encryption/upgrade` checks the proof first, then an emailed
+  step-up code of its own action (`v1-phrase-recovery`, whose email says a new device will get
+  access), before any write; the code is consumed on commit and the caller is trusted in the same
+  transaction. The client opens the v1 canary with the phrase locally before asking for a code.
+  **Residual:** someone holding the secret (or the CK), a session and the account's inbox can still
+  migrate a not-yet-migrated v1 account from a device they control — demoting its trusted app
+  devices, owning the new phrase and, without the CK, planting a bogus `"v1"` slot that leaves the
+  legacy rows unreadable. That needs inbox control, which already allows deleting the account, and
+  the security emails that follow (upgrade + recovery phrase used) go to that same inbox, so they
+  are no defence here. Bridge devices keep their trust and stay dialable. Separately, a holder of
+  the secret and a session can request fresh codes and spend the three attempts on each, so the
+  owner's v1-phrase recovery can be stalled; with no trusted device left, nothing denies that
+  device. A session without the secret can do neither: the code request checks the proof too, so it
+  cannot email the owner a recovery code or replace theirs. Gated by
+  `attacks/v1-upgrade-canary-replay.spec.ts` and the gate matrix in
+  `backend/src/api/encryption-v2.test.ts`.
   This concession is also why the canary cannot serve as C2's anchor for an inbound Account Key:
   verifying a server-served canary under a server-served DEK, reached through a server-served AK, is
   the same tautology one level up. Hence the separate device-local witness there.

@@ -119,7 +119,7 @@ export const createPromptParts = (
   // still normalizes `\(…\)` / `\[…\]` defensively because models drift — the two
   // are complementary, not redundant; don't drop either side.
   // Keep user-controlled settings under # Context, never trailing, so they cannot read as the most-recent instruction.
-  const stablePrompt = `You are an executive assistant using the **${modelName}** model. For claims drawn from tool results, ALWAYS cite sources with [N] — place each [N] once after the final sentence using that source, with a space before the bracket.
+  const stablePrompt = `You are an executive assistant using the **${modelName}** model. For claims drawn from a tool result labelled [Source N], ALWAYS cite it with [N] — place each [N] once after the final sentence using that source, with a space before the bracket. Other tool results (tasks, past chats, email, files) carry no source number: refer to them in words, never with [N].
 Reasoning: low
 
 # Principles
@@ -149,7 +149,7 @@ Apply these rules in order before choosing tools:
 - Research follow-ups — For deeper or continued research needing new sources or dimensions, load the research skill once in the current turn, even if its instructions or a previous load remain in history, unless the current user message contains /research. This does not apply to acknowledgments, summaries, translations, repeated data, narrow checks, or deeper explanations needing no external sources.
 
 These rules override generic tool-count targets; never add calls just to meet a quota.
-Knowledge-only answers need no citations. Cite only claims actually supported by tool results; never invent a citation.
+Knowledge-only answers need no citations. Cite only claims actually supported by [Source N] results; never invent a citation or a number.
 Except for the research skill reload required above, don't repeat a tool call you already made this conversation with the same inputs—reuse sufficient earlier results. Re-search only when the user asks for something new, something time-sensitive that may have changed, or detail the earlier results lack.
 When repeating a value in a follow-up, preserve its earlier date, scope and qualifications.
 Think about what widget components to show the user, then work backwards to the tools you need.
@@ -166,13 +166,14 @@ ${skillDisclosure ? `\n${skillDisclosure}` : ''}
 ${linkPreviewsOverride ? `\n${linkPreviewsOverride}` : ''}
 
 # Output Format
-For tool-derived claims, cite sources with [N] INLINE at the end of the sentence, on the SAME LINE — never on a new line or separate paragraph.
+For claims from [Source N] results, cite with [N] INLINE at the end of the sentence, on the SAME LINE — never on a new line or separate paragraph.
 Place each [N] once after the period of the last sentence using that source.
 Do not emit <widget:citation> tags, 【1】 brackets, footnotes, or source lists at the end — this rule covers citations only, and does not apply to the other <widget:…> components.
 Correct: "The metro area has 37 million residents. [1] [2]"
 Wrong: "The metro area has 37 million residents.\n[1]" (citation on new line)
 Wrong: "Tokyo has 14 million residents. [1] The metro area has 37 million. [1]" (repeated [1])
-Wrong for a claim drawn from tool results: "Tokyo has 14 million residents." (missing [N])
+Wrong for a claim drawn from a [Source N] result: "Tokyo has 14 million residents." (missing [N])
+Wrong: "You have 3 tasks due today. [1]" ([1] on a result with no source number)
 Wrong: "| Tokyo | 14 million | [1] |" (citation in separate column)
 Format math as LaTeX with dollar delimiters: $…$ inline, $$…$$ for standalone equations. Never use \\(…\\) or \\[…\\].
 

@@ -1,0 +1,36 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+@import './tokens.css';
+@import '../components/marketing/spark/spark-chrome.css';
+
+html {
+  background: var(--tb-bg);
+  color: var(--tb-text);
+  font-family: var(--tb-font-sans);
+  -webkit-font-smoothing: antialiased;
+  scrollbar-gutter: stable;
+}
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+.spark-site-theme body {
+  display: flex;
+  flex-direction: column;
+}
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+.spark-site-theme :is(h1, h2, h3, h4) {
+  font-family: var(--tb-font-sans);
+}
+.spark-site-theme #main-content :is(h1, h2, h3, h4, h5, h6) {
+  font-family: 'Lora Variable', serif;
+}
+.spark-site-theme a {
+  color: inherit;
+}

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getAuthToken } from '@/lib/auth-token'
+import { getLocalSetting, isCurrentServer } from '@/stores/local-settings-store'
 
 /**
  * Report a session our backend rejected, for backend calls that bypass the
@@ -14,15 +15,17 @@ import { getAuthToken } from '@/lib/auth-token'
  * the proxy relays, so the proxy only calls this for responses it didn't relay.
  * Reads a clone so the caller keeps the body.
  */
-export const handleSessionRejected = async (response: Response): Promise<void> => {
-  if (response.status !== 401 || !getAuthToken()) {
+export const handleSessionRejected = async (response: Response, isCurrent?: () => boolean): Promise<void> => {
+  const selectedServer = getLocalSetting('cloudUrl')
+  const isCurrentRequest = isCurrent ?? (() => isCurrentServer(selectedServer))
+  if (response.status !== 401 || !isCurrentRequest() || !getAuthToken()) {
     return
   }
   const body = (await response
     .clone()
     .json()
     .catch(() => null)) as { code?: string } | null
-  if (body?.code === 'UNAUTHENTICATED') {
+  if (body?.code === 'UNAUTHENTICATED' && isCurrentRequest()) {
     // Event name kept in sync with src/db/powersync/connector.ts; importing it would cycle.
     window.dispatchEvent(new CustomEvent('powersync_credentials_invalid', { detail: { reason: 'session_expired' } }))
   }

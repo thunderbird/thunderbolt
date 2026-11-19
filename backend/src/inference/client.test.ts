@@ -5,7 +5,7 @@
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { generateText } from 'ai'
 import { describe, expect, it, mock } from 'bun:test'
-import { createManagedProviderConnection } from './client'
+import { createInferenceAttemptTracker, createManagedProviderConnection, wasRefusedOnEveryAttempt } from './client'
 
 const settings = {
   anthropicApiKey: 'anthropic-key',
@@ -65,5 +65,18 @@ describe('createManagedProviderConnection', () => {
       }),
       'Inference upstream attempt',
     )
+  })
+})
+
+describe('wasRefusedOnEveryAttempt', () => {
+  it('is true only for an error with a status when every attempt got an answer', () => {
+    const answered = createInferenceAttemptTracker()
+    const unanswered = { ...createInferenceAttemptTracker(), hadUnansweredAttempt: true }
+
+    expect(wasRefusedOnEveryAttempt({ status: 429 }, answered)).toBe(true)
+    // An earlier attempt that got no answer may have run, whatever the last one returned.
+    expect(wasRefusedOnEveryAttempt({ status: 429 }, unanswered)).toBe(false)
+    // A connection error or timeout carries no status.
+    expect(wasRefusedOnEveryAttempt({}, answered)).toBe(false)
   })
 })

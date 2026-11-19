@@ -7,16 +7,16 @@ import { SquarePen, Trash2 } from 'lucide-react'
 
 import { ContextMenuContent, ContextMenuItem } from '@/components/ui/context-menu'
 
-/** Shared right-click Edit/Delete menu for settings list rows. */
-export const EditDeleteContextMenuContent = ({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) => (
+/** Shared right-click Edit/Remove menu for settings list rows. */
+export const EditDeleteContextMenuContent = ({ onEdit, onDelete }: { onEdit?: () => void; onDelete?: () => void }) => (
   <ContextMenuContent className="min-w-56">
-    <ContextMenuItem onClick={onEdit} className="cursor-pointer">
+    <ContextMenuItem disabled={!onEdit} onClick={onEdit} className="cursor-pointer">
       <SquarePen className="size-4 mr-2" />
       <Trans>Edit</Trans>
     </ContextMenuItem>
-    <ContextMenuItem onClick={onDelete} className="cursor-pointer">
+    <ContextMenuItem disabled={!onDelete} onClick={onDelete} className="cursor-pointer">
       <Trash2 className="size-4 mr-2" />
-      <Trans>Delete</Trans>
+      <Trans>Remove</Trans>
     </ContextMenuItem>
   </ContextMenuContent>
 )

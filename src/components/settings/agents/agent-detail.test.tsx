@@ -63,6 +63,17 @@ describe('AgentDetail — system agents', () => {
 })
 
 describe('AgentDetail — custom agents', () => {
+  it('lets a signed-out user rename an agent created on this device', async () => {
+    const onUpdate = mock(async () => {})
+    renderDetail(customAgent({ userId: null }), { currentUserId: null, onUpdate })
+
+    expect(screen.getByRole('button', { name: 'More' })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'My Local Agent' } })
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Save' })))
+
+    expect(onUpdate).toHaveBeenCalledWith({ name: 'My Local Agent' })
+  })
+
   it('is read-only when the agent belongs to a different user', () => {
     renderDetail(customAgent({ userId: 'someone-else' }))
 

@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { openUrl } from '@tauri-apps/plugin-opener'
+
 import { isTauri } from '@/lib/platform'
 
 export type OpenExternalUrlDeps = {
@@ -9,15 +11,9 @@ export type OpenExternalUrlDeps = {
   openInTauri: (url: string) => Promise<void>
 }
 
-// Imported lazily so this module stays usable (and testable) on web without
-// evaluating the Tauri plugin. It does NOT keep the plugin out of the web
-// bundle — several modules in the entry graph import it statically.
 const defaultDeps: OpenExternalUrlDeps = {
   isTauri,
-  openInTauri: async (url) => {
-    const { openUrl } = await import('@tauri-apps/plugin-opener')
-    await openUrl(url)
-  },
+  openInTauri: openUrl,
 }
 
 /**

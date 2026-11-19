@@ -37,8 +37,8 @@ type MiniAppFrameProps = {
  * That needs no permissions-policy grant. `allow="tools"` does something else:
  * it lets an agent in the *embedder* — the browser's, not ours — discover and
  * call tools across the frame boundary. Granting it would route a customer app's
- * tools around the host-side approval prompt that `readOnlyHint` gates, to a
- * caller Thunderbolt has no relationship with. So it stays denied, along with
+ * tools around the host-side approval prompt, to a caller Thunderbolt has no
+ * relationship with. So it stays denied, along with
  * everything else.
  */
 export const MiniAppFrame = ({ app, frameRef, status, onFrameLoad, onRetry }: MiniAppFrameProps) => (
@@ -58,13 +58,17 @@ export const MiniAppFrame = ({ app, frameRef, status, onFrameLoad, onRetry }: Mi
     {status !== 'ready' && (
       <EmbeddedSurfaceStatus
         name={app.name}
-        state={status === 'unreachable' ? 'failed' : 'waiting'}
+        state={status === 'connecting' ? 'waiting' : 'failed'}
         onRetry={onRetry}
         detail={
-          <Trans>
-            Nothing completed the handshake at {app.url}. Check that the app is running, and that it allows this origin
-            in its <code>frame-ancestors</code>.
-          </Trans>
+          status === 'unsupported' ? (
+            <Trans>This mini app uses an outdated SDK. Ask its maintainer to update the SDK and redeploy it.</Trans>
+          ) : (
+            <Trans>
+              Nothing completed the handshake at {app.url}. Check that the app is running, and that it allows this
+              origin in its <code>frame-ancestors</code>.
+            </Trans>
+          )
         }
       />
     )}

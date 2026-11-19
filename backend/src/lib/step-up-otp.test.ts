@@ -14,6 +14,7 @@ import {
   stepUpIdentifier,
   stepUpOtpLength,
   verifyStepUpOtp,
+  verifyStepUpOtpInTransaction,
   type StepUpAction,
 } from './step-up-otp'
 
@@ -261,6 +262,46 @@ describe('step-up OTP (THU-875)', () => {
   })
 
   describe('consumeStepUpOtp', () => {
+    it('keeps authorization retryable when the protected transaction rolls back', async () => {
+      const code = await mintStepUpOtp(db, action, email)
+      const protectedRow = `protected-${crypto.randomUUID()}`
+      await expect(
+        db.transaction(async (tx) => {
+          expect(await verifyStepUpOtpInTransaction(tx, action, email, code)).toBe('valid')
+          await tx.insert(verification).values({
+            id: protectedRow,
+            identifier: protectedRow,
+            value: 'action side effect',
+            expiresAt: new Date(Date.now() + 60_000),
+          })
+          await consumeStepUpOtp(tx, action, email)
+          throw new Error('protected action failed')
+        }),
+      ).rejects.toThrow('protected action failed')
+      expect(await verifyStepUpOtp(db, action, email, code)).toBe('valid')
+      expect(await db.select().from(verification).where(eq(verification.id, protectedRow))).toHaveLength(0)
+    })
+
+    it('consumes authorization before the protected action transaction becomes visible', async () => {
+      const code = await mintStepUpOtp(db, action, email)
+      await db.transaction(async (tx) => {
+        expect(await verifyStepUpOtpInTransaction(tx, action, email, code)).toBe('valid')
+        await consumeStepUpOtp(tx, action, email)
+        expect(await verifyStepUpOtpInTransaction(tx, action, email, code)).toBe('invalid')
+      })
+      const replacement = await mintStepUpOtp(db, action, email)
+      expect(await verifyStepUpOtp(db, action, email, replacement)).toBe('valid')
+    })
+
+    it('commits wrong-code charges when a gated action returns a refusal', async () => {
+      const code = await mintStepUpOtp(db, action, email)
+      const wrongCode = code === '00000000' ? '11111111' : '00000000'
+      for (let attempt = 0; attempt < 3; attempt++) {
+        expect(await db.transaction((tx) => verifyStepUpOtpInTransaction(tx, action, email, wrongCode))).toBe('invalid')
+      }
+      expect(await verifyStepUpOtp(db, action, email, code)).toBe('too-many-attempts')
+    })
+
     it('deletes the row so the code cannot be replayed', async () => {
       const code = await mintStepUpOtp(db, action, email)
       await consumeStepUpOtp(db, action, email)

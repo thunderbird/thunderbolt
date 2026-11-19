@@ -1,0 +1,132 @@
+[
+  {
+    "query": "validate the whole app",
+    "should_trigger": true,
+    "reason": "whole app"
+  },
+  {
+    "query": "valide o app todo",
+    "should_trigger": true,
+    "reason": "whole app PT"
+  },
+  {
+    "query": "valida la app completa",
+    "should_trigger": true,
+    "reason": "whole app ES"
+  },
+  {
+    "query": "valida la app completa en iOS y Android",
+    "should_trigger": true,
+    "reason": "whole app ES mobile"
+  },
+  {
+    "query": "rode um smoke test do app no iOS",
+    "should_trigger": true,
+    "reason": "PT iOS smoke"
+  },
+  {
+    "query": "validate this PR on iOS and Android",
+    "should_trigger": true,
+    "reason": "feature native"
+  },
+  {
+    "query": "teste so o login no desktop",
+    "should_trigger": true,
+    "reason": "bounded PT desktop"
+  },
+  {
+    "query": "make sure nothing broke on mobile before I merge",
+    "should_trigger": true,
+    "reason": "implicit mobile regression"
+  },
+  {
+    "query": "confere se o THU-467 funciona no app rodando",
+    "should_trigger": true,
+    "reason": "ticket PT runtime"
+  },
+  {
+    "query": "comprueba que el login funciona en el emulador Android",
+    "should_trigger": true,
+    "reason": "ES runtime"
+  },
+  {
+    "query": "QA the chat fix in the real Tauri app",
+    "should_trigger": true,
+    "reason": "desktop bug"
+  },
+  {
+    "query": "retest this feature and the related previously fixed tickets",
+    "should_trigger": true,
+    "reason": "regressions"
+  },
+  {
+    "query": "smoke test Thunderbolt on web and macOS",
+    "should_trigger": true,
+    "reason": "two targets"
+  },
+  {
+    "query": "valide tudo no web, iOS e Android em modo core",
+    "should_trigger": true,
+    "reason": "whole app PT depth"
+  },
+  {
+    "query": "reproduce the logout bug in the locally running app",
+    "should_trigger": true,
+    "reason": "bug UI"
+  },
+  {
+    "query": "check this branch end to end before merge",
+    "should_trigger": true,
+    "reason": "implicit runtime"
+  },
+  {
+    "query": "test custom model routing with cloud proxy off",
+    "should_trigger": true,
+    "reason": "routing runtime"
+  },
+  {
+    "query": "valida toda la aplicación con cobertura completa",
+    "should_trigger": true,
+    "reason": "whole app ES full"
+  },
+  {
+    "query": "review this PR",
+    "should_trigger": false,
+    "reason": "code review"
+  },
+  {
+    "query": "write unit tests for the proxy",
+    "should_trigger": false,
+    "reason": "unit tests"
+  },
+  {
+    "query": "monitor production errors",
+    "should_trigger": false,
+    "reason": "production monitoring"
+  },
+  {
+    "query": "set up the iOS simulator only",
+    "should_trigger": false,
+    "reason": "setup without validation"
+  },
+  {
+    "query": "explain how PowerSync works",
+    "should_trigger": false,
+    "reason": "explanation"
+  },
+  {
+    "query": "fix the CSS in settings",
+    "should_trigger": false,
+    "reason": "implementation without validation request"
+  },
+  {
+    "query": "run cargo unit tests",
+    "should_trigger": false,
+    "reason": "unit tests only"
+  },
+  {
+    "query": "summarize this Linear ticket",
+    "should_trigger": false,
+    "reason": "read-only summary"
+  }
+]

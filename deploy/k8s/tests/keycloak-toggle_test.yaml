@@ -95,3 +95,12 @@ tests:
             backend: { service: { name: keycloak, port: { number: 8080 } } }
         template: templates/ingress.yaml
         documentIndex: 0
+  - it: deploys the Keycloak release keycloak.Dockerfile is built from
+    template: templates/keycloak.yaml
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: quay.io/keycloak/keycloak:26.8

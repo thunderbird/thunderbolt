@@ -8,7 +8,12 @@ import { describe, expect, it } from 'bun:test'
 import { xlsxMime } from '@/files/transformers'
 import type { StoredFile } from '@/lib/file-blob-storage'
 import type { ThunderboltUIMessage } from '@/types'
-import { prepareBuiltInConversation, type BuiltInConversationDeps } from './built-in-conversation'
+import {
+  prepareBuiltInConversation,
+  prepareBuiltInHistory,
+  splitCompactedHistory,
+  type BuiltInConversationDeps,
+} from './built-in-conversation'
 
 const storedFile = (id: string, mimeType: string): StoredFile => ({
   id,
@@ -29,6 +34,75 @@ const message = (role: 'user' | 'assistant', parts: ThunderboltUIMessage['parts'
 })
 
 describe('prepareBuiltInConversation', () => {
+  it('replays only turns after the latest checkpoint and drops a deleted checkpoint on regeneration', async () => {
+    const checkpoint = {
+      version: 1 as const,
+      summary: 'Earlier decisions',
+      tokensBefore: 9_000,
+      contextTokens: 100,
+      retainedTail: [],
+    }
+    const original = message('user', [{ type: 'text', text: 'Earlier context' }])
+    const compacted = {
+      ...message('assistant', [{ type: 'text', text: 'Original visible answer' }]),
+      metadata: { contextCompaction: checkpoint },
+    }
+    const next = message('user', [{ type: 'text', text: 'Continue' }])
+    const prepared = await prepareBuiltInConversation([original, compacted, next], undefined, inline)
+    expect(prepared.compaction).toEqual(checkpoint)
+    expect(prepared.history).toEqual([])
+    expect(prepared.prompt.text).toBe('Continue')
+    expect(splitCompactedHistory([original, next]).compaction).toBeUndefined()
+    expect(compacted.parts[0]).toEqual({ type: 'text', text: 'Original visible answer' })
+  })
+  it('does not reopen compacted attachments when no workspace needs restoring', async () => {
+    const checkpoint = {
+      version: 1 as const,
+      summary: 'The old attachment has already been summarized.',
+      tokensBefore: 9_000,
+      contextTokens: 100,
+      retainedTail: [],
+    }
+    const deps: BuiltInConversationDeps = {
+      getAttachment: async () => {
+        throw new Error('Compacted attachment must not be read')
+      },
+      getTransformer: async () => {
+        throw new Error('Compacted attachment must not be transformed')
+      },
+      blobToBase64: async () => {
+        throw new Error('Compacted attachment must not be encoded')
+      },
+      readXlsxSheets: async () => {
+        throw new Error('Compacted attachment must not be parsed')
+      },
+    }
+    const history = [
+      message('user', [
+        { type: 'data-attachment', data: { localFileId: 'old', filename: 'old.pdf', mimeType: 'application/pdf' } },
+      ]),
+      { ...message('assistant', [{ type: 'text', text: 'Read it' }]), metadata: { contextCompaction: checkpoint } },
+      message('user', [{ type: 'text', text: 'Follow-up' }]),
+      message('assistant', [{ type: 'text', text: 'Answer' }]),
+    ]
+    const prepared = await prepareBuiltInHistory(history, inline, deps)
+    expect(prepared).toEqual({
+      compaction: checkpoint,
+      history: [
+        { role: 'user', text: 'Follow-up' },
+        { role: 'assistant', text: 'Answer' },
+      ],
+      files: [],
+    })
+    const conversation = await prepareBuiltInConversation(
+      [...history, message('user', [{ type: 'text', text: 'Continue' }])],
+      undefined,
+      inline,
+      deps,
+    )
+    expect(conversation.history).toEqual(prepared.history)
+    expect(conversation.prompt.text).toBe('Continue')
+  })
   it('flattens quotes/text attachments and maps current images to Pi image content', async () => {
     const files = new Map([
       ['notes', storedFile('notes', 'text/plain')],
@@ -392,6 +466,57 @@ describe('prepareBuiltInConversation', () => {
       )
 
       expect(prepared.files.map((entry) => entry.path)).toEqual(['attachments/u3/file'])
+    })
+
+    it('restores files from compacted turns without replaying their old text', async () => {
+      const file = textFile('before-summary', 'spend.csv', 'text/csv', 'a,b\n1,2')
+      const checkpoint = {
+        version: 1 as const,
+        summary: 'Use attachments/before-summary/spend.tsv for the totals.',
+        tokensBefore: 9_000,
+        contextTokens: 100,
+        retainedTail: [],
+      }
+      const messages = [
+        message('user', [attachment(file), { type: 'text', text: 'Old question' }]),
+        {
+          ...message('assistant', [{ type: 'text', text: 'Old answer' }]),
+          metadata: { contextCompaction: checkpoint },
+        },
+        message('user', [{ type: 'text', text: 'Follow-up question' }]),
+        message('assistant', [{ type: 'text', text: 'Follow-up answer' }]),
+      ]
+      const history = await prepareBuiltInHistory(messages, workspace, depsFor([file]))
+      expect(history.compaction).toEqual(checkpoint)
+      expect(history.history).toEqual([
+        { role: 'user', text: 'Follow-up question' },
+        { role: 'assistant', text: 'Follow-up answer' },
+      ])
+      expect(history.files).toEqual([{ path: 'attachments/before-summary/spend.tsv', content: 'a\tb\n1\t2\n' }])
+
+      const prepared = await prepareBuiltInConversation(
+        [...messages, message('user', [{ type: 'text', text: 'Continue with that file' }])],
+        undefined,
+        workspace,
+        depsFor([file]),
+      )
+      expect(prepared.compaction).toEqual(checkpoint)
+      expect(prepared.history).toEqual(history.history)
+      expect(prepared.files).toEqual(history.files)
+      expect(prepared.prompt.text).toBe('Continue with that file')
+    })
+
+    it('prepares workspace previews for manual compaction and full text when tools are off', async () => {
+      const content = Array.from({ length: 250 }, (_, index) => `row ${index}`).join('\n')
+      const file = textFile('manual', 'notes.txt', 'text/plain', content)
+      const messages = [message('user', [attachment(file)]), message('assistant', [{ type: 'text', text: 'Read it' }])]
+      const staged = await prepareBuiltInHistory(messages, workspace, depsFor([file]))
+      expect(staged.history[0].text).toContain('attachments/manual/notes.txt')
+      expect(staged.history[0].text).not.toContain('row 249')
+      expect(staged.files).toEqual([{ path: 'attachments/manual/notes.txt', content }])
+      const inlined = await prepareBuiltInHistory(messages, inline, depsFor([file]))
+      expect(inlined.history[0].text).toContain('row 249')
+      expect(inlined.files).toEqual([])
     })
 
     it('uses the same shape for history turns and writes each attachment once', async () => {

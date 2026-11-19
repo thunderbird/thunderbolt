@@ -10,6 +10,7 @@ import { eq } from 'drizzle-orm'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createMockAuthClient } from '@/test-utils/auth-client'
+import { closeTestLocalData, openTestLocalData } from '@/test-utils/local-data'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
@@ -160,14 +161,18 @@ describe('MagicLinkVerify', () => {
       expect(screen.getByText('Welcome!')).toBeInTheDocument()
     })
 
-    it('calls signIn.emailOtp with email and otp', async () => {
+    it('calls signIn.emailOtp with the exact email and code, without inventing a challenge header', async () => {
       renderComponent('user@example.com', '123456')
       await waitForStateChange()
 
+      expect(mockSignInEmailOtp).toHaveBeenCalledTimes(1)
       expect(mockSignInEmailOtp).toHaveBeenCalledWith({
         email: 'user@example.com',
         otp: '123456',
+        fetchOptions: expect.objectContaining({ onSuccess: expect.any(Function) }),
       })
+      const call = mockSignInEmailOtp.mock.calls[0][0] as { fetchOptions: { headers?: HeadersInit } }
+      expect(new Headers(call.fetchOptions.headers).has('x-challenge-token')).toBe(false)
     })
 
     it('keeps the client-level headers when sending a challenge token', async () => {
@@ -333,7 +338,10 @@ describe('MagicLinkVerify', () => {
       // Seeds `user_has_completed_onboarding = 'false'`, exactly as a fresh
       // device does at boot before it has ever seen the account.
       await reconcileDefaults(getDb())
+      await openTestLocalData()
     })
+
+    afterEach(closeTestLocalData)
 
     it('marks onboarding complete when the link signs in to an account that already existed', async () => {
       mockSignInEmailOtp = mock(() => Promise.resolve({ error: null, data: { user: { id: 'u1', isNew: false } } }))

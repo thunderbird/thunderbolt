@@ -7,16 +7,20 @@ import type { Settings } from '@/config/settings'
 import {
   admitManagedRequest,
   createUsageCallbacks,
+  maxTextTokens,
   recordLanguageModelUsage,
   recordTokenCounts,
+  type UsageCallbacks,
 } from '@/inference/managed-request'
 import { createMeteredRouteGuard } from '@/inference/metered-route-guard'
 import { streamingResponseHeaders } from '@/inference/routes'
-import type {
-  checkManagedInferenceAdmission,
-  InferenceDatabase,
-  InferencePrice,
-  recordInferenceUsage,
+import {
+  calculateMaxInferenceCost,
+  type checkManagedInferenceAdmission,
+  type InferenceLedgerDatabase,
+  type InferencePrice,
+  type recordInferenceUsage,
+  type releaseInferenceHold,
 } from '@/inference/usage-ledger'
 import {
   createErrorResponse,
@@ -42,7 +46,14 @@ import {
 import { Elysia, type AnyElysia } from 'elysia'
 import type { Logger } from 'pino'
 import { parseAgentChatRequest } from './history'
-import { createAgentMcpClients, parseAgentMcpServers, type AgentMcpClients, type AgentMcpToolsResult } from './mcp'
+import { maxToolCallsPerReply } from './limits'
+import {
+  createAgentMcpClients,
+  maxToolResultChars,
+  parseAgentMcpServers,
+  type AgentMcpClients,
+  type AgentMcpToolsResult,
+} from './mcp'
 import { createAgentModel, getAgentIdentity, getAgentRequestHeaders } from './model'
 import { assertServiceTierPriced, priceForServiceTier } from './pricing'
 import { createHostedAgentProvider } from './provider'
@@ -51,7 +62,7 @@ import { createToolTimingMetadata } from './tool-timing'
 import { getAbortedRunCounts, getSettledRunCounts } from './usage-estimate'
 
 /**
- * Longest output per model step. Generous for chat; with `AGENT_MAX_STEPS` it bounds the worst-case cost of a run,
+ * Longest output per model step. Generous for chat; with `AGENT_MAX_STEPS` it bounds the maximum cost of a run,
  * since a run that calls tools makes one model call per step.
  */
 export const agentMaxOutputTokens = 8192
@@ -73,7 +84,7 @@ const finalStepMessage: ModelMessage = { role: 'user', content: finalStepNudge }
 
 export type CreateHostedAgentRoutesOptions = {
   auth: Auth
-  database: InferenceDatabase
+  database: InferenceLedgerDatabase
   settings: Settings
   /** Upstream fetch for the default model; tests pass a stub, like the other route groups. */
   fetchFn?: typeof fetch
@@ -83,16 +94,19 @@ export type CreateHostedAgentRoutesOptions = {
   model?: LanguageModel
   checkAdmission?: typeof checkManagedInferenceAdmission
   recordUsage?: typeof recordInferenceUsage
+  releaseHold?: typeof releaseInferenceHold
   /** Defaults to `agentUpstreamTimeoutMs`. */
   upstreamTimeoutMs?: number
   /** Defaults to clients for the servers in `AGENT_MCP_SERVERS`, over `fetchFn`. */
   mcpClients?: AgentMcpClients
 }
 
-/** A request ready to run: its user's slot taken and its tools loaded. */
+/** A request ready to run: admitted, its user's slot taken and its tools loaded. */
 type AgentRunRequest = {
   userId: string
-  price: InferencePrice
+  /** The run's usage event ID, which its hold was recorded under. */
+  eventId: string
+  usage: UsageCallbacks
   messages: ModelMessage[]
   /** The request's `instructions`, when it carried any. */
   instructions?: string
@@ -136,7 +150,7 @@ const createInstructionsTooLargeResponse = (): Response =>
  * unless `AGENT_ENABLED` is set, and registers the agent with discovery.
  */
 export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions) => {
-  const { auth, database, settings, fetchFn, logger, rateLimit, checkAdmission, recordUsage } = options
+  const { auth, database, settings, fetchFn, logger, rateLimit, checkAdmission, recordUsage, releaseHold } = options
   // Registered even when disabled, like Haystack: the provider itself emits nothing without `AGENT_ENABLED`.
   registerAgentProvider(createHostedAgentProvider())
   if (!settings.agentEnabled) {
@@ -154,42 +168,37 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
   // Parsed at startup so a malformed AGENT_MCP_SERVERS fails the boot; the servers connect on first use.
   const mcpClients =
     options.mcpClients ?? createAgentMcpClients(parseAgentMcpServers(settings.agentMcpServers), { logger, fetchFn })
-  // Admission only sees settled ledger rows, so concurrent runs would each be admitted at the same spend.
-  // One run per user closes that gap. The set is per process, which is sufficient while the agent runs
-  // as a single instance; a multi-instance deployment needs a shared lock.
+  // One run per user on this instance, so a second request is refused before it reaches an MCP server. The
+  // spending limit does not rely on it: admission records each run's hold in the shared ledger.
   const usersWithRunInFlight = new Set<string>()
 
   /**
-   * Start a run for a request that holds its user's slot, and return its stream. The run releases the slot once it
-   * settles, after its usage is written.
+   * An upper estimate of the tokens one run can use. Each step is sent the request, the operator's prompt, every
+   * earlier step's output and every tool result, and may write `agentMaxOutputTokens`. The request and the prompt
+   * count one token per UTF-8 byte. A tool result counts one token per character, the highest rate for a dense
+   * script. The estimate leaves out the tool definitions, which the operator sets, and the sections
+   * `buildAgentSystemPrompt` adds to the operator's prompt.
    */
-  const startRun = ({
-    userId,
-    price,
-    messages,
-    instructions,
-    appLanguage,
-    signal,
-    responseHeaders,
-    loaded: { tools, toolDefinitions, unavailableServers, isCallBudgetSpent },
-  }: AgentRunRequest): Response => {
-    const usageEventId = crypto.randomUUID()
-    const logContext = { provider: identity.provider, model: identity.model, eventId: usageEventId }
-    /** Name and status only: provider error messages and bodies can echo conversation content. */
-    const logRunFailure = (error: unknown) => {
-      // PostHog capture for the hosted agent is deferred to the usage/analytics follow-up (GTM-31).
-      const errorName = error instanceof Error ? error.name : undefined
-      logger?.error(
-        { event: 'agent_stream_failed', ...logContext, errorName, status: getUpstreamStatus(error) },
-        'Agent stream failed',
-      )
-    }
-    const usageCallbacks = createUsageCallbacks({
+  const maxRunTokens = (requestText: string) => {
+    const outputTokens = settings.agentMaxSteps * agentMaxOutputTokens
+    const stepPromptTokens =
+      maxTextTokens(requestText) +
+      maxTextTokens(settings.agentSystemPrompt) +
+      outputTokens +
+      maxToolCallsPerReply * maxToolResultChars
+    return { promptTokens: settings.agentMaxSteps * stepPromptTokens, outputTokens }
+  }
+
+  /** The ledger callbacks of one admitted run, logged under its event ID. */
+  const createRunUsage = (eventId: string, userId: string, price: InferencePrice): UsageCallbacks => {
+    const logContext = { provider: identity.provider, model: identity.model, eventId }
+    return createUsageCallbacks({
       database,
-      eventId: usageEventId,
+      eventId,
       userId,
       price,
       recordUsage,
+      releaseHold,
       telemetry: {
         onUsageMissing: () => logger?.error({ event: 'agent_usage_missing', ...logContext }, 'Agent usage missing'),
         onUsageError: (error) =>
@@ -199,6 +208,42 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
           ),
       },
     })
+  }
+
+  /**
+   * Start a run for a request that holds its user's slot, and return its stream. The run releases the slot once it
+   * settles, after its usage is written.
+   */
+  const startRun = ({
+    userId,
+    eventId,
+    usage: usageCallbacks,
+    messages,
+    instructions,
+    appLanguage,
+    signal,
+    responseHeaders,
+    loaded: { tools, toolDefinitions, unavailableServers, isCallBudgetSpent },
+  }: AgentRunRequest): Response => {
+    const logContext = { provider: identity.provider, model: identity.model, eventId }
+    // `wasRefusedUpstream`: the provider refused a model call outright. `hasFinishedStep`: a step finished.
+    let wasRefusedUpstream = false
+    let hasFinishedStep = false
+    /** Name and status only: provider error messages and bodies can echo conversation content. */
+    const logRunFailure = (error: unknown) => {
+      // PostHog capture for the hosted agent is deferred to the usage/analytics follow-up (GTM-31).
+      const errorName = error instanceof Error ? error.name : undefined
+      // A call counts as refused only when the provider answered every attempt with an error status. A network
+      // failure on any attempt has no status, and that attempt may have run.
+      const attempts = RetryError.isInstance(error) ? error.errors : [error]
+      wasRefusedUpstream ||= attempts.every(
+        (attempt) => APICallError.isInstance(attempt) && attempt.statusCode !== undefined,
+      )
+      logger?.error(
+        { event: 'agent_stream_failed', ...logContext, errorName, status: getUpstreamStatus(error) },
+        'Agent stream failed',
+      )
+    }
 
     const hasTools = Object.keys(tools).length > 0
     const startedAt = Date.now()
@@ -255,12 +300,13 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
         }
       },
       onStepFinish: () => {
+        hasFinishedStep = true
         streamedOutput = ''
       },
       onFinish: ({ totalUsage, steps }) => {
-        // After an abort, recordAbortedRunUsage writes the run's one row. Deferring to it here is the first
-        // guard against a second row; the ledger's idempotent insert (onConflictDoNothing on the run's
-        // eventId, in recordInferenceUsage) is the second, but it alone would keep whichever write landed first.
+        // After an abort, recordAbortedRunUsage settles the run's hold. Deferring to it here is the first guard
+        // against a second charge. The second is that the ledger settles a hold only once (recordInferenceUsage),
+        // but that guard alone would keep whichever write landed first.
         if (abortReason) {
           abortedRunUsage = totalUsage
           return
@@ -294,7 +340,7 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
         finishedSteps: finishedSteps.map(({ usage }) => usage),
         system,
         toolDefinitions: wasFinalStep ? '' : toolDefinitions,
-        // A step's response messages are cumulative: the last finished step's hold every earlier step's too.
+        // A step's response messages are cumulative: the last finished step's messages contain every earlier step's.
         messages: [
           ...messages,
           ...(finishedSteps.at(-1)?.response.messages ?? []),
@@ -324,8 +370,12 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
         await result.consumeStream({ onError: logRunFailure })
         if (abortReason) {
           await recordAbortedRunUsage(abortReason)
+        } else if (wasRefusedUpstream && !hasFinishedStep) {
+          // The provider ran no part of the run, so its hold is released.
+          await usageCallbacks.release()
         }
       } finally {
+        await usageCallbacks.onEnd()
         usersWithRunInFlight.delete(userId)
       }
     }
@@ -383,19 +433,33 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
         }
         const messages = await convertToModelMessages(chatRequest.value.messages)
         const userId = ctx.user.id
+        // The one-run check also runs before admission, so a second run is refused even when its hold would fit
+        // beside the first.
+        if (usersWithRunInFlight.has(userId)) {
+          return createRunInProgressResponse()
+        }
+        const { promptTokens, outputTokens } = maxRunTokens(JSON.stringify(chatRequest.value))
         const admission = await admitManagedRequest({
           database,
           settings,
           identity,
           user: ctx.user,
           set: ctx.set,
+          maxCostNanoUsd: (price) =>
+            calculateMaxInferenceCost(priceForServiceTier(price, settings), promptTokens, outputTokens),
           logger,
           checkAdmission,
+          // The app already waits out `AGENT_RUN_IN_PROGRESS`, so a run that does not fit beside one still running
+          // gets that code.
+          createInProgressResponse: createRunInProgressResponse,
         })
         if (admission instanceof Response) {
           return admission
         }
+        const { eventId } = admission
+        const usage = createRunUsage(eventId, userId, priceForServiceTier(admission.price, settings))
         if (usersWithRunInFlight.has(userId)) {
+          await usage.release()
           return createRunInProgressResponse()
         }
         // Taken in the same tick as the check, so while this request loads its tools, another from the same user is
@@ -406,11 +470,13 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
           // A visitor who left while the tools loaded gets no run, so nothing is billed for a prompt never sent.
           if (ctx.request.signal.aborted) {
             usersWithRunInFlight.delete(userId)
+            await usage.release()
             return new Response(null, { status: 499 })
           }
           return startRun({
             userId,
-            price: priceForServiceTier(admission.price, settings),
+            eventId,
+            usage,
             messages,
             instructions: chatRequest.value.instructions,
             appLanguage: ctx.request.headers.get('X-App-Language'),
@@ -420,6 +486,7 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
           })
         } catch (error) {
           usersWithRunInFlight.delete(userId)
+          await usage.release()
           throw error
         }
       },

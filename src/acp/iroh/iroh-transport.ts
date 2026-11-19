@@ -189,16 +189,16 @@ const clearSharedClientIfPending = (pending: Promise<IrohClientLike>): void => {
  *  to be used. The listener is detached as soon as `promise` settles, so it never
  *  leaks onto the adapter's long-lived signal. */
 const raceAbort = <T>(promise: Promise<T>, signal: AbortSignal, onAbort?: () => void): Promise<T> => {
-  if (signal.aborted) {
-    onAbort?.()
-    return Promise.reject(new DOMException('aborted', 'AbortError'))
-  }
   return new Promise<T>((resolve, reject) => {
     const abortListener = (): void => {
       onAbort?.()
       reject(new DOMException('aborted', 'AbortError'))
     }
-    signal.addEventListener('abort', abortListener, { once: true })
+    if (signal.aborted) {
+      abortListener()
+    } else {
+      signal.addEventListener('abort', abortListener, { once: true })
+    }
     promise.then(
       (value) => {
         signal.removeEventListener('abort', abortListener)
@@ -210,6 +210,12 @@ const raceAbort = <T>(promise: Promise<T>, signal: AbortSignal, onAbort?: () => 
       },
     )
   })
+}
+
+/** Cancel a shared bind for this caller, evicting only the binding it waited for. */
+const loadClientForSignal = (load: IrohClientLoader, signal: AbortSignal): Promise<IrohClientLike> => {
+  const pending = getSharedClient(load)
+  return raceAbort(pending, signal, () => clearSharedClientIfPending(pending))
 }
 
 /** Bound an uncancellable wasm dial and close any connection that resolves after the timeout. */
@@ -283,8 +289,7 @@ export const dialIrohBridge = async (options: DialIrohBridgeOptions): Promise<Ir
     throw new DOMException('aborted', 'AbortError')
   }
 
-  const clientPromise = getSharedClient(options.loadClient ?? defaultLoadClient)
-  const client = await raceAbort(clientPromise, signal, () => clearSharedClientIfPending(clientPromise))
+  const client = await loadClientForSignal(options.loadClient ?? defaultLoadClient, signal)
 
   const dialKey = `${options.target}\u0000${options.alpn}`
   const precedingTail = dialTails.get(dialKey) ?? Promise.resolve()
@@ -335,9 +340,16 @@ export type OpenIrohTransportOptions = {
 /** Open an ACP transport against an iroh bridge `target`. Dials over the shared
  *  relay endpoint, opens one bidi stream, and frames ACP JSON-RPC as ndjson. */
 export const openIrohTransport = async (options: OpenIrohTransportOptions): Promise<AcpTransport> => {
+  if (options.signal.aborted) {
+    throw new DOMException('aborted', 'AbortError')
+  }
   if (options.httpClient) {
-    await (options.ensureEnrollment ?? ensureSelfEnrollment)(options.httpClient, () =>
-      irohClientNodeId(options.loadClient),
+    await raceAbort(
+      (options.ensureEnrollment ?? ensureSelfEnrollment)(options.httpClient, async () => {
+        const client = await loadClientForSignal(options.loadClient ?? defaultLoadClient, options.signal)
+        return client.nodeId()
+      }),
+      options.signal,
     )
   }
 
@@ -348,109 +360,90 @@ export const openIrohTransport = async (options: OpenIrohTransportOptions): Prom
     loadClient: options.loadClient,
   })
 
-  // `closed` rejects on a transport-level read error and resolves on clean EOF /
-  // caller close, so the adapter's handshake can race it and fail loudly instead
-  // of hanging on a pending `initialize` (mirrors the WebSocket transport).
   let settleClosed: ((reason: Error | null) => void) | null = null
   const closed = new Promise<void>((resolve, reject) => {
     settleClosed = (reason) => (reason ? reject(reason) : resolve())
   })
   closed.catch(() => {})
-  const settleClosedOnce = (reason: Error | null): void => {
+  let readableController: ReadableStreamDefaultController<AnyMessage> | null = null
+  const reader = connection.readable().getReader()
+  const decoder = createNdjsonDecoder()
+
+  // All exits consume one terminal latch before touching resources. In particular
+  // reader cancellation and EOF release the connection and its abort listener too.
+  const finish = (error: TransportTerminationError | null): void => {
     if (!settleClosed) {
       return
     }
     const settle = settleClosed
     settleClosed = null
-    settle(reason)
+    options.signal.removeEventListener('abort', close)
+    if (error) {
+      readableController?.error(error)
+    } else {
+      readableController?.close()
+    }
+    readableController = null
+    settle(error)
+    connection.close()
+    void reader.cancel().catch(() => {})
   }
-
-  const decoder = createNdjsonDecoder()
-  let readableController: ReadableStreamDefaultController<AnyMessage> | null = null
-  let readableClosed = false
+  const close = (): void => finish(null)
   const readable = new ReadableStream<AnyMessage>({
     start(controller) {
       readableController = controller
     },
+    cancel() {
+      readableController = null
+      close()
+    },
   })
 
-  // Guard every controller op behind one flag so a normal close, a read error,
-  // and a consumer cancel can't double-close/enqueue-after-close (the same
-  // discipline the WebSocket transport uses).
-  const closeReadable = (): void => {
-    if (readableClosed) {
-      return
-    }
-    readableClosed = true
-    readableController?.close()
-  }
-
-  // `close` is also the abort listener, so a normal close detaches it (rather
-  // than leaving it attached to the adapter's long-lived signal). Idempotent:
-  // `closeReadable`, `settleClosedOnce`, and the wasm `connection.close()` all
-  // no-op on re-entry. Defined before `writable`/`pumpReceive` so both route
-  // their teardown through this single path.
-  const close = (): void => {
-    options.signal.removeEventListener('abort', close)
-    closeReadable()
-    connection.close()
-    settleClosedOnce(null)
-  }
-
-  const terminate = (error: TransportTerminationError): void => {
-    if (!readableClosed) {
-      readableClosed = true
-      readableController?.error(error)
-    }
-    settleClosedOnce(error)
-    close()
-  }
-
-  // Pump iroh recv bytes → ndjson decode → ACP messages, for the session's life.
   const pumpReceive = async (): Promise<void> => {
-    const reader = connection.readable().getReader()
     try {
-      while (true) {
+      while (settleClosed) {
         const { value, done } = await reader.read()
-        if (done || readableClosed) {
+        if (done || !settleClosed) {
           break
         }
         for (const message of decoder.push(value)) {
           readableController?.enqueue(message as AnyMessage)
         }
       }
-      closeReadable()
-      settleClosedOnce(null)
+      close()
     } catch (err) {
       const cause = err instanceof Error ? err : new Error(String(err))
-      const error = new TransportTerminationError('stream-error', cause.message, { cause })
-      terminate(error)
+      finish(new TransportTerminationError('stream-error', cause.message, { cause }))
+    } finally {
+      reader.releaseLock()
     }
   }
   void pumpReceive()
 
   const writable = new WritableStream<AnyMessage>({
     async write(message) {
+      if (!settleClosed) {
+        throw new TransportTerminationError('remote-close', 'ACP transport is closed')
+      }
       try {
         await connection.send(encodeNdjsonFrame(message))
       } catch (err) {
         const cause = err instanceof Error ? err : new Error(String(err))
         const error = new TransportTerminationError('stream-error', cause.message, { cause })
-        terminate(error)
+        finish(error)
         throw error
       }
     },
-    close() {
-      close()
-    },
-    abort() {
-      close()
-    },
+    close,
+    abort: close,
   })
 
   const stream: Stream = { readable, writable }
 
   options.signal.addEventListener('abort', close, { once: true })
+  if (options.signal.aborted) {
+    close()
+  }
 
   return { stream, close, closed }
 }

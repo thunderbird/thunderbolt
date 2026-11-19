@@ -6,6 +6,7 @@ import { i18n } from '@/i18n'
 import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import type { AuthClient } from '@/contexts'
+import { isAKUnverified } from '@/crypto'
 
 /**
  * Client surface the device-grant calls depend on. Narrowed to `$fetch` so the
@@ -18,7 +19,10 @@ export type DeviceGrantClient = Pick<AuthClient, '$fetch'>
 export type DeviceCodeStatus = 'pending' | 'approved' | 'denied'
 
 /** Why a device-grant call could not complete, with user-facing copy. */
-export type DeviceGrantFailure = { reason: 'expired' | 'invalid' | 'unavailable'; message: string }
+export type DeviceGrantFailure = {
+  reason: 'expired' | 'invalid' | 'unavailable' | 'unverifiedDevice'
+  message: string
+}
 
 export type VerifyResult = { ok: true; status: DeviceCodeStatus } | ({ ok: false } & DeviceGrantFailure)
 
@@ -28,6 +32,7 @@ const failureMessages: Record<DeviceGrantFailure['reason'], MessageDescriptor> =
   expired: msg`This sign-in request has expired. Start a new one from your terminal.`,
   invalid: msg`That code isn't valid or has already been used. Check your terminal and try again.`,
   unavailable: msg`The sign-in service is unavailable right now. Check your connection and try again.`,
+  unverifiedDevice: msg`This device can't approve sign-ins because its encryption keys couldn't be verified. Approve from a device that was trusted before.`,
 }
 
 /**
@@ -70,9 +75,21 @@ export const verifyDeviceCode = async (client: DeviceGrantClient, userCode: stri
   }
 }
 
-/** Approve a claimed device-authorization request, granting the CLI a session. */
-export const approveDeviceCode = (client: DeviceGrantClient, userCode: string): Promise<ActionResult> =>
-  runAction(client, '/device/approve', userCode)
+/**
+ * Approve a claimed device-authorization request, granting the CLI a session.
+ * A device whose account key is unverified refuses before any request: approvals
+ * follow one rule, whether or not the approved party receives keys.
+ */
+export const approveDeviceCode = async (
+  client: DeviceGrantClient,
+  userCode: string,
+  isUnverified: () => Promise<boolean> = isAKUnverified,
+): Promise<ActionResult> => {
+  if (await isUnverified()) {
+    return { ok: false, reason: 'unverifiedDevice', message: i18n._(failureMessages.unverifiedDevice) }
+  }
+  return runAction(client, '/device/approve', userCode)
+}
 
 /** Deny a claimed device-authorization request. */
 export const denyDeviceCode = (client: DeviceGrantClient, userCode: string): Promise<ActionResult> =>

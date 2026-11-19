@@ -5,7 +5,8 @@
 import { act, cleanup, render } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'bun:test'
 import { getClock } from '@/testing-library'
-import { ExternalLinkDialogProvider } from './markdown-utils'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { citationMarkdownComponents, ExternalLinkDialogProvider } from './markdown-utils'
 import { MemoizedMarkdown } from './memoized-markdown'
 
 // Warm the lazily-loaded math chunk so the component's dynamic `import()` resolves
@@ -33,6 +34,48 @@ const flushLazyLoad = async () => {
     await act(async () => await getClock().runAllAsync())
   }
 }
+
+describe('MemoizedMarkdown image privacy', () => {
+  afterEach(cleanup)
+
+  for (const [name, components] of [
+    ['ordinary', undefined],
+    ['citation', citationMarkdownComponents],
+  ] as const) {
+    for (const destination of [
+      'https://collector.invalid/pixel?secret=synthetic',
+      '//collector.invalid/pixel',
+      '/pixel',
+      '',
+    ]) {
+      it(`renders ${name} images as text for ${JSON.stringify(destination)}`, () => {
+        const content = `![Image description](${destination}) and [ordinary link](https://example.com/control)`
+        const element = (
+          <ExternalLinkDialogProvider>
+            <MemoizedMarkdown id="image-privacy" content={content} components={components} />
+          </ExternalLinkDialogProvider>
+        )
+        const { container } = render(element)
+
+        expect(container.querySelector('img')).toBeNull()
+        expect(container.textContent).toContain('Image description')
+        expect(container.querySelector('a')?.getAttribute('href')).toBe('https://example.com/control')
+        const html = renderToStaticMarkup(element)
+        expect(html).not.toContain('<img')
+        expect(html).not.toContain('rel="preload"')
+      })
+    }
+  }
+
+  it('suppresses images nested inside links while preserving formatting', () => {
+    const { container } = renderMarkdown(
+      '[![Nested description](https://collector.invalid/nested)](https://example.com/control) **bold**',
+    )
+    expect(container.querySelectorAll('img')).toHaveLength(0)
+    expect(container.querySelector('a')?.textContent).toBe('Nested description')
+    expect(container.querySelector('strong')?.textContent).toBe('bold')
+  })
+})
 
 describe('MemoizedMarkdown — LaTeX', () => {
   afterEach(cleanup)

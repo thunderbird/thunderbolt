@@ -137,6 +137,48 @@ describe('useSmoothText', () => {
       matchMedia.mockRestore()
     }
   })
+
+  it('subscribes to motion preferences only while streaming and reads changes made while inactive', () => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const listeners = new Set<() => void>()
+    const preference = { matches: false }
+    const matchMedia = spyOn(window, 'matchMedia').mockImplementation(() => ({
+      ...media,
+      get matches() {
+        return preference.matches
+      },
+      addEventListener: (_type: string, listener: EventListenerOrEventListenerObject) =>
+        listeners.add(listener as () => void),
+      removeEventListener: (_type: string, listener: EventListenerOrEventListenerObject) =>
+        listeners.delete(listener as () => void),
+    }))
+    try {
+      const { result, rerender, unmount } = renderHook(({ text, enabled }) => useSmoothText(text, enabled), {
+        initialProps: { text: 'history', enabled: false },
+      })
+      expect(listeners.size).toBe(0)
+      expect(matchMedia).not.toHaveBeenCalled()
+      preference.matches = true
+      rerender({ text: 'stream'.repeat(100), enabled: true })
+      expect(listeners.size).toBe(1)
+      expect(result.current).toBe('stream'.repeat(100))
+      expect(getClock().countTimers()).toBe(0)
+      rerender({ text: 'completed', enabled: false })
+      expect(listeners.size).toBe(0)
+      preference.matches = false
+      rerender({ text: 'next'.repeat(100), enabled: true })
+      expect(listeners.size).toBe(1)
+      expect(result.current).toBe('')
+      tick(48)
+      expect(result.current.length).toBeGreaterThan(0)
+      expect(result.current.length).toBeLessThan(400)
+      unmount()
+      expect(listeners.size).toBe(0)
+      expect(getClock().countTimers()).toBe(0)
+    } finally {
+      matchMedia.mockRestore()
+    }
+  })
 })
 
 it('restarts when an append is batched with the frame that caught up', () => {

@@ -92,11 +92,7 @@ export const ConnectIntegrationWidget = memo(
     const { data: integrationStatus, isLoading: isLoadingIntegrationStatus } = useIntegrationStatus()
     const queryClient = useQueryClient()
 
-    // Use widget-specific connecting key (messageId is unique per widget instance)
-    const connectingKey = `widget_${messageId}`
-
     const { connect, processCallback, isConnecting, error } = useOAuthConnect({
-      connectingKey,
       onSuccess: async () => {
         const connectedProvider = sessionStorage.getItem(
           getOAuthWidgetKey(messageId, 'provider'),

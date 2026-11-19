@@ -18,6 +18,34 @@ import {
 } from './settings'
 
 describe('Config Settings', () => {
+  describe('monitoring token', () => {
+    let savedEnv: string | undefined
+
+    beforeEach(() => {
+      savedEnv = process.env.MONITORING_TOKEN
+      clearSettingsCache()
+    })
+
+    afterEach(() => {
+      if (savedEnv === undefined) {
+        delete process.env.MONITORING_TOKEN
+      } else {
+        process.env.MONITORING_TOKEN = savedEnv
+      }
+      clearSettingsCache()
+    })
+
+    it.each(['', 'x'.repeat(32)])('accepts disabled monitoring or a 32-character token (%j)', (token) => {
+      process.env.MONITORING_TOKEN = token
+      expect(getSettings().monitoringToken).toBe(token)
+    })
+
+    it('rejects a nonempty 31-character monitoring token', () => {
+      process.env.MONITORING_TOKEN = 'x'.repeat(31)
+      expect(() => getSettings()).toThrow('MONITORING_TOKEN must be at least 32 characters when set')
+    })
+  })
+
   describe('Anthropic base URL', () => {
     let savedEnv: string | undefined
 
@@ -209,13 +237,12 @@ describe('Config Settings', () => {
       expect(isOriginAllowed('http://localhost:1420', settings)).toBe(true)
     })
 
-    it('should expose proxy timing, server timing, and inference receipts to cross-origin clients by default', () => {
+    it('should expose proxy timing and server timing to cross-origin clients by default', () => {
       delete process.env.CORS_EXPOSE_HEADERS
       const settings = getSettings()
 
       expect(settings.corsExposeHeaders.split(',')).toContain('X-Proxy-Timing')
       expect(settings.corsExposeHeaders.split(',')).toContain('Server-Timing')
-      expect(settings.corsExposeHeaders.split(',')).toContain('X-Inference-Usage-Receipt')
       expect(settings.corsExposeHeaders.split(',')).not.toContain('Timing-Allow-Origin')
     })
 
@@ -496,6 +523,7 @@ describe('Config Settings', () => {
       'ALTCHA_DIFFICULTY',
       'ALTCHA_TTL_SECS',
       'AUTH_ALLOW_ANONYMOUS',
+      'INTEGRATION_OAUTH_ALLOW_PUBLIC',
       'ANONYMOUS_USER_IDLE_DAYS',
     ] as const
 
@@ -564,10 +592,32 @@ describe('Config Settings', () => {
       expect(settings.trustedProxy).toBe('cloudflare')
     })
 
+    it.each(['1', '2', '32'])('accepts a fixed trusted proxy hop count: %s', (value) => {
+      process.env.TRUSTED_PROXY = value
+      expect(getSettings().trustedProxy).toBe(Number(value))
+    })
+
+    it.each(['0', '-1', '1.5', '33', 'Infinity'])('rejects an unsafe proxy hop count: %s', (value) => {
+      process.env.TRUSTED_PROXY = value
+      expect(() => getSettings()).toThrow()
+    })
+
     it('should reject invalid trustedProxy values', () => {
       process.env.TRUSTED_PROXY = 'nginx'
       expect(() => getSettings()).toThrow()
     })
+
+    it.each([undefined, '', 'false', 'true'])(
+      'only enables public integration OAuth with an explicit true: %s',
+      (value) => {
+        if (value === undefined) {
+          delete process.env.INTEGRATION_OAUTH_ALLOW_PUBLIC
+        } else {
+          process.env.INTEGRATION_OAUTH_ALLOW_PUBLIC = value
+        }
+        expect(getSettings().integrationOAuthAllowPublic).toBe(value === 'true')
+      },
+    )
 
     it('should default the anonymous sign-in limit to 10 per 60 seconds and the captcha to none', () => {
       delete process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX

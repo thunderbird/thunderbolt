@@ -1,7 +1,5 @@
 # Thunderbolt Enterprise Deployment
 
-> ⚠️ **Under active development — not production ready.** Thunderbolt is currently undergoing a security audit and preparing for enterprise production readiness. These deployment paths are provided for evaluation and early testing. Do not use in production environments.
-
 Self-hosted Thunderbolt with OIDC or SAML authentication via Keycloak. Three deployment paths: Docker Compose for local development, Helm chart for Kubernetes, and Pulumi for AWS (Fargate or EKS).
 
 ## Table of Contents
@@ -82,12 +80,12 @@ deploy/
     keycloak.Dockerfile
     powersync.Dockerfile
     marketing.Dockerfile
-    backend-entrypoint.sh   # Waits for Postgres, runs migrations, starts server
+    backend-entrypoint.sh   # Waits for Postgres, starts server (which migrates)
     postgres-init/          # 01-powersync.sh — replication role, publication, storage DB
   config/                   # Shared config files
     nginx.conf.template     # Frontend nginx with COEP/COOP headers; ${THUNDERBOLT_BACKEND_HOST}/${THUNDERBOLT_BACKEND_PORT} substituted at container start
     security-headers.conf   # Shared nginx security-header snippet, included by nginx.conf.template
-    marketing-nginx.conf    # Marketing/docs site nginx
+    marketing-nginx.conf.template  # Marketing/docs site nginx; caches the latest desktop release from GitHub
     powersync-config.yaml   # Sync rules + replication config
     keycloak-realm.json     # Thunderbolt realm + demo user
   k8s/                      # Helm chart
@@ -166,7 +164,7 @@ docker compose down -v       # Stop containers + delete volumes (full reset)
 ### How It Works
 
 - **Startup order**: Postgres and Keycloak start first (with health checks). Backend waits for both. PowerSync waits for Postgres (it uses the `powersync_storage` database on the same instance for bucket storage).
-- **Backend entrypoint**: `docker/backend-entrypoint.sh` polls Postgres until it's ready, runs Drizzle migrations, then starts the server.
+- **Backend entrypoint**: `docker/backend-entrypoint.sh` polls Postgres until it's ready, then starts the server, which applies pending migrations before it accepts traffic.
 - **Keycloak**: Auto-imports `config/keycloak-realm.json` on first boot, creating the `thunderbolt` realm, `thunderbolt-app` OIDC client, and a demo user.
 - **PowerSync**: Uses `config/powersync-config.yaml` for sync rules. Connects to Postgres via a dedicated `powersync_role` with replication privileges.
 
@@ -181,7 +179,7 @@ Deploy to any Kubernetes cluster using the Helm chart in `deploy/k8s/`.
 - A running Kubernetes cluster
 - `kubectl` configured to talk to it
 - `helm` v3 installed
-- An nginx-ingress controller (the chart creates an Ingress resource expecting the `nginx` class)
+- A maintained ingress controller that supports the PowerSync path rewrite
 
 ### Local Cluster Setup
 
@@ -195,33 +193,8 @@ Settings → Kubernetes → Enable Kubernetes → Apply & Restart.
 ```bash
 brew install kind
 
-cat > /tmp/kind-thunderbolt.yaml <<'EOF'
-kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
-nodes:
-  - role: control-plane
-    kubeadmConfigPatches:
-      - |
-        kind: InitConfiguration
-        nodeRegistration:
-          kubeletExtraArgs:
-            node-labels: "ingress-ready=true"
-    extraPortMappings:
-      - containerPort: 80
-        hostPort: 80
-        protocol: TCP
-      - containerPort: 443
-        hostPort: 443
-        protocol: TCP
-EOF
-
-kind create cluster --name thunderbolt --config /tmp/kind-thunderbolt.yaml
+kind create cluster --name thunderbolt
 ```
-
-The `extraPortMappings` and `ingress-ready` label are required for the chart's
-ingress to be reachable at `http://localhost`. A bare `kind create cluster`
-boots a cluster with no host port mappings, and the ingress install in the next
-step will succeed but be unreachable.
 
 **Minikube**:
 
@@ -230,26 +203,15 @@ brew install minikube
 minikube start
 ```
 
-### Install nginx-ingress
+### Install Traefik
 
-For **kind**, use the kind-flavored manifest (binds to the labeled node):
-
-```bash
-kubectl apply -f https://kind.sigs.k8s.io/examples/ingress/deploy-ingress-nginx.yaml
-
-kubectl wait --namespace ingress-nginx \
-  --for=condition=ready pod \
-  --selector=app.kubernetes.io/component=controller \
-  --timeout=120s
-```
-
-For **Docker Desktop / Minikube**, use the standard chart:
+Run this from the repository root:
 
 ```bash
-helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-helm install ingress-nginx ingress-nginx/ingress-nginx \
-  --create-namespace -n ingress-nginx \
-  --set controller.service.type=LoadBalancer
+helm upgrade --install traefik traefik \
+  --repo https://traefik.github.io/charts --version 42.4.1 \
+  --namespace traefik --create-namespace --skip-crds \
+  -f deploy/config/traefik-values.yaml
 ```
 
 ### Build Local Images
@@ -284,6 +246,8 @@ cd deploy/k8s
 BETTER_AUTH_SECRET=$(openssl rand -base64 32 | tr -d '\n' | base64)
 
 helm install thunderbolt . -n thunderbolt --create-namespace \
+  --set ingress.className=traefik-nginx \
+  --set appUrl=http://localhost:8080 \
   --set backend.betterAuthSecretBase64="$BETTER_AUTH_SECRET"
 ```
 
@@ -294,6 +258,7 @@ To customize for a production deploy:
 
 ```bash
 helm install thunderbolt . -n thunderbolt --create-namespace \
+  --set ingress.className=traefik-nginx \
   --set backend.betterAuthSecretBase64="$BETTER_AUTH_SECRET" \
   --set appUrl=https://thunderbolt.your-domain.com \
   --set ingress.host=thunderbolt.your-domain.com \
@@ -312,11 +277,8 @@ Wait for all pods to reach `Running 1/1`. Postgres starts first (StatefulSet wit
 ### Access
 
 ```bash
-# Docker Desktop / Minikube tunnel — app is at http://localhost
-minikube tunnel  # if using minikube
-
-# Get ingress IP/hostname
-kubectl get ingress -n thunderbolt
+# Local app is at http://localhost:8080
+kubectl port-forward -n traefik svc/traefik 8080:80
 ```
 
 | Path           | Service        |
@@ -355,6 +317,7 @@ kubectl create secret docker-registry ghcr-pull \
 
 # Install with pull secret and GHCR images
 helm install thunderbolt . -n thunderbolt --create-namespace \
+  --set ingress.className=traefik-nginx \
   --set imagePullSecrets[0].name=ghcr-pull \
   --set frontend.image.repository=ghcr.io/thunderbird/thunderbolt/thunderbolt-frontend \
   --set frontend.image.tag=0.1.85 \
@@ -375,7 +338,7 @@ See `deploy/k8s/values.yaml` for all configurable values. Key ones:
 | `backend.replicas`  | `1`                | Backend replica count                        |
 | `postgres.storage`  | `5Gi`              | Postgres PVC size                            |
 | `ingress.enabled`   | `true`             | Create Ingress resource                      |
-| `ingress.className` | `nginx`            | Ingress class                                |
+| `ingress.className` | `nginx`            | Defaults to `nginx` for existing installations. Set `traefik-nginx` for the supplied Traefik controller. |
 | `ingress.host`      | `""`               | Set for production (empty = default rule)    |
 
 ### Known caveats
@@ -393,7 +356,7 @@ Deploy to AWS using Pulumi. Supports two platforms from the same project:
 | Platform    | Infrastructure                | Persistence    | Best For                          |
 | ----------- | ----------------------------- | -------------- | --------------------------------- |
 | **fargate** | ECS Fargate + ALB + Cloud Map | EFS            | Serverless, no cluster management |
-| **k8s**     | EKS + nginx-ingress           | EBS (gp3 PVCs) | Teams with Kubernetes expertise   |
+| **k8s**     | EKS + Traefik           | EBS (gp3 PVCs) | Teams with Kubernetes expertise   |
 
 ### Prerequisites
 
@@ -436,7 +399,7 @@ This creates all infrastructure from scratch: VPC, subnets, NAT gateway, securit
 
 **Fargate** creates: ECS cluster, ALB with path-based routing, EFS for database persistence, Cloud Map for service discovery, and 6 Fargate services.
 
-**EKS** creates: EKS cluster (2x t3.medium nodes), EBS CSI driver + gp3 StorageClass, Helm chart deployment, and an nginx-ingress controller with an AWS LoadBalancer.
+**EKS** creates: EKS cluster (2x t3.medium nodes), EBS CSI driver + gp3 StorageClass, Helm chart deployment, and a Traefik ingress controller with an AWS LoadBalancer.
 
 ### Get the URL
 
@@ -455,7 +418,7 @@ pulumi stack output kubeconfig > /tmp/kubeconfig.json
 export KUBECONFIG=/tmp/kubeconfig.json
 
 # Get the LoadBalancer hostname
-kubectl get svc -n ingress-nginx -o jsonpath="{.items[0].status.loadBalancer.ingress[0].hostname}"
+kubectl get svc -n traefik traefik -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"
 ```
 
 ### Custom Secrets
@@ -513,7 +476,7 @@ pulumi/
     shared.ts           # previews-shared: VPC, EFS, cluster, ALB, postgres/keycloak
     per-pr-stack.ts     # preview-pr-*: backend/frontend/marketing/powersync + per-PR routing, Keycloak client, secrets
     # -- EKS --
-    eks.ts              # EKS cluster, EBS CSI driver, Helm chart, nginx-ingress
+    eks.ts              # EKS cluster, EBS CSI driver, Helm chart, Traefik
 ```
 
 ---
@@ -615,7 +578,7 @@ The deploy job runs under GitHub's `preview` environment so that env-scoped secr
 
 Four workflows give every pull request a disposable stack on Fargate, reachable at five Cloudflare subdomains under `preview.thunderbolt.io` (marketing, app, api, auth, powersync).
 
-**`preview-deploy.yml`** builds the PR's images through `images-publish.yml` with a `pr-<n>-<sha>` tag, then calls `stack-deploy.yml` with `stack_name: preview-pr-<n>` and `shared_stack_name: previews-shared`, and leaves a sticky comment carrying the URL. Same-repo PRs deploy on `pull_request` with no human gate. Fork PRs go through `pull_request_target` behind the `fork-preview-approval` environment, so a maintainer approves every push: under that trigger the workflow file and the Pulumi program are both read from `main`, meaning a fork can change the images but never the infrastructure code that deploys them.
+**`preview-deploy.yml`** builds the PR's images through `images-publish.yml` with a `pr-<n>-<sha>` tag, then calls `stack-deploy.yml` with `stack_name: preview-pr-<n>` and `shared_stack_name: previews-shared`, and leaves a sticky comment carrying the URL. Same-repo PRs deploy on `pull_request` with no human gate, because only collaborators with write access can push a branch to this repository. Fork PRs go through `pull_request_target` behind the `fork-preview-approval` environment, so a maintainer approves every push: under that trigger the workflow file and the Pulumi program are both read from `main`, meaning a fork can change the images but never the infrastructure code that deploys them. The approval job fails unless that environment has required reviewers, so a fork preview cannot deploy through an unprotected or missing environment.
 
 **`preview-destroy.yml`** tears the stack down on `pull_request_target: closed`. It uses `pull_request_target` rather than `pull_request` so credentials are available when a fork PR closes; no approval gate is needed because nothing from the fork is checked out.
 

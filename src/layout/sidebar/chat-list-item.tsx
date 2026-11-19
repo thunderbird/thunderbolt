@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { selectMinimalMode, useConfigStore } from '@/api/config-store'
+import { useConfigCapability } from '@/hooks/use-config-capability'
+import { selectMinimalMode } from '@/api/config-store'
 import { chatTitleLabel } from '@/lib/title-generator'
 
 import { Trans, useLingui } from '@lingui/react/macro'
@@ -136,7 +137,7 @@ export const ChatListItem = memo(
   }: ChatListItemComponentProps) => {
     const { i18n, t } = useLingui()
     // Minimal mode has no projects to move a chat into or drag it onto.
-    const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+    const minimalMode = useConfigCapability(selectMinimalMode)
     const chatInstance = useChatStore((state) => state.sessions.get(thread.id)?.chatInstance)
 
     const { status } = useChat(

@@ -29,6 +29,7 @@ export const abandonedFlowMs = 10 * 60 * 1000
  * and cleared once the callback completes.
  */
 export type McpOAuthState = {
+  returnTo?: string
   serverId: string | null
   serverUrl: string | null
   codeVerifier: string | null

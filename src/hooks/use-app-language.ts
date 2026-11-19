@@ -31,8 +31,8 @@ import { useSettings } from './use-settings'
  *   mirrors it to localStorage for the next boot.
  * - **`<html lang>`** — bound to the active locale (index.html ships the
  *   static `lang="en"` as the pre-boot value).
- * - **PostHog `locale`** — registered as a super property and person
- *   property. A coarse BCP-47 tag carries no sensitive payload, and capture
+ * - **PostHog `locale`** — registered as an event super property.
+ *   A coarse BCP-47 tag carries no sensitive payload, and capture
  *   is already consent-gated by `data_collection`.
  *
  * All effects are legitimate per the `useEffect` discipline: a DB write and
@@ -89,6 +89,5 @@ export const useAppLanguage = () => {
       return
     }
     posthog?.register({ locale: activeLocale })
-    posthog?.setPersonProperties({ locale: activeLocale })
   }, [activeLocale, isLoading, posthog])
 }

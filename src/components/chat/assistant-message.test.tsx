@@ -8,6 +8,7 @@ import type { ReasoningUIPart, TextUIPart, ToolUIPart } from 'ai'
 import { describe, expect, it } from 'bun:test'
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { getClock } from '@/testing-library'
+import { ContentViewProvider } from '@/content-view/context'
 import { AssistantMessage, mountMessageParts } from './assistant-message'
 
 const createReasoningPart = (text: string): ReasoningUIPart =>
@@ -291,4 +292,27 @@ it('passes message streaming lifecycle to the real text renderer', () => {
   expect(container.textContent!.length).toBeLessThan(text.length)
   rerender(<>{mountMessageParts(parts, false, 'stream', {})}</>)
   expect(container.textContent).toBe(text.trim())
+})
+
+it('renders an ACP compaction row between the surrounding assistant text', () => {
+  const message: ThunderboltUIMessage = {
+    id: 'remote',
+    role: 'assistant',
+    parts: [
+      { type: 'text', text: 'Before compaction' },
+      {
+        type: 'data-acp-compaction',
+        id: 'event',
+        data: { agentId: 'agent', sessionId: 's', compactionId: 'c', status: 'completed' },
+      },
+      { type: 'text', text: 'After compaction' },
+    ],
+  }
+  const { container } = render(
+    <ContentViewProvider>
+      <AssistantMessage message={message} isStreaming={false} />
+    </ContentViewProvider>,
+  )
+  expect(container.textContent).toContain('Before compactionCompactedAfter compaction')
+  cleanup()
 })

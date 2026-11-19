@@ -3,10 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { HttpClientProvider } from '@/contexts/http-client-context'
-import { RotationStaleError, StepUpVerificationError } from '@/services/encryption'
+import { RotationStaleError, StepUpVerificationError, UnverifiedAccountKeyError } from '@/services/encryption'
+import { EncryptionRequestTimeoutError } from '@/services/encryption-request'
 import { createMockHttpClient } from '@/test-utils/http-client'
 import { act, cleanup, renderHook } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import type { ReactNode } from 'react'
 import { reducer, initialState, useChangeRecoveryKey } from './use-change-recovery-key'
 
@@ -69,6 +70,66 @@ describe('useChangeRecoveryKey reducer', () => {
 describe('useChangeRecoveryKey', () => {
   afterEach(cleanup)
 
+  it('shows localized timeout guidance and preserves the code for a retry', async () => {
+    const rotate = async () => {
+      throw new EncryptionRequestTimeoutError()
+    }
+    const { result } = renderHook(() => useChangeRecoveryKey(rotate, requestCodeOk), { wrapper })
+    act(() => result.current.openConfirm())
+    await act(async () => result.current.requestStepUpCode())
+    act(() => result.current.setOtp('88299917'))
+    await act(async () => result.current.confirmRotation())
+    expect(result.current.error).toBe('The server took too long to respond. Please try again.')
+    expect(result.current.status).toBe('stepUp')
+    expect(result.current.otp).toBe('88299917')
+    expect(result.current.busy).toBe('none')
+  })
+
+  it('admits one code request and ignores an old response after cancel and reopen', async () => {
+    const response = Promise.withResolvers<void>()
+    const request = mock(() => response.promise)
+    const { result } = renderHook(() => useChangeRecoveryKey(async () => newPhrase, request), { wrapper })
+    act(() => result.current.openConfirm())
+    let first!: Promise<void>
+    act(() => {
+      first = result.current.requestStepUpCode()
+      void result.current.requestStepUpCode()
+    })
+    expect(request).toHaveBeenCalledTimes(1)
+    act(() => {
+      result.current.cancel()
+      result.current.openConfirm()
+    })
+    await act(async () => {
+      response.resolve()
+      await first
+    })
+    expect(result.current.status).toBe('confirming')
+    expect(result.current.isBusy).toBe(false)
+  })
+
+  it('does not rotate twice before rendering or display a cancelled result in a reopened dialog', async () => {
+    const response = Promise.withResolvers<string>()
+    const rotate = mock(() => response.promise)
+    const { result } = renderHook(() => useChangeRecoveryKey(rotate, requestCodeOk), { wrapper })
+    let first!: Promise<void>
+    act(() => {
+      first = result.current.confirmRotation()
+      void result.current.confirmRotation()
+    })
+    expect(rotate).toHaveBeenCalledTimes(1)
+    act(() => {
+      result.current.cancel()
+      result.current.openConfirm()
+    })
+    await act(async () => {
+      response.resolve(newPhrase)
+      await first
+    })
+    expect(result.current.status).toBe('confirming')
+    expect(result.current.newRecoveryKey).toBeNull()
+  })
+
   it('requests the code, then rotates with it and displays the new phrase', async () => {
     const receivedOtps: string[] = []
     const rotate = (_http: unknown, opts: { stepUpOtp: string }) => {
@@ -93,6 +154,57 @@ describe('useChangeRecoveryKey', () => {
     expect(receivedOtps).toEqual(['88299917'])
     expect(result.current.status).toBe('display')
     expect(result.current.newRecoveryKey).toBe(newPhrase)
+  })
+
+  /** Open the flow and reach the code step, with a code typed in. */
+  const reachCodeEntry = async (result: { current: ReturnType<typeof useChangeRecoveryKey> }) => {
+    act(() => result.current.openConfirm())
+    await act(async () => {
+      await result.current.requestStepUpCode()
+    })
+    act(() => result.current.setOtp('88299917'))
+  }
+
+  it('cancels without rotating when the guard says the update is no longer needed', async () => {
+    const rotate = mock(() => Promise.resolve(newPhrase))
+    const { result } = renderHook(() => useChangeRecoveryKey(rotate, requestCodeOk, async () => false), { wrapper })
+
+    await reachCodeEntry(result)
+    await act(async () => {
+      await result.current.confirmRotation()
+    })
+
+    expect(rotate).not.toHaveBeenCalled()
+    expect(result.current.status).toBe('idle')
+  })
+
+  it('keeps the code step with a retryable error when the guard rejects', async () => {
+    const rotate = mock(() => Promise.resolve(newPhrase))
+    const canRotate = () => Promise.reject(new Error('Status check failed'))
+    const { result } = renderHook(() => useChangeRecoveryKey(rotate, requestCodeOk, canRotate), { wrapper })
+
+    await reachCodeEntry(result)
+    await act(async () => {
+      await result.current.confirmRotation()
+    })
+
+    expect(rotate).not.toHaveBeenCalled()
+    expect(result.current.status).toBe('stepUp')
+    expect(result.current.error).toBe('Status check failed')
+  })
+
+  it('explains why an unverified device cannot change the phrase', async () => {
+    const rotate = () => Promise.reject(new UnverifiedAccountKeyError())
+    const { result } = renderHook(() => useChangeRecoveryKey(rotate, requestCodeOk), { wrapper })
+
+    await reachCodeEntry(result)
+    await act(async () => {
+      await result.current.confirmRotation()
+    })
+
+    expect(result.current.error).toBe(
+      "This device can't change the recovery phrase because its encryption keys couldn't be verified. Change it from a device that was trusted before.",
+    )
   })
 
   it('stays on the confirm dialog when the code request fails', async () => {

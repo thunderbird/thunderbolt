@@ -4,13 +4,14 @@
 
 import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, screen, within } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { domMax, LazyMotion } from 'framer-motion'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 
 import { SidebarProvider } from '@/components/ui/sidebar'
+import * as skillDal from '@/dal/skills'
 import { createSkill, getSkill, getSkillByName, setSkillPinned } from '@/dal'
 // Import for side effect: registers the framer-motion `mock.module` so the
 // `m.li layoutId` rows from `library-row.tsx` render to plain `<li>` and the
@@ -71,7 +72,7 @@ const flush = async () => {
 
 describe('SkillsView state machine', () => {
   describe('widget rendering contracts', () => {
-    it('offers enable/disable without edit or delete affordances', async () => {
+    it('disables edit and remove for built-in skills while allowing enable/disable', async () => {
       await getDb().insert(skillsTable).values(defaultSkillWeather)
 
       renderWithReactivity(<SkillsView />, { tables: ['skills'], wrapper: Wrapper })
@@ -79,9 +80,11 @@ describe('SkillsView state machine', () => {
       const rowLabel = await waitForElement(() => screen.queryByText('Weather'))
       fireEvent.contextMenu(rowLabel)
       await flush()
-      expect(screen.queryByText('Edit')).not.toBeInTheDocument()
-      expect(screen.queryByText('Delete')).not.toBeInTheDocument()
+      expect(screen.getByRole('menuitem', { name: 'Edit' })).toHaveAttribute('aria-disabled', 'true')
+      expect(screen.getByRole('menuitem', { name: 'Remove' })).toHaveAttribute('aria-disabled', 'true')
 
+      fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
+      await flush()
       fireEvent.click(rowLabel)
       await flush()
       expect(screen.getByText('Built-in skill · Read-only')).toBeInTheDocument()
@@ -351,4 +354,49 @@ describe('SkillsView state machine', () => {
       expect(nameInput.value).toBe('Draft')
     })
   })
+})
+
+it.each(['resolve', 'reject'] as const)('keeps a replacement skill form when an abandoned save %s', async (outcome) => {
+  const skill = await createSkill(getDb(), {
+    name: 'original',
+    label: 'Original',
+    description: 'Description',
+    instruction: 'Instruction',
+  })
+  const pending = Promise.withResolvers<void>()
+  const update = spyOn(skillDal, 'updateSkill').mockImplementation(() => pending.promise)
+  try {
+    renderWithReactivity(<SkillsView />, {
+      tables: ['skills'],
+      wrapper: wrapperWithNavState({ startEditSkill: skill.id }),
+    })
+    await waitForElement(() => screen.queryByText('Edit Skill'))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Changed' } })
+    const save = screen.getByRole('button', { name: 'Save' })
+    act(() => {
+      fireEvent.click(save)
+      fireEvent.click(save)
+    })
+    await flush()
+    expect(update).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await flush()
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }))
+    await flush()
+    fireEvent.click(screen.getByRole('button', { name: 'New Skill' }))
+    await flush()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Replacement' } })
+    await act(async () => {
+      if (outcome === 'resolve') {
+        pending.resolve()
+      } else {
+        pending.reject(new Error('old save failed'))
+      }
+      await getClock().runAllAsync()
+    })
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('Replacement')
+    expect(screen.queryByText("Couldn't save the skill. Please try again.")).not.toBeInTheDocument()
+  } finally {
+    update.mockRestore()
+  }
 })

@@ -2,7 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'bun:test'
+import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import {
+  disconnectProviderConnection,
+  saveProviderConnection,
+  updateProviderConnection,
+} from '@/dal/provider-connections'
+import { resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Model } from '@/types'
 import { ImageSupportInconclusiveError, probeImageSupport } from './image-support-probe'
@@ -164,4 +171,59 @@ describe('probeImageSupport', () => {
     )
     expect(requests).toHaveLength(0)
   })
+})
+
+describe('provider-connected image probes', () => {
+  beforeEach(resetTestDatabase)
+  afterAll(teardownTestDatabase)
+
+  const setup = async () => {
+    const input = {
+      provider: 'custom' as const,
+      name: 'Vision server',
+      url: 'https://current.example/v1',
+      authMethod: 'api_key' as const,
+      credentials: { apiKey: 'current-key' },
+    }
+    const id = await saveProviderConnection(getDb(), input)
+    return { input, id, model: customModel({ providerConnectionId: id }) }
+  }
+
+  it('resolves the current endpoint and credential instead of using the model snapshot', async () => {
+    const { model } = await setup()
+    const { requests, getProxyFetch } = createFetch(completion({ content: 'green' }))
+    expect(await probeImageSupport(model, getProxyFetch, signal)).toBe('supported')
+    expect(requests[0].url).toBe('https://current.example/v1/chat/completions')
+    expect(new Headers(requests[0].init.headers).get('Authorization')).toBe('Bearer current-key')
+  })
+
+  it.each(['disabled', 'disconnected'] as const)('does not probe a %s connection', async (change) => {
+    const { id, model } = await setup()
+    if (change === 'disabled') {
+      await updateProviderConnection(getDb(), id, { enabled: false })
+    } else {
+      await disconnectProviderConnection(getDb(), id)
+    }
+    const { requests, getProxyFetch } = createFetch(completion({ content: 'green' }))
+    await expect(probeImageSupport(model, getProxyFetch, signal)).rejects.toThrow()
+    expect(requests).toHaveLength(0)
+  })
+
+  it.each(['disconnected', 'replaced'] as const)(
+    'does not send the control request after the connection is %s',
+    async (change) => {
+      const { input, id, model } = await setup()
+      const send = mock(async () => {
+        if (change === 'disconnected') {
+          await disconnectProviderConnection(getDb(), id)
+        } else {
+          await saveProviderConnection(getDb(), { ...input, id, credentials: { apiKey: 'replacement-key' } })
+        }
+        return new Response('', { status: 400 })
+      })
+      const fetch = Object.assign(send, { preconnect: async () => true })
+      await expect(probeImageSupport(model, () => fetch, signal)).rejects.toThrow()
+      expect(send).toHaveBeenCalledTimes(1)
+    },
+  )
 })

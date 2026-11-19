@@ -111,18 +111,16 @@ jobs:
           INPUT_TINFOIL_API_KEY: ${{ secrets.TINFOIL_API_KEY }}
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         run: |
+          : "${INPUT_CLOUDFLARE_ZONE_ID:?CLOUDFLARE_ZONE_ID is required for the shared preview ALB}"
+          : "${INPUT_CLOUDFLARE_API_TOKEN:?CLOUDFLARE_API_TOKEN is required for the shared preview ALB}"
           pulumi config set version "$INPUT_VERSION" -s "$INPUT_STACK_NAME" --non-interactive
           pulumi config set authHostname "$INPUT_AUTH_HOSTNAME" -s "$INPUT_STACK_NAME" --non-interactive
 
           if [ -n "$INPUT_GHCR_PAT" ]; then
             pulumi config set --secret ghcrToken "$INPUT_GHCR_PAT" -s "$INPUT_STACK_NAME" --non-interactive
           fi
-          if [ -n "$INPUT_CLOUDFLARE_ZONE_ID" ]; then
-            pulumi config set cloudflareZoneId "$INPUT_CLOUDFLARE_ZONE_ID" -s "$INPUT_STACK_NAME" --non-interactive
-          fi
-          if [ -n "$INPUT_CLOUDFLARE_API_TOKEN" ]; then
-            pulumi config set --secret cloudflareApiToken "$INPUT_CLOUDFLARE_API_TOKEN" -s "$INPUT_STACK_NAME" --non-interactive
-          fi
+          pulumi config set cloudflareZoneId "$INPUT_CLOUDFLARE_ZONE_ID" -s "$INPUT_STACK_NAME" --non-interactive
+          pulumi config set --secret cloudflareApiToken "$INPUT_CLOUDFLARE_API_TOKEN" -s "$INPUT_STACK_NAME" --non-interactive
           [ -n "$INPUT_ANTHROPIC_API_KEY" ]             && pulumi config set --secret anthropicApiKey             "$INPUT_ANTHROPIC_API_KEY"             -s "$INPUT_STACK_NAME" --non-interactive
           [ -n "$INPUT_FIREWORKS_API_KEY" ]             && pulumi config set --secret fireworksApiKey             "$INPUT_FIREWORKS_API_KEY"             -s "$INPUT_STACK_NAME" --non-interactive
           [ -n "$INPUT_THUNDERBOLT_INFERENCE_API_KEY" ] && pulumi config set --secret thunderboltInferenceApiKey "$INPUT_THUNDERBOLT_INFERENCE_API_KEY" -s "$INPUT_STACK_NAME" --non-interactive

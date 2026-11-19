@@ -4,8 +4,10 @@
 
 import { expect, test } from 'bun:test'
 import Anthropic from '@anthropic-ai/sdk'
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
+import { generateText, streamText } from 'ai'
 import { z } from 'zod'
-import { createFakeProvider, fakeProviderReply } from './fake-provider'
+import { createFakeProvider, fakeOpenAiModelId, fakeProviderReply } from './fake-provider'
 import { miniAppToolsetName, miniAppTransferPrompt, protectedEmailBody, protectedEmailId } from './mini-app-fixture'
 import { performanceStreamPrompt, performanceStreamReply } from './streaming-fixture'
 
@@ -125,6 +127,38 @@ test('plays a model that reads an email and passes its body to the open Mini App
     }
     const unrelated = await send([ask, otherCall, toolResult('{"count":1}')])
     expect(unrelated.content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('serves a Local OpenAI-compatible setup: CORS, the model list, and whole or streamed replies', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const address = z.object({ port: z.number() }).parse(server.address())
+    const baseURL = `http://127.0.0.1:${address.port}/v1`
+
+    const preflight = await fetch(`${baseURL}/chat/completions`, { method: 'OPTIONS' })
+    expect(preflight.status).toBe(204)
+    expect(preflight.headers.get('access-control-allow-origin')).toBe('*')
+    const models = await fetch(`${baseURL}/models`)
+    expect(models.headers.get('access-control-allow-origin')).toBe('*')
+    expect(await models.json()).toMatchObject({ data: [{ id: fakeOpenAiModelId }] })
+
+    const model = createOpenAICompatible({ name: 'fake', baseURL, apiKey: 'test-key' }).chatModel(fakeOpenAiModelId)
+    expect((await generateText({ model, prompt: 'Hello', maxRetries: 0 })).text).toBe(fakeProviderReply)
+    const stream = streamText({ model, prompt: 'Hello', maxRetries: 0 })
+    const deltas: string[] = []
+    for await (const delta of stream.textStream) {
+      deltas.push(delta)
+    }
+    expect(deltas.length).toBeGreaterThan(1)
+    expect(deltas.join('')).toBe(fakeProviderReply)
+    expect(await stream.finishReason).toBe('stop')
+
+    const malformed = await fetch(`${baseURL}/chat/completions`, { method: 'POST', body: 'not json' })
+    expect(malformed.status).toBe(400)
   } finally {
     server.close()
     server.closeAllConnections()

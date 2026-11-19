@@ -24,14 +24,14 @@ every build but only `cli_installer` uses it.
 [`lib.rs`](../../../src-tauri/src/lib.rs) registers the application commands below. Plugin commands
 are registered separately.
 
-| Command                   | Platforms                                 | Purpose                                                                                                   | Caller                                                                                                                                                                                       |
-| ------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `initialize_tray`         | desktop only                             | Creates the native tray once, or refreshes its translated Show/Quit labels                                 | [`src/lib/tray.ts`](../../../src/lib/tray.ts)                                                                                                                                                 |
-| `show_main_window`        | desktop (no-op on mobile)                 | Restores, unminimizes and focuses `main`, including its taskbar/Dock icon                                   | Native tray menu in [`tray.rs`](../../../src-tauri/src/tray.rs); second-launch and macOS Dock callbacks in [`lib.rs`](../../../src-tauri/src/lib.rs)                                         |
-| `hide_main_window`        | desktop (no-op on mobile)                 | Hides `main` and its taskbar/Dock icon                                                                     | Native close handler in [`tray.rs`](../../../src-tauri/src/tray.rs)                                                                                                                           |
-| `set_interface_style`     | iOS (no-op else)                          | Sets `overrideUserInterfaceStyle` on every window scene so keyboard and system UI follow the app theme    | [`src/lib/theme-provider.tsx`](../../../src/lib/theme-provider.tsx)                                                                                                                          |
-| `start_oauth_server`      | desktop (mobile signs in over deep links) | Binds the loopback listener and returns the port                                                          | [`oauth-loopback.ts`](../../../src/lib/oauth-loopback.ts), [`sso-loopback.ts`](../../../src/lib/sso-loopback.ts), [`mcp-oauth-loopback.ts`](../../../src/lib/mcp-auth/mcp-oauth-loopback.ts) |
-| `install_thunderbolt_cli` | macOS arm64, Linux                        | One-click install of the prebuilt CLI into `~/.local/bin`                                                 | [`src/lib/cli-install.ts`](../../../src/lib/cli-install.ts)                                                                                                                                  |
+| Command                   | Platforms                                 | Purpose                                                                                                | Caller                                                                                                                                                                                       |
+| ------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `initialize_tray`         | desktop only                              | Creates the native tray once, or refreshes its translated Show/Quit labels                             | [`src/lib/tray.ts`](../../../src/lib/tray.ts)                                                                                                                                                |
+| `show_main_window`        | desktop (no-op on mobile)                 | Restores, unminimizes and focuses `main`, including its taskbar/Dock icon                              | Native tray menu in [`tray.rs`](../../../src-tauri/src/tray.rs); second-launch and macOS Dock callbacks in [`lib.rs`](../../../src-tauri/src/lib.rs)                                         |
+| `hide_main_window`        | desktop (no-op on mobile)                 | Hides `main` and its taskbar/Dock icon                                                                 | Native close handler in [`tray.rs`](../../../src-tauri/src/tray.rs)                                                                                                                          |
+| `set_interface_style`     | iOS (no-op else)                          | Sets `overrideUserInterfaceStyle` on every window scene so keyboard and system UI follow the app theme | [`src/lib/theme-provider.tsx`](../../../src/lib/theme-provider.tsx)                                                                                                                          |
+| `start_oauth_server`      | desktop (mobile signs in over deep links) | Binds the loopback listener and returns the port                                                       | [`oauth-loopback.ts`](../../../src/lib/oauth-loopback.ts), [`sso-loopback.ts`](../../../src/lib/sso-loopback.ts), [`mcp-oauth-loopback.ts`](../../../src/lib/mcp-auth/mcp-oauth-loopback.ts) |
+| `install_thunderbolt_cli` | macOS arm64, Linux                        | One-click install of the prebuilt CLI into `~/.local/bin`                                              | [`src/lib/cli-install.ts`](../../../src/lib/cli-install.ts)                                                                                                                                  |
 
 `set_interface_style` is iOS-only, not "mobile": Android keyboards follow the system dark-mode
 setting and cannot be overridden per app.
@@ -161,6 +161,7 @@ Android specifics and the `gen/android` re-init trap:
 | ----------------------- | --------------------------------------------------------------------------------------------------------------- |
 | Every target            | `process`, `fs`, `opener`, `os`, `deep-link`, `haptics`, `updater`, `store`, `platform-utils`, `http`           |
 | Desktop only            | `single-instance`. Its handler shows and focuses the existing `main` window, so a second copy raises the first. |
+| Linux only              | `linux-preview-guard` (see below)                                                                               |
 | `debug_assertions` only | `devtools`                                                                                                      |
 
 Registration is not enough.
@@ -168,8 +169,12 @@ Registration is not enough.
 is held to, scoped to `webviews: ["main"]` so child previews inherit no native permissions. A command or window operation that works in a scratch
 build and fails in the app is almost always missing an entry there.
 
-- `remote.urls` permits `http://localhost:1420/*` because in dev Vite serves the frontend, which
-  counts as remote content.
+- **Linux keeps external pages out of preview webviews.** WebKitGTK cannot tell which frame sent an
+  IPC message, so the frontend opens external links in the system browser instead of the sidebar.
+  The `linux-preview-guard` plugin ([`preview_guard.rs`](../../../src-tauri/src/preview_guard.rs)) is
+  the native backstop. It cancels http(s) navigation in every webview except `main`, unless the URL
+  is on the dev URL's origin in a dev build. Other schemes, such as `tauri://localhost`, are not
+  checked.
 - The `http:default` scope allows arbitrary HTTP/HTTPS hosts, ports and paths (including IPv6); no other schemes are allowed.
   Accepted risk: scripts in the main webview can invoke CORS-free native HTTP directly and read any reachable public, loopback, private or link-local service, including metadata endpoints; Cloud Proxy and `createProxyFetch` are routing policy, not IPC security boundaries, and preview webviews are excluded.
 - **`devtools` needs a crypto provider first.** Its `reqwest`/rustls stack panics on its first HTTPS

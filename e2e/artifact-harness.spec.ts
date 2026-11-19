@@ -92,7 +92,10 @@ const askElementAt = (
 
 test.describe('artifact harness (real browser)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.setContent('<!doctype html><html><body></body></html>')
+    // Give the host a site, as in the app, before it creates the opaque sandboxed iframe.
+    const hostUrl = 'https://artifact-host.test/'
+    await page.route(hostUrl, (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html>' }))
+    await page.goto(hostUrl)
   })
 
   test('a valid page reports ready and a content height, with no error', async ({ page }) => {

@@ -10,6 +10,7 @@ type AlbArgs = {
   vpcId: pulumi.Input<string>
   publicSubnetIds: pulumi.Input<string>[]
   albSgId: pulumi.Input<string>
+  cloudflareOnly?: boolean
   /**
    * Optional host-header routing config. When provided, the ALB adds listener
    * rules that route based on Host header to each service's target group. The
@@ -25,7 +26,7 @@ type AlbArgs = {
   }
 }
 
-export const createAlb = ({ name, vpcId, publicSubnetIds, albSgId, hostnames }: AlbArgs) => {
+export const createAlb = ({ name, vpcId, publicSubnetIds, albSgId, hostnames, cloudflareOnly }: AlbArgs) => {
   const alb = new aws.lb.LoadBalancer(`${name}-alb`, {
     internal: false,
     loadBalancerType: 'application',
@@ -105,7 +106,9 @@ export const createAlb = ({ name, vpcId, publicSubnetIds, albSgId, hostnames }: 
     loadBalancerArn: alb.arn,
     port: 80,
     protocol: 'HTTP',
-    defaultActions: [{ type: 'forward', targetGroupArn: frontendTg.arn }],
+    defaultActions: cloudflareOnly
+      ? [{ type: 'fixed-response', fixedResponse: { statusCode: '404', contentType: 'text/plain' } }]
+      : [{ type: 'forward', targetGroupArn: frontendTg.arn }],
   })
 
   // -- Host-header rules (priority 7-12) — active only when hostnames provided.
@@ -158,26 +161,28 @@ export const createAlb = ({ name, vpcId, publicSubnetIds, albSgId, hostnames }: 
 
   // -- Path-based rules (priority 15-30) — enterprise stack fallback.
   // Kept for backwards compat; served when no host-header rule matches.
-  new aws.lb.ListenerRule(`${name}-backend-rule`, {
-    listenerArn: listener.arn,
-    priority: 15,
-    conditions: [{ pathPattern: { values: ['/v1/*'] } }],
-    actions: [{ type: 'forward', targetGroupArn: backendTg.arn }],
-  })
+  if (!cloudflareOnly) {
+    new aws.lb.ListenerRule(`${name}-backend-rule`, {
+      listenerArn: listener.arn,
+      priority: 15,
+      conditions: [{ pathPattern: { values: ['/v1/*'] } }],
+      actions: [{ type: 'forward', targetGroupArn: backendTg.arn }],
+    })
 
-  new aws.lb.ListenerRule(`${name}-keycloak-rule`, {
-    listenerArn: listener.arn,
-    priority: 20,
-    conditions: [{ pathPattern: { values: ['/auth/*', '/realms/*'] } }],
-    actions: [{ type: 'forward', targetGroupArn: keycloakTg.arn }],
-  })
+    new aws.lb.ListenerRule(`${name}-keycloak-rule`, {
+      listenerArn: listener.arn,
+      priority: 20,
+      conditions: [{ pathPattern: { values: ['/auth/*', '/realms/*'] } }],
+      actions: [{ type: 'forward', targetGroupArn: keycloakTg.arn }],
+    })
 
-  new aws.lb.ListenerRule(`${name}-powersync-rule`, {
-    listenerArn: listener.arn,
-    priority: 30,
-    conditions: [{ pathPattern: { values: ['/powersync/*'] } }],
-    actions: [{ type: 'forward', targetGroupArn: powersyncTg.arn }],
-  })
+    new aws.lb.ListenerRule(`${name}-powersync-rule`, {
+      listenerArn: listener.arn,
+      priority: 30,
+      conditions: [{ pathPattern: { values: ['/powersync/*'] } }],
+      actions: [{ type: 'forward', targetGroupArn: powersyncTg.arn }],
+    })
+  }
 
   return { alb, listener, frontendTg, backendTg, keycloakTg, powersyncTg, marketingTg }
 }

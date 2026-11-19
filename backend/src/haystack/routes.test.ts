@@ -34,6 +34,7 @@ import { encodeWsBearer } from '@shared/ws-bearer'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { createHmac } from 'crypto'
 import { Elysia } from 'elysia'
+import { eq } from 'drizzle-orm'
 import type { HaystackAcpDeps } from './acp-server'
 import { createHaystackRoutes } from './routes'
 
@@ -321,6 +322,52 @@ describe('WS /v1/haystack/ws — auth gating', () => {
     client.close()
   }, 15000)
 
+  it('closes an active socket within five seconds of session revocation', async () => {
+    const handle = await createTestApp({ database: iso.db })
+    const port = await startApp(handle.app as unknown as RunningApp)
+    cleanups.push(async () => {
+      await stopApp(handle.app as unknown as RunningApp)
+      await handle.cleanup()
+    })
+
+    const client = new WebSocket(
+      `ws://127.0.0.1:${port}/v1/haystack/ws?pipeline=rag`,
+      bearerProtocols(handle.bearerToken),
+    )
+    await new Promise<void>((resolve) => client.addEventListener('open', () => resolve()))
+    const initialized = nextMessage(client)
+    client.send(initializeFrame(1))
+    expect(JSON.parse(await initialized).id).toBe(1)
+
+    await handle.db.delete(sessionTable).where(eq(sessionTable.token, handle.bearerToken.split('.')[0]))
+    const closed = observeWsTermination(client)
+    client.send(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'session/new' }))
+    expect((await closed).code).toBe(4001)
+  }, 15000)
+
+  it('closes an idle socket within five seconds of session revocation', async () => {
+    const handle = await createTestApp({ database: iso.db })
+    const port = await startApp(handle.app as unknown as RunningApp)
+    cleanups.push(async () => {
+      await stopApp(handle.app as unknown as RunningApp)
+      await handle.cleanup()
+    })
+    const client = new WebSocket(
+      `ws://127.0.0.1:${port}/v1/haystack/ws?pipeline=rag`,
+      bearerProtocols(handle.bearerToken),
+    )
+    await new Promise<void>((resolve) => client.addEventListener('open', () => resolve()))
+    const initialized = nextMessage(client)
+    client.send(initializeFrame(1))
+    expect(JSON.parse(await initialized).id).toBe(1)
+
+    await handle.db.delete(sessionTable).where(eq(sessionTable.token, handle.bearerToken.split('.')[0]))
+    const closed = observeWsTermination(client)
+    const startedAt = Date.now()
+    expect((await closed).code).toBe(4001)
+    expect(Date.now() - startedAt).toBeLessThan(5_500)
+  }, 15000)
+
   it('answers an initialize the client sends before the bearer check finishes', async () => {
     const gated = await startGatedHaystack()
     cleanups.push(gated.stop)
@@ -334,6 +381,35 @@ describe('WS /v1/haystack/ws — auth gating', () => {
     expect(JSON.parse(await replyPromise).id).toBe(1)
     client.close()
   }, 15000)
+
+  it.each([false, true])(
+    'bounds JSON before serialization (authenticated: %s)',
+    async (authenticated) => {
+      const gated = await startGatedHaystack()
+      cleanups.push(gated.stop)
+      const client = await openGatedClient(gated.url)
+      if (authenticated) {
+        const reply = nextMessage(client)
+        gated.releaseAuth()
+        client.send(initializeFrame(1))
+        await reply
+      }
+      const stringify = spyOn(JSON, 'stringify')
+      client.send('{"pad":"' + 'x'.repeat(503) + '"}')
+      await pingRoundTrip(client)
+      expect(stringify.mock.calls.some(([value]) => typeof value === 'object' && value?.pad)).toBe(true)
+      stringify.mockClear()
+
+      const term = observeWsTermination(client)
+      client.send('['.repeat(256) + '0' + ']'.repeat(256))
+      // The pong fences the synchronous handler on the vulnerable version; rejection can close before it.
+      await Promise.race([pingRoundTrip(client), term])
+      expect(stringify.mock.calls.some(([value]) => Array.isArray(value))).toBe(false)
+      expect((await term).code).toBe(authenticated ? 1009 : wsCloseCodes.queueOverflow)
+      gated.releaseAuth()
+    },
+    15000,
+  )
 
   it('closes 4008 when the frames sent during the bearer check overflow the queue', async () => {
     const gated = await startGatedHaystack()

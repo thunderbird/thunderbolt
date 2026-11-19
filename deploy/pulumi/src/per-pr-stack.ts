@@ -8,6 +8,7 @@ import * as keycloak from '@pulumi/keycloak'
 import * as pulumi from '@pulumi/pulumi'
 import { createBackendEmail, type EmailConfig } from './email'
 import * as random from '@pulumi/random'
+import { previewCloudflareProxy } from './alb-ingress'
 import type { SharedStackOutputs } from './shared'
 
 /**
@@ -464,7 +465,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
           { name: 'TINFOIL_ENCLAVE_URL', value: args.tinfoilEnclaveUrl ?? '' },
           // Omitted when empty so the backend applies its own defaults.
           ...(args.branding ? [{ name: 'BRANDING', value: args.branding }] : []),
-          { name: 'TRUSTED_PROXY', value: 'cloudflare' },
+          { name: 'TRUSTED_PROXY', value: previewCloudflareProxy.trustedProxy },
         ],
         secrets: [
           ...email.secrets,

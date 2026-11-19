@@ -102,7 +102,7 @@ Session minting, SSO, the CLI device grant, bearer signing: [backend/docs/authen
 - Sessions come from a cookie, a signed bearer, or an `x-api-key` PAT (`enableSessionForAPIKeys`).
 - `.derive` routes branch to answer 401 (no session) vs 403 (anonymous) with a machine-readable `code`. Anonymous users are rejected from sync, agent discovery and Haystack files.
 - `GET /v1/powersync/token` accepts a bearer with no session (credential refresh). The bearer plugin runs `requireSignature: true`, so any path reading a raw `Authorization` header must re-verify the signature or become a bypass.
-- Browsers cannot set headers on `new WebSocket()`, hence the subprotocol. Validation runs in `open()`, not `beforeHandle`, which Bun's adapter may invoke more than once per upgrade. The bearer entry is never echoed back, keeping it out of `WebSocket.protocol` and response logs.
+- Browsers cannot set headers on `new WebSocket()`, hence the subprotocol. Validation runs in `open()`, not `beforeHandle`, which Bun's adapter may invoke more than once per upgrade. The bearer entry is never echoed back, keeping it out of `WebSocket.protocol` and response logs. Each handshake starts a fresh session lookup; per-process sockets with the same bearer share one-second successful validation for frames and a forced five-second session poll. The WebSocket limiter does not effectively cap per-user handshakes or frame rate.
 - Health probes answer 403 when `MONITORING_TOKEN` is unset, 401 when it does not match ([self-hosting configuration](../../self-hosting/configuration.md)).
 
 Metered routes add two guards:

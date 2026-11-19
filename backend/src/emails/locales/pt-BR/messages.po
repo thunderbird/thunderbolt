@@ -50,6 +50,21 @@ msgstr ""
 
 #. js-lingui-explicit-id
 #: src/lib/security-notifications.tsx
+msgid "Confirm your account recovery"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "Device “{deviceName}” asked to recover your account and upgrade its encryption. Enter this code in the app to continue. That device will get access to your encrypted data, a new recovery phrase will replace the old one, and your other app devices will need to be approved again."
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "If this wasn’t you, don’t enter the code — someone may be trying to take over your account. Sign out of that device and change your sign-in method immediately."
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
 msgid "Your recovery phrase was changed"
 msgstr ""
 

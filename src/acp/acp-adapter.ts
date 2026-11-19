@@ -59,6 +59,7 @@ import { blobToBase64, getAttachments, undeliverableAttachmentsNote, type Hydrat
 import { renderMessageQuotesAsText } from '@/lib/quotes'
 import { getTransformer } from '@/files/transformers'
 import { getAttachment } from '@/lib/file-blob-storage'
+import { createAgentUnavailableError } from '@/lib/error-utils'
 import { openTransport } from './transports'
 import type { AcpTransport } from './types'
 import { createTranslatorStream, toAcpCommands, type AcpCommand, type Translator } from './translators/acp-to-ai-sdk'
@@ -338,6 +339,10 @@ export type AcpAdapterDeps = {
   /** Connect-phase timeout (ms). Defaults to a generous 30s. Tests inject a
    *  small value to exercise the timeout path deterministically. */
   handshakeTimeoutMs?: number
+  /** Reread whether the agent is still enabled and not deleted. Checked right
+   *  before the handshake, before each session request, and right before each
+   *  prompt, since a sync can disable or delete the agent while any of them waits. */
+  isAgentActive?: () => Promise<boolean>
 }
 
 /** Connection-scoped context — everything needed to open ONE shared transport.
@@ -449,6 +454,13 @@ export const connectAcpAdapter = async (
   const throwIfConnectionLost = (): void => {
     if (terminationError) {
       throw terminationError
+    }
+  }
+
+  const isAgentActive = deps.isAgentActive ?? (async () => true)
+  const throwIfAgentInactive = async (): Promise<void> => {
+    if (!(await isAgentActive())) {
+      throw createAgentUnavailableError(agent.id)
     }
   }
 
@@ -576,6 +588,8 @@ export const connectAcpAdapter = async (
   // machinery leak. The error still surfaces loudly so the chat fetch fails.
   const runInitialize = async (): Promise<AgentCapabilities> => {
     try {
+      // The transport may have taken a while to open (iroh enrollment and dial).
+      await throwIfAgentInactive()
       const initializeResponse = await withHandshakeGuard(
         connection.initialize({
           protocolVersion: protocolVersion,
@@ -647,6 +661,7 @@ export const connectAcpAdapter = async (
       skillsMeta: Record<string, unknown> | undefined,
     ): Promise<string> => {
       throwIfConnectionLost()
+      await throwIfAgentInactive()
       const newSession = await guardHandshake(
         connection.newSession({
           cwd: sessionCwd,
@@ -668,9 +683,13 @@ export const connectAcpAdapter = async (
     // evicted on the agent, wire still alive) into `false` so the caller degrades
     // to the next tier. A genuinely dead transport also lands here as `false`,
     // then surfaces loudly at `resolveNew`'s own guarded handshake.
-    const tryRestore = async (restore: Promise<{ configOptions?: SessionConfigOption[] | null }>): Promise<boolean> => {
+    const tryRestore = async (
+      restore: () => Promise<{ configOptions?: SessionConfigOption[] | null }>,
+    ): Promise<boolean> => {
+      // Outside the try, so an inactive agent ends the resolution instead of falling through to the next tier.
+      await throwIfAgentInactive()
       try {
-        const response = await guardHandshake(restore)
+        const response = await guardHandshake(restore())
         if (context.acpSessionId && !configs.has(context.acpSessionId)) {
           rememberConfig(context.acpSessionId, response.configOptions ?? [])
         }
@@ -690,7 +709,7 @@ export const connectAcpAdapter = async (
       if (
         stored &&
         capabilities.resume &&
-        (await tryRestore(
+        (await tryRestore(() =>
           connection.resumeSession({
             sessionId: stored,
             cwd: sessionCwd,
@@ -704,7 +723,7 @@ export const connectAcpAdapter = async (
       if (
         stored &&
         capabilities.loadSession &&
-        (await tryRestore(
+        (await tryRestore(() =>
           connection.loadSession({
             sessionId: stored,
             cwd: sessionCwd,
@@ -813,6 +832,7 @@ export const connectAcpAdapter = async (
         ) {
           throw new Error('This session does not support the requested compact command')
         }
+        await throwIfAgentInactive()
         return [{ type: 'text' as const, text }]
       }
 
@@ -835,6 +855,8 @@ export const connectAcpAdapter = async (
       init.signal?.throwIfAborted()
       throwIfConnectionLost()
       await persistFreshSession(context, sessionId)
+      // The last read before `session/prompt`: nothing awaits between here and the dispatch.
+      await throwIfAgentInactive()
       init.signal?.throwIfAborted()
       throwIfConnectionLost()
       return prompt

@@ -2,10 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { generateKdfSalt } from '@/crypto/recovery-key'
+import { PasskeyContinuityError } from '@/services/encryption'
 import * as encryptionService from '@/services/encryption'
 import * as encryptionApi from '@/api/encryption'
 import * as passkeys from '@/lib/passkey'
-import { DeviceApprovalError, ValidationError } from '@/crypto/errors'
+import { DecryptionError, DeviceApprovalError, ValidationError } from '@/crypto/errors'
 import { EncryptedSyncUnsupportedError } from '@/lib/encrypted-sync-support'
 import { HttpError } from '@/lib/http'
 import type { EncryptionMetadataResponse } from '@shared/e2ee-types'
@@ -28,11 +30,13 @@ const metadata = (schemeVersion: 1 | 2): EncryptionMetadataResponse => ({
   recovery_mlkem_public_key: schemeVersion === 2 ? 'recovery-mlkem' : null,
   recovery_wrapped_ak: schemeVersion === 2 ? 'recovery-envelope' : null,
   recovery_attestation: schemeVersion === 2 ? 'recovery-attestation' : null,
+  recovery_continuity: schemeVersion === 2 ? 'recovery-continuity' : null,
   passkey_credential_id: null,
   passkey_ecdh_public_key: null,
   passkey_mlkem_public_key: null,
   passkey_wrapped_ak: null,
   passkey_attestation: null,
+  passkey_continuity: null,
   key_version: 1,
   primary_key_id: '0',
   scheme_version: schemeVersion,
@@ -53,7 +57,7 @@ describe('receiver verification failure', () => {
     await storeKeyPair(ecdh.privateKey, ecdh.publicKey, mlkem.publicKey, mlkem.secretKey)
     localStorage.setItem('thunderbolt_device_id', 'receiver')
     setCachedSession({ user: { id: 'account-1' } })
-    const wrappedCK = await wrapAK(await generateAK(true), ecdh.publicKey, mlkem.publicKey, '0')
+    const wrappedCK = await wrapAK(await generateAK(true), ecdh.publicKey, mlkem.publicKey, '0', 1)
     const { httpClient } = createSpyHttpClient(async (request) => {
       const path = new URL(request.url).pathname
       if (path.endsWith('/devices')) {
@@ -259,6 +263,7 @@ describe('sync setup operation outcomes', () => {
     approve: spyOn(encryptionService, 'checkApprovalAndUnwrap').mockResolvedValue(true),
     prf: spyOn(passkeys, 'getPasskeyPrfOutput').mockResolvedValue(new Uint8Array([1, 2, 3])),
     unlock: spyOn(encryptionService, 'unlockWithPasskey').mockResolvedValue(undefined),
+    errorLog: spyOn(console, 'error').mockImplementation(() => {}),
   })
   let spies: ReturnType<typeof createSpies>
   beforeEach(() => {
@@ -382,7 +387,8 @@ describe('sync setup operation outcomes', () => {
     [false, 'intro', 'not been approved'],
     [httpError(422), 'denied', null],
     [new DeviceApprovalError('recipient-unverified'), 'intro', "Couldn't verify"],
-    [new Error('offline'), 'intro', 'offline'],
+    [new Error('Failed to unwrap account key'), 'intro', "Couldn't verify"],
+    [new EncryptionRequestTimeoutError(), 'intro', 'took too long'],
     [true, 'intro', null],
   ] as const)('settles approval outcome %s', async (outcome, step, message) => {
     if (outcome instanceof Error) {
@@ -399,6 +405,37 @@ describe('sync setup operation outcomes', () => {
     } else {
       expect(result.current.approvalError).toBeNull()
     }
+  })
+
+  it('flags a recovery phrase minted before the continuity seal', async () => {
+    const { result } = mount()
+    await act(async () => result.current.continueIntro())
+    expect(result.current.legacyRecoveryPhrase).toBe(true)
+  })
+
+  it('does not flag a phrase whose salt carries the continuity tag', async () => {
+    spies.metadata.mockResolvedValue({ ...metadata(2), kdf_salt: generateKdfSalt() })
+    const { result } = mount()
+    await act(async () => result.current.continueIntro())
+    expect(result.current.legacyRecoveryPhrase).toBe(false)
+  })
+
+  it('refuses a passkey whose seal does not vouch for the unlocked keys, and can retry', async () => {
+    const { result } = mount()
+    await act(async () => result.current.continueIntro())
+    spies.unlock.mockRejectedValueOnce(new PasskeyContinuityError())
+    await act(async () => expect(await result.current.unlockWithPasskey()).toBe(false))
+    expect(result.current.approvalError).toBe(
+      "This passkey unlocked keys that don't belong to your account, so nothing was changed on this device.",
+    )
+    await act(async () => expect(await result.current.unlockWithPasskey()).toBe(true))
+  })
+
+  it('logs a failed manual check without the error, its message or cause', async () => {
+    spies.approve.mockRejectedValueOnce(new Error('private response body', { cause: { key: 'private-key-marker' } }))
+    const { result } = mount()
+    await act(async () => expect(await result.current.confirmApproval()).toBe(false))
+    expect(spies.errorLog.mock.calls).toEqual([['Failed to check device approval.']])
   })
 
   it('does not prompt for a passkey when the account has no slot', async () => {
@@ -450,6 +487,18 @@ describe('sync setup operation outcomes', () => {
     expect(spies.unlock).toHaveBeenCalledTimes(1)
   })
 
+  it('shows a failure the automatic check keeps hitting, without its internal message', () => {
+    const { result } = mount()
+    act(() => result.current.approvalCheckFailed(new DecryptionError('Failed to unwrap account key')))
+    expect(result.current.approvalError).toBe(
+      "Couldn't verify this device's approval. Select Check now to try again, or choose another option below.",
+    )
+    act(() => result.current.approvalCheckFailed(new EncryptedSyncUnsupportedError()))
+    expect(result.current.approvalError).toBe(
+      'To use encrypted sync, open this app over HTTPS and use an up-to-date browser or operating system.',
+    )
+  })
+
   it('ignores polling callbacks while a manual operation owns the wizard, before effect cleanup', async () => {
     const response = Promise.withResolvers<boolean>()
     spies.approve.mockImplementationOnce(() => response.promise)
@@ -458,6 +507,7 @@ describe('sync setup operation outcomes', () => {
     act(() => {
       pending = result.current.confirmApproval()
       result.current.approvalVerificationFailed()
+      result.current.approvalCheckFailed(new DecryptionError('Envelope could not be opened'))
       result.current.deviceDenied()
       result.current.completeSetup()
       result.current.goToPasskeyEnroll('complete')

@@ -3,6 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useEffect, useState } from 'react'
+import type { DeviceKeyTrust } from '@/components/recovery-continuity/recovery-continuity-status'
+import { isAKUnverified } from '@/crypto'
 import { needsSyncSetupWizard } from '@/db/encryption'
 
 /**
@@ -47,8 +49,28 @@ export const dispatchE2eeProvisioningSettled = (): void => {
  * settle under `renderHook` in this test harness — so that shape would ship
  * this regression's own fix with no test to hold it.
  */
-export const useE2eeReady = (readReady: () => Promise<boolean> = isE2eeReady): boolean => {
-  const [ready, setReady] = useState(false)
+export const useE2eeReady = (readReady: () => Promise<boolean> = isE2eeReady): boolean =>
+  useProvisioningRead(readReady, false)
+
+/** This device's key trust: whether it holds usable keys, and whether they were adopted unverified. */
+export const readDeviceKeyTrust = async (): Promise<DeviceKeyTrust> => ({
+  ready: await isE2eeReady(),
+  unverified: await isAKUnverified(),
+})
+
+const untrusted: DeviceKeyTrust = { ready: false, unverified: false }
+
+/**
+ * React flavor of `readDeviceKeyTrust`, re-read like `useE2eeReady`. The guards
+ * in the encryption service re-read the marker at action time; this only drives
+ * what the UI offers.
+ */
+export const useDeviceKeyTrust = (read: () => Promise<DeviceKeyTrust> = readDeviceKeyTrust): DeviceKeyTrust =>
+  useProvisioningRead(read, untrusted)
+
+/** Read `read` on mount and whenever provisioning settles; `fallback` until then, and on failure. */
+const useProvisioningRead = <T>(read: () => Promise<T>, fallback: T): T => {
+  const [value, setValue] = useState(fallback)
 
   // Legitimate useEffect: an async read on mount plus a DOM event subscription,
   // both with cleanup.
@@ -61,9 +83,9 @@ export const useE2eeReady = (readReady: () => Promise<boolean> = isE2eeReady): b
       // storage, private browsing) from surfacing as an unhandled rejection in
       // whatever settings surface happens to mount this — the app already has a
       // dedicated screen for genuinely unusable storage.
-      const value = await readReady().catch(() => false)
+      const next = await read().catch(() => fallback)
       if (attempt === generation) {
-        setReady(value)
+        setValue(next)
       }
     }
     void check()
@@ -72,7 +94,7 @@ export const useE2eeReady = (readReady: () => Promise<boolean> = isE2eeReady): b
       generation += 1
       window.removeEventListener(e2eeProvisioningSettledEvent, check)
     }
-  }, [readReady])
+  }, [read, fallback])
 
-  return ready
+  return value
 }

@@ -6,7 +6,6 @@ import { maxAgentSteps } from '@/hosted-agent/limits'
 import type { PublicMiniApp } from '@shared/mini-app-registry'
 import { parseBranding, resolveAppName, type Branding } from '@shared/branding'
 import { z } from 'zod'
-import { inferenceUsageReceiptHeader } from '@shared/inference-usage'
 import { httpUrlMessage, isHttpUrl, loopbackOrigin } from '@shared/url'
 
 const betterAuthTimeString = z.string().regex(/^\d+[smhd]$/, {
@@ -25,7 +24,7 @@ const rpIdFromAppUrl = (appUrl: string): string => (URL.canParse(appUrl) ? new U
 /** WebAuthn forbids IP addresses as a Relying Party ID; it must be a domain name. */
 const isIpLiteral = (host: string): boolean => /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.startsWith('[')
 
-const defaultCorsExposeHeaders = `set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate,Ehbp-Response-Nonce,X-Proxy-Timing,Server-Timing,X-Passkey-Challenge,${inferenceUsageReceiptHeader}`
+const defaultCorsExposeHeaders = `set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate,Ehbp-Response-Nonce,X-Proxy-Timing,Server-Timing,X-Passkey-Challenge`
 
 /** Default PAT lifetime (90 days, in seconds) — exported so test fixtures can't drift from the schema default. */
 export const defaultApiKeyExpirySeconds = 90 * 24 * 60 * 60
@@ -114,6 +113,8 @@ const settingsSchema = z
     // Health Check Configuration
     monitoringToken: z.string().default(''),
 
+    // Public integration relay is an explicit operator choice, independent of account sign-in.
+    integrationOAuthAllowPublic: z.boolean().default(false),
     // OAuth Settings
     googleClientId: z.string().trim().default(''),
     googleClientSecret: z.string().trim().default(''),
@@ -320,8 +321,9 @@ const settingsSchema = z
 
     // Trusted proxy (controls which proxy headers are trusted for IP extraction)
     // Set to 'cloudflare' to trust CF-Connecting-IP, 'akamai' for True-Client-IP,
+    // a positive hop count (1–32) for a fixed X-Forwarded-For chain,
     // or leave empty to use only the direct socket IP (proxy headers are NOT trusted)
-    trustedProxy: z.enum(['', 'cloudflare', 'akamai']).default(''),
+    trustedProxy: z.union([z.enum(['', 'cloudflare', 'akamai']), z.coerce.number().int().min(1).max(32)]).default(''),
 
     // ACP (Agent Client Protocol) settings
     // Comma-separated list of agent IDs to expose via GET /agents. Empty = all registered.
@@ -386,6 +388,13 @@ const settingsSchema = z
     allowAnonymousAgentDiscovery: z.boolean().default(false),
   })
   .superRefine((data, ctx) => {
+    if (data.monitoringToken && data.monitoringToken.length < 32) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'MONITORING_TOKEN must be at least 32 characters when set',
+        path: ['monitoringToken'],
+      })
+    }
     if (data.passkeyEnabled && (!data.passkeyRpId || isIpLiteral(data.passkeyRpId))) {
       ctx.addIssue({
         code: 'custom',
@@ -563,6 +572,7 @@ const parseSettings = (): Settings => {
     tinfoilApiKey: process.env.TINFOIL_API_KEY || '',
     tinfoilEnclaveUrl: process.env.TINFOIL_ENCLAVE_URL || 'https://inference.tinfoil.sh/v1',
     monitoringToken: process.env.MONITORING_TOKEN || '',
+    integrationOAuthAllowPublic: process.env.INTEGRATION_OAUTH_ALLOW_PUBLIC === 'true',
     googleClientId: process.env.GOOGLE_CLIENT_ID || '',
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
     // Only a loopback override (a QA stack's fake provider) is honoured, so the client secret never leaves for

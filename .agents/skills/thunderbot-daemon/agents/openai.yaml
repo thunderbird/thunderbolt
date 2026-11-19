@@ -1,0 +1,3 @@
+# Codex: run this skill only when the user names it ($thunderbot-daemon), never implicitly.
+policy:
+  allow_implicit_invocation: false

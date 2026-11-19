@@ -26,6 +26,30 @@ const makeLifecycle = () => {
 }
 
 describe('voice session ownership', () => {
+  it('aborts preparation when stopped and ignores its cancellation error', async () => {
+    const { lifecycle, events } = makeLifecycle()
+    const preparation = Promise.withResolvers<void>()
+    const pending = lifecycle.start(async (_callbacks, signal) => {
+      await preparation.promise
+      signal.throwIfAborted()
+      return makeSession()
+    })
+    await lifecycle.stop()
+    preparation.resolve()
+    await pending
+    expect(events).toEqual([true, 'starting', false, 'stopped'])
+  })
+
+  it('closes a diverted preparation and allows retry after sign-in', async () => {
+    const { lifecycle, events } = makeLifecycle()
+    await lifecycle.start(async () => null)
+    expect(events).toEqual([true, 'starting', false, 'stopped'])
+    const session = makeSession()
+    await lifecycle.start(async () => session)
+    expect(session.start).toHaveBeenCalledTimes(1)
+    await lifecycle.stop()
+  })
+
   it('forwards current callbacks and output level only while the session is owned', async () => {
     const { lifecycle, events } = makeLifecycle()
     const callbacks: Array<Pick<VoiceSessionOptions, 'onState' | 'onError' | 'onLevel'>> = []

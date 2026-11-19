@@ -13,6 +13,7 @@ import {
   nativePasskeyRpId,
   registerPasskeyNative,
 } from '@/lib/passkey-native'
+import { bindSignedInAccount } from '@/lib/local-data-owner'
 import { markOnboardedForReturningUser } from '@/lib/returning-user-onboarding'
 import { getPlatform } from '@/lib/platform'
 import { captureAuthRequestLifetime, getAuthToken } from '@/lib/auth-token'
@@ -334,6 +335,7 @@ export const signInWithPasskey = async (
   authClient: AuthClient,
   { signal, onAuthenticated }: { signal?: AbortSignal; onAuthenticated?: () => void } = {},
 ): Promise<{ userId: string }> => {
+  const previousUser = authClient.$store.atoms.session.get().data?.user
   const { options: optionsJSON, challenge } = await fetchCeremonyOptions<PublicKeyCredentialRequestOptionsJSON>(
     authClient,
     '/passkey/generate-authenticate-options',
@@ -362,6 +364,7 @@ export const signInWithPasskey = async (
 
   // Verification already returned the accepted session. Publishing it directly
   // avoids another network request failing after credentials were committed.
+  bindSignedInAccount(data.user, previousUser)
   // A passkey sign-in is always a returning user. Mark them onboarded before the
   // app flips to signed-in, or the onboarding wizard flashes.
   await markOnboardedForReturningUser(data.user)

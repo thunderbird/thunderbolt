@@ -76,7 +76,7 @@ export const createMcpServerWithCredentials = async (
 ): Promise<void> => {
   await db.transaction(async (tx) => {
     if (credentials) {
-      await setMcpServerCredentials(tx, data.id, credentials)
+      await setMcpServerCredentials(tx, data.id, { ...credentials, approvedUrl: data.url ?? undefined })
     }
     await createMcpServer(tx, data)
   })
@@ -106,8 +106,10 @@ export const updateMcpServerEnabled = async (db: AnyDrizzleDatabase, id: string,
 /**
  * Updates an MCP server row and (optionally) its on-device credentials in a
  * single transaction. Symmetric to {@link createMcpServerWithCredentials}.
+ * A new credential is bound to the server's URL after the patch.
  * `credentials` semantics:
- *   - `undefined`: leave existing credential alone (e.g. rename without touching the token)
+ *   - `undefined`: leave existing credential alone (e.g. rename without touching the token).
+ *     It stays bound to the URL it was saved for, so a new destination never receives it.
  *   - `null`: delete existing credential (user cleared the bearer field)
  *   - object: replace existing credential
  */
@@ -118,12 +120,17 @@ export const updateMcpServerWithCredentials = async (
   credentials?: McpServerCredentials | null,
 ): Promise<void> => {
   await db.transaction(async (tx) => {
+    await updateMcpServer(tx, id, patch)
     if (credentials === null) {
       await deleteMcpServerCredentials(tx, id)
     } else if (credentials) {
-      await setMcpServerCredentials(tx, id, credentials)
+      const server = await tx
+        .select({ url: mcpServersTable.url })
+        .from(mcpServersTable)
+        .where(eq(mcpServersTable.id, id))
+        .get()
+      await setMcpServerCredentials(tx, id, { ...credentials, approvedUrl: server?.url ?? undefined })
     }
-    await updateMcpServer(tx, id, patch)
   })
 }
 
@@ -149,7 +156,7 @@ export const createMcpServersWithCredentials = async (
       // Credential before the row (matching createMcpServerWithCredentials) so the
       // ordering is consistent and a future non-transactional refactor stays safe.
       if (credential) {
-        await setMcpServerCredentials(tx, server.id, credential)
+        await setMcpServerCredentials(tx, server.id, { ...credential, approvedUrl: server.url ?? undefined })
       }
       await createMcpServer(tx, server)
     }

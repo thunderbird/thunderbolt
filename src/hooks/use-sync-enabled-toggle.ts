@@ -16,8 +16,9 @@ import { useEffect, useRef, useState } from 'react'
  * On mount, detects pre-encryption users (sync ON + encryption enabled + no CK)
  * and auto-disables sync. The user re-enables sync via the toggle, which opens
  * the wizard through the normal flow.
+ * `onSetupRequired` lets a caller dismiss its menu before the wizard takes focus.
  */
-export const useSyncEnabledToggle = () => {
+export const useSyncEnabledToggle = (onSetupRequired?: () => void) => {
   const syncEnabled = useLocalSettingsStore((state) => state.syncEnabled)
   const [syncSetupOpen, setSyncSetupOpen] = useState(false)
   const intent = useRef(0)
@@ -59,6 +60,7 @@ export const useSyncEnabledToggle = () => {
       return
     }
     if (needsSetup) {
+      onSetupRequired?.()
       setSyncSetupOpen(true)
       return
     }

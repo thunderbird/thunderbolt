@@ -30,7 +30,7 @@ import {
   type ThinkingLevel,
 } from '@earendil-works/pi-agent-core'
 import { buildAnthropicModel, type AgentFetch } from './anthropic-model.ts'
-import { buildConfidentialModel, type ReceiptLifecycle } from './confidential-model.ts'
+import { buildConfidentialModel } from './confidential-model.ts'
 import { buildOpenAiCompatModel } from './openai-compat-model.ts'
 import { BrowserExecutionEnv } from './browser-env/browser-execution-env.ts'
 import type { ReasoningEffort } from '../reasoning-effort.ts'
@@ -78,12 +78,11 @@ export const workspaceDirFor = (threadId: string): string => {
  *
  *   - `anthropic` resolves a model from Pi's built-in catalog and wires the
  *     `@anthropic-ai/sdk` client through `fetch` ({@link buildAnthropicModel}).
- *   - `openai-compat` synthesizes an `openai-completions` model for the app's
- *     OpenAI-wire providers (`openai`/`custom`/`openrouter`/`thunderbolt`) and
+ *   - `openai-compat` synthesizes a completions or Responses model for the app's
+ *     OpenAI-wire providers (`openai`/`custom`/`openrouter`/`thunderbolt`/`otari`) and
  *     injects `fetch` around client construction ({@link buildOpenAiCompatModel}).
- *   - `confidential` adds catalog compatibility, attestation normalization, and
- *     usage-receipt capture around an OpenAI-compatible model
- *     ({@link buildConfidentialModel}).
+ *   - `confidential` adds catalog compatibility and attestation normalization
+ *     around an OpenAI-compatible model ({@link buildConfidentialModel}).
  */
 export type PiModelDescriptor =
   | {
@@ -101,6 +100,7 @@ export type PiModelDescriptor =
     }
   | {
       readonly kind: 'openai-compat'
+      readonly api?: 'openai-completions' | 'openai-responses'
       /** App provider name, also used as the Pi provider id. */
       readonly providerId: string
       /** Upstream model id sent on the wire. */
@@ -127,7 +127,6 @@ export type PiModelDescriptor =
       readonly baseURL: string
       readonly apiKey: string
       readonly fetch: AgentFetch
-      readonly receipts: ReceiptLifecycle
       readonly reasoning: boolean
       readonly contextWindow?: number
       readonly supportsImages: boolean
@@ -235,6 +234,7 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
       : options.model.kind === 'confidential'
         ? buildConfidentialModel({ ...options.model, getReasoningEffort })
         : buildOpenAiCompatModel({
+            api: options.model.api,
             getReasoningEffort,
             providerId: options.model.providerId,
             modelId: options.model.modelId,
@@ -257,9 +257,6 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
     thinkingLevel: options.thinkingLevel,
     systemPrompt: options.systemPrompt,
   })
-  if (options.model.kind === 'confidential') {
-    options.model.receipts.attach(harness)
-  }
 
   // Seed prior turns into the (idle) session so the first prompt runs with full
   // conversational context. `appendMessage` writes straight to the session while
@@ -279,11 +276,6 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
       }
       effortState.current = effort
     },
-    compaction: createHarnessCompaction(
-      harness,
-      session,
-      options.compaction,
-      options.model.kind === 'confidential' ? options.model.receipts : undefined,
-    ),
+    compaction: createHarnessCompaction(harness, session, options.compaction),
   })
 }

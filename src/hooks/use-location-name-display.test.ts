@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { setAuthToken, clearAuthToken } from '@/lib/auth-token'
 import { getSettingsRecords, updateSettings } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
@@ -10,11 +11,18 @@ import type { HttpClient, RequestOptions, ResponsePromise } from '@/lib/http'
 import { getClock } from '@/testing-library'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { act, renderHook } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { useLocationNameDisplay } from './use-location-name-display'
 import { useSettings } from './use-settings'
 
 const munique = { id: 2867714, name: 'Munique', region: 'Baviera', country: 'Alemanha', countryCode: 'DE' }
+const originalCloudUrl = useLocalSettingsStore.getState().cloudUrl
+
+beforeEach(() => {
+  useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1' })
+  setAuthToken('test-session')
+})
 
 type Recorded = { url: string; language: unknown }
 
@@ -92,11 +100,24 @@ afterAll(async () => {
 })
 
 afterEach(async () => {
+  clearAuthToken()
+  useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl })
   await resetTestDatabase()
   setActiveLocale('en')
 })
 
 describe('useLocationNameDisplay', () => {
+  it('uses the saved name without backend lookups in standalone mode', async () => {
+    useLocalSettingsStore.setState({ cloudUrl: '' })
+    setActiveLocale('pt-BR')
+    await updateSettings(getDb(), { location_id: '2867714', location_name: 'Munich, Bavaria, Germany' })
+    const recorded: Recorded[] = []
+    const { result } = renderWithSettings(createFakeHttpClient(recorded))
+    await flush()
+    expect(result.current.display).toBe('Munich, Bavaria, Germany')
+    expect(recorded).toEqual([])
+  })
+
   it('renders the stored display name without a lookup', async () => {
     setActiveLocale('pt-BR')
     await updateSettings(getDb(), {

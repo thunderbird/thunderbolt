@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { toError, type AgentHarness } from '@earendil-works/pi-agent-core'
+import { toError } from '@earendil-works/pi-agent-core'
 import {
   createAssistantMessageEventStream,
   createProvider,
@@ -15,7 +15,6 @@ import {
   type StreamOptions,
 } from '@earendil-works/pi-ai'
 import { builtinModels } from '@earendil-works/pi-ai/providers/all'
-import { inferenceUsageReceiptHeader, type InferenceUsageReceiptRequest } from '../inference-usage.ts'
 import { buildOpenAiCompatModel, type OpenAiCompatFetch } from './openai-compat-model.ts'
 
 import type { ReasoningEffort } from '../reasoning-effort.ts'
@@ -37,33 +36,6 @@ export type ConfidentialModelError<Code extends ConfidentialModelErrorCode = Con
   readonly code: Code
 }
 
-/** Provider response receipt paired with the exact terminal message that owns its usage. */
-export type CompletedProviderStep = {
-  readonly receipt: string
-  readonly message: AssistantMessage
-}
-
-/** Stages provider receipts and correlates them after attachment to one harness. */
-export type ReceiptLifecycle = {
-  readonly completeProviderStep: (step: CompletedProviderStep) => void
-  readonly clear: () => void
-  /** Summary requests have no harness message_end; settle their receipts in their own scope. */
-  readonly withStandaloneRequests: <T>(run: () => Promise<T>) => Promise<T>
-  /** Attach terminal-message correlation; the returned cleanup detaches it and clears pending state. */
-  readonly attach: (harness: Pick<AgentHarness, 'subscribe'>) => () => void
-}
-
-/** Provider-facing half of a receipt lifecycle, before harness event correlation. */
-export type ReceiptCapture = Pick<ReceiptLifecycle, 'completeProviderStep' | 'clear'>
-
-/** Transport and error-reporting dependencies for a receipt lifecycle. */
-export type CreateReceiptLifecycleOptions = {
-  /** Submit mapped usage through the caller-owned transport. */
-  readonly submit: (usage: InferenceUsageReceiptRequest) => Promise<void>
-  /** Observe receipt-transport failures without throwing or altering the model result. */
-  readonly reportError: (error: Error) => void
-}
-
 /** Browser-safe inputs for constructing one catalog-driven confidential Pi model. */
 export type BuildConfidentialModelOptions = {
   readonly providerId: string
@@ -75,8 +47,6 @@ export type BuildConfidentialModelOptions = {
   readonly apiKey: string
   /** Already-attested fetch, wrapped only to normalize attestation failures hidden by Pi. */
   readonly fetch: OpenAiCompatFetch
-  /** Provider-facing capture half of the caller-owned receipt lifecycle. */
-  readonly receipts: ReceiptCapture
   readonly getReasoningEffort?: () => ReasoningEffort | undefined
   /** Native effort controls may replace Pi's legacy aliases when paired with an exact payload override. */
   readonly thinkingLevelMap?: Model<'openai-completions'>['thinkingLevelMap']
@@ -165,24 +135,10 @@ const failedProviderMessage = (model: Model<Api>, error: Error, aborted: boolean
   timestamp: Date.now(),
 })
 
-/** Add receipt capture while preserving every caller-supplied stream option. */
-const responseCapturingOptions = (
-  options: StreamOptions | undefined,
-  setReceipt: (receipt: string | null) => void,
-): StreamOptions => ({
-  ...options,
-  onResponse: async (response, responseModel) => {
-    setReceipt(new Headers(response.headers).get(inferenceUsageReceiptHeader))
-    await options?.onResponse?.(response, responseModel)
-  },
-})
-
-/** Forward one provider stream while staging only its successful terminal receipt. */
-const captureProviderReceipt = (
+/** Forward one provider stream, restoring attestation failures and guaranteeing a terminal event. */
+const forwardProviderStream = (
   source: AssistantMessageEventStream,
   model: Model<Api>,
-  getReceipt: () => string | null,
-  receipts: ReceiptCapture,
   takeAttestationFailure: () => ConfidentialModelError<'attestation-failed'> | null,
   signal?: AbortSignal,
 ): AssistantMessageEventStream => {
@@ -193,15 +149,8 @@ const captureProviderReceipt = (
       for await (const event of source) {
         if (event.type === 'done') {
           terminal = true
-          const receipt = getReceipt()
-          if (receipt) {
-            receipts.completeProviderStep({ receipt, message: event.message })
-          } else {
-            receipts.clear()
-          }
         } else if (event.type === 'error') {
           terminal = true
-          receipts.clear()
           const attestationFailure = takeAttestationFailure()
           output.push(
             attestationFailure === null
@@ -215,12 +164,10 @@ const captureProviderReceipt = (
       if (terminal) {
         return
       }
-      receipts.clear()
       const error = takeAttestationFailure() ?? new Error('Provider stream ended without a terminal message.')
       const failed = failedProviderMessage(model, error, signal?.aborted === true)
       output.push({ type: 'error', reason: failed.stopReason === 'aborted' ? 'aborted' : 'error', error: failed })
     } catch (error) {
-      receipts.clear()
       const failed = failedProviderMessage(model, takeAttestationFailure() ?? toError(error), signal?.aborted === true)
       output.push({ type: 'error', reason: failed.stopReason === 'aborted' ? 'aborted' : 'error', error: failed })
     }
@@ -230,9 +177,8 @@ const captureProviderReceipt = (
 }
 
 /** Wrap an OpenAI-compatible provider at the provider-stream seam. */
-const createReceiptCapturingProvider = (
+const createAttestationNormalizingProvider = (
   provider: Provider,
-  receipts: ReceiptCapture,
   clearAttestationFailure: () => void,
   takeAttestationFailure: () => ConfidentialModelError<'attestation-failed'> | null,
 ): Provider => {
@@ -244,16 +190,8 @@ const createReceiptCapturingProvider = (
     context: Parameters<ProviderStreams['stream']>[1],
     options?: StreamOptions,
   ): AssistantMessageEventStream => {
-    let receipt: string | null = null
     clearAttestationFailure()
-    const source = sourceStream(
-      model,
-      context,
-      responseCapturingOptions(options, (value) => {
-        receipt = value
-      }),
-    )
-    return captureProviderReceipt(source, model, () => receipt, receipts, takeAttestationFailure, options?.signal)
+    return forwardProviderStream(sourceStream(model, context, options), model, takeAttestationFailure, options?.signal)
   }
   const api: ProviderStreams = {
     stream: (model, context, options) => wrap(sourceStream, model, context, options),
@@ -268,100 +206,6 @@ const createReceiptCapturingProvider = (
     models: provider.getModels(),
     api,
   })
-}
-
-/** Check that a provider token count is safe to submit. */
-export const isNonnegativeSafeInteger = (value: number): boolean => Number.isSafeInteger(value) && value >= 0
-
-/** Map one terminal Pi message to the backend's receipt accounting contract. */
-const toReceiptUsage = (step: CompletedProviderStep): InferenceUsageReceiptRequest | null => {
-  const { input, cacheRead, cacheWrite, output, totalTokens } = step.message.usage
-  const promptTokens = input + cacheRead + cacheWrite
-  if (
-    step.receipt.length === 0 ||
-    !isNonnegativeSafeInteger(input) ||
-    !isNonnegativeSafeInteger(cacheRead) ||
-    !isNonnegativeSafeInteger(cacheWrite) ||
-    !isNonnegativeSafeInteger(promptTokens) ||
-    !isNonnegativeSafeInteger(output) ||
-    !isNonnegativeSafeInteger(totalTokens)
-  ) {
-    return null
-  }
-  return { receipt: step.receipt, promptTokens, completionTokens: output, totalTokens }
-}
-
-/** Correlate provider receipts with the exact terminal assistant event that owns their usage. */
-export const createReceiptLifecycle = (options: CreateReceiptLifecycleOptions): ReceiptLifecycle => {
-  let pending: CompletedProviderStep | null = null
-  let standalone: CompletedProviderStep[] | null = null
-  const submitStep = async (completed: CompletedProviderStep): Promise<void> => {
-    if (completed.message.stopReason === 'error' || completed.message.stopReason === 'aborted') {
-      return
-    }
-    const usage = toReceiptUsage(completed)
-    if (usage === null) {
-      return
-    }
-    try {
-      await options.submit(usage)
-    } catch (error) {
-      options.reportError(toError(error))
-    }
-  }
-  const clear = (): void => {
-    pending = null
-  }
-  const completeProviderStep = (step: CompletedProviderStep): void => {
-    if (standalone) {
-      standalone.push(step)
-      return
-    }
-    pending = step
-  }
-  const attach: ReceiptLifecycle['attach'] = (harness) => {
-    const unsubscribeHarness = harness.subscribe(async (event) => {
-      if (event.type === 'abort' || event.type === 'agent_end' || event.type === 'settled') {
-        clear()
-        return
-      }
-      if (event.type !== 'message_end' || pending === null) {
-        return
-      }
-
-      const completed = pending
-      if (event.message !== completed.message) {
-        return
-      }
-      clear()
-      await submitStep(completed)
-    })
-    let subscribed = true
-    return () => {
-      if (!subscribed) {
-        return
-      }
-      subscribed = false
-      unsubscribeHarness()
-      clear()
-    }
-  }
-  const withStandaloneRequests: ReceiptLifecycle['withStandaloneRequests'] = async (run) => {
-    if (standalone) {
-      throw new Error('Standalone receipt capture is already running')
-    }
-    const steps: CompletedProviderStep[] = []
-    standalone = steps
-    try {
-      return await run()
-    } finally {
-      standalone = null
-      for (const step of steps) {
-        await submitStep(step)
-      }
-    }
-  }
-  return { completeProviderStep, clear, attach, withStandaloneRequests }
 }
 
 /** Build a catalog-driven confidential model over an already-attested fetch. */
@@ -406,9 +250,8 @@ export const buildConfidentialModel = (
     return failure
   }
   built.models.setProvider(
-    createReceiptCapturingProvider(
+    createAttestationNormalizingProvider(
       sourceProvider,
-      options.receipts,
       () => {
         attestationFailure = null
       },

@@ -42,7 +42,8 @@
  * adapter's teardown (agent delete / config edit / sign-out).
  */
 
-import { piThinkingLevels } from '@shared/reasoning-effort'
+import { bindModelProvider, type ModelProviderBinding } from '@/providers/model-connection'
+import { readProfileThinkingLevel } from '@/ai/profile-thinking-level'
 import {
   aiFetchStreamingResponse,
   prepareAiRequestConfig,
@@ -51,7 +52,6 @@ import {
   type PreparedAiRequestConfig,
 } from '@/ai/fetch'
 import { getKnownImageSupport } from '@/ai/image-support'
-import { submitInferenceUsageReceipt } from '@/ai/inference-usage-receipt'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
 import { recordDebugTranscriptSystemPrompts } from '@/debug-transcript/recorder'
 import {
@@ -60,6 +60,8 @@ import {
   supersededAppContextOutput,
 } from '@/mini-apps/mini-app-context-note'
 import { webToolNames } from '@/lib/tools'
+import { tinfoilSession } from '@/lib/tinfoil-session'
+import { createLiveProxyFetch } from '@/lib/proxy-fetch'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { appVersionHeader } from '@/lib/app-version'
@@ -75,13 +77,13 @@ import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prom
 import { inferenceModelHeader } from '@shared/inference-usage'
 import type { AgentHarness, AgentHarnessTool, AgentMessage, ThinkingLevel } from '@earendil-works/pi-agent-core'
 import { z } from 'zod'
-import type { SecureClient } from 'tinfoil'
+import type { AttestedTinfoilClient } from '@/attestation/tinfoil'
 import {
   evictSystemTinfoilClient,
   evictUserTinfoilClient,
   getSystemTinfoilClient,
   getTinfoilClient,
-  isTinfoilTransportWedgedError,
+  isTinfoilAttestationFailure,
 } from '@/ai/tinfoil-client'
 import { prepareBuiltInConversation, prepareBuiltInHistory } from './built-in-conversation'
 import { isPiModelCandidate } from './built-in-model-support'
@@ -93,8 +95,6 @@ import { managedAnthropicCatalogId } from '@/ai/managed-model-id'
  *  {@link fetchViaHarness}, never on the chat entry bundle. */
 type AgentCoreModule = typeof import('@shared/agent-core')
 
-type CurrentHttpClient = { current: AgentAdapterContext['httpClient'] }
-
 /** A thread's live harness plus the workspace it is bound to. Kept in the
  *  per-adapter cache so the conversation (which lives in the harness session) and
  *  its isolated OPFS workspace persist across the thread's turns. */
@@ -104,8 +104,6 @@ type HarnessRecord = {
   readonly baseTools: AgentHarnessTool<undefined>[]
   /** Mutable prompt cell read by the harness's per-turn system-prompt callback. */
   readonly systemPrompt: { current: string }
-  /** Mutable transport cell read by the attached receipt lifecycle. */
-  readonly receiptHttpClient?: CurrentHttpClient
 }
 
 /** A thread's cached build, tagged with the config {@link harnessSignature} it was
@@ -165,101 +163,10 @@ type TinfoilClientOptions = Pick<
   | 'isSsoMode'
 >
 
-const piThinkingLevelSchema = z.enum(piThinkingLevels)
-const profileThinkingOptionsSchema = z
-  .object({
-    reasoningEffort: z.string().optional().catch(undefined),
-    effort: z.string().optional().catch(undefined),
-    reasoning_effort: z.string().optional().catch(undefined),
-    reasoning: z
-      .object({ effort: z.string().optional().catch(undefined) })
-      .optional()
-      .catch(undefined),
-    thinking: z
-      .object({
-        type: z.string().optional().catch(undefined),
-        budgetTokens: z.number().optional().catch(undefined),
-      })
-      .optional()
-      .catch(undefined),
-  })
-  .passthrough()
-
 /** Reasoning depth used when a model carries no explicit profile config. Mirrors
  *  the adaptive default the anthropic path has always used, so deriving the level
  *  never regresses a model that didn't configure one. */
 const fallbackThinkingLevel: ThinkingLevel = 'medium'
-
-/** Maps an Anthropic-style thinking budget (tokens) to a Pi level by upper bound:
- *  ≤0 → off, ≤1024 → minimal, ≤4096 → low, ≤12288 → medium, else high. */
-const budgetToThinkingLevel = (budget: number): ThinkingLevel => {
-  if (budget <= 0) {
-    return 'off'
-  }
-  if (budget <= 1024) {
-    return 'minimal'
-  }
-  if (budget <= 4096) {
-    return 'low'
-  }
-  if (budget <= 12288) {
-    return 'medium'
-  }
-  return 'high'
-}
-
-/** Coerce a profile effort string to a Pi level. Maps the explicit "off" signals
- *  ('off'/'none') to `off`, accepts the Pi levels verbatim, and rejects anything
- *  else (returning null so the caller can keep looking / fall back). */
-const effortToThinkingLevel = (value: string | undefined): ThinkingLevel | null => {
-  if (value === undefined) {
-    return null
-  }
-  if (value === 'none') {
-    return 'off'
-  }
-  const parsed = piThinkingLevelSchema.safeParse(value)
-  return parsed.success ? parsed.data : null
-}
-
-/** Pull a Pi thinking level out of a profile's `providerOptions`, the only
- *  per-model reasoning signal in the data model (there is no thinking-level
- *  column). Recognizes the OpenAI `reasoningEffort`/`reasoning_effort` strings,
- *  a nested `reasoning.effort`, Anthropic's top-level `effort`, and its `thinking` object
- *  (`{ type: 'disabled' }` → off; `{ budgetTokens }` → bucketed level). Returns
- *  null when no reasoning config is present. */
-export const readProfileThinkingLevel = (
-  providerOptions: ModelProfile['providerOptions'] | undefined,
-): ThinkingLevel | null => {
-  if (!providerOptions) {
-    return null
-  }
-  const parsed = profileThinkingOptionsSchema.safeParse(providerOptions)
-  if (!parsed.success) {
-    return null
-  }
-  const options = parsed.data
-  const direct = effortToThinkingLevel(options.reasoningEffort) ?? effortToThinkingLevel(options.reasoning_effort)
-  if (direct) {
-    return direct
-  }
-  const reasoning = options.reasoning
-  if (reasoning) {
-    const nested = effortToThinkingLevel(reasoning.effort)
-    if (nested) {
-      return nested
-    }
-  }
-  const thinking = options.thinking
-  if (thinking?.type === 'disabled') {
-    return 'off'
-  }
-  const adaptiveEffort = effortToThinkingLevel(options.effort)
-  if (adaptiveEffort) {
-    return adaptiveEffort
-  }
-  return thinking?.budgetTokens === undefined ? null : budgetToThinkingLevel(thinking.budgetTokens)
-}
 
 /** The Pi thinking level for a model: its explicit profile reasoning config, else
  *  the adaptive fallback. Used for the anthropic path (whose catalog model is
@@ -293,10 +200,9 @@ const parseMessages = (init: RequestInit): ThunderboltUIMessage[] => {
 export type ResolvedPiModel = {
   readonly descriptor: PiModelDescriptor
   readonly thinkingLevel: ThinkingLevel
+  readonly providerBinding?: ModelProviderBinding
   /** Attested transport identity used only to invalidate the local harness cache. */
-  readonly tinfoilClient?: SecureClient
-  /** Current receipt transport for the persistent managed harness. */
-  readonly receiptHttpClient?: CurrentHttpClient
+  readonly tinfoilClient?: AttestedTinfoilClient
 }
 
 /** Time a Tinfoil client acquisition without changing its error behavior. */
@@ -314,15 +220,15 @@ const acquireTinfoilClient = async <Client>(
 
 /** Run one request through an attested client and evict only wedged transports. */
 const fetchTinfoil = async (
-  client: SecureClient,
+  client: AttestedTinfoilClient,
   input: RequestInfo | URL,
   init: RequestInit | undefined,
-  evictClient: (client: SecureClient) => void,
+  evictClient: (client: AttestedTinfoilClient) => void,
 ): Promise<Response> => {
   try {
     return await client.fetch(input, init)
   } catch (error) {
-    if (isTinfoilTransportWedgedError(error)) {
+    if (isTinfoilAttestationFailure(error)) {
       evictClient(client)
     }
     throw error
@@ -339,7 +245,7 @@ export const resolvePiModel = async (
   profile: ModelProfile | null,
   options: TinfoilClientOptions = {},
 ): Promise<ResolvedPiModel | null> => {
-  const model = context.selectedModel
+  const { model, wrapFetch, api, binding: providerBinding } = await bindModelProvider(context.selectedModel)
   const thinkingLevel = deriveThinkingLevel(profile)
   // Pi strips image blocks from text-only descriptors. Only models known not to
   // read images are text-only: the composer checks an unknown model before an
@@ -362,7 +268,6 @@ export const resolvePiModel = async (
       const evictClient = options.evictSystemTinfoilClient ?? evictSystemTinfoilClient
       const readAuthToken = options.getAuthToken ?? getAuthToken
       const readSsoMode = options.isSsoMode ?? isSsoMode
-      const receiptHttpClient = { current: context.httpClient }
       const fetch: PiModelDescriptor['fetch'] = async (input, init) => {
         const token = readAuthToken()
         const headers = new Headers(init?.headers)
@@ -382,30 +287,27 @@ export const resolvePiModel = async (
         await handleSessionRejected(response)
         return response
       }
-      const receipts = agentCore.createReceiptLifecycle({
-        submit: (usage) => submitInferenceUsageReceipt(usage, receiptHttpClient.current),
-        reportError: (error) => console.error(error),
-      })
       return {
         descriptor: {
           kind: 'confidential',
           providerId: 'tinfoil',
           modelId: model.model,
           vendor: model.vendor,
-          baseURL: client.getBaseURL()!,
+          baseURL: client.baseURL,
           apiKey: 'thunderbolt-managed',
           fetch,
-          receipts,
           reasoning: true,
           contextWindow: model.contextWindow ?? undefined,
           supportsImages,
         },
         thinkingLevel,
+        providerBinding,
         tinfoilClient: client,
-        receiptHttpClient,
       }
     }
-    if (!model.apiKey) {
+    const usesLegacySession = !model.providerConnectionId && model.oauthProvider === 'tinfoil'
+    const apiKey = usesLegacySession ? await tinfoilSession.getAccessToken() : model.apiKey
+    if (!apiKey) {
       throw new Error('No API key provided for Tinfoil provider')
     }
     const acquireUserClient = options.getTinfoilClient ?? getTinfoilClient
@@ -420,20 +322,30 @@ export const resolvePiModel = async (
       context.telemetry,
     )
     const evictClient = options.evictUserTinfoilClient ?? evictUserTinfoilClient
-    const fetch: PiModelDescriptor['fetch'] = (input, init) => fetchTinfoil(client, input, init, evictClient)
+    const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      // Long-running agent turns can outlive an access token. Refresh before each
+      // encrypted request, not just when building the harness at turn start.
+      const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined))
+      if (usesLegacySession) {
+        headers.set('Authorization', `Bearer ${await tinfoilSession.getAccessToken()}`)
+      }
+      const request = { ...init, headers }
+      return fetchTinfoil(client, input, request, evictClient)
+    }
     return {
       descriptor: {
         kind: 'openai-compat',
         providerId: 'tinfoil',
         modelId: model.model,
-        baseURL: client.getBaseURL()!,
-        apiKey: model.apiKey,
-        fetch,
+        baseURL: client.baseURL,
+        apiKey,
+        fetch: wrapFetch(Object.assign(fetch, { preconnect: async () => false })),
         reasoning: hasExplicitReasoning(profile),
         contextWindow: model.contextWindow ?? undefined,
         supportsImages,
       },
       thinkingLevel,
+      providerBinding,
       tinfoilClient: client,
     }
   }
@@ -447,9 +359,10 @@ export const resolvePiModel = async (
         modelId: model.model,
         apiKey: model.apiKey ?? '',
         contextWindow: model.contextWindow ?? undefined,
-        fetch: context.getProxyFetch(),
+        fetch: wrapFetch(createLiveProxyFetch(context.getProxyFetch)),
       },
       thinkingLevel,
+      providerBinding,
     }
   }
   if (model.provider === 'thunderbolt' && model.vendor === 'anthropic') {
@@ -469,6 +382,7 @@ export const resolvePiModel = async (
         fetch: connection.fetch,
       },
       thinkingLevel,
+      providerBinding,
     }
   }
   const connection = resolveOpenAiCompatConnection(model, context.getProxyFetch)
@@ -482,23 +396,25 @@ export const resolvePiModel = async (
   return {
     descriptor: {
       kind: 'openai-compat',
+      api,
       providerId: model.provider,
       modelId: model.model,
       baseURL: connection.baseURL,
       apiKey: connection.apiKey,
-      fetch: connection.fetch,
+      fetch: wrapFetch(connection.fetch),
       reasoning: hasExplicitReasoning(profile),
       contextWindow: model.contextWindow ?? undefined,
       supportsImages,
     },
     thinkingLevel,
+    providerBinding,
   }
 }
 
-const tinfoilClientIds = new WeakMap<SecureClient, string>()
+const tinfoilClientIds = new WeakMap<AttestedTinfoilClient, string>()
 
 /** Return a short process-local identity for one attested client instance. */
-const tinfoilClientId = (client: SecureClient): string => {
+const tinfoilClientId = (client: AttestedTinfoilClient): string => {
   const existing = tinfoilClientIds.get(client)
   if (existing) {
     return existing
@@ -520,8 +436,8 @@ const hashSecret = (value: string): string => {
 
 /** Fingerprint every input baked into a thread's harness at build time — the
  *  descriptor (provider / model id / api key / base url / reasoning / context
- *  window), thinking level, stable system prompt, regeneration revision, and
- *  durable checkpoint. Another device can replace that checkpoint without
+ *  window), provider connection generation, thinking level, stable system prompt,
+ *  regeneration revision, and durable checkpoint. Another device can replace that checkpoint without
  *  adding a user turn, so the local harness must notice that change too.
  *  When it changes mid-thread (a model, provider, key, system-prompt,
  *  thinking, or MCP-server switch) the cached harness is stale and
@@ -541,7 +457,14 @@ export const harnessSignature = (
     d.kind === 'anthropic'
       ? `anthropic|${d.modelId}|${d.catalogModelId ?? ''}|${d.baseURL ?? ''}|${d.contextWindow ?? ''}|${hashSecret(d.apiKey)}`
       : `${d.kind}|${d.providerId}|${d.modelId}|${vendor}|${d.baseURL}|${hashSecret(d.apiKey)}|${d.reasoning}|${d.contextWindow ?? ''}|${d.supportsImages}|${clientId}`
-  return JSON.stringify([model, resolved.thinkingLevel, stableSystemPrompt, regenerationRevision, compaction])
+  return JSON.stringify([
+    model,
+    resolved.providerBinding,
+    resolved.thinkingLevel,
+    stableSystemPrompt,
+    regenerationRevision,
+    compaction,
+  ])
 }
 
 /** Compose Pi's cacheable prompt prefix while keeping the per-send timestamp last. */
@@ -581,12 +504,7 @@ const buildHarnessRecord = async (
     history,
     compaction,
   })
-  return {
-    harness,
-    baseTools: harness.getTools(),
-    systemPrompt,
-    receiptHttpClient: resolved.receiptHttpClient,
-  }
+  return { harness, baseTools: harness.getTools(), systemPrompt }
 }
 
 /** Refresh per-send prompt and app/MCP tool closures on a persistent harness. */
@@ -594,12 +512,8 @@ const prepareHarnessForSend = async (
   agentCore: AgentCoreModule,
   record: HarnessRecord,
   config: PreparedAiRequestConfig,
-  httpClient: AgentAdapterContext['httpClient'],
 ): Promise<void> => {
   record.systemPrompt.current = composeAppHarnessSystemPrompt(config)
-  if (record.receiptHttpClient) {
-    record.receiptHttpClient.current = httpClient
-  }
   const tools = await agentCore.toPiAgentTools(config.toolset)
   const allTools = [...record.baseTools, ...tools]
   const activeToolNames = config.model.toolUsage === 0 ? [] : allTools.map((tool) => tool.name)
@@ -870,7 +784,7 @@ const fetchViaHarness = async (
   init.signal?.throwIfAborted()
   await record.harness.setReasoningEffort(context.reasoningEffort, resolved.thinkingLevel)
   init.signal?.throwIfAborted()
-  await prepareHarnessForSend(agentCore, record, config, context.httpClient)
+  await prepareHarnessForSend(agentCore, record, config)
   init.signal?.throwIfAborted()
   // Not fatal: workspace copies are a cache of IndexedDB and the prompt keeps the preview.
   const failures = await agentCore.writeAgentWorkspaceFiles(context.threadId, files)
@@ -1108,7 +1022,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
     init.signal?.throwIfAborted()
     await record.harness.setReasoningEffort(context.reasoningEffort, resolved.thinkingLevel)
     init.signal?.throwIfAborted()
-    await prepareHarnessForSend(agentCore, record, config, context.httpClient)
+    await prepareHarnessForSend(agentCore, record, config)
     init.signal?.throwIfAborted()
     const failures = await agentCore.writeAgentWorkspaceFiles(context.threadId, files)
     init.signal?.throwIfAborted()

@@ -16,12 +16,13 @@ const collectSuiteFiles = (suites: JSONReportSuite[]): string[] =>
   suites.flatMap((suite) => [...suite.specs.map((spec) => spec.file), ...collectSuiteFiles(suite.suites ?? [])])
 
 /** Ask Playwright to collect tests without starting browsers or services. */
-const listSpecFiles = async (config: string): Promise<string[]> => {
+const listSpecFiles = async ([config, env]: [string, Record<string, string>?]): Promise<string[]> => {
   const result = await Bun.$`bunx playwright test --config ${config} --list --reporter=json`
     .env({
       ...process.env,
       EXTENDED_DATABASE_URL: process.env.EXTENDED_DATABASE_URL ?? 'postgresql://unused:unused@invalid.test/postgres',
       EXTENDED_POWERSYNC_URL: process.env.EXTENDED_POWERSYNC_URL ?? 'http://invalid.test:8080',
+      ...env,
     })
     .quiet()
   const report: JSONReport = result.json()
@@ -30,12 +31,16 @@ const listSpecFiles = async (config: string): Promise<string[]> => {
 
 if (import.meta.main) {
   const collectedFiles = await Promise.all(
-    [
-      'playwright.config.ts',
-      'playwright.preview.config.ts',
-      'playwright.extended.config.ts',
-      'playwright.e2ee.config.ts',
-    ].map(listSpecFiles),
+    (
+      [
+        ['playwright.config.ts'],
+        ['playwright.preview.config.ts'],
+        ['playwright.extended.config.ts'],
+        ['playwright.e2ee.config.ts'],
+        // The passkey specs run in their own invocation (see playwright.e2ee.config.ts).
+        ['playwright.e2ee.config.ts', { E2E_PASSKEY_ENABLED: 'true' }],
+      ] satisfies [string, Record<string, string>?][]
+    ).map(listSpecFiles),
   )
   const specFiles = Array.from(new Bun.Glob('e2e/**/*.spec.ts').scanSync())
   const uncollected = findUncollectedSpecs(specFiles, collectedFiles.flat())

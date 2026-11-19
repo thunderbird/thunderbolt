@@ -58,6 +58,27 @@ describe('SourceCard', () => {
       expect(img).toHaveAttribute('src', 'https://example.com/favicon.ico')
     })
 
+    it.each([undefined, 'https://example.com/tracking-icon'])(
+      'keeps private citations local with favicon %s',
+      (favicon) => {
+        renderWithProvider(<SourceCard source={{ ...mockSource, favicon, allowRemoteImages: false }} />)
+        const card = screen.getByRole('listitem')
+        expect(card.querySelector('img')).toBeNull()
+        expect(card.querySelector('[aria-hidden="true"]')).toHaveTextContent('E')
+        fireEvent.click(card)
+        expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+        expect(screen.getByText(mockSource.url)).toBeInTheDocument()
+      },
+    )
+
+    it.each(['http://localhost:8080', 'http://192.168.1.1', 'http://[::1]', 'http://user:pass@example.com'])(
+      'does not load explicit or derived device-side images from %s',
+      (origin) => {
+        renderWithProvider(<SourceCard source={{ ...mockSource, url: `${origin}/page`, favicon: `${origin}/icon` }} />)
+        expect(screen.getByRole('listitem').querySelector('img')).toBeNull()
+      },
+    )
+
     it('should show initial badge when favicon fails to load', () => {
       renderWithProvider(<SourceCard source={mockSource} />)
 

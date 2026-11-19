@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { t } from '@lingui/core/macro'
 import type { connectToAgent as defaultConnectToAgent } from '@/acp'
 import { getChatReasoningEffort as defaultGetChatReasoningEffort } from '@/ai/reasoning-effort'
 import {
@@ -22,9 +23,10 @@ import { createTurnTelemetry as defaultCreateTurnTelemetry, type TurnTelemetry }
 import { createWebToolBudget, type WebToolBudget } from '@/ai/web-tool-budget'
 import { resolveWebToolIntent, webBudgetExhaustedMessage } from '@/ai/turn-web-budget'
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
-import { getAllSkills as defaultGetAllSkills } from '@/dal'
+import { getAllSkills as defaultGetAllSkills, getAvailableModels as defaultGetAvailableModels } from '@/dal'
+import { isAgentActive as defaultIsAgentActive } from '@/dal/agents'
 import { isBuiltInAgent, isHostedAgent } from '@/defaults/agents'
-import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
+import { isModelReady, matchesThreadConfidentiality } from '@/settings/models/model-policy'
 import { loadProjectContextForThread as defaultLoadProjectContext } from '@/projects/load-project-context'
 import { buildProjectPromptSection } from '@/projects/project-prompt'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
@@ -43,6 +45,7 @@ import type {
   DebugTranscriptTurnOutcome,
 } from '@/debug-transcript/types'
 import {
+  createAgentUnavailableError,
   getChatErrorKind,
   getErrorName,
   getErrorRetryable,
@@ -56,8 +59,9 @@ import {
 import type { HttpClient } from '@/lib/http'
 import { hasAssistantContent } from '@/lib/message-utils'
 import { trackEvent as defaultTrackEvent } from '@/lib/posthog'
+import { collectThreadSources } from '@/lib/source-utils'
 import type { FetchFn } from '@/lib/proxy-fetch'
-import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
+import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import type { Agent, AgentAdapterContext } from '@/types/acp'
 import { Chat } from '@ai-sdk/react'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
@@ -71,6 +75,24 @@ import { applyAcpSessionEvent, getAcpCompactions } from './acp-session-events'
 export const maxRetries = 3
 const baseRetryDelayMs = 2000
 const emptyTurnRetryDelayMs = 250
+
+/** Access changes require an explicit user choice, never automatic retries or provider fallback. */
+class ModelAccessError extends Error {
+  readonly isRetryable = false
+  override name = 'ModelAccessError'
+}
+
+/** Resolve current model access for every inference attempt, including regeneration and retries. */
+const requireRunnableModel = (agent: Agent, selectedModel: Model): Model => {
+  if (!isBuiltInAgent(agent)) {
+    return selectedModel
+  }
+  const current = useChatStore.getState().models.find((model) => model.id === selectedModel.id && isModelReady(model))
+  if (!current) {
+    throw new ModelAccessError(t`Configure and select an available model before sending a message.`)
+  }
+  return current
+}
 
 /**
  * Calculate retry delay with exponential backoff and jitter.
@@ -221,7 +243,9 @@ export type CreateChatInstanceDeps = {
   connectToAgent?: typeof defaultConnectToAgent
   updateChatThread?: typeof defaultUpdateChatThread
   getDb?: typeof defaultGetDb
+  isAgentActive?: (agent: Agent) => Promise<boolean>
   getAllSkills?: typeof defaultGetAllSkills
+  getAvailableModels?: () => Promise<Model[]>
   loadProjectContext?: typeof defaultLoadProjectContext
   createChat?: (init: ChatInit<ThunderboltUIMessage>) => Chat<ThunderboltUIMessage>
   createTurnBudget?: typeof defaultCreateTurnBudget
@@ -238,6 +262,7 @@ export type AgentRoutingState = {
   getTurnTelemetry?: () => TurnTelemetry | undefined
   getDebugTranscriptTraceId?: () => string | undefined
   getAttempt?: () => number
+  getTurnModel?: () => Model | undefined
 }
 
 /**
@@ -271,7 +296,9 @@ export const createAgentRoutingFetch = (
   const getOrConnectAdapter = deps.getOrConnectAdapter ?? defaultGetOrConnectAdapter
   const updateChatThread = deps.updateChatThread ?? defaultUpdateChatThread
   const getDb = deps.getDb ?? defaultGetDb
+  const isAgentActive = deps.isAgentActive ?? ((agent: Agent) => defaultIsAgentActive(getDb(), agent))
   const getAllSkills = deps.getAllSkills ?? defaultGetAllSkills
+  const getAvailableModels = deps.getAvailableModels ?? (async () => defaultGetAvailableModels(getDb()))
   const loadProjectContext = deps.loadProjectContext ?? defaultLoadProjectContext
   const getTurnBudget =
     routingState.getTurnBudget ??
@@ -282,6 +309,17 @@ export const createAgentRoutingFetch = (
 
   let routedAgentId: string | null = null
 
+  /** The session holds the agent object it picked, which disabling or deleting
+   *  the agent never updates, so every send rereads the agent's row. */
+  const assertAgentActive = async (agent: Agent): Promise<void> => {
+    if (!isBuiltInAgent(agent) && !(await isAgentActive(agent))) {
+      throw createAgentUnavailableError(agent.id)
+    }
+  }
+
+  /** The call cap is per turn, but citation numbering is per thread: the budget is
+   *  seeded with earlier turns' sources so a follow-up's `[N]` keeps pointing at
+   *  the page the model saw labelled `[Source N]`. */
   const getWebToolBudget = (messages: ThunderboltUIMessage[]): WebToolBudget | undefined => {
     const lastUserMessage = messages.findLast((message) => message.role === 'user')
     if (!lastUserMessage) {
@@ -295,6 +333,7 @@ export const createAgentRoutingFetch = (
       resolveWebToolIntent(extractLastUserText(messages)),
       undefined,
       webBudgetExhaustedMessage,
+      collectThreadSources(messages),
     )
     routingState.webToolBudgetState = { key, budget }
     return budget
@@ -353,8 +392,17 @@ export const createAgentRoutingFetch = (
       throw new Error('No session found')
     }
 
-    await session.configurationChange
-    const { chatThread, selectedAgent, selectedModel } = session
+    const { chatThread, selectedAgent } = session
+    const selectedModel =
+      operation === 'prompt' && isBuiltInAgent(selectedAgent)
+        ? (routingState.getTurnModel?.() ?? session.selectedModel)
+        : session.selectedModel
+    // Refuse inactive agents before saving a prompt or opening a connection.
+    await assertAgentActive(selectedAgent)
+    requireRunnableModel(selectedAgent, selectedModel)
+    const reasoningEffort = isBuiltInAgent(selectedAgent)
+      ? await (deps.getChatReasoningEffort ?? defaultGetChatReasoningEffort)(id, selectedModel)
+      : undefined
     const telemetry =
       operation === 'prompt' && isBuiltInAgent(selectedAgent) ? routingState.getTurnTelemetry?.() : undefined
     telemetry?.setDimensions({
@@ -392,7 +440,10 @@ export const createAgentRoutingFetch = (
     }
     if (operation === 'prompt') {
       telemetry?.startPhase('persist_user_message')
-      await saveMessages({ id, messages: requestMessages })
+      // Hydration supplies a durable prefix, and historical edits save themselves.
+      // Keep the predecessor too: the SDK does not await the previous onFinish,
+      // so its assistant row may still need inserting before the new user's parent is set.
+      await saveMessages({ id, messages: requestMessages.slice(-2) })
       telemetry?.endPhase('persist_user_message')
     }
 
@@ -447,6 +498,11 @@ export const createAgentRoutingFetch = (
       ? undefined
       : (request: RequestPermissionRequest) => requestPermissionViaStore(id, selectedAgent.id, request)
 
+    // Again after the awaits above, since the agent may have been disabled or deleted while it
+    // connected. The hosted agent posts as soon as `adapter.fetch` runs; the ACP
+    // adapter checks once more right before `session/prompt`.
+    await assertAgentActive(selectedAgent)
+
     const turnBudget = getTurnBudget().consumer
     if (operation === 'prompt' && !turnBudget.tryConsumeRequest()) {
       telemetry?.recordRetry({
@@ -465,15 +521,22 @@ export const createAgentRoutingFetch = (
       throw createTurnBudgetExhaustedError()
     }
 
+    // Sync and other tabs can change access without updating this tab's model snapshot.
+    if (isBuiltInAgent(selectedAgent)) {
+      useChatStore.getState().setModels(await getAvailableModels())
+    }
+    const runnableModel = requireRunnableModel(selectedAgent, selectedModel)
+    const currentThread = useChatStore.getState().sessions.get(id)?.chatThread ?? chatThread
+    if (isBuiltInAgent(selectedAgent) && !matchesThreadConfidentiality(runnableModel, currentThread)) {
+      throw new ModelAccessError(t`This model no longer matches the conversation’s privacy setting.`)
+    }
     const context: AgentAdapterContext = {
       threadId: id,
-      chatThread,
-      acpSessionId: chatThread?.acpSessionId ?? null,
+      chatThread: currentThread,
+      acpSessionId: currentThread?.acpSessionId ?? null,
       saveMessages,
-      selectedModel,
-      reasoningEffort: isBuiltInAgent(selectedAgent)
-        ? await (deps.getChatReasoningEffort ?? defaultGetChatReasoningEffort)(id, selectedModel)
-        : undefined,
+      selectedModel: runnableModel,
+      reasoningEffort,
       mcpClients,
       reconnectClient,
       httpClient,
@@ -663,6 +726,7 @@ const createInFlightTurnStorage = (chatId: string): InFlightTurnStorage => {
 type TurnModelProperties = { model_id: string; model_name: string; provider: string }
 
 type TurnState = {
+  model: Model | undefined
   telemetry: TurnTelemetry | undefined
   modelProperties: TurnModelProperties | undefined
   traceId: string | undefined
@@ -673,6 +737,7 @@ type TurnState = {
 
 /** Create isolated telemetry state for one chat turn. */
 const createTurnState = (): TurnState => ({
+  model: undefined,
   telemetry: undefined,
   modelProperties: undefined,
   traceId: undefined,
@@ -720,6 +785,7 @@ export const createChatInstance = (
     if (!session?.selectedModel) {
       return
     }
+    turn.model = session.selectedModel
     turn.modelProperties = {
       model_id: session.selectedModel.id,
       model_name: session.selectedModel.model,
@@ -769,6 +835,12 @@ export const createChatInstance = (
     getTurnTelemetry: getOrCreateTurnTelemetry,
     getDebugTranscriptTraceId: getOrCreateDebugTranscriptTraceId,
     getAttempt: getAttemptsMade,
+    getTurnModel: () => {
+      if (!currentTurn.model) {
+        initializeTurnForCurrentSession(currentTurn)
+      }
+      return currentTurn.model
+    },
   }
   const customFetch = createAgentRoutingFetch(id, saveMessages, httpClient, getProxyFetch, deps, routingState)
   const createChat = deps.createChat ?? ((init: ChatInit<ThunderboltUIMessage>) => new Chat(init))
@@ -1099,6 +1171,17 @@ export const createChatInstance = (
         return
       }
 
+      // The agent was disabled or deleted, possibly after the prompt was saved. Flag
+      // it like a stopped prompt so a reload never auto-runs it on a fallback agent.
+      if (getChatErrorKind(lastError) === 'agent-unavailable') {
+        const refusedPrompt = setPromptStopped(true)
+        if (refusedPrompt && useChatStore.getState().sessions.get(id)?.chatThread) {
+          await saveMessages({ id, messages: [refusedPrompt] })
+        }
+        markRetriesExhausted(finishedTurn)
+        return
+      }
+
       // A transport loss may have interrupted the turn after the agent performed
       // side effects. Only the user may choose to submit it again.
       if (getChatErrorKind(lastError) === 'connection-lost') {
@@ -1240,11 +1323,10 @@ export const createChatInstance = (
 
   const originalRegenerate = instance.regenerate.bind(instance)
 
-  /** A retry can run on a different model than the original send; record the one it
-   *  uses on the prompt, so the turn (and its saved row) names the model that answered. */
+  /** Manual retries can choose a new model; automatic retries retain this logical turn's model. */
   const stampRetryModel = () => {
     // `selectedModel` can be missing at runtime; the send path guards it the same way.
-    const modelId = useChatStore.getState().sessions.get(id)?.selectedModel?.id
+    const modelId = routingState.getTurnModel?.()?.id
     const index = instance.messages.findLastIndex((message) => message.role === 'user')
     const prompt = instance.messages[index]
     if (!modelId || !prompt || prompt.metadata?.modelId === modelId) {
@@ -1384,6 +1466,8 @@ export const createChatInstance = (
     if (!selectedModel) {
       throw new Error('No selected model')
     }
+
+    requireRunnableModel(selectedAgent, selectedModel)
 
     // The hosted agent doesn't use the selected model, and its threads are never
     // private, so the model/thread confidentiality lock doesn't apply to it.

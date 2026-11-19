@@ -108,13 +108,15 @@ If your provider needs the assertion consumer URL entered by hand:
 
 Assertions must be signed. Thunderbolt validates the signature against `SAML_CERT` and the issuer against `SAML_IDP_ISSUER`.
 
+By default, Thunderbolt accepts a response to an app-initiated login only from the browser that started it. Thunderbolt sets a cookie with the SAML request and checks it at the ACS. A cross-site POST from the IdP carries this cookie only over HTTPS. On plain HTTP, SAML works only when the IdP shares the API's site, such as `localhost` in local tests. HTTP also lacks the cookie protection against a sibling subdomain setting a copy. The login request expires after five minutes.
+
 ### Logging in from the provider's dashboard
 
 Thunderbolt refuses a SAML response that does not answer a login request it sent. That rules out a login that starts at your provider's dashboard, where a user clicks the Thunderbolt icon and the provider sends a response nobody asked for. The user is sent to `APP_URL` and sees the app's sign-in error page, which asks them to open Thunderbolt and sign in from there. Its "Try again" button starts a normal login. Nothing is signed in from the unrequested response. This redirect needs the app's origin in `TRUSTED_ORIGINS`.
 
 You can keep the dashboard icon working without changing this. Most providers let you point the icon at a URL. Set it to the address of your Thunderbolt app, such as `https://thunderbolt.example.com`. In Azure (Microsoft Entra ID) the field is called "Sign on URL". The login then starts at Thunderbolt, which sends a request, and the provider answers it.
 
-If your provider cannot do that, set `SAML_ALLOW_IDP_INITIATED=true` and restart the API. The setting is a risk. With no request to compare against, Thunderbolt cannot tell whether the person started the login or someone else did, for example by getting a signed response into their browser. The SAML library calls this a known attack vector, and the SAML2Int interoperability profile advises against this kind of login. Turn it on only if your provider leaves you no other way.
+If your provider cannot do that, set `SAML_ALLOW_IDP_INITIATED=true` and restart the API. This permits responses with no login request or browser cookie to compare. A signed response can then sign someone else's browser in to the attacker's account. A response from an app-initiated login with RelayState removed is indistinguishable from an unsolicited response, so it also skips the browser check. The SAML library calls IdP-initiated login a known attack vector, and the SAML2Int interoperability profile advises against it. Use this setting only if your provider leaves you no other way.
 
 ## What single sign-on looks like to the user
 
@@ -207,7 +209,7 @@ A session belongs to the device that created it. With sync on, users see every s
 | SAML rejects the assertion                                     | The wrong assertion consumer URL, or a mismatched entity ID               | Compare the provider's configuration against the service-provider metadata URL above                                  |
 | An invalid certificate error on SAML                           | The certificate still has its PEM header and footer                       | Use the raw base64 body only                                                                                          |
 | Clicking the icon in the provider's dashboard does not sign in | Thunderbolt refuses SAML responses it did not ask for                     | Point the icon at your app's address, or set `SAML_ALLOW_IDP_INITIATED=true` (read the risk)                          |
-| Many users get `429` at the same time                          | `TRUSTED_PROXY` is empty behind a CDN, so everyone shares one limit       | Set `TRUSTED_PROXY` to `cloudflare` or `akamai` if you use one. See [Configuration](./configuration.md#rate-limiting) |
+| Many users get `429` at the same time                          | `TRUSTED_PROXY` is empty behind a CDN or proxy, so everyone shares one limit | Set `TRUSTED_PROXY` to `cloudflare`, `akamai`, or a fixed proxy chain's hop count. See [Configuration](./configuration.md#rate-limiting) |
 | Nobody receives a sign-in code                                 | No email service is configured                                            | Check the server logs                                                                                                 |
 | A new user gets a waitlist email instead of a code             | The address has no account and is not approved                            | Add its domain to `WAITLIST_AUTO_APPROVE_DOMAINS` and restart, or approve its `waitlist` row                          |
 

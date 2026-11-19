@@ -131,17 +131,7 @@ try {
             const harness = await core.buildAppHarness({
               model:
                 providerId === 'tinfoil'
-                  ? {
-                      ...model,
-                      kind: 'confidential',
-                      vendor: 'zhipu',
-                      receipts: core.createReceiptLifecycle({
-                        submit: async () => {},
-                        reportError: (error) => {
-                          throw error
-                        },
-                      }),
-                    }
+                  ? { ...model, kind: 'confidential', vendor: 'zhipu' }
                   : { ...model, kind: 'openai-compat' },
               systemPrompt: 'Answer briefly.',
               thinkingLevel: 'off',

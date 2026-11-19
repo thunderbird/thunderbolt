@@ -63,6 +63,7 @@ const remoteAgent: Agent = {
 }
 
 const httpClient: HttpClient = {} as HttpClient
+const isAgentActive = async () => true
 const getProxyFetch: () => FetchFn = () => (async () => new Response('ok')) as unknown as FetchFn
 
 const baseAdapterContext = (overrides: Partial<AgentAdapterContext> = {}): AgentAdapterContext => ({
@@ -135,7 +136,7 @@ describe('connectToAgent: managed-http dispatch', () => {
     const openTransport = refuseAcpTransport()
     const { httpClient: contextClient, fetchSpy } = createSpyHttpClient(async () => new Response('streamed'))
 
-    const adapter = await connectToAgent(hostedAgent, { httpClient, getProxyFetch }, { openTransport })
+    const adapter = await connectToAgent(hostedAgent, { httpClient, getProxyFetch }, { openTransport, isAgentActive })
     const response = await adapter.fetch(promptInit('hi'), baseAdapterContext({ httpClient: contextClient }))
 
     expect(adapter.capabilities).toBeNull()
@@ -148,9 +149,36 @@ describe('connectToAgent: managed-http dispatch', () => {
     const openTransport = refuseAcpTransport()
 
     await expect(
-      connectToAgent({ ...hostedAgent, isSystem: 0, userId: 'u1' }, { httpClient, getProxyFetch }, { openTransport }),
+      connectToAgent(
+        { ...hostedAgent, isSystem: 0, userId: 'u1' },
+        { httpClient, getProxyFetch },
+        { openTransport, isAgentActive },
+      ),
     ).rejects.toThrow('Refusing managed-http for non-system agent')
     expect(openTransport).not.toHaveBeenCalled()
+  })
+})
+
+describe('connectToAgent: disabled or deleted agent', () => {
+  it('refuses before opening a transport', async () => {
+    const openTransport = mock(async () => {
+      throw new Error('an inactive agent must not be dialed')
+    })
+    const refuse = mock(async () => false)
+
+    await expect(
+      connectToAgent(remoteAgent, { httpClient, getProxyFetch }, { openTransport, isAgentActive: refuse }),
+    ).rejects.toThrow('"kind":"agent-unavailable"')
+    expect(refuse).toHaveBeenCalledTimes(1)
+    expect(openTransport).not.toHaveBeenCalled()
+  })
+
+  it('never checks a row for the built-in agent', async () => {
+    const refuse = mock(async () => false)
+
+    await connectToAgent(builtInAgent, { httpClient, getProxyFetch }, { aiFetch: mock(), isAgentActive: refuse })
+
+    expect(refuse).not.toHaveBeenCalled()
   })
 })
 
@@ -161,9 +189,9 @@ describe('connectToAgent: unknown agent type', () => {
     })
     const futureAgent = { ...remoteAgent, type: 'future-kind' } as unknown as Agent
 
-    await expect(connectToAgent(futureAgent, { httpClient, getProxyFetch }, { openTransport })).rejects.toThrow(
-      'Unknown agent type future-kind',
-    )
+    await expect(
+      connectToAgent(futureAgent, { httpClient, getProxyFetch }, { openTransport, isAgentActive }),
+    ).rejects.toThrow('Unknown agent type future-kind')
     expect(openTransport).not.toHaveBeenCalled()
   })
 })
@@ -249,7 +277,7 @@ describe('connectToAgent: skills in session metadata', () => {
         const adapter = await connectToAgent(
           remoteAgent,
           { httpClient, getProxyFetch },
-          { openTransport, ClientSideConnection: FakeConnection as never },
+          { openTransport, ClientSideConnection: FakeConnection as never, isAgentActive },
         )
         await adapter.fetch(promptInit('hi'), baseAdapterContext({ acpSessionId: null }))
 
@@ -271,7 +299,7 @@ describe('connectToAgent — remote-acp dispatch', () => {
     const adapter = await connectToAgent(
       remoteAgent,
       { httpClient, getProxyFetch },
-      { openTransport, ClientSideConnection: FakeConnection as never, getEnabledSkills: async () => [] },
+      { openTransport, ClientSideConnection: FakeConnection as never, getEnabledSkills: async () => [], isAgentActive },
     )
 
     // initialize runs at connect; session resolution is now lazy/per-thread.
@@ -294,7 +322,7 @@ describe('connectToAgent — remote-acp dispatch', () => {
     const adapter = await connectToAgent(
       remoteAgent,
       { httpClient, getProxyFetch },
-      { openTransport, ClientSideConnection: FakeConnection as never, getEnabledSkills: async () => [] },
+      { openTransport, ClientSideConnection: FakeConnection as never, getEnabledSkills: async () => [], isAgentActive },
     )
 
     await adapter.fetch(promptInit('hi'), baseAdapterContext({ acpSessionId: 'existing-sess' }))
@@ -313,7 +341,7 @@ describe('connectToAgent — remote-acp dispatch', () => {
     const adapter = await connectToAgent(
       remoteAgent,
       { httpClient, getProxyFetch },
-      { openTransport, ClientSideConnection: FakeConnection as never, getEnabledSkills: async () => [] },
+      { openTransport, ClientSideConnection: FakeConnection as never, getEnabledSkills: async () => [], isAgentActive },
     )
     expect(adapter.capabilities).toMatchObject({ resume: true })
 
@@ -337,7 +365,7 @@ describe('connectToAgent — remote-acp dispatch', () => {
     const adapter = await connectToAgent(
       remoteAgent,
       { httpClient, getProxyFetch },
-      { openTransport, ClientSideConnection: FakeConnection as never, getEnabledSkills: async () => [] },
+      { openTransport, ClientSideConnection: FakeConnection as never, getEnabledSkills: async () => [], isAgentActive },
     )
 
     await adapter.fetch(promptInit('hi'), baseAdapterContext({ acpSessionId: 'old-stale', onAcpSessionId }))
@@ -353,7 +381,7 @@ describe('connectToAgent — remote-acp dispatch', () => {
     const adapter = await connectToAgent(
       remoteAgent,
       { httpClient, getProxyFetch },
-      { openTransport, ClientSideConnection: FakeConnection as never, getEnabledSkills: async () => [] },
+      { openTransport, ClientSideConnection: FakeConnection as never, getEnabledSkills: async () => [], isAgentActive },
     )
 
     const init: RequestInit = {

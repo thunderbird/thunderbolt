@@ -11,6 +11,8 @@ import {
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal'
 import { AttestationPanel } from './attestation-panel'
+import { AttestationStatusIcon } from './attestation-status-icon'
+import { useAttestationDisplay } from './use-attestation-display'
 import type { AttestationControlProps } from './props'
 
 /** The menu row unmounts on opening, so focus returns to the persistent selector. */
@@ -28,6 +30,7 @@ export const AttestationModal = ({
   returnFocusRef: RefObject<HTMLButtonElement | null>
 }) => {
   const { t } = useLingui()
+  const { status, label } = useAttestationDisplay(target, state)
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <ResponsiveModalContentComposable
@@ -39,7 +42,14 @@ export const AttestationModal = ({
         }}
       >
         <ResponsiveModalHeader className="mb-0">
-          <ResponsiveModalTitle>{t`Connection privacy`}</ResponsiveModalTitle>
+          <ResponsiveModalTitle
+            className="flex items-center justify-center gap-2"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            <AttestationStatusIcon status={status} className="size-5 shrink-0" />
+            {status === 'verified' ? t`Connection Verified` : label}
+          </ResponsiveModalTitle>
         </ResponsiveModalHeader>
         <AttestationPanel target={target} state={state} onVerify={onVerify} hour12={hour12} />
       </ResponsiveModalContentComposable>

@@ -195,7 +195,7 @@ export const useSignInFormState = ({
     }
     dispatch({ type: 'START_VERIFYING' })
     try {
-      await analytics.captureAnonId(authClient)
+      await analytics.captureAnonymousSession(authClient)
       if (!attempt.isCurrent()) {
         return
       }
@@ -219,7 +219,7 @@ export const useSignInFormState = ({
         return
       }
       if (result.data?.user?.id) {
-        analytics.onPromotionSuccess(result.data.user.id)
+        analytics.onPromotionSuccess()
       }
       dispatch({ type: 'VERIFY_SUCCESS' })
     } catch (error) {
@@ -242,11 +242,11 @@ export const useSignInFormState = ({
     }
     dispatch({ type: 'PASSKEY_START' })
     try {
-      await analytics.captureAnonId(authClient)
+      await analytics.captureAnonymousSession(authClient)
       if (!attempt.isCurrent()) {
         return
       }
-      const { userId } = await signInWithPasskey(authClient, {
+      await signInWithPasskey(authClient, {
         signal: attempt.signal,
         onAuthenticated: () => {
           attempt.commit()
@@ -258,7 +258,7 @@ export const useSignInFormState = ({
       if (!attempt.isCurrent()) {
         return
       }
-      analytics.onPromotionSuccess(userId)
+      analytics.onPromotionSuccess()
       dispatch({ type: 'VERIFY_SUCCESS' })
     } catch (error) {
       const cancelled = !attempt.isCommitted() && (isPasskeyCancellation(error) || attempt.isCancellation(error))

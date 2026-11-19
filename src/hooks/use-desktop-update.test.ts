@@ -8,6 +8,7 @@ import { getClock } from '@/testing-library'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import {
   createDesktopUpdateStore,
+  desktopUpdatesEnabled,
   useDesktopUpdate,
   updateReducer,
   initialUpdateState,
@@ -207,7 +208,7 @@ describe('update transition guards', () => {
 })
 
 describe('desktop update operations', () => {
-  const setup = () => {
+  const setup = (enabled = true) => {
     const download = mock(
       async (_onEvent: Parameters<NonNullable<UpdateState['update']>['downloadAndInstall']>[0]) => {},
     )
@@ -217,7 +218,7 @@ describe('desktop update operations', () => {
       close: mock(async () => {}),
     } as unknown as NonNullable<UpdateState['update']>
     const services = {
-      isDesktop: () => true,
+      enabled,
       check: mock(async (): Promise<UpdateState['update']> => update),
       disconnect: mock(async () => {}),
       relaunch: mock(async () => {}),
@@ -243,8 +244,7 @@ describe('desktop update operations', () => {
   })
 
   it('never loads the updater on web and ignores premature download/restart', async () => {
-    const { store, services, download } = setup()
-    services.isDesktop = () => false
+    const { store, services, download } = setup(false)
     await store.getState().checkForUpdates()
     await store.getState().downloadAndInstall()
     await store.getState().restartApp()
@@ -352,10 +352,10 @@ describe('desktop update operations', () => {
 })
 
 describe('shared automatic update check', () => {
-  const setup = () => {
+  const setup = (enabled = platform.isDesktop()) => {
     const check = mock(async (): Promise<UpdateState['update']> => null)
     const store = createDesktopUpdateStore({
-      isDesktop: () => platform.isDesktop(),
+      enabled,
       check,
       disconnect: async () => {},
       relaunch: async () => {},
@@ -439,6 +439,30 @@ describe('shared automatic update check', () => {
     expect(view.result.current.status).toBe('initial')
     view.unmount()
   })
+
+  it.each([
+    { desktop: false, development: false, nativeDebug: false },
+    { desktop: true, development: true, nativeDebug: false },
+    { desktop: true, development: true, nativeDebug: true },
+    { desktop: true, development: false, nativeDebug: true },
+    { desktop: true, development: false, nativeDebug: false },
+  ])('gates automatic and manual checks for %j', async (environment) => {
+    const { store, check } = setup(desktopUpdatesEnabled(environment))
+    const view = renderHook(() => useDesktopUpdate(store))
+    await act(async () => getClock().tickAsync(5000))
+    await act(async () => {
+      await view.result.current.checkForUpdates()
+      await view.result.current.primaryAction()
+    })
+    const releaseDesktop = environment.desktop && !environment.development && !environment.nativeDebug
+    expect(check).toHaveBeenCalledTimes(releaseDesktop ? 3 : 0)
+    expect(view.result.current).toMatchObject({
+      enabled: releaseDesktop,
+      status: releaseDesktop ? 'idle' : 'initial',
+      error: null,
+    })
+    view.unmount()
+  })
 })
 
 describe('updater manifest replacement', () => {
@@ -448,7 +472,7 @@ describe('updater manifest replacement', () => {
       .mockResolvedValueOnce(old)
       .mockResolvedValueOnce(null)
     const store = createDesktopUpdateStore({
-      isDesktop: () => true,
+      enabled: true,
       check,
       disconnect: async () => {},
       relaunch: async () => {},
@@ -473,7 +497,7 @@ describe('updater manifest replacement', () => {
       .mockResolvedValueOnce(old)
       .mockResolvedValueOnce(replacement)
     const store = createDesktopUpdateStore({
-      isDesktop: () => true,
+      enabled: true,
       check,
       disconnect: async () => {},
       relaunch: async () => {},

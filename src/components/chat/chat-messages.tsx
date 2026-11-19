@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { AssistantMessage } from './assistant-message'
+import { PrivateSourcesContext } from './private-sources-context'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { UserMessage } from './user-message'
 import { ErrorMessage } from './error-message'
@@ -16,6 +17,7 @@ import { isAttachmentPart } from '@/lib/attachments'
 import { filterMessageParts } from '@/lib/assistant-message'
 import { useHaptics } from '@/hooks/use-haptics'
 import { useAttachmentRemediation } from './use-attachment-remediation'
+import { useThreadSources } from './use-thread-sources'
 import { useTurnOffModelTools } from './use-turn-off-model-tools'
 import { isBuiltInAgent } from '@/defaults/agents'
 import { QuoteReplyButton } from './quote-reply-button'
@@ -77,6 +79,14 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
   const { triggerNotification } = useHaptics()
 
   const visibleMessages = useMemo(() => messages.filter((message) => message.metadata?.oauthRetry !== true), [messages])
+  const privateSourceMessageIds = useMemo(() => {
+    const start = messages.findIndex((message) =>
+      message.metadata?.sources?.some((source) => source.allowRemoteImages === false),
+    )
+    return new Set(start === -1 ? [] : messages.slice(start).map((message) => message.id))
+  }, [messages])
+  // All messages, like the request history the model numbered its citations against.
+  const threadSources = useThreadSources(messages)
   const lastMessage = useMemo(() => visibleMessages.at(-1), [visibleMessages])
   const shareActionHostId = useMemo(() => visibleMessages.findLast(rendersContent)?.id, [visibleMessages])
   const lastAssistantMessage = useMemo(
@@ -142,10 +152,10 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
   )
   const lastUserMessageId = lastUserMessage?.id
   const resendAttachment = useCallback(
-    (messageId: string, localFileId: string, target: 'text' | 'images') => {
+    (localFileId: string, target: 'text' | 'images') => {
       setMessages((prev) =>
         prev.map((message) =>
-          message.id === messageId
+          message.id === lastUserMessageId
             ? {
                 ...message,
                 parts: message.parts.map((part) =>
@@ -159,7 +169,7 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
       )
       regenerate()
     },
-    [setMessages, regenerate],
+    [lastUserMessageId, setMessages, regenerate],
   )
 
   const compactionInLastMessage = compacting && isStreaming && lastMessage?.role === 'assistant'
@@ -177,24 +187,23 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
         return (
           <Fragment key={message.id}>
             {message.role === 'assistant' && !hideAssistant && (
-              <AssistantMessage
-                message={message}
-                isStreaming={isStreaming && isLast}
-                isLastMessage={isLast && shouldUseViewportPositioning(visibleMessages.length)}
-                isLastAssistantMessage={message.id === lastAssistantMessage?.id}
-                lastAssistantAction={message.id === shareActionHostId ? shareDebugTranscriptAction : undefined}
-                activity={isLast && compactionInLastMessage ? <CompactionNotice status="compacting" /> : undefined}
-              />
+              <PrivateSourcesContext value={privateSourceMessageIds.has(message.id)}>
+                <AssistantMessage
+                  message={message}
+                  sources={threadSources.get(message.id)}
+                  isStreaming={isStreaming && isLast}
+                  isLastMessage={isLast && shouldUseViewportPositioning(visibleMessages.length)}
+                  isLastAssistantMessage={message.id === lastAssistantMessage?.id}
+                  lastAssistantAction={message.id === shareActionHostId ? shareDebugTranscriptAction : undefined}
+                  activity={isLast && compactionInLastMessage ? <CompactionNotice status="compacting" /> : undefined}
+                />
+              </PrivateSourcesContext>
             )}
             {message.role === 'user' && (
               <UserMessage
                 message={message}
                 lastMessageAction={message.id === shareActionHostId ? shareDebugTranscriptAction : undefined}
-                onResendAttachment={
-                  message.id === lastUserMessageId
-                    ? (localFileId, target) => resendAttachment(message.id, localFileId, target)
-                    : undefined
-                }
+                onResendAttachment={message.id === lastUserMessageId ? resendAttachment : undefined}
               />
             )}
             {checkpoint?.version === 1 && (

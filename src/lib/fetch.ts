@@ -6,6 +6,7 @@ import type { fetch as tauriFetch } from '@tauri-apps/plugin-http'
 import { nativeFetch } from './native-fetch'
 import { isTauri } from '@/lib/platform'
 import { getLocalSetting } from '@/stores/local-settings-store'
+import { usesLocalProviders } from '@/lib/provider-mode'
 
 type FetchDeps = { isTauri: () => boolean; tauriFetch?: typeof tauriFetch }
 
@@ -24,7 +25,7 @@ export const fetch = async (
     return globalThis.fetch(input, init)
   }
 
-  if (getLocalSetting('isNativeFetchEnabled')) {
+  if (usesLocalProviders() || getLocalSetting('isNativeFetchEnabled')) {
     return nativeFetch(input, init, deps.tauriFetch)
   }
 

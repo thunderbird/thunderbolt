@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth, useSignInModal, type AuthClient } from '@/contexts'
 import { useAsyncAttempt } from '@/hooks/use-async-attempt'
+import { useDeviceKeyTrust } from '@/hooks/use-e2ee-ready'
 import { saveDeviceApprovalReturn } from '@/lib/device-approval-return'
 import {
   approveDeviceCode,
@@ -163,6 +164,8 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
   const navigate = useNavigate()
   const { state, setCode, submitCode, approve, deny, reset } = useDeviceApproval(authClient, initialCode)
 
+  const { unverified } = useDeviceKeyTrust()
+
   const goHome = () => navigate('/', { replace: true })
   const isSubmitting = state.status === 'submitting'
 
@@ -238,6 +241,17 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
             <p className="text-center text-[length:var(--font-size-sm)] text-muted-foreground">
               <Trans>Confirm this code matches the one in your terminal.</Trans>
             </p>
+            {unverified && (
+              <p
+                id="cli-approve-blocked"
+                className="text-center text-[length:var(--font-size-sm)] text-muted-foreground"
+              >
+                <Trans>
+                  This device can't approve sign-ins because its encryption keys couldn't be verified. Approve from a
+                  device that was trusted before.
+                </Trans>
+              </p>
+            )}
             <div className="flex w-full gap-2">
               <Button variant="outline" className="flex-1" onClick={deny} disabled={isSubmitting}>
                 {state.pendingAction === 'deny' ? (
@@ -246,7 +260,12 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
                   <Trans>Deny</Trans>
                 )}
               </Button>
-              <Button className="flex-1" onClick={approve} disabled={isSubmitting}>
+              <Button
+                className="flex-1"
+                onClick={approve}
+                disabled={isSubmitting || unverified}
+                aria-describedby={unverified ? 'cli-approve-blocked' : undefined}
+              >
                 {state.pendingAction === 'approve' ? (
                   <Loader2 className="size-[var(--icon-size-sm)] animate-spin" />
                 ) : (

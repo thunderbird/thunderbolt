@@ -27,8 +27,14 @@ export type WebToolBudget = {
   execute: (toolName: string, input: unknown, run: () => Promise<unknown>) => Promise<unknown>
   probe: WebToolBudgetProbe
   intent: WebToolIntent
-  /** Citation labels and cached web results must share the logical turn's lifetime. */
+  /** This turn's new sources and cached web results must share the logical turn's lifetime. */
   readonly sourceCollector: SourceMetadata[]
+  /**
+   * Sources registered by earlier turns of the same thread. The model still sees
+   * their `[Source N]` labels in the history and cites them in follow-ups, so this
+   * turn's numbering continues after them and a URL seen before keeps its number.
+   */
+  readonly priorSources: readonly SourceMetadata[]
 }
 
 export type BudgetExhaustedResult = {
@@ -51,6 +57,7 @@ export const createWebToolBudget = (
     typeof process === 'undefined' ? undefined : process.env.WEB_BUDGET_PROMOTION,
   ),
   exhaustedMessage?: string,
+  priorSources: readonly SourceMetadata[] = [],
 ): WebToolBudget => {
   let cap = webToolCaps[intent]
   let consumed = 0
@@ -84,6 +91,7 @@ export const createWebToolBudget = (
       }
     },
     sourceCollector: [],
+    priorSources,
     execute: (toolName, input, run) => {
       const key = normalizeWebToolKey(toolName, input)
       const cached = dedupe.get(key)

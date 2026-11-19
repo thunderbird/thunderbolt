@@ -8,8 +8,10 @@ import { msg } from '@lingui/core/macro'
 import { useReducer } from 'react'
 import { useAsyncAttempt } from './use-async-attempt'
 import { getEncryptionErrorMessage } from '@/lib/encryption-error-message'
+import { EncryptedSyncUnsupportedError } from '@/lib/encrypted-sync-support'
+import { EncryptionRequestTimeoutError } from '@/services/encryption-request'
 import { HttpError } from '@/lib/http'
-import { useHttpClient, type HttpClient } from '@/contexts'
+import { useHttpClient } from '@/contexts'
 import { ValidationError } from '@/crypto'
 import { DeviceApprovalError } from '@/crypto/errors'
 import {
@@ -20,9 +22,11 @@ import {
   recoverWithKey,
   unlockWithPasskey as unlockWithPasskeySlot,
   ensureV2Encryption,
+  PasskeyContinuityError,
 } from '@/services/encryption'
+import { kdfSaltRequiresContinuity } from '@/crypto/kdf-salt'
 import { getPasskeyPrfOutput, isPasskeyCancellation } from '@/lib/passkey'
-import { checkCanaryExists, fetchEncryptionMetadata } from '@/api/encryption'
+import { checkCanaryExists, fetchEncryptionMetadataOrNull } from '@/api/encryption'
 import type { EncryptionMetadataResponse } from '@shared/e2ee-types'
 
 type SyncSetupStep =
@@ -45,6 +49,8 @@ type SyncSetupState = {
   step: SyncSetupStep
   /** Credential id of the account's passkey slot, from the metadata read at detection; null when none. */
   passkeySlotCredentialId: string | null
+  /** The account's phrase predates the continuity seal (untagged `kdf_salt`), so recovery is unverified. */
+  legacyRecoveryPhrase: boolean
   afterPasskey: AfterPasskey
   recoveryKey: string
   recoveryKeyInput: string
@@ -73,6 +79,7 @@ type SyncSetupAction =
   | { type: 'SETUP_COMPLETE' }
   | { type: 'DEVICE_DENIED' }
   | { type: 'SET_PASSKEY_SLOT'; payload: string | null }
+  | { type: 'SET_LEGACY_RECOVERY_PHRASE'; payload: boolean }
   | { type: 'GO_TO_PASSKEY_ENROLL'; payload: AfterPasskey }
   | { type: 'GO_BACK' }
   | { type: 'RESET' }
@@ -80,6 +87,7 @@ type SyncSetupAction =
 export const initialState: SyncSetupState = {
   step: 'intro',
   passkeySlotCredentialId: null,
+  legacyRecoveryPhrase: false,
   afterPasskey: 'complete',
   recoveryKey: '',
   recoveryKeyInput: '',
@@ -129,6 +137,8 @@ export const reducer = (state: SyncSetupState, action: SyncSetupAction): SyncSet
       return { ...state, step: 'denied', isLoading: false }
     case 'SET_PASSKEY_SLOT':
       return { ...state, passkeySlotCredentialId: action.payload }
+    case 'SET_LEGACY_RECOVERY_PHRASE':
+      return { ...state, legacyRecoveryPhrase: action.payload }
     case 'GO_TO_PASSKEY_ENROLL':
       return { ...state, step: 'passkey-enroll', afterPasskey: action.payload, isLoading: false }
     case 'GO_BACK':
@@ -157,17 +167,16 @@ export const classifyEncryptionMetadata = (metadata: EncryptionMetadataResponse 
   return metadata.scheme_version === 1 ? 'v1' : 'v2'
 }
 
-/** Fetch encryption metadata, mapping the 404 "not set up" case to null. */
-const fetchMetadataOrNull = async (httpClient: HttpClient): Promise<EncryptionMetadataResponse | null> => {
-  try {
-    return await fetchEncryptionMetadata(httpClient)
-  } catch (err) {
-    if (err instanceof HttpError && err.response.status === 404) {
-      return null
-    }
-    throw err
-  }
-}
+const approvalUnverifiedMessage = msg`Couldn't verify this device's approval. Select Check now to try again, or choose another option below.`
+
+/**
+ * What the waiting screen says when an approval check fails. A timeout and an unsupported runtime
+ * keep their own localized copy; anything else gets retry guidance, never an internal message.
+ */
+const describeApprovalFailure = (error: Error): string =>
+  error instanceof EncryptionRequestTimeoutError || error instanceof EncryptedSyncUnsupportedError
+    ? getEncryptionErrorMessage(error, i18n._(approvalUnverifiedMessage))
+    : i18n._(approvalUnverifiedMessage)
 
 /**
  * State machine for the sync setup wizard.
@@ -228,13 +237,17 @@ export const useSyncSetup = () => {
             return { outcome: 'error', passkeySlotCredentialId: null }
           }
           update({ type: 'SET_APPROVAL_FINGERPRINT', payload: await getThisDeviceApprovalFingerprint() })
-          const metadata = await fetchMetadataOrNull(httpClient)
+          const metadata = await fetchEncryptionMetadataOrNull(httpClient)
           if (!isCurrent()) {
             return { outcome: 'error', passkeySlotCredentialId: null }
           }
           const passkeySlotCredentialId = metadata?.passkey_credential_id ?? null
           const done = (outcome: IntroOutcome) => ({ outcome, passkeySlotCredentialId })
           update({ type: 'SET_PASSKEY_SLOT', payload: passkeySlotCredentialId })
+          update({
+            type: 'SET_LEGACY_RECOVERY_PHRASE',
+            payload: metadata?.kdf_salt != null && !kdfSaltRequiresContinuity(metadata.kdf_salt),
+          })
           const accountState = classifyEncryptionMetadata(metadata)
 
           if (accountState === 'none') {
@@ -352,12 +365,11 @@ export const useSyncSetup = () => {
     })
 
   const approvalVerificationFailed = (update: (action: SyncSetupAction) => void = updateWhileIdle) =>
-    update({
-      type: 'SET_APPROVAL_ERROR',
-      payload: i18n._(
-        msg`Couldn't verify this device's approval. Select Check now to try again, or choose another option below.`,
-      ),
-    })
+    update({ type: 'SET_APPROVAL_ERROR', payload: i18n._(approvalUnverifiedMessage) })
+
+  /** The automatic check keeps failing: say so as the manual check would, which also offers Check now. */
+  const approvalCheckFailed = (error: Error) =>
+    updateWhileIdle({ type: 'SET_APPROVAL_ERROR', payload: describeApprovalFailure(error) })
 
   const confirmApproval = () =>
     runOperation(false, async (update) => {
@@ -383,8 +395,12 @@ export const useSyncSetup = () => {
           approvalVerificationFailed(update)
           return false
         }
-        const message = getEncryptionErrorMessage(err, t`Failed to check approval`)
-        update({ type: 'SET_APPROVAL_ERROR', payload: message })
+        // A fixed line, like the other approval failures: the error itself may carry key material.
+        console.error('Failed to check device approval.')
+        update({
+          type: 'SET_APPROVAL_ERROR',
+          payload: err instanceof Error ? describeApprovalFailure(err) : i18n._(approvalUnverifiedMessage),
+        })
         return false
       }
     })
@@ -418,9 +434,13 @@ export const useSyncSetup = () => {
         }
         console.error('Passkey unlock failed:', err)
         const message =
-          err instanceof ValidationError
-            ? i18n._(msg`This passkey can't unlock sync for this account.`)
-            : i18n._(msg`Couldn't unlock sync with your passkey. Please try again.`)
+          err instanceof PasskeyContinuityError
+            ? i18n._(
+                msg`This passkey unlocked keys that don't belong to your account, so nothing was changed on this device.`,
+              )
+            : err instanceof ValidationError
+              ? i18n._(msg`This passkey can't unlock sync for this account.`)
+              : i18n._(msg`Couldn't unlock sync with your passkey. Please try again.`)
         update({ type: 'SET_APPROVAL_ERROR', payload: message })
         return false
       }
@@ -445,6 +465,7 @@ export const useSyncSetup = () => {
     submitRecoveryKey,
     confirmApproval,
     approvalVerificationFailed,
+    approvalCheckFailed,
     unlockWithPasskey,
     goToPasskeyEnroll,
     completeSetup,

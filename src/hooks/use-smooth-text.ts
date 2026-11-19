@@ -17,6 +17,11 @@ const subscribeReducedMotion = (callback: () => void) => {
 /** Read the current OS motion preference. */
 const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
+/** Completed text never animates, so it needs neither preference reads nor a live listener. */
+const subscribeStaticText = () => () => {}
+/** An inactive reveal ignores the motion preference until it starts streaming again. */
+const staticTextSnapshot = () => false
+
 /** Create progress for one target, resetting both cursor and fractional time together. */
 const createProgress = (target: string, revealed: number) => ({ target, revealed, carryMs: 0 })
 
@@ -26,7 +31,10 @@ const createProgress = (target: string, revealed: number) => ({ target, revealed
  * The SDK's message, persistence and copy text remain untouched.
  */
 export const useSmoothText = (text: string, enabled: boolean): string => {
-  const reducedMotion = useSyncExternalStore(subscribeReducedMotion, prefersReducedMotion)
+  const reducedMotion = useSyncExternalStore(
+    enabled ? subscribeReducedMotion : subscribeStaticText,
+    enabled ? prefersReducedMotion : staticTextSnapshot,
+  )
   const segmenter = graphemeSegmenter()
   const animate = enabled && !reducedMotion && segmenter !== null
   const [displayed, setDisplayed] = useState(() => (animate ? '' : text))

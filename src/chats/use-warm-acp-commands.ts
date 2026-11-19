@@ -6,6 +6,7 @@ import { useEffect, useRef } from 'react'
 
 import { getOrConnectAdapter as defaultGetOrConnectAdapter } from '@/acp/adapter-cache'
 import { useHttpClient } from '@/contexts'
+import { isAgentActive as defaultIsAgentActive } from '@/dal/agents'
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getDb as defaultGetDb } from '@/db/database'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
@@ -22,6 +23,7 @@ export type WarmAcpCommandsDeps = {
   updateChatThread?: typeof defaultUpdateChatThread
   makeCommandSink?: typeof defaultMakeCommandSink
   getDb?: typeof defaultGetDb
+  isAgentActive?: typeof defaultIsAgentActive
 }
 
 /**
@@ -53,6 +55,7 @@ export const useWarmAcpCommands = (
   const updateChatThread = deps.updateChatThread ?? defaultUpdateChatThread
   const makeCommandSink = deps.makeCommandSink ?? defaultMakeCommandSink
   const getDb = deps.getDb ?? defaultGetDb
+  const isAgentActive = deps.isAgentActive ?? defaultIsAgentActive
   const httpClient = useHttpClient()
   const getProxyFetch = useProxyFetchGetter()
   const warmedKey = useRef<string | null>(null)
@@ -76,7 +79,9 @@ export const useWarmAcpCommands = (
         onAvailableCommands: makeCommandSink(selectedAgent.id),
       }).catch(() => null)
 
-      if (!adapter) {
+      // `connectToAgent` checks the agent's row before each new connection; a
+      // cached one skips that, so check again before opening a session on it.
+      if (!adapter || !(await isAgentActive(getDb(), selectedAgent))) {
         if (!cancelled) {
           warmedKey.current = null
         }
@@ -120,5 +125,6 @@ export const useWarmAcpCommands = (
     updateChatThread,
     makeCommandSink,
     getDb,
+    isAgentActive,
   ])
 }

@@ -13,6 +13,9 @@ import { isPrivateAutoRunBlocked } from '@/chats/private-thread'
 import { useDatabase } from '@/contexts'
 import { builtInAgent } from '@/defaults/agents'
 import { getSettings } from '@/dal'
+import { showSignInModalEvent } from '@/hooks/use-credential-events'
+import { hasServerAuthentication } from '@/lib/provider-mode'
+import { getLocalSetting } from '@/stores/local-settings-store'
 import type { ThunderboltUIMessage } from '@/types'
 import type { ReplyChat } from '@/voice/chat-reply'
 import type { SessionState } from '@/voice/session'
@@ -168,7 +171,7 @@ export const useVoiceSession = () => {
   )
 
   const start = () =>
-    lifecycle.start(async (callbacks) => {
+    lifecycle.start(async (callbacks, signal) => {
       // Lazy-load the voice runtime (session + engines + VAD/playback/aggregator
       // graph) only when the user actually starts voice — it's a non-critical
       // feature and must stay out of the always-mounted chat composer's entry
@@ -182,8 +185,14 @@ export const useVoiceSession = () => {
           import('@/voice/chat-reply'),
           getSettings(db, { experimental_feature_voice: false }),
         ])
+      signal.throwIfAborted()
+      const engine = createVoiceEngine(experimentalFeatureVoice)
+      if (engine.id === 'thunderbolt' && (!getLocalSetting('cloudUrl') || !hasServerAuthentication())) {
+        window.dispatchEvent(new CustomEvent(showSignInModalEvent))
+        return null
+      }
       return createVoiceSession({
-        engine: createVoiceEngine(experimentalFeatureVoice),
+        engine,
         reply: createChatReply(toReplyChat(session.chatInstance, session.id)),
         ...callbacks,
       })

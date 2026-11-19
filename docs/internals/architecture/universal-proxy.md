@@ -81,12 +81,20 @@ document. The client strips the two `proxyFramingHeaders` when rebuilding.
 
 ## SSRF and the redirect loop
 
-`validateAndPin` ([backend/src/utils/url-validation.ts:77-118](../../../backend/src/utils/url-validation.ts#L77))
+`validateAndPin` ([backend/src/utils/url-validation.ts:99-144](../../../backend/src/utils/url-validation.ts#L99))
 resolves the hostname, rejects if _any_ resolved address is private, internal or reserved, then
 connects to that IP with the original `Host` header. Pinning closes the DNS-rebinding window
 between check and connect.
 
-- An IP-literal target skips the lookup but is classified the same way.
+A pinned HTTPS request needs a second half: Bun's `tls: { serverName }` fetch option, which
+`validateAndPin` returns alongside the headers. It names the original hostname for TLS SNI and
+certificate verification, which would otherwise follow the IP in the URL. Bun derived SNI from
+the `Host` header through 1.4.0; from 1.4.1 every pinned HTTPS request fails the handshake
+without it. Both the route and `createSafeFetch` pass it through, and the real-handshake test in
+`url-validation.test.ts` guards it across Bun upgrades.
+
+- An IP-literal target skips the lookup but is classified the same way, and gets no `tls`
+  override since the URL was not rewritten.
 - Userinfo is stripped by both the route and `validateAndPin`.
 - `ensureHttps` normalises first and rejects any non-`http(s)` scheme.
 
@@ -180,11 +188,23 @@ list (logged by none). Hence:
 - **The carrier exists** because RFC 6455 requires the server to echo one offered subprotocol for
   strict clients, and echoing the _bearer_ would expose the credential on `WebSocket.protocol` to
   page JS and response logs ([ws.ts:264-286](../../../backend/src/proxy/ws.ts#L264)).
-- **The bearer is validated in `open()`, not `beforeHandle`**, which Elysia/Bun can invoke more than
+- **The bearer is first validated in `open()`, not `beforeHandle`**, which Elysia/Bun can invoke more than
   once per upgrade and so holds only synchronous, idempotent target checks. `open()` runs once per
   accepted socket, validates through the Better Auth path REST uses, and refuses anonymous users
   ([ws.ts:303-340](../../../backend/src/proxy/ws.ts#L303),
   [backend/src/auth/ws-bearer-auth.ts](../../../backend/src/auth/ws-bearer-auth.ts)).
+- Sockets using the same bearer in one backend process share a session check across both WebSocket
+  routes. The group is keyed by the bearer as Better Auth reads it (trimmed, percent-decoded), so every
+  accepted encoding of one credential shares one poll. Each new socket starts its own session lookup. A
+  successful check is reused for at most one second for forwarded frames; a separate forced database
+  poll runs every five seconds even when frames keep arriving. Revocation closes every socket in that
+  group with `4001` and closes their upstreams. Inbound and server-initiated traffic may pass for up to
+  five seconds after revocation, plus session lookup and close time. Checks do not refresh session
+  expiry; outgoing frames do not query the database. A lookup that fails, for example while the
+  database restarts, is not a revocation: only the handshake that made it is refused with `1013`, and
+  live sockets keep their last result. Frames sent before the upstream opens skip the per-frame check,
+  so the pre-connect queue cap applies even while a lookup is slow; the upstream `open` listener checks
+  the session once before flushing that queue.
 - **The whole `tbproxy.*` and `thunderbolt.*` namespace is stripped before the upstream handshake**
   ([ws.ts:86](../../../backend/src/proxy/ws.ts#L86)); caller protocols pass through so the upstream
   negotiates normally.

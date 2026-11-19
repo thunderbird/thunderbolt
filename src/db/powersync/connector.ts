@@ -12,12 +12,17 @@ import {
   isCurrentAuthRequest,
 } from '@/lib/auth-token'
 import { isSsoMode } from '@/lib/auth-mode'
+import { isLocalDataOwnedBy } from '@/lib/local-data-owner'
+import { getCachedSession } from '@/lib/session-cache'
 import { normalizeBackendUrl } from '@/lib/url-utils'
 import type { CommonPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
 import { encodeForUpload, postKeysSyncMessage } from '@/db/encryption'
 import { getAK, getPrimaryKeyId } from '@/crypto'
 import { initialKeyId } from '@shared/e2ee-types'
+import { decodeBase64Url } from '@shared/base64url'
 import { sanitizeErrorForTracking, trackSyncEvent } from './sync-tracker'
+import { z } from 'zod'
+import { modelConnectionMigrationMetadataPrefix, providerConnectionMigrationMetadata } from './crud-metadata'
 
 /**
  * Dispatched when the backend rejects credentials. The detail.reason discriminates handling:
@@ -71,6 +76,21 @@ const getCredentialsInvalidReason = (status: number, body: ErrorBody): Credentia
   return null
 }
 
+const powerSyncTokenPayloadSchema = z.object({ sub: z.string() })
+
+/**
+ * The account a PowerSync token names, or undefined (logged) for a malformed token. The claim is
+ * read without verification; the sync service verifies it.
+ */
+const powerSyncTokenSubject = (token: string): string | undefined => {
+  try {
+    return powerSyncTokenPayloadSchema.parse(JSON.parse(decodeBase64Url(token.split('.')[1] ?? '') ?? '')).sub
+  } catch (error) {
+    console.error('[PowerSync] The sync token names no account:', error)
+    return undefined
+  }
+}
+
 export const handleCredentialsInvalidIfNeeded = (status: number, body: ErrorBody): boolean => {
   const reason = getCredentialsInvalidReason(status, body)
   if (reason) {
@@ -82,7 +102,8 @@ export const handleCredentialsInvalidIfNeeded = (status: number, body: ErrorBody
 
 /**
  * Whether a queued write may create a row but must never overwrite one: a PUT
- * uploaded before this device has ever seen the account's state (GH #1299).
+ * uploaded before this device has ever seen the account's state (GH #1299), or
+ * a provider migration insert explicitly marked when it was queued.
  *
  * Scoped to PUT because PowerSync emits PUT from INSERT and PATCH from UPDATE,
  * so a PUT is a row the device invented while a PATCH is a deliberate edit.
@@ -90,8 +111,13 @@ export const handleCredentialsInvalidIfNeeded = (status: number, body: ErrorBody
  * Full rationale, the safety properties, and the known gaps:
  * docs/internals/architecture/powersync-account-devices.md — "Create-only writes".
  */
-export const isCreateOnlyWrite = (op: 'PUT' | 'PATCH' | 'DELETE', hasSynced: boolean): boolean =>
-  op === 'PUT' && !hasSynced
+export const isCreateOnlyWrite = (
+  op: 'PUT' | 'PATCH' | 'DELETE',
+  hasSynced: boolean,
+  source?: { table: string; metadata?: string },
+): boolean =>
+  op === 'PUT' &&
+  (!hasSynced || (source?.table === 'provider_connections' && source.metadata === providerConnectionMigrationMetadata))
 
 /**
  * PowerSync connector that handles authentication and data upload.
@@ -192,6 +218,11 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
 
       const data: TokenResponse = (await response.json()) as TokenResponse
       if (!isCurrentSyncRequest(auth)) {
+        return null
+      }
+      // The local database, its queued uploads included, syncs only as the account that owns it.
+      if (!isLocalDataOwnedBy(powerSyncTokenSubject(data.token))) {
+        console.warn('[PowerSync] Not syncing: the local database is not open for the account the credentials name')
         return null
       }
       const expiresAt = new Date(data.expiresAt)
@@ -356,6 +387,13 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
    * This is called by PowerSync when there are pending changes in the upload queue.
    */
   async uploadData(database: CommonPowerSyncDatabase): Promise<void> {
+    // PowerSync uploads on connect, before any credentials check. This reads the account from the
+    // cached session while the request carries the current token or cookie, so the two can briefly
+    // disagree. The server refuses a queue sent from a device the session is not bound to
+    // (`DEVICE_NOT_BOUND`). This check only holds the queue back once another tab signs in another account.
+    if (!isLocalDataOwnedBy(getCachedSession()?.user?.id)) {
+      throw new Error('Local data belongs to another account — deferring upload')
+    }
     const auth = this.getRequestAuth()
     // Get the next batch of changes from the upload queue
     const transaction = await database.getNextCrudTransaction()
@@ -376,19 +414,26 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
       const operations = await Promise.all(
         transaction.crud.map((op) => {
           const opName = op.op.toUpperCase() as 'PUT' | 'PATCH' | 'DELETE'
+          const migrationProvider =
+            opName === 'PATCH' &&
+            op.table === 'models' &&
+            op.metadata?.startsWith(modelConnectionMigrationMetadataPrefix)
+              ? op.metadata.slice(modelConnectionMigrationMetadataPrefix.length)
+              : undefined
           return encodeForUpload({
             op: opName,
             type: op.table,
             id: op.id,
             data: op.opData,
-            // Omitted rather than sent as `false` so post-first-sync uploads —
-            // every write by an established device — stay byte-identical to
-            // what previous builds sent.
+            // Migration metadata belongs to the queued operation, so retries remain
+            // create-only even if this device completed a sync before uploading it.
+            // Ordinary writes after first sync retain their existing semantics.
             //
             // Operational trap, kept here rather than in the doc: deploy the
             // backend before this client. Elysia drops body fields it does not
             // declare, so an older backend silently ignores the flag.
-            ...(isCreateOnlyWrite(opName, hasSynced) && { ifAbsent: true }),
+            ...(isCreateOnlyWrite(opName, hasSynced, op) && { ifAbsent: true }),
+            ...(migrationProvider && { ifProviderConnectionUnset: { provider: migrationProvider } }),
           })
         }),
       )

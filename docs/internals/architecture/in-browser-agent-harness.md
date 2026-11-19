@@ -36,9 +36,7 @@ point:
 - carves the calling thread's workspace and binds the four coding tools to it;
 - resolves the model and seeds prior conversation turns;
 - converts the app's integration and MCP tools from AI-SDK shape
-  ([`mcp-tools.ts`](../../../shared/agent-core/mcp-tools.ts)) and activates them alongside the coding tools;
-- on the `confidential` path, attaches a receipt lifecycle (`build-app-harness.ts:205`) correlating provider receipts
-  with the terminal assistant message that owns their usage.
+  ([`mcp-tools.ts`](../../../shared/agent-core/mcp-tools.ts)) and activates them alongside the coding tools.
 
 ### How each model path gets the injected `fetch`
 
@@ -49,16 +47,15 @@ Thunderbolt SSO fetch for managed models. Pi's providers do not all offer that s
 | --------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `anthropic`     | [`anthropic-model.ts`](../../../shared/agent-core/anthropic-model.ts)         | Builds the `@anthropic-ai/sdk` client with the `fetch` hook, passed to Pi's public `client?` option; re-implements Pi's simple→full options bridge because `streamSimple` drops `client` |
 | `openai-compat` | [`openai-compat-model.ts`](../../../shared/agent-core/openai-compat-model.ts) | No seam, so it swaps `globalThis.fetch` for the synchronous window in which Pi constructs the `openai` client, restoring it in a `finally`                                               |
-| `confidential`  | [`confidential-model.ts`](../../../shared/agent-core/confidential-model.ts)   | Wraps the OpenAI-compatible builder with catalog compatibility, attestation normalization, and usage-receipt capture                                                                     |
+| `confidential`  | [`confidential-model.ts`](../../../shared/agent-core/confidential-model.ts)   | Wraps the OpenAI-compatible builder with catalog compatibility and attestation normalization                                                                                             |
 
 The global-`fetch` swap is race-free only because Pi's `openai-completions` provider constructs its SDK client before
 its first `await`. Both builders record their upstream reliances in their file headers; re-check them on any
 `@earendil-works/pi-ai` or `openai` bump ([below](#upgrading-the-pi-packages)).
 
 The CLI imports the same builders, so `shared/agent-core` is shared surface, not app-only code:
-`buildOpenAiCompatModel` ([`direct.ts`](../../../cli/src/provider-runtime/direct.ts)), `buildConfidentialModel`
-([`tinfoil.ts`](../../../cli/src/provider-runtime/tinfoil.ts)), receipt lifecycle
-([`usage-receipt.ts`](../../../cli/src/provider-runtime/usage-receipt.ts)).
+`buildOpenAiCompatModel` ([`direct.ts`](../../../cli/src/provider-runtime/direct.ts)) and `buildConfidentialModel`
+([`tinfoil.ts`](../../../cli/src/provider-runtime/tinfoil.ts)).
 
 ### How events reach the chat layer
 
@@ -267,8 +264,6 @@ copy: its old provider counts describe the full pre-compaction prompt. Original 
 usage remains intact. `contextTokens` supplies the indicator's reduced estimate separately
 from generation usage; the next provider response supplies measured usage again. Provider
 usage already includes system/tool overhead, which is added only to character estimates.
-Confidential summary requests settle their own signed usage receipts because they emit no
-harness `message_end` event.
 
 Summary failures and cancellation leave the old context intact. A failed automatic summary
 allows the original request to proceed while its estimated context is below the model window;
@@ -321,7 +316,7 @@ On a bump, check what compiles either way:
   [`coding-tools/index.ts`](../../../shared/agent-core/coding-tools/index.ts), replicated verbatim from Pi because the
   model's priors depend on the exact wording;
 - the model-catalog aliases in `confidential-model.ts`, which paper over ids Pi's catalog does not yet carry;
-- the compaction adapters described above, including repeated restoration, split-turn guidance, cancellation and receipts;
+- the compaction adapters described above, including repeated restoration, split-turn guidance and cancellation;
 - `browser-stubs/node-fs.cjs`, which exists only for a specific `require("node:fs")` inside `pi-ai`.
 
 Then run the browser check: a dependency cascade regression (a newly imported Node builtin, a lost browser condition)
@@ -335,7 +330,7 @@ shows up there and nowhere else.
 | `shared/agent-core/build-app-harness.ts`   | `buildAppHarness`, `workspaceDirFor`, `removeAgentWorkspace`, model descriptors      |
 | `shared/agent-core/anthropic-model.ts`     | Anthropic model over an injected `fetch`                                             |
 | `shared/agent-core/openai-compat-model.ts` | OpenAI-wire model; the synchronous global-`fetch` swap                               |
-| `shared/agent-core/confidential-model.ts`  | Tinfoil/confidential model, attestation normalization, receipt lifecycle             |
+| `shared/agent-core/confidential-model.ts`  | Tinfoil/confidential model, attestation normalization                                |
 | `shared/agent-core/pi-to-aisdk-stream.ts`  | Pi harness events → AI SDK v5 UI message stream                                      |
 | `shared/agent-core/seed-history.ts`        | Prior turns → Pi messages (text only; tool calls deliberately dropped)               |
 | `shared/agent-core/mcp-tools.ts`           | AI-SDK tools → Pi `AgentTool`s (schema and result bridging)                          |

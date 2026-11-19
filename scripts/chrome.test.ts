@@ -5,7 +5,7 @@
 import { afterAll, describe, expect, test } from 'bun:test'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { getChromeCacheDir, getChromeExecutablePath } from './chrome'
 
 const cacheDir = mkdtempSync(join(tmpdir(), 'thunderbolt-chrome-'))
@@ -57,6 +57,26 @@ describe('Chrome cache', () => {
     expect(result.exitCode).toBe(1)
     expect(result.stdout.toString()).toBe('')
     expect(result.stderr.toString()).toContain('bun run browsers:install')
+  })
+
+  test('the CLI requires the executable as well as a cached Stable alias', () => {
+    const env = { ...process.env, PLAYWRIGHT_BROWSERS_PATH: join(cacheDir, 'cli') }
+    const chromeCache = getChromeCacheDir(env)
+    mkdirSync(join(chromeCache, 'chrome'), { recursive: true })
+    writeFileSync(join(chromeCache, 'chrome/.metadata'), JSON.stringify({ aliases: { stable: '156.0.8078.80' } }))
+    const executablePath = getChromeExecutablePath(chromeCache)
+    const missing = Bun.spawnSync(['bun', join(import.meta.dir, 'chrome.ts')], { env })
+    expect(missing.exitCode).toBe(1)
+    expect(missing.stdout.toString()).toBe('')
+    expect(missing.stderr.toString()).toContain(executablePath)
+    expect(missing.stderr.toString()).toContain('bun run browsers:install')
+
+    mkdirSync(dirname(executablePath), { recursive: true })
+    writeFileSync(executablePath, '')
+    const installed = Bun.spawnSync(['bun', join(import.meta.dir, 'chrome.ts')], { env })
+    expect(installed.exitCode).toBe(0)
+    expect(installed.stdout.toString().trim()).toBe(executablePath)
+    expect(installed.stderr.toString()).toBe('')
   })
 
   test.each(['darwin', 'linux'])('extended %s projects keep Chrome launch options out of other engines', (platform) => {

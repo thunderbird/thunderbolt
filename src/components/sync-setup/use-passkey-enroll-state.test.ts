@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import 'fake-indexeddb/auto'
+import { clearAllKeys, markAKUnverified } from '@/crypto'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -64,6 +65,11 @@ describe('usePasskeyEnrollState', () => {
     await act(async () => {
       first = result.current.enroll()
       void result.current.enroll()
+      // The unverified-key check reads IndexedDB first; fake-indexeddb settles on
+      // real setImmediate ticks, which the fake clock doesn't drive.
+      for (let tick = 0; tick < 50 && register.mock.calls.length === 0; tick++) {
+        await new Promise((resolve) => setImmediate(resolve))
+      }
     })
     expect(register).toHaveBeenCalledTimes(1)
     expect(onBusyChange.mock.calls).toEqual([[true]])
@@ -120,6 +126,22 @@ describe('usePasskeyEnrollState', () => {
     expect(result.current.status).toBe('no-prf')
     expect(enroll).not.toHaveBeenCalled()
     expect(onEnrolled).not.toHaveBeenCalled()
+  })
+
+  it.each([true, false])('refuses on an unverified device before any prompt or request (sync: %s)', async (sync) => {
+    await markAKUnverified()
+    const register = spyOn(passkeyModule, 'registerPasskey')
+    const bind = spyOn(encryptionService, 'ensureSessionBound').mockResolvedValue()
+    const { result, onEnrolled } = renderEnroll(null, sync)
+    try {
+      await act(() => result.current.enroll())
+    } finally {
+      await clearAllKeys()
+    }
+    expect(register).not.toHaveBeenCalled()
+    expect(bind).not.toHaveBeenCalled()
+    expect(onEnrolled).not.toHaveBeenCalled()
+    expect(result.current.status).toBe('error')
   })
 
   it('returns to idle after a dismissed prompt', async () => {

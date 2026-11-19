@@ -12,10 +12,29 @@ import { useAsyncAttempt } from './use-async-attempt'
 import { useIntegrationStatus } from './use-integration-status'
 import { useSettings } from './use-settings'
 
-type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6 | 7
+export type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
 
 /** The final step celebrates completion; step 6 offers an account passkey. */
 export const onboardingStepCount = 7
+
+/** Keep persisted connected steps stable while inserting device-only setup. */
+export const getOnboardingSteps = (isStandalone: boolean, hasBuiltInSearch = false): readonly OnboardingStep[] =>
+  isStandalone ? (hasBuiltInSearch ? [1, 8, 9, 3, 5, 7] : [1, 8, 9, 10, 3, 5, 7]) : [1, 2, 3, 4, 5, 6, 7]
+
+/** Maps a saved step into the current server mode after a connection change. */
+export const resolveOnboardingStep = (
+  step: OnboardingStep,
+  isStandalone: boolean,
+  hasBuiltInSearch = false,
+): OnboardingStep => {
+  if (isStandalone && hasBuiltInSearch && step === 10) {
+    return 3
+  }
+  if (getOnboardingSteps(isStandalone, hasBuiltInSearch).includes(step)) {
+    return step
+  }
+  return isStandalone ? 8 : 2
+}
 
 type OnboardingData = {
   currentStep: OnboardingStep
@@ -34,7 +53,10 @@ type OnboardingData = {
 export type OnboardingState = OnboardingData & { canGoBack: boolean; canGoNext: boolean; canSkip: boolean }
 
 /** Navigation depends only on the active step and whether its data has been saved. */
-export const selectOnboardingNavigation = (state: OnboardingData) => {
+export const selectOnboardingNavigation = (
+  state: OnboardingData,
+  steps: readonly OnboardingStep[] = getOnboardingSteps(false),
+) => {
   const canContinue = () => {
     switch (state.currentStep) {
       case 1:
@@ -47,15 +69,18 @@ export const selectOnboardingNavigation = (state: OnboardingData) => {
         return state.isLocationValid && !state.isSubmittingLocation
       case 5:
       case 6:
+      case 8:
+      case 9:
+      case 10:
         return true
       case 7:
         return false
     }
   }
   return {
-    canGoBack: state.currentStep > 1,
+    canGoBack: steps.indexOf(state.currentStep) > 0,
     canGoNext: canContinue(),
-    canSkip: state.currentStep > 1 && state.currentStep < onboardingStepCount,
+    canSkip: steps.indexOf(state.currentStep) > 0 && state.currentStep !== onboardingStepCount,
   }
 }
 
@@ -130,11 +155,14 @@ const onboardingReducer = (state: Draft, action: OnboardingAction): Draft => {
 /** Read a persisted wizard position, falling back to the first step for invalid settings. */
 const parseOnboardingStep = (value: string): OnboardingStep => {
   const step = Number(value)
-  return Number.isInteger(step) && step >= 1 && step <= onboardingStepCount ? (step as OnboardingStep) : 1
+  return Number.isInteger(step) && step >= 1 && step <= 10 ? (step as OnboardingStep) : 1
 }
 
 /** Own draft fields and serialized writes; persisted values are defaults until the user edits them. */
-export const useOnboardingState = () => {
+export const useOnboardingState = ({
+  isStandalone = false,
+  hasBuiltInSearch = false,
+}: { isStandalone?: boolean; hasBuiltInSearch?: boolean } = {}) => {
   const [draft, dispatch] = useReducer(onboardingReducer, initialState)
   const navigation = useAsyncAttempt()
   const nameSave = useAsyncAttempt()
@@ -155,8 +183,15 @@ export const useOnboardingState = () => {
   const nameValue = draft.nameValue ?? preferredName.value
   const savedLocation = locationNameDisplay.value || locationName.value
   const hasSavedLocation = savedLocation.length > 0 && locationLat.value !== '' && locationLng.value !== ''
+  const steps = getOnboardingSteps(isStandalone, hasBuiltInSearch)
+  const currentStep = resolveOnboardingStep(
+    draft.currentStep ?? parseOnboardingStep(onboardingCurrentStep.value),
+    isStandalone,
+    hasBuiltInSearch,
+  )
+  const stepIndex = steps.indexOf(currentStep)
   const current: OnboardingData = {
-    currentStep: draft.currentStep ?? parseOnboardingStep(onboardingCurrentStep.value),
+    currentStep,
     privacyAgreed: draft.privacyAgreed,
     isProviderConnected: draft.isProviderConnected ?? integrationStatusData?.googleConnected ?? false,
     isConnecting: draft.isConnecting,
@@ -185,11 +220,7 @@ export const useOnboardingState = () => {
       if (!attempt.isCurrent()) {
         return
       }
-      const step = (
-        direction === 'back'
-          ? Math.max(current.currentStep - 1, 1)
-          : Math.min(current.currentStep + 1, onboardingStepCount)
-      ) as OnboardingStep
+      const step = steps[Math.max(0, Math.min(stepIndex + (direction === 'back' ? -1 : 1), steps.length - 1))]
       const clearName = direction === 'skip' && current.currentStep === 3
       // Skipping the name and advancing are one persisted operation.
       await updateSettings(db, {
@@ -289,7 +320,12 @@ export const useOnboardingState = () => {
     completeOnboarding: () => navigate('complete'),
   }
 
-  return { state: { ...current, ...selectOnboardingNavigation(current) }, actions }
+  return {
+    state: { ...current, ...selectOnboardingNavigation(current, steps) },
+    actions,
+    stepIndex,
+    totalSteps: steps.length,
+  }
 }
 
 export type { OnboardingAction }

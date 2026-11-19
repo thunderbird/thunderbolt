@@ -2,6 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { clearCachedSession } from '@/lib/session-cache'
+import { createMockHttpClient } from '@/test-utils/http-client'
+import { spyOn } from 'bun:test'
+import { setAuthToken, clearAuthToken } from '@/lib/auth-token'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { setActiveLocale } from '@/i18n/active-locale'
 import { createClient, type HttpClient, type RequestOptions, type ResponsePromise } from '@/lib/http'
@@ -10,10 +14,17 @@ import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import { act, renderHook } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { useLocationSearch } from './use-location-search'
 
 let consoleSpies: ConsoleSpies
+const originalCloudUrl = useLocalSettingsStore.getState().cloudUrl
+
+beforeEach(() => {
+  useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1' })
+  setAuthToken('test-session')
+})
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -28,6 +39,8 @@ afterAll(async () => {
 // The module-level locale and its mirror leak across test files — bun test
 // shares one module registry and one happy-dom localStorage for the whole run.
 afterEach(() => {
+  clearAuthToken()
+  useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl })
   setActiveLocale('en')
   localStorage.removeItem('thunderbolt_locale')
 })
@@ -54,6 +67,18 @@ const mockLocationResponse = [
 ]
 
 describe('useLocationSearch', () => {
+  it('does not call a backend in standalone mode', async () => {
+    useLocalSettingsStore.setState({ cloudUrl: '' })
+    const { result } = renderHook(() => useLocationSearch(), {
+      wrapper: createTestProvider({ mockResponse: mockLocationResponse }),
+    })
+    act(() => result.current.setSearchQuery('San Francisco'))
+    await act(async () => {
+      await getClock().tickAsync(300)
+    })
+    expect(result.current.locations).toEqual([])
+  })
+
   describe('Initial state', () => {
     it('should initialize with default values', () => {
       const { result } = renderHook(() => useLocationSearch(), {
@@ -370,6 +395,23 @@ describe('useLocationSearch', () => {
       expect(result.current.searchQuery).toBe('New York')
     })
   })
+})
+
+it('does not look up a city on a selected but unauthenticated backend', async () => {
+  clearAuthToken()
+  clearCachedSession()
+  const client = createMockHttpClient(mockLocationResponse)
+  const get = spyOn(client, 'get')
+  const { result } = renderHook(useLocationSearch, {
+    wrapper: createTestProvider({ httpClient: client }),
+  })
+  act(() => result.current.setSearchQuery('San Francisco'))
+  await act(async () => {
+    await getClock().tickAsync(300)
+  })
+  expect(result.current.locations).toEqual([])
+  expect(get.mock.calls.some(([url]) => url === 'locations')).toBe(false)
+  get.mockRestore()
 })
 
 describe('search request ownership', () => {

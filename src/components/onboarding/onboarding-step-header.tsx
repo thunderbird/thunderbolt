@@ -5,7 +5,7 @@
 import type { ReactNode } from 'react'
 
 type OnboardingStepHeaderProps = {
-  icon: ReactNode
+  icon?: ReactNode
   title: ReactNode
   description?: ReactNode
 }
@@ -13,7 +13,7 @@ type OnboardingStepHeaderProps = {
 export const OnboardingStepHeader = ({ icon, title, description }: OnboardingStepHeaderProps) => {
   return (
     <div className="text-center">
-      <div className="mx-auto mb-4 flex justify-center">{icon}</div>
+      {icon && <div className="mx-auto mb-4 flex justify-center">{icon}</div>}
       <h2 className="font-heading text-2xl">{title}</h2>
       {description && (
         <p className="mt-1 px-4 text-[length:var(--font-size-body)] text-muted-foreground">{description}</p>

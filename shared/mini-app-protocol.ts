@@ -769,10 +769,11 @@ export const miniAppToolSchema = z.object({
   annotations: z
     .object({
       /**
-       * Deterministic and side-effect free. Read-only tools run silently;
-       * anything else prompts the user before it touches the app. This is the
-       * whole reason the flag is on the wire rather than inferred host-side —
-       * only the app knows whether its own tool mutates something.
+       * Deterministic and side-effect free, by the app's own account. Accepted
+       * because WebMCP descriptors carry it, but it never skips the approval
+       * prompt: a call sends model-written arguments to the app's origin, and
+       * the app's word about its own tool cannot authorise that transfer. See
+       * `createMiniAppTools`.
        */
       readOnlyHint: z.boolean().optional(),
       /** Human-facing label for the approval prompt. */
@@ -877,9 +878,6 @@ export const toolsCallResultSchema = z.object({
 })
 
 export type MiniAppToolCallResult = z.infer<typeof toolsCallResultSchema>
-
-/** Whether a tool needs user approval before it runs. */
-export const requiresApproval = (tool: MiniAppTool): boolean => tool.annotations?.readOnlyHint !== true
 
 /**
  * Envelope for a guest's reply to a host request — success or failure.

@@ -47,6 +47,7 @@ frontend_env=(
   VITE_AUTH_ENABLE_ANONYMOUS=false
   VITE_BYPASS_WAITLIST=false
   "VITE_THUNDERBOLT_CLOUD_URL=$backend_url/v1"
+  "VITE_THUNDERBOLT_CLOUD_SERVICE_URL=$backend_url/v1"
   "VITE_GOOGLE_BASE_URL=$fake_google_url"
 )
 

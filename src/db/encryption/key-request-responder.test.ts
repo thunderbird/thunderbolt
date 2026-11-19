@@ -3,20 +3,33 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import 'fake-indexeddb/auto'
-import { describe, expect, it, mock } from 'bun:test'
+import { describe, expect, it, mock, spyOn } from 'bun:test'
 import {
   clearAllKeys,
+  decrypt,
   encrypt,
+  exportMlKemPublicKey,
+  exportPublicKey,
   generateAK,
+  generateDEK,
+  generateKeyPair,
+  generateMlKemKeyPair,
+  getAKKeyVersion,
   getKeyVersion,
   mintDEK,
   storeAK,
   storeDEK,
+  storeKeyPair,
   storeKeyVersion,
   storePrimaryKeyId,
   unwrapDEK,
+  wrapAK,
   wrapDEK,
 } from '@/crypto'
+import { mintCanary, signDeviceAttestation } from '@/crypto/canary'
+import { getAuthToken } from '@/lib/auth-token'
+import { createAuthenticatedClient, type HttpClient } from '@/lib/http'
+import { clearCachedSession, setCachedSession } from '@/lib/session-cache'
 import { encodeAAD, type KeyId } from '@shared/e2ee-types'
 
 // Re-provide the real config module to override leaked mocks from other test
@@ -24,9 +37,11 @@ import { encodeAAD, type KeyId } from '@shared/e2ee-types'
 const realConfig = await import('./config')
 mock.module('@/db/encryption/config', () => ({ ...realConfig }))
 
-const { formatWireValue } = await import('./wire-format')
+const { formatWireValue, parseWireValue } = await import('./wire-format')
 const { codec, resetCodecState, setKeysSyncChannelForTesting } = await import('./codec')
 const { createKeyRequestResponder, startKeyRequestResponder } = await import('./key-request-responder')
+const { checkApprovalAndUnwrap, ensureV2Encryption, refreshAK, stageKeyring } = await import('@/services/encryption')
+const { fetchEncryptionMetadata } = await import('@/api/encryption')
 
 type KeysSyncMessage = import('./codec').KeysSyncMessage
 type KeysSyncChannel = import('./codec').KeysSyncChannel
@@ -85,7 +100,7 @@ const waitFor = async (predicate: () => boolean): Promise<void> => {
 
 const setupKeyring = async (keyIds: KeyId[], primary: KeyId) => {
   const ak = await generateAK()
-  await storeAK(ak)
+  await storeAK(ak, { keyVersion: null, primaryKeyId: '0' })
   const deks = new Map<KeyId, { dek: CryptoKey; wrappedKey: string }>()
   for (const keyId of keyIds) {
     const minted = await mintDEK(ak, keyId)
@@ -176,7 +191,7 @@ describe('prime — startup staging + key_version polling', () => {
       stageKeyring: failIfCalled('stageKeyring'),
       refreshAK: async () => {
         // Like the real refreshAK: store the new AK, re-stage the re-wrapped keyring.
-        await storeAK(newAK)
+        await storeAK(newAK, { keyVersion: null, primaryKeyId: '0' })
         await storeDEK('0', rewrappedDEK0)
       },
       fetchMetadata: async () => ({ key_version: 2 }),
@@ -236,7 +251,7 @@ describe('key-request handling (integration with the real codec)', () => {
     // Stage AK + DEK '0' now that priming has already settled (a no-op, since
     // the keyring was empty above) — '1' stays "unknown" until the responder
     // handles the request below.
-    await storeAK(ak)
+    await storeAK(ak, { keyVersion: null, primaryKeyId: '0' })
     await storeDEK('0', deks.get('0')!.wrappedKey)
     await storePrimaryKeyId('0')
 
@@ -260,7 +275,7 @@ describe('key-request handling (integration with the real codec)', () => {
     const minted1 = await mintDEK(newAK, '1')
 
     const refresh = mock(async () => {
-      await storeAK(newAK)
+      await storeAK(newAK, { keyVersion: null, primaryKeyId: '0' })
     })
     const responder = createKeyRequestResponder({
       stageKeyring: failIfCalled('stageKeyring'),
@@ -594,5 +609,201 @@ describe('shared keyring ownership', () => {
     await flushAsync()
     expect(stage).not.toHaveBeenCalled()
     expect(hub.posted.filter((message) => message.type !== 'key-request')).toEqual([])
+  })
+})
+
+/**
+ * The epoch replay against the production pieces a reloaded page runs: the
+ * authenticated HttpClient over a real loopback socket, `ensureV2Encryption`,
+ * the responder's startup staging, IndexedDB key storage and the codec.
+ */
+describe('epoch replay on a page load over loopback HTTP', () => {
+  const userId = 'replay-user'
+  const deviceId = 'replay-device'
+
+  type ServedEpoch = {
+    envelope: string
+    attestation: string
+    keys: Array<{ key_id: KeyId; wrapped_key: string }>
+    metadata: { canary_iv: string; canary_ctext: string; key_version: number; primary_key_id: KeyId; scheme_version: 2 }
+  }
+
+  type Device = { ecdhPublicKey: CryptoKey; mlkemPublicKey: Uint8Array }
+
+  /** What a rotating device leaves on the server for this device: envelope, keyring and metadata. */
+  const mintEpoch = async (
+    device: Device,
+    deks: Array<[KeyId, CryptoKey]>,
+    primaryKeyId: KeyId,
+    keyVersion: number,
+  ): Promise<ServedEpoch> => {
+    const ak = await generateAK(true)
+    const { canaryIv, canaryCtext, canaryKey } = await mintCanary(ak, userId)
+    return {
+      envelope: await wrapAK(ak, device.ecdhPublicKey, device.mlkemPublicKey, primaryKeyId, keyVersion),
+      attestation: await signDeviceAttestation(canaryKey, {
+        userId,
+        deviceId,
+        ecdhPublicKey: await exportPublicKey(device.ecdhPublicKey),
+        mlkemPublicKey: exportMlKemPublicKey(device.mlkemPublicKey),
+      }),
+      keys: await Promise.all(
+        deks.map(async ([keyId, dek]) => ({ key_id: keyId, wrapped_key: await wrapDEK(dek, ak, keyId) })),
+      ),
+      metadata: {
+        canary_iv: canaryIv,
+        canary_ctext: canaryCtext,
+        key_version: keyVersion,
+        primary_key_id: primaryKeyId,
+        scheme_version: 2,
+      },
+    }
+  }
+
+  /** A backend on a real socket that serves whichever epoch the test (the attacker) picks. */
+  const startBackend = async () => {
+    const state: { served: ServedEpoch | null } = { served: null }
+    // Happy DOM replaces the global Response, and Bun.serve only sends Bun's own.
+    const BunResponse = (await Bun.fetch('data:application/json,{}')).constructor as typeof Response
+    const server = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch: (request) => {
+        const served = state.served
+        const path = new URL(request.url).pathname
+        const routes: Record<string, unknown> = served
+          ? {
+              '/devices/me/envelope': { trusted: true, wrappedCK: served.envelope, attestation: served.attestation },
+              '/encryption/keys': { keys: served.keys },
+              '/encryption/canary': served.metadata,
+            }
+          : {}
+        const body = routes[path]
+        return new BunResponse(JSON.stringify(body ?? { error: `unexpected ${request.method} ${path}` }), {
+          status: body ? 200 : 404,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      },
+    })
+    // Bun's own fetch, fed a plain copy of the request: Happy DOM's fetch cannot
+    // read Bun.serve's responses, and Bun's fetch rejects Happy DOM's AbortSignal.
+    const loopbackFetch = async (input: RequestInfo | URL): Promise<Response> => {
+      const request = input instanceof Request ? input : new Request(input)
+      return Bun.fetch(request.url, {
+        method: request.method,
+        headers: Object.fromEntries(request.headers),
+        body: request.method === 'GET' ? undefined : await request.text(),
+      })
+    }
+    const client = createAuthenticatedClient(`http://127.0.0.1:${server.port}`, getAuthToken, { fetch: loopbackFetch })
+    return {
+      client,
+      serve: (epoch: ServedEpoch) => {
+        state.served = epoch
+      },
+      stop: () => server.stop(true),
+    }
+  }
+
+  /** A reload: fresh codec caches, the init-time epoch check, then the responder's startup staging. */
+  const pageLoad = async (client: HttpClient): Promise<void> => {
+    resetCodecState()
+    await ensureV2Encryption(client).catch(() => {})
+    const responder = createKeyRequestResponder({
+      stageKeyring: () => stageKeyring(client),
+      refreshAK: () => refreshAK(client),
+      fetchMetadata: () => fetchEncryptionMetadata(client),
+      channel: null,
+    })
+    await responder.ready
+    responder.stop()
+  }
+
+  it('a replayed pre-revocation epoch cannot move a reloaded device back onto the revoked DEK', async () => {
+    await setup()
+    localStorage.setItem('thunderbolt_device_id', deviceId)
+    localStorage.setItem('thunderbolt_auth_token', 'replay-token')
+    setCachedSession({ user: { id: userId }, session: { expiresAt: new Date(Date.now() + 3_600_000) } })
+    const errors: string[] = []
+    const consoleError = spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      errors.push(args.map(String).join(' '))
+    })
+    const consoleWarn = spyOn(console, 'warn').mockImplementation(() => {})
+    const backend = await startBackend()
+    try {
+      const ecdh = await generateKeyPair()
+      const mlkem = generateMlKemKeyPair()
+      await storeKeyPair(ecdh.privateKey, ecdh.publicKey, mlkem.publicKey, mlkem.secretKey)
+      const device = { ecdhPublicKey: ecdh.publicKey, mlkemPublicKey: mlkem.publicKey }
+
+      // DEK "0" is what the revoked device keeps; the revocation mints DEK "1".
+      const dek0 = await generateDEK(true)
+      const dek1 = await generateDEK(true)
+      const beforeRevocation = await mintEpoch(device, [['0', dek0]], '0', 1)
+      const afterRevocation = await mintEpoch(
+        device,
+        [
+          ['0', dek0],
+          ['1', dek1],
+        ],
+        '1',
+        2,
+      )
+
+      const write = async (): Promise<{ keyId: KeyId; revokedDeviceReads: boolean }> => {
+        const parsed = parseWireValue(await codec.encode('a note written after the replay', ctx))!
+        const revokedDeviceReads = await decrypt(
+          { iv: parsed.iv, ciphertext: parsed.ciphertext },
+          dek0,
+          encodeAAD(ctx.table, ctx.column, ctx.rowId, parsed.keyId),
+        ).then(
+          () => true,
+          () => false,
+        )
+        return { keyId: parsed.keyId, revokedDeviceReads }
+      }
+
+      backend.serve(beforeRevocation)
+      expect(await checkApprovalAndUnwrap(backend.client)).toBe(true)
+      expect((await write()).revokedDeviceReads).toBe(true)
+
+      backend.serve(afterRevocation)
+      await pageLoad(backend.client)
+      expect(await write()).toEqual({ keyId: '1', revokedDeviceReads: false })
+
+      const forgedNewer = { ...beforeRevocation, metadata: { ...beforeRevocation.metadata, key_version: 3 } }
+      for (const replay of [beforeRevocation, forgedNewer]) {
+        backend.serve(replay)
+        await pageLoad(backend.client)
+        expect(await write()).toEqual({ keyId: '1', revokedDeviceReads: false })
+        expect(await getAKKeyVersion()).toBe(2)
+      }
+      expect(errors.some((line) => line.includes('refused an inbound account key (stale-epoch)'))).toBe(true)
+
+      // A newer epoch still lands.
+      const dek2 = await generateDEK(true)
+      backend.serve(
+        await mintEpoch(
+          device,
+          [
+            ['0', dek0],
+            ['1', dek1],
+            ['2', dek2],
+          ],
+          '2',
+          3,
+        ),
+      )
+      await pageLoad(backend.client)
+      expect(await write()).toEqual({ keyId: '2', revokedDeviceReads: false })
+      expect(await getAKKeyVersion()).toBe(3)
+    } finally {
+      await backend.stop()
+      consoleError.mockRestore()
+      consoleWarn.mockRestore()
+      clearCachedSession()
+      localStorage.removeItem('thunderbolt_device_id')
+      localStorage.removeItem('thunderbolt_auth_token')
+    }
   })
 })

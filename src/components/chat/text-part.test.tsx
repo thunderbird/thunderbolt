@@ -7,9 +7,10 @@ import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import { act, render } from '@testing-library/react'
 import type { TextUIPart } from 'ai'
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, it, spyOn } from 'bun:test'
 import { ExternalLinkDialogProvider } from './markdown-utils'
 import { TextPart } from './text-part'
+import * as smoothText from '@/hooks/use-smooth-text'
 
 it('paces only active text parts and flushes both terminal gates synchronously', () => {
   const text = 'Steady answer. '.repeat(100)
@@ -111,4 +112,83 @@ describe('streaming widgets', () => {
     rerender(<TextPart messageId="widget" part={{ type: 'text', text: 'Replacement answer', state: 'done' }} />)
     expect(container.textContent).toBe('Replacement answer')
   })
+})
+
+// Every Markdown image renders as its alt text (markdown-image.tsx), whatever the turn's sources allow.
+it.each([
+  { allowRemoteImages: false, citation: '' },
+  { allowRemoteImages: false, citation: ' [1]' },
+  { allowRemoteImages: undefined, citation: '' },
+  { allowRemoteImages: undefined, citation: ' [1]' },
+])(
+  'renders Markdown images as text (allowRemoteImages: $allowRemoteImages, citation: "$citation")',
+  ({ allowRemoteImages, citation }) => {
+    const { container } = render(
+      <ExternalLinkDialogProvider>
+        <TextPart
+          messageId="markdown-image"
+          part={{
+            type: 'text',
+            text: `![Image description](https://example.com/tracker.png)${citation}`,
+            state: 'done',
+          }}
+          sources={[
+            { index: 1, url: 'https://example.com/article', title: 'Source', toolName: 'search', allowRemoteImages },
+          ]}
+        />
+      </ExternalLinkDialogProvider>,
+    )
+    expect(container.querySelector('img')).toBeNull()
+    expect(container.textContent).toContain('Image description')
+    expect(container.innerHTML).not.toContain('tracker.png')
+  },
+)
+
+it('leaves completed text parts stable when another part streams, and updates text and citation inputs', () => {
+  const reveal = spyOn(smoothText, 'useSmoothText')
+  const part: TextUIPart = { type: 'text', text: 'Settled text [1].', state: 'done' }
+  try {
+    const { rerender, container } = render(<TextPart part={part} messageId="stable" isStreaming />)
+    const initial = reveal.mock.calls.length
+    for (const isStreaming of [true, false, undefined, ...Array.from({ length: 20 }, (_, index) => index % 2 === 0)]) {
+      rerender(<TextPart part={{ ...part }} messageId="stable" isStreaming={isStreaming} />)
+    }
+    expect(reveal.mock.calls.length).toBe(initial)
+    const sources = [{ index: 1, url: 'https://example.com', title: 'Source', toolName: 'search' }]
+    rerender(<TextPart part={{ ...part }} messageId="stable" sources={sources} />)
+    expect(reveal.mock.calls.length).toBe(initial + 1)
+    expect(container.querySelector('button')).not.toBeNull()
+    rerender(<TextPart part={{ ...part, text: 'Corrected answer.' }} messageId="stable" />)
+    expect(container.textContent).toBe('Corrected answer.')
+  } finally {
+    reveal.mockRestore()
+  }
+})
+
+it('updates late document references and removes citations when their metadata disappears', () => {
+  const part: TextUIPart = { type: 'text', text: 'Evidence [1].', state: 'done' }
+  const { container, rerender } = render(<TextPart part={part} messageId="late-reference" />)
+  expect(container.textContent).toBe('Evidence [1].')
+
+  rerender(
+    <TextPart
+      part={{ ...part }}
+      messageId="late-reference"
+      haystackReferences={[{ position: 1, fileId: 'report', fileName: 'report.pdf', pageNumber: 2 }]}
+    />,
+  )
+  expect(container.querySelector('button')?.textContent).toBe('PDF')
+
+  rerender(
+    <TextPart
+      part={{ ...part }}
+      messageId="late-reference"
+      haystackReferences={[{ position: 1, fileId: 'notes', fileName: 'notes.docx' }]}
+    />,
+  )
+  expect(container.querySelector('button')?.textContent).toBe('DOCX')
+
+  rerender(<TextPart part={{ ...part }} messageId="late-reference" />)
+  expect(container.querySelector('button')).toBeNull()
+  expect(container.textContent).toBe('Evidence [1].')
 })

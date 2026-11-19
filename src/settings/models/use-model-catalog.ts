@@ -101,7 +101,7 @@ export const useModelCatalog = () => {
         if (generation.current !== attempt) {
           return
         }
-        console.error('Failed to fetch models:', error)
+        console.error('Failed to fetch models.')
         dispatch({ type: 'CATALOG_FAILED', requestKey, error: describeModelFetchError(i18n, error) })
       }
     },

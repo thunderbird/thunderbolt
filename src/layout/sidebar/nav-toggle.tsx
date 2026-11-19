@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { RecoveryContinuityNavDot, useRecoveryContinuityAttention } from '@/components/recovery-continuity'
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import { m, useReducedMotion } from 'framer-motion'
@@ -48,6 +49,8 @@ export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: S
   const { triggerSelection } = useHaptics()
   const reducedMotion = useReducedMotion()
 
+  const attention = useRecoveryContinuityAttention()
+
   const handleSelect = (section: SidebarSection) => {
     if (section === activeSection) {
       return
@@ -62,7 +65,7 @@ export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: S
       <button
         key={id}
         type="button"
-        aria-label={i18n._(label)}
+        aria-label={id === 'settings' && attention ? t`Settings, action needed` : i18n._(label)}
         aria-current={isActive ? 'page' : undefined}
         onClick={() => handleSelect(id)}
         className={cn(
@@ -89,6 +92,7 @@ export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: S
             inside the newly-active segment, and when that segment is a later
             DOM sibling it would otherwise paint over the other icon mid-slide. */}
         <Icon className={cn('relative z-10 size-[var(--icon-size-default)]', vertical && 'text-muted-foreground')} />
+        {id === 'settings' && <RecoveryContinuityNavDot placement="corner" />}
       </button>
     )
   }

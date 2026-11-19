@@ -17,6 +17,12 @@ bun run test:agent-core:browser
 # Run frontend tests in watch mode (src/ only)
 bun run test:watch
 
+# Run website tests and type checks (separate workspace)
+(cd web && bun run test && bun run typecheck)
+
+# Run demo recording/export tests (Python dependencies and FFmpeg required)
+DEMO_PYTHON=/path/to/video-env/bin/python bun run test:demo-videos
+
 # Run backend tests
 bun run test:backend
 
@@ -33,7 +39,19 @@ helm unittest deploy/k8s
 
 **Never run `bun test` from the project root.** [`bunfig.toml`](../../../bunfig.toml)'s `pathIgnorePatterns = ["backend/**", "e2e/**"]` keeps root discovery off the backend suite and the Playwright specs, but is a silent no-op on Bun below 1.3.11, and a root run has no per-test timeout, no `--randomize`, and walks `shared/agent-core/` (own runner).
 
-`bun run test` is `bun test --cwd=src` plus explicit paths: `shared/*.test.ts`, `shared/defaults/`, `shared/i18n/`, `scripts/create-release.test.ts`, `scripts/release-workflows.test.ts`, `scripts/chrome.test.ts`, `scripts/install-chrome.test.ts`, `scripts/check-e2e-specs-collected.test.ts`, `scripts/notify-on-failure.test.ts`, `scripts/sanitize-nightly-artifacts.test.ts`, `scripts/copy-powersync-assets.test.ts`, and selected `.github/scripts/*.test.*`. They must be explicit: `shared/` is outside `--cwd=src`, and Bun skips hidden dirs. `bun test --cwd=e2e db-diagnostic.test.ts fake-provider.test.ts` runs as a separate step, because root `bunfig.toml` excludes `e2e/**` from discovery and Playwright collects only `*.spec.ts`.
+`bun run test` is `bun test --cwd=src` plus explicit paths: `shared/*.test.ts`, `shared/defaults/`, `shared/i18n/`, `scripts/create-release.test.ts`, `scripts/release-workflows.test.ts`, `scripts/preview-workflows.test.ts`, `scripts/chrome.test.ts`, `scripts/install-chrome.test.ts`, `scripts/check-e2e-specs-collected.test.ts`, `scripts/notify-on-failure.test.ts`, `scripts/sanitize-nightly-artifacts.test.ts`, `scripts/copy-powersync-assets.test.ts`, and selected `.github/scripts/*.test.*`. They must be explicit: `shared/` is outside `--cwd=src`, and Bun skips hidden dirs. `bun test --cwd=e2e db-diagnostic.test.ts fake-provider.test.ts helpers.test.ts` runs as a separate step, because root `bunfig.toml` excludes `e2e/**` from discovery and Playwright collects only `*.spec.ts`.
+
+### AWS deployment routing
+
+`cd deploy/pulumi && bun run test && bun run typecheck` checks the Pulumi stack with mocked cloud resources; it does not deploy anything or need AWS credentials. CI runs this suite when `deploy/pulumi/**` changes. The ALB test verifies marketing stays separate from API hosts, including the retired contact path, and checks path-based fallback. The root suite's release-workflow checks ensure preview marketing images do not send inquiries to the AI backend.
+
+### Website and demo tooling
+
+The public site has its own dependencies, DOM test setup, and commands in `web/`:
+`bun run test`, `bun run test:coverage`, `bun run typecheck`, and `bun run build`.
+These tests are intentionally outside the app's root suite. `web.yml` runs them for website changes.
+The `demo-videos.yml` workflow separately installs FFmpeg and the skill's Python requirements,
+then runs `bun run test:demo-videos`; see the [editing guide](../../../.agents/skills/thunder-demo-videos/references/editing.md#helper-checks).
 
 ### Browser security updates
 
@@ -67,7 +85,7 @@ checkouts use this configuration; an old checkout can otherwise reinstall its ol
 The app's in-browser adapter around the npm `@earendil-works/pi-agent-core` package, not that package itself. Its nested unit tests sit outside frontend discovery, so they are intentionally **not** in `bun run test`.
 
 - `bun run test:agent-core` (or `test:agent-core:5x` for the stability gate) runs the unit tests. CI's `agent-core` job in [`ci.yml`](../../../.github/workflows/ci.yml) runs the 5x gate and browser check when the module, dependencies, build configuration, browser check, or workflow changes.
-- The CLI imports the npm Pi package directly, plus the OpenAI-compatible and confidential-model builders and receipt lifecycle from `shared/agent-core`. Its integration coverage stays in the CLI suite.
+- The CLI imports the npm Pi package directly, plus the OpenAI-compatible and confidential-model builders from `shared/agent-core`. Its integration coverage stays in the CLI suite.
 
 `test:agent-core:browser` builds into a temp directory, imports the emitted chunk in both engines (with and without native iterator helpers), runs two turns through the OpenRouter, Thunderbolt and confidential-model harness paths on injected SSE responses, then checks OPFS data survives reload. It is a dependency/runtime regression check, not authenticated-provider or native-device coverage.
 
@@ -242,7 +260,7 @@ The Playwright suite in [`e2e/`](../../../e2e) covers what a unit test cannot: b
 | `oidc`             | `/(?:oidc\|acp-\|proxy-).*\.spec\.ts$/` | `http://localhost:1421` | OIDC frontend + backend, mock OIDC IdP                     |
 | `saml`             | `/saml.*\.spec\.ts$/`                   | `http://localhost:1422` | SAML frontend + backend, mock SAML IdP                     |
 | `min-version-gate` | `/min-version-gate\.spec\.ts$/`         | `http://localhost:1421` | Both the ungated OIDC pair and the gated pair on 1423/8004 |
-| `artifact`         | `/\/artifact-[^/]*\.spec\.ts$/`         | none                    | none, sandboxed iframes on `about:blank`                   |
+| `artifact`         | `/\/artifact-[^/]*\.spec\.ts$/`         | none                    | Playwright serves the host page at `https://artifact-host.test/` |
 
 Each anchor records a breakage:
 
@@ -288,20 +306,21 @@ For a German browser, use `deTest` from `e2e/test.ts` instead of `test.use({ loc
 
 `oidc` project:
 
-| Spec                                                                                    | What it verifies                                                                                                                                      |
-| --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`oidc-login.spec.ts`](../../../e2e/oidc-login.spec.ts)                                 | Anonymous user completes the full OIDC redirect loop and lands in the chat UI, with no critical JS errors                                             |
-| [`oidc-logout.spec.ts`](../../../e2e/oidc-logout.spec.ts)                               | Sign-out lands on the signed-out page, can sign back in, and does not auto-reauthenticate                                                             |
-| [`oidc-session.spec.ts`](../../../e2e/oidc-session.spec.ts)                             | Chat UI and sidebar navigation stay functional and signed in after login                                                                              |
-| [`oidc-language-picker.spec.ts`](../../../e2e/oidc-language-picker.spec.ts)             | Picking a language flips `X-App-Language` without a reload, survives a reload, resets to the negotiated language, and clears on a data-wipe sign-out  |
-| [`oidc-localization.spec.ts`](../../../e2e/oidc-localization.spec.ts)                   | Unit defaults seed from the browser region (never falling back to US), the date-format row is retired, and unit labels re-render on a language switch |
-| [`acp-built-in.spec.ts`](../../../e2e/acp-built-in.spec.ts)                             | The built-in ACP adapter exposes the prompt input without errors                                                                                      |
-| [`acp-add-custom-agent.spec.ts`](../../../e2e/acp-add-custom-agent.spec.ts)             | Submitting the add-agent form persists a new row to the list                                                                                          |
-| [`acp-system-agent-discovery.spec.ts`](../../../e2e/acp-system-agent-discovery.spec.ts) | A discovered system agent appears in the System section and is not removable                                                                          |
-| [`proxy-fetch.spec.ts`](../../../e2e/proxy-fetch.spec.ts)                               | A GET through `/v1/proxy` carries `X-Proxy-Target-Url` and unwraps passthrough response headers                                                       |
-| [`proxy-passthrough-headers.spec.ts`](../../../e2e/proxy-passthrough-headers.spec.ts)   | Caller headers are wrapped as passthrough headers and the body is forwarded verbatim                                                                  |
-| [`proxy-websocket.spec.ts`](../../../e2e/proxy-websocket.spec.ts)                       | `createProxyWebSocket` carries the target URL as `tbproxy.target.<base64url>` on `/proxy/ws`                                                          |
-| [`proxy-mcp.spec.ts`](../../../e2e/proxy-mcp.spec.ts)                                   | MCP traffic routes through `/v1/proxy` with target URL and passthrough headers intact                                                                 |
+| Spec                                                                                        | What it verifies                                                                                                                                      |
+| ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`oidc-login.spec.ts`](../../../e2e/oidc-login.spec.ts)                                     | Anonymous user completes the full OIDC redirect loop and lands in the chat UI, with no critical JS errors                                             |
+| [`oidc-logout.spec.ts`](../../../e2e/oidc-logout.spec.ts)                                   | Sign-out lands on the signed-out page, can sign back in, and does not auto-reauthenticate                                                             |
+| [`oidc-session.spec.ts`](../../../e2e/oidc-session.spec.ts)                                 | Chat UI and sidebar navigation stay functional and signed in after login                                                                              |
+| [`oidc-language-picker.spec.ts`](../../../e2e/oidc-language-picker.spec.ts)                 | Picking a language flips `X-App-Language` without a reload, survives a reload, resets to the negotiated language, and clears on a data-wipe sign-out  |
+| [`oidc-localization.spec.ts`](../../../e2e/oidc-localization.spec.ts)                       | Unit defaults seed from the browser region (never falling back to US), the date-format row is retired, and unit labels re-render on a language switch |
+| [`acp-built-in.spec.ts`](../../../e2e/acp-built-in.spec.ts)                                 | The built-in ACP adapter exposes the prompt input without errors                                                                                      |
+| [`acp-add-custom-agent.spec.ts`](../../../e2e/acp-add-custom-agent.spec.ts)                 | Submitting the add-agent form persists a new row to the list                                                                                          |
+| [`acp-system-agent-discovery.spec.ts`](../../../e2e/acp-system-agent-discovery.spec.ts)     | A discovered system agent appears in the System section and is not removable                                                                          |
+| [`proxy-fetch.spec.ts`](../../../e2e/proxy-fetch.spec.ts)                                   | A GET through `/v1/proxy` carries `X-Proxy-Target-Url` and unwraps passthrough response headers                                                       |
+| [`proxy-credential-destination.spec.ts`](../../../e2e/proxy-credential-destination.spec.ts) | A saved MCP credential or model key is only sent to the URL it was saved for; an edited, imported or left-behind URL gets no credential               |
+| [`proxy-passthrough-headers.spec.ts`](../../../e2e/proxy-passthrough-headers.spec.ts)       | Caller headers are wrapped as passthrough headers and the body is forwarded verbatim                                                                  |
+| [`proxy-websocket.spec.ts`](../../../e2e/proxy-websocket.spec.ts)                           | `createProxyWebSocket` carries the target URL as `tbproxy.target.<base64url>` on `/proxy/ws`                                                          |
+| [`proxy-mcp.spec.ts`](../../../e2e/proxy-mcp.spec.ts)                                       | MCP traffic routes through `/v1/proxy` with target URL and passthrough headers intact                                                                 |
 
 `saml` project:
 
@@ -343,9 +362,27 @@ On Linux, start and migrate PostgreSQL first, then start PowerSync using [`night
 
 ### Native app smoke
 
-The native jobs install a Tauri app, sign in with the fixed test code, and send one message to the local fake provider. To reproduce by hand, start [`services.sh`](../../../e2e/native-smoke/services.sh), then follow the build and install steps in the `native-ios` or `native-linux` workflow job. Run [`ios.sh`](../../../e2e/native-smoke/ios.sh) with Maestro and a booted iPhone simulator, or [`linux.sh`](../../../e2e/native-smoke/linux.sh) with `tauri-driver`, WebKitWebDriver, Xvfb and ffmpeg. Recordings land in `/tmp/native-smoke/`, and service logs are kept as failure artifacts.
+The native jobs install a Tauri app and take its first-run setup wizard twice, each time from a fresh install. The **Local** pass connects the fake provider's OpenAI-compatible routes as the user's own model. The **Cloud** pass joins the waitlist and signs in with the fixed test code. Both end by sending one message to the fake provider. **Enterprise** is left out, because it would reach the same backend as Cloud. To reproduce by hand, start [`services.sh`](../../../e2e/native-smoke/services.sh), then follow the build and install steps in the `native-ios` or `native-linux` workflow job. Run [`ios.sh`](../../../e2e/native-smoke/ios.sh) with Maestro and a booted iPhone simulator, or [`linux.sh`](../../../e2e/native-smoke/linux.sh) with `tauri-driver`, WebKitWebDriver, Xvfb and ffmpeg. Recordings land in `/tmp/native-smoke/`, and service logs are kept as failure artifacts.
+
+Fresh consumer native installs start locally even when `VITE_THUNDERBOLT_CLOUD_URL` is set, so the builds leave `VITE_SKIP_ONBOARDING` unset and the wizard opens as it does for a user. Build with `VITE_THUNDERBOLT_CLOUD_SERVICE_URL=http://localhost:8000/v1` so the Cloud choice reaches the smoke backend rather than the public service; this setting does not connect the app automatically. Keep the backend on port 8000: the app's content security policy allows `http://localhost:8000`, and a request to another port fails before it leaves the webview.
+
+In the iOS flow, Maestro taps an element where the accessibility tree places it and does not scroll first, so the flow scrolls to the Add Model button, which sits below the fold. It also submits the email with Return, because with the keyboard up the wizard lifts its content and a tap aimed at Continue lands beside it.
 
 Pull requests never run these jobs. To run them on a branch, dispatch the workflow with `gh workflow run nightly.yml --ref <branch>`: off `main` only `native-ios` and `native-linux` run, and no failure notification goes out. Maestro matches what the iOS accessibility tree exposes, and there an `aria-label` replaces the element's text, so a control whose label differs from the text it shows can be found only by the label.
+
+On macOS and iOS, the main webview retries a terminated WebKit content process once. A second termination within 60 seconds opens `webview-recovery.html`, a separate entry that does not initialize React or PowerSync. The retry budget lives in Rust, survives page loads, and resets on **Try again**. A termination of the recovery page stops automatic navigation entirely. No local data is cleared. The policy tests run with `cargo test --workspace` in `src-tauri/`; `e2e/consumer-webview-recovery.spec.ts` covers the page and its retry command boundary.
+
+To exercise the native callback on macOS, build a test app with a separate bundle identifier (for example `net.thunderbird.thunderbolt.fresh-install-repro`) so it uses separate WebKit storage. Identify its `com.apple.WebKit.WebContent` PID by open files under that identifier's `~/Library/WebKit/` directory. Terminate only that PID, verify onboarding returns, then identify and terminate the replacement PID within 60 seconds. The recovery page should appear and **Try again** should return to onboarding. Killing a renderer tests recovery; it does not reproduce the engine defect that originally terminated it. Playwright's bundled WebKit and the iOS simulator also do not establish compatibility with a different macOS/hardware combination.
+
+#### M6 own-property compatibility
+
+An isolated native WKWebView test on M6 / macOS 27.2.1 (26B131), WebKit 22625.2.8.11.9, reproduced `EXC_ARM_CPA_FAIL` three times while exercising `Object.prototype.hasOwnProperty`; the `Object.getOwnPropertyDescriptor` control passed 10 million checks in each fresh process. The captured instruction matches the original app's 25 reports: JavaScriptCore's optimized `HasOwnPropertyCache` load places a small offset in the base register and a tagged pointer in the index register. The checked-pointer calculation predicts the fault address. This is an engine failure independent of Tauri, React, PowerSync and stored profile data.
+
+[`webkit-own-property.ts`](../../../src/lib/webkit-own-property.ts) replaces both own-property methods with descriptor-based equivalents on desktop WebKit. This is a compatibility layer, not an upstream engine repair. It preserves the prototype method's key-before-receiver conversion order, the static method's receiver-before-key order, symbols, proxy traps and property attributes. It does not turn off JIT, WASM, Lockdown Mode or memory protections. WKWebView's frozen user agent cannot distinguish the affected OS release or CPU, so the guard covers desktop WebKit, including Safari; Chrome, Firefox, Linux and iPhone user agents retain the native methods. Remove or narrow the layer only after verifying an upstream fix on affected hardware.
+
+The Vite plugin installs a blocking script before HTML module dependencies execute. Worker realms need their own installation: worker bundle banners, copied PowerSync JavaScript assets and emitted PDF worker assets are covered; source worker entry imports also cover development. Copied worker source maps account for the inserted lines. The compatibility tests compare native semantics in separate realms, and `e2e/consumer-webkit-compat.spec.ts` checks module capture order and an actual shipped SQLite worker.
+
+For hardware validation, use a separate app identifier and production frontend assets. Verify fresh onboarding, repeated reloads, database initialization and normal chat use, then inspect new WebContent crash reports. A locally passing test on older hardware does not establish the M6 fix. Retain the original isolated reproducer for Apple/WebKit investigation; avoid including account data or entire diagnostic logs in public reports.
 
 The fake provider binds to IPv4 loopback (`127.0.0.1`). Binding to `localhost`
 can select `::1` on Linux while the Bun backend connects over IPv4. The scoped
@@ -417,11 +454,20 @@ Then run `helm unittest deploy/k8s`.
 
 ## Frontend HTTP serving
 
-The `Frontend Serving` workflow runs the deployed nginx configuration in an isolated container. It checks missing-chunk recovery, immutable asset caching, app-shell revalidation, cross-origin isolation headers, and source-map blocking. Run it locally with Docker available:
+The `Frontend Serving` workflow runs the deployed nginx configurations in isolated containers:
+
+- `nginx.test.ts` covers the app: missing-chunk recovery, immutable asset caching, app-shell revalidation, cross-origin isolation headers, and source-map blocking. It is also part of `bun run test`.
+- `marketing-nginx.test.ts` covers the website's release endpoint against a stand-in for GitHub: starting without DNS, one shared lookup, what reaches GitHub and what comes back, background refresh, and each way a lookup can fail. It takes about half a minute, so it runs only here.
+
+Run both locally with Docker available:
 
 ```sh
 docker pull nginxinc/nginx-unprivileged:alpine
-bun test --cwd=deploy/config nginx.test.ts --timeout 5000
+bun test --cwd=deploy/config --timeout 5000
 ```
 
-Use this working directory so the frontend's Happy DOM preload does not replace the HTTP client. The test creates and removes its own container and temporary files; it does not need the backend or the real frontend build.
+Use this working directory so the frontend's Happy DOM preload does not replace the HTTP client. The tests create and remove their own containers and temporary files; they do not need the backend or a real build.
+
+## Marketing contact Worker
+
+From `web/contact-worker`, run `bun run test`, `bun run check`, and `bun run build`. The build is a local Wrangler dry run; it does not deploy. Tests mock Resend and the rate-limit bindings, covering input limits, origin checks, throttling, provider failures, and acknowledgements without sending email. The Contact Worker workflow runs these checks independently of Astro. See [deployment and runtime verification](https://github.com/thunderbird/thunderbolt/tree/main/web/contact-worker).

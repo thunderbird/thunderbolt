@@ -11,13 +11,14 @@ import { createMockHttpClient } from '@/test-utils/http-client'
 import { createClient } from '@/lib/http'
 import { TrayManager } from '@/lib/tray'
 import * as encryption from '@/services/encryption'
-import type { TrayIcon } from '@tauri-apps/api/tray'
-import type { Window } from '@tauri-apps/api/window'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import { act, renderHook } from '@testing-library/react'
 import { afterAll, beforeAll, describe, expect, it, mock, spyOn, test } from 'bun:test'
 import { resolveInitialSyncStep, useAppInitialization, waitForDatabaseReady } from './use-app-initialization'
+import { closeTestLocalData } from '@/test-utils/local-data'
+import * as reconcile from '@/lib/reconcile-defaults'
+import * as onboarding from '@/lib/returning-user-onboarding'
 
 mock.module('@tauri-apps/api/core', () => ({
   isTauri: () => false,
@@ -68,7 +69,11 @@ const stubWorkingIndexedDb = (): void => {
       queueMicrotask(() => request.onsuccess?.())
       return request
     },
-    deleteDatabase: () => ({}),
+    deleteDatabase: () => {
+      const request = { onsuccess: null as (() => void) | null }
+      queueMicrotask(() => request.onsuccess?.())
+      return request
+    },
   } as unknown as IDBFactory
   Object.defineProperty(globalThis, 'indexedDB', { value: factory, configurable: true, writable: true })
 }
@@ -81,6 +86,8 @@ describe('useAppInitialization', () => {
 
   afterAll(async () => {
     await teardownTestDatabase()
+    // Boot opened a slot and began following other tabs; later files must start without one.
+    closeTestLocalData()
     if (!realIndexedDb) {
       Reflect.deleteProperty(globalThis, 'indexedDB')
       return
@@ -127,9 +134,8 @@ describe('useAppInitialization', () => {
     expect(result.current.initError).toBeUndefined()
   })
 
-  it('waits for supported native tray/window readiness before publishing content', async () => {
-    const nativeResources = { tray: { id: 'native-tray' } as TrayIcon, window: { label: 'main' } as Window }
-    const nativeReady = Promise.withResolvers<typeof nativeResources>()
+  it('waits for supported native tray readiness before publishing content', async () => {
+    const nativeReady = Promise.withResolvers<void>()
     const initializeNative = spyOn(TrayManager, 'initIfSupported').mockImplementation(() => nativeReady.promise)
     const { client, responses } = createPendingAnalyticsClient()
     const { result, unmount } = renderHook(() => useAppInitialization(client), {
@@ -145,12 +151,11 @@ describe('useAppInitialization', () => {
       expect(responses).toHaveLength(0)
 
       await act(async () => {
-        nativeReady.resolve(nativeResources)
+        nativeReady.resolve()
         await getClock().runAllAsync()
       })
       expect(result.current.isInitializing).toBe(false)
-      expect(result.current.initData?.tray).toBe(nativeResources.tray)
-      expect(result.current.initData?.window).toBe(nativeResources.window)
+      expect(result.current.initData).toBeDefined()
       expect(result.current.initData?.posthogClient).toBeNull()
       expect(responses).toHaveLength(1)
 
@@ -164,8 +169,31 @@ describe('useAppInitialization', () => {
     }
   })
 
+  it('keeps the app usable when native tray creation fails', async () => {
+    const error = new Error('native tray unavailable')
+    const initializeNative = spyOn(TrayManager, 'initIfSupported').mockRejectedValue(error)
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    const client = createMockHttpClient(mockPostHogConfig)
+    const { result, unmount } = renderHook(() => useAppInitialization(client), {
+      wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+    })
+    try {
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      expect(result.current.isInitializing).toBe(false)
+      expect(result.current.initData).toBeDefined()
+      expect(result.current.initError).toBeUndefined()
+      expect(warn).toHaveBeenCalledWith('Failed to initialize tray, continuing without tray support:', error)
+    } finally {
+      unmount()
+      initializeNative.mockRestore()
+      warn.mockRestore()
+    }
+  })
+
   it('allows database reset while an obsolete native readiness call remains pending', async () => {
-    const nativeReady = Promise.withResolvers<{ tray: undefined; window: undefined }>()
+    const nativeReady = Promise.withResolvers<void>()
     const initializeNative = spyOn(TrayManager, 'initIfSupported').mockImplementation(() => nativeReady.promise)
     const database = getCurrentDatabase()!
     const close = spyOn(database, 'close').mockRejectedValue(new Error('test reset reached database'))
@@ -184,7 +212,7 @@ describe('useAppInitialization', () => {
       expect(close).toHaveBeenCalledTimes(1)
       expect(result.current.initError?.code).toBe('DATABASE_INIT_FAILED')
       await act(async () => {
-        nativeReady.resolve({ tray: undefined, window: undefined })
+        nativeReady.resolve()
         await getClock().runAllAsync()
       })
       expect(result.current.initData).toBeUndefined()
@@ -502,6 +530,32 @@ describe('useAppInitialization', () => {
     // step6 is skipped when an httpClient is injected (as in this test).
     expect(payload).not.toHaveProperty('step6_create_http_client_ms')
     expect(payload.init_run).toBeGreaterThanOrEqual(1)
+  })
+
+  it('applies a deferred returning-user mark only after reconcile seeds the default it overwrites', async () => {
+    const order: string[] = []
+    const { reconcileDefaults } = reconcile
+    const reconciling = spyOn(reconcile, 'reconcileDefaults').mockImplementation((...args) => {
+      order.push('reconcile')
+      return reconcileDefaults(...args)
+    })
+    const marking = spyOn(onboarding, 'applyDeferredOnboardedMark').mockImplementation(async () => {
+      order.push('mark')
+    })
+    const mockHttpClient = createMockHttpClient(mockPostHogConfig)
+    try {
+      const { result } = renderHook(() => useAppInitialization(mockHttpClient), {
+        wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+      })
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      expect(result.current.initData).toBeDefined()
+      expect(order).toEqual(['reconcile', 'mark'])
+    } finally {
+      reconciling.mockRestore()
+      marking.mockRestore()
+    }
   })
 })
 

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { HttpClientProvider } from '@/contexts/http-client-context'
-import { RotationStaleError, StepUpVerificationError } from '@/services/encryption'
+import { RotationStaleError, StepUpVerificationError, UnverifiedAccountKeyError } from '@/services/encryption'
 import { EncryptionRequestTimeoutError } from '@/services/encryption-request'
 import { createMockHttpClient } from '@/test-utils/http-client'
 import { act, cleanup, renderHook } from '@testing-library/react'
@@ -154,6 +154,57 @@ describe('useChangeRecoveryKey', () => {
     expect(receivedOtps).toEqual(['88299917'])
     expect(result.current.status).toBe('display')
     expect(result.current.newRecoveryKey).toBe(newPhrase)
+  })
+
+  /** Open the flow and reach the code step, with a code typed in. */
+  const reachCodeEntry = async (result: { current: ReturnType<typeof useChangeRecoveryKey> }) => {
+    act(() => result.current.openConfirm())
+    await act(async () => {
+      await result.current.requestStepUpCode()
+    })
+    act(() => result.current.setOtp('88299917'))
+  }
+
+  it('cancels without rotating when the guard says the update is no longer needed', async () => {
+    const rotate = mock(() => Promise.resolve(newPhrase))
+    const { result } = renderHook(() => useChangeRecoveryKey(rotate, requestCodeOk, async () => false), { wrapper })
+
+    await reachCodeEntry(result)
+    await act(async () => {
+      await result.current.confirmRotation()
+    })
+
+    expect(rotate).not.toHaveBeenCalled()
+    expect(result.current.status).toBe('idle')
+  })
+
+  it('keeps the code step with a retryable error when the guard rejects', async () => {
+    const rotate = mock(() => Promise.resolve(newPhrase))
+    const canRotate = () => Promise.reject(new Error('Status check failed'))
+    const { result } = renderHook(() => useChangeRecoveryKey(rotate, requestCodeOk, canRotate), { wrapper })
+
+    await reachCodeEntry(result)
+    await act(async () => {
+      await result.current.confirmRotation()
+    })
+
+    expect(rotate).not.toHaveBeenCalled()
+    expect(result.current.status).toBe('stepUp')
+    expect(result.current.error).toBe('Status check failed')
+  })
+
+  it('explains why an unverified device cannot change the phrase', async () => {
+    const rotate = () => Promise.reject(new UnverifiedAccountKeyError())
+    const { result } = renderHook(() => useChangeRecoveryKey(rotate, requestCodeOk), { wrapper })
+
+    await reachCodeEntry(result)
+    await act(async () => {
+      await result.current.confirmRotation()
+    })
+
+    expect(result.current.error).toBe(
+      "This device can't change the recovery phrase because its encryption keys couldn't be verified. Change it from a device that was trusted before.",
+    )
   })
 
   it('stays on the confirm dialog when the code request fails', async () => {

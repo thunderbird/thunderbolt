@@ -43,8 +43,8 @@ export const ContextUsageIndicator = ({
   const state = useContextUsageState(onCompact, supportsInstructions)
   const pending = compacting || state.pending
   const formatters = useFormatters()
-  const hasUsage = usedTokens !== null && maxTokens !== null && maxTokens > 0
-  const percentage = hasUsage ? Math.max(0, Math.min((usedTokens / maxTokens) * 100, 100)) : 0
+  const hasUsage = usedTokens !== null && usedTokens >= 0 && maxTokens !== null && maxTokens > 0
+  const percentage = hasUsage ? Math.min((usedTokens / maxTokens) * 100, 100) : 0
   const roundedPercentage = Math.round(percentage)
   const usedTokensLabel = formatters.compactNumber(usedTokens ?? 0)
   const maxTokensLabel = formatters.compactNumber(maxTokens ?? 0)
@@ -59,10 +59,10 @@ export const ContextUsageIndicator = ({
   const strokeDasharray = circumference
   const strokeDashoffset = circumference - (percentage / 100) * circumference
 
-  const percentageText = hasUsage ? formatters.percent(roundedPercentage / 100) : '—'
+  const percentageText = hasUsage && usedTokens > 0 ? formatters.percent(roundedPercentage / 100) : null
 
   return (
-    <div className={cn('flex items-center gap-2', className)}>
+    <div className={cn('flex shrink-0 items-center', className)}>
       <Tooltip>
         <ResponsivePopover
           open={state.open}
@@ -74,7 +74,7 @@ export const ContextUsageIndicator = ({
                 type="button"
                 aria-label={t`Context usage`}
                 aria-busy={pending}
-                className="flex h-[var(--touch-height-control)] shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-[var(--radius-control)] px-2 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                className="flex h-[var(--touch-height-control)] min-w-[var(--touch-height-control)] shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-[var(--radius-control)] px-2 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
               >
                 {pending ? (
                   <Loader2 className="size-[var(--icon-size-default)] shrink-0 animate-spin" aria-hidden="true" />
@@ -108,13 +108,24 @@ export const ContextUsageIndicator = ({
                     />
                   </svg>
                 )}
-                <span className="text-xs text-muted-foreground whitespace-nowrap">{percentageText}</span>
+                {percentageText && (
+                  <span className="text-xs text-muted-foreground whitespace-nowrap max-md:sr-only">
+                    {percentageText}
+                  </span>
+                )}
               </button>
             </TooltipTrigger>
           }
           desktopMenu={{ align: 'start', className: 'max-w-[calc(100vw-2rem)] p-0' }}
         >
           <div className="flex min-h-0 flex-col gap-3 overflow-y-auto p-4 max-md:gap-4 max-md:pt-2">
+            {hasUsage && (
+              <p className="text-[length:var(--font-size-sm)] text-muted-foreground md:hidden">
+                <Trans>
+                  Using {usedTokensLabel} of {maxTokensLabel} Context Window
+                </Trans>
+              </p>
+            )}
             {onCompact ? (
               <>
                 {supportsInstructions && (

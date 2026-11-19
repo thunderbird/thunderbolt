@@ -18,12 +18,13 @@ import {
 } from '@/components/ui/responsive-modal'
 import { SelectableCard, type DataOption } from '@/components/ui/selectable-card'
 import { useAuth } from '@/contexts'
-import { isSsoMode } from '@/lib/auth-mode'
 import { clearLocalData as defaultClearLocalData } from '@/lib/cleanup'
+import { signOutAndLeave } from '@/lib/sign-out'
 
 type LogoutModalProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onCloseAutoFocus?: (event: Event) => void
   /**
    * Injectable for tests. Defaults to the real {@link clearLocalData} — the
    * shipped UI never overrides this. Lets the test pass a stub instead of
@@ -33,31 +34,25 @@ type LogoutModalProps = {
   clearLocalData?: typeof defaultClearLocalData
 }
 
-export const LogoutModal = ({ open, onOpenChange, clearLocalData = defaultClearLocalData }: LogoutModalProps) => {
+export const LogoutModal = ({
+  open,
+  onOpenChange,
+  onCloseAutoFocus,
+  clearLocalData = defaultClearLocalData,
+}: LogoutModalProps) => {
   const { t } = useLingui()
   const authClient = useAuth()
   const [selectedOption, setSelectedOption] = useState<DataOption>('keep')
-  const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [status, setStatus] = useState<'idle' | 'pending' | 'error'>('idle')
+  const isLoggingOut = status === 'pending'
 
   const handleLogout = async () => {
-    setIsLoggingOut(true)
-
-    try {
-      await authClient.signOut({ fetchOptions: { disableSignal: true } })
-    } catch (error) {
-      console.error('Failed to sign out:', error)
-    }
-
-    try {
-      await clearLocalData({ clearDatabase: selectedOption === 'delete' })
-    } catch (error) {
-      console.error('Failed to clear local data:', error)
-    }
-
-    if (isSsoMode()) {
-      window.location.replace('/signed-out')
-    } else {
-      window.location.reload()
+    setStatus('pending')
+    const hasSignedOut = await signOutAndLeave(authClient, () =>
+      clearLocalData({ clearDatabase: selectedOption === 'delete' }),
+    )
+    if (!hasSignedOut) {
+      setStatus('error')
     }
   }
 
@@ -67,12 +62,13 @@ export const LogoutModal = ({ open, onOpenChange, clearLocalData = defaultClearL
     }
     if (!newOpen) {
       setSelectedOption('keep')
+      setStatus('idle')
     }
     onOpenChange(newOpen)
   }
 
   return (
-    <ResponsiveModal open={open} onOpenChange={handleOpenChange}>
+    <ResponsiveModal open={open} onOpenChange={handleOpenChange} onCloseAutoFocus={onCloseAutoFocus}>
       <ResponsiveModalHeader>
         <ResponsiveModalTitle>
           <Trans>Log out</Trans>
@@ -83,21 +79,28 @@ export const LogoutModal = ({ open, onOpenChange, clearLocalData = defaultClearL
       </ResponsiveModalHeader>
 
       <ResponsiveModalContent centered className="gap-3">
-        <SelectableCard
-          selected={selectedOption === 'keep'}
-          onSelect={() => setSelectedOption('keep')}
-          icon={<HardDrive className="h-5 w-5" />}
-          title={t`Leave data on device`}
-          description={t`Your chats and settings will remain on this device for next time.`}
-        />
-        <SelectableCard
-          selected={selectedOption === 'delete'}
-          onSelect={() => setSelectedOption('delete')}
-          icon={<Trash2 className="h-5 w-5" />}
-          title={t`Delete data from device`}
-          description={t`Remove all chats, settings, and cached data from this device.`}
-          variant="destructive"
-        />
+        <fieldset disabled={isLoggingOut} className="contents">
+          <SelectableCard
+            selected={selectedOption === 'keep'}
+            onSelect={() => setSelectedOption('keep')}
+            icon={<HardDrive className="h-5 w-5" />}
+            title={t`Leave data on device`}
+            description={t`Your chats and settings will remain on this device for next time.`}
+          />
+          <SelectableCard
+            selected={selectedOption === 'delete'}
+            onSelect={() => setSelectedOption('delete')}
+            icon={<Trash2 className="h-5 w-5" />}
+            title={t`Delete data from device`}
+            description={t`Remove all chats, settings, and cached data from this device.`}
+            variant="destructive"
+          />
+        </fieldset>
+        {status === 'error' && (
+          <p role="alert" className="text-sm text-destructive">
+            <Trans>Could not confirm sign-out. Please try again.</Trans>
+          </p>
+        )}
       </ResponsiveModalContent>
 
       <FormFooter className="justify-end">

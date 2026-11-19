@@ -152,6 +152,7 @@ const extractErrorMessage = (err: unknown, fallback: string): string => {
 }
 
 export type DesktopUpdateState = UpdateState & {
+  enabled: boolean
   checkForUpdates: () => Promise<void>
   downloadAndInstall: () => Promise<void>
   restartApp: () => Promise<void>
@@ -162,11 +163,18 @@ export type DesktopUpdateState = UpdateState & {
 }
 
 type UpdateServices = {
-  isDesktop: () => boolean
+  enabled: boolean
   check: () => Promise<Update | null>
   disconnect: () => Promise<void> | undefined
   relaunch: () => Promise<void>
 }
+
+/** Development apps have no update endpoint, including production assets built by `tauri build --debug`. */
+export const desktopUpdatesEnabled = ({
+  desktop = isDesktop(),
+  development = import.meta.env.DEV,
+  nativeDebug = import.meta.env.TAURI_ENV_DEBUG,
+} = {}): boolean => desktop && !development && !nativeDebug
 
 /** Own the update lifecycle across every UI surface, admitting native work synchronously. */
 export const createDesktopUpdateStore = (services: UpdateServices) => {
@@ -181,7 +189,7 @@ export const createDesktopUpdateStore = (services: UpdateServices) => {
   }
 
   const checkForUpdates = async () => {
-    if (!services.isDesktop() || !dispatch({ type: 'CHECK_START' })) {
+    if (!services.enabled || !dispatch({ type: 'CHECK_START' })) {
       return
     }
     const previous = store.getState().update
@@ -265,6 +273,7 @@ export const createDesktopUpdateStore = (services: UpdateServices) => {
 
   const store = create<DesktopUpdateState>(() => ({
     ...initialUpdateState,
+    enabled: services.enabled,
     checkForUpdates,
     downloadAndInstall,
     restartApp,
@@ -274,7 +283,7 @@ export const createDesktopUpdateStore = (services: UpdateServices) => {
 }
 
 const useUpdateStore = createDesktopUpdateStore({
-  isDesktop: () => isDesktop(),
+  enabled: desktopUpdatesEnabled(),
   check: async () => {
     // Keep desktop-only plugins out of the web entry bundle.
     const { check } = await import('@tauri-apps/plugin-updater')
@@ -291,7 +300,7 @@ const useUpdateStore = createDesktopUpdateStore({
 export const useDesktopUpdate = (store: StoreApi<DesktopUpdateState> = useUpdateStore): DesktopUpdateState => {
   const state = useStore(store)
   useEffect(() => {
-    if (!isDesktop() || state.status !== 'initial') {
+    if (!state.enabled || state.status !== 'initial') {
       return
     }
     const timeout = setTimeout(() => {
@@ -300,6 +309,6 @@ export const useDesktopUpdate = (store: StoreApi<DesktopUpdateState> = useUpdate
       }
     }, 5000)
     return () => clearTimeout(timeout)
-  }, [store, state.status])
+  }, [store, state.enabled, state.status])
   return state
 }

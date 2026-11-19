@@ -14,11 +14,17 @@ import {
 import { ContentViewProvider, useContentView } from '@/content-view/context'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { Chat } from '@ai-sdk/react'
+import * as quoteUtils from '@/lib/quotes'
+import * as attachmentStorage from '@/lib/file-blob-storage'
+import { buildAttachmentPart, getAttachments } from '@/lib/attachments'
+import { getClock } from '@/testing-library'
 import { useChatStore } from '@/chats/chat-store'
 import { useConfigStore } from '@/api/config-store'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
+import { createMessageMetadata } from '@/ai/message-metadata'
 import { ChatMessages } from './chat-messages'
 import { ExternalLinkDialogProvider } from './markdown-utils'
 import { builtInAgent } from '@/defaults/agents'
@@ -76,6 +82,89 @@ describe('ChatMessages', () => {
   })
 
   describe('basic rendering', () => {
+    it('does not rerender the unchanged user bubble for assistant deltas', async () => {
+      const userMessage = createTestMessage({ id: 'user-1' })
+      const chatInstance = new Chat<ThunderboltUIMessage>({ messages: [userMessage] })
+      hydrateStore({
+        chatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        selectedModel: null,
+        triggerData: null,
+      })
+      // Quote extraction runs when the actual user bubble renders, including
+      // its attachment and markdown children. Keep those children real here.
+      const extractQuotes = spyOn(quoteUtils, 'getQuotes')
+      try {
+        render(<ChatMessages />, { wrapper: createTestWrapper() })
+        const initialCalls = extractQuotes.mock.calls.length
+        for (let token = 1; token <= 20; token++) {
+          await act(async () => {
+            chatInstance.messages = [
+              userMessage,
+              createTestMessage({
+                id: 'answer-1',
+                role: 'assistant',
+                parts: [{ type: 'text', text: 'x'.repeat(token) }],
+              }),
+            ]
+            await getClock().tickAsync(50)
+          })
+        }
+        expect(extractQuotes.mock.calls.length - initialCalls).toBe(0)
+        expect(screen.getByText('x'.repeat(20))).toBeInTheDocument()
+      } finally {
+        extractQuotes.mockRestore()
+      }
+    })
+
+    it('resends only the selected attachment from the latest user turn after a new turn arrives', async () => {
+      const attachment = buildAttachmentPart({
+        localFileId: 'shared-pdf',
+        filename: 'report.pdf',
+        mimeType: 'application/pdf',
+        deliverAs: 'text',
+      })
+      const first = createTestMessage({ id: 'user-1', parts: [attachment] })
+      const latest = createTestMessage({
+        id: 'user-2',
+        parts: [attachment, { ...attachment, data: { ...attachment.data, localFileId: 'other-pdf' } }],
+      })
+      const chatInstance = new Chat<ThunderboltUIMessage>({ messages: [first] })
+      const regenerate = spyOn(chatInstance, 'regenerate').mockResolvedValue(undefined)
+      const readAttachment = spyOn(attachmentStorage, 'getAttachment').mockResolvedValue(null)
+      hydrateStore({
+        chatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        selectedModel: null,
+        triggerData: null,
+      })
+      try {
+        render(<ChatMessages />, { wrapper: createTestWrapper() })
+        expect(screen.getAllByRole('button', { name: 'Resend as images' })).toHaveLength(1)
+        await act(async () => {
+          chatInstance.messages = [first, latest]
+          await getClock().tickAsync(50)
+        })
+        const controls = screen.getAllByRole('button', { name: 'Resend as images' })
+        expect(controls).toHaveLength(2)
+        fireEvent.click(controls[0])
+        expect(chatInstance.messages[0]).toBe(first)
+        expect(
+          getAttachments(chatInstance.messages[1]).map(({ localFileId, deliverAs }) => [localFileId, deliverAs]),
+        ).toEqual([
+          ['shared-pdf', 'images'],
+          ['other-pdf', 'text'],
+        ])
+        expect(regenerate).toHaveBeenCalledTimes(1)
+      } finally {
+        cleanup()
+        regenerate.mockRestore()
+        readAttachment.mockRestore()
+      }
+    })
+
     it('should render user and assistant messages', () => {
       const messages: ThunderboltUIMessage[] = [
         createTestMessage({ role: 'user', parts: [{ type: 'text', text: 'Hello' }] }),
@@ -102,6 +191,163 @@ describe('ChatMessages', () => {
       expect(container.textContent).toContain('Hello')
       expect(container.textContent).toContain('Hi there')
     })
+
+    it('resolves a follow-up’s citation against an earlier turn’s sources without touching its code', () => {
+      const source = { index: 1, url: 'https://earlier.test', title: 'Earlier Page', toolName: 'search' as const }
+      const messages: ThunderboltUIMessage[] = [
+        createTestMessage({ id: 'u1' }),
+        createTestMessage({
+          id: 'a1',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'First answer.' }],
+          metadata: { sources: [source] },
+        }),
+        createTestMessage({ id: 'u2', parts: [{ type: 'text', text: 'Show me code' }] }),
+        createTestMessage({
+          id: 'a2',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'As noted before [1]:\n\n```py\nx = arr[1]\n```' }],
+        }),
+      ]
+      const mockChatInstance = createMockChatInstance(messages)
+      hydrateStore({
+        chatInstance: mockChatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        models: [],
+        selectedModel: null,
+        triggerData: null,
+      })
+
+      const { container } = render(<ChatMessages useChat={createMockUseChat(mockChatInstance)} />, {
+        wrapper: createTestWrapper(),
+      })
+
+      expect(screen.getByRole('button', { name: 'View source: Earlier Page' })).toBeInTheDocument()
+      expect(container.querySelector('pre')?.textContent).toContain('x = arr[1]')
+      expect(container.textContent).not.toContain('CITE')
+    })
+  })
+
+  it.each([false, true])(
+    'inherits private-source protection across later replies without merging citation indices (hidden source turn: %s)',
+    async (hidden) => {
+      const privateSource = {
+        index: 1,
+        url: 'https://private.example/source',
+        title: 'Private source',
+        toolName: 'search' as const,
+        allowRemoteImages: false,
+      }
+      const messages: ThunderboltUIMessage[] = [
+        createTestMessage({
+          id: 'before',
+          role: 'assistant',
+          parts: [{ type: 'text', text: '![Before](https://images.example/before.png)' }],
+        }),
+        createTestMessage({
+          id: 'private',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Private evidence' }],
+          metadata: { sources: [privateSource], ...(hidden ? { oauthRetry: true } : {}) },
+        }),
+        createTestMessage({ id: 'follow-up', role: 'user', parts: [{ type: 'text', text: 'Tell me more' }] }),
+        createTestMessage({
+          id: 'follow-up-reply',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'text',
+              text: '![Follow-up image](https://images.example/private.png)\n\n<widget:link-preview url="https://private.example/source" />',
+            },
+          ],
+        }),
+        createTestMessage({
+          id: 'new-provider',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'text',
+              text: 'New evidence [1]\n\n<widget:link-preview source="1" url="https://public.example/new" />',
+            },
+          ],
+          metadata: {
+            sources: [
+              {
+                index: 1,
+                url: 'https://public.example/new',
+                title: 'New source',
+                siteName: 'Public site',
+                toolName: 'search',
+                image: 'https://public.example/preview.png',
+              },
+            ],
+          },
+        }),
+      ]
+      const mockChatInstance = createMockChatInstance(messages)
+      const mockUseChat = createMockUseChat(mockChatInstance)
+      hydrateStore({
+        chatInstance: mockChatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        models: [],
+        selectedModel: null,
+        triggerData: null,
+      })
+      const { container, getByRole } = render(<ChatMessages useChat={mockUseChat} />, { wrapper: createTestWrapper() })
+      await act(async () => {
+        await Bun.sleep(20)
+      })
+      // Markdown images render as their alt text in every turn (markdown-image.tsx).
+      expect(container.querySelector('img')).toBeNull()
+      expect(container.textContent).toContain('Before')
+      expect(container.textContent).toContain('Follow-up image')
+      // The follow-up's preview resolves the earlier private source by URL, still without its image.
+      expect(container.textContent).toContain('Private source')
+      expect(container.textContent).toContain('New source')
+      // The new turn's [1] still refers to its own source, and a portal inherits the policy.
+      fireEvent.click(getByRole('button', { name: 'View source: Public site' }))
+      expect(document.querySelector('[role="dialog"]')?.textContent).toContain('New source')
+      expect(document.querySelector('[role="dialog"] img')).toBeNull()
+      expect(messages[4].metadata?.sources).toHaveLength(1)
+      expect(messages[4].metadata?.sources?.[0].allowRemoteImages).toBeUndefined()
+    },
+  )
+
+  it('applies a streamed private source marker before rendering the following answer', () => {
+    const message = createTestMessage({ id: 'stream', role: 'assistant', parts: [{ type: 'text', text: 'Searching' }] })
+    const chatInstance = createMockChatInstance([message], 'streaming')
+    hydrateStore({
+      chatInstance,
+      chatThread: createMockChatThread(),
+      id: 'thread-1',
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
+    })
+    const view = render(<ChatMessages useChat={createMockUseChat(chatInstance)} />, { wrapper: createTestWrapper() })
+    const metadata = createMessageMetadata('model', [
+      {
+        index: 1,
+        url: 'https://private.example/source',
+        title: 'Private source',
+        toolName: 'search',
+        allowRemoteImages: false,
+      },
+    ])
+    const withEvidence = { ...message, metadata: metadata({ part: { type: 'tool-result', toolCallId: 'search' } }) }
+    view.rerender(<ChatMessages useChat={createMockUseChat(createMockChatInstance([withEvidence], 'streaming'))} />)
+    const answer: ThunderboltUIMessage = {
+      ...withEvidence,
+      parts: [...message.parts, { type: 'text', text: '![Streamed image](https://private.example/image.png)' }],
+    }
+    view.rerender(<ChatMessages useChat={createMockUseChat(createMockChatInstance([answer], 'streaming'))} />)
+    expect(view.container.querySelector('img')).toBeNull()
+    expect(view.container.textContent).toContain('Streamed image')
   })
 
   describe('compaction history', () => {

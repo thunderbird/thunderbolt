@@ -12,14 +12,15 @@ import {
   type SearchableMenuItem,
 } from '@/components/ui/searchable-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { GradientLock } from '@/components/ui/gradient-lock'
-import { PrivateBadge } from '@/components/ui/private-badge'
 import { useHaptics } from '@/hooks/use-haptics'
+import { useLocalProviders } from '@/hooks/use-local-providers'
 import { cn } from '@/lib/utils'
-import { matchesThreadConfidentiality, needsApiKey } from '@/settings/models/model-policy'
+import { isModelAvailable, matchesThreadConfidentiality, needsApiKey } from '@/settings/models/model-policy'
+import { ModelProviderIcon, ModelProviderMark } from '@/settings/models/model-presentation'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
-import { AlertTriangle, Check, ChevronDown, Lock, Plus } from 'lucide-react'
+import { AlertTriangle, Check, ChevronDown, Plus } from 'lucide-react'
 import { useCallback } from 'react'
 import { flushSync } from 'react-dom'
 
@@ -54,7 +55,6 @@ const toMenuItem = (
   label: model.name,
   description: model.description || model.model,
   searchTerms: [model.model, model.vendor].filter(Boolean).join(' '),
-  icon: model.isConfidential === 1 ? <PrivateBadge /> : undefined,
   disabled: isDisabled,
   data: { model, disabledByEncryption },
 })
@@ -66,6 +66,7 @@ export const categorizeModels = (
   models: Model[],
   chatThread: ModelSelectorProps['chatThread'],
   i18n: I18n,
+  cloudUrl = useLocalSettingsStore.getState().cloudUrl,
 ): SearchableMenuGroup<ModelItemData>[] => {
   // Custom and built-in models share one group — the selector only splits by
   // confidentiality (available vs the greyed-out opposite-mode section below).
@@ -74,6 +75,9 @@ export const categorizeModels = (
   const disabledStandard: SearchableMenuItem<ModelItemData>[] = []
 
   for (const model of models) {
+    if (!isModelAvailable(model, cloudUrl)) {
+      continue
+    }
     const isDisabledByEncryption = !matchesThreadConfidentiality(model, chatThread)
     const isDisabled = isDisabledByEncryption || needsApiKey(model)
     const item = toMenuItem(model, isDisabled, isDisabledByEncryption)
@@ -128,12 +132,14 @@ export const ModelSelector = ({
   variant = 'pill',
 }: ModelSelectorProps) => {
   const { t, i18n } = useLingui()
+  const cloudUrl = useLocalSettingsStore((state) => state.cloudUrl)
+  const needsOwnModel = useLocalProviders()
   // Computed during render rather than memoized: `useLingui` returns the same
   // `i18n` singleton across a language switch, so an `i18n` dependency never
   // invalidates and the disabled-group labels would stay in the outgoing
   // locale until `models`/`chatThread` happened to change. Partitioning the
   // model list is cheap; see the Localization section in AGENTS.md.
-  const groupedItems = categorizeModels(models, chatThread, i18n)
+  const groupedItems = categorizeModels(models, chatThread, i18n, needsOwnModel ? '' : cloudUrl)
 
   const renderTrigger = (selected: SearchableMenuItem<ModelItemData> | undefined, isOpen: boolean) => (
     <div
@@ -151,11 +157,10 @@ export const ModelSelector = ({
             ),
       )}
     >
-      {selected?.data?.model && needsApiKey(selected.data.model) ? (
+      {selected?.data?.model && <ModelProviderIcon model={selected.data.model} className="size-3.5" />}
+      {selected?.data?.model && needsApiKey(selected.data.model) && (
         <AlertTriangle className="size-3.5 shrink-0 text-warning" />
-      ) : selected?.data?.model.isConfidential === 1 ? (
-        <GradientLock className="size-3.5 shrink-0" />
-      ) : null}
+      )}
       {/* Muted in both variants — trigger labels are chrome, not content.
           Truncates instead of wrapping when the composer gets narrow. */}
       <span className="min-w-0 truncate font-medium text-muted-foreground">{selected?.label ?? t`Select model`}</span>
@@ -183,15 +188,10 @@ export const ModelSelector = ({
       >
         <span className="truncate font-normal">{item.label}</span>
         {embedded && isSelected && <Check aria-hidden="true" className="size-3.5 shrink-0 text-brand" />}
-        {/* ml-auto pushes the trailing indicator (missing-key warning or the
-            confidential "Private" badge) to the row's right edge. */}
-        {showMissingKeyHint ? (
-          <AlertTriangle className="ml-auto size-3.5 flex-shrink-0 text-warning" />
-        ) : item.icon ? (
-          <span className="ml-auto flex-shrink-0">
-            {embedded ? <Lock aria-label={t`Private`} className="size-3.5 text-muted-foreground" /> : item.icon}
-          </span>
-        ) : null}
+        <span className="ml-auto flex shrink-0 items-center gap-2">
+          {model && <ModelProviderMark model={model} />}
+          {showMissingKeyHint && <AlertTriangle className="size-3.5 shrink-0 text-warning" />}
+        </span>
       </div>
     )
 
@@ -253,7 +253,7 @@ export const ModelSelector = ({
         items={groupedItems}
         value={selectedModel?.id}
         onValueChange={handleModelChange}
-        searchable={models.length > 10}
+        searchable={groupedItems.reduce((count, group) => count + group.items.length, 0) > 10}
         searchPlaceholder={t`Search Models`}
         emptyMessage={t`No models found`}
         mobileTitle={t`Choose model`}

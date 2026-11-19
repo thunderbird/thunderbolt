@@ -4,7 +4,21 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
-import { waitForSyncCatchUp } from './sync-state'
+import { isSyncEnabled, setSyncEnabled, waitForSyncCatchUp } from './sync-state'
+
+const originalSettings = useLocalSettingsStore.getState()
+afterEach(() => useLocalSettingsStore.setState(originalSettings))
+
+it('ignores a stale sync preference without a server', () => {
+  useLocalSettingsStore.setState({ cloudUrl: '', syncEnabled: true })
+  expect(isSyncEnabled()).toBe(false)
+})
+
+it('requires server selection before enabling sync', async () => {
+  useLocalSettingsStore.setState({ cloudUrl: '', syncEnabled: false })
+  await expect(setSyncEnabled(true)).rejects.toThrow('Select a Thunderbolt server')
+  expect(useLocalSettingsStore.getState().syncEnabled).toBe(false)
+})
 
 type Predicate = (status: { lastSyncedAt: Date | undefined }) => boolean
 
@@ -24,11 +38,7 @@ const createPowerSync = (connected: boolean, downloading: boolean) => {
 
 describe('waitForSyncCatchUp', () => {
   beforeEach(() => {
-    useLocalSettingsStore.getState().setLocalSetting('syncEnabled', true)
-  })
-
-  afterEach(() => {
-    useLocalSettingsStore.getState().setLocalSetting('syncEnabled', false)
+    useLocalSettingsStore.setState({ cloudUrl: 'https://cloud.example.com/v1', syncEnabled: true })
   })
 
   it('does not wait when the device is connected and nothing is downloading', () => {

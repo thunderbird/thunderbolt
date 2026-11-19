@@ -6,6 +6,9 @@ minimumReleaseAge = 604800 # 7 days in seconds
 # Scope the exemption to the `@earendil-works/*` packages; the global quarantine
 # stays in force for every other dependency except the temporary entries below.
 minimumReleaseAgeExcludes = [
+  # Explicitly requested 2.0.0-rc.1 pins; remove after 2026-11-17.
+  "tinfoil",
+  "@tinfoilsh/verifier",
   "@earendil-works/pi-agent-core",
   "@earendil-works/pi-ai",
   "@earendil-works/pi-coding-agent",

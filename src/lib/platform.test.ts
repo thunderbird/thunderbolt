@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, spyOn } from 'bun:test'
 import { getClock } from '@/testing-library'
 import {
   deleteIndexedDbDatabase,
+  deleteOpfsFile,
   hasIndexedDbDatabase,
   hasOpfsFile,
   isIndexedDbAvailable,
@@ -228,6 +229,37 @@ describe('hasOpfsFile', () => {
     await expect(hasOpfsFile('thunderbolt-sync.db', rootThat(new DOMException('no', 'SecurityError')))).rejects.toThrow(
       'no',
     )
+  })
+})
+
+describe('deleteOpfsFile', () => {
+  const rootThat = (error?: DOMException) => {
+    const removed: string[] = []
+    const root = {
+      removeEntry: async (name: string) => {
+        if (error) {
+          throw error
+        }
+        removed.push(name)
+      },
+    }
+    return { root, removed }
+  }
+
+  it('removes the file', async () => {
+    const { root, removed } = rootThat()
+    await deleteOpfsFile('thunderbolt-sync-a.db', root)
+    expect(removed).toEqual(['thunderbolt-sync-a.db'])
+  })
+
+  it('counts a missing file as removed', async () => {
+    const { root } = rootThat(new DOMException('gone', 'NotFoundError'))
+    await expect(deleteOpfsFile('thunderbolt-sync-a.db', root)).resolves.toBeUndefined()
+  })
+
+  it('throws while another tab holds the file open', async () => {
+    const { root } = rootThat(new DOMException('in use', 'NoModificationAllowedError'))
+    await expect(deleteOpfsFile('thunderbolt-sync-a.db', root)).rejects.toThrow('in use')
   })
 })
 

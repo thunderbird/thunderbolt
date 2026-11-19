@@ -34,17 +34,18 @@ export class ValidationError extends Error {
   }
 }
 
+const deviceApprovalErrorMessages = {
+  'fingerprint-mismatch': 'Device fingerprint does not match',
+  'code-mismatch': 'Device approval code does not match',
+  'recipient-unverified': 'Device envelope attestation could not be verified',
+} as const
+
 /** Distinguish user confirmation failures from receiver identity-verification failures. */
 export class DeviceApprovalError extends ValidationError {
-  readonly reason: 'fingerprint-mismatch' | 'recipient-unverified'
+  readonly reason: 'fingerprint-mismatch' | 'code-mismatch' | 'recipient-unverified'
 
   constructor(reason: DeviceApprovalError['reason'], options?: ErrorOptions) {
-    super(
-      reason === 'fingerprint-mismatch'
-        ? 'Device fingerprint does not match'
-        : 'Device envelope attestation could not be verified',
-      options,
-    )
+    super(deviceApprovalErrorMessages[reason], options)
     this.name = 'DeviceApprovalError'
     this.reason = reason
   }

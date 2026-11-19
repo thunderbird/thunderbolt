@@ -112,8 +112,48 @@ const rewriteMath = (text: string): string =>
   )
 
 // An inline code span (`` `…` ``, `` ``…`` ``, …). Left verbatim so a message
-// that shows `$$…$$` / `\(…\)` *as inline code* keeps its literal text.
-const inlineCodeSpan = /(`+)[^`]*?\1/g
+// that shows `$$…$$` / `\(…\)` *as inline code* keeps its literal text. It closes on a
+// backtick run of the same length, so ``a`b`` holds a backtick, and may wrap a line but
+// never crosses a blank one — a code span can't leave its paragraph.
+const inlineCodeSpan = /(?<!`)(`+)(?!`)(?:[^\n]|\n(?![ \t]*\r?\n))*?(?<!`)\1(?!`)/g
+
+// A fenced code block, through a closing run of the same character at least as long,
+// or to the end of the text when unclosed (the normal state mid-stream). The opener may
+// follow list markers (`- ```js`). A backtick fence's info string can't contain a
+// backtick — that line is inline code instead.
+const fencedCodeBlock =
+  /^[ \t]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+)*(`{3,})[^`\n]*$[\s\S]*?(?:^[ \t]*\1`*[ \t]*$|(?![\s\S]))|^[ \t]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+)*(~{3,}).*$[\s\S]*?(?:^[ \t]*\2~*[ \t]*$|(?![\s\S]))/gm
+
+// The inline spans `blankNonProse` overwrites once fences are gone, in order: each pass
+// runs on the previous passes' output, so a `$` inside code can't open a math span.
+const inlineNonProseSpans = [
+  inlineCodeSpan,
+  displayMathDelimiters,
+  displayMathSpan,
+  inlineMathDelimiters,
+  inlineMathSpan,
+]
+
+// A blank line. Outside fences no span crosses one: the renderer normalizes math one
+// block at a time, so a stray `\(` must not pair with a `\)` paragraphs later.
+const paragraphBreak = /(\r?\n[ \t]*\r?\n)/
+
+/** `text` with every match of `span` overwritten by spaces, newlines kept, so offsets don't move. */
+const blankSpan = (text: string, span: RegExp): string => text.replace(span, (match) => match.replace(/[^\n]/g, ' '))
+
+/**
+ * `markdown` with fenced code, inline code and math (both `$` and `\(…\)` / `\[…\]`
+ * delimiters) overwritten by spaces, newlines kept, so offsets still line up with the
+ * original. Lets raw-text rewrites (citation placeholders) leave code and equations
+ * verbatim. Fences are blanked first, across the whole text; every other span stays
+ * within its paragraph. Known limitation: indented code blocks and fences inside
+ * blockquotes are not recognized, so they read as prose.
+ */
+export const blankNonProse = (markdown: string): string =>
+  blankSpan(markdown, fencedCodeBlock)
+    .split(paragraphBreak)
+    .map((paragraph) => inlineNonProseSpans.reduce(blankSpan, paragraph))
+    .join('')
 
 // Rewrite math everywhere except inside inline code spans.
 const normalizeDisplayMath = (markdown: string): string => {
@@ -313,12 +353,16 @@ const buildState = (source: string, prev: IncrementalMarkdownState | null): Incr
   // block boundary and freeze further top-level nodes, but only those lying
   // entirely within the stable normalized prefix (bytes past it can still change)
   // and before any node a later append could merge into.
-  const normTailSegments = parseSegments(normalizedFull.slice(committedNormLen))
+  const normalizedTail = normalizedFull.slice(committedNormLen)
+  // Most chat has no math to normalize. Reuse the parse when both passes
+  // would receive the same input, including the first render of saved history.
+  const normTailSegments = normalizedTail === sourceTail ? sourceTailSegments : parseSegments(normalizedTail)
   const blockCommitCount = committableSegmentCount(normTailSegments)
   const newlyCommittedBlocks: Block[] = []
   let advanced = 0
-  for (let i = 0; i < blockCommitCount; i++) {
-    const segment = normTailSegments[i]
+  let committedSegmentCount = 0
+  for (; committedSegmentCount < blockCommitCount; committedSegmentCount++) {
+    const segment = normTailSegments[committedSegmentCount]
     if (committedNormLen + advanced + segment.raw.length > stableNormLen) {
       break
     }
@@ -329,7 +373,13 @@ const buildState = (source: string, prev: IncrementalMarkdownState | null): Incr
   }
   const nextCommittedNormLen = committedNormLen + advanced
   const nextCommittedBlocks = committedBlocks.concat(newlyCommittedBlocks)
-  const blocks = nextCommittedBlocks.concat(sliceTopLevelBlocks(normalizedFull.slice(nextCommittedNormLen)))
+  // These segments already came from the normalized parse. Re-parsing their
+  // suffix would rebuild the same syntax tree for every streamed update.
+  const volatileBlocks = normTailSegments
+    .slice(committedSegmentCount)
+    .filter((segment) => !segment.isGap)
+    .map((segment) => ({ content: segment.raw, isCode: segment.type === 'code' }))
+  const blocks = nextCommittedBlocks.concat(volatileBlocks)
 
   return {
     source,

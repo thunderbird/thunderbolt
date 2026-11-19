@@ -10,6 +10,7 @@ import type { ComponentProps, KeyboardEvent, ReactNode } from 'react'
 
 import { IrohPairingPanel } from '@/components/settings/iroh-pairing-panel'
 import { Button } from '@/components/ui/button'
+import { BackButton } from '@/components/ui/back-button'
 import { FormFooter } from '@/components/ui/form-footer'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -121,6 +122,7 @@ export const McpServerForm = ({
   isSavePending,
   isImportPending,
   onCancel,
+  onBack,
   onAddServer,
   onUpdateServer,
   onImportConfig,
@@ -143,6 +145,7 @@ export const McpServerForm = ({
   isAddAuthorizePending: boolean
   isSavePending: boolean
   isImportPending: boolean
+  onBack?: () => void
   onCancel: () => void
   onAddServer: () => void
   onUpdateServer: () => void
@@ -345,6 +348,19 @@ export const McpServerForm = ({
                       )}
                     </Button>
                   )}
+                  {form.isStoredCredentialLeftBehind && (
+                    <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
+                      {form.isOAuthEdit ? (
+                        <Trans>
+                          The saved authorization only works with the previous URL. Authorize again after saving.
+                        </Trans>
+                      ) : (
+                        <Trans>
+                          The saved credential is only sent to the URL it was saved for. Enter it again to use this URL.
+                        </Trans>
+                      )}
+                    </p>
+                  )}
                 </div>
 
                 {isUrlReady && (
@@ -423,10 +439,14 @@ export const McpServerForm = ({
         )}
       </div>
 
-      <FormFooter>
-        <ResponsiveModalCancel onClick={onCancel}>
-          <Trans>Cancel</Trans>
-        </ResponsiveModalCancel>
+      <FormFooter className={onBack ? 'items-center justify-between' : undefined}>
+        {onBack ? (
+          <BackButton onClick={onBack} />
+        ) : (
+          <ResponsiveModalCancel onClick={onCancel}>
+            <Trans>Cancel</Trans>
+          </ResponsiveModalCancel>
+        )}
         {renderPrimaryAction()}
       </FormFooter>
     </div>

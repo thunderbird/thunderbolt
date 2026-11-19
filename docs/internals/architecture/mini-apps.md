@@ -58,7 +58,7 @@ browser's, which duck-typing cannot do: the shim satisfies the interface, so it 
 The frame's `allow` attribute stays **empty**, `tools` included. That feature is not how the host reads tools — it
 reads them from inside the frame over the bridge. What `allow="tools"` grants is cross-frame discovery by an agent
 in the _embedder_, which in a Thunderbolt window means the browser's agent, not ours: it would route a customer
-app's tools around the approval prompt `readOnlyHint` gates, to a caller we have no relationship with.
+app's tools around the host-side approval prompt, to a caller we have no relationship with.
 
 Two spellings reach the same registry, and which one to use is about the framework, not about portability:
 
@@ -281,20 +281,24 @@ request is built, matching on the call ids the history and its session share.
 The model can read app state and call app tools. It cannot navigate the app, read the DOM, see the user's
 selection unless the user promotes it, or reach anything the app didn't volunteer.
 
-A write tool blocks on an approval prompt before it runs. Be precise about what that buys: the gate reads
-`readOnlyHint`, which is the **app's own word about its own tool**, so it defends against a _confused model_ — one
-that has read something persuasive in the app's content and decided to act on it — and not against a hostile app,
-which could perform the same action directly without asking anyone. See [Security posture](#security-posture).
+Every app tool call blocks on an approval prompt before anything reaches the frame, whatever the tool's
+`readOnlyHint` says. A call is a transfer: its arguments are written by the model, which may have just read the
+user's email or calendar, and they land on the app's origin. See [Security posture](#security-posture).
+
+The prompt offers **Approve**, for this call only, and **Always approve this action**, which also covers every later
+call to the same tool of the same app. That allowance lives in memory (`chat-store.ts`) and ends when Thunderbolt
+reloads. It is keyed on the app id and the whole tool descriptor, so the prompt comes back when an app changes a
+tool's description, schema or title.
 
 ### Where the trust boundaries actually are
 
-| Boundary                 | Enforced by                                                      | What it stops                                  |
-| ------------------------ | ---------------------------------------------------------------- | ---------------------------------------------- |
-| app → Thunderbolt        | origin + source check on every message; zod on every payload     | Another frame impersonating the app            |
-| app → model              | length caps, `<app-provided-tool-list>` and `<app_view>` fencing | An app's text being read as instructions       |
-| model → app              | host-side approval on write tools                                | A prompt-injected model writing through a tool |
-| app → the user's disk    | confirm prompt, type allowlist, 50 MB cap, name sanitising       | An app saving files nobody agreed to           |
-| app → Thunderbolt's data | the browser's same-origin policy                                 | Reading Thunderbolt's storage, cookies, DOM    |
+| Boundary                 | Enforced by                                                                        | What it stops                                |
+| ------------------------ | ---------------------------------------------------------------------------------- | -------------------------------------------- |
+| app → Thunderbolt        | origin + source check on every message; zod on every payload                       | Another frame impersonating the app          |
+| app → model              | length caps, `<app-provided-tool-list>` and `<app_view>` fencing                   | An app's text being read as instructions     |
+| model → app              | host-side approval on every app tool call, unless the user waived it for that tool | The model sending the user's data to the app |
+| app → the user's disk    | confirm prompt, type allowlist, 50 MB cap, name sanitising                         | An app saving files nobody agreed to         |
+| app → Thunderbolt's data | the browser's same-origin policy                                                   | Reading Thunderbolt's storage, cookies, DOM  |
 
 The last one is the only boundary the _browser_ enforces rather than us, and it is by far the strongest. Everything
 above it is our code, and worth reading with that in mind.
@@ -332,8 +336,8 @@ manager. It asks with `ui/download-file`, MCP Apps' method and params (one embed
    frame `ui/get-context`, and puts what it says now in the volatile tail of the system prompt.
 4. The model answers from that view. If it needs the full `data`, it calls `get_app_context`, which asks the frame
    again.
-5. The model calls `app_set_order_status`. It's a write, so the host shows the approval prompt above the composer
-   and blocks. On approve, the call goes over the bridge; the app performs it and returns text.
+5. The model calls `app_set_order_status`. The host shows the approval prompt above the composer and blocks, as it
+   does for every app tool. On approve, the call goes over the bridge; the app performs it and returns text.
 6. The app's state changed, and it publishes nothing — there is nothing to publish. A `get_app_context` in the same
    turn sees it, and so does the next send's view.
 
@@ -431,15 +435,20 @@ may _visit_.
 
 What genuinely holds: Thunderbolt's server never talks to the app's server — the bridge is `postMessage` between
 two origins in the user's browser. Same-origin policy keeps a compromised app out of Thunderbolt's storage,
-cookies and DOM. Both sides pin origins on every message, with no wildcard `postMessage`. And write-tool approval
-is enforced host-side rather than in the app, and the app never learns the outcome except by the tool's result.
+cookies and DOM. Both sides pin origins on every message, with no wildcard `postMessage`. And tool approval is
+enforced host-side rather than in the app, and the app never learns the outcome except by the tool's result.
 
-Be precise about what that buys, though. The decision reads `readOnlyHint`, which is the app's own word about its own
-tool — so **an app that declares a destructive tool read-only will skip the prompt.** The gate defends against a
-confused model, not a hostile app: it stops a prompt-injected model writing through a tool the app marked as a write,
-and it fails safe when the annotation is absent (absent means ask). It is not a boundary against the app, which can
-perform the same action directly without asking anyone. Making it one would mean the operator classifying each tool in
-`MINI_APPS` instead of trusting the descriptor — worth doing the day apps stop being first-party.
+**The app is a destination for the user's data, so it cannot waive the prompt.** A tool call carries arguments the
+model wrote, and the model may have read the user's email or calendar a moment earlier. The host cannot tell which
+arguments carry that data. If `readOnlyHint: true` skipped the prompt, an app could describe a tool as read-only,
+coax the model into passing an email body as an argument, and receive it with no prompt. So the hint is accepted, as
+WebMCP defines it, and ignored for approval. Registering the app's origin in `MINI_APPS` says which app the frame is;
+it does not authorise each transfer. What the gate does not cover is the app itself: anything it can do without the
+model, it can do without asking anyone.
+
+Only the user can waive the prompt, with **Always approve this action**, and the prompt says what that gives up:
+later calls to the tool carry whatever the model sends, unseen. That includes an email the model read in the same
+conversation, so the waiver reopens the transfer above for that one tool until Thunderbolt reloads.
 
 ### Descriptor limits
 
@@ -483,7 +492,7 @@ src/mini-apps/use-mini-apps.ts          fetches GET /mini-apps once per session
 src/mini-apps/use-mini-app-bridge.ts    host side of the bridge
 src/mini-apps/mini-app-auth.ts          token fetch
 src/mini-apps/mini-app-tools.ts         app tools as model tools, plus their prompt section
-src/mini-apps/mini-app-approval.ts      the write-approval gate and its deadline
+src/mini-apps/mini-app-approval.ts      the tool-call approval gate, its deadline and Always approve
 src/mini-apps/approval-outcome.ts       how an approval ended, which the model is told
 src/mini-apps/mini-app-store.ts         which app is open, for callers outside React
 src/mini-apps/mini-app-context-tool.ts  get_app_context for an app

@@ -24,20 +24,9 @@ const signToken = (token: string): string => {
 }
 
 /**
- * Unique-ID strategy for PGlite + nested transactions:
- *
- * Tests use createTestDb() which wraps each test in BEGIN / ROLLBACK for isolation.
- * However, some endpoints (e.g. POST /devices/:id/envelope, POST /devices/:id/revoke)
- * call database.transaction() internally. In PGlite's single-connection model, the
- * inner BEGIN is treated as a no-op and the inner COMMIT commits the *outer* test
- * transaction, so ROLLBACK in afterEach becomes a no-op and inserted rows persist.
- *
- * CI runs every test file 5× in the same process (test:backend:5x). Without unique IDs
- * the second run hits unique-constraint violations on user/device/session rows left
- * behind by the first run.
- *
- * Fix: p() prefixes every ID with a globalThis counter that survives module re-evaluation
- * (bun's --rerun-each reloads the module, resetting module-scope variables).
+ * Unique IDs: p() prefixes every ID with a globalThis counter, so a rerun in the same process (as test:backend:5x
+ * does) never reuses an ID from an earlier pass. The counter lives on globalThis because bun's --rerun-each reloads
+ * the module, which resets module-scope variables.
  */
 const counterKey = Symbol.for('encryption-test-runId')
 ;(globalThis as Record<symbol, number>)[counterKey] ??= 0

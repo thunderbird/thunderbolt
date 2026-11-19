@@ -4,7 +4,6 @@
 
 export { ContextUsageIndicator } from './context-usage-indicator'
 export { CompactionNotice } from './compaction-notice'
-export { CompactionSummaryContent } from './compaction-summary-content'
 export { useCompactionSummaryState } from './use-compaction-summary-state'
 export { AcpCompactionNotice } from './acp-compaction-notice'
 export type { CompactionSummary } from './compaction-summary'

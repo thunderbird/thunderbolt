@@ -428,6 +428,10 @@ export const cleanupRemovedDefaults = async (
   models: readonly SharedModel[] = defaultModels,
   initialSyncCompleted: boolean = true,
 ) => {
+  if (!canOverwriteModels && !initialSyncCompleted) {
+    return
+  }
+
   const now = nowIso()
   const currentModelIds = new Set(models.map((m) => m.id))
 
@@ -660,6 +664,12 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       reconcileOptions: Pick<ReconcileDefaultsForTableOptions<T>, 'keyField' | 'frozenFields' | 'skipMissingWhen'> = {},
     ): Promise<void> => {
       const gate = computeCanOverwrite(appliedVersions, versionKey, currentVersion, hasAnyRow, initialSyncCompleted)
+      // Neither content updates nor resurrection can run before sync under
+      // a closed gate, so no rows need to cross the SQLite worker boundary.
+      if (!gate.canOverwrite && !initialSyncCompleted) {
+        return
+      }
+
       const pass = await reconcileDefaultsForTable(tx, table, defaults, hashFn, {
         canOverwrite: gate.canOverwrite,
         canResurrect: initialSyncCompleted,

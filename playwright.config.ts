@@ -104,8 +104,8 @@ export default defineConfig({
       },
     },
     {
-      // Self-contained real-browser tests for the artifact harness (drive the wrapped
-      // HTML in a sandboxed iframe on about:blank) — no auth server, backend, or baseURL.
+      // Playwright serves the artifact host page so the sandboxed iframe has a parent
+      // with an HTTPS origin. This project needs no running app or baseURL.
       // Anchor to a leading `/` and forbid `/` in the name so the match is the FILENAME,
       // not the worktree dir "feat-html-artifact-tool" (which also contains "artifact-").
       name: 'artifact',
@@ -128,6 +128,7 @@ export default defineConfig({
         VITE_AUTH_ENABLE_ANONYMOUS: 'false',
         VITE_BYPASS_WAITLIST: 'false',
         VITE_THUNDERBOLT_CLOUD_URL: `http://localhost:${consumerBackendPort}/v1`,
+        VITE_THUNDERBOLT_CLOUD_SERVICE_URL: `http://localhost:${consumerBackendPort}/v1`,
       },
     },
     // --- Consumer backend ---

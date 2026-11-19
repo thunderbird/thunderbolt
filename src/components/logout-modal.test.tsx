@@ -41,7 +41,7 @@ describe('LogoutModal', () => {
   beforeEach(async () => {
     await resetTestDatabase()
     mockOnOpenChange = mock()
-    mockSignOut = mock(() => Promise.resolve())
+    mockSignOut = mock(() => Promise.resolve({ data: { success: true }, error: null }))
     mockClearLocalData.mockClear()
     mockReload.mockClear()
     mockReplace.mockClear()
@@ -161,9 +161,14 @@ describe('LogoutModal', () => {
       })
 
       expect(screen.getByText('Logging out…')).toBeInTheDocument()
+      expect(screen.getByText('Leave data on device').closest('button')).toBeDisabled()
+      expect(screen.getByText('Delete data from device').closest('button')).toBeDisabled()
+      expect(mockClearLocalData).not.toHaveBeenCalled()
+      expect(mockReload).not.toHaveBeenCalled()
+      expect(mockReplace).not.toHaveBeenCalled()
 
       // Clean up
-      resolveSignOut!()
+      resolveSignOut!({ data: { success: true }, error: null })
       await act(async () => {
         await getClock().runAllAsync()
       })
@@ -210,7 +215,7 @@ describe('LogoutModal', () => {
       expect(screen.getByText('Deleting…')).toBeInTheDocument()
 
       // Clean up
-      resolveSignOut!()
+      resolveSignOut!({ data: { success: true }, error: null })
       await act(async () => {
         await getClock().runAllAsync()
       })
@@ -228,20 +233,75 @@ describe('LogoutModal', () => {
     })
   })
 
+  describe.each(['sso', 'thunderbolt'])('%s sign-out failures', (authMode) => {
+    describe.each(['keep', 'delete'])('with %s data', (option) => {
+      it.each(['returned', 'thrown'])(
+        'preserves data and choice after a %s error, then allows retry',
+        async (failure) => {
+          env.VITE_AUTH_MODE = authMode
+          if (failure === 'returned') {
+            mockSignOut.mockResolvedValueOnce({
+              data: null,
+              error: { message: 'Server error', status: 500, statusText: 'Internal Server Error' },
+            })
+          } else {
+            mockSignOut.mockRejectedValueOnce(new Error('Network error'))
+          }
+
+          renderModal()
+          const choice = screen
+            .getByText(option === 'delete' ? 'Delete data from device' : 'Leave data on device')
+            .closest('button')!
+          fireEvent.click(choice)
+          fireEvent.click(screen.getByRole('button', { name: 'Log out' }))
+          await act(async () => {
+            await getClock().runAllAsync()
+          })
+
+          expect(mockClearLocalData).not.toHaveBeenCalled()
+          expect(mockReload).not.toHaveBeenCalled()
+          expect(mockReplace).not.toHaveBeenCalled()
+          expect(mockOnOpenChange).not.toHaveBeenCalled()
+          expect(screen.getByRole('heading', { name: 'Log out' })).toBeInTheDocument()
+          expect(screen.getByRole('alert')).toHaveTextContent('Could not confirm sign-out. Please try again.')
+          expect(choice.querySelector(option === 'delete' ? '.bg-destructive' : '.bg-primary')).toBeInTheDocument()
+          expect(choice).toBeEnabled()
+          expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
+          expect(screen.getByRole('button', { name: 'Log out' })).toBeEnabled()
+
+          fireEvent.click(screen.getByRole('button', { name: 'Log out' }))
+          await act(async () => {
+            await getClock().runAllAsync()
+          })
+
+          expect(mockSignOut).toHaveBeenCalledTimes(2)
+          expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+          expect(mockClearLocalData).toHaveBeenCalledTimes(1)
+          expect(mockClearLocalData).toHaveBeenCalledWith({ clearDatabase: option === 'delete' })
+          if (authMode === 'sso') {
+            expect(mockReplace).toHaveBeenCalledWith('/signed-out')
+            expect(mockReload).not.toHaveBeenCalled()
+          } else {
+            expect(mockReload).toHaveBeenCalledTimes(1)
+            expect(mockReplace).not.toHaveBeenCalled()
+          }
+        },
+      )
+    })
+  })
+
   describe('error handling', () => {
-    it('continues to reload even if signOut fails', async () => {
-      mockSignOut.mockRejectedValue(new Error('Network error'))
-
+    it('does not clean up without an affirmative success result', async () => {
+      mockSignOut.mockResolvedValueOnce({ data: { success: false }, error: null })
       renderModal()
-      const logoutButton = screen.getByRole('button', { name: 'Log out' })
-
-      fireEvent.click(logoutButton)
-
+      fireEvent.click(screen.getByRole('button', { name: 'Log out' }))
       await act(async () => {
         await getClock().runAllAsync()
       })
-
-      expect(mockReload).toHaveBeenCalled()
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+      expect(mockClearLocalData).not.toHaveBeenCalled()
+      expect(mockReload).not.toHaveBeenCalled()
+      expect(mockReplace).not.toHaveBeenCalled()
     })
 
     it('continues to reload even if clearLocalData fails', async () => {
@@ -281,22 +341,6 @@ describe('LogoutModal', () => {
       expect(mockReplace).toHaveBeenCalledWith('/signed-out')
       expect(mockReload).not.toHaveBeenCalled()
     })
-
-    it('navigates to /signed-out even if signOut fails', async () => {
-      mockSignOut.mockRejectedValue(new Error('Network error'))
-
-      renderModal()
-      const logoutButton = screen.getByRole('button', { name: 'Log out' })
-
-      fireEvent.click(logoutButton)
-
-      await act(async () => {
-        await getClock().runAllAsync()
-      })
-
-      expect(mockReplace).toHaveBeenCalledWith('/signed-out')
-      expect(mockReload).not.toHaveBeenCalled()
-    })
   })
 
   describe('modal behavior during logout', () => {
@@ -322,7 +366,7 @@ describe('LogoutModal', () => {
       expect(cancelButton).toBeDisabled()
 
       // Clean up
-      resolveSignOut!()
+      resolveSignOut!({ data: { success: true }, error: null })
       await act(async () => {
         await getClock().runAllAsync()
       })
@@ -349,7 +393,7 @@ describe('LogoutModal', () => {
       expect(screen.getByRole('button', { name: /Logging out|Deleting/i })).toBeDisabled()
 
       // Clean up
-      resolveSignOut!()
+      resolveSignOut!({ data: { success: true }, error: null })
       await act(async () => {
         await getClock().runAllAsync()
       })

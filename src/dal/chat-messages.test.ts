@@ -5,14 +5,18 @@
 import { getDb } from '@/db/database'
 import { chatMessagesTable, chatThreadsTable, modelsTable } from '@/db/tables'
 import type { ThunderboltUIMessage } from '@/types'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { eq } from 'drizzle-orm'
+import { SQLiteRemoteSession } from 'drizzle-orm/sqlite-proxy'
 import { v7 as uuidv7 } from 'uuid'
 import {
   getChatMessages,
   getLastMessage,
+  getMessage,
+  getMessageCache,
   saveMessagesWithContextUpdate,
   saveStreamingAssistantMessage,
+  updateMessageCache,
 } from './chat-messages'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
@@ -28,6 +32,98 @@ describe('Chat Messages DAL', () => {
   beforeEach(async () => {
     // Reset database before each test to prevent pollution from randomized test order
     await resetTestDatabase()
+  })
+
+  describe('message projections', () => {
+    it('reads cache and last-message identity without materializing a large message body', async () => {
+      const db = getDb()
+      const id = uuidv7()
+      const threadId = uuidv7()
+      const modelId = uuidv7()
+      const content = 'Message text and tool output. '.repeat(2048)
+      const cache = { connectIntegrationWidget: { isHidden: true } }
+      await db.insert(chatMessagesTable).values({
+        id,
+        chatThreadId: threadId,
+        modelId,
+        role: 'assistant',
+        content,
+        parts: [{ type: 'text', text: content }],
+        cache,
+      })
+      const completeMessage = await getMessage(db, id)
+      const prepareQuery = spyOn(SQLiteRemoteSession.prototype, 'prepareQuery')
+      try {
+        const cachedMessage = await getMessageCache(db, id)
+        const lastMessage = await getLastMessage(db, threadId)
+
+        expect(cachedMessage).toEqual({ cache })
+        expect(lastMessage).toEqual({ id, modelId })
+        expect(prepareQuery).toHaveBeenCalledTimes(2)
+        for (const [query] of prepareQuery.mock.calls) {
+          expect(query.sql).not.toContain('"content"')
+          expect(query.sql).not.toContain('"parts"')
+          expect(query.sql).not.toContain('"metadata"')
+        }
+        const completeBytes = JSON.stringify(completeMessage).length
+        expect(JSON.stringify(cachedMessage).length).toBeLessThan(completeBytes / 100)
+        expect(JSON.stringify(lastMessage).length).toBeLessThan(completeBytes / 100)
+      } finally {
+        prepareQuery.mockRestore()
+      }
+    })
+
+    it('distinguishes an empty cache from missing and soft-deleted messages', async () => {
+      const db = getDb()
+      await db.insert(chatMessagesTable).values([
+        { id: 'empty-cache', chatThreadId: 'thread' },
+        { id: 'deleted-cache', chatThreadId: 'thread', deletedAt: '2026-01-01T00:00:00.000Z' },
+      ])
+
+      expect(await getMessageCache(db, 'empty-cache')).toEqual({ cache: null })
+      expect(await getMessageCache(db, 'missing-cache')).toBeUndefined()
+      expect(await getMessageCache(db, 'deleted-cache')).toBeUndefined()
+    })
+
+    it('keeps the last live message in its own thread when newer messages are deleted or elsewhere', async () => {
+      const db = getDb()
+      await db.insert(chatMessagesTable).values([
+        { id: '01', chatThreadId: 'thread' },
+        { id: '02', chatThreadId: 'thread', deletedAt: '2026-01-01T00:00:00.000Z' },
+        { id: '03', chatThreadId: 'other-thread', modelId: 'other-model' },
+      ])
+
+      expect(await getLastMessage(db, 'thread')).toEqual({ id: '01', modelId: null })
+      expect(await getLastMessage(db, 'missing-thread')).toBeNull()
+    })
+
+    it('merges cache entries without touching the message body and rejects missing or deleted rows', async () => {
+      const db = getDb()
+      await db.insert(chatMessagesTable).values([
+        { id: 'live-cache', content: 'Keep this message', cache: { existing: { isHidden: true } } },
+        { id: 'deleted-cache', deletedAt: '2026-01-01T00:00:00.000Z', cache: { existing: { isHidden: true } } },
+      ])
+      const before = await getMessage(db, 'live-cache')
+      if (!before) {
+        throw new Error('Fixture message missing')
+      }
+
+      await updateMessageCache(db, 'live-cache', 'added', { isHidden: false })
+
+      expect(await getMessage(db, 'live-cache')).toEqual({
+        ...before,
+        cache: { existing: { isHidden: true }, added: { isHidden: false } },
+      })
+      await expect(updateMessageCache(db, 'missing-cache', 'added', { isHidden: false })).rejects.toThrow(
+        'Message not found',
+      )
+      await expect(updateMessageCache(db, 'deleted-cache', 'added', { isHidden: false })).rejects.toThrow(
+        'Message not found',
+      )
+      expect(
+        (await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, 'deleted-cache')).get())?.cache,
+      ).toEqual({ existing: { isHidden: true } })
+    })
   })
 
   describe('getChatMessages', () => {

@@ -49,6 +49,7 @@ sync_config:
         queries:
           - SELECT * FROM powersync.settings WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
           - SELECT * FROM powersync.models WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
+          - SELECT * FROM powersync.provider_connections WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
           - SELECT * FROM powersync.model_profiles WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
           - SELECT * FROM powersync.devices WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
           - SELECT * FROM powersync.chat_threads WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)

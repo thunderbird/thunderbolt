@@ -7,16 +7,8 @@ import type { CompactionSummary } from './compaction-summary'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { SidebarContent } from '@/components/ui/sidebar'
 import { ContentViewHeader } from '@/content-view/header'
-import type { Components } from 'react-markdown'
-import { markdownComponents } from '@/components/chat/markdown-utils'
 import { MemoizedMarkdown } from '@/components/chat/memoized-markdown'
 import { RetainedContextMessage } from './retained-context-message'
-
-// A summary can quote untrusted tool output; inspecting it must not fetch embedded image URLs.
-const summaryComponents: Components = {
-  ...markdownComponents,
-  img: ({ alt }) => <span>{alt}</span>,
-}
 
 type CompactionSummaryContentProps = {
   checkpoint: CompactionSummary
@@ -33,7 +25,7 @@ export const CompactionSummaryContent = ({ checkpoint, onClose }: CompactionSumm
     >
       <ContentViewHeader title={t`Compaction summary`} onClose={onClose} className="md:bg-card" />
       <SidebarContent className="gap-4 overflow-x-hidden p-4 break-words">
-        <MemoizedMarkdown id="compaction-summary" content={checkpoint.summary} components={summaryComponents} />
+        <MemoizedMarkdown id="compaction-summary" content={checkpoint.summary} />
         {!!checkpoint.retainedTail?.length && (
           <Accordion type="single" collapsible>
             <AccordionItem value="retained-context">

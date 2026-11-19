@@ -15,7 +15,7 @@ import { createTinfoilTransport } from './thunderbolt-engine'
 const fakeClient = (respond: () => Response) => {
   let received: { input: RequestInfo | URL; init?: RequestInit } | null = null
   const client = {
-    getBaseURL: () => 'https://cloud.example.com/v1/tinfoil',
+    baseURL: 'https://cloud.example.com/v1/tinfoil',
     fetch: ((input: RequestInfo | URL, init?: RequestInit) => {
       received = { input, init }
       return Promise.resolve(respond())
@@ -114,69 +114,43 @@ describe('createTinfoilTransport', () => {
     expect(new Headers(received()?.init?.headers).has('Authorization')).toBe(false)
   })
 
-  it('rejects a client without a resolved base URL before sending', async () => {
-    const respond = mock(() => new Response())
-    const { client } = fakeClient(respond)
+  it('returns an ordinary 422 response without replay or eviction', async () => {
+    const respond = mock(() => new Response(null, { status: 422 }))
+    const fake = fakeClient(respond)
+    const evictClient = mock(() => {})
     const transport = createTinfoilTransport({
-      getClient: async () => ({ ...client, getBaseURL: () => undefined }),
-      evictClient: () => {},
+      getClient: async () => fake.client,
+      evictClient,
       isSsoMode: () => false,
       getAuthToken: () => 'token',
     })
-    await expect(transport('/audio/transcriptions', 'body')).rejects.toThrow('no base URL')
-    expect(respond).not.toHaveBeenCalled()
+
+    expect((await transport('/audio/transcriptions', 'body')).status).toBe(422)
+    expect(respond).toHaveBeenCalledTimes(1)
+    expect(evictClient).not.toHaveBeenCalled()
   })
 
-  it('retries once through a fresh client on a 422 key mismatch and gates the final response', async () => {
-    const statuses = [422, 426]
-    let evicted = 0
-    const fake = fakeClient(() => new Response(null, { status: statuses.shift()! }))
+  it('evicts a failed attestation without replaying the request', async () => {
+    const failure = Object.assign(new Error('attestation rejected'), { category: 'attestation' })
+    const respond = mock(() => {
+      throw failure
+    })
+    const { client } = fakeClient(respond)
+    const getClient = mock(async () => client)
+    const evictClient = mock(() => {})
     const transport = createTinfoilTransport({
-      getClient: async () => fake.client,
-      evictClient: (client) => {
-        expect(client).toBe(fake.client)
-        evicted++
-      },
+      getClient,
+      evictClient,
       isSsoMode: () => false,
-      getAuthToken: () => 'session-token',
+      getAuthToken: () => 'token',
     })
 
-    const response = await transport('/audio/transcriptions', 'body')
-
-    expect(evicted).toBe(1)
-    expect(response.status).toBe(426)
-    expect(isAppVersionBlocked()).toBe(true)
+    await expect(transport('/audio/transcriptions', 'body')).rejects.toBe(failure)
+    expect(respond).toHaveBeenCalledTimes(1)
+    expect(getClient).toHaveBeenCalledTimes(1)
+    expect(evictClient).toHaveBeenCalledTimes(1)
+    expect(evictClient).toHaveBeenCalledWith(client)
   })
-
-  it.each(['response', 'error'] as const)(
-    'does not retry again if the %s retry fails with a key mismatch',
-    async (kind) => {
-      const mismatch = Object.assign(new Error('key rotated'), { name: 'KeyConfigMismatchError' })
-      const first = fakeClient(() => {
-        if (kind === 'error') {
-          throw mismatch
-        }
-        return new Response(null, { status: 422 })
-      }).client
-      const second = fakeClient(() => {
-        throw mismatch
-      }).client
-      const getClient = mock(async () => second)
-      getClient.mockImplementationOnce(async () => first)
-      const evictClient = mock(() => {})
-      const transport = createTinfoilTransport({
-        getClient,
-        evictClient,
-        isSsoMode: () => false,
-        getAuthToken: () => 'token',
-      })
-      await expect(transport('/audio/transcriptions', 'body')).rejects.toBe(mismatch)
-      expect(getClient).toHaveBeenCalledTimes(2)
-      expect(evictClient).toHaveBeenCalledTimes(2)
-      expect(evictClient).toHaveBeenCalledWith(first)
-      expect(evictClient).toHaveBeenCalledWith(second)
-    },
-  )
 
   it('propagates unrelated errors without eviction or retry', async () => {
     const error = new Error('network unavailable')
@@ -194,24 +168,5 @@ describe('createTinfoilTransport', () => {
     await expect(transport('/audio/transcriptions', 'body')).rejects.toBe(error)
     expect(getClient).toHaveBeenCalledTimes(1)
     expect(evictClient).not.toHaveBeenCalled()
-  })
-
-  it('evicts both clients after consecutive 422 responses without a third attempt', async () => {
-    const first = fakeClient(() => new Response(null, { status: 422 })).client
-    const second = fakeClient(() => new Response(null, { status: 422 })).client
-    const getClient = mock(async () => second)
-    getClient.mockImplementationOnce(async () => first)
-    const evictClient = mock(() => {})
-    const transport = createTinfoilTransport({
-      getClient,
-      evictClient,
-      isSsoMode: () => false,
-      getAuthToken: () => 'token',
-    })
-    expect((await transport('/audio/transcriptions', 'body')).status).toBe(422)
-    expect(getClient).toHaveBeenCalledTimes(2)
-    expect(evictClient).toHaveBeenCalledTimes(2)
-    expect(evictClient).toHaveBeenCalledWith(first)
-    expect(evictClient).toHaveBeenCalledWith(second)
   })
 })

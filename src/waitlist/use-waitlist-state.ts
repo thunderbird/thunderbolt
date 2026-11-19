@@ -83,17 +83,20 @@ const reducer = (state: State, action: Action): State => {
 
 type UseWaitlistStateOptions = {
   authClient: AuthClient
+  onSuccess?: () => void
 }
 
 /**
  * State hook for the unified waitlist flow.
  * Handles email submission via the waitlist API, then OTP verification for approved users.
- * AuthGate owns the signed-in redirect; post-sign-in work can finish after this page unmounts.
+ * The caller reacts to the authenticated session; post-sign-in work can finish after the form unmounts.
+ * After a successful sign-in the status stays `verifying` (or `passkey`), which keeps the form locked until its host
+ * redirects, closes or moves to the next step. A host that outlives the form must not treat that status as busy.
  *
  * Privacy note: The API always returns { success: true } regardless of user status.
  * Approved users receive an OTP email; others receive waitlist status emails.
  */
-export const useWaitlistState = ({ authClient }: UseWaitlistStateOptions) => {
+export const useWaitlistState = ({ authClient, onSuccess }: UseWaitlistStateOptions) => {
   const httpClient = useHttpClient()
   const analytics = useAnonymousPromotionAnalytics()
   const [state, dispatch] = useReducer(reducer, initialState)
@@ -148,7 +151,7 @@ export const useWaitlistState = ({ authClient }: UseWaitlistStateOptions) => {
     dispatch({ type: 'START_VERIFYING' })
 
     try {
-      await analytics.captureAnonId(authClient)
+      await analytics.captureAnonymousSession(authClient)
       if (!attempt.isCurrent()) {
         return
       }
@@ -172,11 +175,12 @@ export const useWaitlistState = ({ authClient }: UseWaitlistStateOptions) => {
       }
 
       const isNewUser = isNewAuthUser(result.data.user)
-      analytics.onPromotionSuccess(result.data.user.id)
+      analytics.onPromotionSuccess()
 
       if (!isNewUser) {
         useWelcomeStore.getState().trigger()
       }
+      onSuccess?.()
     } catch (error) {
       if (!attempt.isCancellation(error)) {
         console.error('OTP verification error:', error)
@@ -198,11 +202,11 @@ export const useWaitlistState = ({ authClient }: UseWaitlistStateOptions) => {
     dispatch({ type: 'PASSKEY_START' })
 
     try {
-      await analytics.captureAnonId(authClient)
+      await analytics.captureAnonymousSession(authClient)
       if (!attempt.isCurrent()) {
         return
       }
-      const { userId } = await signInWithPasskey(authClient, {
+      await signInWithPasskey(authClient, {
         signal: attempt.signal,
         onAuthenticated: attempt.commit,
       })
@@ -211,9 +215,10 @@ export const useWaitlistState = ({ authClient }: UseWaitlistStateOptions) => {
         return
       }
 
-      analytics.onPromotionSuccess(userId)
+      analytics.onPromotionSuccess()
 
       useWelcomeStore.getState().trigger()
+      onSuccess?.()
     } catch (error) {
       const cancelled = !attempt.isCommitted() && (isPasskeyCancellation(error) || attempt.isCancellation(error))
       if (!cancelled) {

@@ -64,6 +64,30 @@ describe('MarkdownThumbnail GFM loading', () => {
     expect(client.getQueryData(gfmKey)).toBeUndefined()
   })
 
+  it('renders attachment images as text while preserving GFM and ordinary links', async () => {
+    const text =
+      '# Safe preview\n\n![Inline description](https://collector.invalid/inline)\n\n![Reference description][pixel]\n\n[pixel]: //collector.invalid/reference\n\n[ordinary link](https://example.com/control)\n\n~~Removed text~~'
+    attachment.mockResolvedValue({
+      id: 'markdown-file',
+      filename: 'notes.md',
+      mimeType: 'text/markdown',
+      size: text.length,
+      createdAt: 0,
+      blob: new Blob([text]),
+    })
+    const { client, wrapper } = createWrapper()
+    client.setQueryData(gfmKey, () => remarkGfm)
+    const { container } = render(<MarkdownThumbnail localFileId="markdown-file" />, { wrapper })
+    await flush()
+
+    expect(screen.getByRole('heading', { name: 'Safe preview' })).toBeInTheDocument()
+    expect(container.querySelector('img')).toBeNull()
+    expect(container.textContent).toContain('Inline description')
+    expect(container.textContent).toContain('Reference description')
+    expect(container.querySelector('a')?.getAttribute('href')).toBe('https://example.com/control')
+    expect(container.querySelector('del')?.textContent).toBe('Removed text')
+  })
+
   it('shares a pending GFM load and keeps the file controls usable', async () => {
     const { client, wrapper } = createWrapper()
     const pending = Promise.withResolvers<typeof remarkGfm>()

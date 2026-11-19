@@ -68,9 +68,9 @@ export const AppVersionSection = () => {
   const appVersion = import.meta.env.VITE_APP_VERSION ?? 'unknown'
   const desktop = isDesktop()
   const mobile = isMobile()
-  const showCheckButton = isTauri() && (desktop || mobile)
-
-  const { status, update, error, errorPhase, downloadProgress, primaryAction, checkForUpdates } = useDesktopUpdate()
+  const { enabled, status, update, error, errorPhase, downloadProgress, primaryAction, checkForUpdates } =
+    useDesktopUpdate()
+  const showCheckButton = isTauri() && (enabled || mobile)
   const checkDisabled = desktop && (status === 'checking' || status === 'downloading' || status === 'restarting')
 
   const handleDesktopCheck = () => {

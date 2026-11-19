@@ -207,79 +207,117 @@ describe('createSSEStreamFromCompletion', () => {
     expect(onUsageMissing).toHaveBeenCalledTimes(1)
   })
 
-  it('does not consume observed usage when cancelled before natural exhaustion', async () => {
+  it('keeps reading after the client cancels, then records the final usage without aborting the request', async () => {
     const controller = new AbortController()
-    const iteratorClosed = createDeferred()
-    const onUsage = jest.fn(async (_snapshot: CompletionUsageSnapshot) => {})
+    const cancelled = createDeferred()
+    const recorded = createDeferred()
+    const onUsage = jest.fn(async (_snapshot: CompletionUsageSnapshot) => recorded.resolve())
     const completion = {
       controller,
       async *[Symbol.asyncIterator]() {
-        try {
-          yield asCompletionChunk({
-            id: 'observed-before-cancel',
-            choices: [],
-            usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
-          })
-          await new Promise<void>((resolve) => {
-            controller.signal.addEventListener('abort', () => resolve(), { once: true })
-          })
-          yield asCompletionChunk({ id: 'after-cancel', choices: [] })
-        } finally {
-          iteratorClosed.resolve()
-        }
+        yield asCompletionChunk({ id: 'before-cancel', choices: [{ delta: { content: 'Hello' } }] })
+        await cancelled.promise
+        yield asCompletionChunk({ id: 'after-cancel', choices: [{ delta: { content: ' there' } }] })
+        yield asCompletionChunk({
+          id: 'final-usage',
+          choices: [],
+          usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
+        })
       },
     } satisfies Completion
     const reader = createSSEStreamFromCompletion(completion, { onUsage }).getReader()
 
-    expect(new TextDecoder().decode((await reader.read()).value)).toContain('observed-before-cancel')
+    expect(new TextDecoder().decode((await reader.read()).value)).toContain('before-cancel')
     await reader.cancel()
-    await iteratorClosed.promise
+    cancelled.resolve()
+    await recorded.promise
 
-    expect(controller.signal.aborted).toBe(true)
+    expect(controller.signal.aborted).toBe(false)
+    expect(onUsage).toHaveBeenCalledTimes(1)
+    expect(onUsage).toHaveBeenCalledWith({ promptTokens: 3, completionTokens: 2, totalTokens: 5 })
+  })
+
+  it('ends the request after its usage is recorded or its stream fails, before the client stream ends', async () => {
+    const events: string[] = []
+    const onUsage = jest.fn(async (_snapshot: CompletionUsageSnapshot) => {
+      events.push('usage')
+    })
+    const onEnd = jest.fn(async () => {
+      events.push('end')
+    })
+    const usageChunk = asCompletionChunk({
+      id: 'u',
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    })
+    const failing = {
+      controller: new AbortController(),
+      [Symbol.asyncIterator]: () => ({
+        next: async (): Promise<IteratorResult<CompletionChunk>> => {
+          throw new Error('connection reset')
+        },
+      }),
+    } satisfies Completion
+
+    await readStreamChunks(createSSEStreamFromCompletion(createCompletion([usageChunk]), { onUsage, onEnd }))
+    await expect(readStreamChunks(createSSEStreamFromCompletion(failing, { onEnd }))).rejects.toThrow(
+      'connection reset',
+    )
+
+    expect(events).toEqual(['usage', 'end', 'end'])
+  })
+
+  it('reports a provider failure that comes after the client cancels, and records no usage', async () => {
+    const cancelled = createDeferred()
+    const failure = new Error('connection reset')
+    const reported = createDeferred()
+    const onError = jest.fn(() => reported.resolve())
+    const onUsage = jest.fn(async (_snapshot: CompletionUsageSnapshot) => {})
+    const completion = {
+      controller: new AbortController(),
+      async *[Symbol.asyncIterator]() {
+        yield asCompletionChunk({ id: 'before-cancel', choices: [{ delta: { content: 'Hello' } }] })
+        await cancelled.promise
+        throw failure
+      },
+    } satisfies Completion
+    const reader = createSSEStreamFromCompletion(completion, { onError, onUsage }).getReader()
+
+    expect(new TextDecoder().decode((await reader.read()).value)).toContain('before-cancel')
+    await reader.cancel()
+    cancelled.resolve()
+    await reported.promise
+
+    expect(onError).toHaveBeenCalledWith(failure)
     expect(onUsage).not.toHaveBeenCalled()
   })
 
-  it('does not consume usage when a provider chunk cannot be enqueued before exhaustion', async () => {
-    const releaseChunk = createDeferred()
-    const iteratorClosed = createDeferred()
+  it('keeps reading for the usage when a chunk cannot be enqueued because the client left', async () => {
     const controller = new AbortController()
-    const onUsage = jest.fn(async (_snapshot: CompletionUsageSnapshot) => {})
+    const recorded = createDeferred()
+    const onUsage = jest.fn(async (_snapshot: CompletionUsageSnapshot) => recorded.resolve())
     const streamState: ReaderCancellationState = {}
     const chunk = {
       id: 'enqueue-failure',
-      usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
       toJSON: () => {
         streamState.cancelPromise = streamState.reader?.cancel()
-        return {
-          id: 'enqueue-failure',
-          usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
-        }
+        return { id: 'enqueue-failure' }
       },
     }
-    const completion = {
+    const completion = createCompletion(
+      [
+        asCompletionChunk(chunk),
+        asCompletionChunk({ id: 'final-usage', usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 } }),
+      ],
       controller,
-      async *[Symbol.asyncIterator]() {
-        await releaseChunk.promise
-        try {
-          yield asCompletionChunk(chunk)
-          yield asCompletionChunk({ id: 'never-delivered', choices: [] })
-        } finally {
-          iteratorClosed.resolve()
-        }
-      },
-    } satisfies Completion
-    const stream = createSSEStreamFromCompletion(completion, { onUsage })
-    const reader = stream.getReader()
+    )
+    const reader = createSSEStreamFromCompletion(completion, { onUsage }).getReader()
     streamState.reader = reader
-    const firstRead = reader.read()
 
-    releaseChunk.resolve()
-
-    expect(await firstRead).toEqual({ done: true, value: undefined })
+    expect(await reader.read()).toEqual({ done: true, value: undefined })
     await streamState.cancelPromise
-    await iteratorClosed.promise
-    expect(controller.signal.aborted).toBe(true)
-    expect(onUsage).not.toHaveBeenCalled()
+    await recorded.promise
+    expect(controller.signal.aborted).toBe(false)
+    expect(onUsage).toHaveBeenCalledWith({ promptTokens: 3, completionTokens: 2, totalTokens: 5 })
   })
 
   it('does not consume observed usage when the upstream iterator fails', async () => {

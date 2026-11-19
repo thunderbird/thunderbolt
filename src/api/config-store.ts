@@ -5,8 +5,13 @@
 import type { ImageSupport, SharedModel } from '@shared/defaults/models'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { usesLocalProviders } from '@/lib/provider-mode'
 
 export type AppConfig = {
+  /** Public authentication capabilities for servers selected at runtime. */
+  authMode?: 'consumer' | 'oidc' | 'saml'
+  authAllowAnonymous?: boolean
+  captchaProvider?: 'none' | 'altcha'
   /**
    * Whether the deployment escrows every AK to an operator-held key (THU-804).
    * Surfaced for the deferred end-user disclosure UI; nothing reads it yet, and
@@ -97,7 +102,8 @@ export const selectConfigSettled = (state: Pick<ConfigStore, 'config' | 'configL
 /** Whether the built-in Thunderbolt agent appears in the agent list. Absent
  *  config (offline/standalone) defaults to enabled, so the app always has at
  *  least the built-in to fall back on. */
-export const selectBuiltInAgentEnabled = (config: AppConfig): boolean => config.builtInAgentEnabled !== false
+export const selectBuiltInAgentEnabled = (config: AppConfig, localProviders = usesLocalProviders()): boolean =>
+  localProviders || config.builtInAgentEnabled !== false
 
 /** Whether the deployment runs in minimal mode (`MINIMAL_MODE=true`): the
  *  chat-only shell for public deployments. It hides Settings and its routes, the
@@ -105,7 +111,8 @@ export const selectBuiltInAgentEnabled = (config: AppConfig): boolean => config.
  *  the Settings destinations in the palette and search. Slash commands are off too:
  *  `/` is plain text, and no skill is offered to any agent. Absent means off. Role-based visibility is
  *  expected to replace this predicate. */
-export const selectMinimalMode = (config: AppConfig): boolean => config.minimalMode === true
+export const selectMinimalMode = (config: AppConfig, localProviders = usesLocalProviders()): boolean =>
+  !localProviders && config.minimalMode === true
 
 /** The operator's header logo, or null when `BRAND_LOGO_URL` is unset. Dark
  *  falls back to the light URL; `alt` is empty when unset, so the caller picks
@@ -122,7 +129,8 @@ export const selectBrandLogo = (config: AppConfig): { light: string; dark: strin
 }
 
 /** Whether the UI offers adding custom agents. Absent config defaults to allowed. */
-export const selectAllowCustomAgents = (config: AppConfig): boolean => config.allowCustomAgents !== false
+export const selectAllowCustomAgents = (config: AppConfig, localProviders = usesLocalProviders()): boolean =>
+  localProviders || config.allowCustomAgents !== false
 
 /** Whether the server explicitly accepts debug transcript uploads. Absent
  * config is disabled because standalone mode has no backend recipient. */

@@ -382,9 +382,16 @@ for `HAYSTACK_PIPELINES is not valid JSON` or `HAYSTACK_PIPELINES schema mismatc
 half of ACP over the socket's text frames, driving the Deepset pipeline over SSE
 ([sse-parser.ts](../../../backend/src/haystack/sse-parser.ts)).
 
-- Auth is the same bearer subprotocol the client attaches, validated in `open()` rather than
-  `beforeHandle`: Bun's adapter can invoke `beforeHandle` more than once per upgrade, `open()` runs
-  exactly once per accepted socket.
+- Auth uses the same bearer subprotocol the client attaches. The first validation runs in `open()`
+  rather than `beforeHandle`: Bun's adapter can invoke `beforeHandle` more than once per upgrade.
+  Sockets using the same bearer in one backend process share a successful session check for at most
+  one second on inbound frames. A forced database poll every five seconds ignores that short cache,
+  including while idle or streaming. Revocation closes all sockets for that bearer and aborts active
+  Deepset work. Inbound and server-initiated traffic may pass for up to five seconds after revocation,
+  plus lookup and close time. Checks do not refresh session expiry, and individual SSE chunks do not
+  trigger database lookups. A lookup that fails, for example while the database restarts, is not a
+  revocation: only the handshake that made it is refused with `1013`, and live sockets keep their last
+  result until a lookup succeeds or finds the session gone.
 - The carrier subprotocol is echoed back so strict clients see their offer accepted. The bearer entry
   is deliberately _not_, keeping it out of `WebSocket.protocol` and proxy response logs.
 

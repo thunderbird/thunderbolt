@@ -855,6 +855,44 @@ describe('resolveOpenAiCompatConnection (Otari)', () => {
     },
   )
 
+  it('drops the SDK User-Agent so the CORS preflight passes and keeps other headers', async () => {
+    const native = spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok'))
+    const url = 'https://otari.example/api/v1'
+    const connection = resolveOpenAiCompatConnection(
+      { provider: 'otari', url, apiKey: 'delegated-key' },
+      () => stubProxyFetch,
+    )!
+    await connection.fetch(`${url}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer delegated-key',
+        'Content-Type': 'application/json',
+        'User-Agent': 'OpenAI/JS 6.26.0',
+        'X-Stainless-Lang': 'js',
+      },
+    })
+    const headers = new Headers(native.mock.calls[0][1]?.headers)
+    expect(headers.has('user-agent')).toBe(false)
+    expect(headers.get('authorization')).toBe('Bearer delegated-key')
+    expect(headers.get('content-type')).toBe('application/json')
+    expect(headers.get('x-stainless-lang')).toBe('js')
+  })
+
+  it('keeps headers carried on a Request input', async () => {
+    const native = spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok'))
+    const url = 'https://otari.example/api/v1'
+    const connection = resolveOpenAiCompatConnection(
+      { provider: 'otari', url, apiKey: 'delegated-key' },
+      () => stubProxyFetch,
+    )!
+    await connection.fetch(
+      new Request(`${url}/models`, { headers: { Authorization: 'Bearer delegated-key', 'User-Agent': 'sdk' } }),
+    )
+    const headers = new Headers(native.mock.calls[0][1]?.headers)
+    expect(headers.has('user-agent')).toBe(false)
+    expect(headers.get('authorization')).toBe('Bearer delegated-key')
+  })
+
   it.each([
     { url: null, apiKey: 'key' },
     { url: 'https://otari.example/api/v1', apiKey: null },

@@ -4,7 +4,7 @@
 
 import type { HttpClient } from '@/contexts'
 import { http } from '@/lib/http'
-import { deriveSiteName } from '@/lib/source-utils'
+import { deriveSiteName, findSourceByIndex } from '@/lib/source-utils'
 import type { ToolConfig } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import { fetchContent, fetchLinkPreview, search } from './api'
@@ -37,17 +37,34 @@ export type WebToolApi = {
   fetchLinkPreview?: typeof fetchLinkPreview
 }
 
+/** The highest citation number in `sources`, or 0 when there are none. */
+const highestIndex = (sources: readonly SourceMetadata[]): number =>
+  sources.reduce((highest, { index }) => Math.max(highest, index), 0)
+
 /**
  * Thunderbolt Pro Tools Configuration Factory
  * @param httpClient - HTTP client for making requests (injected for dependency injection)
  * @param sourceCollector - Optional shared array to accumulate source metadata during tool execution
+ * @param priorSources - Sources earlier turns of the thread registered. The model still sees their
+ *   `[Source N]` labels in the history, so numbering continues after them and a URL seen before
+ *   keeps its number instead of getting a second label.
  */
 export const createConfigs = (
   httpClient: HttpClient,
   sourceCollector?: SourceMetadata[],
   api: WebToolApi = { search, fetchContent, fetchLinkPreview },
+  priorSources: readonly SourceMetadata[] = [],
 ): ToolConfig[] => {
   const sources = sourceCollector ?? []
+  /** An earlier turn's number for `url` — unless, in a chat from before numbering spanned the
+   *  thread, a later turn gave that number to another page — or else the next free number. */
+  const indexFor = (url: string): number => {
+    const earlier = priorSources.findLast((prior) => prior.url === url)?.index
+    if (earlier !== undefined && findSourceByIndex(priorSources, earlier)?.url === url) {
+      return earlier
+    }
+    return Math.max(highestIndex(priorSources), highestIndex(sources)) + 1
+  }
 
   /** Deduplicates against the live collector, including when tool configs share a logical turn. */
   const collectSource = (source: Omit<SourceMetadata, 'index'>): SourceMetadata | undefined => {
@@ -63,7 +80,7 @@ export const createConfigs = (
     }
     const registered = {
       ...source,
-      index: sources.length + 1,
+      index: indexFor(source.url),
       ...(api.allowRemoteImages === false && { allowRemoteImages: false }),
     }
     sources.push(registered)

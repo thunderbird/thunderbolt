@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Settings } from '@/config/settings'
+import { isBoundedWsJson } from '@/utils/ws-message'
 import {
   AGENT_METHODS,
   PROTOCOL_VERSION,
@@ -229,6 +230,11 @@ export class HaystackAcpServer {
       message = JSON.parse(raw)
     } catch {
       this.sendError(null, rpcErrors.parseError, 'invalid JSON')
+      return
+    }
+    // Elysia leaves whitespace-prefixed JSON as text; validate again at this parse boundary.
+    if (!isBoundedWsJson(message)) {
+      this.sendError(null, rpcErrors.invalidRequest, 'JSON message limit exceeded')
       return
     }
     if (!isJsonRpcMessage(message)) {

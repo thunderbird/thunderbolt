@@ -333,6 +333,8 @@ export const createServices = (args: ServiceArgs) => {
           { name: 'KC_HOSTNAME', value: args.publicUrls.auth },
           // Trust X-Forwarded-Proto from Cloudflare/ALB for client-facing protocol detection.
           { name: 'KC_PROXY_HEADERS', value: 'xforwarded' },
+          // Also set in the image; repeated here so stacks pinned to an older `version` get it.
+          { name: 'JDK_JAVA_OPTIONS', value: '-XX:-UseBASE64Intrinsics' },
           // Realm import substitutes ${OIDC_REDIRECT_URI} / ${OIDC_WEB_ORIGIN} so the
           // baked-in realm JSON works for both local dev (defaults) and Fargate (real URLs).
           // Redirect URI = backend OAuth callback (BETTER_AUTH_URL = publicUrls.api).

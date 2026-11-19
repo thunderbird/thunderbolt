@@ -6,6 +6,8 @@ import { LogicalPosition, LogicalSize } from '@tauri-apps/api/dpi'
 import { Webview, type WebviewOptions } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { type RefObject, useEffect, useRef, useState } from 'react'
+import { getPlatform } from '@/lib/platform'
+import { isSafeUrl } from '@/lib/url-utils'
 import { borderOffset, coordinateOffset, previewHeaderHeight } from './constants'
 
 export type SidebarWebviewConfig = {
@@ -38,6 +40,10 @@ export const useSidebarWebview = (
   const url = config?.url
   useEffect(() => {
     if (!url || !containerRef.current) {
+      return
+    }
+    // WebKitGTK cannot tell which frame sent an IPC message, so Linux sends external pages to the browser.
+    if (getPlatform() === 'linux' && isSafeUrl(url)) {
       return
     }
 

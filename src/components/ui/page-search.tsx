@@ -116,14 +116,12 @@ const PageSearchButton = () => {
   )
 }
 
-type PageSearchInputProps = Omit<SearchInputProps, 'onChange' | 'value' | 'debouncedOnChange'> & {
-  delay?: number
+type PageSearchInputProps = Omit<SearchInputProps, 'onChange' | 'value' | 'debouncedOnChange' | 'delay'> & {
   onSearch: (value: string) => void
   wrapperClassName?: string
 }
 
 const PageSearchInput = ({
-  delay,
   onSearch,
   placeholder,
   wrapperClassName,
@@ -134,10 +132,12 @@ const PageSearchInput = ({
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     setSearchValue(event.target.value)
+    onSearch(event.target.value)
   }
 
   return (
     <div
+      aria-hidden={!open}
       className={cn(
         'transition-all duration-300 ease-in-out flex-shrink-0',
         open ? 'max-h-16 pb-2 opacity-100' : 'max-h-0 pb-0 opacity-0 overflow-hidden',
@@ -146,14 +146,13 @@ const PageSearchInput = ({
     >
       <SearchInput
         ref={inputRef}
+        tabIndex={open ? undefined : -1}
         inputSize="lg"
         showIcon
         className={cn('rounded-xl bg-card', className)}
         placeholder={placeholder}
         value={searchValue}
         onChange={handleChange}
-        debouncedOnChange={onSearch}
-        delay={delay}
         {...searchInputProps}
       />
     </div>

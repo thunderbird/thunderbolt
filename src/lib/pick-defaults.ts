@@ -2,14 +2,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { defaultModels, defaultModelsVersion, type SharedModel } from '@shared/defaults/models'
+import {
+  defaultModelImageSupport,
+  defaultModels,
+  defaultModelsVersion,
+  type ImageSupport,
+  type SharedModel,
+} from '@shared/defaults/models'
 
 export type ModelsDefaults = {
   version: number
   data: readonly SharedModel[]
+  imageSupport: Readonly<Record<string, ImageSupport>>
 }
 
-type ServerModelsDefaults = { version: number; data: SharedModel[] }
+type ServerModelsDefaults = { version: number; data: SharedModel[]; imageSupport?: Record<string, ImageSupport> }
 
 /**
  * Pick between server-supplied and bundled models defaults, preferring the
@@ -42,7 +49,8 @@ export const pickModelsDefaults = (server: ServerModelsDefaults | undefined): Mo
   ) {
     const bundledIds = new Set(defaultModels.map((m) => m.id))
     if (server.data.some((m) => bundledIds.has(m.id))) {
-      return { version: server.version, data: server.data }
+      // Backends that predate the map omit it; its models then fall back to the generic rules and detection.
+      return { version: server.version, data: server.data, imageSupport: server.imageSupport ?? {} }
     }
     // Payload is well-formed but has zero overlap with the bundle. Either the
     // server team shipped a wholesale replacement (needs a client build with
@@ -53,5 +61,5 @@ export const pickModelsDefaults = (server: ServerModelsDefaults | undefined): Mo
         `against the ${defaultModels.length} bundled defaults. Falling back to the bundled lineup.`,
     )
   }
-  return { version: defaultModelsVersion, data: defaultModels }
+  return { version: defaultModelsVersion, data: defaultModels, imageSupport: defaultModelImageSupport }
 }

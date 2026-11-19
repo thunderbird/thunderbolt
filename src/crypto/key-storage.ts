@@ -4,9 +4,11 @@
 
 import { isMintableKeyId, type KeyId, type WrappedKeyEntry } from '@shared/e2ee-types'
 
+import { supportsKeyStoreLock, withKeyStoreLock, type KeyStoreLock } from './key-store-lock'
 import { StorageError } from './errors'
 import { type KeyringAnchor } from './keyring-anchor'
 import { decryptBytes, deriveMlKemAtRestKey, encryptBytes, type EncryptedBytes } from './primitives'
+import { captureKeyStorageLifetime, invalidateEncryptionOperations } from './key-storage-lifetime'
 
 const dbName = 'thunderbolt-keys'
 const storeName = 'keys'
@@ -30,10 +32,12 @@ const publicKeyId = 'thunderbolt_public_key'
 const mlkemPublicKeyId = 'thunderbolt_mlkem_public_key'
 const mlkemSecretKeyId = 'thunderbolt_mlkem_secret_key'
 const akId = 'thunderbolt_ak'
+const akKeyVersionId = 'thunderbolt_ak_key_version'
 const dekIdPrefix = 'thunderbolt_dek_'
 const primaryKeyIdId = 'thunderbolt_primary_key_id'
 const keyVersionId = 'thunderbolt_key_version'
 const keyringAnchorId = 'thunderbolt_keyring_anchor'
+const akUnverifiedId = 'thunderbolt_ak_unverified'
 /**
  * The v1 content key, left in place by the non-destructive db bump above. v2
  * never WRITES this entry — it exists only so the v1->v2 migrator can prefer the
@@ -62,10 +66,26 @@ const openDB = (): Promise<IDBDatabase> =>
     request.onerror = () => reject(new StorageError('Failed to open IndexedDB', { cause: request.error }))
   })
 
+/** Open a writer only while the reset lifetime captured before awaiting is current. */
+const openCurrentDB = async (assertCurrent: () => void): Promise<IDBDatabase> => {
+  const db = await openDB()
+  try {
+    assertCurrent()
+    return db
+  } catch (error) {
+    db.close()
+    throw error
+  }
+}
+
 type StorableValue = CryptoKey | Uint8Array | EncryptedBytes | KeyringAnchor | string
 
-const putValue = async (id: string, value: StorableValue): Promise<void> => {
-  const db = await openDB()
+const putValue = async (
+  id: string,
+  value: StorableValue,
+  assertCurrent = captureKeyStorageLifetime(),
+): Promise<void> => {
+  const db = await openCurrentDB(assertCurrent)
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, 'readwrite')
     tx.objectStore(storeName).put(value, id)
@@ -113,8 +133,11 @@ const getEntries = async <T extends StorableValue>(ids: string[]): Promise<Array
   })
 }
 
-const putEntries = async (entries: Array<{ id: string; value: StorableValue }>): Promise<void> => {
-  const db = await openDB()
+const putEntries = async (
+  entries: Array<{ id: string; value: StorableValue }>,
+  assertCurrent = captureKeyStorageLifetime(),
+): Promise<void> => {
+  const db = await openCurrentDB(assertCurrent)
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, 'readwrite')
     const store = tx.objectStore(storeName)
@@ -154,14 +177,18 @@ export const storeKeyPair = async (
   mlkemPublicKey: Uint8Array,
   mlkemSecretKey: Uint8Array,
 ): Promise<void> => {
+  const assertCurrent = captureKeyStorageLifetime()
   const atRestKey = await deriveMlKemAtRestKey(ecdhPublicKey, ecdhPrivateKey)
   const encryptedSecret = await encryptBytes(mlkemSecretKey, atRestKey)
-  return putEntries([
-    { id: privateKeyId, value: ecdhPrivateKey },
-    { id: publicKeyId, value: ecdhPublicKey },
-    { id: mlkemPublicKeyId, value: mlkemPublicKey },
-    { id: mlkemSecretKeyId, value: encryptedSecret },
-  ])
+  return putEntries(
+    [
+      { id: privateKeyId, value: ecdhPrivateKey },
+      { id: publicKeyId, value: ecdhPublicKey },
+      { id: mlkemPublicKeyId, value: mlkemPublicKey },
+      { id: mlkemSecretKeyId, value: encryptedSecret },
+    ],
+    assertCurrent,
+  )
 }
 
 /**
@@ -169,11 +196,12 @@ export const storeKeyPair = async (
  * key is missing.
  *
  * WS1.5 read-migration: v1 stored the ML-KEM secret as PLAINTEXT bytes. When a
- * raw `Uint8Array` is found (formerly-v1 device on a v2 build), it is used as-is
- * and re-encrypted in place in the v2 at-rest format, so subsequent reads take
- * the encrypted path. v2-written secrets are `EncryptedBytes` and get decrypted.
+ * raw `Uint8Array` is found, reads use it as-is. Passing the held origin-wide
+ * lock also migrates it to encrypted-at-rest storage. Ordinary readers cannot
+ * race a key-store wipe by silently publishing a delayed read migration.
  */
-export const getKeyPair = async (): Promise<StoredKeyPair | null> => {
+export const getKeyPair = async (lock?: KeyStoreLock): Promise<StoredKeyPair | null> => {
+  const assertCurrent = captureKeyStorageLifetime()
   const [ecdhPrivateKey, ecdhPublicKey, mlkemPublicKey, storedSecret] = await getEntries<StorableValue>([
     privateKeyId,
     publicKeyId,
@@ -186,8 +214,10 @@ export const getKeyPair = async (): Promise<StoredKeyPair | null> => {
   const atRestKey = await deriveMlKemAtRestKey(ecdhPublicKey as CryptoKey, ecdhPrivateKey as CryptoKey)
 
   if (storedSecret instanceof Uint8Array) {
-    const encryptedSecret = await encryptBytes(storedSecret, atRestKey)
-    await putValue(mlkemSecretKeyId, encryptedSecret)
+    if (lock) {
+      const encryptedSecret = await encryptBytes(storedSecret, atRestKey)
+      await putValue(mlkemSecretKeyId, encryptedSecret, assertCurrent)
+    }
     return {
       ecdhPrivateKey: ecdhPrivateKey as CryptoKey,
       ecdhPublicKey: ecdhPublicKey as CryptoKey,
@@ -210,11 +240,40 @@ export const getKeyPair = async (): Promise<StoredKeyPair | null> => {
 // (base64 blobs)
 // =============================================================================
 
-/** Store the account key in IndexedDB. */
-export const storeAK = async (ak: CryptoKey): Promise<void> => putValue(akId, ak)
+/**
+ * Store the account key together with what its envelope sealed: the
+ * `key_version` (null for an unversioned 0x02 envelope) and the primary key_id.
+ * One transaction, so the stored epoch and pointer describe the stored AK
+ * (except a non-mintable pointer, below), and a crash cannot leave a new AK next
+ * to the old primary. A non-mintable
+ * pointer is not written; the one in force is kept (see `storePrimaryKeyId`).
+ */
+export const storeAK = async (
+  ak: CryptoKey,
+  sealed: { keyVersion: number | null; primaryKeyId: KeyId },
+): Promise<void> => {
+  const entries: Array<{ id: string; value: StorableValue }> = [
+    { id: akId, value: ak },
+    { id: akKeyVersionId, value: String(sealed.keyVersion ?? 0) },
+  ]
+  if (isMintableKeyId(sealed.primaryKeyId)) {
+    entries.push({ id: primaryKeyIdId, value: sealed.primaryKeyId })
+  }
+  return putEntries(entries)
+}
 
 /** Get the account key from IndexedDB. */
 export const getAK = async (): Promise<CryptoKey | null> => getValue<CryptoKey>(akId)
+
+/**
+ * The `key_version` sealed with the stored AK: the floor below which this device
+ * refuses an envelope. 0 when the AK came from an unversioned envelope, null
+ * when none was ever recorded.
+ */
+export const getAKKeyVersion = async (): Promise<number | null> => {
+  const stored = await getValue<string>(akKeyVersionId)
+  return stored === null ? null : Number(stored)
+}
 
 /**
  * The v1 content key this device kept from before the upgrade, or null when it
@@ -282,13 +341,14 @@ export const listDEKs = async (): Promise<WrappedKeyEntry[]> => {
  * that cannot remove it either, so it just re-fails on a cooldown (THU-871).
  */
 export const pruneStagedDEKs = async (keepKeyIds: KeyId[]): Promise<void> => {
+  const assertCurrent = captureKeyStorageLifetime()
   const keep = new Set(keepKeyIds.map(dekEntryId))
   const staged = await listDEKs()
   const stale = staged.map(({ keyId }) => dekEntryId(keyId)).filter((id) => !keep.has(id))
   if (stale.length === 0) {
     return
   }
-  const db = await openDB()
+  const db = await openCurrentDB(assertCurrent)
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, 'readwrite')
     const store = tx.objectStore(storeName)
@@ -356,6 +416,21 @@ export const storeKeyringAnchor = async (anchor: KeyringAnchor): Promise<void> =
 export const getKeyringAnchor = async (): Promise<KeyringAnchor | null> => getValue<KeyringAnchor>(keyringAnchorId)
 
 // =============================================================================
+// Unverified account key
+// =============================================================================
+
+/**
+ * Record that the stored AK was adopted without a continuity check: recovery
+ * with a phrase minted before the recovery seal, or an unlock through a legacy
+ * passkey slot. Such a key may be the server's own, so the device must not
+ * extend trust in it. Only `clearAllKeys` removes the marker.
+ */
+export const markAKUnverified = async (): Promise<void> => putValue(akUnverifiedId, 'unverified')
+
+/** Was the stored AK adopted without a continuity check? */
+export const isAKUnverified = async (): Promise<boolean> => (await getValue<string>(akUnverifiedId)) !== null
+
+// =============================================================================
 // Full wipe
 // =============================================================================
 
@@ -364,7 +439,13 @@ export const getKeyringAnchor = async (): Promise<KeyringAnchor | null> => getVa
  * store rather than deleting a static id list — DEK entries are dynamically
  * named (`thunderbolt_dek_{keyId}`) and would leak otherwise.
  */
-export const clearAllKeys = async (): Promise<void> => {
+export const clearAllKeys = (lock?: KeyStoreLock): Promise<void> => {
+  invalidateEncryptionOperations()
+  // Cleanup remains available on runtimes where encrypted-sync writers are disabled.
+  return lock || !supportsKeyStoreLock() ? clearKeyStore() : withKeyStoreLock(clearKeyStore)
+}
+
+const clearKeyStore = async (): Promise<void> => {
   const db = await openDB()
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, 'readwrite')

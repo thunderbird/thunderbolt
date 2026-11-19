@@ -15,12 +15,14 @@ Server side: [Authentication](../../../backend/docs/authentication.md),
 | `thunderbolt_device_id`         | `getDeviceId` ([auth-token.ts:23](../../../src/lib/auth-token.ts))            | Lazily minted `crypto.randomUUID()`; sent as `X-Device-ID`                            |
 | `thunderbolt_user_cache_secret` | `getUserCacheSecret` ([auth-token.ts:61](../../../src/lib/auth-token.ts))     | Tinfoil prompt-cache namespace; per-device, never synced, must reach only the enclave |
 | `thunderbolt_session_cache`     | `setCachedSession` ([session-cache.ts:58](../../../src/lib/session-cache.ts)) | Last good `/get-session` payload, for offline boot                                    |
+| `thunderbolt_local_data`        | `openLocalData` ([local-data-owner.ts](../../../src/lib/local-data-owner.ts)) | Each slot's owner, plus inactive slots' account settings, voice key included          |
 
-The one teardown is `clearLocalData` ([cleanup.ts](../../../src/lib/cleanup.ts)), which removes those keys
-together with the ACP bridge's plaintext `iroh_acp_client_secret`
-([iroh-transport.ts:87](../../../src/acp/iroh/iroh-transport.ts)). When it also clears the database, it then
-empties the rest of `localStorage` and `sessionStorage`, after the keyed removals so other tabs still see
-the sign-out.
+The one teardown is `clearLocalData` ([cleanup.ts](../../../src/lib/cleanup.ts)), which removes the first four
+keys together with the ACP bridge's plaintext `iroh_acp_client_secret`
+([iroh-transport.ts:87](../../../src/acp/iroh/iroh-transport.ts)). An account switch passes `keepSession`, so
+the auth token and cached session of the account signing in stay. When it also clears the database, it
+replaces `thunderbolt_local_data` with one ownerless slot, then empties the rest of `localStorage` and
+`sessionStorage`, after the keyed removals so other tabs still see the sign-out.
 
 ### Why a bearer token, in plaintext storage
 
@@ -97,6 +99,12 @@ order:
    `client.$store.atoms.session` at construction, and no-ops without a stored token. Otherwise an offline
    boot fails `/get-session` and the gate sends a signed-in user to `/waitlist` (THU-580). `useAuthQuery`
    keeps non-null `data` across non-401 errors, so the seed survives until the first successful refetch.
+   The same cache also tells `local-data-owner.ts` which account the session belongs to (THU-963). Boot
+   binds the open slot to the cached account before PowerSync connects (`openLocalData`, with the same
+   checks through `getUsableCachedSession`), in SSO mode too, so an SSO user who reloads offline gets the
+   app. The cookie may by then belong to another account than the cached one. The cached owner's data then
+   shows until `/get-session` names the other account, and that answer starts a switch. This trade-off is
+   accepted.
 2. **Discard an expired cache instead of seeding it.** `isCachedSessionValid`
    ([session-cache.ts:79](../../../src/lib/session-cache.ts)) requires a parseable `session.expiresAt` in the
    future; past its TTL every call 401s anyway.

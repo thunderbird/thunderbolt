@@ -1,0 +1,28 @@
+suite: Ingress controller migration
+templates:
+  - templates/ingress.yaml
+set:
+  backend.betterAuthSecretBase64: dGVzdA==
+  ingress.className: traefik-nginx
+tests:
+  - it: assigns the shared routes to the replacement controller
+    documentSelector: { path: metadata.name, value: thunderbolt-ingress }
+    asserts:
+      - equal: { path: spec.ingressClassName, value: traefik-nginx }
+  - it: assigns the prefix-stripping PowerSync route to the same controller
+    documentSelector: { path: metadata.name, value: thunderbolt-ingress-powersync }
+    asserts:
+      - equal: { path: spec.ingressClassName, value: traefik-nginx }
+      - equal:
+          path: metadata.annotations["nginx.ingress.kubernetes.io/rewrite-target"]
+          value: /$2
+      - equal:
+          path: spec.rules[0].http.paths[0]
+          value:
+            path: /powersync(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: powersync
+                port:
+                  number: 8080

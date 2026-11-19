@@ -3,34 +3,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { resetDatabase } from '@/db/database'
-import { deleteIndexedDbDatabase, getDatabasePath, isOpfsAvailable, isTauri, powerSyncDbFilename } from './platform'
-import { withTimeout } from './timeout'
+import { appIndexedDbNames, forgetLocalDataSlots } from './local-data-owner'
+import { deleteIndexedDbDatabase, isOpfsAvailable, isTauri, powerSyncDbFilename } from './platform'
+import { withDeadline, withTimeout } from './timeout'
+import { createSerialQueue } from './serial-queue'
 
-// Only import Tauri APIs when in Tauri environment
-let tauriPath: any = null
-let tauriFs: any = null
-
-// Lazy load Tauri modules only when needed
-const loadTauriModules = async () => {
-  if (isTauri() && !tauriPath) {
-    try {
-      tauriPath = await import('@tauri-apps/api/path')
-      tauriFs = await import('@tauri-apps/plugin-fs')
-    } catch (error) {
-      console.error('Failed to load Tauri modules:', error)
-    }
-  }
-}
+/** Boot and destructive reset share the same files and must never overlap. */
+export const runAppStorageOperation = createSerialQueue()
 
 /**
  * Creates app data directory in Tauri environment using file system
  */
 const createAppDirTauri = async (): Promise<string> => {
-  await loadTauriModules()
-
-  if (!tauriPath || !tauriFs) {
-    throw new Error('Failed to load Tauri filesystem modules')
-  }
+  const [tauriPath, tauriFs] = await Promise.all([import('@tauri-apps/api/path'), import('@tauri-apps/plugin-fs')])
 
   const appDataDirPath = await tauriPath.appDataDir()
 
@@ -70,11 +55,20 @@ const resetAppDirOpfs = async (): Promise<void> => {
   const appDataDirPath = await createAppDir()
 
   console.info('[resetAppDirOpfs] Getting OPFS root directory')
-  const root: any = await navigator.storage.getDirectory()
+  const root = await navigator.storage.getDirectory()
 
+  // A file another tab holds open cannot be removed yet, so remove everything else and fail once at the end.
+  const failures: unknown[] = []
   for await (const [name] of root.entries()) {
     console.info(`[resetAppDirOpfs] Removing entry: ${name}`)
-    await root.removeEntry(name, { recursive: true })
+    try {
+      await root.removeEntry(name, { recursive: true })
+    } catch (error) {
+      failures.push(error)
+    }
+  }
+  if (failures.length > 0) {
+    throw new AggregateError(failures, 'Failed to remove OPFS entries')
   }
 
   if (!isTauri()) {
@@ -84,30 +78,48 @@ const resetAppDirOpfs = async (): Promise<void> => {
 }
 
 /**
- * Resets the data directory by deleting the database file and recreating the directory
+ * Deletes every slot's database and attachment store (see `local-data-owner.ts`).
+ * The IndexedDB databases go first, because every attachment store lives there and a file another tab
+ * holds open makes the OPFS step fail.
+ * With OPFS, IndexedDB holds only attachments and leftovers from installs that predate OPFS, so a
+ * failed delete there is only logged. Then the OPFS root is emptied and, on the web, the app directory
+ * is recreated.
+ * Without OPFS a failed IndexedDB delete fails the reset: the default config keeps each slot's database
+ * there (Safari and Tauri keep it in memory).
+ * Forgetting the slots makes every other tab reload, which closes what they hold open.
  */
-export const resetAppDir = async (): Promise<void> => {
+const resetAppDirNow = async (): Promise<void> => {
   // Must await for PowerSync to properly call disconnectAndClear()
-  await withTimeout(resetDatabase(), 10_000, 'DatabaseSingleton.reset')
+  await resetDatabase()
 
-  const appDataDirPath = await createAppDir()
-  const dbPath = await getDatabasePath(appDataDirPath)
+  const indexedDbNames = await appIndexedDbNames()
+  forgetLocalDataSlots()
+  const hasOpfs = await isOpfsAvailable()
 
-  // Only delete file if it's not an in-memory database
-  if (dbPath === ':memory:') {
+  // A database another tab holds open finishes deleting when that tab closes (see `deleteIndexedDbDatabase`).
+  const deletes = await Promise.allSettled(
+    indexedDbNames.map((name) => withTimeout(deleteIndexedDbDatabase(name), 10_000, 'deleteIndexedDbDatabase')),
+  )
+  const errors = deletes.flatMap((result) => (result.status === 'rejected' ? [result.reason] : []))
+  if (errors.length > 0 && !hasOpfs) {
+    // The slots are forgotten, so nothing reopens these; a later wipe lists and retries them.
+    throw new AggregateError(errors, 'Failed to delete the IndexedDB databases')
+  }
+  if (errors.length > 0) {
+    // Cleanup only: a later OPFS start retries it (see `PowerSyncDatabaseImpl.initialize`).
+    console.error('[resetAppDir] Failed to delete IndexedDB databases:', errors)
+  }
+  if (!hasOpfs) {
     return
   }
 
-  await withTimeout(resetAppDirOpfs(), 10_000, 'resetAppDirOpfs')
-
+  await resetAppDirOpfs()
   // The data is wiped, so the next start can move to OPFS. An empty OPFS database file tells it
   // to, even while another tab keeps the IndexedDB database open and its delete pending.
   const root = await navigator.storage.getDirectory()
   await root.getFileHandle(powerSyncDbFilename, { create: true })
-  // Cleanup only: a later OPFS start retries it (see `PowerSyncDatabaseImpl.initialize`).
-  try {
-    await withTimeout(deleteIndexedDbDatabase(powerSyncDbFilename), 10_000, 'deleteIndexedDbDatabase')
-  } catch (error) {
-    console.error('[resetAppDir] Failed to delete the IndexedDB database:', error)
-  }
 }
+
+/** Report a stuck reset without releasing its ownership of files that are still closing or being removed. */
+export const resetAppDir = (): Promise<void> =>
+  withDeadline(runAppStorageOperation(resetAppDirNow), 30_000, () => new Error('Timed out clearing app storage'))

@@ -6,6 +6,7 @@ import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js'
 import { StreamableHTTPError } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { SseError } from '@modelcontextprotocol/sdk/client/sse.js'
 import { ZodError } from 'zod/v4'
+import { isFetchNetworkError } from './http'
 import { isUnauthorizedError } from './mcp-unauthorized-error'
 
 /** Expected SDK/transport and response-decoding failures. Only use at the
@@ -23,7 +24,6 @@ export const isMcpDiscoveryError = (err: unknown): err is Error => {
     /^Error POSTing to endpoint \(HTTP \d{3}\):/.test(err.message) ||
     err.name === 'MCPClientError' ||
     isUnauthorizedError(err) ||
-    (err instanceof TypeError &&
-      /^(Failed to fetch|Load failed|NetworkError when attempting to fetch resource\.)$/i.test(err.message))
+    isFetchNetworkError(err)
   )
 }

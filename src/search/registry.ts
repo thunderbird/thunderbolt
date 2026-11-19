@@ -141,6 +141,7 @@ export const minimalModeHiddenEntityTypes: ReadonlySet<SearchEntityType> = new S
  * FTS schema changes so consumers rebuild the index instead of reading a stale
  * one. (Started at 1; bumped to 2 for the soft-delete guard + the snake_case
  * message-parent fix, which changed the triggers and backfill; 3 adds projects;
- * 4 changes the tokenizer to `unicode61 remove_diacritics 2` and drops porter.)
+ * 4 changes the tokenizer to `unicode61 remove_diacritics 2` and drops porter;
+ * 5 skips FTS updates when indexed values and soft-delete visibility are unchanged.)
  */
-export const searchIndexVersion = 4
+export const searchIndexVersion = 5

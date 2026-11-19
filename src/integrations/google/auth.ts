@@ -9,22 +9,23 @@ import type { AuthProviderBackendConfig } from '@/types'
 import type { GoogleUserInfo } from './types'
 import { googleAccountsUrl, googleApisUrl } from './utils'
 
-let cachedConfig: AuthProviderBackendConfig | null = null
+let cachedConfigs = new WeakMap<HttpClient, AuthProviderBackendConfig>()
 
 const fetchBackendConfig = async (httpClient: HttpClient): Promise<AuthProviderBackendConfig> => {
+  const cachedConfig = cachedConfigs.get(httpClient)
   if (cachedConfig) {
     return cachedConfig
   }
   const result = await httpClient.get('auth/google/config').json<AuthProviderBackendConfig>()
   if (result.configured) {
-    cachedConfig = result
+    cachedConfigs.set(httpClient, result)
   }
   return result
 }
 
 /** Test-only: clears the in-memory backend config cache so each test starts fresh. */
 export const resetBackendConfigCacheForTests = (): void => {
-  cachedConfig = null
+  cachedConfigs = new WeakMap()
 }
 
 export const getOAuthConfig = async (httpClient: HttpClient): Promise<OAuthConfig> => {
@@ -94,6 +95,12 @@ export const getUserInfo = async (accessToken: string): Promise<GoogleUserInfo> 
   return response.json()
 }
 
-export const refreshAccessToken = async (httpClient: HttpClient, refreshToken: string): Promise<OAuthTokens> => {
-  return await httpClient.post('auth/google/refresh', { json: { refresh_token: refreshToken } }).json<OAuthTokens>()
+export const refreshAccessToken = async (
+  httpClient: HttpClient,
+  refreshToken: string,
+  signal?: AbortSignal,
+): Promise<OAuthTokens> => {
+  return await httpClient
+    .post('auth/google/refresh', { json: { refresh_token: refreshToken }, signal })
+    .json<OAuthTokens>()
 }

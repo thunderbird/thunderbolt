@@ -17,7 +17,7 @@ export const ProjectCreateForm = ({
   inputRef,
   onCancel,
 }: {
-  form: ReturnType<typeof useProjectCreateState>
+  form: ReturnType<typeof useProjectCreateState<unknown>>
   inputRef: RefObject<HTMLInputElement | null>
   onCancel: () => void
 }) => {

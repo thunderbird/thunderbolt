@@ -16,7 +16,7 @@ import { Check, Loader2 } from 'lucide-react'
 type SignInOtpStepProps = {
   email: string
   otp: string
-  status: 'sent' | 'verifying'
+  status: 'sent' | 'resending' | 'verifying'
   errorMessage: string
   isLocalhost: boolean
   onOtpChange: (otp: string) => void
@@ -49,6 +49,7 @@ export const SignInOtpStep = ({
 }: SignInOtpStepProps) => {
   const { t } = useLingui()
   const isVerifying = status === 'verifying'
+  const isBusy = status !== 'sent'
 
   // Shared building blocks — the page and modal variants are pure layout
   // around these, so the OTP wiring and copy can't drift between them.
@@ -61,7 +62,7 @@ export const SignInOtpStep = ({
       value={otp}
       onChange={onOtpChange}
       onComplete={onOtpComplete}
-      disabled={isVerifying}
+      disabled={isBusy}
       autoFocus
       autoComplete={autoComplete}
       data-1p-ignore
@@ -80,7 +81,7 @@ export const SignInOtpStep = ({
       variant="ghost"
       size="sm"
       onClick={onResend}
-      disabled={isVerifying}
+      disabled={isBusy}
       className={cn('text-muted-foreground hover:text-foreground', className)}
       successContent={
         <>
@@ -120,7 +121,7 @@ export const SignInOtpStep = ({
             onClick={() => onOtpComplete(otp)}
             isLoading={isVerifying}
             loadingLabel={t`Verifying…`}
-            disabled={otp.length !== otpLength}
+            disabled={isBusy || otp.length !== otpLength}
             // Deliberate hero-CTA treatment for the auth flows (taller than
             // the standard button and rounded-xl instead of the usual
             // rounded-lg atom tier) — matches waitlist-page.tsx.

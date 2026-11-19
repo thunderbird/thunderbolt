@@ -17,12 +17,9 @@ import { Label } from '@/components/ui/label'
 import { PageHeader } from '@/components/ui/page-header'
 import { SectionCard } from '@/components/ui/section-card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { type DiscoveredModels, fetchOpenAiModels, testOpenAiConnection } from '@/voice/engine/openai-compatible-engine'
 import { type VoiceProviderConfig, useLocalSettingsStore } from '@/stores/local-settings-store'
 import { CheckCircle2, Loader2, XCircle } from 'lucide-react'
-import { useState } from 'react'
-
-type ConnState = { status: 'idle' | 'testing' | 'ok' | 'error'; detail?: string }
+import { useVoiceSettingsState } from './use-voice-settings-state'
 
 const Field = ({
   id,
@@ -101,27 +98,12 @@ export const VoiceSettingsPage = () => {
   const appName = useAppName()
   const config = useLocalSettingsStore((s) => s.voiceProvider)
   const setLocalSetting = useLocalSettingsStore((s) => s.setLocalSetting)
-  const [ui, setUi] = useState<{ conn: ConnState; models: DiscoveredModels | null; loadingModels: boolean }>({
-    conn: { status: 'idle' },
-    models: null,
-    loadingModels: false,
-  })
+  const ui = useVoiceSettingsState(config)
+  const { runTest, loadModels } = ui
 
   const update = (patch: Partial<VoiceProviderConfig>) => setLocalSetting('voiceProvider', { ...config, ...patch })
   const isCustom = config.kind === 'openai-compatible'
   const canTest = isCustom && config.baseUrl.trim().length > 0
-
-  const runTest = async () => {
-    setUi((s) => ({ ...s, conn: { status: 'testing' } }))
-    const result = await testOpenAiConnection(config)
-    setUi((s) => ({ ...s, conn: { status: result.ok ? 'ok' : 'error', detail: result.detail } }))
-  }
-
-  const loadModels = async () => {
-    setUi((s) => ({ ...s, loadingModels: true }))
-    const models = await fetchOpenAiModels(config.baseUrl, config.apiKey)
-    setUi((s) => ({ ...s, models, loadingModels: false }))
-  }
 
   const sttOptions = ui.models?.stt ?? []
   const ttsOptions = (ui.models?.tts ?? []).map((m) => m.id)

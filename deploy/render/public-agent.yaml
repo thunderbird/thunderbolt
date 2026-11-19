@@ -89,10 +89,10 @@ services:
     # The open liveness route. /v1/health/* is gated on MONITORING_TOKEN, which a
     # Render health check can't send.
     healthCheckPath: /v1/health
-    # One instance running one process. The hosted agent allows a visitor one
-    # paid run at a time but tracks that per process, so a second instance or
-    # worker lets parallel runs slip past the spending cap. Scale out once the
-    # agent has a shared run lock.
+    # One instance running one process. The spending limit works across
+    # instances, because each run's hold is stored in the database. The
+    # one-run-per-visitor check is per process, though. With more instances, a
+    # visitor whose limit fits two holds can run two replies at once.
     numInstances: 1
     envVars:
       - key: BUN_VERSION

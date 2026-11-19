@@ -3,7 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
-import { defaultModelOpus55, defaultModels, defaultModelsVersion } from '@shared/defaults/models'
+import {
+  defaultModelImageSupport,
+  defaultModelOpus55,
+  defaultModels,
+  defaultModelsVersion,
+} from '@shared/defaults/models'
 import { pickModelsDefaults } from './pick-defaults'
 
 const serverPayload = (version: number) => ({
@@ -16,6 +21,7 @@ describe('pickModelsDefaults', () => {
     const picked = pickModelsDefaults(undefined)
     expect(picked.version).toBe(defaultModelsVersion)
     expect(picked.data).toBe(defaultModels)
+    expect(picked.imageSupport).toBe(defaultModelImageSupport)
   })
 
   test('server wins when it declares a strictly higher version', () => {
@@ -23,6 +29,20 @@ describe('pickModelsDefaults', () => {
     const picked = pickModelsDefaults(server)
     expect(picked.version).toBe(server.version)
     expect(picked.data).toBe(server.data)
+  })
+
+  test('takes image support from the same side as the rows', () => {
+    const imageSupport = { [defaultModelOpus55.id]: 'unsupported' } as const
+    expect(pickModelsDefaults({ ...serverPayload(defaultModelsVersion + 1), imageSupport }).imageSupport).toBe(
+      imageSupport,
+    )
+    expect(pickModelsDefaults({ ...serverPayload(defaultModelsVersion), imageSupport }).imageSupport).toBe(
+      defaultModelImageSupport,
+    )
+  })
+
+  test('leaves a newer server lineup without image support to detection', () => {
+    expect(pickModelsDefaults(serverPayload(defaultModelsVersion + 1)).imageSupport).toEqual({})
   })
 
   test('bundle wins when server declares an equal version (avoid needless swap)', () => {

@@ -161,7 +161,10 @@ export const encryptedColumnsMap: Readonly<Record<string, readonly string[]>> = 
   chat_threads: ['title'],
   chat_messages: ['content', 'parts', 'cache', 'metadata'],
   tasks: ['item'],
-  models: ['name', 'model', 'url', 'vendor', 'description'],
+  models: ['name', 'model', 'url', 'provider_connection_id', 'vendor', 'description'],
+  // Credentials are local-only. Encrypt user labels and endpoint URLs just as
+  // models do; routing enums/flags stay plaintext and require local validation.
+  provider_connections: ['name', 'url'],
   prompts: ['title', 'prompt'],
   triggers: ['trigger_time'],
   model_profiles: [
@@ -638,6 +641,13 @@ export type EncryptionMetadataResponse = {
    */
   recovery_attestation: string | null
   /**
+   * DEK `"0"` sealed to the recovery phrase (`sealRecoveryContinuity`). Recovery
+   * requires it whenever `kdf_salt` carries the continuity tag, so a server cannot
+   * get a wiped device to adopt an AK it minted. Null on accounts whose phrase
+   * predates it and on v1 accounts.
+   */
+  recovery_continuity: string | null
+  /**
    * The passkey slot — a second virtual device, keyed by a passkey's PRF output.
    * All five are null until the user enrolls their passkey (and after removal).
    * Inert without the passkey, so serving it to any authenticated caller is safe.
@@ -648,6 +658,12 @@ export type EncryptionMetadataResponse = {
   passkey_wrapped_ak: string | null
   /** Signature over the passkey anchor; verified before every re-wrap, like `recovery_attestation`. */
   passkey_attestation: string | null
+  /**
+   * DEK `"0"` sealed to the passkey's PRF output, like `recovery_continuity`. Null
+   * for a slot enrolled before the seal existed, and whenever there is no slot.
+   * A backend that predates the column omits the key altogether.
+   */
+  passkey_continuity: string | null
   /** Bumped on every AK rotation — a bump tells devices to refresh their AK envelope. */
   key_version: number
   /** The key_id all new writes must encrypt under. */
@@ -727,6 +743,12 @@ export type RecoverySlotRequest = {
    * instead of trusting the server.
    */
   recoveryAttestation: string
+  /**
+   * DEK `"0"` sealed to a NEWLY minted phrase (`sealRecoveryContinuity`). Sent only
+   * when the recovery keys change; the server keeps the stored seal on a
+   * same-key rotation, since DEK `"0"` and the phrase are both unchanged.
+   */
+  recoveryContinuity?: string
 }
 
 /**
@@ -747,6 +769,11 @@ export type PasskeySlotRequest = {
   passkeyWrappedAK: string
   /** Base64 ECDSA signature over `encodePasskeyAttestationPayload(...)` with THIS write's signing key. */
   passkeyAttestation: string
+  /**
+   * DEK `"0"` sealed to the passkey (`sealPasskeyContinuity`). Sent only with a newly
+   * written slot; the server keeps the stored seal while the slot keys are unchanged.
+   */
+  passkeyContinuity?: string
 }
 
 /**
@@ -837,3 +864,31 @@ export type UpgradeResponse = {
   key_version: number
   scheme_version: SchemeVersion
 }
+
+// =============================================================================
+// Short-code device approval (commit-then-reveal relay)
+// =============================================================================
+
+/** How long a pending device's approval session accepts a challenge and a reveal. */
+export const approvalSessionTtlMs = 10 * 60 * 1000
+
+/** `sessionId` is 32 lowercase hex chars; `commitment`, `challenge` and `reveal` are 64. */
+export type StartApprovalSessionRequest = { sessionId: string; commitment: string }
+
+export type MyApprovalSessionResponse = {
+  sessionId: string
+  challenge: string | null
+  challengerDeviceId: string | null
+  expired: boolean
+}
+
+export type RevealApprovalSessionRequest = { sessionId: string; reveal: string }
+
+export type PendingApprovalSessionResponse = {
+  sessionId: string
+  commitment: string
+  reveal: string | null
+  expired: boolean
+}
+
+export type ChallengeApprovalSessionRequest = { sessionId: string; challenge: string }

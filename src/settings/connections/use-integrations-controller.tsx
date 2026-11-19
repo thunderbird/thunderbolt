@@ -11,6 +11,7 @@ import type { ToolItem } from '@/components/available-tools'
 import { GoogleIcon, MicrosoftIcon } from '@/components/provider-icons'
 import { deleteIntegrationCredentials, setIntegrationEnabled, updateSettings } from '@/dal'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
+import { useServerAuthentication } from '@/hooks/use-local-providers'
 import { useIntegrationStatus } from '@/hooks/use-integration-status'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
 import { useSettings } from '@/hooks/use-settings'
@@ -34,15 +35,17 @@ const isOAuthProvider = (provider: Integration['provider']): provider is OAuthPr
 export const useIntegrationsController = ({ db, dispatch }: IntegrationsControllerOptions) => {
   const { t } = useLingui()
   const queryClient = useQueryClient()
+  const authenticated = useServerAuthentication()
   const integrationSettings = useSettings({ integrations_pro_is_enabled: false })
   const { data: status, isLoading: isStatusLoading } = useIntegrationStatus()
-  const { data: proStatus } = useQuery({ queryKey: ['proStatus'], queryFn: getProStatus })
+  const { data: proStatus } = useQuery({ queryKey: ['proStatus'], queryFn: getProStatus, enabled: authenticated })
   const areIntegrationsReady =
-    !integrationSettings.integrationsProIsEnabled.isLoading && !isStatusLoading && proStatus !== undefined
+    !isStatusLoading &&
+    (!authenticated || (!integrationSettings.integrationsProIsEnabled.isLoading && proStatus !== undefined))
 
   const integrations = useMemo((): Integration[] => {
     const isProUser = proStatus?.isProUser ?? false
-    return [
+    const available: Integration[] = [
       {
         id: 'thunderbolt',
         name: 'Thunderbolt',
@@ -73,7 +76,8 @@ export const useIntegrationsController = ({ db, dispatch }: IntegrationsControll
         userEmail: status?.microsoftEmail ?? undefined,
       },
     ]
-  }, [integrationSettings.integrationsProIsEnabled.value, proStatus?.isProUser, status, t])
+    return available.filter((integration) => integration.provider !== 'thunderbolt-pro' || authenticated)
+  }, [authenticated, integrationSettings.integrationsProIsEnabled.value, proStatus?.isProUser, status, t])
 
   const toolConfigsByProvider: Record<Integration['provider'], { name: string; description: string }[]> = {
     'thunderbolt-pro': proToolConfigs,

@@ -54,9 +54,11 @@ export const validateOtpChallenge = async (database: typeof DbType, email: strin
   return rows.length > 0
 }
 
-/** Delete all challenge tokens for an email (cleanup after successful verification). */
-export const deleteOtpChallengesForEmail = async (database: typeof DbType, email: string) =>
-  database.delete(otpChallenge).where(eq(otpChallenge.email, email))
+/** Consume only the challenge that completed sign-in, preserving any replacement flow. */
+export const consumeOtpChallenge = async (database: typeof DbType, email: string, challengeToken: string) =>
+  database
+    .delete(otpChallenge)
+    .where(and(eq(otpChallenge.email, email), eq(otpChallenge.challengeToken, challengeToken)))
 
 /**
  * Delete the OTP that Better Auth persisted in the verification table.

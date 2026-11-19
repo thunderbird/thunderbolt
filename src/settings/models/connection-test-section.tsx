@@ -15,6 +15,7 @@ type ConnectionTestSectionProps = {
   provider: Model['provider']
   model: string
   apiKey: string | undefined
+  hasOAuth?: boolean
   isTesting: boolean
   onTest: () => void
   status: 'idle' | 'success' | 'error'
@@ -35,6 +36,7 @@ export const ConnectionTestSection = ({
   provider,
   model,
   apiKey,
+  hasOAuth = false,
   isTesting,
   onTest,
   status,
@@ -42,7 +44,7 @@ export const ConnectionTestSection = ({
   toolSupport,
 }: ConnectionTestSectionProps) => {
   const { t } = useLingui()
-  const canTest = canTestModelConnection(provider, model, apiKey)
+  const canTest = (hasOAuth && Boolean(model)) || canTestModelConnection(provider, model, apiKey)
   const showApiKeyHint = !canTest && Boolean(model) && providerRequiresApiKey(provider)
 
   return (

@@ -35,12 +35,6 @@ export const CreateAgentDetailPanel = ({ onClose, loadAppNodeId, enrollIroh }: C
   const runEnroll = enrollIroh ?? (() => selfEnrollIrohNodeId(httpClient, loadAppNodeId ?? irohClientNodeId))
 
   const handleAdd = async (payload: AddCustomAgentPayload) => {
-    if (!currentUserId) {
-      // Quick-create entry points are gated on capability, not session, so
-      // this can be reached while auth is still resolving. Throwing routes it
-      // into the form's catch, which shows the submit-failed error.
-      throw new Error('Cannot create an agent without an authenticated session.')
-    }
     await createAgent(db, {
       id: uuidv7(),
       name: payload.name,
@@ -52,7 +46,7 @@ export const CreateAgentDetailPanel = ({ onClose, loadAppNodeId, enrollIroh }: C
       userId: currentUserId,
     })
     await queryClient.invalidateQueries({ queryKey: ['agents'] })
-    if (payload.transport === 'iroh') {
+    if (payload.transport === 'iroh' && currentUserId) {
       fireAndForgetSelfEnrollment(runEnroll)
     }
   }

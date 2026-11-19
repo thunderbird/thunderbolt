@@ -4,22 +4,25 @@
 
 import { useLingui } from '@lingui/react/macro'
 import { m } from 'framer-motion'
-import { AlertCircle, X } from 'lucide-react'
+import { AlertCircle, Info, X } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import type { ReactNode } from 'react'
 
 type ComposerAlertProps = {
   children: ReactNode
   /** Renders a dismiss button; omit it for a banner that clears with its cause. */
   onDismiss?: () => void
+  tone?: 'error' | 'info'
 }
 
 /**
- * Destructive banner above the composer: an attachment error, or why the send
+ * Banner above the composer: setup guidance, an attachment error, or why the send
  * is held. Give it a `key` at the call site so `AnimatePresence` can animate it
  * out.
  */
-export const ComposerAlert = ({ children, onDismiss }: ComposerAlertProps) => {
+export const ComposerAlert = ({ children, onDismiss, tone = 'error' }: ComposerAlertProps) => {
   const { t } = useLingui()
+  const Icon = tone === 'info' ? Info : AlertCircle
 
   return (
     <m.div
@@ -34,17 +37,22 @@ export const ComposerAlert = ({ children, onDismiss }: ComposerAlertProps) => {
       className="pointer-events-auto overflow-hidden"
     >
       <div
-        role="alert"
-        className="flex items-center gap-1.5 rounded-t-2xl bg-destructive/10 px-3 pb-4 pt-2 text-[length:var(--font-size-xs)] text-destructive"
+        role={tone === 'info' ? 'status' : 'alert'}
+        className={cn(
+          'flex items-center gap-1.5 rounded-t-3xl px-3',
+          tone === 'info'
+            ? 'bg-muted pb-6 pt-3 text-[length:var(--font-size-sm)] text-muted-foreground'
+            : 'bg-destructive/10 pb-4 pt-2 text-[length:var(--font-size-xs)] text-destructive',
+        )}
       >
-        <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
+        <Icon className="size-3.5 shrink-0" aria-hidden="true" />
         <span className="min-w-0 flex-1">{children}</span>
         {onDismiss && (
           <button
             type="button"
             onClick={onDismiss}
             aria-label={t`Dismiss`}
-            className="shrink-0 cursor-pointer rounded p-0.5 hover:bg-destructive/15"
+            className="shrink-0 cursor-pointer rounded-md p-0.5 hover:bg-current/10"
           >
             <X className="size-3.5" />
           </button>

@@ -1,0 +1,261 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+.download-hero {
+  padding: 72px 0 64px;
+  text-align: center;
+}
+.download-hero h1 {
+  font-size: clamp(64px, 8vw, 108px);
+  font-weight: 500;
+  letter-spacing: -0.06em;
+  line-height: 1.1;
+}
+.download-hero .download-intro {
+  margin: 28px auto 0;
+  max-width: 460px;
+  color: var(--spark-secondary);
+  font-size: 17px;
+  text-wrap: balance;
+}
+.download-arrival {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  width: fit-content;
+  margin: -32px auto 48px;
+  padding: 10px 18px 10px 10px;
+  border: 1px solid var(--spark-border);
+  border-radius: 24px;
+  background: var(--spark-surface);
+  font-size: 12px;
+}
+.download-arrival-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--spark-hover);
+  font-size: 18px;
+}
+.download-arrival a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  color: var(--spark-secondary);
+}
+.download-everywhere {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
+  gap: 48px;
+}
+.download-browser-scene,
+.download-mobile-scene {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 360px;
+}
+.download-browser-scene::before,
+.download-mobile-scene::before {
+  content: '';
+  position: absolute;
+  inset: 24px 0;
+  z-index: -1;
+  border-radius: 48% 48% 16px 16px;
+  background: var(--spark-landscape);
+  opacity: 0.55;
+}
+.download-mobile-scene::before {
+  inset: 24px 0;
+  border-radius: 50%;
+}
+.download-window {
+  position: relative;
+  width: min(92%, 520px);
+  transform: rotate(-2deg);
+  padding: 0 7px 7px;
+  background: var(--spark-device-shell);
+  border: 1px solid var(--spark-device-border);
+  border-radius: 16px;
+  box-shadow: 0 16px 30px -12px rgb(0 0 0 / 18%);
+}
+.download-window .spark-window-chrome {
+  height: 32px;
+  font-size: 10px;
+}
+.download-window .spark-window-chrome i {
+  width: 6px;
+  height: 6px;
+}
+.download-window-content {
+  overflow: hidden;
+  border-radius: 10px;
+}
+.download-burst {
+  position: absolute;
+  width: 100px;
+  height: 100px;
+  right: 2px;
+  top: -8px;
+  transform: rotate(10deg);
+}
+.download-mobile-scene .spark-phone {
+  width: 162px;
+  border-radius: 24px;
+  padding: 15px 5px 5px;
+  transform: rotate(3deg);
+}
+.download-mobile-scene .spark-demo {
+  border-radius: 18px;
+}
+.download-mobile-scene .spark-phone-camera {
+  top: 6px;
+  height: 3px;
+  width: 26px;
+  left: calc(50% - 13px);
+}
+.download-device-copy {
+  padding-top: 30px;
+}
+.download-page .download-device-copy h2 {
+  font-size: clamp(28px, 3vw, 38px);
+  letter-spacing: -0.045em;
+}
+.download-device-copy p {
+  margin-top: 14px;
+  color: var(--spark-secondary);
+  font-size: 14px;
+  max-width: 360px;
+}
+.download-device-copy .spark-text-link {
+  margin-top: 20px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--spark-border-strong);
+}
+.download-store-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+.download-store-links img {
+  width: auto;
+  height: 38px;
+}
+.download-mobile-soon {
+  display: block;
+  margin-top: 12px;
+  color: var(--spark-secondary);
+  font-size: 12px;
+}
+.download-terminal {
+  margin-top: 88px;
+  padding-block: 72px;
+  border-block: 1px solid var(--spark-border);
+}
+.download-terminal-copy {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: 48px;
+  margin-bottom: 32px;
+}
+.download-page .download-terminal h2 {
+  font-size: clamp(32px, 3.5vw, 44px);
+}
+.download-terminal-copy p {
+  max-width: 310px;
+  margin: 0;
+  color: var(--spark-secondary);
+  font-size: 14px;
+}
+.download-terminal .spark-cli-panel {
+  margin-top: 8px;
+}
+.download-terminal .spark-cli-command {
+  padding-block: 32px;
+}
+.download-desktop {
+  padding-block: 80px 96px;
+  text-align: center;
+}
+.download-page .download-desktop h2 {
+  font-size: clamp(32px, 4vw, 48px);
+}
+.download-desktop > p {
+  color: var(--spark-secondary);
+  margin-top: 18px;
+  font-size: 15px;
+}
+.download-desktop .download-picker {
+  margin-top: 28px;
+}
+@media (max-width: 760px) {
+  .download-hero {
+    padding: 56px 0 40px;
+  }
+  .download-hero h1 {
+    font-size: clamp(54px, 11vw, 80px);
+  }
+  .download-hero .download-intro {
+    font-size: 15px;
+    max-width: 360px;
+  }
+  .download-arrival {
+    margin-top: -24px;
+    border-radius: 16px;
+    font-size: 11px;
+  }
+  .download-everywhere {
+    grid-template-columns: 1fr;
+    gap: 48px;
+  }
+  .download-browser-scene {
+    height: auto;
+    padding-block: 36px 16px;
+  }
+  .download-window {
+    width: 100%;
+  }
+  .download-mobile-scene {
+    height: 340px;
+    max-width: 320px;
+    margin: auto;
+  }
+  .download-burst {
+    width: 74px;
+    height: 74px;
+    top: 0;
+    right: -4px;
+  }
+  .download-device-copy {
+    text-align: center;
+    padding-top: 24px;
+  }
+  .download-device-copy p {
+    margin-inline: auto;
+  }
+  .download-store-links {
+    justify-content: center;
+  }
+  .download-terminal {
+    margin-top: 56px;
+    padding-block: 48px;
+  }
+  .download-terminal-copy {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    text-align: center;
+  }
+  .download-terminal-copy p {
+    margin-inline: auto;
+  }
+  .download-desktop {
+    padding-block: 56px 64px;
+  }
+}

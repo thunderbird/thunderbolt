@@ -8,6 +8,10 @@ import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import type { ReactNode } from 'react'
+import {
+  RecoveryContinuityContext,
+  type RecoveryContinuityContextValue,
+} from '@/components/recovery-continuity/recovery-continuity-provider'
 import { SidebarNavToggle } from './nav-toggle'
 import type { SidebarSection } from './types'
 
@@ -18,7 +22,30 @@ const renderToggle = ({ activeSection = 'chats' as SidebarSection, onSectionChan
     wrapper: Wrapper,
   })
 
+const attentionContext: RecoveryContinuityContextValue = {
+  status: 'warning',
+  phraseUpdateRequired: true,
+  passkey: 'none',
+  notice: 'none',
+  deviceTrusted: true,
+  passkeyMigration: { busy: false, errorMessage: null },
+  start: async () => {},
+  startPasskeyMigration: async () => {},
+  dismissNotice: () => {},
+}
+
 describe('SidebarNavToggle', () => {
+  it('labels Settings as needing action while continuity needs attention', () => {
+    render(
+      <RecoveryContinuityContext.Provider value={attentionContext}>
+        <SidebarNavToggle activeSection="chats" onSectionChange={() => {}} />
+      </RecoveryContinuityContext.Provider>,
+      { wrapper: Wrapper },
+    )
+    expect(screen.getByRole('button', { name: 'Settings, action needed' })).toBeInTheDocument()
+    cleanup()
+  })
+
   afterEach(() => {
     cleanup()
   })

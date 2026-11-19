@@ -24,7 +24,7 @@ Replica counts are configurable for `frontend`, `backend` and `marketing`. Postg
 | ---------------------- | ----------------------------------------------------------------------------------------- |
 | A cluster              | Any conformant cluster serving `networking.k8s.io/v1` Ingress (Kubernetes 1.19 or newer). |
 | Helm and kubectl       | Helm 3.8 or newer, which is where installing a chart straight from OCI became stable.     |
-| An ingress controller  | The chart requests ingress class `nginx`. Change it with `ingress.className`.             |
+| An ingress controller  | Use a maintained controller that supports the PowerSync path rewrite. The examples use Traefik on Kubernetes 1.30 or newer. |
 | A default StorageClass | PostgreSQL claims a 5 GiB volume on install.                                              |
 
 No CPU or memory requests are set by default, so the scheduler treats every pod as best-effort. Set `resources` per component before you run this anywhere real.
@@ -48,11 +48,17 @@ The chart ships a working default for the sync secret, the two database password
 
 ```bash
 git clone https://github.com/thunderbird/thunderbolt.git
-cd thunderbolt/deploy/k8s
+cd thunderbolt
 
-helm install thunderbolt . \
+helm upgrade --install traefik traefik \
+  --repo https://traefik.github.io/charts --version 42.4.1 \
+  --namespace traefik --create-namespace --skip-crds \
+  -f deploy/config/traefik-values.yaml
+
+helm install thunderbolt deploy/k8s \
   -n thunderbolt --create-namespace \
   --set appUrl="https://thunderbolt.example.com" \
+  --set ingress.className=traefik-nginx \
   --set ingress.host="thunderbolt.example.com" \
   --set backend.betterAuthSecretBase64="$BETTER_AUTH_SECRET" \
   --set powersync.jwt.secretBase64="$POWERSYNC_JWT_SECRET" \
@@ -61,7 +67,11 @@ helm install thunderbolt . \
 
 Each release also publishes the chart to `oci://ghcr.io/thunderbird/charts/thunderbolt`, so you can install without cloning. Every image the chart pulls is public and no pull secret is needed: the app, the API and the landing page come from `ghcr.io/thunderbird/thunderbolt/`, while PostgreSQL, Keycloak and the sync service come from their projects' own registries. Don't depend on a deployment running `latest`: the tag is rebuilt continuously. Pin `<component>.image.tag` to a published version instead. See [Upgrading](./upgrading.md).
 
+The supplied Traefik configuration watches the `thunderbolt` namespace. If you install Thunderbolt in another namespace, set `providers.kubernetesIngressNGINX.watchNamespace` to that namespace when installing Traefik.
+
 Past a handful of flags we recommend copying the chart's `values.yaml`, which documents every option, and passing it with `-f`.
+
+For an existing community `ingress-nginx` installation, follow the [Traefik migration guide](https://doc.traefik.io/traefik/migrate/nginx-to-traefik/). The values above create the separate `traefik-nginx` class. Switch Thunderbolt to that class and retire the old controller once the new endpoint is serving traffic. While the old controller is reachable, set `use-http2: "false"` in its ConfigMap to mitigate the two HTTP/2 CVEs.
 
 ## Verify the deployment
 
@@ -128,7 +138,7 @@ Whichever you choose, set `appUrl` to the `https://` URL. It decides which brows
 | `appUrl`                              | `http://localhost`      | Public base URL. CORS, auth callbacks, Keycloak redirect URIs.                                                                                                   |
 | `ingress.enabled`                     | `true`                  | Whether the chart creates an Ingress at all.                                                                                                                     |
 | `ingress.host`                        | empty                   | Hostname for the path-based rules. Empty means any host.                                                                                                         |
-| `ingress.className`                   | `nginx`                 | Which ingress controller claims the resource.                                                                                                                    |
+| `ingress.className`                   | `nginx`                 | Defaults to `nginx` for existing installations. Set `traefik-nginx` when using the supplied Traefik configuration.                                                                                                                    |
 | `ingress.hostnames`                   | empty                   | Per-service hostnames. See [Routing](#routing).                                                                                                                  |
 | `powersync.jwt.secretBase64`          | a published dev secret  | Base64url of the sync signing secret. Replace it.                                                                                                                |
 | `postgres.storage`                    | `5Gi`                   | Size of the database volume. Set it before install, not after.                                                                                                   |
@@ -163,65 +173,28 @@ Provider keys set here are held by the API, so the browser never holds them and 
 
 ## Try it on a local cluster
 
-Roughly five minutes to Thunderbolt at `http://localhost`, using [kind](https://kind.sigs.k8s.io/).
-
-A bare `kind create cluster` will not work. The port mappings and the node label below are what make the ingress controller reachable from your machine.
+Use [kind](https://kind.sigs.k8s.io/) and Helm to run Thunderbolt locally at `http://localhost:8080`.
 
 ```bash
-brew install kind helm
+kind create cluster --name thunderbolt
+git clone https://github.com/thunderbird/thunderbolt.git
+cd thunderbolt
 
-cat > /tmp/kind-thunderbolt.yaml <<'EOF'
-kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
-nodes:
-  - role: control-plane
-    kubeadmConfigPatches:
-      - |
-        kind: InitConfiguration
-        nodeRegistration:
-          kubeletExtraArgs:
-            node-labels: "ingress-ready=true"
-    extraPortMappings:
-      - containerPort: 80
-        hostPort: 80
-        protocol: TCP
-      - containerPort: 443
-        hostPort: 443
-        protocol: TCP
-EOF
+helm upgrade --install traefik traefik \
+  --repo https://traefik.github.io/charts --version 42.4.1 \
+  --namespace traefik --create-namespace --skip-crds \
+  -f deploy/config/traefik-values.yaml
 
-kind create cluster --name thunderbolt --config /tmp/kind-thunderbolt.yaml
-```
-
-Install the kind-flavored ingress controller, which binds to the node you just labeled:
-
-```bash
-kubectl apply -f https://kind.sigs.k8s.io/examples/ingress/deploy-ingress-nginx.yaml
-
-kubectl wait --namespace ingress-nginx \
-  --for=condition=ready pod \
-  --selector=app.kubernetes.io/component=controller \
-  --timeout=120s
-```
-
-On Docker Desktop or minikube, install the standard controller instead:
-
-```bash
-helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-helm install ingress-nginx ingress-nginx/ingress-nginx \
-  --create-namespace -n ingress-nginx \
-  --set controller.service.type=LoadBalancer
-```
-
-Install the chart with defaults and only the required secret, pulled straight from the registry so there is nothing to clone:
-
-```bash
-helm install thunderbolt oci://ghcr.io/thunderbird/charts/thunderbolt \
+helm install thunderbolt deploy/k8s \
   -n thunderbolt --create-namespace \
+  --set ingress.className=traefik-nginx \
+  --set appUrl=http://localhost:8080 \
   --set backend.betterAuthSecretBase64="$(openssl rand -base64 32 | tr -d '\n' | base64)"
+
+kubectl port-forward -n traefik svc/traefik 8080:80
 ```
 
-Open `http://localhost` in a private window. Sign-in redirects to Keycloak; the demo credentials are `demo@thunderbolt.io` / `demo`. Add an AI provider key in settings to start chatting.
+Open `http://localhost:8080` in a private window. Sign-in redirects to Keycloak. The demo credentials are `demo@thunderbolt.io` / `demo`. Add an AI provider key in settings to start chatting.
 
 Tear it down with:
 
@@ -263,7 +236,7 @@ Encode the secret with `printf %s '<secret>' | base64 | tr -d '\n'`, because GNU
 ## Upgrades and rollbacks
 
 ```bash
-helm upgrade thunderbolt . -n thunderbolt -f my-values.yaml
+helm upgrade thunderbolt deploy/k8s -n thunderbolt -f my-values.yaml
 helm rollback thunderbolt -n thunderbolt
 ```
 

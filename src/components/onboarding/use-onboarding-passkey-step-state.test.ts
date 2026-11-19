@@ -6,7 +6,8 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { act, renderHook } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import * as passkeys from '@/lib/passkey'
 import { useOnboardingPasskeyStepState } from './use-onboarding-passkey-step-state'
 
 /** Render the hook with an auth client whose passkey endpoints all answer `error`. */
@@ -18,15 +19,36 @@ const renderStep = (error: unknown) => {
 describe('useOnboardingPasskeyStepState', () => {
   beforeAll(async () => {
     await setupTestDatabase()
-    spyOn(console, 'error').mockImplementation(() => {})
   })
 
   afterAll(async () => {
     await teardownTestDatabase()
   })
 
+  beforeEach(() => {
+    spyOn(console, 'error').mockImplementation(() => {})
+  })
+
   afterEach(async () => {
+    mock.restore()
     await resetTestDatabase()
+  })
+
+  it('opens one registration prompt for synchronous duplicate submissions', async () => {
+    const pending = Promise.withResolvers<Awaited<ReturnType<typeof passkeys.registerPasskey>>>()
+    const register = spyOn(passkeys, 'registerPasskey').mockReturnValue(pending.promise)
+    const { result } = renderStep(null)
+    let first!: Promise<void>
+    act(() => {
+      first = result.current.register()
+      void result.current.register()
+    })
+    expect(register).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      pending.reject(Object.assign(new Error('cancelled'), { name: 'NotAllowedError' }))
+      await first
+    })
+    expect(result.current.status).toBe('idle')
   })
 
   it('shows an error when registration fails', async () => {

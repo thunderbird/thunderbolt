@@ -7,7 +7,7 @@
  * Stored on UIMessageMetadata.sources for the source registry.
  */
 export type SourceMetadata = {
-  /** 1-based sequential index, matches AI's [N] reference */
+  /** 1-based citation number, matches AI's [N] reference; continues across the thread's turns */
   index: number
   /** Full URL of the source */
   url: string
@@ -19,6 +19,8 @@ export type SourceMetadata = {
   image?: string | null
   /** Favicon URL if available */
   favicon?: string | null
+  /** False when passive images would bypass the search provider's privacy boundary. */
+  allowRemoteImages?: boolean
   /** Display name of the website (derived from hostname) */
   siteName?: string
   /** Author of the source content */

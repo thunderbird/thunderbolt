@@ -6,6 +6,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'bun:test'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import SsoError from './sso-error'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 
 const renderAt = (search: string) =>
   render(
@@ -13,6 +14,7 @@ const renderAt = (search: string) =>
       <Routes>
         <Route path="/sso-error" element={<SsoError />} />
         <Route path="/sso-redirect" element={<p>restarted sign-in</p>} />
+        <Route path="/" element={<p>local app</p>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -64,5 +66,21 @@ describe('SsoError', () => {
     fireEvent.click(screen.getByRole('link', { name: 'Try again' }))
 
     expect(screen.getByText('restarted sign-in')).toBeInTheDocument()
+  })
+
+  it('lets an optional server sign-in failure return to local work', () => {
+    useLocalSettingsStore.setState({ localMode: true })
+    renderAt('?error=access_denied')
+
+    fireEvent.click(screen.getByRole('link', { name: 'Continue locally' }))
+
+    expect(screen.getByText('local app')).toBeInTheDocument()
+  })
+
+  it('keeps managed SSO sign-in required', () => {
+    useLocalSettingsStore.setState({ localMode: false })
+    renderAt('?error=access_denied')
+
+    expect(screen.queryByRole('link', { name: 'Continue locally' })).not.toBeInTheDocument()
   })
 })

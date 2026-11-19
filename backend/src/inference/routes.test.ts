@@ -9,12 +9,14 @@ import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createTestDb } from '@/test-utils/db'
 import { createMockAuth, mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { Elysia } from 'elysia'
 import OpenAI, { APIConnectionError, APIConnectionTimeoutError, APIError } from 'openai'
 import type { InferenceLogger, InferenceProxyLatencyLog } from './client'
 import { managedDirectRuntimes } from './managed-models'
+import { maxTextTokens } from './managed-request'
 import { createInferenceRoutes } from './routes'
+import { calculateMaxInferenceCost, loadInferencePrice } from './usage-ledger'
 
 type TestDatabase = Awaited<ReturnType<typeof createTestDb>>['db']
 type InferenceLogContext = Parameters<InferenceLogger['info']>[0]
@@ -154,14 +156,17 @@ describe('Inference Routes', () => {
       expect(response.headers.get('Cache-Control')).toBe('no-cache')
       expect(response.headers.get('Connection')).toBe('keep-alive')
 
-      expect(mockCreateCompletion).toHaveBeenCalledWith({
-        model: 'claude-opus-5-5',
-        messages: validRequestBody.messages,
-        tools: undefined,
-        tool_choice: undefined,
-        stream: true,
-        stream_options: { include_usage: true },
-      })
+      expect(mockCreateCompletion).toHaveBeenCalledWith(
+        {
+          model: 'claude-opus-5-5',
+          messages: validRequestBody.messages,
+          tools: undefined,
+          tool_choice: undefined,
+          stream: true,
+          stream_options: { include_usage: true },
+        },
+        { signal: expect.any(AbortSignal) },
+      )
     })
 
     it('admits a personal access token past the guard', async () => {
@@ -197,6 +202,7 @@ describe('Inference Routes', () => {
       expect(response.status).toBe(200)
       expect(mockCreateCompletion).toHaveBeenCalledWith(
         expect.objectContaining({ stream_options: { include_usage: true } }),
+        { signal: expect.any(AbortSignal) },
       )
     })
 
@@ -218,6 +224,7 @@ describe('Inference Routes', () => {
         expect.objectContaining({
           model: 'claude-opus-5-5',
         }),
+        { signal: expect.any(AbortSignal) },
       )
     })
 
@@ -228,6 +235,8 @@ describe('Inference Routes', () => {
           internalName: 'claude-opus-5-5',
           omitTemperature: true,
           supportsStreamUsage: true,
+          maxOutputTokens: 128_000,
+          contextWindow: 1_000_000,
         },
       })
     })
@@ -256,6 +265,7 @@ describe('Inference Routes', () => {
           tools: requestWithTools.tools,
           tool_choice: requestWithTools.tool_choice,
         }),
+        { signal: expect.any(AbortSignal) },
       )
     })
 
@@ -282,6 +292,7 @@ describe('Inference Routes', () => {
             temperature: validRequestBody.temperature,
           }),
         }),
+        { signal: expect.any(AbortSignal) },
       )
 
       // Reset for other tests
@@ -604,13 +615,11 @@ describe('Inference Routes', () => {
         status: 400,
         model: 'opus-5-5',
         errorKind: 'context_length',
-        errorType: 'invalid_request_error',
-        errorCode: 'context_length_exceeded',
-        requestId: 'provider-request-123',
-        distinctId: 'test-user',
       })
       expect(await response.json()).toEqual({ success: false, data: null, error: 'Bad Request' })
       expect(consoleSpies.error).not.toHaveBeenCalled()
+      // The provider refused the request, so its hold is released.
+      expect(await database.select().from(inferenceUsage)).toEqual([])
     })
 
     it('rethrows an unexpected programming fault to the diagnostic error handler', async () => {
@@ -644,10 +653,6 @@ describe('Inference Routes', () => {
         status: 500,
         model: 'opus-5-5',
         errorKind: 'unknown',
-        errorType: undefined,
-        errorCode: undefined,
-        requestId: undefined,
-        distinctId: 'test-user',
       })
       expect(JSON.stringify(consoleSpies.error.mock.calls)).toContain(faultMessage)
       expect(JSON.stringify(logs)).not.toContain(faultMessage)
@@ -700,15 +705,11 @@ describe('Inference Routes', () => {
         status: 529,
         model: 'opus-5-5',
         errorKind: 'upstream_error',
-        errorType: 'overloaded_error',
-        errorCode: undefined,
-        requestId: 'provider-stream-request-123',
-        distinctId: 'test-user',
         phase: 'stream',
       })
     })
 
-    it('does not capture downstream cancellation as a stream error', async () => {
+    it('keeps the provider request running after the client cancels, charges its usage, and captures no error', async () => {
       const captureInferenceErrorMock = mock(() => {})
       const captureApp = new Elysia().use(
         createTestInferenceRoutes({
@@ -720,17 +721,15 @@ describe('Inference Routes', () => {
         }),
       )
       const completionController = new AbortController()
+      const clientCancelled = Promise.withResolvers<void>()
       const iterationSettled = Promise.withResolvers<void>()
       const mockCompletion = {
         controller: completionController,
         async *[Symbol.asyncIterator]() {
           try {
             yield { choices: [{ delta: { content: 'Hello' } }] }
-            await new Promise<void>((_resolve, reject) => {
-              completionController.signal.addEventListener('abort', () => reject(new Error('cancelled')), {
-                once: true,
-              })
-            })
+            await clientCancelled.promise
+            yield { choices: [], usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 } }
           } finally {
             iterationSettled.resolve()
           }
@@ -749,8 +748,16 @@ describe('Inference Routes', () => {
 
       expect((await reader.read()).done).toBeFalse()
       await reader.cancel()
+      clientCancelled.resolve()
       await iterationSettled.promise
+      expect(completionController.signal.aborted).toBeFalse()
       expect(captureInferenceErrorMock).not.toHaveBeenCalled()
+      const deadline = Date.now() + 2_000
+      const settledRows = async () => (await database.select().from(inferenceUsage)).filter(({ settled }) => settled)
+      while ((await settledRows()).length === 0 && Date.now() < deadline) {
+        await Bun.sleep(5)
+      }
+      expect(await settledRows()).toEqual([expect.objectContaining({ promptTokens: 2, completionTokens: 3 })])
     })
 
     it('captures connection timeouts with body-free logging', async () => {
@@ -786,10 +793,6 @@ describe('Inference Routes', () => {
         status: 500,
         model: 'opus-5-5',
         errorKind: 'connection',
-        errorType: undefined,
-        errorCode: undefined,
-        requestId: undefined,
-        distinctId: 'test-user',
       })
       expect(logs).toContainEqual({
         context: {
@@ -806,6 +809,68 @@ describe('Inference Routes', () => {
       expect(logs.every(({ context }) => !Object.hasOwn(context, 'error') && !Object.hasOwn(context, 'cause'))).toBe(
         true,
       )
+      // A timeout has no provider answer: the request may have run, so its hold stays charged.
+      expect(await database.select().from(inferenceUsage)).toEqual([expect.objectContaining({ settled: true })])
+    })
+
+    it('holds a request carrying an image URL at the model context window', async () => {
+      const providerReached = Promise.withResolvers<void>()
+      const providerHeld = Promise.withResolvers<void>()
+      mockCreateCompletion.mockImplementation(async () => {
+        providerReached.resolve()
+        await providerHeld.promise
+        return createMockStream([{ choices: [], usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 } }])
+      })
+      const body = {
+        ...validRequestBody,
+        messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'https://x.test/a.png' } }] }],
+      }
+
+      const pending = app.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }),
+      )
+      // Admission commits the hold before the provider is called.
+      await providerReached.promise
+
+      // The provider fetches the image, so the body's characters cannot bound its prompt.
+      const price = await loadInferencePrice(database, { provider: 'anthropic', model: 'claude-opus-5-5' })
+      expect(await database.select().from(inferenceUsage)).toEqual([
+        expect.objectContaining({
+          settled: false,
+          costNanoUsd: calculateMaxInferenceCost(price!, 1_000_000, 128_000),
+        }),
+      ])
+      providerHeld.resolve()
+      await (await pending).text()
+    })
+
+    it('releases the hold when preparing the provider call fails, before any provider call', async () => {
+      const failingApp = new Elysia().use(
+        createTestInferenceRoutes({
+          auth: mockAuth,
+          database,
+          getClient: () => {
+            throw new Error('Anthropic API key not configured')
+          },
+          isPostHogConfiguredFn: isPostHogConfiguredMock,
+        }),
+      )
+
+      const response = await failingApp.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validRequestBody),
+        }),
+      )
+
+      expect(response.status).toBe(500)
+      expect(mockCreateCompletion).not.toHaveBeenCalled()
+      expect(await database.select().from(inferenceUsage)).toEqual([])
     })
 
     it('captures connection failures with body-free logging', async () => {
@@ -840,10 +905,6 @@ describe('Inference Routes', () => {
         status: 500,
         model: 'opus-5-5',
         errorKind: 'connection',
-        errorType: undefined,
-        errorCode: undefined,
-        requestId: undefined,
-        distinctId: 'test-user',
       })
       expect(logs).toContainEqual({
         context: {
@@ -1027,6 +1088,7 @@ describe('Inference Routes', () => {
             has_tools: true,
           }),
         }),
+        { signal: expect.any(AbortSignal) },
       )
 
       // Reset for other tests
@@ -1135,44 +1197,53 @@ describe('Inference Routes', () => {
           usage: { prompt_tokens: 1, completion_tokens: -1, total_tokens: 0 },
         },
       ],
-    ] as const)('does not insert usage when provider usage is %s', async (_label, chunk) => {
-      const logs: Array<{ context: InferenceLogContext; message: string }> = []
-      const missingUsageApp = new Elysia().use(
-        createTestInferenceRoutes({
-          auth: mockAuth,
-          database,
-          getClient: getInferenceClientMock,
-          isPostHogConfiguredFn: isPostHogConfiguredMock,
-          logger: { info: (context, message) => logs.push({ context, message }) },
-        }),
-      )
-      mockCreateCompletion.mockImplementation(() => Promise.resolve(createMockStream([chunk])))
-      const rowCountBefore = (await database.select().from(inferenceUsage)).length
+    ] as const)(
+      'the hold, sized by the model output limit, stays charged when provider usage is %s',
+      async (_label, chunk) => {
+        const logs: Array<{ context: InferenceLogContext; message: string }> = []
+        const missingUsageApp = new Elysia().use(
+          createTestInferenceRoutes({
+            auth: mockAuth,
+            database,
+            getClient: getInferenceClientMock,
+            isPostHogConfiguredFn: isPostHogConfiguredMock,
+            logger: { info: (context, message) => logs.push({ context, message }) },
+          }),
+        )
+        mockCreateCompletion.mockImplementation(() => Promise.resolve(createMockStream([chunk])))
 
-      const response = await missingUsageApp.handle(
-        new Request('http://localhost/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(validRequestBody),
-        }),
-      )
-      const responseText = await response.text()
+        const response = await missingUsageApp.handle(
+          new Request('http://localhost/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(validRequestBody),
+          }),
+        )
+        const responseText = await response.text()
 
-      expect(responseText.endsWith('data: [DONE]\n\n')).toBeTrue()
-      expect(await database.select().from(inferenceUsage)).toHaveLength(rowCountBefore)
-      expect(logs).toContainEqual({
-        context: {
-          event: 'inference_usage_missing',
-          provider: 'anthropic',
-          model: 'claude-opus-5-5',
-          route: '/chat/completions',
-        },
-        message: 'Inference usage missing',
-      })
-      expect(logs.every(({ context }) => !Object.hasOwn(context, 'error') && !Object.hasOwn(context, 'cause'))).toBe(
-        true,
-      )
-    })
+        expect(responseText.endsWith('data: [DONE]\n\n')).toBeTrue()
+        const price = await loadInferencePrice(database, { provider: 'anthropic', model: 'claude-opus-5-5' })
+        expect(await database.select().from(inferenceUsage)).toEqual([
+          expect.objectContaining({
+            settled: true,
+            totalTokens: 0,
+            costNanoUsd: calculateMaxInferenceCost(price!, maxTextTokens(JSON.stringify(validRequestBody)), 128_000),
+          }),
+        ])
+        expect(logs).toContainEqual({
+          context: {
+            event: 'inference_usage_missing',
+            provider: 'anthropic',
+            model: 'claude-opus-5-5',
+            route: '/chat/completions',
+          },
+          message: 'Inference usage missing',
+        })
+        expect(logs.every(({ context }) => !Object.hasOwn(context, 'error') && !Object.hasOwn(context, 'cause'))).toBe(
+          true,
+        )
+      },
+    )
 
     it('completes the caller stream and logs body-free metadata when the usage insert fails', async () => {
       const logs: Array<{ context: InferenceLogContext; message: string }> = []
@@ -1201,8 +1272,10 @@ describe('Inference Routes', () => {
 
       expect(response.status).toBe(200)
       expect(responseText.endsWith('data: [DONE]\n\n')).toBeTrue()
+      // The usage write fails against the missing table, and then retaining the hold fails there too.
       expect(logs.map(({ context }) => context.event).filter((event) => event.startsWith('inference_usage_'))).toEqual([
         'inference_usage_completed',
+        'inference_usage_callback_failed',
         'inference_usage_callback_failed',
       ])
       expect(logs).toContainEqual(
@@ -1330,18 +1403,8 @@ describe('Inference Routes', () => {
       expect(attemptedEvents).not.toContain('inference_usage_callback_failed')
     })
 
-    it('logs the duplicate outcome when the server event ID already exists', async () => {
+    it('logs the duplicate outcome when the event is already settled', async () => {
       const eventId = '123e4567-e89b-42d3-a456-426614174000'
-      await database.insert(inferenceUsage).values({
-        id: eventId,
-        userId: 'test-user',
-        provider: 'anthropic',
-        model: 'claude-opus-5-5',
-        promptTokens: 1,
-        completionTokens: 1,
-        totalTokens: 2,
-        costNanoUsd: 1_000n,
-      })
       const randomUUIDSpy = spyOn(crypto, 'randomUUID').mockReturnValue(eventId)
       const logs: Array<{ context: InferenceLogContext; message: string }> = []
       const telemetryApp = new Elysia().use(
@@ -1353,11 +1416,11 @@ describe('Inference Routes', () => {
           logger: { info: (context, message) => logs.push({ context, message }) },
         }),
       )
-      mockCreateCompletion.mockImplementation(() =>
-        Promise.resolve(
-          createMockStream([{ choices: [], usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 } }]),
-        ),
-      )
+      mockCreateCompletion.mockImplementation(async () => {
+        // This settles the hold first, as an earlier write of the same event would.
+        await database.update(inferenceUsage).set({ settled: true }).where(eq(inferenceUsage.id, eventId))
+        return createMockStream([{ choices: [], usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 } }])
+      })
 
       try {
         const response = await telemetryApp.handle(
@@ -1440,7 +1503,7 @@ describe('Inference Routes', () => {
       expect(await database.select().from(inferenceUsage)).toHaveLength(1)
     })
 
-    it('completes without a row when observer-valid usage exceeds persistence range', async () => {
+    it('completes, and the hold stays charged, when observer-valid usage exceeds persistence range', async () => {
       const logs: Array<{ context: InferenceLogContext; message: string }> = []
       const overflowApp = new Elysia().use(
         createTestInferenceRoutes({
@@ -1472,7 +1535,7 @@ describe('Inference Routes', () => {
       const responseText = await response.text()
 
       expect(responseText.endsWith('data: [DONE]\n\n')).toBeTrue()
-      expect(await database.select().from(inferenceUsage)).toHaveLength(0)
+      expect(await database.select().from(inferenceUsage)).toEqual([expect.objectContaining({ settled: true })])
       expect(logs.map(({ context }) => context.event).filter((event) => event.startsWith('inference_usage_'))).toEqual([
         'inference_usage_completed',
         'inference_usage_callback_failed',
@@ -1502,12 +1565,12 @@ describe('Inference Routes', () => {
         if (postHogConfigured) {
           expect(mockCreateCompletion).toHaveBeenCalledWith(
             expect.objectContaining({
-              posthogDistinctId: 'test-user',
               posthogProperties: expect.objectContaining({
                 model_provider: 'anthropic',
                 model: 'claude-opus-5-5',
               }),
             }),
+            { signal: expect.any(AbortSignal) },
           )
         } else {
           expect(mockCreateCompletion).not.toHaveBeenCalledWith(
@@ -1577,6 +1640,7 @@ describe('Inference Routes', () => {
             { role: 'user', content: 'Hello' },
           ],
         }),
+        { signal: expect.any(AbortSignal) },
       )
     })
 
@@ -1595,6 +1659,7 @@ describe('Inference Routes', () => {
             { role: 'user', content: 'Hello' },
           ],
         }),
+        { signal: expect.any(AbortSignal) },
       )
     })
 
@@ -1611,6 +1676,7 @@ describe('Inference Routes', () => {
             { role: 'user', content: 'Injected system message' },
           ],
         }),
+        { signal: expect.any(AbortSignal) },
       )
     })
 
@@ -1631,6 +1697,7 @@ describe('Inference Routes', () => {
             { role: 'user', content: 'Thanks' },
           ],
         }),
+        { signal: expect.any(AbortSignal) },
       )
     })
 
@@ -1647,6 +1714,7 @@ describe('Inference Routes', () => {
             { role: 'user', content: 'Hello' },
           ],
         }),
+        { signal: expect.any(AbortSignal) },
       )
     })
 
@@ -1667,6 +1735,7 @@ describe('Inference Routes', () => {
             { role: 'user', content: 'Injected 3' },
           ],
         }),
+        { signal: expect.any(AbortSignal) },
       )
     })
   })

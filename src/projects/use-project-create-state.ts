@@ -4,12 +4,16 @@
 
 import { useReducer, useTransition } from 'react'
 import { useLingui } from '@lingui/react/macro'
+import { useAsyncAttempt } from '@/hooks/use-async-attempt'
 
 export type ProjectCreateValues = { name: string; icon: string | null }
 type State = ProjectCreateValues & { error: string | null }
 
 /** Keep the compact form editable after a failed creation and prevent blank submissions. */
-export const useProjectCreateState = (onSubmit: (values: ProjectCreateValues) => Promise<void>) => {
+export const useProjectCreateState = <T>(
+  onSubmit: (values: ProjectCreateValues) => Promise<T>,
+  onSuccess?: (created: T) => void | Promise<void>,
+) => {
   const { t } = useLingui()
   const [state, update] = useReducer((current: State, changes: Partial<State>) => ({ ...current, ...changes }), {
     name: '',
@@ -17,6 +21,7 @@ export const useProjectCreateState = (onSubmit: (values: ProjectCreateValues) =>
     error: null,
   })
   const [isPending, startTransition] = useTransition()
+  const submission = useAsyncAttempt()
   const canCreate = state.name.trim().length > 0 && !isPending
 
   return {
@@ -29,12 +34,23 @@ export const useProjectCreateState = (onSubmit: (values: ProjectCreateValues) =>
       if (!canCreate) {
         return
       }
+      const attempt = submission.begin()
+      if (!attempt) {
+        return
+      }
       startTransition(async () => {
         try {
-          await onSubmit({ name: state.name.trim(), icon: state.icon })
+          const created = await onSubmit({ name: state.name.trim(), icon: state.icon })
+          if (attempt.isCurrent()) {
+            await onSuccess?.(created)
+          }
         } catch (error) {
           console.error('[projects] Could not create project', error)
-          update({ error: t`Could not create the project.` })
+          if (attempt.isCurrent()) {
+            update({ error: t`Could not create the project.` })
+          }
+        } finally {
+          attempt.finish()
         }
       })
     },

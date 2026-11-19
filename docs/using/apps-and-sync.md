@@ -13,7 +13,7 @@ Each install keeps its own copy of your data and works on its own. Sync is optio
 | iOS, Android          | Apple TestFlight and Google Play internal testing                                      | Not yet listed publicly in the app stores                                      |
 | Terminal              | `thunderbolt` command line client                                                      | Apple Silicon Macs and Linux. Installable from the desktop app, or from source |
 
-The web, desktop and mobile apps share one codebase, so features carry across except where a platform blocks them: the in-app browser and the cloud-proxy switch are desktop-only. The terminal client is a separate coding agent rather than this app.
+The web, desktop and mobile apps share one codebase, so features carry across except where a platform blocks them: the in-app browser works only in the macOS and Windows apps, and the cloud-proxy switch is desktop-only. The terminal client is a separate coding agent rather than this app.
 
 The web app requires HTTPS. It keeps a database inside the browser and uses browser cryptography, both of which browsers only allow on a secure origin. Automatic desktop updates reach only the official builds, which ship with an update feed and a signing key. A desktop app you build yourself has neither, so you distribute new installers to your users the same way you distributed the first one.
 
@@ -67,7 +67,7 @@ File attachments do not follow a chat. The message carries the file's name but n
 
 Install or open Thunderbolt on the new device and sign in with the same account. It registers as pending and shows an "Approve this device" screen until you either:
 
-- Approve it from an already trusted device under **Settings → Devices**, entering the fingerprint shown on the new device's screen or received through a separate trusted channel.
+- Approve it from an already trusted device under **Settings → Devices**. Tap **Approve**, then tap the code that matches the 2-digit code on the new device's screen. If none match, choose **None of these match** and do not approve. **Use fingerprint instead** lets you type the full fingerprint, which is also the way when one of the two devices runs an older version.
 - Enter the current 24 word recovery phrase. Use the new phrase if it was replaced during migration or a phrase change.
 - Choose **Unlock with passkey** if the account has an available passkey enrolled for sync.
 

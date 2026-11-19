@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.e2e.json",
+  "compilerOptions": { "noEmit": true },
+  "include": ["./**/*.ts", "../../src/**/*.d.ts"]
+}

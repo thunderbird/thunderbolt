@@ -15,7 +15,7 @@ import {
   getRemoteMcpServers,
   updateMcpServerWithCredentials,
 } from './mcp-servers'
-import { getMcpServerCredentials } from './mcp-secrets'
+import { getMcpServerCredentials, getMcpServerCredentialsFor } from './mcp-secrets'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
 beforeAll(async () => {
@@ -44,7 +44,11 @@ describe('MCP Servers DAL', () => {
       const servers = await getAllMcpServers(db)
       expect(servers).toHaveLength(1)
       expect(servers[0]?.id).toBe(id)
-      expect(await getMcpServerCredentials(db, id)).toEqual({ type: 'bearer', token: 'secret-token' })
+      expect(await getMcpServerCredentials(db, id)).toEqual({
+        type: 'bearer',
+        token: 'secret-token',
+        approvedUrl: 'https://example.com/mcp',
+      })
     })
 
     it('writes the server row with no credential when none is given', async () => {
@@ -81,7 +85,11 @@ describe('MCP Servers DAL', () => {
       expect(servers).toHaveLength(2)
       expect(servers.map((s) => s.id)).toContain(withCredId)
       expect(servers.map((s) => s.id)).toContain(noCredId)
-      expect(await getMcpServerCredentials(db, withCredId)).toEqual({ type: 'bearer', token: 'secret-token' })
+      expect(await getMcpServerCredentials(db, withCredId)).toEqual({
+        type: 'bearer',
+        token: 'secret-token',
+        approvedUrl: 'https://a.example.com/mcp',
+      })
       expect(await getMcpServerCredentials(db, noCredId)).toBeNull()
     })
 
@@ -358,7 +366,14 @@ describe('MCP Servers DAL', () => {
       const servers = await getAllMcpServers(db)
       expect(servers[0]?.name).toBe('Renamed')
       expect(servers[0]?.url).toBe('https://new.example.com/mcp')
-      expect(await getMcpServerCredentials(db, id)).toEqual({ type: 'bearer', token: 'original-token' })
+      // The kept credential stays bound to the URL it was saved for, so the new one never gets it.
+      expect(await getMcpServerCredentials(db, id)).toEqual({
+        type: 'bearer',
+        token: 'original-token',
+        approvedUrl: 'https://example.com/mcp',
+      })
+      expect(await getMcpServerCredentialsFor(db, id, 'https://new.example.com/mcp')).toBeNull()
+      expect(await getMcpServerCredentialsFor(db, id, 'https://EXAMPLE.com:443/mcp')).not.toBeNull()
     })
 
     it('replaces the credential when an object is given', async () => {
@@ -372,7 +387,11 @@ describe('MCP Servers DAL', () => {
 
       await updateMcpServerWithCredentials(db, id, { name: 'Server' }, { type: 'bearer', token: 'new-token' })
 
-      expect(await getMcpServerCredentials(db, id)).toEqual({ type: 'bearer', token: 'new-token' })
+      expect(await getMcpServerCredentials(db, id)).toEqual({
+        type: 'bearer',
+        token: 'new-token',
+        approvedUrl: 'https://example.com/mcp',
+      })
     })
 
     it('deletes the credential when null is given', async () => {
@@ -402,7 +421,32 @@ describe('MCP Servers DAL', () => {
 
       await updateMcpServerWithCredentials(db, id, {}, { type: 'bearer', token: 'fresh' })
 
-      expect(await getMcpServerCredentials(db, id)).toEqual({ type: 'bearer', token: 'fresh' })
+      expect(await getMcpServerCredentials(db, id)).toEqual({
+        type: 'bearer',
+        token: 'fresh',
+        approvedUrl: 'https://example.com/mcp',
+      })
+    })
+
+    it('binds a credential typed with a new URL to that URL', async () => {
+      const db = getDb()
+      const id = uuidv7()
+      await createMcpServerWithCredentials(
+        db,
+        { id, name: 'Server', type: 'http', url: 'https://example.com/mcp', enabled: 1 },
+        { type: 'bearer', token: 'old-token' },
+      )
+
+      await updateMcpServerWithCredentials(
+        db,
+        id,
+        { url: 'https://other.example.com/mcp' },
+        { type: 'bearer', token: 'new-token' },
+      )
+
+      expect(await getMcpServerCredentialsFor(db, id, 'https://other.example.com/mcp')).toMatchObject({
+        token: 'new-token',
+      })
     })
   })
 

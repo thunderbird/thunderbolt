@@ -16,6 +16,7 @@ export const syncedTables = {
   chat_messages: tables.chatMessagesTable,
   tasks: tables.tasksTable,
   models: tables.modelsTable,
+  provider_connections: tables.providerConnectionsTable,
   prompts: tables.promptsTable,
   skills: tables.skillsTable,
   triggers: tables.triggersTable,
@@ -27,6 +28,10 @@ export const syncedTables = {
 
 /** Local-only tables — created in SQLite but never synced via PowerSync. */
 export const localOnlyTables = {
+  provider_connection_secrets: {
+    tableDefinition: tables.providerConnectionSecretsTable,
+    options: { localOnly: true },
+  } satisfies DrizzleTableWithPowerSyncOptions,
   models_secrets: {
     tableDefinition: tables.modelsSecretsTable,
     options: { localOnly: true },
@@ -59,6 +64,14 @@ export const localOnlyTables = {
 export const drizzleSchema = {
   ...syncedTables,
   ...localOnlyTables,
+  models: {
+    tableDefinition: tables.modelsTable,
+    options: { trackMetadata: true },
+  } satisfies DrizzleTableWithPowerSyncOptions,
+  provider_connections: {
+    tableDefinition: tables.providerConnectionsTable,
+    options: { trackMetadata: true },
+  } satisfies DrizzleTableWithPowerSyncOptions,
 }
 
 /**

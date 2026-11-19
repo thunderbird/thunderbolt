@@ -26,6 +26,7 @@ const powersyncSettings: Settings = {
   tinfoilApiKey: '',
   tinfoilEnclaveUrl: 'https://inference.tinfoil.sh/v1',
   monitoringToken: '',
+  integrationOAuthAllowPublic: false,
   googleClientId: '',
   googleClientSecret: '',
   googleBaseUrl: 'https://oauth2.googleapis.com',
@@ -1099,6 +1100,45 @@ describe('PowerSync API', () => {
       expect(devices[0]?.appVersion).toBe('0.1.80')
     })
 
+    it('leaves a fresh device row untouched when nothing changed', async () => {
+      const userId = 'user-device-fresh'
+      const now = new Date()
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Fresh Device User',
+        email: 'device-fresh@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await db.insert(sessionTable).values({
+        id: 'session-device-fresh',
+        expiresAt: new Date(now.getTime() + 3600 * 1000),
+        token: 'bearer-device-fresh',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+        deviceId: 'device-fresh',
+      })
+      await insertTrustedDevice('device-fresh', userId)
+      const [before] = await db.select().from(devicesTable).where(eq(devicesTable.id, 'device-fresh'))
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: {
+            Authorization: `Bearer ${signToken('bearer-device-fresh')}`,
+            'x-device-id': 'device-fresh',
+            'x-device-name': 'Test Device',
+          },
+        }),
+      )
+      expect(response.status).toBe(200)
+
+      const [after] = await db.select().from(devicesTable).where(eq(devicesTable.id, 'device-fresh'))
+      expect(after?.lastSeen).toEqual(before?.lastSeen)
+    })
+
     it('ignores X-App-Version when value exceeds 64 characters', async () => {
       const userId = 'user-device-app-version-long'
       const now = new Date()
@@ -1454,6 +1494,60 @@ describe('PowerSync API', () => {
       expect(seeded.status).toBe(200)
       const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'onboarding'))
       expect(rows[0]?.value).toBe('true')
+    })
+
+    it('preserves the migration-link condition on the wire without constraining deliberate edits', async () => {
+      const userId = 'user-upload-migration-link'
+      const now = new Date()
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Migration User',
+        email: 'upload-migration-link@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await db.insert(sessionTable).values({
+        id: 'session-upload-migration-link',
+        expiresAt: new Date(now.getTime() + 3600 * 1000),
+        token: 'bearer-upload-migration-link',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+        deviceId: 'test-device-id',
+      })
+      await insertTrustedDevice('test-device-id', userId)
+      await db.insert(modelsTable).values({ id: 'migration-model', userId, provider: 'custom' })
+      const upload = (connectionId: string, condition?: { provider: string }, extra: Record<string, unknown> = {}) =>
+        app.handle(
+          new Request('http://localhost/powersync/upload', {
+            method: 'PUT',
+            headers: uploadHeaders('bearer-upload-migration-link'),
+            body: JSON.stringify({
+              operations: [
+                {
+                  op: 'PATCH',
+                  type: 'models',
+                  id: 'migration-model',
+                  data: { provider_connection_id: connectionId, ...extra },
+                  ifProviderConnectionUnset: condition,
+                },
+              ],
+            }),
+          }),
+        )
+
+      expect((await upload('wrong-provider', { provider: 'tinfoil' })).status).toBe(200)
+      expect((await db.select().from(modelsTable))[0].providerConnectionId).toBeNull()
+      expect((await upload('migrated', { provider: 'custom' })).status).toBe(200)
+      expect((await db.select().from(modelsTable))[0].providerConnectionId).toBe('migrated')
+      expect((await upload('chosen')).status).toBe(200)
+      expect((await upload('stale-migration', { provider: 'custom' })).status).toBe(200)
+      expect((await db.select().from(modelsTable))[0].providerConnectionId).toBe('chosen')
+      const invalid = await upload('invalid', { provider: 'custom' }, { name: 'unrelated overwrite' })
+      expect(invalid.status).toBe(400)
+      expect(await invalid.json()).toMatchObject({ code: 'UPLOAD_OPERATION_FAILED' })
+      expect((await db.select().from(modelsTable))[0].providerConnectionId).toBe('chosen')
     })
 
     it('ignores user_id and id in PUT payload, always uses session user', async () => {

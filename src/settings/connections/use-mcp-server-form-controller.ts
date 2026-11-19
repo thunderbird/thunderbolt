@@ -4,7 +4,8 @@
 
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
-import { useRef, type Dispatch, type KeyboardEvent } from 'react'
+import { type Dispatch, type KeyboardEvent } from 'react'
+import { useAsyncAttempt } from '@/hooks/use-async-attempt'
 import { useMutation } from '@tanstack/react-query'
 import { v7 as uuidv7 } from 'uuid'
 
@@ -74,7 +75,7 @@ export const useMcpServerFormController = ({
   enrollIroh,
 }: FormControllerOptions) => {
   const { i18n, t } = useLingui()
-  const addPendingRef = useRef(false)
+  const submission = useAsyncAttempt()
   const { url, isIroh, token, testResult, resolveServerName } = form
   const urlValidation = !isIroh && url ? validateMcpServerUrl(url) : null
   const isUrlReady = Boolean(url) && urlValidation?.ok === true
@@ -90,11 +91,23 @@ export const useMcpServerFormController = ({
       }),
   })
   const addMutation = useMutation({
-    mutationFn: ({ id, name, serverUrl }: { id: string; name: string; serverUrl: string }) =>
+    mutationFn: ({
+      id,
+      name,
+      serverUrl,
+      transport,
+      bearerToken,
+    }: {
+      id: string
+      name: string
+      serverUrl: string
+      transport: MCPTransportType
+      bearerToken: string
+    }) =>
       createMcpServerWithCredentials(
         db,
-        { id, name, url: serverUrl, type: form.transport, enabled: 1 },
-        form.token ? { type: 'bearer', token: form.token } : undefined,
+        { id, name, url: serverUrl, type: transport, enabled: 1 },
+        bearerToken ? { type: 'bearer', token: bearerToken } : undefined,
       ),
   })
   const updateMutation = useMutation({
@@ -146,31 +159,46 @@ export const useMcpServerFormController = ({
   })
 
   const cancel = () => {
+    submission.cancel()
     form.resetAddForm()
     dispatch({ type: 'FORM_RESET' })
   }
   const changeMode = (mode: AddServerMode) => {
+    submission.cancel()
     clearDialogError()
     dispatch({ type: 'MODE_CHANGED', mode })
   }
   const add = async () => {
-    if (!isSaveReady || addPendingRef.current) {
+    if (!isSaveReady) {
       return
     }
-    addPendingRef.current = true
+    const attempt = submission.begin()
+    if (!attempt) {
+      return
+    }
     try {
       const serverUrl = isIroh ? url.trim() : url
-      await addMutation.mutateAsync({ id: uuidv7(), name: resolveServerName(), serverUrl })
+      await addMutation.mutateAsync({
+        id: uuidv7(),
+        name: resolveServerName(),
+        serverUrl,
+        transport: form.transport,
+        bearerToken: token,
+      })
       if (isIroh) {
         // App enrolls its own dialer NodeId; bridge registers itself server-side.
         fireAndForgetSelfEnrollment(enrollIroh)
       }
-      cancel()
+      if (attempt.isCurrent()) {
+        cancel()
+      }
     } catch (error) {
       console.error('Failed to add MCP server:', error)
-      dispatch({ type: 'ADD_FAILED', error: "Couldn't add the server. Please try again." })
+      if (attempt.isCurrent()) {
+        dispatch({ type: 'ADD_FAILED', error: "Couldn't add the server. Please try again." })
+      }
     } finally {
-      addPendingRef.current = false
+      attempt.finish()
     }
   }
   const update = async () => {
@@ -191,39 +219,58 @@ export const useMcpServerFormController = ({
       })
       return
     }
+    const attempt = submission.begin()
+    if (!attempt) {
+      return
+    }
     const name = resolveServerName()
     const transport = form.transport
     const enabled = row.enabled === 1
     const serverUrl = isIroh ? url.trim() : url
     dispatch({ type: 'SAVE_STARTED' })
     try {
-      await updateMutation.mutateAsync({
-        id,
-        name,
-        serverUrl,
-        transport,
-        nextToken: token,
-        isClearingStoredToken: form.isClearingStoredToken,
-        originalCredentialType: credentialsById[id]?.type ?? 'none',
-      })
-    } catch (error) {
-      console.error('Failed to update MCP server:', error)
-      dispatch({ type: 'SAVE_FAILED', error: "Couldn't save changes. Please try again." })
-      return
+      try {
+        await updateMutation.mutateAsync({
+          id,
+          name,
+          serverUrl,
+          transport,
+          nextToken: token,
+          isClearingStoredToken: form.isClearingStoredToken,
+          originalCredentialType: credentialsById[id]?.type ?? 'none',
+        })
+      } catch (error) {
+        console.error('Failed to update MCP server:', error)
+        if (attempt.isCurrent()) {
+          dispatch({ type: 'SAVE_FAILED', error: "Couldn't save changes. Please try again." })
+        }
+        return
+      }
+      if (!attempt.isCurrent()) {
+        return
+      }
+      try {
+        await updateLiveServer(
+          { id, name, url: serverUrl, type: transport, enabled },
+          { forceRedial: form.hasConnectionEdits },
+        )
+      } catch (error) {
+        console.error('Failed to update live MCP server:', error)
+        if (attempt.isCurrent()) {
+          dispatch({ type: 'SAVE_FAILED', error: i18n._(reconnectFailed) })
+        }
+        return
+      }
+      if (attempt.isCurrent()) {
+        cancel()
+      }
+    } finally {
+      attempt.finish()
     }
-    try {
-      await updateLiveServer(
-        { id, name, url: serverUrl, type: transport, enabled },
-        { forceRedial: form.hasConnectionEdits },
-      )
-    } catch (error) {
-      console.error('Failed to update live MCP server:', error)
-      dispatch({ type: 'SAVE_FAILED', error: i18n._(reconnectFailed) })
-      return
-    }
-    cancel()
   }
+
   const edit = (server: McpServer) => {
+    submission.cancel()
     const credential = credentialsById[server.id]
     dispatch({ type: 'SELECTION_CHANGED', selection: { kind: 'server', id: server.id } })
     form.openEditForm(server, credential?.bearerToken ?? null, credential?.type ?? 'none')
@@ -234,28 +281,54 @@ export const useMcpServerFormController = ({
       dispatch({ type: 'IMPORT_FAILED', error: result.errors.join('\n') })
       return
     }
+    const attempt = submission.begin()
+    if (!attempt) {
+      return
+    }
     try {
       await importMutation.mutateAsync(result.servers)
-      cancel()
+      if (attempt.isCurrent()) {
+        cancel()
+      }
     } catch (error) {
       console.error('Failed to import MCP servers:', error)
-      dispatch({ type: 'IMPORT_FAILED', error: "Couldn't import servers. Please try again." })
+      if (attempt.isCurrent()) {
+        dispatch({ type: 'IMPORT_FAILED', error: "Couldn't import servers. Please try again." })
+      }
+    } finally {
+      attempt.finish()
     }
   }
   const addAndAuthorize = async () => {
     if (!isUrlReady) {
       return
     }
-    const id = uuidv7()
-    const started = await startAddAndAuthorize({
-      serverId: id,
-      serverUrl: url,
-      createRow: () => addMutation.mutateAsync({ id, name: resolveServerName(), serverUrl: url }),
-    })
-    if (started) {
-      cancel()
+    const attempt = submission.begin()
+    if (!attempt) {
+      return
+    }
+    try {
+      const id = uuidv7()
+      const started = await startAddAndAuthorize({
+        serverId: id,
+        serverUrl: url,
+        createRow: () =>
+          addMutation.mutateAsync({
+            id,
+            name: resolveServerName(),
+            serverUrl: url,
+            transport: form.transport,
+            bearerToken: token,
+          }),
+      })
+      if (started && attempt.isCurrent()) {
+        cancel()
+      }
+    } finally {
+      attempt.finish()
     }
   }
+
   const onUrlKeyDown = (event: KeyboardEvent) => {
     if (event.key !== 'Enter') {
       return

@@ -4,7 +4,7 @@
 
 import { SkillNameInvalidError, SkillNameTakenError } from '@/dal'
 import { titleCaseFromSlug } from './display'
-import { useSkillTelemetry } from './telemetry'
+import { trackSkillEvent } from './telemetry'
 import { useLibrarySkills } from './use-skills'
 import type { SkillFormValues } from './use-skill-form-state'
 
@@ -37,10 +37,9 @@ export const handleSkillSaveError = (error: unknown, { onSlugRejected, onFailed 
  */
 export const useCreateSkillTracked = () => {
   const { createSkill } = useLibrarySkills()
-  const trackSkillEvent = useSkillTelemetry()
   return async (values: SkillFormValues) => {
     const created = await createSkill(values)
-    trackSkillEvent('skill_created', created.id, { instruction_length: values.instruction.length })
+    trackSkillEvent('skill_created', { instruction_length: values.instruction.length })
     return created
   }
 }

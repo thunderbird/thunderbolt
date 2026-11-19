@@ -13,7 +13,12 @@ import path from 'node:path'
  * shortcut: files a newer @powersync/web no longer ships stay behind, so a stale copy can hide a renamed
  * worker in local dev; delete public/@powersync after an upgrade that renames or drops files.
  */
-export const copyPowerSyncAssets = (source: string, destination: string, stagingDir: string) => {
+export const copyPowerSyncAssets = (
+  source: string,
+  destination: string,
+  stagingDir: string,
+  transform: (file: string, content: Buffer) => Buffer = (_file, content) => content,
+) => {
   const staged = path.join(stagingDir, `powersync-asset-${process.pid}.tmp`)
   mkdirSync(stagingDir, { recursive: true })
   for (const file of readdirSync(source, { recursive: true, encoding: 'utf8' })) {
@@ -22,7 +27,7 @@ export const copyPowerSyncAssets = (source: string, destination: string, staging
       continue
     }
     const to = path.join(destination, file)
-    const content = readFileSync(from)
+    const content = transform(file, readFileSync(from))
     if (existsSync(to) && readFileSync(to).equals(content)) {
       continue
     }

@@ -224,6 +224,87 @@ describe('FTS SQL end-to-end against real SQLite', () => {
     db.close()
   })
 
+  it('does not write the FTS index when only non-searchable fields or equivalent empty body fields change', () => {
+    const db = makeDb()
+    insertRow(db, 'm1', { name: 'Stable model', description: null, deleted_at: null })
+    const totalChanges = () => (db.query('SELECT total_changes() AS count').get() as { count: number }).count
+    const before = totalChanges()
+
+    setData(db, 'm1', {
+      name: 'Stable model',
+      description: '',
+      deleted_at: null,
+      enabled: 0,
+      metadata: { usage: { totalTokens: 1234 } },
+      cache: { widget: 'cached result' },
+    })
+
+    // The backing row changes once; no writes reach the FTS shadow tables.
+    expect(totalChanges() - before).toBe(1)
+    expect(search(db, 'stable').map(({ id }) => id)).toEqual(['m1'])
+    db.close()
+  })
+
+  it('keeps title and body updates searchable across NULL transitions', () => {
+    const db = makeDb()
+    insertRow(db, 'm1', { name: 'Original', description: null, deleted_at: null })
+
+    setData(db, 'm1', { name: null, description: 'Replacement body', deleted_at: null })
+    expect(search(db, 'original')).toHaveLength(0)
+    expect(search(db, 'replacement').map(({ id }) => id)).toEqual(['m1'])
+
+    setData(db, 'm1', { name: 'Restored', description: null, deleted_at: null })
+    expect(search(db, 'replacement')).toHaveLength(0)
+    expect(search(db, 'restored').map(({ id }) => id)).toEqual(['m1'])
+    db.close()
+  })
+
+  it('updates the indexed identity even when the row data is unchanged', () => {
+    const db = makeDb()
+    insertRow(db, 'before', { name: 'Stable', deleted_at: null })
+
+    db.run(`UPDATE ${internalName} SET id = ? WHERE id = ?`, ['after', 'before'])
+
+    expect(search(db, 'stable').map(({ id }) => id)).toEqual(['after'])
+    db.close()
+  })
+
+  it('updates a message parent while skipping metadata-only writes', () => {
+    const db = new Database(':memory:')
+    const messageTable = 'ps_data__chat_messages'
+    db.run(`CREATE TABLE ${messageTable} (id TEXT PRIMARY KEY, data TEXT)`)
+    db.run(buildCreateSql())
+    for (const statement of buildTriggerSql(configOf('message'), messageTable)) {
+      db.run(statement)
+    }
+    const insert = db.prepare(`INSERT INTO ${messageTable}(id, data) VALUES (?, ?)`)
+    const update = db.prepare(`UPDATE ${messageTable} SET data = ? WHERE id = ?`)
+    const data = { content: 'Searchable reply', chat_thread_id: 'first-chat', deleted_at: null }
+    insert.run('message', JSON.stringify(data))
+    const before = (db.query('SELECT total_changes() AS count').get() as { count: number }).count
+
+    update.run(JSON.stringify({ ...data, metadata: { contextTokens: 1000 }, cache: { key: 'value' } }), 'message')
+    expect((db.query('SELECT total_changes() AS count').get() as { count: number }).count - before).toBe(1)
+    update.run(JSON.stringify({ ...data, chat_thread_id: 'second-chat' }), 'message')
+
+    expect(db.query("SELECT id, parent_id FROM search_index WHERE search_index MATCH 'searchable'").all()).toEqual([
+      { id: 'message', parent_id: 'second-chat' },
+    ])
+    db.close()
+  })
+
+  it('skips index writes when a deleted row only changes its deletion timestamp', () => {
+    const db = makeDb()
+    insertRow(db, 'm1', { name: 'Deleted', deleted_at: 'first timestamp' })
+    const before = (db.query('SELECT total_changes() AS count').get() as { count: number }).count
+
+    setData(db, 'm1', { name: 'Deleted', deleted_at: 'later timestamp' })
+
+    expect((db.query('SELECT total_changes() AS count').get() as { count: number }).count - before).toBe(1)
+    expect(search(db, 'deleted')).toHaveLength(0)
+    db.close()
+  })
+
   it('drops the index row when a soft-delete lands via update and re-adds it when cleared', () => {
     const db = makeDb()
     insertRow(db, 'm1', { name: 'Gamma', deleted_at: null })
@@ -367,6 +448,42 @@ describe('createSearchIndex transactions', () => {
       ).toHaveLength(searchEntities.length * 3)
     } finally {
       release.resolve()
+      sqlite.close()
+    }
+  })
+
+  it('upgrades the previous index version once, preserving rows and installing the guarded triggers', async () => {
+    const creates: string[] = []
+    const { sqlite, powerSync } = makeDatabase(async (sql) => {
+      if (sql === buildCreateSql()) {
+        creates.push(sql)
+      }
+    })
+    const config = configOf('chat')
+    const table = AppSchema.tables.find((candidate) => candidate.name === config.tableName)!
+    try {
+      sqlite.run(`INSERT INTO ${table.internalName}(id, data) VALUES (?, ?)`, [
+        'chat',
+        JSON.stringify({ title: 'Existing title', deleted_at: null }),
+      ])
+      await createSearchIndex(powerSync)
+      const updateTrigger = buildTriggerSql(config, table.internalName)[1]!
+      sqlite.run('DROP TRIGGER search_index_au_chat')
+      sqlite.run(updateTrigger.replace(/( AFTER UPDATE ON \S+) WHEN .+? BEGIN /, '$1 BEGIN '))
+      sqlite.run('UPDATE search_index_meta SET version = ?', [searchIndexVersion - 1])
+
+      await createSearchIndex(powerSync)
+      await createSearchIndex(powerSync)
+
+      expect(creates).toHaveLength(2)
+      expect(sqlite.query('SELECT id, title FROM search_index').all()).toEqual([
+        { id: 'chat', title: 'Existing title' },
+      ])
+      const before = (sqlite.query('SELECT total_changes() AS count').get() as { count: number }).count
+      sqlite.run(`UPDATE ${table.internalName} SET data = json_set(data, '$.context_size', 500) WHERE id = 'chat'`)
+      expect((sqlite.query('SELECT total_changes() AS count').get() as { count: number }).count - before).toBe(1)
+      expect(sqlite.query('SELECT version FROM search_index_meta').all()).toEqual([{ version: searchIndexVersion }])
+    } finally {
       sqlite.close()
     }
   })

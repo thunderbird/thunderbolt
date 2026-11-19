@@ -21,12 +21,21 @@ COPY web ./web
 COPY docs ./docs
 
 WORKDIR /app/web
-RUN bun run build
+ARG PUBLIC_CONTACT_ENDPOINT=
+RUN PUBLIC_CONTACT_ENDPOINT="$PUBLIC_CONTACT_ENDPOINT" bun run build
 
 # Stage 2: Serve with nginx
 FROM nginxinc/nginx-unprivileged:alpine
 
-COPY deploy/config/marketing-nginx.conf /etc/nginx/conf.d/default.conf
+# The base image can lag Alpine's security fixes; take them at build time (nightly-images.yml rebuilds daily).
+USER root
+RUN apk upgrade --no-cache
+
+# The nginx entrypoint reads /etc/resolv.conf before rendering templates, covering
+# Docker's embedded DNS, Kubernetes cluster DNS, and other container runtimes.
+ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
+
+COPY deploy/config/marketing-nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/web/dist /usr/share/nginx/html
 
 # Keep the final-stage user explicit for Semgrep's container check.

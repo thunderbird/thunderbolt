@@ -8,6 +8,21 @@ preload = ["./src/config/instrumentation.ts"]
 # uses this file, not the root's; hence the duplication (cli/bunfig.toml does the same).
 [install]
 minimumReleaseAge = 604800 # 7 days in seconds
+minimumReleaseAgeExcludes = [
+  # Only to land better-auth 1.7.16 inside the quarantine; remove these entries after 2026-11-10.
+  "better-auth",
+  "better-call",
+  "@better-auth/core",
+  "@better-auth/telemetry",
+  "@better-auth/drizzle-adapter",
+  "@better-auth/kysely-adapter",
+  "@better-auth/memory-adapter",
+  "@better-auth/mongo-adapter",
+  "@better-auth/prisma-adapter",
+  "@better-auth/api-key",
+  "@better-auth/passkey",
+  "@better-auth/sso",
+]
 
 [test]
 # Preload test setup to initialize database before any tests run

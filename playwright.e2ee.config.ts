@@ -39,8 +39,16 @@ const gatedBackendPort = 8005
 const gateMinAppVersion = '99.0.0'
 const postgresPort = process.env.E2E_POSTGRES_PORT ?? '5434'
 const powersyncPort = process.env.E2E_POWERSYNC_PORT ?? '8081'
+// Where the Postgres and PowerSync containers listen. Defaults to this machine;
+// set it when the containers run on another host (a remote Docker daemon).
+const servicesHost = process.env.E2E_SERVICES_HOST ?? 'localhost'
+// Passkeys run as their own invocation. With PASSKEY_ENABLED every sync setup
+// offers a passkey step, which the other specs don't expect, so this flag turns
+// the backend setting on and narrows the run to the passkey specs.
+const passkeyRun = process.env.E2E_PASSKEY_ENABLED === 'true'
+const passkeySpecs = '**/e2e/e2ee/passkey-*.spec.ts'
 
-const databaseUrl = `postgresql://postgres:postgres@localhost:${postgresPort}/postgres`
+const databaseUrl = `postgresql://postgres:postgres@${servicesHost}:${postgresPort}/postgres`
 
 const backendEnv = (port: number, extra: Record<string, string> = {}): Record<string, string> => ({
   APP_URL: `http://localhost:${frontendPort}`,
@@ -60,11 +68,12 @@ const backendEnv = (port: number, extra: Record<string, string> = {}): Record<st
   // The backend takes no escrow key (THU-866) — the wrap target is the frontend
   // pin below, and this flag only makes the envelope mandatory.
   ORG_ESCROW_ENABLED: 'true',
+  PASSKEY_ENABLED: passkeyRun ? 'true' : 'false',
   PORT: String(port),
   POSTHOG_API_KEY: '',
   POWERSYNC_JWT_KID: 'powersync-dev',
   POWERSYNC_JWT_SECRET: 'powersync-dev-secret-change-in-production',
-  POWERSYNC_URL: `http://localhost:${powersyncPort}`,
+  POWERSYNC_URL: `http://${servicesHost}:${powersyncPort}`,
   RATE_LIMIT_ENABLED: 'false',
   TRUSTED_ORIGINS: `http://localhost:${frontendPort}`,
   WAITLIST_AUTO_APPROVE_DOMAINS: 'e2e.test',
@@ -84,7 +93,8 @@ export default defineConfig({
   // so a bare directory name can also match an ancestor (see the `artifact`
   // project in playwright.config.ts, which hit exactly that).
   testDir: './e2e',
-  testMatch: '**/e2e/e2ee/**/*.spec.ts',
+  testMatch: passkeyRun ? passkeySpecs : '**/e2e/e2ee/**/*.spec.ts',
+  testIgnore: passkeyRun ? undefined : passkeySpecs,
   fullyParallel: false,
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,

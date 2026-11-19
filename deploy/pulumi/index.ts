@@ -292,7 +292,7 @@ if (isSharedStack) {
     module.exports = {
       platform: 'k8s',
       kubeconfig: cluster.kubeconfigJson,
-      note: 'Run: kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath="{.status.loadBalancer.ingress[0].hostname}" to get the URL',
+      note: 'Run: kubectl get svc -n traefik traefik -o jsonpath="{.status.loadBalancer.ingress[0].hostname}" to get the URL',
       stackInfo: {
         name: stackName,
         destroy: `pulumi destroy -s ${stackName} -y`,

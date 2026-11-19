@@ -56,6 +56,9 @@ spec:
               value: {{ .Values.appUrl }}
             - name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC
               value: "true"
+            # Not a values.yaml default: `helm upgrade --reuse-values` would not pick that up.
+            - name: JDK_JAVA_OPTIONS
+              value: "-XX:-UseBASE64Intrinsics"
           volumeMounts:
             - name: realm
               mountPath: /opt/keycloak/data/import

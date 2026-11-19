@@ -116,6 +116,21 @@ export const createEksCluster = (args: EksArgs) => {
 
   chartDeps.push(storageClass)
 
+  const ingressController = new k8s.helm.v3.Release(
+    `${name}-traefik`,
+    {
+      name: 'traefik',
+      chart: 'traefik',
+      version: '42.4.1',
+      repositoryOpts: { repo: 'https://traefik.github.io/charts' },
+      namespace: 'traefik',
+      createNamespace: true,
+      skipCrds: true,
+      valueYamlFiles: [new pulumi.asset.FileAsset('../config/traefik-values.yaml')],
+    },
+    { provider: k8sProvider, dependsOn: [ns] },
+  )
+
   // Install the Thunderbolt Helm chart from the local chart
   new k8s.helm.v3.Release(
     `${name}-thunderbolt`,
@@ -125,6 +140,7 @@ export const createEksCluster = (args: EksArgs) => {
       skipAwait: true,
       values: {
         appUrl,
+        ingress: { className: 'traefik-nginx' },
         imagePullSecrets: args.ghcrToken ? [{ name: 'ghcr-pull' }] : [],
         frontend: {
           image: { repository: `${imagePrefix}/thunderbolt-frontend`, tag: version },
@@ -150,24 +166,7 @@ export const createEksCluster = (args: EksArgs) => {
         },
       },
     },
-    { provider: k8sProvider, dependsOn: chartDeps },
-  )
-
-  // Install nginx-ingress controller
-  const ingressController = new k8s.helm.v3.Release(
-    `${name}-ingress-nginx`,
-    {
-      chart: 'ingress-nginx',
-      repositoryOpts: { repo: 'https://kubernetes.github.io/ingress-nginx' },
-      namespace: 'ingress-nginx',
-      createNamespace: true,
-      values: {
-        controller: {
-          service: { type: 'LoadBalancer' },
-        },
-      },
-    },
-    { provider: k8sProvider },
+    { provider: k8sProvider, dependsOn: [...chartDeps, ingressController] },
   )
 
   return { cluster, k8sProvider, ingressController }

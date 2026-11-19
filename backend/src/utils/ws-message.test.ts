@@ -11,6 +11,9 @@ import { createWSMessageParser } from 'elysia/ws'
 import { encodeWsBearer } from '@shared/ws-bearer'
 import { isBoundedWsJson } from './ws-message'
 
+/** A session guard that always passes, as the open handler installs once the bearer check succeeds. */
+const validGuard = { check: async () => true, stop: () => {} }
+
 describe('WebSocket JSON serialization boundary', () => {
   it.each([
     ['proxy', false],
@@ -36,6 +39,7 @@ describe('WebSocket JSON serialization boundary', () => {
       pending: [],
       pendingBytes: 0,
       closing: false,
+      guard: ready ? validGuard : null,
     }
     const ws = { data: { relay: state, __haystack: state }, close: mock((_code?: number, _reason?: string) => {}) }
     const handlers = plugin.routes.find((route) => route.method === 'WS')!.hooks.websocket as unknown as {
@@ -90,6 +94,7 @@ describe('WebSocket JSON serialization boundary', () => {
       pending: [],
       pendingBytes: 0,
       closing: false,
+      guard: ready ? validGuard : null,
     }
     const ws = { data: { __haystack: state }, close: mock((_code?: number, _reason?: string) => {}) }
     const handlers = plugin.routes.find((route) => route.method === 'WS')!.hooks.websocket as unknown as {

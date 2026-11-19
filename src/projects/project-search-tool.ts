@@ -38,16 +38,12 @@ export type ProjectChatHit = {
   excerpt: string
 }
 
-/**
- * One raw result row, **positional**: `[parent_id, snippet]`.
- *
- * The bun-sqlite backend goes through drizzle's `sqlite-proxy` driver (see
- * `src/db/bun-sqlite-database.ts`), which hands raw `db.all()` results back as
- * arrays, not keyed objects — a raw query carries no column metadata for
- * drizzle to map. Reading `row.parent_id` here yields `undefined` for every
- * row and silently returns zero hits.
- */
-type SearchRow = readonly [parentId: string | null, snippet: string | null]
+type SearchRow =
+  | readonly [parentId: string | null, snippet: string | null]
+  | { parent_id: string | null; snippet: string | null }
+
+/** Distinguishes positional result rows from keyed row objects. */
+const isSearchRowTuple = (row: SearchRow): row is readonly [string | null, string | null] => Array.isArray(row)
 
 const maxHits = 8
 
@@ -104,8 +100,9 @@ export const searchProjectChats = async (
     ORDER BY ${plan.match !== null ? sql.raw(bm25Sql) : sql`id DESC`}
     LIMIT ${maxHits}
   `)) as SearchRow[]
-  return rows.flatMap(([parentId, snippet]) =>
-    parentId
+  return rows.flatMap((row) => {
+    const [parentId, snippet] = isSearchRowTuple(row) ? row : [row.parent_id, row.snippet]
+    return parentId
       ? [
           {
             chatThreadId: parentId,
@@ -113,8 +110,8 @@ export const searchProjectChats = async (
             excerpt: snippet ?? '',
           },
         ]
-      : [],
-  )
+      : []
+  })
 }
 
 export type ProjectSearchToolContext = {

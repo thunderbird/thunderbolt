@@ -25,7 +25,7 @@ Preloaded via `bunfig.toml` before any tests run. It:
 
 - Pins three environment variables before anything imports `@/config/settings` or `@/db/client`:
   - `DATABASE_DRIVER=pglite`, so `db/client.ts` doesn't throw at module load when `DATABASE_URL` is unset (any test that transitively imports `createApp` hits this).
-  - `RATE_LIMIT_ENABLED=false`, because `RateLimiterDrizzle` issues its own queries that bypass PGlite transaction isolation and break rollback cleanup. Every limiter factory returns a bare `new Elysia()` when disabled (`src/middleware/rate-limit.ts`), so nothing built through `createApp` throttles. The limiters are tested directly in `src/middleware/rate-limit.test.ts`, which passes `{ enabled: true }` and uses `getSharedIsolatedTestDb()`.
+  - `RATE_LIMIT_ENABLED=false`, because `RateLimiterDrizzle` issues its own queries that bypass PGlite transaction isolation and break rollback cleanup. Every limiter factory returns a bare `new Elysia()` when disabled (`src/middleware/rate-limit.ts`), so nothing built through `createApp` throttles except the integration OAuth routes, which `index.ts` forces on. A test that requests those through `createApp` needs `getSharedIsolatedTestDb()`. The limiters are tested directly in `src/middleware/rate-limit.test.ts`, which passes `{ enabled: true }` and uses the same isolated database.
   - `BETTER_AUTH_SECRET` to a fixed value, so `signTestToken()` produces signatures the real auth stack accepts.
 - Initializes PGlite and runs migrations (the slow part).
 - Mocks `globalThis.fetch` to throw if tests call it without DI. The original is stashed on `globalThis.__originalFetch` for tests that opt in.

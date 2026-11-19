@@ -1,0 +1,13 @@
+suite: Bundled Keycloak JVM options
+templates:
+  - templates/keycloak.yaml
+set:
+  backend.betterAuthSecretBase64: dGVzdA==
+tests:
+  - it: sets the default JVM option
+    documentSelector: { path: kind, value: Deployment }
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: JDK_JAVA_OPTIONS, value: "-XX:-UseBASE64Intrinsics" }
+

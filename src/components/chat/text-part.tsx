@@ -4,7 +4,7 @@
 
 import { type ContentPart, type ContentPartsState, parseContentPartsIncremental } from '@/ai/widget-parser'
 import { useSmoothText } from '@/hooks/use-smooth-text'
-import { sourceToCitation } from '@/lib/source-utils'
+import { findSourceByIndex, sourceToCitation } from '@/lib/source-utils'
 import {
   buildDocumentSideviewId,
   type CitationMap,
@@ -17,6 +17,7 @@ import { widgetSkeletons, type WidgetName } from '@/widgets'
 import { type TextUIPart } from 'ai'
 import { memo, useMemo, useRef } from 'react'
 import { CitationPopoverProvider } from './citation-popover'
+import { blankNonProse } from './markdown-blocks'
 import {
   CitationContext,
   citationMarkdownComponents,
@@ -43,6 +44,20 @@ const groupedCitationRegex = /\[\d+\](?!\()(?:\s*\[\d+\](?!\())*/g
 
 /** Extracts individual [N] numbers from a matched group */
 const individualCitationRegex = /\[(\d+)\]/g
+
+/**
+ * Applies `replaceGroup` to each citation group in prose, leaving groups inside code
+ * and math verbatim — `arr[1]` in a code block is an index, not a citation.
+ */
+const replaceCitationGroups = (text: string, replaceGroup: (group: string) => string): string => {
+  if (!text.includes('[')) {
+    return text
+  }
+  const prose = blankNonProse(text)
+  return text.replace(groupedCitationRegex, (group, offset: number) =>
+    prose.startsWith(group, offset) ? replaceGroup(group) : group,
+  )
+}
 
 /** Normalize URL for dedup: lowercase host, strip trailing slash */
 const normalizeUrl = (url: string): string => {
@@ -79,8 +94,8 @@ export const deduplicateLinkPreviews = (parts: ContentPart[]): ContentPart[] => 
 
 /**
  * Detects `[N]` citation patterns in text and builds a CitationMap from SourceMetadata[].
- * Each `[N]` where `N-1` is a valid index into `sources` becomes a `{{CITE:mapKey}}` placeholder.
- * Out-of-range references are left as-is in the text.
+ * Each `[N]` matching a source's `index` becomes a `{{CITE:mapKey}}` placeholder.
+ * Unknown references are left as-is in the text.
  * @param startKey - Initial key value for the citation map (default 0). Use to avoid key collisions when processing multiple segments.
  * @returns fullText with placeholders, and the corresponding CitationMap
  */
@@ -92,11 +107,10 @@ export const buildSourceCitationPlaceholders = (
   const citations: CitationMap = new Map()
   let nextKey = startKey
 
-  const fullText = text.replace(groupedCitationRegex, (match) => {
+  const fullText = replaceCitationGroups(text, (match) => {
     const validSources: CitationSource[] = []
     for (const m of match.matchAll(individualCitationRegex)) {
-      const n = parseInt(m[1], 10)
-      const source = sources[n - 1]
+      const source = findSourceByIndex(sources, parseInt(m[1], 10))
       if (source) {
         validSources.push(sourceToCitation(source, validSources.length === 0))
       }
@@ -128,7 +142,7 @@ export const buildDocumentCitationPlaceholders = (
 
   const refsByPosition = new Map(references.map((r) => [r.position, r]))
 
-  const fullText = text.replace(groupedCitationRegex, (match) => {
+  const fullText = replaceCitationGroups(text, (match) => {
     const validSources: CitationSource[] = []
     for (const m of match.matchAll(individualCitationRegex)) {
       const n = parseInt(m[1], 10)

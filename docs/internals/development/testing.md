@@ -17,6 +17,12 @@ bun run test:agent-core:browser
 # Run frontend tests in watch mode (src/ only)
 bun run test:watch
 
+# Run website tests and type checks (separate workspace)
+(cd web && bun run test && bun run typecheck)
+
+# Run demo recording/export tests (Python dependencies and FFmpeg required)
+DEMO_PYTHON=/path/to/video-env/bin/python bun run test:demo-videos
+
 # Run backend tests
 bun run test:backend
 
@@ -34,6 +40,18 @@ helm unittest deploy/k8s
 **Never run `bun test` from the project root.** [`bunfig.toml`](../../../bunfig.toml)'s `pathIgnorePatterns = ["backend/**", "e2e/**"]` keeps root discovery off the backend suite and the Playwright specs, but is a silent no-op on Bun below 1.3.11, and a root run has no per-test timeout, no `--randomize`, and walks `shared/agent-core/` (own runner).
 
 `bun run test` is `bun test --cwd=src` plus explicit paths: `shared/*.test.ts`, `shared/defaults/`, `shared/i18n/`, `scripts/create-release.test.ts`, `scripts/release-workflows.test.ts`, `scripts/preview-workflows.test.ts`, `scripts/chrome.test.ts`, `scripts/install-chrome.test.ts`, `scripts/check-e2e-specs-collected.test.ts`, `scripts/notify-on-failure.test.ts`, `scripts/sanitize-nightly-artifacts.test.ts`, `scripts/copy-powersync-assets.test.ts`, and selected `.github/scripts/*.test.*`. They must be explicit: `shared/` is outside `--cwd=src`, and Bun skips hidden dirs. `bun test --cwd=e2e db-diagnostic.test.ts fake-provider.test.ts helpers.test.ts` runs as a separate step, because root `bunfig.toml` excludes `e2e/**` from discovery and Playwright collects only `*.spec.ts`.
+
+### AWS deployment routing
+
+`cd deploy/pulumi && bun run test && bun run typecheck` checks the Pulumi stack with mocked cloud resources; it does not deploy anything or need AWS credentials. CI runs this suite when `deploy/pulumi/**` changes. The ALB test verifies marketing stays separate from API hosts, including the retired contact path, and checks path-based fallback. The root suite's release-workflow checks ensure preview marketing images do not send inquiries to the AI backend.
+
+### Website and demo tooling
+
+The public site has its own dependencies, DOM test setup, and commands in `web/`:
+`bun run test`, `bun run test:coverage`, `bun run typecheck`, and `bun run build`.
+These tests are intentionally outside the app's root suite. `web.yml` runs them for website changes.
+The `demo-videos.yml` workflow separately installs FFmpeg and the skill's Python requirements,
+then runs `bun run test:demo-videos`; see the [editing guide](../../../.agents/skills/thunder-demo-videos/references/editing.md#helper-checks).
 
 ### Browser security updates
 
@@ -242,7 +260,7 @@ The Playwright suite in [`e2e/`](../../../e2e) covers what a unit test cannot: b
 | `oidc`             | `/(?:oidc\|acp-\|proxy-).*\.spec\.ts$/` | `http://localhost:1421` | OIDC frontend + backend, mock OIDC IdP                     |
 | `saml`             | `/saml.*\.spec\.ts$/`                   | `http://localhost:1422` | SAML frontend + backend, mock SAML IdP                     |
 | `min-version-gate` | `/min-version-gate\.spec\.ts$/`         | `http://localhost:1421` | Both the ungated OIDC pair and the gated pair on 1423/8004 |
-| `artifact`         | `/\/artifact-[^/]*\.spec\.ts$/`         | none                    | none, sandboxed iframes on `about:blank`                   |
+| `artifact`         | `/\/artifact-[^/]*\.spec\.ts$/`         | none                    | Playwright serves the host page at `https://artifact-host.test/` |
 
 Each anchor records a breakage:
 
@@ -344,9 +362,11 @@ On Linux, start and migrate PostgreSQL first, then start PowerSync using [`night
 
 ### Native app smoke
 
-The native jobs install a Tauri app, sign in with the fixed test code, and send one message to the local fake provider. To reproduce by hand, start [`services.sh`](../../../e2e/native-smoke/services.sh), then follow the build and install steps in the `native-ios` or `native-linux` workflow job. Run [`ios.sh`](../../../e2e/native-smoke/ios.sh) with Maestro and a booted iPhone simulator, or [`linux.sh`](../../../e2e/native-smoke/linux.sh) with `tauri-driver`, WebKitWebDriver, Xvfb and ffmpeg. Recordings land in `/tmp/native-smoke/`, and service logs are kept as failure artifacts.
+The native jobs install a Tauri app and take its first-run setup wizard twice, each time from a fresh install. The **Local** pass connects the fake provider's OpenAI-compatible routes as the user's own model. The **Cloud** pass joins the waitlist and signs in with the fixed test code. Both end by sending one message to the fake provider. **Enterprise** is left out, because it would reach the same backend as Cloud. To reproduce by hand, start [`services.sh`](../../../e2e/native-smoke/services.sh), then follow the build and install steps in the `native-ios` or `native-linux` workflow job. Run [`ios.sh`](../../../e2e/native-smoke/ios.sh) with Maestro and a booted iPhone simulator, or [`linux.sh`](../../../e2e/native-smoke/linux.sh) with `tauri-driver`, WebKitWebDriver, Xvfb and ffmpeg. Recordings land in `/tmp/native-smoke/`, and service logs are kept as failure artifacts.
 
-Fresh consumer native installs start locally even when `VITE_THUNDERBOLT_CLOUD_URL` is set. The smoke flows open **Sign in → Cloud → Continue**, then dismiss optional sync setup after signing in. Build with `VITE_THUNDERBOLT_CLOUD_SERVICE_URL=http://localhost:8000/v1` so the Cloud choice reaches the smoke backend rather than the public service; this setting does not connect the app automatically.
+Fresh consumer native installs start locally even when `VITE_THUNDERBOLT_CLOUD_URL` is set, so the builds leave `VITE_SKIP_ONBOARDING` unset and the wizard opens as it does for a user. Build with `VITE_THUNDERBOLT_CLOUD_SERVICE_URL=http://localhost:8000/v1` so the Cloud choice reaches the smoke backend rather than the public service; this setting does not connect the app automatically. Keep the backend on port 8000: the app's content security policy allows `http://localhost:8000`, and a request to another port fails before it leaves the webview.
+
+In the iOS flow, Maestro taps an element where the accessibility tree places it and does not scroll first, so the flow scrolls to the Add Model button, which sits below the fold. It also submits the email with Return, because with the keyboard up the wizard lifts its content and a tap aimed at Continue lands beside it.
 
 Pull requests never run these jobs. To run them on a branch, dispatch the workflow with `gh workflow run nightly.yml --ref <branch>`: off `main` only `native-ios` and `native-linux` run, and no failure notification goes out. Maestro matches what the iOS accessibility tree exposes, and there an `aria-label` replaces the element's text, so a control whose label differs from the text it shows can be found only by the label.
 
@@ -434,11 +454,20 @@ Then run `helm unittest deploy/k8s`.
 
 ## Frontend HTTP serving
 
-The `Frontend Serving` workflow runs the deployed nginx configuration in an isolated container. It checks missing-chunk recovery, immutable asset caching, app-shell revalidation, cross-origin isolation headers, and source-map blocking. Run it locally with Docker available:
+The `Frontend Serving` workflow runs the deployed nginx configurations in isolated containers:
+
+- `nginx.test.ts` covers the app: missing-chunk recovery, immutable asset caching, app-shell revalidation, cross-origin isolation headers, and source-map blocking. It is also part of `bun run test`.
+- `marketing-nginx.test.ts` covers the website's release endpoint against a stand-in for GitHub: starting without DNS, one shared lookup, what reaches GitHub and what comes back, background refresh, and each way a lookup can fail. It takes about half a minute, so it runs only here.
+
+Run both locally with Docker available:
 
 ```sh
 docker pull nginxinc/nginx-unprivileged:alpine
-bun test --cwd=deploy/config nginx.test.ts --timeout 5000
+bun test --cwd=deploy/config --timeout 5000
 ```
 
-Use this working directory so the frontend's Happy DOM preload does not replace the HTTP client. The test creates and removes its own container and temporary files; it does not need the backend or the real frontend build.
+Use this working directory so the frontend's Happy DOM preload does not replace the HTTP client. The tests create and remove their own containers and temporary files; they do not need the backend or a real build.
+
+## Marketing contact Worker
+
+From `web/contact-worker`, run `bun run test`, `bun run check`, and `bun run build`. The build is a local Wrangler dry run; it does not deploy. Tests mock Resend and the rate-limit bindings, covering input limits, origin checks, throttling, provider failures, and acknowledgements without sending email. The Contact Worker workflow runs these checks independently of Astro. See [deployment and runtime verification](https://github.com/thunderbird/thunderbolt/tree/main/web/contact-worker).

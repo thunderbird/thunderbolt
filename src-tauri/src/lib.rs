@@ -9,6 +9,8 @@ pub mod cli_installer;
 pub mod commands;
 pub mod oauth_server;
 pub mod platform_utils;
+#[cfg(any(target_os = "linux", test))]
+mod preview_guard;
 #[cfg(desktop)]
 mod tray;
 #[cfg(any(target_os = "macos", target_os = "ios", test))]
@@ -70,6 +72,12 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         // exclude this plugin entirely so they're unaffected.
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         builder = builder.plugin(tauri_plugin_devtools::init());
+    }
+
+    // Native backstop for the frontend rule that keeps external links out of Linux previews.
+    #[cfg(target_os = "linux")]
+    {
+        builder = builder.plugin(preview_guard::init());
     }
 
     // macOS window vibrancy is configured declaratively in tauri.macos.conf.json

@@ -4,27 +4,31 @@ Thunderbolt can open a web page in a panel beside the chat, so you can read a li
 leaving the conversation.
 
 > **Experimental.** The in-app browser has not had a full privacy or security review. It is tested on
-> macOS only. Windows and Linux are expected to work but are untested.
+> macOS only. Windows is expected to work but is untested. The panel is unavailable on Linux.
 
 ## Availability
 
-The panel is part of the desktop app. In the iOS and Android apps a link opens in the OS browser, and
-in a web browser it opens in a new tab.
+The panel is available in the macOS and Windows desktop apps. In the Linux, iOS, and Android apps a
+link opens in the OS browser, and in a web browser it opens in a new tab.
 
 ## Opening a page
 
 What a link in an assistant reply does depends on your **External Links** preference in
 Settings → Preferences.
 
-| Setting           | What a link click does                                                                                                                                |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Ask** (default) | Shows a dialog with the full URL. On the desktop app you can pick the side panel or your browser; everywhere else it confirms opening in your browser |
-| **Sidebar**       | Opens in the side panel immediately. Desktop app only                                                                                                 |
-| **Browser**       | Opens in your default browser (a new tab on the web) with no confirmation                                                                             |
+| Setting           | What a link click does                                                                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Ask** (default) | Shows a dialog with the full URL. On macOS and Windows you can pick the side panel or your browser; everywhere else it confirms opening in your browser |
+| **Sidebar**       | Opens in the side panel immediately. macOS and Windows desktop apps only                                                                                |
+| **Browser**       | Opens in your default browser (a new tab on the web) with no confirmation                                                                               |
 
 Each device keeps its own copy of this preference, and on the web **Browser** is shown as **New
 tab**. Only `http` and `https` links open in the panel. A link using any other scheme is inert: clicking it
 does nothing.
+
+On Linux, **Sidebar** is not offered. If this device already has a saved **Sidebar** preference,
+clicking a link shows the confirmation dialog and opens it in the system browser after confirmation.
+The saved preference is not changed automatically.
 
 ## Using the panel
 
@@ -71,7 +75,6 @@ engine rather than Firefox or your default browser.
 | -------- | ---------------------------------- |
 | macOS    | WebKit                             |
 | Windows  | Microsoft Edge WebView2 (Chromium) |
-| Linux    | WebKitGTK                          |
 
 ## Planned
 

@@ -8,4 +8,4 @@ Avoid tables except for numeric/tabular data. Use short paragraphs, sparingly us
 
 Tool efficiency: Prefer efficient solutions—fetch once, extract what you need, move on. Target 3-5 tool calls. Stop once you have good-enough results.
 
-After using tools, cite every sourced fact with [N] at end of sentence.`
+After using tools, cite every fact from a [Source N] result with [N] at end of sentence.`

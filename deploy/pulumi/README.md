@@ -21,7 +21,7 @@ pulumi up
 | Platform  | Creates                          | Persistence  | Best For         |
 | --------- | -------------------------------- | ------------ | ---------------- |
 | `fargate` | VPC, ECS, ALB, EFS, Cloud Map    | EFS          | Serverless       |
-| `k8s`     | VPC, EKS, EBS CSI, nginx-ingress | EBS gp3 PVCs | Kubernetes teams |
+| `k8s`     | VPC, EKS, EBS CSI, Traefik       | EBS gp3 PVCs | Kubernetes teams |
 
 ## Project Structure
 
@@ -40,7 +40,7 @@ src/
   shared.ts           # `previews-shared` stack — long-lived VPC/ALB/postgres/keycloak
   per-pr-stack.ts     # Slim `preview-pr-<n>` stack — app services only, shared infra via StackReference
   # EKS
-  eks.ts              # EKS cluster, EBS CSI, Helm chart, nginx-ingress
+  eks.ts              # EKS cluster, EBS CSI, Helm chart, Traefik
 ```
 
 `index.ts` picks one of three shapes: the shared preview stack, a per-PR stack that

@@ -2,12 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Trans, useLingui } from '@lingui/react/macro'
+import { useLingui } from '@lingui/react/macro'
 import { m } from 'framer-motion'
-import { SquarePen, Trash2 } from 'lucide-react'
 
 import { SettingsSelectableRow } from '@/components/settings/settings-list'
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Switch } from '@/components/ui/switch'
 import { isWidgetSkillId } from '@/defaults/skills'
 import type { Skill } from '@/types'
@@ -55,6 +53,9 @@ export const LibraryRow = ({
   const skillName = skillDisplayName(skill)
   const row = (
     <SettingsSelectableRow
+      contextMenu={
+        isWidgetSkillId(skill.id) ? {} : { onEdit: () => onEdit(skill.id), onRemove: () => onDelete(skill.id) }
+      }
       title={skillDisplayName(skill)}
       subtitle={skill.description}
       isSelected={isActive}
@@ -73,23 +74,7 @@ export const LibraryRow = ({
 
   return (
     <m.li layout layoutId={skill.id} transition={skillRowTransition}>
-      {isWidgetSkillId(skill.id) ? (
-        row
-      ) : (
-        <ContextMenu>
-          <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
-          <ContextMenuContent className="min-w-56">
-            <ContextMenuItem onClick={() => onEdit(skill.id)} className="cursor-pointer">
-              <SquarePen className="size-4 mr-2" />
-              <Trans>Edit</Trans>
-            </ContextMenuItem>
-            <ContextMenuItem onClick={() => onDelete(skill.id)} className="cursor-pointer">
-              <Trash2 className="size-4 mr-2" />
-              <Trans>Delete</Trans>
-            </ContextMenuItem>
-          </ContextMenuContent>
-        </ContextMenu>
-      )}
+      {row}
     </m.li>
   )
 }

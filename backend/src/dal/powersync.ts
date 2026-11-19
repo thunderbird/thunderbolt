@@ -8,14 +8,20 @@ import {
   powersyncDbNameToSchemaKey,
   powersyncPkColumn,
   powersyncTablesByName,
+  modelsTable,
 } from '@/db/powersync-schema'
 import { type PowerSyncTableName, legacyPowerSyncTableNames, powersyncTableNames } from '@shared/powersync-tables'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull, ne, or } from 'drizzle-orm'
 import type { AnyPgTable } from 'drizzle-orm/pg-core'
 import { bridgeDeviceIdPrefix, cliDeviceIdPrefix } from './devices'
 
 const validTables = new Set<string>(powersyncTableNames)
 const legacyTables = new Set<string>(legacyPowerSyncTableNames)
+const migrationProviders = ['openai', 'custom', 'openrouter', 'anthropic', 'tinfoil', 'otari'] as const
+
+/** Match only providers supported by legacy device-credential migrations. */
+const isMigrationProvider = (provider: string): provider is (typeof migrationProviders)[number] =>
+  migrationProviders.some((candidate) => candidate === provider)
 
 /** DB column names that clients cannot set via PowerSync upload (server-managed fields). */
 const uploadDenyColumns: Partial<Record<PowerSyncTableName, string[]>> = {
@@ -66,6 +72,8 @@ type PowerSyncOperation = {
    * docs/internals/architecture/powersync-account-devices.md — "Create-only writes".
    */
   ifAbsent?: boolean
+  /** Migration-only model link: preserve a remote link, deletion, or provider change. */
+  ifProviderConnectionUnset?: { provider: string }
 }
 
 /** DB column names that use Drizzle timestamp(); JSON sends them as ISO strings, so we convert to Date. */
@@ -130,6 +138,35 @@ export const applyOperation = async (
   op: PowerSyncOperation,
   userId: string,
 ): Promise<boolean> => {
+  if (op.ifProviderConnectionUnset) {
+    const provider = op.ifProviderConnectionUnset.provider
+    if (
+      op.op !== 'PATCH' ||
+      op.type !== 'models' ||
+      !op.data ||
+      Object.keys(op.data).length !== 1 ||
+      typeof op.data.provider_connection_id !== 'string' ||
+      !op.data.provider_connection_id.trim() ||
+      !isMigrationProvider(provider)
+    ) {
+      return false
+    }
+    await database
+      .update(modelsTable)
+      .set({ providerConnectionId: op.data.provider_connection_id })
+      .where(
+        and(
+          eq(modelsTable.id, op.id),
+          eq(modelsTable.userId, userId),
+          eq(modelsTable.provider, provider),
+          isNull(modelsTable.providerConnectionId),
+          isNull(modelsTable.deletedAt),
+          provider === 'tinfoil' ? or(isNull(modelsTable.isSystem), ne(modelsTable.isSystem, 1)) : undefined,
+        ),
+      )
+    // Losing a migration race is an accepted no-op so PowerSync can apply the remote winner.
+    return true
+  }
   // A table dropped from the synced schema: nothing to apply. Accept so an old
   // client's queued legacy op drains instead of looping on a 400 — same reason
   // as the empty-patch no-op below.

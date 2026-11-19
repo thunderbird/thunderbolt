@@ -18,9 +18,9 @@ fi
 #   - DATABASE_URL: postgres://...:.../pr_846
 #   - POSTGRES_ADMIN_URL: postgres://postgres:.../postgres   (admin on default DB)
 # We connect to admin first, ensure the per-stack DB and its PowerSync storage DB
-# (`<db>_ps_storage`) exist, then proceed with the normal wait + migrate + start
-# flow against DATABASE_URL. After migrating we create the `powersync`
-# publication the PR's own PowerSync replicates from.
+# (`<db>_ps_storage`) exist, then create the `powersync` publication the PR's own
+# PowerSync replicates from. `FOR ALL TABLES` also covers tables created later,
+# so it can precede the migrations the server applies when it starts.
 #
 # Legacy stacks (POSTGRES_ADMIN_URL unset) skip this entirely: they have a
 # dedicated Postgres container with the target DB pre-created at boot.
@@ -67,9 +67,6 @@ if [ -n "$POSTGRES_ADMIN_URL" ]; then
     await admin.end()
   "
 fi
-
-echo "Running database migrations..."
-bun drizzle-kit migrate
 
 if [ -n "$POSTGRES_ADMIN_URL" ]; then
   echo "Ensuring PowerSync publication exists..."

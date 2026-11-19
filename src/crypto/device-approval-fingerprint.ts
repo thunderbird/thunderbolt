@@ -12,19 +12,25 @@ import {
   isUsableMlKemPublicKey,
 } from './primitives'
 
-/** Compute the displayed fingerprint for a canonical account, device and public-key tuple. */
-export const createDeviceApprovalFingerprint = async (anchor: DeviceAnchor): Promise<string> => {
+/** Re-export both public keys in canonical form, so every encoding of the same key confirms the same way. */
+export const canonicalizeDeviceAnchor = async (anchor: DeviceAnchor): Promise<DeviceAnchor> => {
   const ecdhPublicKey = await exportPublicKey(await importPublicKey(anchor.ecdhPublicKey.replace(/[\t\n\f\r ]/g, '')))
   const mlkemPublicKey = importMlKemPublicKey(anchor.mlkemPublicKey.replace(/[\t\n\f\r ]/g, ''))
   if (!isUsableMlKemPublicKey(mlkemPublicKey)) {
     throw new ValidationError('Device has an invalid ML-KEM public key')
   }
+  return { ...anchor, ecdhPublicKey, mlkemPublicKey: exportMlKemPublicKey(mlkemPublicKey) }
+}
+
+/** Compute the displayed fingerprint for a canonical account, device and public-key tuple. */
+export const createDeviceApprovalFingerprint = async (anchor: DeviceAnchor): Promise<string> => {
+  const canonical = await canonicalizeDeviceAnchor(anchor)
   const payload = JSON.stringify([
     'thunderbolt-device-approval-v1',
-    anchor.userId,
-    anchor.deviceId,
-    ecdhPublicKey,
-    exportMlKemPublicKey(mlkemPublicKey),
+    canonical.userId,
+    canonical.deviceId,
+    canonical.ecdhPublicKey,
+    canonical.mlkemPublicKey,
   ])
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(payload)))
   return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0'))

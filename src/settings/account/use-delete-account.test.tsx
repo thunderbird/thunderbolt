@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { HttpClientProvider } from '@/contexts'
+import { setCachedSession, clearCachedSession } from '@/lib/session-cache'
 import { HttpError } from '@/lib/http'
 import { StepUpVerificationError } from '@/lib/step-up'
 import { createMockHttpClient } from '@/test-utils/http-client'
@@ -94,6 +95,64 @@ describe('useDeleteAccount reducer', () => {
 
 describe('useDeleteAccount', () => {
   afterEach(cleanup)
+
+  it('admits one request before React renders and ignores it after cancel and reopen', async () => {
+    const response = Promise.withResolvers<void>()
+    const request = mock(() => response.promise)
+    const { result } = renderHook(() => useDeleteAccount(deleteOk, request), { wrapper })
+    act(() => result.current.openConfirm())
+    let first!: Promise<void>
+    act(() => {
+      first = result.current.requestStepUpCode()
+      void result.current.requestStepUpCode()
+    })
+    expect(request).toHaveBeenCalledTimes(1)
+    act(() => {
+      result.current.cancel()
+      result.current.openConfirm()
+    })
+    await act(async () => {
+      response.resolve()
+      await first
+    })
+    expect(result.current.status).toBe('confirming')
+    expect(result.current.isBusy).toBe(false)
+  })
+
+  it('deletes only once and finishes committed deletion cleanup after unmount', async () => {
+    const response = Promise.withResolvers<void>()
+    const performDelete = mock(() => response.promise)
+    const onDeleted = mock(async () => {})
+    const { result, unmount } = renderHook(() => useDeleteAccount(performDelete, requestCodeOk, onDeleted), { wrapper })
+    let first!: Promise<void>
+    act(() => {
+      first = result.current.confirmDeletion()
+      void result.current.confirmDeletion()
+    })
+    expect(performDelete).toHaveBeenCalledTimes(1)
+    unmount()
+    response.resolve()
+    await first
+    expect(onDeleted).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not wipe a replacement account when the deletion response belongs to the previous one', async () => {
+    const response = Promise.withResolvers<void>()
+    const onDeleted = mock(async () => {})
+    setCachedSession({ user: { id: 'deleted-account' }, session: { expiresAt: new Date(Date.now() + 60_000) } })
+    const { result } = renderHook(() => useDeleteAccount(() => response.promise, requestCodeOk, onDeleted), { wrapper })
+    let pending!: Promise<void>
+    act(() => {
+      pending = result.current.confirmDeletion()
+    })
+    setCachedSession({ user: { id: 'new-account' }, session: { expiresAt: new Date(Date.now() + 60_000) } })
+    await act(async () => {
+      response.resolve()
+      await pending
+    })
+    expect(onDeleted).not.toHaveBeenCalled()
+    clearCachedSession()
+  })
 
   it('sends the entered code and finishes exactly once', async () => {
     const receivedOtps: string[] = []

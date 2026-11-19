@@ -87,33 +87,24 @@ export const useElementPicking = ({ query, onAsk }: ElementPickingDeps) => {
   const [mode, dispatch] = useReducer(modeReducer, { kind: 'idle' })
   const lastQueryToken = useRef(0)
   /**
-   * Which gesture is live. Incremented on every start and every dismissal, so
-   * work awaiting a guest reply can tell that the gesture it belongs to is over.
+   * Identity of the live gesture. Consuming or dismissing it synchronously
+   * prevents pending clicks from attaching the same passage more than once.
    */
-  const gestureRef = useRef(0)
+  const gestureRef = useRef<symbol | null>(null)
 
   const startPicking = useCallback(() => {
-    gestureRef.current += 1
+    gestureRef.current = Symbol('element-pick')
     dispatch({ type: 'PICKING_STARTED' })
   }, [])
   const dismiss = useCallback(() => {
-    gestureRef.current += 1
+    gestureRef.current = null
     dispatch({ type: 'DISMISSED' })
   }, [])
 
-  /*
-   * Unmounting ends the gesture too.
-   *
-   * The counter moved on a start and on a dismissal but not when the page went
-   * away, so a hit-test that came back after navigation still matched the
-   * gesture it belonged to and attached a passage for a pick the user had
-   * abandoned — onto whatever conversation happened to be current by then.
-   * Bumping it on teardown makes every outstanding reply stale, which is what
-   * the counter is for.
-   */
+  // Unmounting ends a pending click before it can attach to another chat.
   useEffect(
     () => () => {
-      gestureRef.current += 1
+      gestureRef.current = null
     },
     [],
   )
@@ -146,11 +137,11 @@ export const useElementPicking = ({ query, onAsk }: ElementPickingDeps) => {
    */
   const pickAt = useCallback(
     async (point: { x: number; y: number }) => {
-      if (mode.kind !== 'picking') {
+      if (mode.kind !== 'picking' || gestureRef.current === null) {
         return
       }
       const isOutlineCurrent = mode.token === mode.answeredToken
-      // Bumped by `DISMISSED`, so a gesture the user gave up on can be
+      // Cleared by `DISMISSED`, so a gesture the user gave up on can be
       // recognised after the await below.
       const gesture = gestureRef.current
       const element = isOutlineCurrent ? mode.element : await query(point)
@@ -166,10 +157,10 @@ export const useElementPicking = ({ query, onAsk }: ElementPickingDeps) => {
       if (!element || gesture !== gestureRef.current) {
         return
       }
+      dismiss()
       onAsk([toPickedPassage(element)])
-      dispatch({ type: 'DISMISSED' })
     },
-    [mode, onAsk, query],
+    [mode, onAsk, query, dismiss],
   )
 
   return { mode, startPicking, dismiss, pointAt, pickAt }

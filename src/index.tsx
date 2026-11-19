@@ -2,14 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import './polyfills'
 import ReactDOM from 'react-dom/client'
 import { App } from './app'
-import './polyfills'
 
 import './index.css'
 import { activateLocale, getActiveLocale } from './i18n'
 import './lib/embed' // keeps the ?embed=app marker read before render, even if Header is ever lazy-loaded
 import { installBranding } from './lib/branding'
+import { installFileDropNavigationPrevention } from './lib/file-drop-navigation'
 import { markBundleEvaluated } from './lib/init-timing'
 import { initializeLinkInterception } from './lib/intercept-links'
 import { isMacDesktop, isMobile as isPlatformMobile, isTauri, isTauriDesktop } from './lib/platform'
@@ -24,7 +25,7 @@ if (isMacDesktop()) {
 }
 
 // The desktop app always uses the desktop layout, however narrow the window
-// (the 600px min window width sits below the 640px/768px breakpoints). The
+// (the 500px min window width sits below the 640px/768px breakpoints). The
 // class drives the sm/md variant overrides and responsive theme variables in
 // index.css; useIsMobile (src/hooks/use-mobile.ts) handles the JS side.
 if (isTauriDesktop()) {
@@ -59,6 +60,7 @@ const redirecting = handlePostUpdateRedirect()
 
 if (!redirecting) {
   initializeLinkInterception()
+  installFileDropNavigationPrevention()
   installBranding()
 
   const root = document.getElementById('root') as HTMLElement

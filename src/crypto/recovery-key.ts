@@ -8,9 +8,13 @@ import { entropyToMnemonic, mnemonicToEntropy } from '@scure/bip39'
 import { wordlist } from '@scure/bip39/wordlists/english.js'
 import { kdfAlgorithm, kdfHash, kdfIterations, kdfSaltLength } from '@shared/e2ee-types'
 
+import { continuityHolds, deriveContinuityKey, sealContinuity, type ContinuitySealScope } from './continuity-seal'
 import { KeyDerivationError, ValidationError } from './errors'
+import { continuitySaltTag } from './kdf-salt'
 import type { StoredKeyPair } from './key-storage'
 import { base64ToUint8Array, importPublicKey, uint8ArrayToBase64, uint8ArrayToBase64Url } from './primitives'
+
+export { kdfSaltRequiresContinuity } from './kdf-salt'
 
 const seedLength = 32 // bytes → 24 BIP-39 words
 
@@ -23,6 +27,18 @@ const ecdhSeedLength = 48 // getMinHashLength(P-256 order) — noble's bias-free
 const mlkemSeedLength = 64 // ML-KEM-768 keygen seed (d || z)
 const ecdhHkdfInfo = new TextEncoder().encode('thunderbolt-recovery-ecdh-v1')
 const mlkemHkdfInfo = new TextEncoder().encode('thunderbolt-recovery-mlkem-v1')
+const continuityHkdfInfo = new TextEncoder().encode('thunderbolt-recovery-continuity-key-v1')
+
+// The continuity seal's scope is a wire contract too: every recovery reads it.
+const recoveryContinuityScope: ContinuitySealScope = {
+  domain: 'thunderbolt-recovery-continuity-v1',
+  aadColumn: 'recovery_continuity',
+  plaintext: 'thunderbolt-recovery-continuity',
+  binding: [],
+}
+
+/** The recovery keypair plus the phrase's continuity key (HMAC-SHA256, sign/verify only). */
+export type RecoveryKeyPair = StoredKeyPair & { continuityKey: CryptoKey }
 
 /** Generate a random 256-bit recovery seed (the value the 24 words encode). */
 export const generateRecoverySeed = (): Uint8Array => crypto.getRandomValues(new Uint8Array(seedLength))
@@ -117,17 +133,18 @@ export const deriveHybridKeyPair = async (
 /**
  * Deterministically derive the recovery slot's hybrid keypair from the recovery
  * seed — the recovery phrase is a virtual device, and this is its key material.
- * Same shape as `StoredKeyPair`, so it drops straight into `wrapAK`/`unwrapAK`.
+ * A superset of `StoredKeyPair`, so it drops straight into `wrapAK`/`unwrapAK`.
  *
  * seed --PBKDF2-SHA512 600k, salt=kdf_salt--> 64-byte master
  *      --HKDF-SHA256, info='…-ecdh-v1'-----> 48 bytes -> P-256 scalar
  *      --HKDF-SHA256, info='…-mlkem-v1'----> 64 bytes -> ML-KEM-768 seed
+ *      --HKDF-SHA256, info='…-continuity-key-v1'--> HMAC key for `sealRecoveryContinuity`
  *
  * The 48-byte ECDH sub-seed is noble's bias-free hash-to-scalar width
  * (`getMinHashLength(n)`), which reduces into [1, n-1] deterministically — no
  * randomized retry, so a given phrase yields the same keypair forever.
  */
-export const deriveRecoveryKeyPairFromSeed = async (seed: Uint8Array, saltBase64: string): Promise<StoredKeyPair> => {
+export const deriveRecoveryKeyPairFromSeed = async (seed: Uint8Array, saltBase64: string): Promise<RecoveryKeyPair> => {
   try {
     const baseKey = await crypto.subtle.importKey('raw', seed as BufferSource, kdfAlgorithm, false, ['deriveBits'])
     const master = await crypto.subtle.deriveBits(
@@ -140,12 +157,52 @@ export const deriveRecoveryKeyPairFromSeed = async (seed: Uint8Array, saltBase64
       baseKey,
       masterSecretLength * 8,
     )
-    const masterKey = await crypto.subtle.importKey('raw', master, 'HKDF', false, ['deriveBits'])
-    return await deriveHybridKeyPair(masterKey, { ecdh: ecdhHkdfInfo, mlkem: mlkemHkdfInfo })
+    const masterKey = await crypto.subtle.importKey('raw', master, 'HKDF', false, ['deriveBits', 'deriveKey'])
+    const continuityKey = await deriveContinuityKey(masterKey, continuityHkdfInfo)
+    return { ...(await deriveHybridKeyPair(masterKey, { ecdh: ecdhHkdfInfo, mlkem: mlkemHkdfInfo })), continuityKey }
   } catch (err) {
     throw new KeyDerivationError('Failed to derive recovery keypair from recovery seed', { cause: err })
   }
 }
 
-/** Generate a random per-account KDF salt, base64-encoded (stored server-side as `kdf_salt`). */
-export const generateKdfSalt = (): string => uint8ArrayToBase64(crypto.getRandomValues(new Uint8Array(kdfSaltLength)))
+/**
+ * Generate a per-account KDF salt, base64-encoded (stored server-side as
+ * `kdf_salt`): `continuitySaltTag` followed by random bytes.
+ *
+ * The tag says "this phrase has a continuity seal", and it can be trusted on a
+ * wiped device because recovery only proceeds when the phrase and this salt
+ * re-derive the stored public keys. A server that swaps in an untagged salt to
+ * skip the seal breaks that match unless it knows the phrase. The 24 random
+ * bytes left are still far more than a salt needs.
+ */
+export const generateKdfSalt = (): string => {
+  const salt = crypto.getRandomValues(new Uint8Array(kdfSaltLength))
+  salt.set(continuitySaltTag)
+  return uint8ArrayToBase64(salt)
+}
+
+/**
+ * Bind DEK `"0"` to the recovery phrase: a fixed-plaintext sample under DEK
+ * `"0"`, MACed with the phrase's continuity key. Stored server-side as
+ * `recovery_continuity` and written only where the phrase is minted (setup,
+ * phrase change, v1 → v2 upgrade). DEK `"0"` never changes, so rotations keep it.
+ *
+ * Recovery cannot trust the AK it opens: anyone can wrap an AK to the stored
+ * recovery PUBLIC keys. Making the sample needs DEK `"0"` and MACing it needs the
+ * phrase, so a server holding neither cannot pass off its own key set as the
+ * account's. The MAC sits over the sample rather than inside it so that holders
+ * of DEK `"0"`, revoked devices included, learn nothing about the phrase key.
+ */
+export const sealRecoveryContinuity = (dek0: CryptoKey, continuityKey: CryptoKey, userId: string): Promise<string> =>
+  sealContinuity(dek0, continuityKey, userId, recoveryContinuityScope)
+
+/**
+ * Does the served seal hold for this candidate DEK `"0"`? Fails closed: a
+ * missing, malformed, foreign or forged seal all return false.
+ */
+export const recoveryContinuityHolds = (
+  sealed: string | null,
+  dek0: CryptoKey,
+  continuityKey: CryptoKey,
+  userId: string,
+): Promise<boolean> => continuityHolds(sealed, dek0, continuityKey, userId, recoveryContinuityScope)

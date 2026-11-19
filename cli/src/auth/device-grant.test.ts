@@ -61,6 +61,24 @@ const scriptedTransport = (results: TokenPollResult[]) => {
 }
 
 describe('pollForToken', () => {
+  it('rejects an already-cancelled grant before polling', async () => {
+    const controller = new AbortController()
+    controller.abort(new Error('cancelled'))
+    const { transport, calls } = scriptedTransport([{ kind: 'approved', token: 'late' }])
+    await expect(pollForToken(code, transport, fakeClock().clock, controller.signal)).rejects.toThrow('cancelled')
+    expect(calls.count).toBe(0)
+  })
+
+  it('does not accept approval delivered by a transport after cancellation', async () => {
+    const controller = new AbortController()
+    const response = Promise.withResolvers<TokenPollResult>()
+    const transport = { requestCode: async () => code, pollToken: () => response.promise }
+    const pending = pollForToken(code, transport, fakeClock().clock, controller.signal)
+    controller.abort(new Error('cancelled'))
+    response.resolve({ kind: 'approved', token: 'late' })
+    await expect(pending).rejects.toThrow('cancelled')
+  })
+
   it('polls immediately, then sleeps the interval between attempts, until approved', async () => {
     const { clock, sleeps } = fakeClock()
     const { transport, calls } = scriptedTransport([

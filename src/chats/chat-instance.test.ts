@@ -13,9 +13,16 @@ import { webToolCaps } from '@/ai/web-tool-budget'
 import { createTurnTelemetry, type TurnTelemetryPayload } from '@/ai/turn-telemetry'
 import { setDebugTranscriptCaptureEnabled } from '@/debug-transcript/recorder'
 import { builtInAgent } from '@/defaults/agents'
+import { createAgentUnavailableError } from '@/lib/error-utils'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
-import { createMockChatInstance, createMockChatThread, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
+import {
+  createMockChatInstance,
+  createMockChatThread,
+  createMockModel,
+  hydrateStore,
+  resetStore,
+} from '@/test-utils/chat-store-mocks'
 import { getClock } from '@/testing-library'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
@@ -24,11 +31,37 @@ import type { ChatInit, ChatOnFinishCallback } from 'ai'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { useConfigStore } from '@/api/config-store'
 import { useChatStore } from './chat-store'
-import { createAgentRoutingFetch, createChatInstance, type CreateChatInstanceDeps } from './chat-instance'
+import {
+  createAgentRoutingFetch as createRoutingFetch,
+  createChatInstance,
+  type CreateChatInstanceDeps,
+} from './chat-instance'
 import { getTurnActivity } from './turn-activity'
 
+/** Keep routing unit tests independent of database model and reasoning settings. */
+const createAgentRoutingFetch = (...args: Parameters<typeof createRoutingFetch>) => {
+  const [id, saveMessages, httpClient, getProxyFetch, dependencies, state] = args
+  return createRoutingFetch(
+    id,
+    saveMessages,
+    httpClient,
+    getProxyFetch,
+    {
+      getAvailableModels: async () => useChatStore.getState().models,
+      getChatReasoningEffort: async () => undefined,
+      ...dependencies,
+    },
+    state,
+  )
+}
+
 const sessionId = 'sess-1'
+const testModels = [
+  createMockModel({ id: 'm1', model: 'claude-opus', provider: 'anthropic', apiKey: 'secret' }),
+  createMockModel({ id: 'm2', model: 'gpt-5', provider: 'openai' }),
+]
 const httpClient: HttpClient = {} as HttpClient
+const isAgentActive = async () => true
 const getProxyFetch = (): FetchFn => Object.assign(async () => new Response('ok'), { preconnect: async () => false })
 
 const makeAdapter = (agent: Agent): AgentAdapter => ({
@@ -44,7 +77,8 @@ const hydrate = () => {
     chatInstance: createMockChatInstance(),
     chatThread: null,
     id: sessionId,
-    selectedModel: { id: 'm1', isConfidential: 0 } as never,
+    models: testModels,
+    selectedModel: testModels[0],
     triggerData: null,
   })
 }
@@ -91,22 +125,20 @@ const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {})
     chatInstance: instance,
     chatThread: null,
     id: sessionId,
-    selectedModel: {
-      id: 'm1',
-      model: 'claude-opus',
-      provider: 'anthropic',
-      apiKey: 'secret',
-      isConfidential: 0,
-    } as never,
+    models: testModels,
+    selectedModel: testModels[0],
     triggerData: null,
   })
 
-  const finishWithError = (error?: Error) => {
+  const finishWithError = (
+    error?: Error,
+    message: ThunderboltUIMessage = { id: 'failed-assistant', role: 'assistant', parts: [] },
+  ) => {
     if (error) {
       onError?.(error)
     }
     return onFinish!({
-      message: { id: 'failed-assistant', role: 'assistant', parts: [] },
+      message,
       messages: [],
       isAbort: false,
       isDisconnect: false,
@@ -201,6 +233,294 @@ describe('createAgentRoutingFetch — connection status', () => {
     resetStore()
   })
 
+  it('refreshes access from the database even when the store still has usable credentials', async () => {
+    const fetchModel = mock(async () => new Response('ok'))
+    const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getAvailableModels: async () => [],
+      getOrConnectAdapter: async () => ({ ...makeAdapter(builtInAgent), fetch: fetchModel }),
+    })
+    expect(useChatStore.getState().models[0].apiKey).toBe('secret')
+    await expect(fetch('https://backend.test', { body: '{}' })).rejects.toThrow(
+      'Configure and select an available model',
+    )
+    expect(fetchModel).not.toHaveBeenCalled()
+    expect(useChatStore.getState().models).toEqual([])
+  })
+
+  it.each([false, true])('preserves conversation privacy after a fresh model read (new thread: %s)', async (isNew) => {
+    const fetchModel = mock(async () => new Response('ok'))
+    const thread = createMockChatThread({ isEncrypted: 0 })
+    if (!isNew) {
+      useChatStore.getState().updateSession(sessionId, { chatThread: thread })
+    }
+    const save = async () => {
+      useChatStore.getState().updateSession(sessionId, { chatThread: thread })
+    }
+    const fetch = createAgentRoutingFetch(sessionId, save, httpClient, getProxyFetch, {
+      getAvailableModels: async () => [{ ...testModels[0], isConfidential: 1 }],
+      getOrConnectAdapter: async () => ({ ...makeAdapter(builtInAgent), fetch: fetchModel }),
+    })
+    await expect(fetch('https://backend.test', { body: '{}' })).rejects.toThrow('privacy setting')
+    expect(fetchModel).not.toHaveBeenCalled()
+  })
+
+  it('rechecks model access after awaiting the adapter before sending credentials', async () => {
+    const connected = Promise.withResolvers<AgentAdapter>()
+    const fetchModel = mock(async () => new Response('ok'))
+    const connecting = Promise.withResolvers<void>()
+    const connect = mock(() => {
+      connecting.resolve()
+      return connected.promise
+    })
+    const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getAvailableModels: async () => useChatStore.getState().models,
+      getOrConnectAdapter: connect,
+    })
+    const request = fetch('https://backend.test', { body: '{}' })
+    await connecting.promise
+    expect(connect).toHaveBeenCalledTimes(1)
+    useChatStore.getState().setModels([])
+    connected.resolve({ ...makeAdapter(builtInAgent), fetch: fetchModel })
+    await expect(request).rejects.toThrow('Configure and select an available model')
+    expect(fetchModel).not.toHaveBeenCalled()
+  })
+
+  it.each(['prompt', 'compact'] as const)('rechecks model access after resolving effort for %s', async (operation) => {
+    const effort = Promise.withResolvers<'high'>()
+    const resolving = Promise.withResolvers<void>()
+    const fetchModel = mock(async () => new Response('ok'))
+    const compactModel = mock(async () => ({
+      version: 1 as const,
+      summary: 'Summary',
+      tokensBefore: 100,
+      contextTokens: 10,
+      retainedTail: [],
+    }))
+    const route = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort: () => {
+        resolving.resolve()
+        return effort.promise
+      },
+      getOrConnectAdapter: async () => ({ ...makeAdapter(builtInAgent), fetch: fetchModel, compact: compactModel }),
+    })
+    const request =
+      operation === 'prompt'
+        ? route('https://backend.test', { body: '{}' })
+        : route.compact([], undefined, new AbortController().signal)
+    await resolving.promise
+    useChatStore.getState().setModels([])
+    effort.resolve('high')
+    await expect(request).rejects.toThrow('Configure and select an available model')
+    expect(fetchModel).not.toHaveBeenCalled()
+    expect(compactModel).not.toHaveBeenCalled()
+  })
+
+  it('uses refreshed credentials if the model changes while connecting', async () => {
+    const connected = Promise.withResolvers<AgentAdapter>()
+    const seenKeys: Array<string | null | undefined> = []
+    const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getAvailableModels: async () => useChatStore.getState().models,
+      getOrConnectAdapter: () => connected.promise,
+    })
+    const request = fetch('https://backend.test', { body: '{}' })
+    await Promise.resolve()
+    useChatStore.getState().setModels([{ ...testModels[0], apiKey: 'rotated' }])
+    connected.resolve({
+      ...makeAdapter(builtInAgent),
+      fetch: async (_init, context) => {
+        seenKeys.push(context.selectedModel.apiKey)
+        return new Response('ok')
+      },
+    })
+    await request
+    expect(seenKeys).toEqual(['rotated'])
+  })
+
+  it.each(['prompt', 'compact'] as const)(
+    'uses the logical turn model for prompts and the currently selected model for compaction: %s',
+    async (operation) => {
+      useChatStore.getState().updateSession(sessionId, { selectedModel: testModels[1] })
+      const seen: AgentAdapterContext[] = []
+      const route = createAgentRoutingFetch(
+        sessionId,
+        async () => {},
+        httpClient,
+        getProxyFetch,
+        {
+          getOrConnectAdapter: async () => ({
+            ...makeAdapter(builtInAgent),
+            fetch: async (_init, context) => {
+              seen.push(context)
+              return new Response('ok')
+            },
+            compact: async (_init, context) => {
+              seen.push(context)
+              return { version: 1, summary: 'Summary', tokensBefore: 100, contextTokens: 10, retainedTail: [] }
+            },
+          }),
+        },
+        { getTurnModel: () => testModels[0] },
+      )
+      if (operation === 'prompt') {
+        await route('https://backend.test', { body: '{}' })
+      } else {
+        await route.compact([], undefined, new AbortController().signal)
+      }
+      expect(seen).toHaveLength(1)
+      expect(seen[0].selectedModel.id).toBe(operation === 'prompt' ? 'm1' : 'm2')
+    },
+  )
+
+  it.each(['prompt', 'compact'] as const)('rechecks access after reasoning discovery before %s', async (operation) => {
+    const discovering = Promise.withResolvers<void>()
+    const effort = Promise.withResolvers<undefined>()
+    const fetch = mock(async () => new Response('ok'))
+    const compact = mock(async () => ({
+      version: 1 as const,
+      summary: 'Summary',
+      tokensBefore: 100,
+      contextTokens: 10,
+      retainedTail: [],
+    }))
+    const route = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getAvailableModels: async () => useChatStore.getState().models,
+      getChatReasoningEffort: async () => {
+        discovering.resolve()
+        return effort.promise
+      },
+      getOrConnectAdapter: async () => ({ ...makeAdapter(builtInAgent), fetch, compact }),
+    })
+    const request =
+      operation === 'prompt'
+        ? route('https://backend.test', { body: '{}' })
+        : route.compact([], undefined, new AbortController().signal)
+    await discovering.promise
+    useChatStore.getState().setModels([])
+    effort.resolve(undefined)
+    await expect(request).rejects.toThrow('Configure and select an available model')
+    expect(fetch).not.toHaveBeenCalled()
+    expect(compact).not.toHaveBeenCalled()
+  })
+
+  it('passes the newly persisted thread and ACP session to the adapter', async () => {
+    const thread = createMockChatThread({ isEncrypted: 0, acpSessionId: 'persisted-acp' })
+    const contexts: AgentAdapterContext[] = []
+    const fetch = createAgentRoutingFetch(
+      sessionId,
+      async () => {
+        useChatStore.getState().updateSession(sessionId, { chatThread: thread })
+      },
+      httpClient,
+      getProxyFetch,
+      {
+        getAvailableModels: async () => useChatStore.getState().models,
+        getOrConnectAdapter: async () => ({
+          ...makeAdapter(builtInAgent),
+          fetch: async (_init, context) => {
+            contexts.push(context)
+            return new Response('ok')
+          },
+        }),
+      },
+    )
+    await fetch('https://backend.test', { body: '{}' })
+    expect(contexts[0].chatThread).toBe(thread)
+    expect(contexts[0].acpSessionId).toBe('persisted-acp')
+  })
+
+  it('routes a remote agent without requiring any local models', async () => {
+    const remote: Agent = { ...builtInAgent, id: 'remote', type: 'remote-acp', transport: 'websocket' }
+    useChatStore.getState().updateSession(sessionId, { selectedAgent: remote })
+    useChatStore.getState().setModels([])
+    const fetchModel = mock(async () => new Response('ok'))
+    const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getAvailableModels: async () => useChatStore.getState().models,
+      getOrConnectAdapter: async () => ({ ...makeAdapter(remote), fetch: fetchModel }),
+      isAgentActive,
+    })
+    await fetch('https://backend.test', { body: '{}' })
+    expect(fetchModel).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['prompt', 'compact'] as const)('resolves the saved effort before routing %s', async (operation) => {
+    const effort = Promise.withResolvers<'high'>()
+    const getChatReasoningEffort = mock(() => effort.promise)
+    const seen: AgentAdapterContext[] = []
+    const adapter: AgentAdapter = {
+      ...makeAdapter(builtInAgent),
+      fetch: async (_init, context) => {
+        seen.push(context)
+        return new Response('ok')
+      },
+      compact: async (_init, context) => {
+        seen.push(context)
+        return { version: 1, summary: 'Summary', tokensBefore: 100, contextTokens: 10, retainedTail: [] }
+      },
+    }
+    const route = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getAvailableModels: async () => useChatStore.getState().models,
+      isAgentActive,
+      getChatReasoningEffort,
+      getOrConnectAdapter: async () => adapter,
+    })
+    const request =
+      operation === 'prompt'
+        ? route('https://backend.test', { body: JSON.stringify({ messages: [] }) })
+        : route.compact([], undefined, new AbortController().signal)
+    await Promise.resolve()
+    expect(getChatReasoningEffort).toHaveBeenCalledWith(sessionId, expect.objectContaining({ id: 'm1' }))
+    expect(seen).toHaveLength(0)
+    effort.resolve('high')
+    await request
+    expect(getChatReasoningEffort).toHaveBeenCalledWith(sessionId, expect.objectContaining({ id: 'm1' }))
+    expect(seen).toHaveLength(1)
+    expect(seen[0]?.reasoningEffort).toBe('high')
+  })
+
+  it('does not send with stale effort when its pending settings write fails', async () => {
+    const write = Promise.withResolvers<never>()
+    const connect = mock(async () => makeAdapter(builtInAgent))
+    const resolveEffort = mock(() => write.promise)
+    const save = mock(async () => {})
+    const route = createAgentRoutingFetch(sessionId, save, httpClient, getProxyFetch, {
+      isAgentActive,
+      getChatReasoningEffort: resolveEffort,
+      getOrConnectAdapter: connect,
+    })
+    const request = route('https://backend.test', { body: JSON.stringify({ messages: [] }) })
+    write.reject(new Error('Settings write failed'))
+    await expect(request).rejects.toThrow('Settings write failed')
+    expect(resolveEffort).toHaveBeenCalledTimes(1)
+    expect(connect).not.toHaveBeenCalled()
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('leaves effort resolution to remote agents', async () => {
+    const agent: Agent = {
+      ...builtInAgent,
+      id: 'remote',
+      type: 'remote-acp',
+      transport: 'websocket',
+      url: 'wss://agent.test',
+    }
+    useChatStore.getState().updateSession(sessionId, { selectedAgent: agent })
+    const resolveEffort = mock(async () => 'high' as const)
+    const adapter: AgentAdapter = {
+      ...makeAdapter(agent),
+      fetch: async (_init, context) => {
+        expect(context.reasoningEffort).toBeUndefined()
+        return new Response('ok')
+      },
+    }
+    const route = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      isAgentActive,
+      getChatReasoningEffort: resolveEffort,
+      getOrConnectAdapter: async () => adapter,
+    })
+    await route('https://backend.test', { body: JSON.stringify({ messages: [] }) })
+    expect(resolveEffort).not.toHaveBeenCalled()
+  })
+
   it.each([
     ['/research latest', 'research', 30],
     ['/search latest', 'search', 12],
@@ -224,6 +544,9 @@ describe('createAgentRoutingFetch — connection status', () => {
       },
     }
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getAvailableModels: async () => useChatStore.getState().models,
+      isAgentActive,
+      getChatReasoningEffort: async () => undefined,
       getOrConnectAdapter: async () => adapter,
     })
     const response = await fetch('https://backend.test', {
@@ -240,6 +563,36 @@ describe('createAgentRoutingFetch — connection status', () => {
           'Per-turn web tool budget reached. Answer now from the results already gathered. If coverage is insufficient, tell the user they can ask you to search more or use /research.',
       },
     })
+  })
+
+  it('seeds the turn budget with the sources earlier assistant messages registered', async () => {
+    const adapter: AgentAdapter = {
+      ...makeAdapter(builtInAgent),
+      fetch: async (_init, context) =>
+        Response.json({
+          priorSources: context.webToolBudget!.priorSources,
+          sourceCollector: context.webToolBudget!.sourceCollector,
+        }),
+    }
+    const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      isAgentActive,
+      getChatReasoningEffort: async () => undefined,
+      getOrConnectAdapter: async () => adapter,
+    })
+    const first = { index: 1, url: 'https://one.test', title: 'One', toolName: 'search' }
+    const second = { index: 2, url: 'https://two.test', title: 'Two', toolName: 'fetch_content' }
+    const response = await fetch('https://backend.test', {
+      body: JSON.stringify({
+        messages: [
+          { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'first' }] },
+          { id: 'a1', role: 'assistant', parts: [], metadata: { sources: [first] } },
+          { id: 'u2', role: 'user', parts: [{ type: 'text', text: 'second' }] },
+          { id: 'a2', role: 'assistant', parts: [], metadata: { sources: [second] } },
+          { id: 'u3', role: 'user', parts: [{ type: 'text', text: 'tell me more' }] },
+        ],
+      }),
+    })
+    expect(await response.json()).toEqual({ priorSources: [first, second], sourceCollector: [] })
   })
 
   it.each([
@@ -260,6 +613,9 @@ describe('createAgentRoutingFetch — connection status', () => {
         },
       }
       const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+        getAvailableModels: async () => useChatStore.getState().models,
+        isAgentActive,
+        getChatReasoningEffort: async () => undefined,
         getOrConnectAdapter: async () => adapter,
         getAllSkills: (async () => [{ name: 'weather', instruction: 'WEATHER_BODY', enabled: 1 }]) as never,
         getDb: (() => ({})) as never,
@@ -281,6 +637,9 @@ describe('createAgentRoutingFetch — connection status', () => {
     })
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getAvailableModels: async () => useChatStore.getState().models,
+      isAgentActive,
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
@@ -299,6 +658,9 @@ describe('createAgentRoutingFetch — connection status', () => {
     })
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getAvailableModels: async () => useChatStore.getState().models,
+      isAgentActive,
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
@@ -315,6 +677,9 @@ describe('createAgentRoutingFetch — connection status', () => {
     const connectToAgent = mock(async (agent: Agent) => makeAdapter(agent))
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getAvailableModels: async () => useChatStore.getState().models,
+      isAgentActive,
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
@@ -332,6 +697,9 @@ describe('createAgentRoutingFetch — connection status', () => {
     const connectToAgent = mock(async (agent: Agent) => makeAdapter(agent))
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getAvailableModels: async () => useChatStore.getState().models,
+      isAgentActive,
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
@@ -358,6 +726,9 @@ describe('createAgentRoutingFetch — connection status', () => {
       httpClient,
       getProxyFetch,
       {
+        getAvailableModels: async () => useChatStore.getState().models,
+        isAgentActive,
+        getChatReasoningEffort: async () => undefined,
         connectToAgent: connectToAgent as never,
         updateChatThread: (async () => {}) as never,
         getDb: (() => ({})) as never,
@@ -397,6 +768,9 @@ describe('createAgentRoutingFetch — connection status', () => {
       httpClient,
       getProxyFetch,
       {
+        getAvailableModels: async () => useChatStore.getState().models,
+        isAgentActive,
+        getChatReasoningEffort: async () => undefined,
         getOrConnectAdapter: (async () => adapter) as never,
         updateChatThread: (async () => {}) as never,
         getDb: (() => ({})) as never,
@@ -464,6 +838,9 @@ describe('createAgentRoutingFetch — connection status', () => {
       httpClient,
       getProxyFetch,
       {
+        getAvailableModels: async () => useChatStore.getState().models,
+        isAgentActive,
+        getChatReasoningEffort: async () => undefined,
         getOrConnectAdapter: (async () => adapter) as never,
         updateChatThread: (async () => {}) as never,
         getDb: (() => ({})) as never,
@@ -888,6 +1265,37 @@ describe('createChatInstance — retry policy', () => {
   })
 
   it.each([
+    ['saves the flag when the chat has a thread', createMockChatThread({ id: sessionId }), true],
+    ['saves nothing when the chat has no thread yet', null, false],
+  ] as const)(
+    'flags a prompt refused because its agent was disabled or deleted, and %s',
+    async (_label, chatThread, persisted) => {
+      const errorLog = spyOn(console, 'error').mockImplementation(() => {})
+      const saved: ThunderboltUIMessage[] = []
+      const { instance, finishWithError, regenerate } = createRetryHarness(async ({ messages }) => {
+        saved.push(...messages)
+      })
+      useChatStore.getState().updateSession(sessionId, { chatThread })
+      instance.messages = [{ id: 'u1', role: 'user', parts: [{ type: 'text', text: 'Hello' }] }]
+
+      try {
+        await finishWithError(createAgentUnavailableError('agent-1'))
+        await getClock().runAllAsync()
+
+        // A reload's auto-run skips a stopped prompt, so it never reaches a fallback agent.
+        expect(instance.messages[0]!.metadata?.stoppedByUser).toBe(true)
+        expect(saved.map((message) => [message.id, message.metadata?.stoppedByUser])).toEqual(
+          persisted ? [['u1', true]] : [],
+        )
+        expect(useChatStore.getState().sessions.get(sessionId)!.retriesExhausted).toBe(true)
+        expect(regenerate).not.toHaveBeenCalled()
+      } finally {
+        errorLog.mockRestore()
+      }
+    },
+  )
+
+  it.each([
     ['an Ollama 400', '400: {"error":{"message":"registry.ollama.ai/library/gemma3:4b does not support tools"}}'],
     ['a llama.cpp 500', '500: tools param requires --jinja flag'],
   ])('never auto-regenerates %s that rejects tools', async (_label, message) => {
@@ -1012,6 +1420,17 @@ describe('createChatInstance — retry policy', () => {
       await sending
       expect(sendMessage).toHaveBeenCalledTimes(1)
     }
+  })
+
+  it.each([
+    { models: [] },
+    { models: [createMockModel({ id: 'm1', apiKey: null })] },
+    { models: [createMockModel({ id: 'm1', enabled: 0 })] },
+  ])('blocks sends when the selected provider is no longer usable (%p)', async ({ models }) => {
+    const { instance, sendMessage } = createRetryHarness()
+    useChatStore.getState().setModels([...models])
+    await expect(instance.sendMessage({ text: 'hi' })).rejects.toThrow('Configure and select an available model')
+    expect(sendMessage).not.toHaveBeenCalled()
   })
 
   it('throws the friendly guard (not a TypeError) when a turn starts with no selected model', async () => {
@@ -1507,6 +1926,32 @@ describe('createChatInstance — retry policy', () => {
     expect(regenerate).toHaveBeenCalledTimes(1)
   })
 
+  it('does not retry a newer turn when an older failed response finishes saving', async () => {
+    const { resolveSave, saveMessages } = createDeferredSaveMessages()
+    const { finishWithError, getTurnBudget, instance, regenerate, trackEvent } = createRetryHarness(saveMessages)
+
+    await instance.sendMessage({ text: 'first turn' })
+    const firstFinish = finishWithError(new Error('Connection failed'), {
+      id: 'partial-assistant',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Partial response' }],
+    })
+
+    await instance.sendMessage({ text: 'second turn' })
+    const secondTurnBudget = getTurnBudget()
+    resolveSave(0)
+    await firstFinish
+
+    expect(getTurnBudget()).toBe(secondTurnBudget)
+    expect(useChatStore.getState().sessions.get(sessionId)!.retryCount).toBe(0)
+    expect(useChatStore.getState().sessions.get(sessionId)!.retriesExhausted).toBe(false)
+    await getClock().runAllAsync()
+    expect(regenerate).not.toHaveBeenCalled()
+    const summaries = trackEvent.mock.calls.filter(([event]) => event === 'chat_turn_completed')
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]![1]).toEqual(expect.objectContaining({ outcome: 'error' }))
+  })
+
   it('attributes a reply to the turn model when the session model changes mid-save', async () => {
     const { resolveSave, saveMessages } = createDeferredSaveMessages()
     const { finishSuccessfully, instance, trackEvent } = createRetryHarness(saveMessages)
@@ -1576,11 +2021,13 @@ describe('createChatInstance — retry policy', () => {
 /** Exercise routing, SDK transcript mutation and retry callbacks with only the agent response injected. */
 const createWebRetryChat = (webCalls: number, errorText = '503: temporarily unavailable', promote = false) => {
   const attempts: Array<NonNullable<AgentAdapterContext['webToolBudget']>> = []
+  const modelIds: string[] = []
   const adapter: AgentAdapter = {
     ...makeAdapter(builtInAgent),
     fetch: async (_init, context) => {
       const budget = context.webToolBudget!
       attempts.push(budget)
+      modelIds.push(context.selectedModel.id)
       if (attempts.length === 1) {
         if (promote) {
           budget.promote('research')
@@ -1603,6 +2050,8 @@ const createWebRetryChat = (webCalls: number, errorText = '503: temporarily unav
     },
   }
   const instance = createChatInstance(sessionId, [], async () => {}, httpClient, getProxyFetch, {
+    getAvailableModels: async () => useChatStore.getState().models,
+    getChatReasoningEffort: async () => undefined,
     getOrConnectAdapter: async () => adapter,
     trackEvent: () => {},
   })
@@ -1610,15 +2059,155 @@ const createWebRetryChat = (webCalls: number, errorText = '503: temporarily unav
     chatInstance: instance,
     chatThread: null,
     id: sessionId,
-    selectedModel: { id: 'm1', isConfidential: 0 } as never,
+    models: testModels,
+    selectedModel: testModels[0],
     triggerData: null,
   })
-  return { instance, attempts }
+  return { instance, attempts, modelIds }
 }
 
 describe('logical-turn web retry state through the SDK', () => {
   beforeEach(() => resetStore())
   afterEach(() => resetStore())
+
+  it.each([
+    ['manual', 'removed'],
+    ['manual', 'disabled'],
+    ['automatic', 'removed'],
+    ['automatic', 'disabled'],
+  ] as const)('blocks %s retries after the BYOK model is %s', async (retry, change) => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    const { instance, attempts } = createWebRetryChat(1)
+    try {
+      await instance.sendMessage({ text: 'Research a topic' })
+      useChatStore.getState().setModels(change === 'removed' ? [] : [{ ...testModels[0], enabled: 0 }])
+      // The placeholder deliberately retains its old key, but no request may use it.
+      expect(useChatStore.getState().sessions.get(sessionId)?.selectedModel.apiKey).toBe('secret')
+      if (retry === 'manual') {
+        await instance.regenerate()
+      } else {
+        await getClock().tickAsync(5000)
+      }
+      expect(attempts).toHaveLength(1)
+      expect(instance.error?.message).toContain('Configure and select an available model')
+    } finally {
+      await instance.stop()
+      consoleError.mockRestore()
+    }
+  })
+
+  it.each([false, true])(
+    'does not schedule retries when access disappears during the first attempt (alternative: %s)',
+    async (hasAlternative) => {
+      const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+      const readingModels = Promise.withResolvers<void>()
+      const availableModels = Promise.withResolvers<typeof testModels>()
+      const fetch = mock(async () => new Response('must not be used'))
+      const getAvailableModels = mock(async () => {
+        readingModels.resolve()
+        return availableModels.promise
+      })
+      const instance = createChatInstance(sessionId, [], async () => {}, httpClient, getProxyFetch, {
+        getAvailableModels,
+        getChatReasoningEffort: async () => undefined,
+        getOrConnectAdapter: async () => ({ ...makeAdapter(builtInAgent), fetch }),
+        trackEvent: () => {},
+      })
+      hydrateStore({
+        chatInstance: instance,
+        chatThread: null,
+        id: sessionId,
+        models: testModels,
+        selectedModel: testModels[0],
+        triggerData: null,
+      })
+      try {
+        const sending = instance.sendMessage({ text: 'Research a topic' })
+        await readingModels.promise
+        const changedModels = [
+          { ...testModels[0], enabled: 0 },
+          ...(hasAlternative ? [{ ...testModels[1], apiKey: 'other-key' }] : []),
+        ]
+        useChatStore.getState().setModels(changedModels)
+        availableModels.resolve(changedModels)
+        await sending
+        expect(instance.error?.message).toContain('Configure and select an available model')
+        await getClock().tickAsync(60_000)
+        expect(fetch).not.toHaveBeenCalled()
+        expect(getAvailableModels).toHaveBeenCalledTimes(1)
+        expect(useChatStore.getState().sessions.get(sessionId)).toMatchObject({ retryCount: 0, retriesExhausted: true })
+      } finally {
+        await instance.stop()
+        consoleError.mockRestore()
+      }
+    },
+  )
+
+  it.each([false, true])(
+    'does not retry or switch providers after model disable (alternative: %s)',
+    async (hasAlternative) => {
+      const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+      const { instance, attempts, modelIds } = createWebRetryChat(1)
+      try {
+        await instance.sendMessage({ text: 'Research a topic' })
+        const alternative = { ...testModels[1], apiKey: 'other-key' }
+        useChatStore.getState().setModels([{ ...testModels[0], enabled: 0 }, ...(hasAlternative ? [alternative] : [])])
+        if (hasAlternative) {
+          expect(useChatStore.getState().sessions.get(sessionId)?.selectedModel.id).toBe('m2')
+        }
+        await getClock().tickAsync(60_000)
+        expect(attempts).toHaveLength(1)
+        expect(modelIds).toEqual(['m1'])
+        expect(instance.messages.findLast((message) => message.role === 'user')?.metadata?.modelId).toBe('m1')
+        expect(instance.error?.message).toContain('Configure and select an available model')
+        expect(useChatStore.getState().sessions.get(sessionId)).toMatchObject({ retryCount: 1, retriesExhausted: true })
+
+        // A new user action is allowed to select and send through another model.
+        useChatStore.getState().setModels([alternative])
+        await instance.sendMessage({ text: 'Try a new question with the available model' })
+        expect(modelIds).toEqual(['m1', 'm2'])
+      } finally {
+        await instance.stop()
+        consoleError.mockRestore()
+      }
+    },
+  )
+
+  it('stops automatic retries when the model no longer matches the conversation privacy', async () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    const { instance, modelIds } = createWebRetryChat(1)
+    try {
+      useChatStore
+        .getState()
+        .updateSession(sessionId, { chatThread: createMockChatThread({ id: sessionId, isEncrypted: 0 }) })
+      await instance.sendMessage({ text: 'Research a topic' })
+      useChatStore.getState().setModels([{ ...testModels[0], isConfidential: 1 }])
+      await getClock().tickAsync(60_000)
+      expect(modelIds).toEqual(['m1'])
+      expect(instance.error?.message).toContain('no longer matches')
+      expect(useChatStore.getState().sessions.get(sessionId)).toMatchObject({ retryCount: 1, retriesExhausted: true })
+    } finally {
+      await instance.stop()
+      consoleError.mockRestore()
+    }
+  })
+
+  it('uses a newly selected model on an explicit manual retry', async () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    const { instance, modelIds } = createWebRetryChat(1)
+    try {
+      await instance.sendMessage({ text: 'Research a topic' })
+      useChatStore.getState().setModels([{ ...testModels[1], apiKey: 'other-key' }])
+      await instance.regenerate()
+      expect(modelIds).toEqual(['m1', 'm2'])
+      expect(instance.messages.findLast((message) => message.role === 'user')?.metadata?.modelId).toBe('m2')
+      await getClock().tickAsync(60_000)
+      expect(modelIds).toEqual(['m1', 'm2'])
+    } finally {
+      await instance.stop()
+      consoleError.mockRestore()
+    }
+  })
 
   it('keeps an exhausted partial response before automatic regeneration can truncate it; manual Retry starts fresh', async () => {
     const consoleError = spyOn(console, 'error').mockImplementation(() => {})

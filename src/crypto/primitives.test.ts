@@ -19,6 +19,7 @@ import {
   importMlKemPublicKey,
   deriveMlKemAtRestKey,
   wrapAK,
+  wrapUnversionedAK,
   rewrapAK,
   unwrapAK,
   wrapDEK,
@@ -178,18 +179,23 @@ describe('mintDEK', () => {
   })
 })
 
-describe('wrapAK / unwrapAK (v2 AEAD envelope, THU-890)', () => {
-  it('round-trips AK + sealed pointer through wrap and unwrap', async () => {
+describe('wrapAK / unwrapAK (AEAD envelope)', () => {
+  it('round-trips AK + sealed key_version + sealed pointer through wrap and unwrap', async () => {
     const ecdh = await generateKeyPair()
     const mlkem = generateMlKemKeyPair()
     const ak = await generateAK(true)
 
-    const { ak: unwrapped, primaryKeyId } = await unwrapAK(
-      await wrapAK(ak, ecdh.publicKey, mlkem.publicKey, '1'),
+    const {
+      ak: unwrapped,
+      primaryKeyId,
+      keyVersion,
+    } = await unwrapAK(
+      await wrapAK(ak, ecdh.publicKey, mlkem.publicKey, '1', 0x01020304),
       ecdh.privateKey,
       mlkem.secretKey,
     )
     expect(primaryKeyId).toBe('1')
+    expect(keyVersion).toBe(0x01020304)
     expect(unwrapped.algorithm.name).toBe('AES-GCM')
     expect(unwrapped.extractable).toBe(false)
     expect([...unwrapped.usages].sort()).toEqual(['unwrapKey', 'wrapKey'])
@@ -204,7 +210,7 @@ describe('wrapAK / unwrapAK (v2 AEAD envelope, THU-890)', () => {
     const encrypted = await encrypt('wrap test', dek)
     const wrappedDek = await wrapDEK(dek, ak, '0')
     const { ak: unwrappedAk } = await unwrapAK(
-      await wrapAK(ak, ecdh.publicKey, mlkem.publicKey, '0'),
+      await wrapAK(ak, ecdh.publicKey, mlkem.publicKey, '0', 1),
       ecdh.privateKey,
       mlkem.secretKey,
     )
@@ -215,16 +221,57 @@ describe('wrapAK / unwrapAK (v2 AEAD envelope, THU-890)', () => {
     const ecdh = await generateKeyPair()
     const mlkem = generateMlKemKeyPair()
     const ak = await generateAK(true)
-    expect(await wrapAK(ak, ecdh.publicKey, mlkem.publicKey, '0')).not.toBe(
-      await wrapAK(ak, ecdh.publicKey, mlkem.publicKey, '0'),
+    expect(await wrapAK(ak, ecdh.publicKey, mlkem.publicKey, '0', 1)).not.toBe(
+      await wrapAK(ak, ecdh.publicKey, mlkem.publicKey, '0', 1),
     )
   })
 
-  it('emits the v2 envelope version byte', async () => {
+  it('emits the 0x03 envelope version byte', async () => {
     const ecdh = await generateKeyPair()
     const mlkem = generateMlKemKeyPair()
-    const wrapped = await wrapAK(await generateAK(true), ecdh.publicKey, mlkem.publicKey, '0')
+    const wrapped = await wrapAK(await generateAK(true), ecdh.publicKey, mlkem.publicKey, '0', 1)
+    expect(base64ToUint8Array(wrapped)[0]).toBe(0x03)
+  })
+
+  it('refuses to seal a key_version outside 1..2^32-1', async () => {
+    const ecdh = await generateKeyPair()
+    const mlkem = generateMlKemKeyPair()
+    const ak = await generateAK(true)
+    for (const keyVersion of [0, -1, 1.5, 2 ** 32]) {
+      await expect(wrapAK(ak, ecdh.publicKey, mlkem.publicKey, '0', keyVersion)).rejects.toThrow('Invalid key_version')
+    }
+  })
+
+  it('still opens a 0x02 envelope, which seals no key_version', async () => {
+    const ecdh = await generateKeyPair()
+    const mlkem = generateMlKemKeyPair()
+    const wrapped = await wrapUnversionedAK(await generateAK(true), ecdh.publicKey, mlkem.publicKey, '2')
     expect(base64ToUint8Array(wrapped)[0]).toBe(0x02)
+
+    const { primaryKeyId, keyVersion } = await unwrapAK(wrapped, ecdh.privateKey, mlkem.secretKey)
+    expect(primaryKeyId).toBe('2')
+    expect(keyVersion).toBeNull()
+  })
+
+  it('rejects a version byte swapped between 0x02 and 0x03, since the byte is the AAD', async () => {
+    const ecdh = await generateKeyPair()
+    const mlkem = generateMlKemKeyPair()
+    const versioned = base64ToUint8Array(await wrapAK(await generateAK(true), ecdh.publicKey, mlkem.publicKey, '0', 7))
+    versioned[0] = 0x02
+    await expect(unwrapAK(uint8ArrayToBase64(versioned), ecdh.privateKey, mlkem.secretKey)).rejects.toThrow(
+      'Failed to unwrap account key',
+    )
+  })
+
+  it('rejects a tampered key_version, which the seal also covers', async () => {
+    const ecdh = await generateKeyPair()
+    const mlkem = generateMlKemKeyPair()
+    const envelope = base64ToUint8Array(await wrapAK(await generateAK(true), ecdh.publicKey, mlkem.publicKey, '0', 5))
+    // Header (1 + 65 + 1088 + 12 = 1166 bytes), then the 32-byte AK, then the epoch's last byte.
+    envelope[1166 + 32 + 3] ^= 0x01
+    await expect(unwrapAK(uint8ArrayToBase64(envelope), ecdh.privateKey, mlkem.secretKey)).rejects.toThrow(
+      'Failed to unwrap account key',
+    )
   })
 
   it('rejects a tampered pointer — the seal covers (AK, pointer) jointly', async () => {
@@ -233,7 +280,7 @@ describe('wrapAK / unwrapAK (v2 AEAD envelope, THU-890)', () => {
     // tag — this is the property AES-KW could not provide.
     const ecdh = await generateKeyPair()
     const mlkem = generateMlKemKeyPair()
-    const wrapped = await wrapAK(await generateAK(true), ecdh.publicKey, mlkem.publicKey, '1')
+    const wrapped = await wrapAK(await generateAK(true), ecdh.publicKey, mlkem.publicKey, '1', 1)
 
     const envelope = base64ToUint8Array(wrapped)
     // The sealed payload's final byte is the pointer's last character.
@@ -252,6 +299,28 @@ describe('wrapAK / unwrapAK (v2 AEAD envelope, THU-890)', () => {
 })
 
 describe('rewrapAK', () => {
+  it('keeps the layout and sealed fields of the envelope it rewraps', async () => {
+    const source = { ecdh: await generateKeyPair(), mlkem: generateMlKemKeyPair() }
+    const target = { ecdh: await generateKeyPair(), mlkem: generateMlKemKeyPair() }
+    const ak = await generateAK(true)
+    const rewrap = (wrapped: string) =>
+      rewrapAK(wrapped, source.ecdh.privateKey, source.mlkem.secretKey, target.ecdh.publicKey, target.mlkem.publicKey)
+
+    const versioned = await rewrap(await wrapAK(ak, source.ecdh.publicKey, source.mlkem.publicKey, '4', 9))
+    expect(base64ToUint8Array(versioned)[0]).toBe(0x03)
+    expect(await unwrapAK(versioned, target.ecdh.privateKey, target.mlkem.secretKey)).toMatchObject({
+      primaryKeyId: '4',
+      keyVersion: 9,
+    })
+
+    const unversioned = await rewrap(await wrapUnversionedAK(ak, source.ecdh.publicKey, source.mlkem.publicKey, '4'))
+    expect(base64ToUint8Array(unversioned)[0]).toBe(0x02)
+    expect(await unwrapAK(unversioned, target.ecdh.privateKey, target.mlkem.secretKey)).toMatchObject({
+      primaryKeyId: '4',
+      keyVersion: null,
+    })
+  })
+
   it('rewrapped AK unwraps a DEK wrapped with the original, and the pointer travels unchanged', async () => {
     const ecdh1 = await generateKeyPair()
     const mlkem1 = generateMlKemKeyPair()
@@ -262,7 +331,7 @@ describe('rewrapAK', () => {
 
     const encrypted = await encrypt('rewrap test', dek)
     const wrappedDek = await wrapDEK(dek, ak, '0')
-    const wrappedAk = await wrapAK(ak, ecdh1.publicKey, mlkem1.publicKey, '3')
+    const wrappedAk = await wrapAK(ak, ecdh1.publicKey, mlkem1.publicKey, '3', 1)
     const rewrapped = await rewrapAK(wrappedAk, ecdh1.privateKey, mlkem1.secretKey, ecdh2.publicKey, mlkem2.publicKey)
     const { ak: unwrappedAk, primaryKeyId } = await unwrapAK(rewrapped, ecdh2.privateKey, mlkem2.secretKey)
     expect(primaryKeyId).toBe('3')

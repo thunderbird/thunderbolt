@@ -5,6 +5,10 @@
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { localOnlyTables, syncedTables } from '@/db/powersync/schema'
 import type { SQLiteTable } from 'drizzle-orm/sqlite-core'
+import { and, eq, getTableColumns } from 'drizzle-orm'
+import { providerConnectionsTable, providerConnectionSecretsTable } from '@/db/tables'
+import { providerCredentialBound } from '@/providers/credentials'
+import type { ProviderCredentials } from '@/providers/types'
 
 export const exportFormat = 'thunderbolt-export'
 export const exportSchemaVersion = 1
@@ -95,7 +99,26 @@ export const exportUserData = async (
 ): Promise<UserDataExport> => {
   const entries = Object.entries(includedTables) as Array<[IncludedTableName, SQLiteTable]>
   const results = await Promise.all(
-    entries.map(async ([name, table]) => [name, await db.select().from(table)] as const),
+    entries.map(async ([name, table]) => {
+      if (name === 'provider_connection_secrets') {
+        const rows = await db
+          .select(getTableColumns(providerConnectionSecretsTable))
+          .from(providerConnectionSecretsTable)
+          .innerJoin(providerConnectionsTable, eq(providerConnectionSecretsTable.id, providerConnectionsTable.id))
+          .where(and(eq(providerConnectionsTable.authMethod, 'api_key'), providerCredentialBound))
+        // Backups retain user-entered keys. OAuth grants and refresh tokens require a new sign-in.
+        return [
+          name,
+          rows.map((row) => ({
+            ...row,
+            credentials: JSON.stringify({
+              apiKey: (JSON.parse(row.credentials ?? '{}') as ProviderCredentials).apiKey ?? '',
+            }),
+          })),
+        ] as const
+      }
+      return [name, await db.select().from(table)] as const
+    }),
   )
 
   return {

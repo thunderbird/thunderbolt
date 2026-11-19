@@ -232,10 +232,10 @@ jobs:
       - name: Run native Linux smoke
         env:
           VITE_AUTH_MODE: thunderbolt
-          VITE_SKIP_ONBOARDING: 'true'
           VITE_AUTH_ENABLE_ANONYMOUS: 'false'
           VITE_BYPASS_WAITLIST: 'false'
           VITE_THUNDERBOLT_CLOUD_URL: http://localhost:8000/v1
+          VITE_THUNDERBOLT_CLOUD_SERVICE_URL: http://localhost:8000/v1
         run: |
           ./e2e/native-smoke/services.sh > "$RUNNER_TEMP/native-services.log" 2>&1 &
           services_pid=$!
@@ -305,10 +305,10 @@ jobs:
         id: smoke
         env:
           VITE_AUTH_MODE: thunderbolt
-          VITE_SKIP_ONBOARDING: 'true'
           VITE_AUTH_ENABLE_ANONYMOUS: 'false'
           VITE_BYPASS_WAITLIST: 'false'
           VITE_THUNDERBOLT_CLOUD_URL: http://localhost:8000/v1
+          VITE_THUNDERBOLT_CLOUD_SERVICE_URL: http://localhost:8000/v1
         run: |
           ./e2e/native-smoke/services.sh > "$RUNNER_TEMP/native-services.log" 2>&1 &
           services_pid=$!

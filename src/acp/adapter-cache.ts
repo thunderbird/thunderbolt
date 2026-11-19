@@ -22,9 +22,21 @@ type AdapterCacheEntry = {
 
 const cache = new Map<string, AdapterCacheEntry>()
 
-/** Preload the agent connection pipeline before the user's first send. */
-export const preloadAgentConnection = (): void => {
-  void import('./connect')
+/** Warm the selected adapter alongside its dispatcher. Failed preloads are retried by the awaited connection. */
+export const preloadAgentConnection = (agentType: Agent['type']): void => {
+  void import('./connect').catch(() => {})
+  switch (agentType) {
+    case 'built-in':
+      void import('./built-in-adapter').catch(() => {})
+      return
+    case 'managed-http':
+      void import('./managed-http-adapter').catch(() => {})
+      return
+    case 'remote-acp':
+    case 'managed-acp':
+      void import('./acp-adapter').catch(() => {})
+      return
+  }
 }
 
 /** DI seams for connection and reconnect scheduling tests. */
@@ -39,6 +51,8 @@ const lazilyConnectToAgent = async (
   context: ConnectToAgentContext,
   deps: ConnectToAgentDeps,
 ): Promise<AgentAdapter> => {
+  // Warm-up and attachment-only sends can reach here before any typed input.
+  preloadAgentConnection(agent.type)
   const { connectToAgent } = await import('./connect')
   return connectToAgent(agent, context, deps)
 }

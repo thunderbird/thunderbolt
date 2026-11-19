@@ -12,17 +12,33 @@
  */
 
 import { afterAll, beforeAll, describe, expect, spyOn, test } from 'bun:test'
-import { realpath } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { AgentSideConnection, ClientSideConnection, PROTOCOL_VERSION, ndJsonStream } from '@agentclientprotocol/sdk'
 import type { Client, RequestPermissionRequest, SessionNotification, Stream } from '@agentclientprotocol/sdk'
-import type { AgentHarnessEvent, Session as PiSession, ToolCallEvent, ToolCallResult } from '@earendil-works/pi-agent-core'
+import type {
+  AgentHarnessEvent,
+  Session as PiSession,
+  ToolCallEvent,
+  ToolCallResult,
+} from '@earendil-works/pi-agent-core'
 import { buildWireSkillsMeta, skillsCapabilityMeta, type SkillDefinition } from '../../../shared/agent-core/skills.ts'
-import { createHarnessAgent } from './harness-agent.ts'
+import { createHarnessAgent, resolveTrustedWorkspace } from './harness-agent.ts'
 import type { BuildServeHarness } from './harness-agent.ts'
+import { createSessionStore } from './session-store.ts'
 import type { SessionStore } from './session-store.ts'
+import type { ReasoningEffort } from '../../../shared/reasoning-effort.ts'
 import type { CommandSyntaxServeConfig } from '../agent/types.ts'
 import type { PreparedPiBinding, ProviderRuntime } from '../provider-runtime/types.ts'
-import { assistantMessage, controlledAgent, fakeHarness, fakeStore, preparedBinding, providerRuntime } from './test-fixtures.ts'
+import {
+  assistantMessage,
+  controlledAgent,
+  fakeHarness,
+  fakeStore,
+  preparedBinding,
+  providerRuntime,
+} from './test-fixtures.ts'
 
 const captureRejection = async (operation: Promise<unknown>): Promise<unknown> => {
   try {
@@ -79,7 +95,10 @@ const restoreSpies: (() => void)[] = []
 beforeAll(() => {
   const consoleError = spyOn(console, 'error').mockImplementation(() => {})
   const stderrWrite = spyOn(process.stderr, 'write').mockImplementation(() => true)
-  restoreSpies.push(() => consoleError.mockRestore(), () => stderrWrite.mockRestore())
+  restoreSpies.push(
+    () => consoleError.mockRestore(),
+    () => stderrWrite.mockRestore(),
+  )
 })
 afterAll(() => {
   for (const restore of restoreSpies) restore()
@@ -198,6 +217,80 @@ describe('createHarnessAgent (ACP server)', () => {
     expect(prompt.stopReason).toBe('end_turn')
   })
 
+  test('session/resume never opens a session created in another workspace that shares its session directory', async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), 'thunderbolt-workspaces-')))
+    const victimDir = join(base, 'a', 'b')
+    const collidingDir = join(base, 'a\\b')
+    await mkdir(victimDir, { recursive: true })
+    await mkdir(collidingDir)
+    const store = createSessionStore(join(base, 'sessions'))
+    const sessionId = '66666666-6666-4666-8666-666666666666'
+    const victim = await store.createSession(sessionId, victimDir)
+    await victim.appendMessage({ role: 'user', content: 'victim transcript', timestamp: 0 })
+    await victim.appendMessage(assistantMessage())
+
+    const transcripts: string[] = []
+    const builder: BuildServeHarness = async (_config, _binding, session) => {
+      transcripts.push(JSON.stringify((await session.buildContext()).messages))
+      return fakeHarness()
+    }
+    const resumeFrom = async (cwd: string): Promise<void> => {
+      const controlled = controlledAgent((connection) =>
+        createHarnessAgent(connection, { ...config, cwd }, store, providerRuntime(), builder),
+      )
+      try {
+        if (!controlled.agent.resumeSession) throw new Error('ACP agent did not advertise resume')
+        await controlled.agent.resumeSession({ sessionId, cwd, mcpServers: [] })
+      } finally {
+        controlled.close()
+      }
+    }
+
+    try {
+      await expect(resumeFrom(collidingDir)).rejects.toThrow()
+      expect(transcripts).toEqual([])
+
+      await resumeFrom(victimDir)
+      expect(transcripts).toHaveLength(1)
+      expect(transcripts[0]).toContain('victim transcript')
+    } finally {
+      await rm(base, { recursive: true, force: true })
+    }
+  })
+
+  test('workspace resolution follows symlinks but rejects a real path that names another directory', async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), 'thunderbolt-workspaces-')))
+    const workspace = join(base, 'workspace')
+    const other = join(base, 'other')
+    await mkdir(workspace)
+    await mkdir(other)
+    await symlink(workspace, join(base, 'link'))
+
+    try {
+      expect(await resolveTrustedWorkspace(join(base, 'link'))).toBe(workspace)
+      await expect(resolveTrustedWorkspace(other, async () => workspace)).rejects.toThrow(
+        `the real path of workspace '${other}' names a different directory`,
+      )
+    } finally {
+      await rm(base, { recursive: true, force: true })
+    }
+  })
+
+  test('an unresolvable launch directory fails session requests without crashing the server', async () => {
+    const cwd = join(tmpdir(), `thunderbolt-missing-${crypto.randomUUID()}`)
+    const controlled = controlledAgent((connection) =>
+      createHarnessAgent(connection, { ...config, cwd }, fakeStore(), providerRuntime(), streamingBuilder),
+    )
+    // Let resolution fail before any request awaits it.
+    await Bun.sleep(50)
+
+    try {
+      await expect(controlled.agent.newSession({ cwd, mcpServers: [] })).rejects.toThrow('ENOENT')
+    } finally {
+      controlled.close()
+    }
+  })
+
   test('session/resume rejects a path-traversal id before it reaches the store', async () => {
     const store = fakeStore()
     const { client } = connectPair(streamingBuilder, store)
@@ -257,6 +350,92 @@ describe('createHarnessAgent (ACP server)', () => {
     await disposed.promise
 
     expect(events).toEqual(['unsubscribe', 'dispose'])
+  })
+
+  test('serializes same-session resumes through teardown and retires every replacement', async () => {
+    const retiring = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const disposed: number[] = []
+    const aborted: number[] = []
+    let builds = 0
+    const builder: BuildServeHarness = async () => {
+      const id = builds++
+      const effort: ReasoningEffort = id === 0 ? 'low' : id === 1 ? 'medium' : 'high'
+      return fakeHarness({
+        reasoning: {
+          capabilities: () => ({ efforts: ['low', 'medium', 'high'] }),
+          current: () => effort,
+          set: async () => {},
+        },
+        abort: async () => {
+          aborted.push(id)
+        },
+        dispose: async () => {
+          if (id === 0) {
+            retiring.resolve()
+            await release.promise
+          }
+          disposed.push(id)
+        },
+      })
+    }
+    const controlled = controlledAgent((connection) =>
+      createHarnessAgent(connection, config, fakeStore(), providerRuntime(), builder),
+    )
+    const resume = controlled.agent.resumeSession!
+    const sessionId = '44444444-4444-4444-8444-444444444444'
+    const params = { sessionId, cwd: '/', mcpServers: [] }
+    expect((await resume(params)).configOptions?.[0].currentValue).toBe('low')
+    const first = resume(params)
+    await retiring.promise
+    const second = resume(params)
+    await Promise.resolve()
+    expect(builds).toBe(2)
+    await expect(controlled.agent.prompt({ sessionId, prompt: [] })).rejects.toThrow('is changing')
+    release.resolve()
+    const [firstResponse, secondResponse] = await Promise.all([first, second])
+    expect(firstResponse.configOptions?.[0].currentValue).toBe('medium')
+    expect(secondResponse.configOptions?.[0].currentValue).toBe('high')
+    expect(builds).toBe(3)
+    expect(disposed).toEqual([0, 1])
+    expect(aborted).toEqual([0, 1])
+    controlled.close()
+    await controlled.closed
+    for (let tick = 0; tick < 20; tick++) await Promise.resolve()
+    expect(disposed).toEqual([0, 1, 2])
+  })
+
+  test('a failed resume releases its lane for a queued retry', async () => {
+    const opened = Promise.withResolvers<void>()
+    const fail = Promise.withResolvers<void>()
+    const store = fakeStore()
+    const openSession = store.openSession
+    let attempts = 0
+    store.openSession = async (...args) => {
+      if (++attempts === 1) {
+        opened.resolve()
+        await fail.promise
+        throw new Error('history temporarily unreadable')
+      }
+      return openSession(...args)
+    }
+    const controlled = controlledAgent((connection) =>
+      createHarnessAgent(connection, config, store, providerRuntime(), async () => fakeHarness()),
+    )
+    const params = { sessionId: '55555555-5555-4555-8555-555555555555', cwd: '/', mcpServers: [] }
+    const first = controlled.agent.resumeSession!(params)
+    const failed = captureRejection(first)
+    await opened.promise
+    const retry = controlled.agent.resumeSession!(params)
+    fail.resolve()
+    expect(await failed).toEqual(new Error('history temporarily unreadable'))
+    await retry
+    expect(attempts).toBe(2)
+    expect(await controlled.agent.prompt({ sessionId: params.sessionId, prompt: [] })).toEqual({
+      stopReason: 'end_turn',
+    })
+    controlled.close()
+    await controlled.closed
   })
 
   test('disposes a candidate when event subscription fails before publication', async () => {
@@ -665,5 +844,99 @@ describe('createHarnessAgent (ACP server)', () => {
     await client.cancel({ sessionId })
     const response = await pending
     expect(response.stopReason).toBe('cancelled')
+  })
+})
+
+describe('ACP effort options', () => {
+  test('finishes reasoning persistence before reopening a resumed history', async () => {
+    const started = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const durable: { effort: ReasoningEffort } = { effort: 'low' }
+    const observed: ReasoningEffort[] = []
+    const store = fakeStore()
+    const openSession = store.openSession
+    store.openSession = (...args) => {
+      observed.push(durable.effort)
+      return openSession(...args)
+    }
+    const build: BuildServeHarness = async () => {
+      const state: { effort: ReasoningEffort } = { effort: durable.effort }
+      return fakeHarness({
+        reasoning: {
+          capabilities: () => ({ efforts: ['low', 'high'] }),
+          current: () => state.effort,
+          set: async (effort) => {
+            started.resolve()
+            await release.promise
+            state.effort = effort
+            durable.effort = effort
+          },
+        },
+      })
+    }
+    const controlled = controlledAgent((connection) =>
+      createHarnessAgent(connection, config, store, providerRuntime(), build),
+    )
+    const { sessionId } = await controlled.agent.newSession({ cwd: '.', mcpServers: [] })
+    const changing = controlled.agent.setSessionConfigOption!({
+      sessionId,
+      configId: 'reasoning_effort',
+      value: 'high',
+    })
+    await started.promise
+    const resuming = controlled.agent.resumeSession!({ sessionId, cwd: '.', mcpServers: [] })
+    await Promise.resolve()
+    expect(observed).toEqual([])
+    await expect(controlled.agent.prompt({ sessionId, prompt: [] })).rejects.toThrow('is changing')
+    release.resolve()
+    expect((await changing).configOptions[0].currentValue).toBe('high')
+    expect((await resuming).configOptions?.[0].currentValue).toBe('high')
+    expect(observed).toEqual(['high'])
+    controlled.close()
+    await controlled.closed
+  })
+
+  test('advertises native choices, validates opaque IDs, reports updates and isolates sessions', async () => {
+    const build: BuildServeHarness = async () => {
+      const state: { effort: ReasoningEffort } = {
+        effort: 'low',
+      }
+      return fakeHarness({
+        reasoning: {
+          capabilities: () => ({ efforts: ['low', 'high'] }),
+          current: () => state.effort,
+          set: async (effort) => {
+            state.effort = effort
+          },
+        },
+      })
+    }
+    const pair = connectPair(build)
+    await pair.client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
+    const first = await pair.client.newSession({ cwd: '.', mcpServers: [] })
+    const second = await pair.client.newSession({ cwd: '.', mcpServers: [] })
+    expect(first.configOptions?.[0].currentValue).toBe('low')
+    await expect(
+      pair.client.setSessionConfigOption({ sessionId: first.sessionId, configId: 'reasoning_effort', value: 'none' }),
+    ).rejects.toThrow('Unsupported')
+    const changed = await pair.client.setSessionConfigOption({
+      sessionId: first.sessionId,
+      configId: 'reasoning_effort',
+      value: 'high',
+    })
+    expect(changed.configOptions[0].currentValue).toBe('high')
+    expect(second.configOptions?.[0].currentValue).toBe('low')
+    expect(
+      pair.updates.some(
+        (update) => update.sessionId === first.sessionId && update.update.sessionUpdate === 'config_option_update',
+      ),
+    ).toBe(true)
+    await expect(
+      pair.client.setSessionConfigOption({
+        sessionId: first.sessionId,
+        configId: 'reasoning_effort',
+        value: 'default',
+      }),
+    ).rejects.toThrow('Unsupported')
   })
 })

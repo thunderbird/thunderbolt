@@ -19,8 +19,8 @@ type PdfThumbnailProps = {
 /**
  * First-page PDF thumbnail rendered from a locally-stored attachment, sized via
  * the card's responsive `--thumb-scale` CSS variable. Default export so
- * {@link FileCard} can `React.lazy` it — that keeps react-pdf / pdfjs out of the
- * main chat bundle until an attachment card actually mounts. Returns null until
+ * the visibility gate can `React.lazy` it — that keeps react-pdf / pdfjs out of the
+ * main chat bundle until a PDF card approaches the viewport. Returns null until
  * the blob resolves; the card's placeholder shows underneath until then.
  */
 const PdfThumbnail = ({ localFileId }: PdfThumbnailProps) => {

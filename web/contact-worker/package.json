@@ -1,0 +1,22 @@
+{
+  "name": "thunderbolt-contact-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "check": "tsc --noEmit",
+    "test": "bun test ./src --timeout 5000",
+    "build": "wrangler deploy --dry-run --outdir dist"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261113.1",
+    "@types/bun": "^1.4.4",
+    "miniflare": "^4.20260730.0",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.161.0"
+  }
+}

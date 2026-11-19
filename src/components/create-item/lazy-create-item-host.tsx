@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { lazy, Suspense, useRef } from 'react'
+import { useLocation } from 'react-router'
 
 import { useCreateItem } from './context'
 
@@ -10,14 +11,16 @@ const CreateItemHost = lazy(() => import('./create-item-host').then((module) => 
 
 /**
  * Defers the create-item host (and the detail-panel chrome it imports) out of
- * the entry bundle: the chunk loads on the first quick-create request. Once
- * loaded it stays mounted so the closing panel can animate out.
+ * the entry bundle: a quick-create request or OAuth return loads the chunk. Once
+ * loaded it stays mounted on the current page so the closing panel can animate out.
  */
 export const LazyCreateItemHost = () => {
   const { request } = useCreateItem()
+  const location = useLocation()
   const hasOpenedRef = useRef(false)
 
-  if (request) {
+  const returningToAside = location.state?.connectionOAuthReturn && location.pathname !== '/settings/connections'
+  if (request || returningToAside) {
     hasOpenedRef.current = true
   }
   if (!hasOpenedRef.current) {
@@ -26,7 +29,7 @@ export const LazyCreateItemHost = () => {
 
   return (
     <Suspense fallback={null}>
-      <CreateItemHost />
+      <CreateItemHost key={location.pathname} />
     </Suspense>
   )
 }

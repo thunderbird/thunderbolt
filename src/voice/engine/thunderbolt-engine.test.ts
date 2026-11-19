@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import {
   appVersionUnsupported,
   isAppVersionBlocked,
@@ -15,7 +15,7 @@ import { createTinfoilTransport } from './thunderbolt-engine'
 const fakeClient = (respond: () => Response) => {
   let received: { input: RequestInfo | URL; init?: RequestInit } | null = null
   const client = {
-    getBaseURL: () => 'https://cloud.example.com/v1/tinfoil',
+    baseURL: 'https://cloud.example.com/v1/tinfoil',
     fetch: ((input: RequestInfo | URL, init?: RequestInit) => {
       received = { input, init }
       return Promise.resolve(respond())
@@ -107,23 +107,66 @@ describe('createTinfoilTransport', () => {
     expect(new Headers(received()?.init?.headers).has('Authorization')).toBe(false)
   })
 
-  it('retries once through a fresh client on a 422 key mismatch and gates the final response', async () => {
-    const statuses = [422, 426]
-    let evicted = 0
-    const fake = fakeClient(() => new Response(null, { status: statuses.shift()! }))
+  it('sends no bearer token or cookies in consumer mode without a token', async () => {
+    const { transport, received } = createTransport(() => new Response(), { token: null })
+    await transport('/audio/transcriptions', 'body')
+    expect(received()?.init?.credentials).toBeUndefined()
+    expect(new Headers(received()?.init?.headers).has('Authorization')).toBe(false)
+  })
+
+  it('returns an ordinary 422 response without replay or eviction', async () => {
+    const respond = mock(() => new Response(null, { status: 422 }))
+    const fake = fakeClient(respond)
+    const evictClient = mock(() => {})
     const transport = createTinfoilTransport({
       getClient: async () => fake.client,
-      evictClient: () => {
-        evicted++
-      },
+      evictClient,
       isSsoMode: () => false,
-      getAuthToken: () => 'session-token',
+      getAuthToken: () => 'token',
     })
 
-    const response = await transport('/audio/transcriptions', 'body')
+    expect((await transport('/audio/transcriptions', 'body')).status).toBe(422)
+    expect(respond).toHaveBeenCalledTimes(1)
+    expect(evictClient).not.toHaveBeenCalled()
+  })
 
-    expect(evicted).toBe(1)
-    expect(response.status).toBe(426)
-    expect(isAppVersionBlocked()).toBe(true)
+  it('evicts a failed attestation without replaying the request', async () => {
+    const failure = Object.assign(new Error('attestation rejected'), { category: 'attestation' })
+    const respond = mock(() => {
+      throw failure
+    })
+    const { client } = fakeClient(respond)
+    const getClient = mock(async () => client)
+    const evictClient = mock(() => {})
+    const transport = createTinfoilTransport({
+      getClient,
+      evictClient,
+      isSsoMode: () => false,
+      getAuthToken: () => 'token',
+    })
+
+    await expect(transport('/audio/transcriptions', 'body')).rejects.toBe(failure)
+    expect(respond).toHaveBeenCalledTimes(1)
+    expect(getClient).toHaveBeenCalledTimes(1)
+    expect(evictClient).toHaveBeenCalledTimes(1)
+    expect(evictClient).toHaveBeenCalledWith(client)
+  })
+
+  it('propagates unrelated errors without eviction or retry', async () => {
+    const error = new Error('network unavailable')
+    const client = fakeClient(() => {
+      throw error
+    }).client
+    const getClient = mock(async () => client)
+    const evictClient = mock(() => {})
+    const transport = createTinfoilTransport({
+      getClient,
+      evictClient,
+      isSsoMode: () => false,
+      getAuthToken: () => 'token',
+    })
+    await expect(transport('/audio/transcriptions', 'body')).rejects.toBe(error)
+    expect(getClient).toHaveBeenCalledTimes(1)
+    expect(evictClient).not.toHaveBeenCalled()
   })
 })

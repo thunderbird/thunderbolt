@@ -26,6 +26,7 @@ import {
 afterEach(cleanup)
 
 const reducerState: ShareDebugTranscriptState = {
+  payload: null,
   consentAccepted: true,
   dialogOpen: true,
   errorMessage: 'Stale error',
@@ -51,7 +52,7 @@ describe('shareDebugTranscriptReducer', () => {
     },
     {
       name: 'opening clears stale errors',
-      event: { type: 'DIALOG_OPENED' },
+      event: { type: 'DIALOG_OPENED', payload: null },
       expected: { dialogOpen: true, errorMessage: null, successToastOpen: false },
     },
     {
@@ -140,6 +141,7 @@ describe('useShareDebugTranscriptState errors', () => {
     })
 
     try {
+      act(() => result.current.action.onShare())
       act(() => result.current.dialog.onConsentAcceptedChange(true))
       await flushSubmission(result.current.dialog.onSubmit)
       expect(result.current.dialog.errorMessage).toBe('Debug transcript sharing is turned off on this server.')
@@ -159,6 +161,7 @@ describe('useShareDebugTranscriptState errors', () => {
     })
 
     try {
+      act(() => result.current.action.onShare())
       act(() => result.current.dialog.onConsentAcceptedChange(true))
       await flushSubmission(result.current.dialog.onSubmit)
       expect(result.current.dialog.errorMessage).toBe(
@@ -185,6 +188,7 @@ describe('useShareDebugTranscriptState errors', () => {
     })
 
     try {
+      act(() => result.current.action.onShare())
       act(() => result.current.action.onShare())
       act(() => result.current.dialog.onConsentAcceptedChange(true))
       act(() => result.current.dialog.onSubmit())
@@ -218,6 +222,7 @@ describe('useShareDebugTranscriptState errors', () => {
     })
 
     try {
+      act(() => result.current.action.onShare())
       act(() => result.current.dialog.onConsentAcceptedChange(true))
       act(() => result.current.dialog.onSubmit())
       await act(flushMicrotasks)
@@ -236,4 +241,103 @@ describe('useShareDebugTranscriptState errors', () => {
       errorLog.mockRestore()
     }
   })
+})
+
+describe('reviewed transcript', () => {
+  it('sends exactly the sanitized preview even if messages change, and clears it on cancel', async () => {
+    const requests: string[] = []
+    const { httpClient } = createSpyHttpClient(async (request) => {
+      requests.push(await request.text())
+      return jsonResponse({ id: 'transcript-1' }, 201)
+    })
+    const chatInstance = createChat()
+    const secret = crypto.randomUUID()
+    chatInstance.messages = [
+      { id: 'm1', role: 'user', parts: [{ type: 'text', text: `Original context client_secret=${secret}` }] },
+    ]
+    const { result } = renderHook(() => useShareDebugTranscriptState({ chatInstance, threadId: 'thread-1' }), {
+      wrapper: createHookWrapper(httpClient),
+    })
+    act(() => result.current.action.onShare())
+    act(() => result.current.dialog.onUserNoteChange(`  Note aws_secret_access_key=${secret}  `))
+    const preview = result.current.dialog.preview
+    expect(typeof preview).toBe('string')
+    expect(preview?.includes(secret)).toBe(false)
+    expect(preview).toContain('Original context')
+    await flushSubmission(result.current.dialog.onSubmit)
+    expect(requests).toHaveLength(0)
+    chatInstance.messages = [{ id: 'm2', role: 'user', parts: [{ type: 'text', text: 'Later content' }] }]
+    act(() => result.current.dialog.onConsentAcceptedChange(true))
+    await flushSubmission(result.current.dialog.onSubmit)
+    expect(requests).toHaveLength(1)
+    expect(JSON.parse(requests[0]!)).toEqual(JSON.parse(preview!))
+    expect(requests[0]?.includes('Later content')).toBe(false)
+    expect(result.current.dialog.preview).toBeNull()
+    act(() => result.current.action.onShare())
+    expect(result.current.dialog.preview).toContain('Later content')
+    act(() => result.current.dialog.onCancel())
+    expect(result.current.dialog.preview).toBeNull()
+    expect(result.current.dialog.consentAccepted).toBe(false)
+    expect(requests).toHaveLength(1)
+  })
+})
+
+it('retains the reviewed payload and note for a retry after an upload failure', async () => {
+  const errorLog = spyOn(console, 'error').mockImplementation(() => {})
+  const requests: string[] = []
+  const { httpClient } = createSpyHttpClient(async (request) => {
+    requests.push(await request.text())
+    return requests.length === 1
+      ? jsonResponse({ code: 'DEBUG_TRANSCRIPT_UPSTREAM_FAILED' }, 502)
+      : jsonResponse({ id: 'transcript-1' }, 201)
+  })
+  const chatInstance = createChat()
+  const { result } = renderHook(() => useShareDebugTranscriptState({ chatInstance, threadId: 'thread-1' }), {
+    wrapper: createHookWrapper(httpClient),
+  })
+  try {
+    act(() => result.current.action.onShare())
+    act(() => result.current.dialog.onUserNoteChange('Ordinary retry context'))
+    act(() => result.current.dialog.onConsentAcceptedChange(true))
+    const preview = result.current.dialog.preview
+    await flushSubmission(result.current.dialog.onSubmit)
+    expect(result.current.dialog.open).toBe(true)
+    expect(result.current.dialog.preview).toBe(preview)
+    expect(result.current.dialog.userNote).toBe('Ordinary retry context')
+    await flushSubmission(result.current.dialog.onSubmit)
+    expect(requests).toHaveLength(2)
+    expect(requests[1]).toBe(requests[0])
+    expect(result.current.dialog.open).toBe(false)
+  } finally {
+    errorLog.mockRestore()
+  }
+})
+
+it('submits the preview unchanged when the note cap cuts an escaped opening quote', async () => {
+  const requests: string[] = []
+  const { httpClient } = createSpyHttpClient(async (request) => {
+    requests.push(await request.text())
+    return jsonResponse({ id: 'capped-quote' }, 201)
+  })
+  const chatInstance = createChat()
+  const { result } = renderHook(() => useShareDebugTranscriptState({ chatInstance, threadId: 'thread-1' }), {
+    wrapper: createHookWrapper(httpClient),
+  })
+  const note =
+    'client_secret=x ' +
+    'p'.repeat(1959) +
+    ' client_secret=' +
+    String.fromCharCode(92, 34) +
+    'x' +
+    String.fromCharCode(92, 34) +
+    ' '
+  expect(note.length).toBe(1996)
+  act(() => result.current.action.onShare())
+  act(() => result.current.dialog.onUserNoteChange(note))
+  const preview = result.current.dialog.preview!
+  act(() => result.current.dialog.onConsentAcceptedChange(true))
+  await flushSubmission(result.current.dialog.onSubmit)
+  expect(requests).toHaveLength(1)
+  expect(requests[0] === JSON.stringify(JSON.parse(preview))).toBe(true)
+  expect(requests[0]?.includes('=x')).toBe(false)
 })

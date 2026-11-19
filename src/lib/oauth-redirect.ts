@@ -4,6 +4,8 @@
 
 import { isMobile, isTauri } from '@/lib/platform'
 
+export const mobileOAuthRedirectUri = 'https://app.thunderbolt.io/oauth/callback'
+
 /**
  * Determines the correct OAuth redirect URI based on the platform
  *
@@ -20,7 +22,7 @@ export const getOAuthRedirectUri = (): string => {
 
   if (isMobile()) {
     // Mobile: Use App Link / Universal Link (verified HTTPS domain)
-    return 'https://app.thunderbolt.io/oauth/callback'
+    return mobileOAuthRedirectUri
   }
 
   return window.location.origin + '/oauth-callback.html'

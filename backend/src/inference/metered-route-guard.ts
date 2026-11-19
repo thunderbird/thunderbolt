@@ -40,8 +40,8 @@ export const createMeteredRouteGuard = ({
     .guard({ auth: true })
     // Destructure, never take the whole context: Elysia would infer the hook reads `body` and parse it early.
     .onBeforeHandle(({ request }) => rejectPersonalAccessToken({ request }, allowPersonalAccessTokens))
-    .onBeforeHandle(({ request, session, user }) =>
-      rejectUnregisteredCliDevice(database, cliDeviceRegistrationEnabled, { request, session, user }),
+    .onBeforeHandle(({ session, user }) =>
+      rejectUnregisteredCliDevice(database, cliDeviceRegistrationEnabled, { session, user }),
     )
   // A statement, not a chained `.use()`: `rateLimit` is `AnyElysia`, and chaining it would type every guarded
   // handler's context as `any`.

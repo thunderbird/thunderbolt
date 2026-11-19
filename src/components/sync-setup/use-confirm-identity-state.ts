@@ -8,6 +8,7 @@ import { otpLength } from '@/lib/constants'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { signInWithOtp } from '@/lib/sign-in-with-otp'
 import { msg } from '@lingui/core/macro'
+import { useAsyncAttempt } from '@/hooks/use-async-attempt'
 import { useReducer } from 'react'
 
 const sendFailed = msg`Failed to send verification code. Please check your connection.`
@@ -72,40 +73,64 @@ export const useConfirmIdentityState = ({ onConfirmed }: { onConfirmed: () => vo
   const email = session?.user.email ?? ''
   const [state, dispatch] = useReducer(confirmIdentityReducer, initialConfirmIdentityState)
 
-  const requestCode = async (): Promise<boolean> => {
+  const operation = useAsyncAttempt()
+
+  const requestCode = async (resend = false): Promise<boolean> => {
+    const attempt = operation.begin()
+    if (!attempt) {
+      return false
+    }
+    if (!resend) {
+      dispatch({ type: 'CODE_REQUESTED' })
+    }
     try {
       const { challengeToken } = await httpClient
         .post('waitlist/join', { json: { email } })
         .json<{ challengeToken?: string }>()
+      if (!attempt.isCurrent()) {
+        return false
+      }
       dispatch({ type: 'CODE_SENT', payload: challengeToken ?? '' })
       return true
     } catch (error) {
+      if (!attempt.isCurrent()) {
+        return false
+      }
       console.error('Failed to send the confirmation code:', error)
       dispatch({ type: 'CODE_FAILED', payload: i18n._(sendFailed) })
       return false
+    } finally {
+      attempt.finish()
     }
-  }
-
-  const sendCode = async () => {
-    dispatch({ type: 'CODE_REQUESTED' })
-    await requestCode()
   }
 
   const verify = async (otp: string) => {
     if (otp.length !== otpLength) {
       return
     }
+    const attempt = operation.begin()
+    if (!attempt) {
+      return
+    }
     dispatch({ type: 'VERIFY_STARTED' })
     try {
       const result = await signInWithOtp(authClient, { email, otp, challengeToken: state.challengeToken })
+      if (!attempt.isCurrent()) {
+        return
+      }
       if (result.error) {
         dispatch({ type: 'VERIFY_FAILED', payload: i18n._(getOtpErrorMessage(result.error, 'code')) })
         return
       }
       onConfirmed()
     } catch (error) {
+      if (!attempt.isCurrent()) {
+        return
+      }
       console.error('Confirming identity failed:', error)
       dispatch({ type: 'VERIFY_FAILED', payload: i18n._(verifyFailed) })
+    } finally {
+      attempt.finish()
     }
   }
 
@@ -113,11 +138,14 @@ export const useConfirmIdentityState = ({ onConfirmed }: { onConfirmed: () => vo
     email,
     state,
     actions: {
-      sendCode,
-      resend: requestCode,
+      sendCode: () => requestCode(),
+      resend: () => requestCode(true),
       setOtp: (otp: string) => dispatch({ type: 'OTP_CHANGED', payload: otp }),
       verify,
-      cancel: () => dispatch({ type: 'CANCELLED' }),
+      cancel: () => {
+        operation.cancel()
+        dispatch({ type: 'CANCELLED' })
+      },
     },
   }
 }

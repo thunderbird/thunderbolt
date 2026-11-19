@@ -3,14 +3,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createAuth } from '@/auth/auth'
+import { createApp } from '@/index'
 import { clearSettingsCache, getSettings } from '@/config/settings'
 import { session as sessionTable, user as userTable } from '@/db/auth-schema'
 import { inferencePrices, inferenceUsage } from '@/db/inference-usage-schema'
 import { createInferenceRoutes } from '@/inference/routes'
-import { createInferenceUsageReceiptRoutes } from '@/inference/usage-receipt-routes'
+import { signTestToken } from '@/test-utils/auth-token'
 import { getSharedIsolatedTestDb } from '@/test-utils/db'
+import { realFetch } from '@/test-utils/real-fetch'
 import { createTinfoilRoutes } from '@/tinfoil/routes'
-import { inferenceModelHeader, inferenceUsageReceiptHeader, inferenceUsageReceiptPath } from '@shared/inference-usage'
+import { inferenceModelHeader } from '@shared/inference-usage'
 import { expect, it } from 'bun:test'
 import { asc, eq, inArray } from 'drizzle-orm'
 import { Elysia } from 'elysia'
@@ -37,11 +39,25 @@ type ProviderCall = Readonly<{
 // Tinfoil prices: https://tinfoil.sh/pricing
 // Canonical Tinfoil catalog: https://api.tinfoil.sh/api/config/models?paid=true
 const officialPriceOracle = {
-  'tinfoil/deepseek-v4-flash': { inputNanoUsdPerToken: 300n, outputNanoUsdPerToken: 700n },
-  'anthropic/claude-opus-5': { inputNanoUsdPerToken: 5_000n, outputNanoUsdPerToken: 25_000n },
-  'tinfoil/glm-5-2': { inputNanoUsdPerToken: 1_500n, outputNanoUsdPerToken: 5_250n },
-  'fireworks/glm-5p3': { inputNanoUsdPerToken: 1_400n, outputNanoUsdPerToken: 4_400n },
-  'fireworks/minimax-m3': { inputNanoUsdPerToken: 300n, outputNanoUsdPerToken: 1_200n },
+  'tinfoil/deepseek-v4-flash': {
+    inputNanoUsdPerToken: 300n,
+    outputNanoUsdPerToken: 700n,
+    cacheReadNanoUsdPerToken: null,
+  },
+  'anthropic/claude-opus-5': {
+    inputNanoUsdPerToken: 5_000n,
+    outputNanoUsdPerToken: 25_000n,
+    cacheReadNanoUsdPerToken: null,
+  },
+  'tinfoil/glm-5-2': { inputNanoUsdPerToken: 1_500n, outputNanoUsdPerToken: 5_250n, cacheReadNanoUsdPerToken: null },
+  'tinfoil/glm-5-3': { inputNanoUsdPerToken: 1_800n, outputNanoUsdPerToken: 5_750n, cacheReadNanoUsdPerToken: 450n },
+  'tinfoil/deepseek-v4-1-flash': {
+    inputNanoUsdPerToken: 600n,
+    outputNanoUsdPerToken: 1_450n,
+    cacheReadNanoUsdPerToken: 10n,
+  },
+  'fireworks/glm-5p3': { inputNanoUsdPerToken: 1_400n, outputNanoUsdPerToken: 4_400n, cacheReadNanoUsdPerToken: 260n },
+  'fireworks/minimax-m3': { inputNanoUsdPerToken: 300n, outputNanoUsdPerToken: 1_200n, cacheReadNanoUsdPerToken: 60n },
 } as const
 
 const deepseekCounts = { promptTokens: 10_000, completionTokens: 10_000, totalTokens: 20_000 } as const
@@ -179,9 +195,14 @@ it('preserves one anonymous web-session quota across direct and confidential tra
             })
           }
           if (isOpaqueRequest) {
+            const counts = request.headers.get('X-Tinfoil-Model') === 'deepseek-v4-flash' ? deepseekCounts : glmCounts
             return new Response(glmResponseBytes.slice().buffer, {
               status: 200,
-              headers: { 'Content-Type': 'application/octet-stream', 'Ehbp-Response-Nonce': 'fixture-nonce' },
+              headers: {
+                'Content-Type': 'application/octet-stream',
+                'Ehbp-Response-Nonce': 'fixture-nonce',
+                'X-Tinfoil-Usage-Metrics': `prompt=${counts.promptTokens},completion=${counts.completionTokens},total=${counts.totalTokens}`,
+              },
             })
           }
           throw new Error(`Unexpected managed provider request: ${request.method} ${request.url}`)
@@ -204,13 +225,6 @@ it('preserves one anonymous web-session quota across direct and confidential tra
           }),
         )
         .use(
-          createInferenceUsageReceiptRoutes({
-            auth,
-            database,
-            secret: settings.betterAuthSecret,
-          }),
-        )
-        .use(
           createInferenceRoutes({
             auth,
             database,
@@ -221,6 +235,20 @@ it('preserves one anonymous web-session quota across direct and confidential tra
       const authenticatedJsonHeaders = {
         Authorization: `Bearer ${signedBearerToken}`,
         'Content-Type': 'application/json',
+      }
+      /**
+       * The Tinfoil route settles its hold after it returns the response headers, so wait for that before the next
+       * admission.
+       */
+      const waitForUsageRows = async (expected: number) => {
+        const deadline = Date.now() + 2_000
+        const count = async () =>
+          (await database.select().from(inferenceUsage).where(eq(inferenceUsage.userId, userId))).filter(
+            ({ settled }) => settled,
+          ).length
+        for (let rows = await count(); rows < expected && Date.now() < deadline; rows = await count()) {
+          await Bun.sleep(5)
+        }
       }
       const wallClockStartedAt = new Date()
       const [{ recordedAt: databaseStartedAt }] = (
@@ -236,17 +264,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
       )
       expect(deepseekResponse.status).toBe(200)
       expect(new Uint8Array(await deepseekResponse.arrayBuffer())).toEqual(glmResponseBytes)
-      const deepseekReceiptResponse = await app.handle(
-        new Request(`http://localhost/v1/${inferenceUsageReceiptPath}`, {
-          method: 'POST',
-          headers: authenticatedJsonHeaders,
-          body: JSON.stringify({
-            receipt: deepseekResponse.headers.get(inferenceUsageReceiptHeader),
-            ...deepseekCounts,
-          }),
-        }),
-      )
-      expect(deepseekReceiptResponse.status).toBe(204)
+      await waitForUsageRows(1)
 
       const opusResponse = await app.handle(
         new Request('http://localhost/v1/chat/completions', {
@@ -275,30 +293,11 @@ it('preserves one anonymous web-session quota across direct and confidential tra
           body: glmRequestBytes.slice().buffer,
         }),
       )
-      const receipt = glmResponse.headers.get(inferenceUsageReceiptHeader)
       const receivedGlmBytes = new Uint8Array(await glmResponse.arrayBuffer())
       expect(glmResponse.status).toBe(200)
-      expect(receipt).toBeString()
-      expect(receipt).not.toBeEmpty()
       expect(glmResponse.headers.has('Trailer')).toBe(false)
       expect(receivedGlmBytes).toEqual(glmResponseBytes)
-
-      const receiptResponse = await app.handle(
-        new Request(`http://localhost/v1/${inferenceUsageReceiptPath}`, {
-          method: 'POST',
-          headers: authenticatedJsonHeaders,
-          body: JSON.stringify({
-            receipt,
-            ...glmCounts,
-            provider: 'anthropic',
-            model: 'client-metadata-cannot-select-the-managed-model',
-            inputNanoUsdPerToken: '0',
-            outputNanoUsdPerToken: '0',
-          }),
-        }),
-      )
-      expect(receiptResponse.status).toBe(204)
-      expect(await receiptResponse.text()).toBe('')
+      await waitForUsageRows(3)
 
       const fourthResponse = await app.handle(
         new Request('http://localhost/v1/chat/completions', {
@@ -354,7 +353,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
           provider: 'tinfoil',
           model: 'glm-5-3',
           ...glmCounts,
-          costNanoUsd: 41_250_000n,
+          costNanoUsd: 46_750_000n,
         },
       ])
       expect(usageRows.every(({ id }) => uuidV4Pattern.test(id))).toBe(true)
@@ -373,11 +372,12 @@ it('preserves one anonymous web-session quota across direct and confidential tra
         .from(inferencePrices)
         .orderBy(asc(inferencePrices.provider), asc(inferencePrices.model))
       expect(
-        priceRows.map(({ provider, model, inputNanoUsdPerToken, outputNanoUsdPerToken }) => ({
+        priceRows.map(({ provider, model, inputNanoUsdPerToken, outputNanoUsdPerToken, cacheReadNanoUsdPerToken }) => ({
           provider,
           model,
           inputNanoUsdPerToken,
           outputNanoUsdPerToken,
+          cacheReadNanoUsdPerToken,
         })),
       ).toEqual([
         { provider: 'anthropic', model: 'claude-opus-5', ...officialPriceOracle['anthropic/claude-opus-5'] },
@@ -395,7 +395,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
         {
           provider: 'tinfoil',
           model: 'deepseek-v4-1-flash',
-          ...officialPriceOracle['tinfoil/deepseek-v4-flash'],
+          ...officialPriceOracle['tinfoil/deepseek-v4-1-flash'],
         },
         {
           provider: 'tinfoil',
@@ -403,7 +403,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
           ...officialPriceOracle['tinfoil/deepseek-v4-flash'],
         },
         { provider: 'tinfoil', model: 'glm-5-2', ...officialPriceOracle['tinfoil/glm-5-2'] },
-        { provider: 'tinfoil', model: 'glm-5-3', ...officialPriceOracle['tinfoil/glm-5-2'] },
+        { provider: 'tinfoil', model: 'glm-5-3', ...officialPriceOracle['tinfoil/glm-5-3'] },
         { provider: 'tinfoil', model: 'glm-5-3-flash', ...officialPriceOracle['tinfoil/deepseek-v4-flash'] },
       ])
 
@@ -413,7 +413,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
           [userId],
         )
       ).rows
-      expect(BigInt(totalCost)).toBe(101_250_000n)
+      expect(BigInt(totalCost)).toBe(106_750_000n)
       expect(providerCalls.map(({ url, method }) => ({ url, method }))).toEqual([
         { url: `${opaqueTinfoilOrigin}/chat/completions`, method: 'POST' },
         { url: 'https://api.anthropic.com/v1/chat/completions', method: 'POST' },
@@ -436,6 +436,125 @@ it('preserves one anonymous web-session quota across direct and confidential tra
       await database.delete(userTable).where(inArray(userTable.id, [userId, otherUserId]))
     }
   } finally {
+    for (const [name, value] of Object.entries(originalEnvironment)) {
+      if (value === undefined) {
+        delete process.env[name]
+      } else {
+        process.env[name] = value
+      }
+    }
+    clearSettingsCache()
+  }
+})
+
+it('refuses, over HTTP through the full app, a concurrent request whose hold would pass the quota', async () => {
+  const { db: database } = await getSharedIsolatedTestDb()
+  const suffix = crypto.randomUUID()
+  const userId = `quota-race-user-${suffix}`
+  const sessionToken = `quota-race-session-${suffix}`
+  const environmentKeys = [
+    'ANTHROPIC_API_KEY',
+    'INFERENCE_QUOTA_ANONYMOUS_5H_CENTS',
+    'INFERENCE_QUOTA_ANONYMOUS_7D_CENTS',
+    'POSTHOG_API_KEY',
+    'RATE_LIMIT_ENABLED',
+  ] as const
+  const originalEnvironment = Object.fromEntries(environmentKeys.map((key) => [key, process.env[key]]))
+  process.env.ANTHROPIC_API_KEY = 'quota-race-anthropic-fixture-key'
+  process.env.INFERENCE_QUOTA_ANONYMOUS_5H_CENTS = '10'
+  process.env.INFERENCE_QUOTA_ANONYMOUS_7D_CENTS = '60'
+  process.env.RATE_LIMIT_ENABLED = 'true'
+  delete process.env.POSTHOG_API_KEY
+  clearSettingsCache()
+
+  // Six cents at Opus's output rate, so the admitted request lands on the 10-cent limit exactly.
+  const sixCentCounts = { promptTokens: 0, completionTokens: 2_400, totalTokens: 2_400 }
+  const providerCalls: string[] = []
+  const providerGate = Promise.withResolvers<void>()
+  const fetchFn: typeof fetch = Object.assign(
+    async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const request = input instanceof Request ? input : new Request(input, init)
+      if (request.url !== 'https://api.anthropic.com/v1/chat/completions') {
+        throw new Error(`Unexpected provider request: ${request.method} ${request.url}`)
+      }
+      providerCalls.push(request.url)
+      await providerGate.promise
+      return new Response(createOpenAiSse('chatcmpl-race', 'claude-opus-5-5', sixCentCounts), {
+        headers: { 'Content-Type': 'text/event-stream' },
+      })
+    },
+    { preconnect: () => undefined },
+  )
+  const app = await createApp({ database, fetchFn })
+
+  try {
+    const now = new Date()
+    await database.insert(userTable).values({
+      id: userId,
+      name: 'Quota Race Anonymous User',
+      email: `${userId}@example.test`,
+      emailVerified: false,
+      isAnonymous: true,
+      createdAt: now,
+      updatedAt: now,
+    })
+    await database.insert(sessionTable).values({
+      id: `quota-race-session-row-${suffix}`,
+      token: sessionToken,
+      expiresAt: new Date(now.getTime() + 60 * 60 * 1_000),
+      userId,
+      createdAt: now,
+      updatedAt: now,
+    })
+    await database.insert(inferenceUsage).values({
+      id: `quota-race-prior-spend-${suffix}`,
+      userId,
+      provider: 'anthropic',
+      model: 'claude-opus-5-5',
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      costNanoUsd: 40_000_000n,
+    })
+
+    app.listen({ port: 0, hostname: '127.0.0.1' })
+    const chatUrl = `http://127.0.0.1:${app.server!.port}/v1/chat/completions`
+    const postChat = () =>
+      realFetch(chatUrl, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${signTestToken(sessionToken)}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'opus-5-5', messages: [{ role: 'user', content: 'race' }], stream: true }),
+      })
+
+    // Both requests run at the same time. The admitted one waits at the provider, so whichever answers first has
+    // to be the refusal. Without a hold, both would reach the provider and neither would answer.
+    const requests = [postChat(), postChat()]
+    const firstAnswer = await Promise.race([...requests, Bun.sleep(3_000).then(() => null)])
+    expect(firstAnswer?.status).toBe(429)
+    expect(await firstAnswer?.json()).toEqual({ error: { code: 'INFERENCE_REQUEST_IN_PROGRESS' } })
+    expect(providerCalls).toHaveLength(1)
+
+    providerGate.resolve()
+    const responses = await Promise.all(requests)
+    expect(responses.map(({ status }) => status).sort()).toEqual([200, 429])
+    const admitted = responses.find(({ status }) => status === 200)
+    // The production user rate limit ran in front of the route.
+    expect(admitted?.headers.get('RateLimit-Limit')).toBe('60')
+    expect(await admitted?.text()).toContain('data: [DONE]')
+
+    const rows = await database.select().from(inferenceUsage).where(eq(inferenceUsage.userId, userId))
+    expect(rows.every(({ settled }) => settled)).toBe(true)
+    expect(rows.reduce((total, { costNanoUsd }) => total + costNanoUsd, 0n)).toBe(100_000_000n)
+
+    // At the limit exactly, the next request is refused before it reaches the provider.
+    const atLimit = await postChat()
+    expect(atLimit.status).toBe(429)
+    expect(await atLimit.json()).toEqual({ error: { code: 'INFERENCE_QUOTA_EXCEEDED', window: '5h' } })
+    expect(providerCalls).toHaveLength(1)
+  } finally {
+    providerGate.resolve()
+    await app.stop()
+    await database.delete(userTable).where(eq(userTable.id, userId))
     for (const [name, value] of Object.entries(originalEnvironment)) {
       if (value === undefined) {
         delete process.env[name]

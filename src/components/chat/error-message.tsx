@@ -28,6 +28,7 @@ const causeSpecificErrorMessages: Partial<Record<ChatErrorKind, MessageDescripto
   network: msg`Connection problem. Check your internet and try again.`,
   'connection-lost': msg`The agent connection was lost during the previous turn. Retrying may repeat actions the agent already performed.`,
   'tools-unsupported': msg`This model doesn't support tools.`,
+  'agent-unavailable': msg`This agent was disabled or deleted. Choose another agent to continue.`,
 }
 const inferenceQuotaMessages = {
   '5h': msg`You've reached your AI usage limit for the current 5-hour window. Try again later.`,

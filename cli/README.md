@@ -109,8 +109,7 @@ revoking this CLI from the web app also invalidates its session; run
 Provider configuration lives at `~/.thunderbolt/config.json`, and account
 authentication has a separate file under the same directory. Set
 `THUNDERBOLT_HOME` to move that state root. Provider config, account
-authentication, the iroh identity and allowlist, and the usage-receipt outbox are
-written with mode `0600` because BYOK profiles may contain plaintext API keys.
+authentication, and the iroh identity and allowlist are written with mode `0600` because BYOK profiles may contain plaintext API keys.
 Persisted ACP session logs under `<THUNDERBOLT_HOME>/acp/sessions/` are the
 exception: the Pi session repo passes no mode, so they land at whatever the
 process umask allows (typically `0644` files in `0755` directories) — treat them

@@ -21,11 +21,13 @@ type ModelsListProps = {
   activeModelId: string | null
   onSelect: (modelId: string) => void
   onToggle: (modelId: string, enabled: boolean) => void
+  onEdit: (modelId: string) => void
+  onRemove: (modelId: string) => void
   onAdd: () => void
 }
 
 /** Presentational list of configured models with enable toggles and the add affordance. */
-export const ModelsList = ({ models, activeModelId, onSelect, onToggle, onAdd }: ModelsListProps) => {
+export const ModelsList = ({ models, activeModelId, onSelect, onToggle, onAdd, onEdit, onRemove }: ModelsListProps) => {
   const { i18n, t } = useLingui()
   const appName = useAppName()
 
@@ -37,6 +39,9 @@ export const ModelsList = ({ models, activeModelId, onSelect, onToggle, onAdd }:
         return (
           <SettingsSelectableRow
             key={model.id}
+            contextMenu={
+              model.isSystem === 1 ? {} : { onEdit: () => onEdit(model.id), onRemove: () => onRemove(model.id) }
+            }
             onSelect={() => onSelect(model.id)}
             ariaLabel={t`Open ${modelName}`}
             isSelected={activeModelId === model.id}

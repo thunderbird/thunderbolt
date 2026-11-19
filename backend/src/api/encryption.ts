@@ -50,8 +50,8 @@ import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
 import { verifyAccountSignature, verifyChallengeSignature, verifyPossessionProof } from '@/lib/canary'
 import { sealBindNonce } from '@/lib/device-bind'
 import { securityNotifications, type SecurityNotifications } from '@/lib/security-notifications'
-import type { StepUpAction } from '@/lib/step-up-otp'
-import { burnStepUpCode, requireStepUpCode, sendStepUpCode, stepUpRequiredMessage } from './step-up'
+import { consumeStepUpOtp, type StepUpAction } from '@/lib/step-up-otp'
+import { requireStepUpCode, sendStepUpCode } from './step-up'
 import { resolveEmailLocale } from '@/emails/i18n'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import {
@@ -168,7 +168,7 @@ type CallerSession = { deviceId?: string | null }
  * The match is checked BEFORE the device lookup, so a session cannot probe which
  * device ids exist on its own account either.
  */
-const getCallerDevice = async (
+export const getCallerDevice = async (
   database: typeof DbType,
   userId: string,
   request: Request,
@@ -395,7 +395,33 @@ const servedPasskeySlot = (
     passkey_mlkem_public_key: enabled ? metadata.passkeyMlkemPublicKey : null,
     passkey_wrapped_ak: enabled ? metadata.passkeyWrappedAk : null,
     passkey_attestation: enabled ? metadata.passkeyAttestation : null,
+    passkey_continuity: enabled ? metadata.passkeyContinuity : null,
   }
+}
+
+/**
+ * The passkey seal a rotation writes: none without a slot, the sent one (or none)
+ * for a slot whose credential or keys changed, and `undefined` to keep the stored
+ * one when the slot keys are unchanged. Unchanged keys mean neither DEK `"0"` nor
+ * the PRF output changed, and a re-anchoring client cannot make a seal anyway.
+ */
+const passkeyContinuityToWrite = (
+  stored: {
+    passkeyCredentialId: string | null
+    passkeyEcdhPublicKey: string | null
+    passkeyMlkemPublicKey: string | null
+  },
+  slot: PasskeySlot | null,
+  sent: string | undefined,
+): string | null | undefined => {
+  if (!slot) {
+    return null
+  }
+  const unchanged =
+    slot.passkeyCredentialId === stored.passkeyCredentialId &&
+    slot.passkeyEcdhPublicKey === stored.passkeyEcdhPublicKey &&
+    slot.passkeyMlkemPublicKey === stored.passkeyMlkemPublicKey
+  return unchanged ? undefined : (sent ?? null)
 }
 
 /**
@@ -719,6 +745,7 @@ export const createEncryptionRoutes = (
           recoveryMlkemPublicKey,
           recoveryWrappedAK,
           recoveryAttestation,
+          recoveryContinuity,
           orgEnvelope,
         } = body
 
@@ -813,6 +840,7 @@ export const createEncryptionRoutes = (
                 recoveryMlkemPublicKey,
                 recoveryWrappedAk: recoveryWrappedAK,
                 recoveryAttestation,
+                recoveryContinuity,
               })
               for (const entry of wrappedKeys) {
                 const inserted = await insertWrappedKey(txDb, {
@@ -951,6 +979,7 @@ export const createEncryptionRoutes = (
           recoveryMlkemPublicKey: t.Optional(t.String({ maxLength: 1700 })),
           recoveryWrappedAK: t.Optional(t.String({ maxLength: 2200 })),
           recoveryAttestation: t.Optional(t.String({ maxLength: 200 })),
+          recoveryContinuity: t.Optional(t.String({ maxLength: 300 })),
           orgEnvelope: t.Optional(t.String({ maxLength: 500 })),
         }),
       },
@@ -1029,6 +1058,7 @@ export const createEncryptionRoutes = (
           kdf_salt: metadata.kdfSalt,
           signing_public_key: metadata.signingPublicKey,
           recovery_attestation: metadata.recoveryAttestation,
+          recovery_continuity: metadata.recoveryContinuity,
           recovery_ecdh_public_key: metadata.recoveryEcdhPublicKey,
           recovery_mlkem_public_key: metadata.recoveryMlkemPublicKey,
           recovery_wrapped_ak: metadata.recoveryWrappedAk,
@@ -1229,24 +1259,22 @@ export const createEncryptionRoutes = (
         } catch (err) {
           return mapEncryptionError(err, set)
         }
-        const storedMetadata = await getEncryptionMetadata(database, userId)
-        const recoveryChanged =
-          storedMetadata != null &&
-          (storedMetadata.recoveryEcdhPublicKey !== body.recoveryEcdhPublicKey ||
-            storedMetadata.recoveryMlkemPublicKey !== body.recoveryMlkemPublicKey)
-        if (recoveryChanged) {
-          // Session email, never client input — see the step-up note above.
-          const refusal = await requireStepUpCode(database, stepUpAction, sessionUser!.email, body.stepUpOtp)
-          if (refusal) {
-            set.status = refusal.status
-            return refusal.body
-          }
-        }
-
         try {
-          const keyVersion = await database.transaction(async (tx) => {
+          const result = await database.transaction(async (tx) => {
             const txDb: QueryableDatabase = tx
             await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId})::bigint)`)
+
+            const metadata = await getEncryptionMetadata(txDb, userId)
+            const recoveryChanged =
+              metadata != null &&
+              (metadata.recoveryEcdhPublicKey !== body.recoveryEcdhPublicKey ||
+                metadata.recoveryMlkemPublicKey !== body.recoveryMlkemPublicKey)
+            if (recoveryChanged) {
+              const refusal = await requireStepUpCode(txDb, stepUpAction, sessionUser!.email, body.stepUpOtp)
+              if (refusal) {
+                return { refusal }
+              }
+            }
 
             // Verify inside the tx so nonce consumption serializes under the lock
             // (concurrent rotates: the second fails on its own nonce or on coverage
@@ -1302,19 +1330,6 @@ export const createEncryptionRoutes = (
               }
               await setPrimaryKeyId(txDb, userId, body.newPrimaryKey.keyId)
             }
-            // Race guard for the THU-875 gate: the pre-tx compare ran against a
-            // snapshot; if the stored keys moved between that read and this lock
-            // (a concurrent phrase change), an un-stepped-up request must not
-            // slide through on the stale "unchanged" verdict.
-            const txMetadata = await getEncryptionMetadata(txDb, userId)
-            const txRecoveryChanged =
-              txMetadata != null &&
-              (txMetadata.recoveryEcdhPublicKey !== body.recoveryEcdhPublicKey ||
-                txMetadata.recoveryMlkemPublicKey !== body.recoveryMlkemPublicKey)
-            if (txRecoveryChanged && !recoveryChanged) {
-              throw new ForbiddenError(stepUpRequiredMessage[stepUpAction])
-            }
-
             // The org envelope wraps the NEW AK — replaced atomically with the rotation.
             await persistOrgEnvelope(txDb, settings, userId, body.orgEnvelope)
             await replaceEncryptionMetadata(txDb, {
@@ -1327,17 +1342,29 @@ export const createEncryptionRoutes = (
               recoveryMlkemPublicKey: body.recoveryMlkemPublicKey,
               recoveryWrappedAk: body.recoveryWrappedAK,
               recoveryAttestation: body.recoveryAttestation,
+              // A same-key rotation keeps the stored seal: DEK "0" and the phrase
+              // are unchanged, and the client cannot make a seal without the phrase.
+              recoveryContinuity: recoveryChanged ? (body.recoveryContinuity ?? null) : undefined,
               passkeySlot,
+              passkeyContinuity: metadata
+                ? passkeyContinuityToWrite(metadata, passkeySlot, body.passkeyContinuity)
+                : null,
             })
             const newVersion = await bumpKeyVersion(txDb, userId)
             if (newVersion == null) {
               throw new BadRequestError('Encryption not set up')
             }
-            return newVersion
+            if (recoveryChanged) {
+              await consumeStepUpOtp(txDb, stepUpAction, sessionUser!.email)
+            }
+            return { keyVersion: newVersion, recoveryChanged }
           })
 
-          if (recoveryChanged) {
-            await burnStepUpCode(database, stepUpAction, sessionUser!.email)
+          if (result.refusal) {
+            set.status = result.refusal.status
+            return result.refusal.body
+          }
+          if (result.recoveryChanged) {
             notifyBestEffort(
               'recovery-phrase-changed',
               notifications.sendRecoveryPhraseChanged({
@@ -1348,7 +1375,7 @@ export const createEncryptionRoutes = (
             )
           }
 
-          return { key_version: keyVersion }
+          return { key_version: result.keyVersion }
         } catch (err) {
           return mapEncryptionError(err, set)
         }
@@ -1369,12 +1396,14 @@ export const createEncryptionRoutes = (
           recoveryMlkemPublicKey: t.String({ maxLength: 1700 }),
           recoveryWrappedAK: t.String({ maxLength: 2200 }),
           recoveryAttestation: t.String({ maxLength: 200 }),
+          recoveryContinuity: t.Optional(t.String({ maxLength: 300 })),
           // WebAuthn caps credential ids at 1023 bytes: ~1364 base64url characters.
           passkeyCredentialId: t.Optional(t.String({ maxLength: 1400 })),
           passkeyEcdhPublicKey: t.Optional(t.String({ maxLength: 200 })),
           passkeyMlkemPublicKey: t.Optional(t.String({ maxLength: 1700 })),
           passkeyWrappedAK: t.Optional(t.String({ maxLength: 2200 })),
           passkeyAttestation: t.Optional(t.String({ maxLength: 200 })),
+          passkeyContinuity: t.Optional(t.String({ maxLength: 300 })),
           orgEnvelope: t.Optional(t.String({ maxLength: 500 })),
         }),
       },
@@ -1472,6 +1501,7 @@ export const createEncryptionRoutes = (
               recoveryMlkemPublicKey: body.recoveryMlkemPublicKey,
               recoveryWrappedAk: body.recoveryWrappedAK,
               recoveryAttestation: body.recoveryAttestation,
+              recoveryContinuity: body.recoveryContinuity,
             })
             if (!flipped) {
               throw new SchemeConflictError('Account already migrated to scheme v2')
@@ -1512,6 +1542,7 @@ export const createEncryptionRoutes = (
           recoveryMlkemPublicKey: t.String({ maxLength: 1700 }),
           recoveryWrappedAK: t.String({ maxLength: 2200 }),
           recoveryAttestation: t.String({ maxLength: 200 }),
+          recoveryContinuity: t.Optional(t.String({ maxLength: 300 })),
           orgEnvelope: t.Optional(t.String({ maxLength: 500 })),
         }),
       },

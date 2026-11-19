@@ -13,7 +13,7 @@
 # self-hosting guidance.
 services:
   iroh-relay:
-    image: n0computer/iroh-relay:v1.0.2
+    image: n0computer/iroh-relay:v1.4.1
     container_name: thunderbolt-iroh-relay
     command: ['--dev']
     ports:

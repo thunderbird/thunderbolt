@@ -3,12 +3,3 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 export const inferenceModelHeader = 'X-Inference-Model'
-export const inferenceUsageReceiptHeader = 'X-Inference-Usage-Receipt'
-export const inferenceUsageReceiptPath = 'inference-usage/receipts'
-
-export type InferenceUsageReceiptRequest = {
-  receipt: string
-  promptTokens: number
-  completionTokens: number
-  totalTokens: number
-}

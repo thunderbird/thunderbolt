@@ -6,7 +6,13 @@
 import assert from 'node:assert/strict'
 import { parseArgs } from 'node:util'
 import { Database } from 'bun:sqlite'
-import { buildBackfillSql, buildCreateSql, buildDropSql, buildTriggerSql } from '../../src/search/fts-setup'
+import {
+  buildBackfillSql,
+  buildCreateKeysSql,
+  buildCreateSql,
+  buildDropSql,
+  buildTriggerSql,
+} from '../../src/search/fts-setup'
 import { planSearchQuery } from '../../src/search/query-plan'
 import { searchEntities } from '../../src/search/registry'
 import { buildSearchStatement } from '../../src/search/use-search'
@@ -51,11 +57,14 @@ const rebuildIndex = (db: Database, guarded: boolean) => {
       db.run(statement)
     }
     db.run(buildCreateSql())
+    db.run(buildCreateKeysSql())
     for (const config of searchEntities) {
       for (const statement of buildTriggerSql(config, internalName(config.tableName))) {
         db.run(guarded ? statement : referenceTrigger(statement))
       }
-      db.run(buildBackfillSql(config, internalName(config.tableName)))
+      for (const statement of buildBackfillSql(config, internalName(config.tableName))) {
+        db.run(statement)
+      }
     }
   })()
 }
@@ -141,8 +150,11 @@ const run = (messageCount: number, guarded: boolean) => {
       rebuild,
       searches,
       deletePlan: db
-        .query('EXPLAIN QUERY PLAN DELETE FROM search_index WHERE id = ? AND entity_type = ?')
-        .all(target, 'message'),
+        .query(
+          'EXPLAIN QUERY PLAN DELETE FROM search_index WHERE rowid = ' +
+            '(SELECT fts_rowid FROM search_index_keys WHERE entity_type = ? AND id = ?)',
+        )
+        .all('message', target),
     }
   } finally {
     db.close()

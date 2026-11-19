@@ -32,6 +32,25 @@ export const isTrustedAppDevice = (
   userId: string,
 ): boolean => device !== null && device.userId === userId && device.deviceType !== 'cli' && device.trusted
 
+/**
+ * Return whether a device is an account-owned regular (`normal`) app device waiting
+ * for approval. Bridges never qualify, and revocation is the caller's to check.
+ */
+export const isPendingRegularAppDevice = (
+  device: {
+    userId: string
+    deviceType: 'normal' | 'bridge' | 'cli'
+    trusted: boolean
+    approvalPending: boolean
+  } | null,
+  userId: string,
+): boolean =>
+  device !== null &&
+  device.userId === userId &&
+  device.deviceType === 'normal' &&
+  !device.trusted &&
+  device.approvalPending
+
 export const bridgeDeviceId = (userId: string, nodeId: string) =>
   `${bridgeDeviceIdPrefix}${createHash('sha256').update(`${userId}:${nodeId}`).digest('hex')}`
 
@@ -143,11 +162,18 @@ export const revokeDevice = async (database: QueryableDatabase, deviceId: string
     .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId), isNull(devicesTable.revokedAt)))
     .returning()
 
-/** Must run inside the caller's migration transaction so envelope removal and sibling demotion roll back together. */
+/**
+ * Must run inside the caller's migration transaction so envelope removal and sibling demotion roll back together.
+ *
+ * `siblings` sets what the other regular devices become. `pending` (the migrator): trusted ones return to verified
+ * approval. `untrusted` (recovery with the v1 phrase): none stays trusted or pending — one may be the very device that
+ * was lost, so nothing should prompt to approve it until it registers again.
+ */
 export const requireMigrationSiblingApproval = async (
   database: QueryableDatabase,
   userId: string,
   callerDeviceId: string,
+  siblings: 'pending' | 'untrusted' = 'pending',
 ): Promise<void> => {
   const regularSiblings = and(
     eq(devicesTable.userId, userId),
@@ -166,6 +192,13 @@ export const requireMigrationSiblingApproval = async (
         ),
       ),
     )
+  if (siblings === 'untrusted') {
+    await database
+      .update(devicesTable)
+      .set({ trusted: false, approvalPending: false, nodeId: null, nodeIdAttestedAt: null })
+      .where(regularSiblings)
+    return
+  }
   await database
     .update(devicesTable)
     .set({ trusted: false, approvalPending: true, nodeId: null, nodeIdAttestedAt: null })

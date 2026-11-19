@@ -24,7 +24,7 @@ import {
   ecdsaSignAlgorithm,
 } from '@shared/e2ee-types'
 import { createHmac } from 'crypto'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
 import type { SecurityNotifications } from '@/lib/security-notifications'
@@ -1735,45 +1735,215 @@ describe('Encryption API (v2)', () => {
       }
     }
 
-    it('rejects an untrusted v1 caller at the trust gate despite a valid possession proof and nonce', async () => {
-      await useCommittedDatabase()
-      await setupV1()
-      await db
-        .update(devicesTable)
-        .set({ trusted: false, approvalPending: true })
-        .where(eq(devicesTable.id, p('caller')))
-      const body = await upgradeBody()
-      const [before] = await db
-        .select()
-        .from(encryptionMetadataTable)
-        .where(eq(encryptionMetadataTable.userId, p('u')))
-      expect(await hashSecret(body.possessionProof)).toBe(before.canarySecretHash!)
-      const response = await app.handle(
-        new Request(`${baseUrl}/encryption/upgrade`, {
-          method: 'POST',
-          headers: authHeaders(p('tok'), p('caller')),
-          body: JSON.stringify(body),
-        }),
-      )
-      expect(response.status).toBe(403)
-      expect((await response.json()).error).toBe('Only trusted devices can upgrade encryption')
-      expect(
+    describe('a pending caller recovering with the v1 phrase', () => {
+      /** The caller lost its trust; an old device still holds the v1 envelope. */
+      const setupPendingCaller = async () => {
+        await setupV1()
+        await db
+          .update(devicesTable)
+          .set({ trusted: false, approvalPending: true })
+          .where(eq(devicesTable.id, p('caller')))
+        await db.delete(envelopesTable).where(eq(envelopesTable.deviceId, p('caller')))
+        await insertDevice(p('old'), p('u'), { trusted: true })
+        await insertEnvelope(p('old'), p('u'))
+      }
+
+      const recoveryEmail = () => `${p('u')}@test.com`
+      const mintRecoveryCode = () => mintStepUpOtp(db, 'v1-phrase-recovery', recoveryEmail())
+      /** Attempts already spent on the outstanding recovery code (`otp:attempts`). */
+      const recoveryCodeAttempts = async () =>
+        Number(
+          (
+            await db
+              .select()
+              .from(verification)
+              .where(eq(verification.identifier, stepUpIdentifier('v1-phrase-recovery', recoveryEmail())))
+          )[0]!.value.split(':')[1],
+        )
+
+      const postUpgrade = async (body: Record<string, unknown>) =>
+        app.handle(
+          new Request(`${baseUrl}/encryption/upgrade`, {
+            method: 'POST',
+            headers: authHeaders(p('tok'), p('caller')),
+            body: JSON.stringify(body),
+          }),
+        )
+
+      const schemeVersion = async () =>
         (
           await db
             .select()
             .from(encryptionMetadataTable)
             .where(eq(encryptionMetadataTable.userId, p('u')))
-        )[0].schemeVersion,
-      ).toBe(1)
-      expect(
+        )[0].schemeVersion
+
+      const deviceRow = async (id: string) => (await db.select().from(devicesTable).where(eq(devicesTable.id, id)))[0]
+
+      const nonceConsumed = async (nonce: string) =>
+        (await db.select().from(challengeNoncesTable).where(eq(challengeNoncesTable.nonce, nonce)))[0].consumed
+
+      it('refuses a valid possession proof and nonce without a step-up code, writing nothing', async () => {
+        await useCommittedDatabase()
+        await setupPendingCaller()
+        const body = await upgradeBody()
+
+        const response = await postUpgrade(body)
+
+        expect(response.status).toBe(403)
+        expect((await response.json()).code).toBe('step_up_required')
+        expect(await schemeVersion()).toBe(1)
+        expect(
+          await db
+            .select()
+            .from(wrappedKeysTable)
+            .where(eq(wrappedKeysTable.userId, p('u'))),
+        ).toEqual([])
+        expect(await nonceConsumed(body.nonce)).toBe(false)
+        expect((await deviceRow(p('caller'))).trusted).toBe(false)
+        expect((await deviceRow(p('old'))).trusted).toBe(true)
+      })
+
+      it('refuses a wrong step-up code and leaves the account untouched', async () => {
+        await useCommittedDatabase()
+        await setupPendingCaller()
+        const otp = await mintRecoveryCode()
+        const body = await upgradeBody({ stepUpOtp: otp === '00000000' ? '11111111' : '00000000' })
+
+        const response = await postUpgrade(body)
+
+        expect(response.status).toBe(403)
+        expect((await response.json()).code).toBe('step_up_invalid')
+        expect(await schemeVersion()).toBe(1)
+        expect(await nonceConsumed(body.nonce)).toBe(false)
+        expect((await deviceRow(p('old'))).trusted).toBe(true)
+        // The refusal commits the attempt charge, and the real code stays usable.
+        expect(await recoveryCodeAttempts()).toBe(1)
+        expect(await verifyStepUpOtp(db, 'v1-phrase-recovery', recoveryEmail(), otp)).toBe('valid')
+      })
+
+      it('upgrades with the proof and a valid code, trusting the caller and dropping the old devices', async () => {
+        await setupPendingCaller()
+        // Already waiting for approval before the upgrade.
+        await insertDevice(p('waiting'), p('u'))
+        const otp = await mintRecoveryCode()
+
+        const response = await postUpgrade(await upgradeBody({ stepUpOtp: otp }))
+
+        expect(response.status).toBe(200)
+        expect(await schemeVersion()).toBe(2)
+        expect(await deviceRow(p('caller'))).toMatchObject({ trusted: true, approvalPending: false })
+        // Neither stays pending, so the recovered device is not asked to approve them.
+        expect(await deviceRow(p('old'))).toMatchObject({ trusted: false, approvalPending: false })
+        expect(await deviceRow(p('waiting'))).toMatchObject({ trusted: false, approvalPending: false })
+        expect(
+          await db
+            .select()
+            .from(envelopesTable)
+            .where(eq(envelopesTable.deviceId, p('old'))),
+        ).toEqual([])
+        // Consumed on commit, so the same code cannot authorize anything again.
+        expect(await verifyStepUpOtp(db, 'v1-phrase-recovery', recoveryEmail(), otp)).not.toBe('valid')
+        await flushNotifications()
+        expect(sentEmails.map((email) => email.kind)).toEqual(['encryption-set-up', 'recovery-phrase-used'])
+      })
+
+      it('refuses a wrong possession proof before the step-up code is checked or charged', async () => {
+        await useCommittedDatabase()
+        await setupPendingCaller()
+        const otp = await mintRecoveryCode()
+        const wrongCode = otp === '00000000' ? '11111111' : '00000000'
+
+        const response = await postUpgrade(await upgradeBody({ stepUpOtp: wrongCode, possessionProof: 'leaked-guess' }))
+
+        expect(response.status).toBe(403)
+        expect((await response.json()).error).toBe('Invalid CK-possession proof')
+        expect(await schemeVersion()).toBe(1)
+        expect((await deviceRow(p('caller'))).trusted).toBe(false)
+        expect((await deviceRow(p('old'))).trusted).toBe(true)
+        // Without the canary secret, a session cannot spend the owner's attempts.
+        expect(await recoveryCodeAttempts()).toBe(0)
+      })
+
+      it('does not accept a code minted for a recovery phrase change', async () => {
+        await setupPendingCaller()
+        const phraseChangeCode = await mintStepUpCode(p('u'))
+
+        const response = await postUpgrade(await upgradeBody({ stepUpOtp: phraseChangeCode }))
+
+        expect(response.status).toBe(403)
+        expect((await response.json()).code).toBe('step_up_invalid')
+        expect(await schemeVersion()).toBe(1)
+      })
+
+      /** Trusted bridges, which keep their trust through a migration and count toward the cap. */
+      const insertTrustedBridges = async (count: number) => {
+        const bridgeIds = Array.from({ length: count }, (_, index) => p(`bridge-${index}`))
+        for (const id of bridgeIds) {
+          await insertDevice(id, p('u'), { trusted: true, keyless: true })
+        }
+        await db.update(devicesTable).set({ deviceType: 'bridge' }).where(inArray(devicesTable.id, bridgeIds))
+      }
+
+      it('counts the cap after demoting the old device, so an account at the limit can recover', async () => {
+        await setupPendingCaller()
+        // With the old device still trusted this is already at the limit.
+        await insertTrustedBridges(maxActiveDevicesPerUser - 1)
+
+        const response = await postUpgrade(await upgradeBody({ stepUpOtp: await mintRecoveryCode() }))
+
+        expect(response.status).toBe(200)
+        expect((await deviceRow(p('caller'))).trusted).toBe(true)
+      })
+
+      it('rolls everything back when trusting the caller would exceed the device limit', async () => {
+        await setupPendingCaller()
+        await insertTrustedBridges(maxActiveDevicesPerUser)
+        const otp = await mintRecoveryCode()
+
+        const response = await postUpgrade(await upgradeBody({ stepUpOtp: otp }))
+
+        expect(response.status).toBe(403)
+        expect((await response.json()).error).toBe('Device limit reached — revoke an existing device first')
+        expect(await schemeVersion()).toBe(1)
+        expect((await deviceRow(p('old'))).trusted).toBe(true)
+        expect(await verifyStepUpOtp(db, 'v1-phrase-recovery', recoveryEmail(), otp)).toBe('valid')
+      })
+
+      it('refuses an untrusted caller that is not pending, even with a valid code', async () => {
+        await setupPendingCaller()
         await db
-          .select()
-          .from(wrappedKeysTable)
-          .where(eq(wrappedKeysTable.userId, p('u'))),
-      ).toEqual([])
-      expect(
-        (await db.select().from(challengeNoncesTable).where(eq(challengeNoncesTable.nonce, body.nonce)))[0].consumed,
-      ).toBe(false)
+          .update(devicesTable)
+          .set({ approvalPending: false })
+          .where(eq(devicesTable.id, p('caller')))
+        const otp = await mintRecoveryCode()
+
+        const response = await postUpgrade(await upgradeBody({ stepUpOtp: otp }))
+
+        expect(response.status).toBe(403)
+        expect((await response.json()).error).toBe(
+          'Only trusted devices, or a pending device recovering a v1 account, can upgrade encryption',
+        )
+        expect(await schemeVersion()).toBe(1)
+      })
+
+      it.each(['bridge', 'cli'] as const)('refuses a pending %s caller', async (deviceType) => {
+        await setupPendingCaller()
+        await db
+          .update(devicesTable)
+          .set({ deviceType })
+          .where(eq(devicesTable.id, p('caller')))
+        const otp = await mintRecoveryCode()
+
+        const response = await postUpgrade(await upgradeBody({ stepUpOtp: otp }))
+
+        expect(response.status).toBe(403)
+        expect((await response.json()).error).toBe(
+          'Only trusted devices, or a pending device recovering a v1 account, can upgrade encryption',
+        )
+        expect(await schemeVersion()).toBe(1)
+        expect(await verifyStepUpOtp(db, 'v1-phrase-recovery', recoveryEmail(), otp)).toBe('valid')
+      })
     })
 
     it('flips scheme 1→2, persists keyring "0"+"v1", and registers the signing key', async () => {
@@ -2957,6 +3127,81 @@ describe('Encryption API (v2)', () => {
         }),
       )
       expect(untrusted.status).toBe(403)
+    })
+
+    const v1CanarySecret = 'the-v1-content-key-canary-secret'
+
+    /** Ask for a code as the pending device `d`, optionally showing a possession proof. */
+    const requestCodeAsPending = (possessionProof?: string) =>
+      app.handle(
+        new Request(`${baseUrl}/encryption/step-up/request`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('d')),
+          ...(possessionProof !== undefined && { body: JSON.stringify({ possessionProof }) }),
+        }),
+      )
+
+    it('mints a code for a pending device only while the account is still on scheme 1', async () => {
+      const request = () => requestCodeAsPending(v1CanarySecret)
+      await createUserAndSession(p('u'), p('tok'), p('d'))
+      await insertV2Metadata(p('u'), 'unused', {
+        schemeVersion: 1,
+        signingKeyNull: true,
+        canarySecretHash: await hashSecret(v1CanarySecret),
+      })
+      await insertDevice(p('d'), p('u'))
+
+      expect((await request()).status).toBe(200)
+      expect(sentEmails.map((e) => e.kind)).toEqual(['step-up-code'])
+      // The email names the grant this code buys, not a phrase change.
+      expect((sentEmails[0]!.params as { action: string }).action).toBe('v1-phrase-recovery')
+
+      await db
+        .update(encryptionMetadataTable)
+        .set({ schemeVersion: 2 })
+        .where(eq(encryptionMetadataTable.userId, p('u')))
+      expect((await request()).status).toBe(403)
+    })
+
+    it.each([
+      ['a denied device', { approvalPending: false }],
+      ['a pending bridge', { deviceType: 'bridge' as const }],
+      ['a pending CLI device', { deviceType: 'cli' as const }],
+    ])('refuses %s on a scheme-1 account', async (_label, change) => {
+      await createUserAndSession(p('u'), p('tok'), p('d'))
+      await insertV2Metadata(p('u'), 'unused', {
+        schemeVersion: 1,
+        signingKeyNull: true,
+        canarySecretHash: await hashSecret(v1CanarySecret),
+      })
+      await insertDevice(p('d'), p('u'))
+      await db
+        .update(devicesTable)
+        .set(change)
+        .where(eq(devicesTable.id, p('d')))
+
+      const response = await requestCodeAsPending(v1CanarySecret)
+
+      expect(response.status).toBe(403)
+      expect(sentEmails).toEqual([])
+    })
+
+    it.each([
+      ['no possession proof', undefined],
+      ['a wrong possession proof', 'not-the-canary-secret'],
+    ])('emails nothing to a pending device with %s', async (_label, possessionProof) => {
+      await createUserAndSession(p('u'), p('tok'), p('d'))
+      await insertV2Metadata(p('u'), 'unused', {
+        schemeVersion: 1,
+        signingKeyNull: true,
+        canarySecretHash: await hashSecret(v1CanarySecret),
+      })
+      await insertDevice(p('d'), p('u'))
+
+      const response = await requestCodeAsPending(possessionProof)
+
+      expect(response.status).toBe(403)
+      expect(sentEmails).toEqual([])
     })
   })
 })

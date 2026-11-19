@@ -9,6 +9,7 @@ export {
   maxActiveDevicesPerUser,
   withUserDeviceRegistrationLock,
   isCliDeviceId,
+  isPendingRegularAppDevice,
   isTrustedAppDevice,
   getDeviceById,
   touchDevice,

@@ -10,6 +10,7 @@ import * as passkeys from '@/lib/passkey'
 import { DecryptionError, DeviceApprovalError, ValidationError } from '@/crypto/errors'
 import { EncryptedSyncUnsupportedError } from '@/lib/encrypted-sync-support'
 import { HttpError } from '@/lib/http'
+import { StepUpVerificationError } from '@/lib/step-up'
 import type { EncryptionMetadataResponse } from '@shared/e2ee-types'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { classifyEncryptionMetadata, reducer, initialState, useSyncSetup } from './use-sync-setup'
@@ -192,7 +193,7 @@ it('keeps recovery active when Back is pressed before recovery finishes', async 
     const { result } = renderHook(() => useSyncSetup(), { wrapper: createQueryTestWrapper() })
     act(() => result.current.goToRecoveryKeyEntry())
     act(() => result.current.setRecoveryKeyInput('word '.repeat(24)))
-    let pending: Promise<boolean>
+    let pending: Promise<string>
     act(() => {
       pending = result.current.submitRecoveryKey()
       result.current.chooseAdditionalDevice()
@@ -201,7 +202,7 @@ it('keeps recovery active when Back is pressed before recovery finishes', async 
     expect(result.current.isLoading).toBe(true)
     await act(async () => {
       response.resolve({ outcome: 'recovered' })
-      expect(await pending).toBe(true)
+      expect(await pending).toBe('recovered')
     })
   } finally {
     recover.mockRestore()
@@ -260,6 +261,7 @@ describe('sync setup operation outcomes', () => {
     bootstrap: spyOn(encryptionService, 'completeFirstDeviceSetup').mockResolvedValue('recovery phrase'),
     canary: spyOn(encryptionApi, 'checkCanaryExists').mockResolvedValue(true),
     recover: spyOn(encryptionService, 'recoverWithKey').mockResolvedValue({ outcome: 'recovered' }),
+    stepUpRequest: spyOn(encryptionService, 'requestV1RecoveryCode').mockResolvedValue(undefined),
     approve: spyOn(encryptionService, 'checkApprovalAndUnwrap').mockResolvedValue(true),
     prf: spyOn(passkeys, 'getPasskeyPrfOutput').mockResolvedValue(new Uint8Array([1, 2, 3])),
     unlock: spyOn(encryptionService, 'unlockWithPasskey').mockResolvedValue(undefined),
@@ -365,7 +367,7 @@ describe('sync setup operation outcomes', () => {
   it.each(['', 'word word'])('rejects an incomplete recovery phrase before calling the service', async (phrase) => {
     const { result } = mount()
     act(() => result.current.setRecoveryKeyInput(phrase))
-    await act(async () => expect(await result.current.submitRecoveryKey()).toBe(false))
+    await act(async () => expect(await result.current.submitRecoveryKey()).toBe('failed'))
     expect(result.current.recoveryKeyError).toContain(`you entered ${phrase ? 2 : 0}`)
     expect(spies.recover).not.toHaveBeenCalled()
   })
@@ -374,13 +376,155 @@ describe('sync setup operation outcomes', () => {
     const { result } = mount()
     act(() => result.current.setRecoveryKeyInput('  WORD\n'.repeat(24)))
     spies.recover.mockRejectedValueOnce(new ValidationError('bad phrase'))
-    await act(async () => expect(await result.current.submitRecoveryKey()).toBe(false))
+    await act(async () => expect(await result.current.submitRecoveryKey()).toBe('failed'))
     expect(spies.recover).toHaveBeenCalledWith(expect.anything(), 'word '.repeat(24).trim())
     expect(result.current.recoveryKeyError).toContain('Invalid recovery phrase')
+    // A wrong phrase is the user's to fix, so only the unexpected failure logs.
+    expect(spies.errorLog).not.toHaveBeenCalled()
     spies.recover.mockRejectedValueOnce(new Error('offline'))
-    await act(async () => expect(await result.current.submitRecoveryKey()).toBe(false))
+    await act(async () => expect(await result.current.submitRecoveryKey()).toBe('failed'))
     expect(result.current.recoveryKeyError).toBe('offline')
     expect(result.current.isLoading).toBe(false)
+    expect(spies.errorLog).toHaveBeenCalledTimes(1)
+  })
+
+  describe('a v1 phrase', () => {
+    const phrase = 'word '.repeat(24).trim()
+
+    /** Enter a v1 phrase that checks out locally, landing on the code step. */
+    const reachStepUp = async () => {
+      const mounted = mount()
+      act(() => mounted.result.current.setRecoveryKeyInput('  WORD\n'.repeat(24)))
+      spies.recover.mockResolvedValueOnce({ outcome: 'step-up-required' })
+      await act(async () => expect(await mounted.result.current.submitRecoveryKey()).toBe('step-up'))
+      return mounted
+    }
+
+    it('emails a step-up code and moves to the code step', async () => {
+      const { result } = await reachStepUp()
+
+      expect(spies.stepUpRequest).toHaveBeenCalledWith(expect.anything(), phrase)
+      expect(result.current.step).toBe('recovery-step-up')
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    it('stays on the phrase step when the code cannot be sent', async () => {
+      const { result } = mount()
+      act(() => result.current.goToRecoveryKeyEntry())
+      act(() => result.current.setRecoveryKeyInput(phrase))
+      spies.recover.mockResolvedValueOnce({ outcome: 'step-up-required' })
+      spies.stepUpRequest.mockRejectedValueOnce(httpError(500))
+
+      await act(async () => expect(await result.current.submitRecoveryKey()).toBe('failed'))
+
+      expect(result.current.step).toBe('recovery-key-entry')
+      expect(result.current.recoveryKeyError).toBe('Failed to send the verification code')
+      expect(spies.errorLog).toHaveBeenCalled()
+    })
+
+    it('goes to the code step when a code sent moments ago is still in the inbox', async () => {
+      const { result } = mount()
+      act(() => result.current.goToRecoveryKeyEntry())
+      act(() => result.current.setRecoveryKeyInput(phrase))
+      spies.recover.mockResolvedValueOnce({ outcome: 'step-up-required' })
+      spies.stepUpRequest.mockRejectedValueOnce(httpError(429))
+
+      await act(async () => expect(await result.current.submitRecoveryKey()).toBe('step-up'))
+
+      expect(result.current.step).toBe('recovery-step-up')
+      expect(spies.errorLog).not.toHaveBeenCalled()
+    })
+
+    it('explains, without logging, that the account was upgraded elsewhere before the code was sent', async () => {
+      const { result } = mount()
+      act(() => result.current.goToRecoveryKeyEntry())
+      act(() => result.current.setRecoveryKeyInput(phrase))
+      spies.recover.mockResolvedValueOnce({ outcome: 'step-up-required' })
+      spies.stepUpRequest.mockRejectedValueOnce(new encryptionService.V1UpgradeRaceError())
+
+      await act(async () => expect(await result.current.submitRecoveryKey()).toBe('failed'))
+
+      expect(result.current.recoveryKeyError).toContain('just upgraded on another device')
+      expect(spies.errorLog).not.toHaveBeenCalled()
+    })
+
+    it('clears a rejected code so the next click cannot spend another attempt on it', async () => {
+      const { result } = await reachStepUp()
+      act(() => result.current.setStepUpOtp('00000000'))
+      spies.recover.mockRejectedValueOnce(new StepUpVerificationError('step_up_invalid'))
+
+      await act(async () => expect(await result.current.submitRecoveryStepUp()).toBe('failed'))
+
+      expect(result.current.stepUpOtp).toBe('')
+      expect(result.current.stepUpError).toContain('That code is invalid or expired')
+    })
+
+    it('empties the box after a resend, because the new code replaces the old one', async () => {
+      const { result } = await reachStepUp()
+      act(() => result.current.setStepUpOtp('12345678'))
+
+      await act(async () => result.current.resendRecoveryStepUp())
+
+      expect(spies.stepUpRequest).toHaveBeenCalledTimes(2)
+      expect(spies.stepUpRequest).toHaveBeenLastCalledWith(expect.anything(), phrase)
+      expect(result.current.step).toBe('recovery-step-up')
+      expect(result.current.stepUpOtp).toBe('')
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    it.each([
+      [httpError(429), 'A code was just sent', false],
+      [httpError(500), 'Couldn’t send a new code', true],
+      [new encryptionService.V1UpgradeRaceError(), 'just upgraded on another device', false],
+    ] as const)('keeps the typed code and explains a failed resend (%s)', async (error, message, logged) => {
+      const { result } = await reachStepUp()
+      act(() => result.current.setStepUpOtp('12345678'))
+      spies.stepUpRequest.mockRejectedValueOnce(error)
+
+      await act(async () => result.current.resendRecoveryStepUp())
+
+      expect(result.current.stepUpError).toContain(message)
+      expect(result.current.stepUpOtp).toBe('12345678')
+      expect(result.current.isLoading).toBe(false)
+      expect(spies.errorLog.mock.calls.length > 0).toBe(logged)
+    })
+
+    it('upgrades with the code and shows the new phrase as a replacement', async () => {
+      const { result } = await reachStepUp()
+      act(() => result.current.setStepUpOtp('12345678'))
+      spies.recover.mockResolvedValueOnce({ outcome: 'migrated', recoveryKey: 'new phrase' })
+
+      await act(async () => expect(await result.current.submitRecoveryStepUp()).toBe('migrated'))
+
+      expect(spies.recover).toHaveBeenLastCalledWith(expect.anything(), phrase, { stepUpOtp: '12345678' })
+      expect(result.current.step).toBe('recovery-key-display')
+      expect(result.current.recoveryKey).toBe('new phrase')
+      expect(result.current.migratedRecoveryKey).toBe(true)
+    })
+
+    it.each([
+      [new StepUpVerificationError('step_up_invalid'), 'That code is invalid or expired'],
+      [new encryptionService.V1UpgradeRaceError(), 'just upgraded on another device'],
+      [httpError(403), 'Recovery failed'],
+    ] as const)('keeps the code step open on %s', async (error, message) => {
+      const { result } = await reachStepUp()
+      spies.recover.mockRejectedValueOnce(error)
+
+      await act(async () => expect(await result.current.submitRecoveryStepUp()).toBe('failed'))
+
+      expect(result.current.step).toBe('recovery-step-up')
+      expect(result.current.stepUpError).toContain(message)
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    it('returns to the phrase step on cancel, keeping the phrase', async () => {
+      const { result } = await reachStepUp()
+
+      act(() => result.current.cancelRecoveryStepUp())
+
+      expect(result.current.step).toBe('recovery-key-entry')
+      expect(result.current.recoveryKeyInput).toBe('  WORD\n'.repeat(24))
+    })
   })
 
   it.each([

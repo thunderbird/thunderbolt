@@ -10,6 +10,7 @@ import PptxGenJS from 'pptxgenjs'
 import { defaultModelOpus55 } from '../shared/defaults/models'
 import { fakeProviderReply } from './fake-provider'
 import { collectPageErrors, loginViaEmailCode, sendChatPrompt } from './helpers'
+import { importBackup } from './import-backup'
 import { contentView } from './office-preview'
 import {
   officeDeckEditFilename,
@@ -105,6 +106,76 @@ test('a run that created a file stays a step that shows its script and result, a
   await expect(page.getByRole('button', { name: 'Stop generating', exact: true })).toHaveCount(0)
   await page.reload()
   await expectStepBesideChip()
+})
+
+test('a saved reply folds three same-name files and restores their chips after reload', async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 800 })
+  const email = await loginViaEmailCode(page)
+  const chatId = crypto.randomUUID()
+  const filename = 'deck.pptx'
+  await importBackup(page, {
+    format: 'thunderbolt-export',
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    user: { id: 'office-fixture', email },
+    tables: {
+      chat_threads: [{ id: chatId, title: 'Deck revisions' }],
+      chat_messages: [
+        {
+          id: crypto.randomUUID(),
+          chatThreadId: chatId,
+          parentId: null,
+          role: 'assistant',
+          modelId: defaultModelOpus55.id,
+          content: '',
+          parts: [
+            { type: 'text', text: 'Saving the deck.' },
+            ...[false, false, true].map((edited) => ({
+              type: 'tool-run_office_script',
+              toolCallId: crypto.randomUUID(),
+              state: 'output-available',
+              input: {},
+              output: {
+                ok: true,
+                files: [
+                  {
+                    id: crypto.randomUUID(),
+                    filename,
+                    mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                    edited,
+                  },
+                ],
+                logs: '',
+              },
+            })),
+          ],
+        },
+      ],
+    },
+  })
+  await page.goto(`/chats/${chatId}`)
+  const reply = page.locator('[data-quotable-message-id]').last()
+  const chips = reply.getByText(filename, { exact: true })
+  const versions = reply.getByRole('button', { name: '2 earlier versions' })
+  const checkVersions = async () => {
+    await expect(chips).toHaveCount(1)
+    await expect(reply.getByText('Edited', { exact: true })).toBeVisible()
+    const steps = reply.getByRole('button', { name: /Completed 3 steps/ })
+    await steps.click()
+    await expect(steps).toBeFocused()
+    await expect(steps).toHaveAttribute('aria-expanded', 'true')
+    await expect(versions).toHaveAttribute('aria-expanded', 'false')
+    await expect(reply.getByRole('button', { name: 'Copy message' })).toBeVisible()
+    // Click the chevron, where the message actions previously covered the disclosure.
+    await versions.locator('svg').click({ timeout: 5000 })
+    await expect(versions).toHaveAttribute('aria-expanded', 'true')
+    await expect(steps).toHaveAttribute('aria-expanded', 'true')
+    await expect(chips).toHaveCount(3)
+    await expect(reply.getByText('Not available on this device')).toHaveCount(3)
+  }
+  await checkVersions()
+  await page.reload()
+  await checkVersions()
 })
 
 test('the agent builds a workbook with Excelize and the downloaded file holds the computed total', async ({ page }) => {

@@ -282,6 +282,71 @@ describe('AssistantMessage actions', () => {
   })
 })
 
+describe('Office activity during a streaming reply', () => {
+  const writing: ToolUIPart = {
+    type: 'tool-run_office_script',
+    toolCallId: 'office',
+    state: 'input-streaming',
+    input: undefined,
+  }
+  const running: ToolUIPart = { ...writing, state: 'input-available', input: {} }
+  const search: ToolUIPart = { type: 'tool-search', toolCallId: 'search', state: 'input-available', input: {} }
+  const saved: ToolUIPart = {
+    ...running,
+    toolCallId: 'saved',
+    state: 'output-available',
+    output: { ok: true, files: [{ id: 'f1', filename: 'report.docx', mimeType: 'application/docx' }], logs: '' },
+  }
+  it('keeps an expanded tool group focused when a later save folds a preceding chip', async () => {
+    const parts = [saved, createTextPart('Checking the report.'), search]
+    const reply = (parts: ThunderboltUIMessage['parts']) => (
+      <ContentViewProvider>
+        <AssistantMessage message={{ id: 'office', role: 'assistant', parts }} isStreaming />
+      </ContentViewProvider>
+    )
+    const { rerender } = render(reply(parts))
+    await act(async () => void (await getClock().runAllAsync()))
+    const trigger = screen.getByTestId('tool-status').closest('button')!
+    fireEvent.click(trigger)
+    trigger.focus()
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+
+    rerender(
+      reply([
+        ...parts,
+        {
+          ...saved,
+          toolCallId: 'resave',
+          output: { ok: true, files: [{ id: 'f2', filename: 'report.docx', mimeType: 'application/docx' }] },
+        },
+      ]),
+    )
+    await act(async () => void (await getClock().runAllAsync()))
+    expect(screen.getByTestId('tool-status').closest('button')).toHaveAttribute('aria-expanded', 'true')
+    expect(document.activeElement).toBe(trigger)
+  })
+
+  const scenarios: [string, ThunderboltUIMessage['parts']][] = [
+    ['text followed by a tool whose input is streaming', [createTextPart('Working.'), writing]],
+    [
+      'a completed search after two unfinished calls',
+      [search, writing, { ...search, toolCallId: 'done', state: 'output-available', output: {} }],
+    ],
+    ['a file chip after a still-running call', [running, saved]],
+    ['text after a still-running call', [running, createTextPart('Working.')]],
+  ]
+  it.each(scenarios)('shows Creating file… for %s', async (_, parts) => {
+    render(
+      <ContentViewProvider>
+        <AssistantMessage message={{ id: 'office', role: 'assistant', parts }} isStreaming />
+      </ContentViewProvider>,
+    )
+    await act(async () => void (await getClock().runAllAsync()))
+    expect(screen.getByRole('button', { name: 'Creating file…' })).toBeVisible()
+    expect(screen.queryByText(/Completed/)).toBeNull()
+  })
+})
+
 it('keeps a finished office run as a step, with the chips of its files after the group', async () => {
   const message: ThunderboltUIMessage = {
     id: 'office',

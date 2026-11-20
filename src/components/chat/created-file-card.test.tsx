@@ -32,6 +32,11 @@ const finishedCall = (output: ToolUIPart['output']): ToolUIPart => ({
   output,
 })
 
+const OpenSideview = () => {
+  const { sideviewType, sideviewId } = useSideview()
+  return <p data-testid="sideview">{`${sideviewType}|${sideviewId}`}</p>
+}
+
 const renderMessage = async (part: ToolUIPart | DynamicToolUIPart) => {
   const message: ThunderboltUIMessage = { id: 'm1', role: 'assistant', parts: [part] }
   const view = render(
@@ -102,10 +107,6 @@ describe('the chip for a file the agent created', () => {
   })
 
   it('opens a workbook in the side view, like an attached file', async () => {
-    const OpenSideview = () => {
-      const { sideviewType, sideviewId } = useSideview()
-      return <p data-testid="sideview">{`${sideviewType}|${sideviewId}`}</p>
-    }
     const message: ThunderboltUIMessage = {
       id: 'm1',
       role: 'assistant',
@@ -138,6 +139,30 @@ describe('the chip for a file the agent created', () => {
     expect(screen.getByText('Edited').closest('.group')?.textContent).toContain('report.docx')
   })
 
+  it('keeps the expanded disclosure focused when a third version is saved', async () => {
+    const view = (ids: string[]) => {
+      const parts: ThunderboltUIMessage['parts'] = ids.flatMap((id) => [
+        { type: 'text', text: `Saving ${id}` },
+        { ...finishedCall({ ok: true, files: [{ ...report, id }], logs: '' }), toolCallId: id },
+      ])
+      return (
+        <ContentViewProvider>
+          <AssistantMessage message={{ id: 'm1', role: 'assistant', parts }} isStreaming />
+        </ContentViewProvider>
+      )
+    }
+    const { rerender } = render(view(['first', 'second']))
+    const disclosure = screen.getByRole('button', { name: '1 earlier version' })
+    disclosure.focus()
+    fireEvent.click(disclosure)
+    expect(disclosure).toHaveAttribute('aria-expanded', 'true')
+
+    rerender(view(['first', 'second', 'third']))
+    await act(async () => void (await getClock().runAllAsync()))
+    expect(screen.getByRole('button', { name: '2 earlier versions', expanded: true })).toBe(disclosure)
+    expect(document.activeElement).toBe(disclosure)
+  })
+
   it('opens each version of an edited file as it was when that chip was made', async () => {
     const versions = ['first', 'second'].map((id, index) => ({
       ...report,
@@ -161,19 +186,34 @@ describe('the chip for a file the agent created', () => {
     render(
       <ContentViewProvider>
         <AssistantMessage message={message} isStreaming={false} />
+        <OpenSideview />
       </ContentViewProvider>,
     )
     await act(async () => void (await getClock().runAllAsync()))
 
+    expect(screen.getAllByRole('button', { name: 'Download report.docx' })).toHaveLength(1)
+    expect(screen.getByText('Edited')).toBeDefined()
+    const disclosure = screen.getByRole('button', { name: '1 earlier version', expanded: false })
+    await act(async () => {
+      fireEvent.click(disclosure)
+      await getClock().runAllAsync()
+    })
+    expect(disclosure.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getAllByText('Edited')).toHaveLength(1)
     const buttons = screen.getAllByRole('button', { name: 'Download report.docx' })
+    const previews = screen.getAllByTitle('report.docx')
     expect(buttons).toHaveLength(2)
-    for (const button of buttons) {
+    for (const [index, id] of ['second', 'first'].entries()) {
+      fireEvent.click(previews[index])
+      expect(screen.getByTestId('sideview').textContent).toBe(`local-file|${id}:report.docx`)
       await act(async () => {
-        fireEvent.click(button)
+        fireEvent.click(buttons[index])
         await getClock().runAllAsync()
       })
     }
-    expect(downloadFile.mock.calls.map(([file]) => file.contents)).toEqual([new Uint8Array([1]), new Uint8Array([2])])
+    expect(downloadFile.mock.calls.map(([file]) => file.contents)).toEqual([new Uint8Array([2]), new Uint8Array([1])])
+    fireEvent.click(disclosure)
+    expect(screen.getAllByRole('button', { name: 'Download report.docx' })).toHaveLength(1)
   })
 
   it('still says an edited copy is not on this device', async () => {

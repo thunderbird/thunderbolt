@@ -4,7 +4,7 @@
 
 import type { DynamicToolUIPart, ReasoningUIPart, TextUIPart, ToolUIPart, UIMessage } from 'ai'
 import { describe, expect, it } from 'bun:test'
-import { filterMessageParts, groupMessageParts } from './assistant-message'
+import { filterMessageParts, type GroupedUIPart, groupMessageParts } from './assistant-message'
 
 const createToolPart = (toolName: string): ToolUIPart =>
   ({
@@ -207,6 +207,60 @@ describe('assistant-message utilities', () => {
       logs: '',
     }
 
+    const first = createdReport.files[0]
+    const second = { ...first, id: 'f2', edited: true }
+    const third = { ...first, id: 'f3' }
+    const other = { ...first, id: 'f4', filename: 'budget.xlsx' }
+    const save = (...files: typeof createdReport.files): ToolUIPart => ({
+      ...officeCall({ ...createdReport, files }),
+      toolCallId: `call-${files[0].id}`,
+    })
+    const steps = (...calls: ToolUIPart[]): GroupedUIPart => ({
+      type: 'reasoning_group',
+      items: calls.map((content) => ({ type: 'tool', content, id: content.toolCallId })),
+    })
+    const row = (latest: typeof first, ...earlier: typeof createdReport.files): GroupedUIPart => ({
+      type: 'created_files',
+      files: [{ latest, earlier }],
+    })
+
+    it('folds two same-name saves at their last step', () => {
+      const calls = [save(first), save(second)]
+      expect(groupMessageParts(calls)).toEqual([steps(...calls), row(second, first)])
+    })
+
+    it('orders three snapshots newest first and preserves their edit flags', () => {
+      const calls = [save(first), save(second), save(third)]
+      expect(groupMessageParts(calls)).toEqual([steps(...calls), row(third, second, first)])
+    })
+
+    it('keeps a sibling file at its original step when only one output is saved again', () => {
+      const both = save(first, other)
+      const retry = save(second)
+      expect(groupMessageParts([both, retry])).toEqual([steps(both), row(other), steps(retry), row(second, first)])
+    })
+
+    it('keeps a failed retry as a step without adding a version', () => {
+      const failed = officeCall({ ok: false, error: 'boom', logs: '' })
+      const calls = [save(first), failed, save(second)]
+      expect(groupMessageParts(calls)).toEqual([steps(...calls), row(second, first)])
+    })
+
+    it('leaves different filenames at their own steps', () => {
+      const a = save(first)
+      const b = save(other)
+      expect(groupMessageParts([a, b])).toEqual([steps(a), row(first), steps(b), row(other)])
+    })
+
+    it('keeps the same filename independent in separate messages', () => {
+      const a = save(first)
+      const b = save(second)
+      expect([groupMessageParts([a]), groupMessageParts([b])]).toEqual([
+        [steps(a), row(first)],
+        [steps(b), row(second)],
+      ])
+    })
+
     it('keeps a run that created files as a step and shows its chips right after the group', () => {
       const bash = createToolPart('bash')
       const office = officeCall(createdReport)
@@ -220,7 +274,7 @@ describe('assistant-message utilities', () => {
             { type: 'tool', content: office, id: office.toolCallId },
           ],
         },
-        office,
+        row(first),
         text,
       ])
     })
@@ -236,7 +290,7 @@ describe('assistant-message utilities', () => {
       ])
       expect(finishedGroup).toEqual([
         { type: 'reasoning_group', items: [{ type: 'tool', content: finished, id: finished.toolCallId }] },
-        finished,
+        row(first),
       ])
     })
 

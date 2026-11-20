@@ -5062,11 +5062,11 @@ msgstr ""
 msgid "Save your recovery phrase"
 msgstr "リカバリーフレーズを保存してください"
 
-#: src/components/saved-file-notice.tsx
+#: src/components/saved-file-notice/saved-file-notice.tsx
 msgid "Saved {name} to Downloads."
 msgstr "{name} を「ダウンロード」に保存しました。"
 
-#: src/components/saved-file-notice.tsx
+#: src/components/saved-file-notice/saved-file-notice.tsx
 msgid "Saved {name} to the Files app."
 msgstr "{name} をファイルアプリに保存しました。"
 

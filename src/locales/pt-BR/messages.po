@@ -5098,11 +5098,11 @@ msgstr ""
 msgid "Save your recovery phrase"
 msgstr "Salve sua frase de recuperação"
 
-#: src/components/saved-file-notice.tsx
+#: src/components/saved-file-notice/saved-file-notice.tsx
 msgid "Saved {name} to Downloads."
 msgstr "{name} foi salvo em Downloads."
 
-#: src/components/saved-file-notice.tsx
+#: src/components/saved-file-notice/saved-file-notice.tsx
 msgid "Saved {name} to the Files app."
 msgstr "{name} foi salvo no app Arquivos."
 

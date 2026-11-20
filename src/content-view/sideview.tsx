@@ -2,15 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Suspense, useState } from 'react'
+import { Suspense } from 'react'
 import { Loader2 } from 'lucide-react'
 import { parseDocumentSideviewId } from '@/types/citation'
 import { getFileType } from '@/widgets/document-result/file-type'
-import { useSideview } from './context'
 import { importWhenReachable } from '@/lib/import-when-reachable'
 import { retryableLazy } from './retryable-lazy'
 import { ViewerErrorBoundary } from './viewer-error-boundary'
 import { LocalViewerLoadFailure, ViewerLoadFailure } from './viewer-load-failure'
+import { useSideviewState } from './use-sideview-state'
 
 // Lazy-load the PDF viewer so its react-pdf + pdfjs payload only ships when a
 // document sideview is opened. The DOCX and PPTX renderers are dynamically
@@ -44,10 +44,8 @@ const loadingFallback = (
  * added by extending this switch.
  */
 export const Sideview = () => {
-  const { sideviewType, sideviewId } = useSideview()
-  // Try again bumps this. The new key remounts the boundary, and the viewer's code is imported again.
-  const [attempt, setAttempt] = useState(0)
-  const retry = () => setAttempt((count) => count + 1)
+  // Try again bumps `attempt`. The new key remounts the boundary, and the viewer's code is imported again.
+  const { sideviewType, sideviewId, attempt, retry } = useSideviewState()
 
   // Each viewer's error boundary is keyed by its file id, so switching files starts fresh: a failed save, a pending
   // one, or a viewer that did not load never carries over to the next file. Not by page, which only scrolls the same

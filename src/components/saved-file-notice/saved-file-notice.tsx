@@ -3,13 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { NotificationCard } from '@/components/ui/notification-card'
-import { subscribeToMobileSaves, type MobileSave } from '@/lib/download'
 import { useLingui } from '@lingui/react/macro'
 import { CheckCircle2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-
-const noticeDurationMs = 4_000
+import { useSavedFileNoticeState } from './use-saved-file-notice-state'
 
 /**
  * Says where a file went after a save on a phone, which shows no download bar of its own. Mounted once for the app,
@@ -17,17 +14,7 @@ const noticeDurationMs = 4_000
  */
 export const SavedFileNotice = () => {
   const { t } = useLingui()
-  const [saved, setSaved] = useState<MobileSave | null>(null)
-
-  useEffect(() => subscribeToMobileSaves(setSaved), [])
-
-  useEffect(() => {
-    if (!saved) {
-      return
-    }
-    const timeoutId = window.setTimeout(() => setSaved(null), noticeDurationMs)
-    return () => window.clearTimeout(timeoutId)
-  }, [saved])
+  const { saved, dismiss } = useSavedFileNoticeState()
 
   // Already made safe by `downloadFile`.
   const name = saved?.name ?? ''
@@ -42,7 +29,7 @@ export const SavedFileNotice = () => {
         open={saved !== null}
         icon={<CheckCircle2 className="size-[var(--icon-size-default)] text-primary" />}
         message={message}
-        onDismiss={() => setSaved(null)}
+        onDismiss={dismiss}
       />
     </>,
     document.body,

@@ -10,6 +10,7 @@
 import * as xmldom from '@xmldom/xmldom'
 import * as fflate from 'fflate'
 import type PptxGenJSClass from 'pptxgenjs'
+import { animatePptx } from './animate-pptx'
 import { fixPptxGenJsOutput } from './pptxgenjs-output'
 
 Object.assign(globalThis, { fflate, xmldom })
@@ -21,5 +22,6 @@ const pptxgenjs: { value?: typeof PptxGenJSClass } | undefined = Object.getOwnPr
   'PptxGenJS',
 )
 if (pptxgenjs?.value) {
+  Object.assign(globalThis, { animatePptx })
   fixPptxGenJsOutput(pptxgenjs.value)
 }

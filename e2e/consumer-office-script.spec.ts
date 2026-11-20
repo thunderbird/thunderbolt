@@ -4,6 +4,7 @@
 
 import { readFile } from 'node:fs/promises'
 import type { Page } from '@playwright/test'
+import { DOMParser } from '@xmldom/xmldom'
 import { Document, Packer, Paragraph } from 'docx'
 import JSZip from 'jszip'
 import PptxGenJS from 'pptxgenjs'
@@ -315,7 +316,7 @@ test('the agent edits an attached deck, and the edited copy opens in the side pa
   await loginViaEmailCode(page)
   await chooseFakeModel(page)
   const deck = new PptxGenJS()
-  deck.addSlide().addText(`Status: ${officeEditPlaceholder}`, { x: 0.5, y: 0.5, w: 9, h: 1 })
+  deck.addSlide().addText(`Status: ${officeEditPlaceholder}`, { objectName: 'Status', x: 0.5, y: 0.5, w: 9, h: 1 })
   await page.locator('input[type="file"]').setInputFiles({
     name: officeDeckEditFilename,
     mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
@@ -330,6 +331,20 @@ test('the agent edits an attached deck, and the edited copy opens in the side pa
     timeout: 30_000,
   })
   await expect(reply.getByText('Edited', { exact: true })).toBeVisible()
+
+  const download = page.waitForEvent('download')
+  await reply.getByRole('button', { name: `Download ${officeDeckEditFilename}` }).click()
+  const zip = await JSZip.loadAsync(await readFile(await (await download).path()))
+  const xml = new DOMParser().parseFromString(
+    await zip.file('ppt/slides/slide1.xml')!.async('string'),
+    'application/xml',
+  )
+  const status = Array.from(xml.getElementsByTagName('p:cNvPr')).find((el) => el.getAttribute('name') === 'Status')
+  expect(status).toBeDefined()
+  expect(xml.getElementsByTagName('p:spTgt')[0].getAttribute('spid')).toBe(status!.getAttribute('id'))
+  expect(xml.getElementsByTagName('p:animEffect')[0].getAttribute('filter')).toBe('fade')
+  expect(xml.getElementsByTagName('p:transition')[0].children[0].localName).toBe('fade')
+
   await reply.locator(`button[title="${officeDeckEditFilename}"]`).click()
   const slides = contentView(page).frameLocator(`iframe[title="${officeDeckEditFilename}"]`)
   await expect(slides.getByText(`Status: ${officeDeckEditMarker}`)).toBeVisible()

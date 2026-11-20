@@ -42,7 +42,8 @@ saveFile(${JSON.stringify(officeEditFilename)}, patched)
 `
 
 /** Sent with an attached deck; the fake provider answers it by calling `run_office_script` to edit that deck. */
-export const officeDeckEditPrompt = 'Mark the attached deck as final.'
+export const officeDeckEditPrompt =
+  'Mark the attached deck as final. Fade in the status and add a fade slide transition.'
 export const officeDeckEditFilename = 'e2e-deck.pptx'
 /** The attached deck's first slide holds {@link officeEditPlaceholder}; the edited copy holds this in its place. */
 export const officeDeckEditMarker = 'Final OFFICE-DECK-5M2R'
@@ -51,7 +52,11 @@ export const officeDeckEditScript = `
 const parts = fflate.unzipSync(readFile(${JSON.stringify(officeDeckEditFilename)}))
 const slide = 'ppt/slides/slide1.xml'
 parts[slide] = fflate.strToU8(fflate.strFromU8(parts[slide]).replace(${JSON.stringify(officeEditPlaceholder)}, ${JSON.stringify(officeDeckEditMarker)}))
-saveFile(${JSON.stringify(officeDeckEditFilename)}, fflate.zipSync(parts))
+const out = animatePptx(fflate.zipSync(parts), {
+  effects: [{ slide: 1, shape: 'Status', effect: 'fadeIn' }],
+  transitions: [{ slide: 1, effect: 'fade' }],
+})
+saveFile(${JSON.stringify(officeDeckEditFilename)}, out)
 `
 
 /** Sent with an attached workbook whose chart reads Sheet1; the fake provider answers it by editing a value there. */

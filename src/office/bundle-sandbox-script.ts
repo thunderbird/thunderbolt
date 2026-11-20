@@ -13,7 +13,13 @@ export const bundleSandboxScript = async (entry: string): Promise<string> => {
   const result = await build({
     configFile: false,
     logLevel: 'silent',
-    build: { write: false, minify: true, lib: { entry, formats: ['iife'], name: 'sandboxScript' } },
+    build: {
+      write: false,
+      minify: true,
+      lib: { entry, formats: ['iife'], name: 'sandboxScript' },
+      // The guest ships as this string. Keep third-party license notices in it.
+      rolldownOptions: { output: { comments: { legal: true } } },
+    },
   })
   // `write: false` without `watch` resolves to one output.
   const [{ output }] = [result].flat() as Rolldown.RolldownOutput[]

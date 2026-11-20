@@ -159,6 +159,16 @@ own context.
   By default the parser lets an undefined entity or an unquoted attribute through; Word and PowerPoint
   refuse both. If any file fails, the run saves nothing. The error names the part, says the XML is too
   large to check, or says the check ran out of time.
+- PowerPoint scripts can call `animatePptx(bytes, { effects, transitions })` with bytes from PptxGenJS or an
+  attached deck. Both arrays are optional. Slides are 1-based in presentation order. Effects address a
+  top-level shape, picture, group or native table by unique object name and require a unique drawing ID.
+  A target with local geometry must overlap the canvas using its unrotated rectangle. An effect starts
+  on click, with the previous group, or after its longest member finishes, including delays and repeats.
+  Fly In and Wipe In accept a from-edge direction. The other presets are Appear, Fade In, Blink, Pulse,
+  Grow/Shrink, Spin, Disappear and Fade Out. The six transitions are fade, wipe, push, zoom, cover and dissolve.
+  The helper refuses existing timing when adding effects and existing transitions when adding a transition.
+  Other package parts retain their original bytes. Scripts can edit existing timing or create custom paths
+  with the raw ZIP and XML globals.
 - Workbooks go through Excelize (`excelize-wasm`). It is WebAssembly, which QuickJS cannot run, so it runs in
   the same Worker outside the VM. The script reaches it through a global `excelize`, and every call goes to one
   host function (`src/office/workbook-bridge.ts`). Arguments cross as JSON with the bytes beside them, so the VM

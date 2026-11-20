@@ -6,6 +6,15 @@ import { describe, expect, it } from 'bun:test'
 import { withFuturePrefixes } from './formula-cache'
 
 describe('withFuturePrefixes', () => {
+  it('reads escaped quotes in an array constant, and an unclosed constant in linear time', () => {
+    expect(withFuturePrefixes('CONCAT({"a""b",""},FILTER(A1:A3,B1:B3))')).toBe(
+      '_xlfn.CONCAT({"a""b",""},_xlfn._xlws.FILTER(A1:A3,B1:B3))',
+    )
+    const started = performance.now()
+    withFuturePrefixes(`SUM({"${'""'.repeat(32)}`)
+    expect(performance.now() - started).toBeLessThan(250)
+  })
+
   it('prefixes functions added after 2007 and leaves older ones and quoted text alone', () => {
     expect(withFuturePrefixes('concat("a","AGGREGATE(1)")&SUM(IFS(TRUE,1))')).toBe(
       '_xlfn.CONCAT("a","AGGREGATE(1)")&SUM(_xlfn.IFS(TRUE,1))',

@@ -125,10 +125,12 @@ const worksheetFunctions = new Set(['FILTER', 'SORT'])
 /**
  * A formula's tokens: text in double quotes, a quoted sheet name, a bracketed table or workbook reference, an array
  * constant, a name (with what follows it when that is `(`, a `,`, or the `!` or `:Sheet3!` that makes it a sheet
- * name), or a parenthesis or comma. A name right after `!` lives on that sheet, so it is not a token.
+ * name), or a parenthesis or comma. A name right after `!` lives on that sheet, so it is not a token. In an array
+ * constant a quoted string cannot end before another `"` (that pair is an escaped quote), so `""""` has one reading
+ * and a constant that never closes fails in linear time.
  */
 const formulaToken =
-  /"(?:[^"]|"")*"|'(?:[^']|'')*'|\[(?:[^[\]']|'.|\[(?:[^\]']|'.)*\])*\]|\{(?:"(?:[^"]|"")*"|[^}"])*\}|(?<![\w.$!])([A-Za-z_][\w.]*)(?=(\(|\s*,|(?::[A-Za-z_][\w.]*)?!)?)|[(),]/g
+  /"(?:[^"]|"")*"|'(?:[^']|'')*'|\[(?:[^[\]']|'.|\[(?:[^\]']|'.)*\])*\]|\{(?:"(?:[^"]|"")*"(?!")|[^}"])*\}|(?<![\w.$!])([A-Za-z_][\w.]*)(?=(\(|\s*,|(?::[A-Za-z_][\w.]*)?!)?)|[(),]/g
 
 /**
  * A formula with each function added after Excel 2007 written as the file format stores it, such as

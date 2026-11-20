@@ -160,7 +160,7 @@ We don't test air-gapped operation today, so treat it as a pilot.
 
 ### How many devices can one account use?
 
-Ten active devices. Devices awaiting approval do not count against the limit.
+Ten active devices. Devices awaiting approval do not count against the limit, and recovering with your recovery phrase or a passkey is never blocked by it.
 
 ### What happens if a device is lost or stolen?
 

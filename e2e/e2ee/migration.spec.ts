@@ -26,6 +26,7 @@ import {
   getEncryptionServerSnapshot,
   getSchemeVersion,
   getTaskIds,
+  plantTrustedDevice,
   waitForDeviceKeys,
   waitForDeviceState,
   waitForNewEncryptedTasks,
@@ -36,6 +37,7 @@ import { expect, test } from './fixtures'
 import {
   acknowledgeRecoveryPhrase,
   approvePendingDevice,
+  completeStepUpCode,
   createE2eeEmail,
   createIsolatedDevice,
   createTask,
@@ -50,6 +52,8 @@ import {
   runSeamlessMigration,
   seedV1Account,
   startAdditionalDeviceSetup,
+  startPhraseRecovery,
+  submitRecoveryPhrase,
   waitForTasksPreference,
 } from './helpers'
 
@@ -149,6 +153,53 @@ test.describe('PowerSync E2EE v1 → v2 migration', () => {
       await expect(recovered.page.getByText(seeded.taskText, { exact: true })).toBeVisible({ timeout: 30_000 })
     } finally {
       await recovered.context.close()
+    }
+  })
+
+  test('recovers a v1 account from its v1 phrase when no device holding the CK is left', async ({ browser, page }) => {
+    const email = createE2eeEmail()
+    await loginViaConsumerOtp(page, email)
+    const userId = await waitForUserId(email)
+    await registerDeviceOnly(page)
+    const [lostKeys] = await waitForDeviceKeys(userId, 1)
+    const seeded = await seedV1Account(userId, [lostKeys])
+    // Lost devices fill the device cap, and none is left to revoke them.
+    const deviceCap = 10 // `maxActiveDevicesPerUser` in backend/src/dal/devices.ts
+    const otherLostIds = Array.from({ length: deviceCap - 1 }, (_, i) => `${userId}-lost-${i}`)
+    for (const deviceId of otherLostIds) {
+      await plantTrustedDevice(userId, deviceId, 'lost-pk', 'lost-mlkem-pk')
+    }
+    // The only device holding the CK is gone before it ever migrates.
+    await page.close()
+
+    const fresh = await createIsolatedDevice(browser, 'firefox')
+    try {
+      await loginViaConsumerOtp(fresh.page, email)
+      const dialog = await startPhraseRecovery(fresh.page)
+      const freshId = await getDeviceId(fresh.page)
+      await submitRecoveryPhrase(dialog, seeded.v1RecoveryPhrase)
+      // Upgrading from an untrusted device takes the code emailed to the account.
+      await completeStepUpCode(fresh.page, email, 'v1-phrase-recovery')
+      await expect(dialog.getByText('Save your new recovery phrase')).toBeVisible({ timeout: 60_000 })
+      const newPhrase = await acknowledgeRecoveryPhrase(dialog)
+      expect(newPhrase).not.toBe(seeded.v1RecoveryPhrase)
+
+      await waitForSchemeV2(userId, ['0', 'v1'])
+      await waitForDeviceState(userId, freshId, (state) => state.trusted && state.hasEnvelope)
+      // The lost devices are dropped, not left pending: nothing prompts to approve them.
+      for (const deviceId of [lostKeys.deviceId, ...otherLostIds]) {
+        await waitForDeviceState(
+          userId,
+          deviceId,
+          (state) => !state.trusted && !state.approvalPending && !state.hasEnvelope,
+        )
+      }
+
+      await enableTasks(fresh.page)
+      await fresh.page.goto('/tasks')
+      await expect(fresh.page.getByText(seeded.taskText, { exact: true })).toBeVisible({ timeout: 30_000 })
+    } finally {
+      await fresh.context.close()
     }
   })
 

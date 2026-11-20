@@ -17,7 +17,7 @@ A device is one install signed in to the account, identified by an ID stored loc
 - Every tab of the same browser profile is one device. A different browser, or a different profile in the same browser, is a separate device.
 - Device names are generated, for example "Thunderbolt on macOS" or "Chrome on Windows". They cannot be renamed.
 - Headless bridges for external agents appear in the list labeled **Bridge**. Command line installs appear labeled **CLI**, but only where the operator has set `CLI_DEVICE_REGISTRATION_ENABLED=true`; it is off by default, and until it is on a command line sign-in is a session with no entry in this list.
-- An account can hold **10 active devices**. Devices waiting for approval and revoked devices do not count, so more devices can queue for approval than there are free slots; the extras are refused at approval rather than at registration. To free a slot, revoke one.
+- An account can hold **10 active devices**. Devices waiting for approval and revoked devices do not count, so more devices can queue for approval than there are free slots; another device cannot approve one past the limit. To free a slot, revoke one. A device that recovers the account itself, with the recovery phrase or a passkey, is let in even past the limit: lost devices still hold their slots, and only a trusted device can revoke them.
 
 ## Adding a device
 
@@ -37,6 +37,8 @@ A pending device shows an "Approve this device" screen and polls for the result.
 ### After a legacy encryption upgrade
 
 Among regular app devices, only the device running the upgrade stays trusted. Save the new recovery phrase it shows; the previous phrase stops working. Other trusted app devices return to pending approval; existing pending or denied requests keep their state. They can unlock through verified approval, the new recovery phrase or a passkey enrolled for sync. CLI and bridge entries are unchanged. Existing encrypted data is preserved.
+
+A pending device can also run the upgrade itself, which is the way back when no device that had sync turned on is left: choose **Use my recovery key**, enter the account's original recovery phrase, then enter the code emailed to the account. That device becomes the only trusted app device and shows the new phrase; other app devices lose their trust without a pending request, so the recovered device isn't asked to approve them. Opening one of them again starts a normal approval.
 
 ### Approval limits
 

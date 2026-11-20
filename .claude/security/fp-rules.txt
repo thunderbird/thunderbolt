@@ -36,8 +36,9 @@ ENCRYPTION DESIGN
   signing key", is a REAL regression now, not a false positive; do not suppress
   it. Gated by `e2e/e2ee/attacks/revoked-device-signing-key.spec.ts`.
 - E2EE is UNCONDITIONAL since THU-868. `E2EE_ENABLED` and `settings.e2eeEnabled`
-  are gone, and device trust is always enforced — `markDeviceTrusted` has one call
-  site, inside the envelope-storing transaction, so a device that can sync is
+  are gone, and device trust is always enforced — `markDeviceTrusted` is only
+  called inside a transaction that also stores the device's envelope (the
+  envelope route and the v1-phrase upgrade), so a device that can sync is
   always one on an enrolled account. "Encryption can be switched off" is therefore
   a REAL finding now, not a false positive; do not suppress it.
   What IS by design: `GET /v1/config` still returns a hardcoded

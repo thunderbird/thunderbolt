@@ -142,7 +142,7 @@ Trust-sensitive columns are server-managed. `revoked_at`, `trusted`, `approval_p
 
 Three routes set `node_id` / `node_id_attested_at`: canary-gated `POST /devices/:deviceId/node-id`, session-pinned `POST /devices/me/node-id`, and bridge registration (`registerBridgeDevice`). Revoke and deny clear them so a removed device stops being dialable.
 
-During a legacy encryption upgrade through `POST /encryption/upgrade`, trusted, non-revoked regular app devices other than the migrator return to pending approval, and their node IDs and attestation timestamps are cleared. Other device states remain unchanged.
+During a legacy encryption upgrade through `POST /encryption/upgrade`, trusted, non-revoked regular app devices other than the migrator return to pending approval, and their node IDs and attestation timestamps are cleared. When the migrator is a pending device recovering with the v1 phrase, it becomes trusted in the same transaction, and every other non-revoked regular app device ends untrusted and not pending (it asks for approval again when next opened). Other device states remain unchanged.
 
 ### Settings > Devices
 

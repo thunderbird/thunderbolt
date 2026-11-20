@@ -166,8 +166,9 @@ export const revokeDevice = async (database: QueryableDatabase, deviceId: string
  * Must run inside the caller's migration transaction so envelope removal and sibling demotion roll back together.
  *
  * `siblings` sets what the other regular devices become. `pending` (the migrator): trusted ones return to verified
- * approval. `untrusted` (recovery with the v1 phrase): none stays trusted or pending — one may be the very device that
- * was lost, so nothing should prompt to approve it until it registers again.
+ * approval. `untrusted` (recovery with the v1 phrase): none stays trusted or pending, even one already waiting — it may
+ * be the very device that was lost or a leftover from a failed attempt, so nothing should prompt to approve it until it
+ * registers again. A waiting device sees this as a deny.
  */
 export const requireMigrationSiblingApproval = async (
   database: QueryableDatabase,

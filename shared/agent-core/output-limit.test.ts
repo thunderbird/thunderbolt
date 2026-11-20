@@ -23,7 +23,7 @@ type Delta = {
   tool_calls?: { index: number; id: string; type: 'function'; function: { name: string; arguments: string } }[]
 }
 
-const chunk = (delta: Delta, finishReason: 'stop' | 'length' | null) =>
+const chunk = (delta: Delta, finishReason: 'stop' | 'length' | 'network_error' | null) =>
   `data: ${JSON.stringify({
     id: 'c',
     object: 'chat.completion.chunk',
@@ -192,3 +192,71 @@ describe('output limit hit while reasoning', () => {
     expect(bodies[0]).toMatchObject({ max_completion_tokens: 8_192 })
   })
 })
+
+it.each(['length', 'network_error'] as const)(
+  'shows the Office call while the provider is paused before its arguments (%s)',
+  async (finishReason) => {
+    const gate = Promise.withResolvers<void>()
+    const headerSeen = Promise.withResolvers<void>()
+    const toolDelta = (args: string) =>
+      chunk(
+        {
+          tool_calls: [
+            { index: 0, id: 'office-1', type: 'function', function: { name: 'run_office_script', arguments: args } },
+          ],
+        },
+        null,
+      )
+    const reply = () =>
+      new Response(
+        new ReadableStream({
+          async start(controller) {
+            const send = (event: string) => controller.enqueue(new TextEncoder().encode(event + '\n\n'))
+            send(toolDelta(''))
+            await gate.promise
+            send(toolDelta('{"script":"unfinished'))
+            send(chunk({}, finishReason))
+            send('data: [DONE]')
+            controller.close()
+          },
+        }),
+        { headers: { 'content-type': 'text/event-stream' } },
+      )
+    const { harness } = await buildHarness([reply, answer])
+    harness.subscribe((event) => {
+      if (event.type === 'message_update' && event.assistantMessageEvent.type === 'toolcall_start') {
+        headerSeen.resolve()
+      }
+    })
+    const chunks: AiSdkChunk[] = []
+    const drained = piHarnessToUiMessageStream(harness, () => harness.prompt('Create a file.')).pipeTo(
+      new WritableStream({
+        write(bytes) {
+          const line = new TextDecoder().decode(bytes)
+          if (line.startsWith('data: {')) {
+            chunks.push(JSON.parse(line.slice(6)))
+          }
+        },
+      }),
+    )
+    try {
+      await headerSeen.promise
+      // Let the sink drain all chunks produced by the header, with the provider gate still closed.
+      await new Promise<void>((resolve) => setTimeout(resolve, 0))
+      expect(chunks.filter((event) => 'toolCallId' in event)).toMatchObject([
+        { type: 'tool-input-start', toolCallId: 'office-1', toolName: 'run_office_script' },
+      ])
+    } finally {
+      gate.resolve()
+      await drained
+    }
+    const toolEvents = chunks.filter((event) => 'toolCallId' in event).map((event) => event.type)
+    if (finishReason === 'network_error') {
+      expect(toolEvents).toEqual(['tool-input-start', 'tool-input-error'])
+      expect(errorsOf(chunks)).toHaveLength(1)
+    } else {
+      expect(toolEvents).toEqual(['tool-input-start', 'tool-input-available', 'tool-output-error'])
+      expect(textOf(chunks)).toBe('Done.')
+    }
+  },
+)

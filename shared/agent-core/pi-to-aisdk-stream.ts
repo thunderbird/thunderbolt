@@ -17,7 +17,8 @@
  *   message_update (text_delta)         → text-start (once) → text-delta…
  *   message_update (thinking_delta)     → reasoning-start (once) → reasoning-delta…
  *   message_end                         → close any open text/reasoning part
- *   tool_execution_start                → tool-input-start + tool-input-available
+ *   message_update (identified toolCall) → tool-input-start (once per call)
+ *   tool_execution_start                → tool-input-available (start first if needed)
  *   tool_execution_end                  → tool-output-available | tool-output-error
  *   turn_end                            → message-metadata (usage)
  *   turn_end (stopReason === 'error')   → error (carrying message.errorMessage)
@@ -39,7 +40,8 @@
  */
 
 import type { AgentEvent, AgentHarness, AgentHarnessEvent } from '@earendil-works/pi-agent-core'
-import { fauxAssistantMessage, type AssistantMessage, type Usage } from '@earendil-works/pi-ai'
+import { fauxAssistantMessage, type AssistantMessage, type ToolCall, type Usage } from '@earendil-works/pi-ai'
+import { isRecord } from '../lib/is-record.ts'
 import { isCutOffBeforeAnswer } from './output-limit.ts'
 import { stoppedReplyText } from './stopped-reply.ts'
 
@@ -71,8 +73,22 @@ export type AiSdkChunk =
   | { type: 'reasoning-start'; id: string }
   | { type: 'reasoning-delta'; id: string; delta: string }
   | { type: 'reasoning-end'; id: string }
-  | { type: 'tool-input-start'; toolCallId: string; toolName: string; title?: string }
+  | {
+      type: 'tool-input-start'
+      toolCallId: string
+      toolName: string
+      title?: string
+      toolMetadata: { piInputHeader: true }
+    }
   | { type: 'tool-input-available'; toolCallId: string; toolName: string; input: unknown; title?: string }
+  | {
+      type: 'tool-input-error'
+      toolCallId: string
+      toolName: string
+      input: unknown
+      errorText: string
+      toolMetadata: { interrupted: true }
+    }
   | { type: 'tool-output-available'; toolCallId: string; output: unknown }
   | { type: 'tool-output-error'; toolCallId: string; errorText: string }
   | { type: 'message-metadata'; messageMetadata: Record<string, unknown> }
@@ -179,6 +195,7 @@ const createPiTranslator = (
   let reasoningOrdinal = 0
   let textOrdinal = 0
   let cutOffBeforeAnswer = false
+  const pendingInputs = new Map<string, ToolCall>()
   const toolStartTimes = new Map<string, number>()
 
   const emitMetadata = (messageMetadata: Record<string, unknown> | undefined): void => {
@@ -243,10 +260,45 @@ const createPiTranslator = (
     return text.id
   }
 
+  const startToolInput = (toolCallId: string, toolName: string): void => {
+    emit({ type: 'tool-input-start', toolCallId, toolName, title: toolName, toolMetadata: { piInputHeader: true } })
+  }
+
+  const settleInterruptedTools = (errorText = 'AbortError'): void => {
+    for (const [toolCallId, call] of pendingInputs) {
+      // Legacy provider replay requires an object even if Pi never parsed any arguments.
+      const args = call.arguments
+      const input = isRecord(args) ? args : {}
+      emit({
+        type: 'tool-input-error',
+        toolCallId,
+        toolName: call.name,
+        input,
+        errorText,
+        toolMetadata: { interrupted: true },
+      })
+    }
+    pendingInputs.clear()
+    for (const toolCallId of toolStartTimes.keys()) {
+      emit({ type: 'tool-output-error', toolCallId, errorText })
+    }
+    toolStartTimes.clear()
+  }
+
   const handleInner = (inner: AssistantInnerEvent): void => {
     const isReasoningTail = inner.type === 'thinking_delta' && inner.contentIndex === reasoning?.contentIndex
     if (reasoning?.endedAt !== undefined && !isReasoningTail) {
       closeReasoning()
+    }
+    if (inner.type === 'toolcall_start' || inner.type === 'toolcall_delta' || inner.type === 'toolcall_end') {
+      const call = inner.partial.content[inner.contentIndex]
+      if (call?.type === 'toolCall' && call.id && call.name) {
+        if (!pendingInputs.has(call.id)) {
+          startToolInput(call.id, call.name)
+        }
+        pendingInputs.set(call.id, call)
+      }
+      return
     }
     if (inner.type === 'thinking_delta') {
       emit({ type: 'reasoning-delta', id: ensureReasoningOpen(inner.contentIndex), delta: inner.delta })
@@ -282,6 +334,7 @@ const createPiTranslator = (
     }
     emitInitialMetadata()
     closeOpenParts()
+    settleInterruptedTools(errorText)
     emitMetadata(metadata.settled?.())
     if (errorText !== undefined) {
       emit({ type: 'error', errorText })
@@ -323,12 +376,9 @@ const createPiTranslator = (
       case 'tool_execution_start': {
         toolStartTimes.set(event.toolCallId, now())
         const input: unknown = event.args ?? {}
-        emit({
-          type: 'tool-input-start',
-          toolCallId: event.toolCallId,
-          toolName: event.toolName,
-          title: event.toolName,
-        })
+        if (!pendingInputs.delete(event.toolCallId)) {
+          startToolInput(event.toolCallId, event.toolName)
+        }
         emit({
           type: 'tool-input-available',
           toolCallId: event.toolCallId,
@@ -355,6 +405,7 @@ const createPiTranslator = (
       case 'turn_end': {
         closeOpenParts()
         const { message } = event
+        settleInterruptedTools(message.role === 'assistant' ? message.errorMessage : undefined)
         if (hasUsage(message)) {
           emitMetadata({ usage: toAiSdkUsage(message.usage) })
         }

@@ -155,6 +155,8 @@ export const ContentViewProvider = ({
         content.type === 'dynamic-tool'
           ? getMcpToolDisplay(toolName, mcpTools, content.title).displayName
           : getToolMetadataSync(toolName, content.input).displayName
+      const input =
+        content.input ?? (content.state === 'output-error' && 'rawInput' in content ? content.rawInput : undefined)
       // Surface the error text when a tool failed; otherwise show its output.
       const output = content.state === 'output-error' ? content.errorText : formatToolOutput(content.output)
       trackEvent('content_view_open', {
@@ -163,7 +165,7 @@ export const ContentViewProvider = ({
       })
       dispatch({
         type: 'show',
-        view: { type: 'object-view', data: { title, input: formatToolOutput(content.input), output } },
+        view: { type: 'object-view', data: { title, input: formatToolOutput(input), output } },
       })
     },
     [trackEvent],

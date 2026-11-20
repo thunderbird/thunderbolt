@@ -150,6 +150,22 @@ describe('ContentView sideview mode', () => {
     expect(result.current.sv.sideviewId).toBe('file-1:report.pdf:2')
   })
 
+  test('object-view retains the raw input of an interrupted script', () => {
+    const { result } = renderHook(() => useObjectView(), { wrapper })
+    const rawInput = { script: 'unfinished' }
+    act(() =>
+      result.current.openObjectSidebar({
+        type: 'tool-run_office_script',
+        state: 'output-error',
+        toolCallId: 'office',
+        input: undefined,
+        rawInput,
+        errorText: 'AbortError',
+      }),
+    )
+    expect(result.current.objectContent?.input).toBe(JSON.stringify(rawInput, null, 2))
+  })
+
   test('object-view surfaces errorText for a failed tool call', () => {
     const { result } = renderHook(() => useObjectView(), { wrapper })
 

@@ -37,11 +37,15 @@ export const ReasoningGroup = ({
 
   const tools = parts.filter((part) => part.type === 'tool').map((part) => part.content) as ToolOrDynamicToolUIPart[]
 
+  const activeTool = tools.findLast((tool) => tool.state === 'input-streaming' || tool.state === 'input-available')
+
   const currentReasoningPart = parts
     .filter((part) => part.type === 'reasoning')
     .pop() as ReasoningGroupItem<ReasoningUIPart> | null
 
-  const isGroupReasoning = isLastPartInMessage && (isStreaming || currentReasoningPart?.content.state === 'streaming')
+  const isGroupReasoning =
+    (isStreaming && (isLastPartInMessage || !!activeTool)) ||
+    (isLastPartInMessage && currentReasoningPart?.content.state === 'streaming')
 
   const reasoningInstanceKey = currentReasoningPart?.id ?? ''
 
@@ -85,7 +89,8 @@ export const ReasoningGroup = ({
           <ReasoningGroupTitle
             totalDuration={totalDuration}
             isGroupReasoning={isGroupReasoning}
-            tools={tools}
+            activeTool={activeTool}
+            stepCount={tools.length}
             mcpTools={mcpTools}
           />
         }

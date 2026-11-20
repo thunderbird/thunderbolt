@@ -16,7 +16,8 @@ import { AnimatePresence, m } from 'framer-motion'
 type ReasoningGroupTitleProps = {
   totalDuration: number
   isGroupReasoning: boolean
-  tools: ToolOrDynamicToolUIPart[]
+  activeTool?: ToolOrDynamicToolUIPart
+  stepCount: number
   mcpTools?: UIMessageMetadata['mcpTools']
 }
 
@@ -40,13 +41,16 @@ const activeToolLabel = (
   return i18n._(getToolMetadataSync(toolName, tool.input).loadingMessage)
 }
 
-export const ReasoningGroupTitle = ({ totalDuration, isGroupReasoning, tools, mcpTools }: ReasoningGroupTitleProps) => {
+export const ReasoningGroupTitle = ({
+  totalDuration,
+  isGroupReasoning,
+  activeTool,
+  stepCount,
+  mcpTools,
+}: ReasoningGroupTitleProps) => {
   const { i18n, t } = useLingui()
   const formatters = useFormatters()
   const duration = formatters.duration(totalDuration)
-  const stepCount = tools.length
-  const activeIndex = tools.length - 1
-  const activeTool = tools[activeIndex]
   const loadingLabel = activeTool ? activeToolLabel(i18n, activeTool, mcpTools) : null
 
   return (
@@ -55,7 +59,7 @@ export const ReasoningGroupTitle = ({ totalDuration, isGroupReasoning, tools, mc
         {isGroupReasoning ? (
           loadingLabel ? (
             <m.div
-              key={`tool-${activeIndex}`}
+              key={activeTool?.toolCallId}
               // Skip entrance animation for tools already in progress (e.g., when switching back to a chat with active streaming)
               initial={activeTool?.state === 'input-streaming' ? { y: 20, opacity: 0 } : { y: 0, opacity: 1 }}
               animate={{ y: 0, opacity: 1, scale: 1 }}

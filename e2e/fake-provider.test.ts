@@ -16,6 +16,9 @@ import {
   officeEditFilename,
   officeEditPrompt,
   officeEditScript,
+  officeRetryFind,
+  officeRetryPrompt,
+  officeRetryScript,
   officeScript,
   officeScriptPrompt,
   officeWorkbookPrompt,
@@ -165,6 +168,41 @@ test('plays a model that builds a Word document with run_office_script, then rep
       { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_test', content: '{"ok":true}' }] },
     ])
     expect(reply.content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('retries the failed Office call with its returned handle, then replies in text', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: `http://127.0.0.1:${port}` })
+    const messages: Anthropic.MessageParam[] = [{ role: 'user', content: officeRetryPrompt }]
+    const send = () => client.messages.stream({ model: 'test-model', max_tokens: 100, messages }).finalMessage()
+    const answer = (message: Anthropic.Message, result: { ok: true } | { ok: false; scriptId: string }) => {
+      const block = message.content[0]
+      if (block.type !== 'tool_use') {
+        throw new Error('Expected Office tool call')
+      }
+      messages.push(
+        { role: 'assistant', content: message.content },
+        {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: block.id, content: [{ type: 'text', text: JSON.stringify(result) }] },
+          ],
+        },
+      )
+      return block.input
+    }
+    const scriptId = crypto.randomUUID()
+    expect(answer(await send(), { ok: false, scriptId })).toEqual({ script: officeRetryScript })
+    expect(answer(await send(), { ok: true })).toEqual({
+      edit: { scriptId, replacements: [{ find: officeRetryFind, replace: '' }] },
+    })
+    expect((await send()).content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
   } finally {
     server.close()
     server.closeAllConnections()

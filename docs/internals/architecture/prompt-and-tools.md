@@ -131,6 +131,9 @@ own context.
   one chip per listed file (`src/components/chat/created-file-card.tsx`), and a device without the bytes
   says so. On the device that has the bytes, clicking the chip opens the file in the side view, like the
   card of an attached file. The harness environment block names this tool as the way to deliver a file.
+- A failed run can return a one-use `scriptId` for this send. An `edit` retries that source with ordered,
+  literal replacements that must each match once. An invalid edit leaves the ID usable. The retry resolves
+  the original input references again unless the caller supplies a new list (including an empty list).
 - A script can also read files, which is how it edits one. The call lists them in `inputs`, and the script
   reads each with `readFile(name)`. The host loads them before the run (`src/office/script-inputs.ts`). It
   looks first in the thread's stored files: the user's attachments and the files this tool made earlier in

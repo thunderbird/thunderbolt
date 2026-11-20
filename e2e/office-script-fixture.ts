@@ -16,7 +16,12 @@ const doc = new docx.Document({ sections: [{ children: [new docx.Paragraph(${JSO
 saveFile(${JSON.stringify(officeScriptFilename)}, await docx.Packer.toArrayBuffer(doc))
 `
 
-/** Sent with an attached document; the fake provider answers it by calling `run_office_script` to edit that file. */
+/** The first call throws before saving. Its retry deletes the failing line. */
+export const officeRetryPrompt = 'Repair the e2e report script and save its Word document.'
+export const officeRetryFind = "throw new Error('retry fixture')"
+export const officeRetryScript = officeRetryFind + officeScript
+
+/** The fake provider edits this attachment under its original filename. */
 export const officeEditPrompt = 'Mark the attached brief as final.'
 
 export const officeEditFilename = 'e2e-brief.docx'

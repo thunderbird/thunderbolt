@@ -7,6 +7,7 @@ import type { Page } from '@playwright/test'
 import { Document, Packer, Paragraph } from 'docx'
 import JSZip from 'jszip'
 import PptxGenJS from 'pptxgenjs'
+import { z } from 'zod'
 import { defaultModelOpus55 } from '../shared/defaults/models'
 import { fakeProviderReply } from './fake-provider'
 import { collectPageErrors, loginViaEmailCode, sendChatPrompt } from './helpers'
@@ -20,6 +21,9 @@ import {
   officeEditMarker,
   officeEditPlaceholder,
   officeEditPrompt,
+  officeRetryFind,
+  officeRetryPrompt,
+  officeRetryScript,
   officeScriptFilename,
   officeScriptMarker,
   officeScriptPrompt,
@@ -106,6 +110,65 @@ test('a run that created a file stays a step that shows its script and result, a
   await expect(page.getByRole('button', { name: 'Stop generating', exact: true })).toHaveCount(0)
   await page.reload()
   await expectStepBesideChip()
+})
+
+test('a failed Office step and its edit survive reload with one downloadable document', async ({ page }) => {
+  await loginViaEmailCode(page)
+  await chooseFakeModel(page)
+  await sendChatPrompt(page, officeRetryPrompt)
+  const reply = page.locator('[data-quotable-message-id]').last()
+  const download = reply.getByRole('button', { name: `Download ${officeScriptFilename}` })
+  await expect(download).toBeVisible({ timeout: 30_000 })
+  await expect(reply).toContainText(fakeProviderReply)
+  await expect(page.getByRole('button', { name: 'Stop generating', exact: true })).toHaveCount(0)
+
+  const inspect = async () => {
+    await expect(download).toHaveCount(1)
+    await expect(reply.getByRole('button', { name: /earlier version/ })).toHaveCount(0)
+    await reply.getByText(/Completed 2 steps/).click()
+    const steps = reply.getByText('Run Office Script', { exact: true })
+    await expect(steps).toHaveCount(2)
+    const input = page.getByTestId('object-view-input')
+    const output = page.getByTestId('object-view-output')
+    await steps.first().click()
+    expect(JSON.parse(await input.innerText())).toEqual({ script: officeRetryScript })
+    const failure = z.object({ ok: z.literal(false), scriptId: z.string() })
+    const { scriptId } = z
+      .union([failure, z.object({ details: failure }).transform((r) => r.details)])
+      .parse(JSON.parse(await output.innerText()))
+    await contentView(page).getByRole('button', { name: 'Close', exact: true }).click()
+    await steps.last().click()
+    expect(JSON.parse(await input.innerText())).toEqual({
+      edit: { scriptId, replacements: [{ find: officeRetryFind, replace: '' }] },
+    })
+    await expect(output).toContainText(officeScriptFilename)
+    return scriptId
+  }
+  const id = await inspect()
+  await page.reload()
+  expect(await inspect()).toBe(id)
+  const storedCount = await page.evaluate(async () => {
+    const modulePath = '/src/lib/local-data-owner.ts'
+    const { attachmentDatabaseName } = (await import(
+      /* @vite-ignore */ modulePath
+    )) as typeof import('../src/lib/local-data-owner')
+    return new Promise<number>((resolve, reject) => {
+      const open = indexedDB.open(attachmentDatabaseName())
+      open.onerror = () => reject(open.error)
+      open.onsuccess = () => {
+        const db = open.result
+        const count = db.transaction('attachments').objectStore('attachments').count()
+        count.onsuccess = () => resolve(count.result)
+        count.onerror = () => reject(count.error)
+        db.close()
+      }
+    })
+  })
+  expect(storedCount).toBe(1)
+  await contentView(page).getByRole('button', { name: 'Close', exact: true }).click()
+  const [file] = await Promise.all([page.waitForEvent('download'), download.click()])
+  const zip = await JSZip.loadAsync(await readFile(await file.path()))
+  expect(await zip.file('word/document.xml')?.async('string')).toContain(officeScriptMarker)
 })
 
 test('a saved reply folds three same-name files and restores their chips after reload', async ({ page }) => {

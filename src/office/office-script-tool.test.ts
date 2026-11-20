@@ -2,8 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterAll, describe, expect, it, spyOn } from 'bun:test'
+import { afterAll, describe, expect, it, mock, spyOn } from 'bun:test'
+import { validateToolArguments } from '@earendil-works/pi-ai'
+import { toPiAgentTools } from '@shared/agent-core/mcp-tools'
 import { DOMParser } from '@xmldom/xmldom'
+import type { JSONValue } from 'ai'
 import { strToU8, zipSync } from 'fflate'
 import JSZip from 'jszip'
 import mammoth from 'mammoth'
@@ -11,7 +14,12 @@ import { docxMime, pptxMime } from '@/files/transformers'
 import type { StoredFile } from '@/lib/file-blob-storage'
 import { findBrokenFile } from './check-output'
 import { type SandboxLimits, sandboxLimits } from './constants'
-import { createOfficeScriptTool, type OfficeScriptOutput, type OfficeScriptToolDeps } from './office-script-tool'
+import {
+  createOfficeScriptTool,
+  type OfficeScriptInput,
+  type OfficeScriptOutput,
+  type OfficeScriptToolDeps,
+} from './office-script-tool'
 import { runSandboxedScript, type SandboxJob, type SandboxResult } from './sandbox'
 import { loadTestSandboxRuntime } from './sandbox-test-runtime'
 import type { ReadWorkspaceFile, ThreadFile } from './script-inputs'
@@ -142,6 +150,159 @@ const tooLargeToCheck =
 
 const checkOutOfTime = (seconds: number) =>
   `Checking "a.docx" did not finish within the ${seconds}-second limit, which the script and the check share. Make the script finish sooner or save smaller files, then call the tool again.`
+
+describe('Office script retries', () => {
+  const send = (deps: OfficeScriptToolDeps = {}) => {
+    const tool = createOfficeScriptTool({ runScript: (job) => inProcess(job, sandboxLimits), storeFiles, ...deps })
+    return (input: OfficeScriptInput): Promise<OfficeScriptOutput> => tool.execute(input)
+  }
+  const failedId = (output: OfficeScriptOutput) => {
+    if (output.ok || !output.scriptId) {
+      throw new Error('Expected retained failed script')
+    }
+    return output.scriptId
+  }
+
+  it('accepts omitted and null alternatives through Pi and requires both replacement fields', async () => {
+    const { name, parameters } = createOfficeScriptTool()
+    const [tool] = await toPiAgentTools({ [name]: { inputSchema: parameters } })
+    const validate = (args: Record<string, JSONValue | undefined>) =>
+      validateToolArguments(tool, { type: 'toolCall', id: 'test', name, arguments: structuredClone(args) })
+    const edit = { scriptId: 'base', replacements: [{ find: 'line', replace: '' }] }
+    for (const args of [{ edit }, { edit, script: null, inputs: null }, { script: 'x', edit: null, inputs: [] }]) {
+      expect(validate(args)).toEqual(args)
+    }
+    for (const invalid of [
+      { replacements: [] },
+      { scriptId: 'x' },
+      { ...edit, replacements: [{ find: 'x' }] },
+      { ...edit, replacements: [{ replace: '' }] },
+    ]) {
+      expect(() => validate({ edit: invalid })).toThrow()
+    }
+  })
+
+  it('applies edits atomically and literally, then lets only one racing retry save the DOCX', async () => {
+    const runScript = mock((job: SandboxJob) => inProcess(job, sandboxLimits))
+    const store = mock(storeFiles)
+    const call = send({ runScript, storeFiles: store })
+    const badLine = "throw Error('aaa')\r\n"
+    const scriptId = failedId(await call({ script: badLine + docxScript('retry.docx'), edit: null }))
+    for (const [find, matches] of [
+      ['xyz', 0],
+      ['aa', 2],
+      ['Paragraph', 3],
+      ['', 0],
+    ] as const) {
+      const result = await call({
+        edit: {
+          scriptId,
+          replacements: [
+            { find: 'Quarterly report', replace: 'changed' },
+            { find, replace: '' },
+          ],
+        },
+      })
+      expect(result).toEqual({
+        ok: false,
+        error: expect.stringContaining(`Replacement 2: ${matches} matches`),
+        logs: '',
+      })
+    }
+    expect(runScript).toHaveBeenCalledTimes(1)
+    expect(store).not.toHaveBeenCalled()
+    const replacements = [
+      { find: badLine, replace: '' },
+      { find: 'Quarterly report', replace: 'intermediate title' },
+      { find: 'intermediate title', replace: '$& $$ "report"' },
+    ]
+    const retry = { script: null, inputs: null, edit: { scriptId, replacements } }
+    const [saved, expired] = await Promise.all([call(retry), call(retry)])
+    if (!saved.ok) {
+      throw new Error(saved.error)
+    }
+    expect(await textOf(stored(saved.files[0].id))).toContain('$& $$ "report"')
+    expect(expired).toMatchObject({ ok: false, error: expect.stringContaining('send the full script') })
+    expect(runScript).toHaveBeenCalledTimes(2)
+    expect(store).toHaveBeenCalledTimes(1)
+  })
+
+  it('resolves inherited, replaced and cleared input lists again on each new version', async () => {
+    const read = mock(async (path: string) => ({ status: 'read' as const, bytes: strToU8(path) }))
+    const calls: SandboxJob[] = []
+    const call = send({
+      readWorkspaceFile: read,
+      runScript: async (job) => {
+        calls.push(job)
+        return { ok: false, logs: 'log', error: job.script }
+      },
+    })
+    const base = failedId(await call({ script: 'base', inputs: ['first'] }))
+    const edit = { scriptId: base, replacements: [{ find: 'base', replace: 'next' }] }
+    const changed = await call({ edit, inputs: null })
+    expect(changed).toMatchObject({ error: 'next', logs: 'log' })
+    const child = failedId(changed)
+    expect(child).not.toBe(base)
+    expect(await call({ edit })).toMatchObject({ error: expect.stringContaining('expired') })
+    expect(await call({ edit: { scriptId: child, replacements: [] } })).toMatchObject({
+      error: expect.stringContaining('at least one'),
+    })
+    const third = failedId(await call({ edit: { scriptId: child, replacements: [] }, inputs: ['other'] }))
+    await call({ edit: { scriptId: third, replacements: [] }, inputs: [] })
+    expect(read.mock.calls.map(([name]) => name)).toEqual(['first', 'first', 'other'])
+    expect(calls.map((job) => job.inputs.map((input) => input.name))).toEqual([['first'], ['first'], ['other'], []])
+  })
+
+  it('evicts the oldest failure, isolates sends, and runs oversized full sources without retaining them', async () => {
+    const runScript = mock(async ({ script }: SandboxJob) => ({
+      ok: false as const,
+      error: script.slice(0, 5),
+      logs: '',
+    }))
+    const call = send({ runScript })
+    const ids = []
+    for (const script of ['first', 'other', 'third', 'fourth', 'fifth']) {
+      ids.push(failedId(await call({ script })))
+    }
+    const edit = { scriptId: ids[1], replacements: [{ find: 'other', replace: 'sixth' }] }
+    for (const result of [await send({ runScript })({ edit }), await call({ edit: { ...edit, scriptId: ids[0] } })]) {
+      expect(result).toMatchObject({ error: expect.stringContaining('send the full script') })
+    }
+    for (const input of [{}, { edit: null, script: null }, { edit, script: 'both' }]) {
+      expect(await call(input)).toMatchObject({ error: expect.stringContaining('exactly one') })
+    }
+    expect(runScript).toHaveBeenCalledTimes(5)
+    expect(await call({ edit })).toMatchObject({ error: 'sixth', scriptId: expect.any(String) })
+    expect(await call({ script: 'x'.repeat(128 * 1024 + 1) })).toEqual({
+      ok: false,
+      logs: '',
+      error: expect.stringContaining('send the full script'),
+    })
+    expect(runScript).toHaveBeenCalledTimes(7)
+  })
+
+  it('checks the edit budget and each intermediate source before consuming the handle', async () => {
+    const limit = 128 * 1024
+    const call = send({ runScript: async () => ({ ok: false, error: 'failed', logs: '' }) })
+    const scriptId = failedId(await call({ script: 'x' + 'y'.repeat(limit - 1) }))
+    for (const replacements of [
+      [
+        { find: 'x', replace: 'xx' },
+        { find: 'xx', replace: 'x' },
+      ],
+      [{ find: 'x', replace: 'y'.repeat(limit) }],
+      Array.from({ length: 33 }, () => ({ find: 'x', replace: 'x' })),
+    ]) {
+      expect(await call({ edit: { scriptId, replacements } })).toMatchObject({
+        error: expect.stringContaining('too large'),
+      })
+    }
+    expect(await call({ edit: { scriptId, replacements: [] }, inputs: ['file'] })).toMatchObject({
+      error: expect.stringContaining('too large'),
+    })
+    expect(failedId(await call({ edit: { scriptId, replacements: [] }, inputs: [] }))).not.toBe(scriptId)
+  })
+})
 
 describe.each([
   ['with Symbol.dispose', inProcess],
@@ -378,6 +539,7 @@ describe.each([
     expect(result).toEqual({
       ok: false,
       error: `No file "data/sales.json" in this chat. The files in this chat, newest first: "brief.docx" (id ${attached.id}). Name an input by its file name or its id. If the user named this file, tell them it is not here and ask which file they mean; do not edit another file in its place.`,
+      scriptId: expect.any(String),
       logs: '',
     })
   })

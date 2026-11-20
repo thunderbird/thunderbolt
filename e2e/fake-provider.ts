@@ -6,6 +6,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { json } from 'node:stream/consumers'
 import { setTimeout } from 'node:timers/promises'
 import type { RawMessageStreamEvent } from '@anthropic-ai/sdk/resources/messages'
+import type { JSONValue } from 'ai'
 import { z } from 'zod'
 import { miniAppToolsetName, miniAppTransferPrompt, protectedEmailId } from './mini-app-fixture'
 import {
@@ -18,6 +19,9 @@ import {
   officeEditFilename,
   officeEditPrompt,
   officeEditScript,
+  officeRetryFind,
+  officeRetryPrompt,
+  officeRetryScript,
   officeScript,
   officeScriptPrompt,
   officeWorkbookPrompt,
@@ -76,13 +80,32 @@ const emailBodyFromToolResult = ({ messages }: FakeRequest) => {
  * The Office edits do the same with the attached document, deck or workbook as the script's input. The turn's text also
  * carries the attachment, so an edit prompt is matched anywhere in that text.
  */
-const scriptedToolCall = (request: FakeRequest): { name: string; input: Record<string, string | string[]> } | null => {
+const scriptedToolCall = (request: FakeRequest): { name: string; input: Record<string, JSONValue> } | null => {
   const text = lastUserContent(request)?.text
   if (text === miniAppTransferPrompt) {
     return { name: 'google_get_email', input: { id: protectedEmailId } }
   }
   if (text === officeScriptPrompt) {
     return { name: 'run_office_script', input: { script: officeScript } }
+  }
+  if (text === officeRetryPrompt) {
+    return { name: 'run_office_script', input: { script: officeRetryScript } }
+  }
+  const [prompt, call, result] = request.messages.slice(-3)
+  if (
+    prompt?.content.text === officeRetryPrompt &&
+    call?.content.toolCall === 'run_office_script' &&
+    result?.content.toolResult
+  ) {
+    const failure = z
+      .object({ ok: z.literal(false), scriptId: z.string() })
+      .safeParse(JSON.parse(result.content.toolResult))
+    if (failure.success) {
+      return {
+        name: 'run_office_script',
+        input: { edit: { scriptId: failure.data.scriptId, replacements: [{ find: officeRetryFind, replace: '' }] } },
+      }
+    }
   }
   if (text === officeWorkbookPrompt) {
     return { name: 'run_office_script', input: { script: officeWorkbookScript } }

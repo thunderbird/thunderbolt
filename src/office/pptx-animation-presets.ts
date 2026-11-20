@@ -82,7 +82,9 @@ export const presetBody = (effect: Effect, direction: Edge, duration: number, sp
     case 'pulse':
       return (
         filter('out', 'fade', ' tmFilter="0, 0; .2, .5; .8, .5; 1, 0"') +
-        scale(`<p:cTn id="${nextId()}" dur="${pulseHalf(duration)}" autoRev="1" fill="hold"/>`, 105000)
+        (duration > 1
+          ? scale(`<p:cTn id="${nextId()}" dur="${Math.floor(duration / 2)}" autoRev="1" fill="hold"/>`, 105000)
+          : '')
       )
     case 'spin':
       return `<p:animRot by="21600000"><p:cBhvr>${clock(' fill="hold"')}${target}${attr('r')}</p:cBhvr></p:animRot>`
@@ -90,6 +92,3 @@ export const presetBody = (effect: Effect, direction: Edge, duration: number, sp
       return `<p:anim calcmode="discrete" valueType="str"><p:cBhvr>${clock(' fill="hold"')}${target}${attr('style.visibility')}</p:cBhvr><p:tavLst>${key(0, 'hidden')}${key(50000, 'visible')}</p:tavLst></p:anim>`
   }
 }
-
-/** PowerPoint stores each half of the reversing scale as a whole number of milliseconds. */
-export const pulseHalf = (duration: number) => Math.max(1, Math.round(duration / 2))

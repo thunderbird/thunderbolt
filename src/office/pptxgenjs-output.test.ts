@@ -28,6 +28,23 @@ saveFile('deck.pptx', await pptx.write({ outputType: '${outputType}' }))
 `
 
 describe('PptxGenJS output in the sandbox', () => {
+  it('gives colliding tables unique IDs and keeps surrounding drawing IDs', async () => {
+    const parts = await deckParts(`
+const pptx = new PptxGenJS()
+const slide = pptx.addSlide()
+slide.addText('first', { objectName: 'First' })
+slide.addTable([['a']], { objectName: 'A' })
+slide.addTable([['b']], { objectName: 'B' })
+slide.addText('last', { objectName: 'Last' })
+saveFile('deck.pptx', await pptx.write({ outputType: 'uint8array' }))
+`)
+    const drawings = [...parts['ppt/slides/slide1.xml'].matchAll(/<p:cNvPr id="(\d+)" name="([^"]*)"/g)]
+    const ids = drawings.map(([, id]) => id)
+    expect(new Set(ids).size).toBe(drawings.length)
+    expect(drawings.map(([, id, name]) => [id, name])).toContainEqual(['2', 'First'])
+    expect(drawings.map(([, id, name]) => [id, name])).toContainEqual(['5', 'Last'])
+  })
+
   it('declares content types only for parts the deck has', async () => {
     const parts = await deckParts(chartDeck(`['Jan', 'Feb', 'Mar']`, 'uint8array'))
     const declared = [...parts['[Content_Types].xml'].matchAll(/PartName="\/([^"]+)"/g)].map(([, name]) => name)

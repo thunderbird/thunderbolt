@@ -163,7 +163,8 @@ own context.
   attached deck. Both arrays are optional. Slides are 1-based in presentation order. Effects address a
   top-level shape, picture, group or native table by unique object name and require a unique drawing ID.
   A target with local geometry must overlap the canvas using its unrotated rectangle. An effect starts
-  on click, with the previous group, or after its longest member finishes, including delays and repeats.
+  on click, with the previous group, or after its longest finite member finishes, including delays and repeats.
+  If all members repeat indefinitely, the next group starts after the latest first-cycle end. Loops continue playing.
   Fly In and Wipe In accept a from-edge direction. The other presets are Appear, Fade In, Blink, Pulse,
   Grow/Shrink, Spin, Disappear and Fade Out. The six transitions are fade, wipe, push, zoom, cover and dissolve.
   The helper refuses existing timing when adding effects and existing transitions when adding a transition.

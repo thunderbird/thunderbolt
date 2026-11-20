@@ -6047,6 +6047,10 @@ msgstr "地図を読み込めませんでした。"
 msgid "The model connection test timed out. Please try again."
 msgstr ""
 
+#: src/components/chat/error-message.tsx
+msgid "The model ran out of room before it could answer. Try again, or ask for something smaller."
+msgstr ""
+
 #: src/components/onboarding/provider-setup-error.ts
 msgid "The model verification request failed. Please try again."
 msgstr ""

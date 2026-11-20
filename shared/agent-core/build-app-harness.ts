@@ -38,6 +38,7 @@ import { mountAgentFs } from './browser-env/mount.ts'
 import { createBrowserCodingTools } from './coding-tools/index.ts'
 import { ensureBufferPolyfill } from './ensure-buffer.ts'
 import { buildSeedMessages, type SeedTurn } from './seed-history.ts'
+import { installOutputLimitRecovery } from './output-limit.ts'
 import {
   createHarnessCompaction,
   restoreCompaction,
@@ -298,6 +299,7 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
     thinkingLevel: options.thinkingLevel,
     systemPrompt: options.systemPrompt,
   })
+  installOutputLimitRecovery(harness)
 
   // Seed prior turns into the (idle) session so the first prompt runs with full
   // conversational context. `appendMessage` writes straight to the session while

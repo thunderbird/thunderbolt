@@ -23,6 +23,7 @@
  *   turn_end (stopReason === 'error')   → error (carrying message.errorMessage)
  *   turn_end                            → finish-step
  *   agent_end                           → finish
+ *   agent_end (last reply cut off by the output limit before answering) → error, finish
  *
  * Reasoning boundaries are synthesized from deltas, not from Pi's explicit
  * `thinking_start`/`text_start` content events: reasoning opens on the first
@@ -39,9 +40,18 @@
 
 import type { AgentEvent, AgentHarness, AgentHarnessEvent } from '@earendil-works/pi-agent-core'
 import { fauxAssistantMessage, type AssistantMessage, type Usage } from '@earendil-works/pi-ai'
+import { isCutOffBeforeAnswer } from './output-limit.ts'
 import { stoppedReplyText } from './stopped-reply.ts'
 
 const encoder = new TextEncoder()
+
+/** Serialized like the app's chat errors so the UI shows its own copy for `kind`
+ *  and offers Retry instead of retrying the whole turn (and its tools) by itself. */
+const outputLimitErrorText = JSON.stringify({
+  error: 'The model ran out of output tokens while reasoning, before it answered.',
+  kind: 'output-limit',
+  isRetryable: false,
+})
 
 /** The `assistantMessageEvent` carried by a Pi `message_update` event. */
 type AssistantInnerEvent = Extract<AgentEvent, { type: 'message_update' }>['assistantMessageEvent']
@@ -168,6 +178,7 @@ const createPiTranslator = (
   // reasoning ordinal must match `groupMessageParts`' per-message counter.
   let reasoningOrdinal = 0
   let textOrdinal = 0
+  let cutOffBeforeAnswer = false
   const toolStartTimes = new Map<string, number>()
 
   const emitMetadata = (messageMetadata: Record<string, unknown> | undefined): void => {
@@ -351,6 +362,8 @@ const createPiTranslator = (
         if ('stopReason' in message && message.stopReason === 'error') {
           emit({ type: 'error', errorText: message.errorMessage ?? 'the request failed' })
         }
+        // Judged at agent_end: the harness may still continue past this turn once.
+        cutOffBeforeAnswer = isCutOffBeforeAnswer(message)
         if (stepOpen) {
           emit({ type: 'finish-step' })
           stepOpen = false
@@ -358,7 +371,7 @@ const createPiTranslator = (
         return
       }
       case 'agent_end': {
-        finish()
+        finish(cutOffBeforeAnswer ? outputLimitErrorText : undefined)
         return
       }
       // Every other harness event (queue_update, tool_call/tool_result hooks,

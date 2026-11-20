@@ -208,6 +208,11 @@ const createAttestationNormalizingProvider = (
   })
 }
 
+/** Output budget for confidential models, which serve long outputs. It must hold
+ *  the reasoning plus a long tool call: DeepSeek reasons ~8k tokens and writes an
+ *  ~8k office script on one step, which the 8k default cut off. */
+const confidentialMaxTokens = 32_768
+
 /** Build a catalog-driven confidential model over an already-attested fetch. */
 export const buildConfidentialModel = (
   options: BuildConfidentialModelOptions,
@@ -234,6 +239,7 @@ export const buildConfidentialModel = (
     fetch,
     reasoning: options.reasoning,
     contextWindow: options.contextWindow,
+    maxTokens: confidentialMaxTokens,
     supportsImages: options.supportsImages,
     getReasoningEffort: options.getReasoningEffort,
     effortFormat: 'tinfoil',

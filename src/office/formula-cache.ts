@@ -12,13 +12,16 @@ export type FormulaError = { sheet: string; cell: string; formula: string; error
 /** A workbook's zip entries by path, as `fflate.unzipSync` returns them. */
 export type WorkbookParts = Record<string, Uint8Array>
 
+// A quoted attribute value may contain the tag's closing delimiter.
+const attributeToken = `(?:[^<>"']|"[^"<]*"|'[^'<]*')`
+
 /**
  * A pattern for an element: its tag, its attribute text and its content. Sheet parts can hold hundreds of thousands
  * of cells, too many for a DOM, so they are scanned with patterns. Element names may carry a namespace prefix
  * (`x:c`), which some generators write.
  */
 const element = (name: string, flags = '') =>
-  new RegExp(`<((?:[\\w.-]+:)?${name})\\b([^>]*?)(?:/>|>([\\s\\S]*?)</\\1>)`, flags)
+  new RegExp(`<((?:[\\w.-]+:)?${name})\\b(${attributeToken}*?)(?:/>|>([\\s\\S]*?)</\\1>)`, flags)
 
 /** The value of attribute `name` (a pattern) in an element's attribute text, or `undefined` when it has none. */
 const attribute = (attributes: string, name: string) =>
@@ -208,7 +211,8 @@ type Sheet = { name: string; part: string }
 /** The rows a sheet part hides, by number. Rows a filter hides are hidden this way too. */
 const hiddenRows = (xml: string) => {
   let row = 0
-  return [...xml.matchAll(/<(?:[\w.-]+:)?row\b([^>]*)>/g)].flatMap(([, attributes]) => {
+  const rowTag = new RegExp(String.raw`<(?:[\w.-]+:)?row\b(${attributeToken}*)>`, 'g')
+  return [...xml.matchAll(rowTag)].flatMap(([, attributes]) => {
     row = Number(attribute(attributes, 'r') ?? row + 1)
     return /^(1|true)$/.test(attribute(attributes, 'hidden') ?? '') ? [row] : []
   })

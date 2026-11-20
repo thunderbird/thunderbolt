@@ -283,6 +283,58 @@ saveFile('hidden.xlsx', f.WriteToBuffer().buffer)
     expect(textOf(await partsOf(file), 'xl/worksheets/sheet1.xml')).toContain('<f>SUBTOTAL(109,A1:A2)</f><v>10</v>')
   })
 
+  /** Save an attached workbook after editing only its control sheet, so Excelize copies the formula sheet verbatim. */
+  const saveWithUntouchedRows = async (rows: string) => {
+    const { file: seed } = await runOk(`
+const f = excelize.NewFile()
+f.NewSheet('Control')
+saveFile('seed.xlsx', f.WriteToBuffer().buffer)
+`)
+    const parts = await partsOf(seed)
+    const sheet = 'xl/worksheets/sheet1.xml'
+    parts[sheet] = strToU8(`<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:review="urn:review"
+      mc:Ignorable="review"><sheetData>${rows}</sheetData></worksheet>`)
+    storeAttachment('annotated.xlsx', zipSync(parts))
+    const { file, output } = await runOk(
+      `
+const f = excelize.OpenReader(readFile('annotated.xlsx'))
+f.SetCellValue('Control', 'A1', 'edited')
+saveFile('annotated.xlsx', f.WriteToBuffer().buffer)
+`,
+      ['annotated.xlsx'],
+    )
+    expect(output.formulaErrors).toBeUndefined()
+    return textOf(await partsOf(file), sheet)
+  }
+
+  it.each(['>', '&gt;'])('excludes a hidden row after a quoted %s on an untouched sheet', async (gt) => {
+    const sheet =
+      await saveWithUntouchedRows(`<row r="1" review:note="Q1${gt}Q2" hidden="1"><c r="A1"><v>21</v></c></row>
+      <row r="2"><c r="A2"><v>4</v></c></row><row r="3"><c r="B3"><f>SUBTOTAL(109,A1:A2)</f></c></row>`)
+    expect(sheet).toContain('<c r="B3"><f>SUBTOTAL(109,A1:A2)</f><v>4</v></c>')
+  })
+
+  it('preserves a quoted > on an untouched formula cell when writing its cache', async () => {
+    const cellTag = '<c r="B1" xmlns:q="urn:q" q:note="a>b">'
+    const sheet = await saveWithUntouchedRows(`<row r="1"><c r="A1"><v>21</v></c>${cellTag}<f>A1*2</f></c></row>`)
+    expect(sheet).toContain(`${cellTag}<f>A1*2</f><v>42</v></c>`)
+  })
+
+  it('computes a formula on a sheet opened with a literal > in its name', async () => {
+    const { file } = await runOk(`
+const made = excelize.NewFile()
+made.NewSheet('Q1>Q2')
+const parts = fflate.unzipSync(made.WriteToBuffer().buffer)
+const workbook = 'xl/workbook.xml'
+parts[workbook] = fflate.strToU8(fflate.strFromU8(parts[workbook]).replace(/name="Q1[^"]*Q2"/, 'name="Q1>Q2"'))
+const f = excelize.OpenReader(fflate.zipSync(parts))
+f.SetCellFormula('Q1>Q2', 'A1', '6*7')
+saveFile('quarters.xlsx', f.WriteToBuffer().buffer)
+`)
+    expect(textOf(await partsOf(file), 'xl/worksheets/sheet2.xml')).toContain('<c r="A1"><f>6*7</f><v>42</v></c>')
+  })
+
   it('computes nothing in a workbook that counts dates from 1904, and says so', async () => {
     const output = await run(`
 const f = excelize.NewFile()

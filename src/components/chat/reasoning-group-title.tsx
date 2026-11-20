@@ -75,8 +75,8 @@ export const ReasoningGroupTitle = ({
               </span>
             </m.div>
           ) : (
-            // The trigger shows only a spinner here, so name it for assistive tech.
-            <span className="sr-only">
+            // A model can reason for half a minute before its first tool call, so say what the spinner means.
+            <span className="text-xs text-muted-foreground italic animate-pulse truncate min-w-0">
               <Trans>Thinking</Trans>
             </span>
           )

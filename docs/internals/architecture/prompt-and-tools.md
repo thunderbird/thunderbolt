@@ -139,10 +139,12 @@ own context.
   saves under a cleaned name, and its result keeps the name the script gave (`savedAs`), so a file it
   made also answers to that name: `REPORT.DOCX` finds the `REPORT.docx` saved under it, but never an
   upload named `REPORT.docx`. A script cannot reach
-  another chat's files. A saved file of the same type as an input is marked as edited, and its chip says
-  so. The type decides because models often rename the copy they edit. The cost is that a new file built
-  by a script that read one of its type, such as a filled-in template, is marked as edited too.
-  The original entry is never changed, so each chip opens the file as it was when the chip was made.
+  another chat's files. A saved file is marked as edited, and its chip says so, when its cleaned name
+  matches the cleaned name of a file the script read. A file saved under another name is new. When the
+  script read a file of the same type, the tool result adds a note. It tells the model the output is a new
+  file, and to list the exact name in `inputs` if the user wanted that file edited. So reading
+  `report.docx` and saving `report_v2.docx` gives a new file and a note. The original entry is never
+  changed, so each chip opens the file as it was when the chip was made.
 - The VM also has `fflate` and `@xmldom/xmldom`, for edits `docx` and `pptxgenjs` cannot make. xmldom ships
   only CommonJS files, so `?sandbox-script` (`scripts/office-sandbox-script.ts`) bundles
   `src/office/ooxml-globals.ts` into one script at build time. Before a run returns, a second QuickJS VM

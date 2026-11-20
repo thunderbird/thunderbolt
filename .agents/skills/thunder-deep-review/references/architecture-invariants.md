@@ -48,7 +48,7 @@ Global properties that survive across subsystems. Verify any change against the 
 - **INV-24** Approval requires canary proof AND trusted-caller.
 - **INV-25** Re-bootstrap requires old canary secret.
 - **INV-26** Canary hash compare constant-time.
-- **INV-27** Device limit 10 active/user, enforced in-tx.
+- **INV-27** Device limit 10 active/user, enforced in-tx when a device approves another (and on bridge/CLI registration); self-recovery and plain registration are exempt.
 - **INV-28** First-device flow returns recovery key exactly once (in-memory).
 - **INV-29** Approve-device never touches local non-extractable CK.
 

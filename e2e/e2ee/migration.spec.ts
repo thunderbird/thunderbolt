@@ -26,6 +26,7 @@ import {
   getEncryptionServerSnapshot,
   getSchemeVersion,
   getTaskIds,
+  plantTrustedDevice,
   waitForDeviceKeys,
   waitForDeviceState,
   waitForNewEncryptedTasks,
@@ -162,6 +163,12 @@ test.describe('PowerSync E2EE v1 → v2 migration', () => {
     await registerDeviceOnly(page)
     const [lostKeys] = await waitForDeviceKeys(userId, 1)
     const seeded = await seedV1Account(userId, [lostKeys])
+    // Lost devices fill the device cap, and none is left to revoke them.
+    const deviceCap = 10 // `maxActiveDevicesPerUser` in backend/src/dal/devices.ts
+    const otherLostIds = Array.from({ length: deviceCap - 1 }, (_, i) => `${userId}-lost-${i}`)
+    for (const deviceId of otherLostIds) {
+      await plantTrustedDevice(userId, deviceId, 'lost-pk', 'lost-mlkem-pk')
+    }
     // The only device holding the CK is gone before it ever migrates.
     await page.close()
 
@@ -179,12 +186,14 @@ test.describe('PowerSync E2EE v1 → v2 migration', () => {
 
       await waitForSchemeV2(userId, ['0', 'v1'])
       await waitForDeviceState(userId, freshId, (state) => state.trusted && state.hasEnvelope)
-      // The lost device is dropped, not left pending: nothing prompts to approve it.
-      await waitForDeviceState(
-        userId,
-        lostKeys.deviceId,
-        (state) => !state.trusted && !state.approvalPending && !state.hasEnvelope,
-      )
+      // The lost devices are dropped, not left pending: nothing prompts to approve them.
+      for (const deviceId of [lostKeys.deviceId, ...otherLostIds]) {
+        await waitForDeviceState(
+          userId,
+          deviceId,
+          (state) => !state.trusted && !state.approvalPending && !state.hasEnvelope,
+        )
+      }
 
       await enableTasks(fresh.page)
       await fresh.page.goto('/tasks')

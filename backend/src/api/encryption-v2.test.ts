@@ -598,9 +598,9 @@ describe('Encryption API (v2)', () => {
       expect(envelope.wrappedCk).toBe('original-ak')
     })
 
-    it('enforces the device cap at approval time', async () => {
-      // `encryption.ts:770`. The cap is checked on the untrusted → trusted
-      // transition, so registration can exceed it but approval cannot.
+    it('enforces the device cap when approving another device', async () => {
+      // The cap is checked on the untrusted → trusted transition, so
+      // registration can exceed it but approving a different device cannot.
       const keypair = await generateSigningKeypair()
       await createUserAndSession(p('u'), p('tok'), p('caller'))
       await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
@@ -689,6 +689,34 @@ describe('Encryption API (v2)', () => {
         .from(envelopesTable)
         .where(eq(envelopesTable.deviceId, p('trusted-0')))
       expect(envelope.wrappedCk).toBe('rotated-ak')
+    })
+
+    it('lets a pending device recover itself at the cap', async () => {
+      // The lost devices still count and only a trusted device can revoke
+      // them, so the cap would lock the user out of their own account.
+      const keypair = await generateSigningKeypair()
+      await createUserAndSession(p('u'), p('tok'), p('target'))
+      await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
+      for (let i = 0; i < maxActiveDevicesPerUser; i++) {
+        await insertDevice(p(`lost-${i}`), p('u'), { trusted: true })
+      }
+      await insertDevice(p('target'), p('u'))
+
+      const proof = await proofFor(p('tok'), p('target'), 'approve', keypair)
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices/${p('target')}/envelope`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('target')),
+          body: JSON.stringify({ wrappedCK: 'self-ak', attestation: 'att', proof }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const [target] = await db
+        .select()
+        .from(devicesTable)
+        .where(eq(devicesTable.id, p('target')))
+      expect(target).toMatchObject({ trusted: true, approvalPending: false })
     })
   })
 
@@ -999,6 +1027,31 @@ describe('Encryption API (v2)', () => {
         .from(wrappedKeysTable)
         .where(and(eq(wrappedKeysTable.userId, p('u')), eq(wrappedKeysTable.keyId, initialKeyId)))
       expect(key.wrappedKey).toBe(`rewrapped-${initialKeyId}`)
+    })
+
+    it('rotates an account that self-recovery took past the device cap', async () => {
+      // The envelope array has no fixed bound; coverage alone sizes it.
+      const keypair = await setupRotatable([initialKeyId])
+      const otherIds = Array.from({ length: maxActiveDevicesPerUser }, (_, i) => p(`other-${i}`))
+      for (const id of otherIds) {
+        await insertDevice(id, p('u'), { trusted: true })
+      }
+      const body = await rotateBody(keypair, [initialKeyId])
+      const envelopes = [p('caller'), ...otherIds].map((deviceId) => ({
+        deviceId,
+        wrappedCK: 'new-ak',
+        attestation: 'att',
+      }))
+
+      const res = await app.handle(
+        new Request(`${baseUrl}/encryption/rotate`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('caller')),
+          body: JSON.stringify({ ...body, envelopes }),
+        }),
+      )
+
+      expect(res.status).toBe(200)
     })
 
     /**
@@ -1885,10 +1938,9 @@ describe('Encryption API (v2)', () => {
         await db.update(devicesTable).set({ deviceType: 'bridge' }).where(inArray(devicesTable.id, bridgeIds))
       }
 
-      it('counts the cap after demoting the old device, so an account at the limit can recover', async () => {
+      it('recovers even when the trusted bridges alone fill the device cap', async () => {
         await setupPendingCaller()
-        // With the old device still trusted this is already at the limit.
-        await insertTrustedBridges(maxActiveDevicesPerUser - 1)
+        await insertTrustedBridges(maxActiveDevicesPerUser)
 
         const response = await postUpgrade(await upgradeBody({ stepUpOtp: await mintRecoveryCode() }))
 
@@ -1896,16 +1948,26 @@ describe('Encryption API (v2)', () => {
         expect((await deviceRow(p('caller'))).trusted).toBe(true)
       })
 
-      it('rolls everything back when trusting the caller would exceed the device limit', async () => {
+      it('rolls back trust, sibling demotion and the code when a late write fails', async () => {
+        await useCommittedDatabase()
         await setupPendingCaller()
-        await insertTrustedBridges(maxActiveDevicesPerUser)
         const otp = await mintRecoveryCode()
+        // Org escrow without an orgEnvelope throws after the caller is trusted.
+        const escrow = new Elysia().use(
+          createEncryptionRoutes(auth, db, createTestSettings({ orgEscrowEnabled: true }), mockNotifications),
+        )
 
-        const response = await postUpgrade(await upgradeBody({ stepUpOtp: otp }))
+        const response = await escrow.handle(
+          new Request(`${baseUrl}/encryption/upgrade`, {
+            method: 'POST',
+            headers: authHeaders(p('tok'), p('caller')),
+            body: JSON.stringify(await upgradeBody({ stepUpOtp: otp })),
+          }),
+        )
 
-        expect(response.status).toBe(403)
-        expect((await response.json()).error).toBe('Device limit reached — revoke an existing device first')
+        expect(response.status).toBe(400)
         expect(await schemeVersion()).toBe(1)
+        expect(await deviceRow(p('caller'))).toMatchObject({ trusted: false, approvalPending: true })
         expect((await deviceRow(p('old'))).trusted).toBe(true)
         expect(await verifyStepUpOtp(db, 'v1-phrase-recovery', recoveryEmail(), otp)).toBe('valid')
       })

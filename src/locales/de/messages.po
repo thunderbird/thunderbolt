@@ -7050,8 +7050,8 @@ msgid "You have been signed out successfully."
 msgstr "Sie wurden erfolgreich abgemeldet."
 
 #: src/hooks/use-sync-setup.ts
-msgid "You have reached the maximum number of devices. Revoke an existing device to add a new one."
-msgstr "Sie haben die maximale Anzahl an Geräten erreicht. Widerrufen Sie ein bestehendes Gerät, um ein neues hinzuzufügen."
+#~ msgid "You have reached the maximum number of devices. Revoke an existing device to add a new one."
+#~ msgstr "Sie haben die maximale Anzahl an Geräten erreicht. Widerrufen Sie ein bestehendes Gerät, um ein neues hinzuzufügen."
 
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "You have reached the sharing limit. Please try again later."

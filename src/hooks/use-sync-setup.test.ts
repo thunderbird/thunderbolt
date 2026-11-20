@@ -324,7 +324,8 @@ describe('sync setup operation outcomes', () => {
       spies.register.mockRejectedValueOnce(error)
       const { result } = mount()
       await act(async () => expect((await result.current.continueIntro()).outcome).toBe('error'))
-      expect(result.current.error).toContain(error instanceof HttpError ? 'maximum number of devices' : error.message)
+      expect(result.current.error).not.toContain('maximum number of devices')
+      expect(result.current.error).toBeTruthy()
       expect(result.current.isLoading).toBe(false)
       expect(spies.ensure).not.toHaveBeenCalled()
     },

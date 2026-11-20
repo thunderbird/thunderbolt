@@ -614,11 +614,8 @@ export const createEncryptionRoutes = (
         // `setWhere isNull(revoked_at)` matching nothing, which surfaces as 409
         // "Device ID already taken" instead of 403 "Device has been revoked".
         //
-        // The transaction alone does NOT make the limit check atomic — under
-        // READ COMMITTED two concurrent registrations both read a count below
-        // the cap and both insert. The advisory lock is what serializes them,
-        // and it is the same lock `/devices/bridge` and `/encryption/rotate`
-        // take, so a registration cannot interleave with a rotation either.
+        // It is the same lock `/devices/bridge` and `/encryption/rotate` take,
+        // so a registration cannot interleave with a rotation either.
         const deviceName = name || 'Unknown device'
         const result = await database
           .transaction((tx) =>
@@ -655,12 +652,9 @@ export const createEncryptionRoutes = (
                 // Otherwise fall through to `registerDevice`: a non-trusted device
                 // reopening the modal after deny/cancel, or a pre-encryption device
                 // with no `publicKey` yet.
-              } else {
-                const activeCount = await countActiveDevices(txDb, userId)
-                if (activeCount >= maxActiveDevicesPerUser) {
-                  return { limitReached: true as const }
-                }
               }
+              // A new device is not capped: pending grants nothing, and recovery
+              // must reach phrase entry while lost devices still fill the cap.
 
               // Bind the session to this device BEFORE creating the row, so a session
               // already bound to a different device (e.g. a CLI device-grant session)
@@ -704,11 +698,6 @@ export const createEncryptionRoutes = (
 
         if ('alreadyTrusted' in result) {
           return { trusted: true as const, envelope: result.envelope }
-        }
-
-        if ('limitReached' in result) {
-          set.status = 422
-          return { error: 'Device limit reached' }
         }
 
         if ('revoked' in result) {
@@ -944,8 +933,9 @@ export const createEncryptionRoutes = (
             // transitioning untrusted → trusted. For re-key (already-trusted devices rotating
             // envelopes), the upsertEnvelope above is the only state change needed.
             if (!targetDevice.trusted) {
-              const activeCount = await countActiveDevices(txDb, userId)
-              if (activeCount >= maxActiveDevicesPerUser) {
+              // Self-recovery is exempt: the lost devices still count, and only a
+              // trusted device can revoke them.
+              if (callerDeviceId !== deviceId && (await countActiveDevices(txDb, userId)) >= maxActiveDevicesPerUser) {
                 throw new ForbiddenError('Device limit reached — revoke an existing device first')
               }
               // Check rows returned to detect a concurrent revoke between the in-tx read and this UPDATE.
@@ -1423,7 +1413,10 @@ export const createEncryptionRoutes = (
         auth: true,
         body: t.Object({
           proof: proofSchema,
-          envelopes: t.Array(envelopeEntrySchema, { minItems: 1, maxItems: maxActiveDevicesPerUser }),
+          // No maxItems: `assertEnvelopeCoverage` requires exactly one envelope per
+          // capable device, a count self-recovery can grow past any constant, so a
+          // fixed bound could only block rotation, including the one after a revoke.
+          envelopes: t.Array(envelopeEntrySchema, { minItems: 1 }),
           wrappedKeys: t.Array(wrappedKeyEntrySchema, { minItems: 1, maxItems: maxKeyringKeys }),
           newPrimaryKey: t.Optional(newPrimaryKeySchema),
           stepUpOtp: t.Optional(t.String({ minLength: 1, maxLength: 64 })),
@@ -1532,13 +1525,8 @@ export const createEncryptionRoutes = (
               recoveringWithPhrase ? 'untrusted' : 'pending',
             )
 
-            // The self-recovery tail of the envelope route, after the demotion
-            // above so the caller's siblings no longer count toward the cap.
+            // The self-recovery tail of the envelope route.
             if (recoveringWithPhrase) {
-              const activeCount = await countActiveDevices(txDb, userId)
-              if (activeCount >= maxActiveDevicesPerUser) {
-                throw new ForbiddenError('Device limit reached — revoke an existing device first')
-              }
               // 0 rows: a deny, cancel or revoke landed after the read above.
               const trusted = await markDeviceTrusted(txDb, caller.deviceId, userId)
               if (trusted.length === 0) {

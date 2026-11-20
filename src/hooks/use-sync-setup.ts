@@ -370,15 +370,6 @@ export const useSyncSetup = () => {
               return done('additional-device')
           }
         } catch (err) {
-          if (err instanceof HttpError && err.response.status === 422) {
-            update({
-              type: 'SET_ERROR',
-              payload: i18n._(
-                msg`You have reached the maximum number of devices. Revoke an existing device to add a new one.`,
-              ),
-            })
-            return { outcome: 'error', passkeySlotCredentialId: null }
-          }
           const message = getEncryptionErrorMessage(err, t`Failed to register device`)
           update({ type: 'SET_ERROR', payload: message })
           return { outcome: 'error', passkeySlotCredentialId: null }

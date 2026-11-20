@@ -5,11 +5,11 @@
 import { Plural } from '@lingui/react/macro'
 import type { CreatedFileVersions } from '@/lib/assistant-message'
 import { ChevronDown } from 'lucide-react'
-import { useState } from 'react'
 import { CreatedFileCard } from './created-file-card'
+import { useCreatedFileVersionGroupState } from './use-created-file-version-group-state'
 
 export const CreatedFileVersionGroup = ({ versions: { latest, earlier } }: { versions: CreatedFileVersions }) => {
-  const [expanded, setExpanded] = useState(false)
+  const { expanded, toggle } = useCreatedFileVersionGroupState()
   const latestChip = <CreatedFileCard key={latest.id} file={latest} />
   if (!earlier.length) {
     return latestChip
@@ -21,7 +21,7 @@ export const CreatedFileVersionGroup = ({ versions: { latest, earlier } }: { ver
       <button
         type="button"
         aria-expanded={expanded}
-        onClick={() => setExpanded(!expanded)}
+        onClick={toggle}
         className="flex min-h-[var(--min-touch-height)] items-center gap-1 rounded-lg px-1 text-[length:var(--font-size-xs)] text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
       >
         <ChevronDown aria-hidden="true" className={expanded ? 'size-4 rotate-180' : 'size-4'} />

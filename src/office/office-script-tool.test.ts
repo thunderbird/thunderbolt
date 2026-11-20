@@ -540,6 +540,7 @@ describe.each([
       ok: false,
       error: `No file "data/sales.json" in this chat. The files in this chat, newest first: "brief.docx" (id ${attached.id}). Name an input by its file name or its id. If the user named this file, tell them it is not here and ask which file they mean; do not edit another file in its place.`,
       scriptId: expect.any(String),
+      retry: expect.stringContaining('call again with edit'),
       logs: '',
     })
   })

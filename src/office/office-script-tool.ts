@@ -24,7 +24,7 @@ export type CreatedFile = { id: string; filename: string; mimeType: string; edit
 /** `notes` flag saved files that are new even though the run read a file of their type. */
 export type OfficeScriptOutput =
   | { ok: true; files: CreatedFile[]; logs: string; formulaErrors?: FileFormulaError[]; notes?: string[] }
-  | { ok: false; error: string; logs: string; scriptId?: string }
+  | { ok: false; error: string; logs: string; scriptId?: string; retry?: string }
 
 /** A `run_office_script` tool call, whether emitted as a typed `tool-<name>` or a `dynamic-tool` part. */
 export type OfficeScriptPart = ToolUIPart | DynamicToolUIPart
@@ -299,7 +299,9 @@ export const createOfficeScriptTool = ({
           failures.delete(failures.keys().next().value!)
         }
         failures.set(scriptId, { script, inputs: [...inputs] })
-        return { ok: false, error, logs, scriptId }
+        // Models follow an instruction in the result more reliably than the same rule in the tool description.
+        const retry = `To fix it, call again with edit: { scriptId: "${scriptId}", replacements: [{ find, replace }] }, each find copied exactly from the script, instead of sending the whole script again.`
+        return { ok: false, error, logs, scriptId, retry }
       }
       const threadFiles = [...(await listThreadFiles()), ...madeThisSend]
       const resolved = await resolveInputs(inputs, threadFiles, readWorkspaceFile, sandboxLimits.memoryBytes)

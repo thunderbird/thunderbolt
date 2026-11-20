@@ -211,6 +211,28 @@ describe.each([
     expect(zip.file('ppt/charts/chart1.xml')).not.toBeNull()
   })
 
+  it('patches a generated slide in memory before saving the deck once', async () => {
+    const { files } = await runOk(`
+      const pres = new PptxGenJS()
+      pres.addSlide().addText('Draft')
+      const bytes = await pres.write({ outputType: 'uint8array' })
+      const parts = fflate.unzipSync(bytes)
+      const path = 'ppt/slides/slide1.xml'
+      const parse = (data) => new xmldom.DOMParser().parseFromString(fflate.strFromU8(data), 'application/xml')
+      const slide = parse(parts[path])
+      slide.getElementsByTagName('a:t')[0].textContent = 'Final title'
+      parts[path] = fflate.strToU8(new xmldom.XMLSerializer().serializeToString(slide))
+      const zipped = fflate.zipSync(parts)
+      if (parse(fflate.unzipSync(zipped)[path]).getElementsByTagName('a:t')[0].textContent !== 'Final title') {
+        throw new Error('Slide title did not change')
+      }
+      saveFile('deck.pptx', zipped)
+    `)
+
+    expect(files).toHaveLength(1)
+    expect(await partOf(stored(files[0].id), 'ppt/slides/slide1.xml')).toContain('<a:t>Final title</a:t>')
+  })
+
   it('adds every output as a new entry, even under a name saved before', async () => {
     const first = await runOk(`${docxScript('a.docx')}\n${pptxScript}`)
     const second = await runOk(docxScript('a.docx'))

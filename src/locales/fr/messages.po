@@ -39,6 +39,15 @@ msgstr[0] "# feuille de graphique"
 msgstr[1] "# feuilles de graphique"
 msgstr[2] "# feuilles de graphique"
 
+#. placeholder {0}: earlier.length
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+earlier+version%7D+other+%7B%23+earlier+versions%7D%7D&pluralize_on=0
+#: src/components/chat/created-file-version-group.tsx
+msgid "# earlier version"
+msgid_plural "# earlier versions"
+msgstr[0] "# version précédente"
+msgstr[1] "# versions précédentes"
+msgstr[2] "# versions précédentes"
+
 #. placeholder {0}: leftOut.missingResults
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+formula+with+no+saved+result%7D+other+%7B%23+formulas+with+no+saved+result%7D%7D&pluralize_on=0
 #: src/components/xlsx-preview/left-out-banner.tsx
@@ -2189,6 +2198,10 @@ msgstr "Créer une compétence"
 #: src/skills/skills-list.tsx
 msgid "Create your first skill"
 msgstr "Créez votre première compétence"
+
+#: src/lib/tool-metadata.ts
+msgid "Creating file…"
+msgstr "Création du fichier…"
 
 #: src/lib/tool-metadata.ts
 #: src/projects/project-create-form.tsx
@@ -6100,7 +6113,7 @@ msgstr ""
 
 #: src/components/chat/error-message.tsx
 msgid "The model ran out of room before it could answer. Try again, or ask for something smaller."
-msgstr ""
+msgstr "Le modèle a atteint sa limite de sortie avant de pouvoir répondre. Réessayez ou demandez une réponse plus courte."
 
 #: src/components/onboarding/provider-setup-error.ts
 msgid "The model verification request failed. Please try again."

@@ -37,6 +37,14 @@ msgid_plural "# chart sheets"
 msgstr[0] ""
 msgstr[1] ""
 
+#. placeholder {0}: earlier.length
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+earlier+version%7D+other+%7B%23+earlier+versions%7D%7D&pluralize_on=0
+#: src/components/chat/created-file-version-group.tsx
+msgid "# earlier version"
+msgid_plural "# earlier versions"
+msgstr[0] ""
+msgstr[1] ""
+
 #. placeholder {0}: leftOut.missingResults
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+formula+with+no+saved+result%7D+other+%7B%23+formulas+with+no+saved+result%7D%7D&pluralize_on=0
 #: src/components/xlsx-preview/left-out-banner.tsx
@@ -2170,6 +2178,10 @@ msgstr ""
 
 #: src/skills/skills-list.tsx
 msgid "Create your first skill"
+msgstr ""
+
+#: src/lib/tool-metadata.ts
+msgid "Creating file…"
 msgstr ""
 
 #: src/lib/tool-metadata.ts

@@ -55,8 +55,12 @@ const createdFileRows = (parts: GroupableUIPart[]) => {
     if (!isOfficeScriptPart(part)) {
       continue
     }
+    const files = officeScriptFiles(part)
+    if (!files?.length) {
+      continue
+    }
     const row: CreatedFileVersions[] = []
-    for (const file of (officeScriptFiles(part) ?? []).reverse()) {
+    for (const file of files.reverse()) {
       const versions = byName.get(file.filename)
       if (versions) {
         versions.earlier.push(file)
@@ -66,9 +70,8 @@ const createdFileRows = (parts: GroupableUIPart[]) => {
         row.push(group)
       }
     }
-    if (row.length) {
-      rows.set(part, { type: 'created_files', files: row.reverse() })
-    }
+    // Even an empty row ends this tool group when all its chips move to later saves.
+    rows.set(part, { type: 'created_files', files: row.reverse() })
   }
   return rows
 }

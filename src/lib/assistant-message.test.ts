@@ -224,14 +224,23 @@ describe('assistant-message utilities', () => {
       files: [{ latest, earlier }],
     })
 
+    const foldedRow: GroupedUIPart = { type: 'created_files', files: [] }
+
     it('folds two same-name saves at their last step', () => {
       const calls = [save(first), save(second)]
-      expect(groupMessageParts(calls)).toEqual([steps(...calls), row(second, first)])
+      expect(groupMessageParts(calls)).toEqual([steps(calls[0]), foldedRow, steps(calls[1]), row(second, first)])
     })
 
     it('orders three snapshots newest first and preserves their edit flags', () => {
       const calls = [save(first), save(second), save(third)]
-      expect(groupMessageParts(calls)).toEqual([steps(...calls), row(third, second, first)])
+      expect(groupMessageParts(calls)).toEqual([
+        steps(calls[0]),
+        foldedRow,
+        steps(calls[1]),
+        foldedRow,
+        steps(calls[2]),
+        row(third, second, first),
+      ])
     })
 
     it('keeps a sibling file at its original step when only one output is saved again', () => {
@@ -243,7 +252,12 @@ describe('assistant-message utilities', () => {
     it('keeps a failed retry as a step without adding a version', () => {
       const failed = officeCall({ ok: false, error: 'boom', logs: '' })
       const calls = [save(first), failed, save(second)]
-      expect(groupMessageParts(calls)).toEqual([steps(...calls), row(second, first)])
+      expect(groupMessageParts(calls)).toEqual([
+        steps(calls[0]),
+        foldedRow,
+        steps(failed, calls[2]),
+        row(second, first),
+      ])
     })
 
     it('leaves different filenames at their own steps', () => {

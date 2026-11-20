@@ -160,16 +160,18 @@ test('a saved reply folds three same-name files and restores their chips after r
   const checkVersions = async () => {
     await expect(chips).toHaveCount(1)
     await expect(reply.getByText('Edited', { exact: true })).toBeVisible()
-    const steps = reply.getByRole('button', { name: /Completed 3 steps/ })
-    await steps.click()
-    await expect(steps).toBeFocused()
-    await expect(steps).toHaveAttribute('aria-expanded', 'true')
+    const groups = reply.getByRole('button', { name: /Completed 1 step in/ })
+    await expect(groups).toHaveCount(3)
+    const step = groups.last()
+    await step.click()
+    await expect(step).toBeFocused()
+    await expect(step).toHaveAttribute('aria-expanded', 'true')
     await expect(versions).toHaveAttribute('aria-expanded', 'false')
     await expect(reply.getByRole('button', { name: 'Copy message' })).toBeVisible()
     // Click the chevron, where the message actions previously covered the disclosure.
     await versions.locator('svg').click({ timeout: 5000 })
     await expect(versions).toHaveAttribute('aria-expanded', 'true')
-    await expect(steps).toHaveAttribute('aria-expanded', 'true')
+    await expect(step).toHaveAttribute('aria-expanded', 'true')
     await expect(chips).toHaveCount(3)
     await expect(reply.getByText('Not available on this device')).toHaveCount(3)
   }

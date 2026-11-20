@@ -139,6 +139,40 @@ describe('the chip for a file the agent created', () => {
     expect(screen.getByText('Edited').closest('.group')?.textContent).toContain('report.docx')
   })
 
+  it('keeps the running search group expanded and focused when a later save moves the chip', async () => {
+    const parts: ThunderboltUIMessage['parts'] = [
+      finishedCall({ ok: true, files: [report], logs: '' }),
+      { type: 'tool-search', toolCallId: 'search', state: 'input-available', input: { query: 'report' } },
+    ]
+    const view = (parts: ThunderboltUIMessage['parts']) => (
+      <ContentViewProvider>
+        <AssistantMessage message={{ id: 'm1', role: 'assistant', parts }} isStreaming />
+      </ContentViewProvider>
+    )
+    const { rerender } = render(view(parts))
+    const search = screen.getByRole('button', { name: /Searching/ })
+    search.focus()
+    fireEvent.click(search)
+    expect(search).toHaveAttribute('aria-expanded', 'true')
+    expect(document.activeElement).toBe(search)
+
+    rerender(
+      view([
+        ...parts,
+        {
+          ...finishedCall({ ok: true, files: [{ ...report, id: 'revised' }], logs: '' }),
+          toolCallId: 'save-again',
+        },
+      ]),
+    )
+    await act(async () => void (await getClock().runAllAsync()))
+    const current = screen.getByRole('button', { name: /Searching/ })
+    expect({
+      expanded: current.getAttribute('aria-expanded'),
+      focused: document.activeElement === current,
+    }).toEqual({ expanded: 'true', focused: true })
+  })
+
   it('keeps the expanded disclosure focused when a third version is saved', async () => {
     const view = (ids: string[]) => {
       const parts: ThunderboltUIMessage['parts'] = ids.flatMap((id) => [

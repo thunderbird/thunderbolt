@@ -455,8 +455,8 @@ export type V1SeedCrypto = {
   encryptV1: (plaintext: string) => Promise<string>
   /** Hybrid-wrap the CK for one device's transport public keys (the legacy envelope payload). */
   wrapForDevice: (keys: DeviceKeys) => Promise<string>
-  /** Build the CK-encrypted, no-AAD canary + its SHA-256 possession hash. */
-  makeCanary: () => Promise<{ canaryIv: string; canaryCtext: string; canarySecretHash: string }>
+  /** Build the CK-encrypted, no-AAD canary, its secret and the secret's SHA-256 possession hash. */
+  makeCanary: () => Promise<{ canaryIv: string; canaryCtext: string; canarySecret: string; canarySecretHash: string }>
   /** Base64 raw key bytes, for seeding this CK into a device's IndexedDB (THU-877). */
   exportRaw: () => Promise<string>
 }
@@ -481,10 +481,10 @@ export const createV1SeedCrypto = async (): Promise<V1SeedCrypto> => {
     return wrapLegacyCK(ck, ecdhPublicKey, mlkemPublicKey)
   }
 
-  const makeCanary = async (): Promise<{ canaryIv: string; canaryCtext: string; canarySecretHash: string }> => {
+  const makeCanary = async () => {
     const canarySecret = generateCanarySecret()
     const { iv, ciphertext } = await encrypt(`${canaryPrefixV1}:${canarySecret}`, ck)
-    return { canaryIv: iv, canaryCtext: ciphertext, canarySecretHash: await sha256Hex(canarySecret) }
+    return { canaryIv: iv, canaryCtext: ciphertext, canarySecret, canarySecretHash: await sha256Hex(canarySecret) }
   }
 
   const exportRaw = async (): Promise<string> => {
@@ -540,6 +540,10 @@ export type SeededV1Data = {
   settingValue: string
   threadId: string
   threadTitle: string
+  /** The account's v1 recovery phrase: BIP-39 of the raw CK, as v1 showed it. */
+  v1RecoveryPhrase: string
+  /** The v1 canary secret — what v1 clients sent in plain as their possession proof. */
+  canarySecret: string
 }
 
 /**
@@ -567,6 +571,8 @@ export const seedV1Account = async (userId: string, deviceKeys: DeviceKeys[]): P
     settingValue: `legacy-value-${crypto.randomUUID()}`,
     threadId: crypto.randomUUID(),
     threadTitle: `Legacy v1 thread ${crypto.randomUUID()}`,
+    v1RecoveryPhrase: encodeRecoverySeed(Buffer.from(await seedCrypto.exportRaw(), 'base64')),
+    canarySecret: canary.canarySecret,
   }
 
   await seedV1Task(userId, data.taskId, await seedCrypto.encryptV1(data.taskText))
@@ -693,10 +699,14 @@ export const runSeamlessMigration = async (page: Page): Promise<string> => {
  * explicit click on it would never resolve. Fill and let `onComplete` drive it,
  * exactly like the sign-in code entry in `loginViaConsumerOtp`.
  */
-export const completeStepUpCode = async (page: Page, email: string): Promise<void> => {
+export const completeStepUpCode = async (
+  page: Page,
+  email: string,
+  action?: Parameters<typeof waitForStepUpOtp>[1],
+): Promise<void> => {
   const codeDialog = page.getByRole('alertdialog')
   await expect(codeDialog.getByText('Enter your verification code')).toBeVisible({ timeout: 15_000 })
-  const otp = await waitForStepUpOtp(email)
+  const otp = await waitForStepUpOtp(email, action)
   await codeDialog.locator('[data-slot="input-otp"]').fill(otp)
 }
 

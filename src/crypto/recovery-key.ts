@@ -12,7 +12,13 @@ import { continuityHolds, deriveContinuityKey, sealContinuity, type ContinuitySe
 import { KeyDerivationError, ValidationError } from './errors'
 import { continuitySaltTag } from './kdf-salt'
 import type { StoredKeyPair } from './key-storage'
-import { base64ToUint8Array, importPublicKey, uint8ArrayToBase64, uint8ArrayToBase64Url } from './primitives'
+import {
+  aesGcmAlgorithm,
+  base64ToUint8Array,
+  importPublicKey,
+  uint8ArrayToBase64,
+  uint8ArrayToBase64Url,
+} from './primitives'
 
 export { kdfSaltRequiresContinuity } from './kdf-salt'
 
@@ -69,6 +75,17 @@ export const decodeRecoveryKey = (mnemonic: string): Uint8Array => {
 
   return bytes
 }
+
+/**
+ * Import a v1 recovery seed as the legacy CK it encodes: a v1 phrase is the raw
+ * AES-256-GCM content key, with no KDF. Extractable, the same shape as
+ * `unwrapLegacyCK`, so the migration can wrap it into the keyring as `"v1"`.
+ */
+export const importLegacyRecoveryKey = async (seed: Uint8Array): Promise<CryptoKey> =>
+  crypto.subtle.importKey('raw', seed as BufferSource, { name: aesGcmAlgorithm, length: 256 }, true, [
+    'encrypt',
+    'decrypt',
+  ])
 
 /**
  * Expand the PBKDF2 master secret into one domain-separated sub-seed. HKDF-SHA256

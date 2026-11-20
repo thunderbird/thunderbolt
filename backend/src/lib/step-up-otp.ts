@@ -41,7 +41,7 @@ import { desc, eq, sql } from 'drizzle-orm'
  */
 
 /** What a code authorizes. Chosen by the route, never by the client. */
-export const stepUpActions = ['recovery-phrase-change', 'account-deletion'] as const
+export const stepUpActions = ['recovery-phrase-change', 'account-deletion', 'v1-phrase-recovery'] as const
 
 export type StepUpAction = (typeof stepUpActions)[number]
 
@@ -108,10 +108,11 @@ const splitStoredOtp = (value: string): { code: string; attempts: number } => {
  *
  * Rotate-per-request, not Better Auth's `resendStrategy: 'reuse'`. Reuse exists
  * to stop an unauthenticated resend from clearing the attempt counter; this row
- * has no unauthenticated door, and every mint is an authenticated request from
- * a trusted device, cooldown-gated, that also emails the account owner. Under
- * those conditions a fresh random code per request is strictly better: a
- * guesser never accumulates attempts against one fixed target.
+ * has no unauthenticated door, and every mint is an authenticated request —
+ * from a trusted device, from a session for account deletion, or from a pending
+ * device holding the v1 possession proof — cooldown-gated, that also emails the
+ * account owner. Under those conditions a fresh random code per request is
+ * strictly better: a guesser never accumulates attempts against one fixed target.
  */
 const writeFreshOtp = async (tx: QueryableDatabase, identifier: string): Promise<string> => {
   const code = generateStepUpOtp()

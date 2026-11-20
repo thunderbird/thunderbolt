@@ -86,7 +86,7 @@ request.
   device and sent to the provider that answers it.
 - Rows synced in plain text before a deployment upgraded to always-on encryption are not
   re-encrypted. See the [upgrade note](../self-hosting/configuration.md#encryption).
-- A user is capped at 10 trusted devices per account.
+- A user is capped at 10 trusted devices per account when one device approves another and when a bridge or CLI device is added. Recovering with the recovery phrase or a passkey can go past it.
 - No cryptography audit yet.
 
 > With [organizational key escrow](../self-hosting/configuration.md#organizational-key-escrow) on,

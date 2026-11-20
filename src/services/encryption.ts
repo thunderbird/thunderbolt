@@ -98,6 +98,7 @@ import {
   fetchEnvelopeTargets,
   fetchChallenge,
   postRotate,
+  postStepUpRequest,
   postUpgrade,
   denyDevice as denyDeviceApi,
   revokeDevice as revokeDeviceApi,
@@ -285,6 +286,18 @@ export class RecoveryContinuityError extends Error {
       options,
     )
     this.name = 'RecoveryContinuityError'
+  }
+}
+
+/**
+ * Thrown when recovery with a v1 phrase loses the upgrade race: another device
+ * migrated the account first, so the v1 phrase stopped working. Nothing was
+ * stored; this device needs approval or the new phrase.
+ */
+export class V1UpgradeRaceError extends Error {
+  constructor(options?: ErrorOptions) {
+    super('Another device upgraded this account first, so the v1 recovery phrase no longer works.', options)
+    this.name = 'V1UpgradeRaceError'
   }
 }
 
@@ -1669,14 +1682,29 @@ const checkApprovalAndUnwrap = async (httpClient: HttpClient): Promise<boolean> 
  * for, verify the canary, then self-approve this device with a challenge proof
  * (pending devices may fetch wrapped keys and challenges — the signature is the
  * gate).
+ *
+ * On an account still on scheme 1 the phrase is a v1 phrase, so this device
+ * migrates the account instead (see `recoverV1WithPhrase`).
  */
-const recoverWithKey = async (httpClient: HttpClient, recoveryPhrase: string): Promise<void> => {
+const recoverWithKey = async (
+  httpClient: HttpClient,
+  recoveryPhrase: string,
+  opts: { stepUpOtp?: string } = {},
+): Promise<RecoverResult> => {
   const assertCurrent = captureEncryptionOperation()
   const { decodeRecoveryKey, deriveRecoveryKeyPairFromSeed, kdfSaltRequiresContinuity, recoveryContinuityHolds } =
     await loadRecoveryKey()
   const seed = decodeRecoveryKey(recoveryPhrase)
 
   const metadata = await fetchEncryptionMetadata(httpClient)
+  if (metadata.scheme_version === 1) {
+    return recoverV1WithPhrase(httpClient, seed, metadata, opts.stepUpOtp)
+  }
+  // A code is only ever sent for a v1 phrase, so the account was upgraded by
+  // another device while this one waited for it.
+  if (opts.stepUpOtp) {
+    throw new V1UpgradeRaceError()
+  }
   if (
     metadata.signing_public_key == null ||
     metadata.kdf_salt == null ||
@@ -1686,9 +1714,8 @@ const recoverWithKey = async (httpClient: HttpClient, recoveryPhrase: string): P
     !metadata.canary_iv ||
     !metadata.canary_ctext
   ) {
-    // v1 account — its recovery key encoded the raw CK, not a seed, and its
-    // proof mechanism no longer exists. A v1 account must migrate (via a
-    // CK-holding device) before recovery-key entry works.
+    // A scheme-2 account whose recovery slot was never written: there is
+    // nothing for a phrase to open.
     throw new ValidationError(
       'This account has not finished upgrading its encryption. Open it on a device that already has access first.',
     )
@@ -1726,6 +1753,111 @@ const recoverWithKey = async (httpClient: HttpClient, recoveryPhrase: string): P
     invalidMessage: 'Invalid recovery key',
     sealCheck,
   })
+  return { outcome: 'recovered' }
+}
+
+export type RecoverResult =
+  | { outcome: 'recovered' }
+  | { outcome: 'step-up-required' }
+  | { outcome: 'migrated'; recoveryKey: string }
+
+/**
+ * Turn a v1 phrase into the CK it encodes and prove it locally against the v1
+ * canary. Throws `ValidationError` for a phrase that does not open it, before
+ * anything reaches the server.
+ */
+const proveV1Phrase = async (seed: Uint8Array, metadata: EncryptionMetadataResponse): Promise<AbsorbedLegacyCK> => {
+  // An established device is never driven back onto the v1 path, whatever
+  // `scheme_version` the server reports.
+  if (await getAK()) {
+    throw new Error('This device already holds an account key; it cannot recover a v1 account')
+  }
+  if (
+    metadata.signing_public_key != null ||
+    metadata.recovery_wrapped_ak != null ||
+    !metadata.canary_iv ||
+    !metadata.canary_ctext
+  ) {
+    throw new Error('Encryption metadata does not describe a v1 account')
+  }
+  const { importLegacyRecoveryKey } = await loadRecoveryKey()
+  const legacyCK = await importLegacyRecoveryKey(seed)
+  const { recoverCanarySecretV1 } = await loadCanary()
+  const possessionProof = await recoverCanarySecretV1(legacyCK, metadata.canary_iv, metadata.canary_ctext)
+  if (!possessionProof) {
+    throw new ValidationError('Invalid recovery key')
+  }
+  return { legacyCK, possessionProof }
+}
+
+/**
+ * Ask the server to email the step-up code a v1-phrase recovery needs. The
+ * request carries the possession proof, which the server checks before it emails
+ * the owner, so a session without the v1 canary secret cannot trigger one.
+ */
+const requestV1RecoveryCode = async (httpClient: HttpClient, recoveryPhrase: string): Promise<void> => {
+  const { decodeRecoveryKey } = await loadRecoveryKey()
+  const seed = decodeRecoveryKey(recoveryPhrase)
+  const metadata = await fetchEncryptionMetadata(httpClient)
+  if (metadata.scheme_version !== 1) {
+    throw new V1UpgradeRaceError()
+  }
+  const { possessionProof } = await proveV1Phrase(seed, metadata)
+  await postStepUpRequest(httpClient, { possessionProof })
+}
+
+/**
+ * Recover a scheme-1 account from its v1 phrase, which BIP-39-encodes the raw
+ * CK. This device proves the CK against the v1 canary and runs the migration
+ * itself, ending trusted with a new phrase.
+ *
+ * The server cannot tell the CK from the possession proof alone: the canary
+ * secret is static and v1 clients sent it in plain. So the upgrade from this
+ * untrusted device also needs an emailed step-up code. Without one, this checks
+ * the phrase locally and returns `step-up-required` with nothing written, so a
+ * wrong phrase never sends an email.
+ *
+ * The CK comes from the user, not from a server-offered envelope, so the
+ * `assertCandidateCKIsOurs` check that guards the migrator does not apply:
+ * opening the canary already proves the phrase.
+ */
+const recoverV1WithPhrase = async (
+  httpClient: HttpClient,
+  seed: Uint8Array,
+  metadata: EncryptionMetadataResponse,
+  stepUpOtp: string | undefined,
+): Promise<RecoverResult> => {
+  const assertCurrent = captureEncryptionOperation()
+  const { legacyCK, possessionProof } = await proveV1Phrase(seed, metadata)
+  if (!stepUpOtp) {
+    return { outcome: 'step-up-required' }
+  }
+
+  // Re-register as pending (a cancel may have withdrawn the row) and make sure
+  // this session is bound, which the challenge and upgrade routes require.
+  assertCurrent()
+  const keyPair = await getOrCreateKeyPair()
+  assertCurrent()
+  await registerDevice(httpClient, {
+    deviceId: getDeviceId(),
+    publicKey: await exportPublicKey(keyPair.ecdhPublicKey),
+    mlkemPublicKey: exportMlKemPublicKey(keyPair.mlkemPublicKey),
+    name: getDeviceDisplayName(),
+  })
+  assertCurrent()
+  await ensureSessionBound(httpClient)
+
+  assertCurrent()
+  const committed = await commitV2Upgrade(httpClient, keyPair, {
+    legacyCK,
+    possessionProof,
+    stepUpOtp,
+    anchor: 'mint',
+  })
+  if (committed.outcome === 'lost-race') {
+    throw new V1UpgradeRaceError()
+  }
+  return committed
 }
 
 /**
@@ -2800,6 +2932,158 @@ const resolveLegacyCK = async (
   return { legacyCK, possessionProof }
 }
 
+/** Outcome of posting a v1→v2 upgrade: committed, or beaten to the CAS by another device. */
+type UpgradeCommit = { outcome: 'migrated'; recoveryKey: string } | { outcome: 'lost-race' }
+
+/**
+ * The commit half of the v1→v2 migration, shared by the migrator and by recovery
+ * with a v1 phrase: absorb a proven legacy CK as the `"v1"` slot, mint the new
+ * AK, primary DEK `"0"`, canary, recovery slot and this device's envelope, POST
+ * `/upgrade`, and persist locally only once it committed.
+ *
+ * `anchor` picks how DEK `"0"` is witnessed: `reconcile` is the migrator's
+ * behaviour; `mint` overwrites the stored anchor, for a device that held no AK,
+ * where any anchor left behind belongs to a previous account.
+ */
+const commitV2Upgrade = async (
+  httpClient: HttpClient,
+  keyPair: StoredKeyPair,
+  {
+    legacyCK,
+    possessionProof,
+    stepUpOtp,
+    anchor,
+  }: AbsorbedLegacyCK & { stepUpOtp?: string; anchor: 'reconcile' | 'mint' },
+): Promise<UpgradeCommit> => {
+  const assertCurrent = captureEncryptionOperation()
+
+  // Mint the new AK + fresh primary DEK '0'; absorb the CK as the '"v1"' slot.
+  const recovery = await mintRecoveryPlan()
+  const newAK = await generateAK(true)
+
+  const { wrappedKey: wrappedDek0, dek: dek0 } = await mintDEK(newAK, initialKeyId)
+  const wrappedV1 = await wrapDEK(legacyCK, newAK, legacyKeyId)
+
+  // Anchored to the new AK (THU-872); the v1 possession proof below still uses
+  // the LEGACY canary the server currently stores — two different artifacts.
+  const { mintCanary, deriveSigningKeyPair } = await loadCanary()
+  const { canaryIv, canaryCtext, canaryKey } = await mintCanary(newAK, getUserId())
+  const { publicKeySpki } = await deriveSigningKeyPair(canaryKey)
+
+  const self: TrustedDevicePublicKeys = {
+    id: getDeviceId(),
+    publicKey: await exportPublicKey(keyPair.ecdhPublicKey),
+    mlkemPublicKey: exportMlKemPublicKey(keyPair.mlkemPublicKey),
+    // Self: nothing to verify, and nothing has attested it yet.
+    attestation: null,
+  }
+  // Siblings must re-enter fingerprint-verified approval; no server-selected key receives this AK.
+  // The first v2 epoch. Never derived from the served v1 `key_version`, which
+  // the server controls.
+  const sealedKeyVersion = 1
+  const envelopes = await buildDeviceEnvelopes(newAK, [self], initialKeyId, sealedKeyVersion, canaryKey)
+  const recoverySlot = await buildRecoverySlot(newAK, recovery, canaryKey, initialKeyId, sealedKeyVersion, dek0)
+
+  const { nonce } = await fetchChallenge(httpClient, 'upgrade')
+
+  // Built OUTSIDE the try below: a malformed escrow pin is a build
+  // misconfiguration and must surface as-is, not be re-classified as a refusal.
+  const orgEnvelope = await buildOrgEnvelope(newAK)
+
+  // Marked BEFORE the request — see the matching note in first-device setup. A
+  // lost response here is worse: the flip anchors recovery to this phrase AND
+  // kills the v1 one, so an unmarked loss leaves the account with no openable
+  // recovery slot at all. A refusal below clears it again, since that genuinely
+  // did not commit.
+  assertCurrent()
+  markRecoveryPhrasePending()
+
+  let keyVersion: number
+  try {
+    assertCurrent()
+    const upgraded = await postUpgrade(httpClient, {
+      nonce,
+      possessionProof,
+      stepUpOtp,
+      envelopes,
+      wrappedKeys: [
+        { keyId: initialKeyId, wrappedKey: wrappedDek0 },
+        { keyId: legacyKeyId, wrappedKey: wrappedV1 },
+      ],
+      primaryKeyId: initialKeyId,
+      canaryIv,
+      canaryCtext,
+      signingPublicKey: publicKeySpki,
+      kdfSalt: recovery.kdfSalt,
+      ...recoverySlot,
+      orgEnvelope,
+    })
+    keyVersion = upgraded.key_version
+  } catch (err) {
+    // Any answer below 500 is the server refusing the upgrade: the flip did not
+    // happen and this candidate phrase was never anchored. A network error,
+    // timeout or 5xx may still have committed, so the marker stays for those.
+    if (err instanceof HttpError && err.response.status < 500) {
+      assertCurrent()
+      clearRecoveryPhrasePending()
+    }
+    const refusal = await stepUpRefusalCode(err)
+    if (refusal) {
+      throw new StepUpVerificationError(refusal, { cause: err })
+    }
+    // CAS-loss: another device migrated first. Each caller decides what that
+    // means for this device.
+    if (err instanceof HttpError && err.response.status === 409) {
+      return { outcome: 'lost-race' }
+    }
+    throw err
+  }
+
+  // PAST THE POINT OF NO RETURN. postUpgrade committed the v2 flip and anchored
+  // recovery to `recovery.recoveryPhrase`, so the old v1 phrase is dead and this
+  // one is the account's ONLY recovery. It must reach the caller even if local
+  // persistence fails — mirror of `runAKRotation`. A staging failure is caught,
+  // not propagated: device access self-heals on the next boot (`ensureV2Encryption`
+  // sees scheme 2 + no local AK and follows), while the phrase is returned now.
+  //
+  // Write the keyring and the committed server version BEFORE the AK, which lands
+  // with its sealed epoch and primary, so a
+  // persisted AK always implies a complete keyring (a crash mid-write leaves no
+  // AK → the device re-runs migration/follow rather than an AK-without-primary state).
+  try {
+    assertCurrent()
+    await stageWrappedDEKs([
+      { keyId: initialKeyId, wrappedKey: wrappedDek0 },
+      { keyId: legacyKeyId, wrappedKey: wrappedV1 },
+    ])
+    assertCurrent()
+    await storeKeyVersion(keyVersion)
+    const nonExtractableAK = await reimportAsNonExtractable(newAK)
+    assertCurrent()
+    await publishAK(nonExtractableAK, { keyVersion: sealedKeyVersion, primaryKeyId: initialKeyId })
+    // Same reasoning as first-device setup: witness DEK "0" from the AK this
+    // device just minted, not from whatever a later keyring fetch returns.
+    if (anchor === 'mint') {
+      const mintedAnchor = await mintKeyringAnchor(dek0)
+      assertCurrent()
+      await storeKeyringAnchor(mintedAnchor)
+    } else {
+      assertCurrent()
+      await reconcileKeyringAnchor()
+    }
+    assertCurrent()
+    invalidateKeyringCache()
+  } catch (err) {
+    assertCurrent()
+    console.error(
+      '[e2ee] v2 migration committed on the server but local key staging failed — this device will re-follow on next boot; returning the phrase so it is not lost:',
+      err,
+    )
+  }
+
+  return { outcome: 'migrated', recoveryKey: recovery.recoveryPhrase }
+}
+
 /**
  * Migrate this v1 account to v2. Eligibility: `scheme_version == 1`, this
  * device holds the legacy CK (its v1 envelope unwraps and decrypts the canary),
@@ -2848,123 +3132,15 @@ const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Options = {}
   if (!absorbed) {
     return { outcome: 'not-eligible' }
   }
-  const { legacyCK, possessionProof } = absorbed
-
-  // Mint the new AK + fresh primary DEK '0'; absorb the CK as the '"v1"' slot.
-  const recovery = await mintRecoveryPlan()
-  const newAK = await generateAK(true)
-
-  const { wrappedKey: wrappedDek0, dek: dek0 } = await mintDEK(newAK, initialKeyId)
-  const wrappedV1 = await wrapDEK(legacyCK, newAK, legacyKeyId)
-
-  // Anchored to the new AK (THU-872); the v1 possession proof below still uses
-  // the LEGACY canary the server currently stores — two different artifacts.
-  const { mintCanary, deriveSigningKeyPair } = await loadCanary()
-  const { canaryIv, canaryCtext, canaryKey } = await mintCanary(newAK, getUserId())
-  const { publicKeySpki } = await deriveSigningKeyPair(canaryKey)
-
-  const self: TrustedDevicePublicKeys = {
-    id: getDeviceId(),
-    publicKey: await exportPublicKey(keyPair.ecdhPublicKey),
-    mlkemPublicKey: exportMlKemPublicKey(keyPair.mlkemPublicKey),
-    // Self: nothing to verify, and nothing has attested it yet.
-    attestation: null,
+  const committed = await commitV2Upgrade(httpClient, keyPair, { ...absorbed, anchor: 'reconcile' })
+  if (committed.outcome === 'lost-race') {
+    // Another device won the CAS: re-classify as a follower and surface its
+    // ACTUAL outcome (may be awaiting-approval / not-applicable if this device's
+    // envelope isn't visible yet).
+    assertCurrent()
+    return followToV2(httpClient, { getLegacyV1Sample: opts.getLegacyV1Sample })
   }
-  // Siblings must re-enter fingerprint-verified approval; no server-selected key receives this AK.
-  // The first v2 epoch. Never derived from the served v1 `key_version`, which
-  // the server controls.
-  const sealedKeyVersion = 1
-  const envelopes = await buildDeviceEnvelopes(newAK, [self], initialKeyId, sealedKeyVersion, canaryKey)
-  const recoverySlot = await buildRecoverySlot(newAK, recovery, canaryKey, initialKeyId, sealedKeyVersion, dek0)
-
-  const { nonce } = await fetchChallenge(httpClient, 'upgrade')
-
-  // Built OUTSIDE the try below: a malformed escrow pin is a build
-  // misconfiguration and must surface as-is, not be re-classified as a 409 CAS-loss.
-  const orgEnvelope = await buildOrgEnvelope(newAK)
-
-  // Marked BEFORE the request — see the matching note in first-device setup. A
-  // lost response here is worse: the flip anchors recovery to this phrase AND
-  // kills the v1 one, so an unmarked loss leaves the account with no openable
-  // recovery slot at all. The 409 CAS-loss branch below clears it again, since
-  // that genuinely did not commit.
-  assertCurrent()
-  markRecoveryPhrasePending()
-
-  let keyVersion: number
-  try {
-    assertCurrent()
-    const upgraded = await postUpgrade(httpClient, {
-      nonce,
-      possessionProof,
-      envelopes,
-      wrappedKeys: [
-        { keyId: initialKeyId, wrappedKey: wrappedDek0 },
-        { keyId: legacyKeyId, wrappedKey: wrappedV1 },
-      ],
-      primaryKeyId: initialKeyId,
-      canaryIv,
-      canaryCtext,
-      signingPublicKey: publicKeySpki,
-      kdfSalt: recovery.kdfSalt,
-      ...recoverySlot,
-      orgEnvelope,
-    })
-    keyVersion = upgraded.key_version
-  } catch (err) {
-    // CAS-loss: another device migrated first. The candidate AK/phrase were
-    // never committed — re-classify as a follower and surface its ACTUAL outcome
-    // (may be awaiting-approval / not-applicable if this device's envelope isn't
-    // visible yet). Any OTHER error is a genuine pre-commit failure: the flip did
-    // not happen, so the phrase was never anchored and it is safe to surface it.
-    if (err instanceof HttpError && err.response.status === 409) {
-      // Another device won the CAS: this candidate phrase was never anchored,
-      // so the account does not owe one on its account.
-      assertCurrent()
-      clearRecoveryPhrasePending()
-      assertCurrent()
-      return followToV2(httpClient, { getLegacyV1Sample: opts.getLegacyV1Sample })
-    }
-    throw err
-  }
-
-  // PAST THE POINT OF NO RETURN. postUpgrade committed the v2 flip and anchored
-  // recovery to `recovery.recoveryPhrase`, so the old v1 phrase is dead and this
-  // one is the account's ONLY recovery. It must reach the caller even if local
-  // persistence fails — mirror of `runAKRotation`. A staging failure is caught,
-  // not propagated: device access self-heals on the next boot (`ensureV2Encryption`
-  // sees scheme 2 + no local AK and follows), while the phrase is returned now.
-  //
-  // Write the keyring and the committed server version BEFORE the AK, which lands
-  // with its sealed epoch and primary, so a
-  // persisted AK always implies a complete keyring (a crash mid-write leaves no
-  // AK → the device re-runs migration/follow rather than an AK-without-primary state).
-  try {
-    assertCurrent()
-    await stageWrappedDEKs([
-      { keyId: initialKeyId, wrappedKey: wrappedDek0 },
-      { keyId: legacyKeyId, wrappedKey: wrappedV1 },
-    ])
-    assertCurrent()
-    await storeKeyVersion(keyVersion)
-    const nonExtractableAK = await reimportAsNonExtractable(newAK)
-    assertCurrent()
-    await publishAK(nonExtractableAK, { keyVersion: sealedKeyVersion, primaryKeyId: initialKeyId })
-    // Same reasoning as first-device setup: witness DEK "0" from the AK this
-    // device just minted, not from whatever a later keyring fetch returns.
-    assertCurrent()
-    await reconcileKeyringAnchor()
-    assertCurrent()
-    invalidateKeyringCache()
-  } catch (err) {
-    assertCurrent()
-    console.error(
-      '[e2ee] v2 migration committed on the server but local key staging failed — this device will re-follow on next boot; returning the phrase so it is not lost:',
-      err,
-    )
-  }
-
-  return { outcome: 'migrated', recoveryKey: recovery.recoveryPhrase }
+  return committed
 }
 
 // =============================================================================
@@ -3257,6 +3433,7 @@ const serializedRevokeDeviceWithProof = (...args: Parameters<typeof revokeDevice
   supportsKeyStoreLock() ? lockedRevokeDeviceWithProof(...args) : revokeDeviceWithProof(...args)
 const serializedCheckApprovalAndUnwrap = serializeKeyOperation(checkApprovalAndUnwrap)
 const serializedRecoverWithKey = serializeKeyOperation(recoverWithKey)
+const serializedRequestV1RecoveryCode = serializeKeyOperation(requestV1RecoveryCode)
 const serializedUnlockWithPasskey = serializeKeyOperation(unlockWithPasskey)
 const serializedRotateAccountKey = serializeKeyOperation(rotateAccountKey)
 const serializedChangeRecoveryPhrase = serializeKeyOperation(changeRecoveryPhrase)
@@ -3280,6 +3457,7 @@ export {
   serializedRevokeDeviceWithProof as revokeDeviceWithProof,
   serializedCheckApprovalAndUnwrap as checkApprovalAndUnwrap,
   serializedRecoverWithKey as recoverWithKey,
+  serializedRequestV1RecoveryCode as requestV1RecoveryCode,
   serializedUnlockWithPasskey as unlockWithPasskey,
   serializedRotateAccountKey as rotateAccountKey,
   serializedChangeRecoveryPhrase as changeRecoveryPhrase,

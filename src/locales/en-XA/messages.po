@@ -212,6 +212,7 @@ msgstr ""
 msgid "⚠ This export was made by a different account ({importSourceEmail}). Importing it here will mix that data into your account. Confirm only if you intend to."
 msgstr ""
 
+#: src/hooks/use-sync-setup.ts
 #: src/settings/account/use-delete-account.ts
 msgid "A code was just sent. Wait a moment and try again."
 msgstr ""
@@ -1970,6 +1971,7 @@ msgstr ""
 msgid "Couldn't save: {saveError}"
 msgstr ""
 
+#: src/hooks/use-sync-setup.ts
 #: src/settings/account/use-delete-account.ts
 msgid "Couldn’t send a new code. Your previous code may no longer work — request another."
 msgstr ""
@@ -2900,6 +2902,7 @@ msgstr ""
 msgid "Failed to save the model."
 msgstr ""
 
+#: src/hooks/use-sync-setup.ts
 #: src/settings/account/use-delete-account.ts
 #: src/settings/encryption/use-change-recovery-key.ts
 msgid "Failed to send the verification code"
@@ -2972,6 +2975,7 @@ msgid "Generate a new phrase"
 msgstr ""
 
 #: src/components/recovery-phrase-change-dialogs.tsx
+#: src/components/sync-setup/sync-setup-modal.tsx
 #: src/components/unsaved-recovery-phrase-prompt.tsx
 msgid "Generate new phrase"
 msgstr ""
@@ -2982,6 +2986,7 @@ msgstr ""
 
 #: src/components/chat/inline-artifact-card.tsx
 #: src/components/recovery-phrase-change-dialogs.tsx
+#: src/components/sync-setup/sync-setup-modal.tsx
 #: src/components/unsaved-recovery-phrase-prompt.tsx
 msgid "Generating…"
 msgstr ""
@@ -4860,6 +4865,7 @@ msgstr ""
 
 #: src/app.tsx
 #: src/components/recovery-phrase-change-dialogs.tsx
+#: src/components/sync-setup/sync-setup-modal.tsx
 #: src/components/unsaved-recovery-phrase-prompt.tsx
 msgid "Save your new recovery phrase"
 msgstr ""
@@ -5670,6 +5676,7 @@ msgstr ""
 msgid "Testing…"
 msgstr ""
 
+#: src/hooks/use-sync-setup.ts
 #: src/settings/account/use-delete-account.ts
 #: src/settings/encryption/use-change-recovery-key.ts
 msgid "That code is invalid or expired. Check your email and try again."
@@ -5865,6 +5872,10 @@ msgstr ""
 #: src/components/chat/reasoning-part.tsx
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Thinking"
+msgstr ""
+
+#: src/hooks/use-sync-setup.ts
+msgid "This account was just upgraded on another device, so this recovery phrase no longer works. Approve this device from that device or use its new recovery phrase."
 msgstr ""
 
 #: src/components/ui/chat-nav-button.tsx
@@ -6859,6 +6870,7 @@ msgid "We sent a code to <0>{email}</0>"
 msgstr ""
 
 #: src/components/recovery-phrase-change-dialogs.tsx
+#: src/components/sync-setup/sync-setup-modal.tsx
 #: src/components/unsaved-recovery-phrase-prompt.tsx
 msgid "We sent an 8-digit code to your account email. Enter it to generate your new recovery phrase."
 msgstr ""
@@ -7038,8 +7050,8 @@ msgid "You have been signed out successfully."
 msgstr ""
 
 #: src/hooks/use-sync-setup.ts
-msgid "You have reached the maximum number of devices. Revoke an existing device to add a new one."
-msgstr ""
+#~ msgid "You have reached the maximum number of devices. Revoke an existing device to add a new one."
+#~ msgstr ""
 
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "You have reached the sharing limit. Please try again later."
@@ -7198,6 +7210,7 @@ msgid "Your donation helps us understand how the app is used and improve the pro
 msgstr ""
 
 #: src/app.tsx
+#: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."
 msgstr ""
 

@@ -169,7 +169,7 @@ openssl rand 32 | basenc --base64url --wrap=0
 | A second `powersync_storage` database                   | On the same server                                                                                                                                                                          |
 | `DATABASE_DRIVER=postgres`                              | PGlite runs in-process, so the sync service has nothing to connect to. The server does not notice and keeps handing out sync tokens, so sync fails quietly rather than reporting itself off |
 
-**6. The device is waiting for approval.** A new device registers as pending and shows an approval screen. Follow the [device approval and recovery guide](./admin/devices.md#approving-a-device) for the current unlock options. An account is limited to 10 active devices; revoke one under **Settings → Devices** to free a slot. On an account's first device there is nothing to approve, but sync starts only once the user confirms they saved the recovery phrase.
+**6. The device is waiting for approval.** A new device registers as pending and shows an approval screen. Follow the [device approval and recovery guide](./admin/devices.md#approving-a-device) for the current unlock options. Another device cannot approve it once the account has 10 active devices; revoke one under **Settings → Devices** to free a slot. Recovering with the recovery phrase or a passkey is not limited. On an account's first device there is nothing to approve, but sync starts only once the user confirms they saved the recovery phrase.
 
 Once those are settled, confirm the sync service is alive with `/v1/health/powersync`.
 

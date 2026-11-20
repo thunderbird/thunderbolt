@@ -167,7 +167,7 @@ describe('SyncSetupModal', () => {
       step: 'recovery-key-entry' as const,
       legacyRecoveryPhrase: true,
       recoveryKeyInput: Array(24).fill('word').join(' '),
-      submitRecoveryKey: async () => true,
+      submitRecoveryKey: async () => 'recovered' as const,
       completeSetup,
       goToPasskeyEnroll,
       reset: () => {},
@@ -184,6 +184,42 @@ describe('SyncSetupModal', () => {
       useSetup.mockRestore()
       available.mockRestore()
     }
+  })
+
+  describe('recovering with a v1 phrase', () => {
+    let useSetup: ReturnType<typeof spyOn> | undefined
+    afterEach(() => {
+      useSetup?.mockRestore()
+      useSetup = undefined
+    })
+
+    const renderWithSetup = (overrides: Partial<ReturnType<typeof setupHook.useSyncSetup>>) => {
+      const wrapper = createTestProvider()
+      const hook = renderHook(() => setupHook.useSyncSetup(), { wrapper })
+      const setup = { ...hook.result.current, reset: () => {}, ...overrides }
+      hook.unmount()
+      useSetup = spyOn(setupHook, 'useSyncSetup').mockReturnValue(setup)
+      render(<SyncSetupModal open onOpenChange={mock()} onComplete={mock()} />, { wrapper })
+    }
+
+    it('asks for the emailed code over the phrase step', async () => {
+      const submitRecoveryStepUp = mock(async () => 'failed' as const)
+      renderWithSetup({ step: 'recovery-step-up', stepUpOtp: '12345678', submitRecoveryStepUp })
+
+      expect(screen.getByText('Enter your verification code')).toBeTruthy()
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Generate new phrase' })))
+      expect(submitRecoveryStepUp).toHaveBeenCalledTimes(1)
+    })
+
+    it('says the new phrase replaces the old one', () => {
+      renderWithSetup({
+        step: 'recovery-key-display',
+        recoveryKey: Array(24).fill('word').join(' '),
+        migratedRecoveryKey: true,
+      })
+
+      expect(screen.getByText('Save your new recovery phrase')).toBeTruthy()
+    })
   })
 
   describe('yielding to the seamless v1→v2 migration', () => {

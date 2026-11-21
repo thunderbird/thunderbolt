@@ -146,7 +146,9 @@ const resolveAnimationTarget = (slide: Element, name: string, canvas: Canvas) =>
       `${matches.length ? 'Ambiguous or empty' : 'Missing'} shape name. Available: ${drawings
         .slice(0, 20)
         .map((el) => el.getAttribute('name'))
-        .join(', ')}`,
+        .join(
+          ', ',
+        )}. Name the shape where the script adds it, e.g. slide.addText(text, { objectName: 'title', ... }), and use that name here.`,
     )
   }
   const [nv] = matches
@@ -222,7 +224,7 @@ const validateAnimation = (entry: Animation, report: Report) => {
     integer(entry.durationMs, 'durationMs', 1, report)
   }
   if (repeat !== 'indefinite') {
-    integer(repeat, 'repeat', 1, report)
+    integer(repeat, 'repeat', 1, (message) => report(`${message}, or 'indefinite' to loop`))
     if (repeat > uintMax / 1000) {
       report(`repeatCount exceeds ${uintMax}. Use at most ${Math.floor(uintMax / 1000)} plays.`)
     }

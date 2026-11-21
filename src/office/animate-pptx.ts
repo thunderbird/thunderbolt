@@ -130,7 +130,9 @@ const checkBounds = (object: Element, props: Element | undefined, canvas: Canvas
     return
   }
   const [x, y, w, h] = coordinates.map(Number)
-  if (!(w > 0 && h > 0 && x < canvas.width && y < canvas.height && x + w > 0 && y + h > 0)) {
+  // A straight line has no width or no height, so a side of 0 still covers the line it draws.
+  const inside = x < canvas.width && y < canvas.height && x + Math.max(w, 1) > 0 && y + Math.max(h, 1) > 0
+  if (!(w >= 0 && h >= 0 && w + h > 0 && inside)) {
     throw new Error(
       'Target has zero overlap with the slide canvas. Move its rectangle onto the slide or choose another object.',
     )

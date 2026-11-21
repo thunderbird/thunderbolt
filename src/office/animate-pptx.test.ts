@@ -259,6 +259,28 @@ test('bounds use the default slide size and skip unit-bearing coordinates', asyn
   expect(() => animateAt('1in')).not.toThrow()
 })
 
+test('a straight line is a target, a shape of no size is not', async () => {
+  const parts = unzipSync(await sampleInput())
+  const xml = strFromU8(parts[part(1)])
+  const animateSized = (cx: string, cy: string) =>
+    animatePptx(
+      zipSync({
+        ...parts,
+        [part(1)]: strToU8(
+          xml.replace(
+            '<p:spPr/>',
+            `<p:spPr><a:xfrm><a:off x="914400" y="914400"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm></p:spPr>`,
+          ),
+        ),
+      }),
+      { effects: [title] },
+    )
+  expect(() => animateSized('3000000', '0')).not.toThrow()
+  expect(() => animateSized('0', '3000000')).not.toThrow()
+  expect(() => animateSized('0', '0')).toThrow('zero overlap')
+  expect(() => animateSized('-5', '3000000')).toThrow('zero overlap')
+})
+
 test('identify media by its namespace', async () => {
   const input = (ns: string) =>
     modifyPart(part(1), (xml) =>

@@ -1213,8 +1213,9 @@ jobs:
             echo "plan=$(jq --compact-output . qa-out/fix-plan.json)"
             # Web real-AI tasks, checked again on the real providers by verify-real. Android's run in verify-native.
             echo "real=$(jq --compact-output '[.fixes[] | select(.real and .spec != null)]' qa-out/fix-plan.json)"
-            # Web tasks, whose patch must carry a unit test that verify-tests sees fail without the fix.
-            echo "tests=$(jq --compact-output '[.fixes[] | select(.flow == null)]' qa-out/fix-plan.json)"
+            # Web tasks no browser check proves (`unitTest`), whose patch must carry a unit test that verify-tests
+            # sees fail without the fix.
+            echo "tests=$(jq --compact-output '[.fixes[] | select(.unitTest)]' qa-out/fix-plan.json)"
           } >> "$GITHUB_OUTPUT"
       # Also when filing failed: filed.json then lists the tickets that did reach Linear and the attachments lost.
       - if: always()
@@ -2148,6 +2149,8 @@ jobs:
     environment: qa-agent
     permissions:
       contents: read
+      # Reads how the bot's earlier fix PRs ended.
+      pull-requests: read
     env:
       HAS_HEARTBEAT: ${{ secrets.QA_HEARTBEAT_URL != '' }}
     steps:
@@ -2202,6 +2205,14 @@ jobs:
             bun .github/qa/scripts/report.ts summary --out qa-out-canary || status=1
           fi
           exit "$status"
+
+      # How the bot's earlier fix PRs ended, from GitHub alone. A failed API call loses only this section.
+      - name: Report the fix PRs of earlier runs
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun .github/qa/scripts/report.ts fix-prs
 
       # The dead-man switch watches the Monday run on main only, and only a run that worked.
       - name: Heartbeat

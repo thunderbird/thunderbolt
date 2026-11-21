@@ -1076,6 +1076,12 @@ describe.each([
     expect(await errorOf('const x = ;')).toContain('SyntaxError')
   })
 
+  it('says the libraries are globals when a script tries to import one', async () => {
+    const error = await errorOf("const excelizeWasm = await import('excelize-wasm')")
+    expect(error).toContain("could not load module 'excelize-wasm'")
+    expect(error).toContain('are already globals')
+  })
+
   it('shows the script line an error points at, with a caret under its column', async () => {
     const misplaced = 'const b = [new docx.Paragraph("x", bold: true)]'
     expect(await errorOf(`const a = 1\n${misplaced}`)).toEndWith(

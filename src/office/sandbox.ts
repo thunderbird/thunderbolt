@@ -102,6 +102,12 @@ const clip = (text: string) =>
 const scriptStart = '(async () => {'
 const sourceWindow = 160
 
+// QuickJS words a failed `import()` as if the library were broken, and models retried it until they gave up.
+const withImportHint = (error: string) =>
+  /could not load module/.test(error)
+    ? `${error.trimEnd()}\nThe sandbox has no imports, and nothing is missing: docx, PptxGenJS, excelize, fflate and xmldom are already globals. Use them directly, e.g. const f = excelize.NewFile().`
+    : error
+
 /**
  * Append the script line an error points at, with a caret under its column. The model no longer sees the script it
  * sent, nor the result of an `edit`, so a bare `script.js:38:95` leaves it recounting lines from memory.
@@ -258,5 +264,5 @@ export const runSandboxedScript = async (
       logs: shownLogs,
     }
   }
-  return { ok: false, error: clip(withSourceLine(error, script)), logs: shownLogs }
+  return { ok: false, error: clip(withSourceLine(withImportHint(error), script)), logs: shownLogs }
 }

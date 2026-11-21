@@ -1076,6 +1076,22 @@ describe.each([
     expect(await errorOf('const x = ;')).toContain('SyntaxError')
   })
 
+  it('shows the script line an error points at, with a caret under its column', async () => {
+    const misplaced = 'const b = [new docx.Paragraph("x", bold: true)]'
+    expect(await errorOf(`const a = 1\n${misplaced}`)).toEndWith(
+      `Line 2 of the script:\n${misplaced}\n${' '.repeat(misplaced.indexOf(':'))}^`,
+    )
+    // The first line shares the wrapper's line, whose characters QuickJS counts.
+    expect(await errorOf('const x = foo(: 1)')).toEndWith(
+      `Line 1 of the script:\nconst x = foo(: 1)\n${' '.repeat(14)}^`,
+    )
+    expect(await errorOf('const a = 1\n  null.x')).toEndWith('Line 2 of the script:\n  null.x\n  ^')
+    const long = `const s = "${'x'.repeat(400)}"; const y = (: 1)`
+    expect(await errorOf(long)).toEndWith(
+      `${long.slice(long.length - 160)}\n${' '.repeat(160 - (long.length - long.indexOf('(:') - 1))}^`,
+    )
+  })
+
   it('stops a run at the time limit', async () => {
     expect(await errorOf('while (true) {}', { timeoutMs: 200 })).toContain('more than 0.2 seconds')
     expect(await errorOf('await Promise.resolve(); while (true) {}', { timeoutMs: 200 })).toContain(

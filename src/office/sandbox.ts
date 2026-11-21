@@ -98,6 +98,29 @@ const shownCharacters = 20_000
 const clip = (text: string) =>
   text.length > shownCharacters ? `${text.slice(0, shownCharacters)}\n[The rest is not shown.]` : text
 
+// Shares the script's first line, so QuickJS counts these characters in that line's columns.
+const scriptStart = '(async () => {'
+const sourceWindow = 160
+
+/**
+ * Append the script line an error points at, with a caret under its column. The model no longer sees the script it
+ * sent, nor the result of an `edit`, so a bare `script.js:38:95` leaves it recounting lines from memory.
+ */
+const withSourceLine = (error: string, script: string) => {
+  const lines = script.split('\n')
+  const at = [...error.matchAll(/script\.js:(\d+):(\d+)/g)]
+    .map(([, line, column]) => ({ line: Number(line), column: Number(column) }))
+    .find(({ line }) => line >= 1 && line <= lines.length)
+  if (!at) {
+    return error
+  }
+  const column = Math.max(1, at.line === 1 ? at.column - scriptStart.length : at.column)
+  const text = lines[at.line - 1].replace(/\t/g, ' ')
+  const start = Math.max(0, Math.min(column - 1 - sourceWindow / 2, text.length - sourceWindow))
+  const shown = text.slice(start, start + sourceWindow)
+  return `${error.trimEnd()}\nLine ${at.line} of the script:\n${shown}\n${' '.repeat(column - 1 - start)}^`
+}
+
 /**
  * Run `script` (the body of an async function) in a fresh QuickJS VM with no network, no DOM and no app
  * state. The script reads its inputs with `readFile(name)` and hands files back with `saveFile(filename,
@@ -198,7 +221,7 @@ export const runSandboxedScript = async (
     onReady()
     // Same line as the script's first line, so line numbers in its errors match what the model wrote.
     vm.evalCode(
-      `(async () => {${script}\n})().then(() => __finish(), (error) => __finish(error instanceof Error ? error.name + ': ' + error.message + '\\n' + (error.stack ?? '') : String(error)))`,
+      `${scriptStart}${script}\n})().then(() => __finish(), (error) => __finish(error instanceof Error ? error.name + ': ' + error.message + '\\n' + (error.stack ?? '') : String(error)))`,
       'script.js',
     ).dispose()
     while (!finished) {
@@ -234,5 +257,5 @@ export const runSandboxedScript = async (
       logs: shownLogs,
     }
   }
-  return { ok: false, error: clip(error), logs: shownLogs }
+  return { ok: false, error: clip(withSourceLine(error, script)), logs: shownLogs }
 }

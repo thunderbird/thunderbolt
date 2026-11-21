@@ -17,6 +17,8 @@
         "--console-level",
         "error",
         "--init-script",
+        "node_modules/axe-core/axe.min.js",
+        "--init-script",
         ".github/qa/layout-probe.js",
         "--file-paths",
         "absolute",

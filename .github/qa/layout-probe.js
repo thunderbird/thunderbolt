@@ -5,9 +5,11 @@
 // The layout probe. The explore agent's browser runs it in every page (Playwright MCP `--init-script`) and repro
 // specs inject it through layout.ts. It logs `[qa-layout] ready` once per page load and each confirmed problem once
 // as `[qa-layout] <kind> <role> "<name>"`, all with console.error: the MCP passes on nothing quieter. An unnamed
-// control quotes where it is instead of its name.
+// control quotes where it is instead of its name. axe-core (`node_modules/axe-core/axe.min.js`) must load first.
 ;(() => {
   if (window.top !== window || window.__qaLayout) return
+  // Without the ready line, report.ts counts the page as unmeasured.
+  if (!window.axe) throw new Error('layout-probe.js needs axe-core loaded before it')
 
   const interactive = 'input, textarea, select, button, a[href], [role=button], [role=link], [contenteditable=true]'
   const implicitRoles = { A: 'link', BUTTON: 'button', INPUT: 'textbox', SELECT: 'combobox', TEXTAREA: 'textbox' }
@@ -21,6 +23,8 @@
   const firstSeen = new Map()
   const logged = new Set()
   let confirmed = []
+  let review = []
+  let measuring = false
   let timer
   let pendingSince
 
@@ -34,8 +38,9 @@
   const fieldRoles = ['textbox', 'searchbox', 'combobox']
 
   const clean = (text) => (text ?? '').replace(/\s+/g, ' ').trim()
-  // shortcut: counts aria-hidden text and a role-less contenteditable's own text, skips descendants' aria-label and
-  // the value of input buttons; grow it when the app names a control only that way.
+  // The name a geometry line quotes; axe-core decides which controls have none. shortcut: counts aria-hidden text and a
+  // role-less contenteditable's own text, skips descendants' aria-label and the value of input buttons, so such a
+  // control's quote can differ from what a screen reader says; use axe's own name once a line needs it exact.
   const accessibleName = (el) =>
     clean(el.getAttribute('aria-label')) ||
     clean(
@@ -244,9 +249,6 @@
   const textField =
     'textarea, [contenteditable=true], input:is(:not([type]), [type=text], [type=search], [type=email], [type=url], [type=tel], [type=password], [type=number])'
 
-  const controls = `button, a[href], select, ${textField}, input:is([type=checkbox], [type=radio]), [role=button],
-    [role=link], [role=checkbox], [role=switch], [role=radio], [role=textbox], [role=searchbox], [role=combobox]`
-
   // With the keyboard open, the focused field's box, the part of the screen its clipping ancestors leave it (the
   // keyboard's area included) and whether it can show in full above the keyboard. A field taller than that space,
   // like a growing textarea, cannot, so the keyboard rules leave it alone.
@@ -314,7 +316,36 @@
     return [...page, ...texts]
   }
 
-  const measure = () => {
+  // axe-core's name rules. They take every control a screen reader reaches, whatever its pointer-events or opacity (a
+  // hover-only action, the #1481 placeholder in a wrapper that stops clicks), and skip a hidden, inert or aria-hidden
+  // one. A result axe cannot settle (`incomplete`) needs a person: it goes to review(), never into a finding.
+  // Base UI's focus guards are no controls: on WebKit with VoiceOver they turn into a role=button span so the focus
+  // trap catches VoiceOver's cursor (FocusGuard in @base-ui/react), and they hand focus on at once.
+  const namedArea = { exclude: [['[data-base-ui-focus-guard]']] }
+  const nameRules = {
+    runOnly: [
+      'aria-command-name',
+      'aria-input-field-name',
+      'aria-toggle-field-name',
+      'button-name',
+      'input-button-name',
+      'label',
+      'link-name',
+      'select-name',
+    ],
+    resultTypes: ['violations', 'incomplete'],
+    elementRef: true,
+    selectors: false,
+    // The probe measures the top page only, and waiting on frames costs axe half a second.
+    iframes: false,
+  }
+  /** One problem per control, in page order: axe lists them rule by rule. */
+  const unnamedOf = (results) =>
+    [...new Set(results.flatMap((result) => result.nodes.map((node) => node.element)))]
+      .sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))
+      .map((el) => ({ kind: 'unnamed-control', target: `${roleOf(el)} "${whereOf(el).slice(0, 80)}"` }))
+
+  const measure = async () => {
     const vv = window.visualViewport
     const area = viewArea(vv)
     const candidates = [...document.querySelectorAll(interactive)].filter(isCandidate)
@@ -335,17 +366,22 @@
             isFocusCovered(vv, area, field) && { kind: 'focus-covered', target: describe(field) },
           ].filter(Boolean)
         : []
-    const unnamed = [...document.querySelectorAll(controls)]
-      .filter((el) => !accessibleName(el) && isCandidate(el))
-      .map((el) => ({ kind: 'unnamed-control', target: `${roleOf(el)} "${whereOf(el).slice(0, 80)}"` }))
-    return [...found, ...keyboard, ...focus, ...unnamed, ...overflows()]
+    const { violations, incomplete } = await window.axe.run(namedArea, nameRules)
+    review = unnamedOf(incomplete)
+    return [...found, ...keyboard, ...focus, ...unnamedOf(violations), ...overflows()]
   }
 
-  const check = () => {
+  // axe refuses a second run while one is going, so a change during a run checks again after it.
+  const check = async () => {
     clearTimeout(timer)
+    if (measuring) return schedule(debounceMs)
     pendingSince = undefined
+    measuring = true
+    // The page is measured when the check starts, and the next one is due confirmMs after that, however long axe
+    // takes, so layoutProblems' 1 s wait still sees a problem confirmed.
     const now = performance.now()
-    const current = new Map(measure().map((problem) => [`${problem.kind} ${problem.target}`, problem]))
+    const problems = await measure().finally(() => (measuring = false))
+    const current = new Map(problems.map((problem) => [`${problem.kind} ${problem.target}`, problem]))
     for (const key of firstSeen.keys()) if (!current.has(key)) firstSeen.delete(key)
     for (const key of current.keys()) if (!firstSeen.has(key)) firstSeen.set(key, now)
     const confirmedKeys = [...current.keys()].filter((key) => now - firstSeen.get(key) >= confirmMs)
@@ -354,7 +390,7 @@
       logged.add(key)
       console.error(`[qa-layout] ${key}`)
     }
-    if (confirmedKeys.length < current.size) schedule(confirmMs + 10)
+    if (confirmedKeys.length < current.size) schedule(now + confirmMs + 10 - performance.now())
   }
 
   const schedule = (delay) => {
@@ -384,7 +420,7 @@
     check()
   }
 
-  window.__qaLayout = { problems: () => [...confirmed] }
+  window.__qaLayout = { problems: () => [...confirmed], review: () => [...review] }
   console.error('[qa-layout] ready')
   if (document.readyState === 'complete') start()
   else addEventListener('load', start, { once: true })

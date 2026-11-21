@@ -18,16 +18,25 @@ should get a ticket for it.
   UI's copy or flow).
 
 A `layout` finding, on the web or on a device, quotes a `[qa-layout]` line from the app's own layout probe. Code
-measured it, and the replay saw the same line again in the runs it counts, so that line is the proof. A screenshot or
-a description that seems to disagree is context, not a reason to drop: a screenshot and the screen's element tree can
-miss what the probe measures. An `unnamed-control` line is an accessibility defect: a screen reader user cannot tell
-what the control does. That is a user-visible failure for them, even when a label shows beside it on screen. With no
-name to quote, the line quotes which control it is: its `#id`, `[data-testid=…]` or `[name=…]`, or else the icon it
-draws and the nearest text before it (`arrow-left icon after Connect Google`). Check that the finding's `actual`
-describes that control; drop it if it describes another one. Drop a
-`layout` finding only when the repro or the evidence is malformed (the evidence
-is not a `[qa-layout] <kind> <role> "<name>"` line, the replay failure does not show that line, or the repro does not
-reach the screen the finding is about), or when it matches the known issues below.
+measured it, and the replay saw the same line again in the runs it counts, so that line is strong evidence. The probe
+is an approximation, though, and can be wrong. When a screenshot or an element tree you were given contradicts the
+line, do not keep the finding on the line's authority alone: investigate. A contradiction is a screenshot of the same screen
+showing the reported control whole, on screen and uncovered for `covered`, `offscreen`, `behind-keyboard`,
+`focus-covered` or `focused-clipped`; text shown in full for `overflow-text`; or a tree that gives the control of an
+`unnamed-control` line a name. A screenshot cannot show an accessible name, so it never contradicts `unnamed-control`.
+Look in the repro, the replay failure and the finding for what explains the difference. A screenshot taken at another
+moment than the line (during an animation, before the keyboard opened) or a cover that is transparent explains it:
+keep the finding. A name for the control in the device's tree means a screen reader reads one: drop the
+`unnamed-control` finding. Drop the finding too when nothing explains the difference.
+
+An `unnamed-control` line is an accessibility defect: a screen reader user cannot tell what the control does. That is
+a user-visible failure for them, even when a label shows beside it on screen. With no name to quote, the line quotes
+which control it is: its `#id`, `[data-testid=…]` or `[name=…]`, or else the icon it draws and the nearest text before
+it (`arrow-left icon after Connect Google`). Check that the finding's `actual` describes that control; drop it if it
+describes another one. Apart from an unexplained contradiction, drop a `layout` finding only when the repro or the
+evidence is malformed (the evidence is not a `[qa-layout] <kind> <role> "<name>"` line, the replay failure does not
+show that line, or the repro does not reach the screen the finding is about), or when it matches the known issues
+below.
 
 Drop it when any of these hold:
 

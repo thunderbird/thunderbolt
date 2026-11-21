@@ -245,13 +245,15 @@ harness() {
   servers=$(jq --null-input --arg gate "$dir/maestro-gate" '{maestro: {type: "stdio", command: $gate, args: []}}')
   if [ "$session" = c7-two-devices-android ]; then
     cp .github/qa/layout-probe.js "$dir/layout-probe.js"
+    cp node_modules/axe-core/axe.min.js "$dir/axe.min.js"
     # args[1] is the pinned package, args[0] npx's -y.
     npm install --silent --prefix "$dir/playwright-mcp" \
       "$(jq --raw-output '.mcpServers.playwright_b.args[1]' .github/qa/mcp-two-devices.json)" >&2
     # shellcheck disable=SC2016 # jq variables
     servers=$(jq --argjson servers "$servers" --arg bin "$dir/playwright-mcp/node_modules/.bin/playwright-mcp" \
-      --arg probe "$dir/layout-probe.js" '$servers + {playwright_b: (.mcpServers.playwright_b | .command = $bin
-        | .args = (.args[2:] | map(if . == ".github/qa/layout-probe.js" then $probe else . end)))}' \
+      --arg probe "$dir/layout-probe.js" --arg axe "$dir/axe.min.js" '$servers + {playwright_b: (.mcpServers.playwright_b
+        | .command = $bin | .args = (.args[2:] | map(if . == ".github/qa/layout-probe.js" then $probe
+        elif . == "node_modules/axe-core/axe.min.js" then $axe else . end)))}' \
       .github/qa/mcp-two-devices.json)
   fi
   jq --null-input --argjson servers "$servers" '{mcpServers: $servers}' > "$dir/mcp.json"

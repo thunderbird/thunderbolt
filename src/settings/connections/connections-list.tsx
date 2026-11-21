@@ -214,13 +214,8 @@ export const ConnectionsList = ({
 
   const nothingMatches =
     filteredProviders.length === 0 && filteredIntegrations.length === 0 && filteredServers.length === 0
-  const isEmpty =
-    areProvidersReady &&
-    areIntegrationsReady &&
-    areServersReady &&
-    aiProviders.length === 0 &&
-    integrations.length === 0 &&
-    servers.length === 0
+  const isLoading = !areProvidersReady || !areIntegrationsReady || !areServersReady
+  const isEmpty = !isLoading && aiProviders.length === 0 && integrations.length === 0 && servers.length === 0
 
   // md:min-w mirrors the skills/agents/models pages: once the detail aside
   // squeezes the list to this floor, the column stops sliding and tucks under
@@ -236,7 +231,7 @@ export const ConnectionsList = ({
         <PageSearch.Input placeholder={t`Search connections`} onSearch={setSearch} />
       </PageSearch>
 
-      <SettingsListBody>
+      <SettingsListBody aria-busy={isLoading || undefined}>
         {providerError && (
           <p role="alert" className="text-sm text-destructive">
             {providerError}

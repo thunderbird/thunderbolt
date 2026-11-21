@@ -73,14 +73,14 @@ describe('ArtifactMessagePart', () => {
   })
 
   it('toggles between inline and the side panel — never both at once', () => {
-    const { container, getByTitle, getByText } = renderPart(
+    const { container, getByLabelText, getByText } = renderPart(
       toolPart({ toolCallId: 'a3', state: 'output-available', output: { ok: true } }),
     )
     expect(container.querySelector('iframe')).not.toBeNull()
 
     // Open in the side panel → the transcript collapses to a slim placeholder (no iframe).
     act(() => {
-      fireEvent.click(getByTitle('Open in side panel'))
+      fireEvent.click(getByLabelText('Open in side panel'))
     })
     expect(container.querySelector('iframe')).toBeNull()
     expect(container.textContent).toContain('shown in side panel')
@@ -114,12 +114,12 @@ describe('ArtifactMessagePart', () => {
     const streaming = renderPart(
       toolPart({ toolCallId: 'a7', state: 'input-streaming', html: '<body><h1>Hi</h1></body>' }),
     )
-    expect(streaming.queryByTitle('Copy HTML')).toBeNull()
-    expect(streaming.queryByTitle('Download HTML')).toBeNull()
+    expect(streaming.queryByLabelText('Copy HTML')).toBeNull()
+    expect(streaming.queryByLabelText('Download HTML')).toBeNull()
 
     const done = renderPart(toolPart({ toolCallId: 'a7b', state: 'output-available', output: { ok: true } }))
-    expect(done.getByTitle('Copy HTML')).not.toBeNull()
-    expect(done.getByTitle('Download HTML')).not.toBeNull()
+    expect(done.getByLabelText('Copy HTML')).not.toBeNull()
+    expect(done.getByLabelText('Download HTML')).not.toBeNull()
   })
 
   it('renders nothing for a failed verification (it stays an ordinary tool call elsewhere)', () => {

@@ -95,7 +95,7 @@ export const ReasoningItem = ({ part, onClick, reasoningTime, isGroupReasoning, 
   return (
     <button
       onClick={onClick}
-      className="flex items-center w-full py-2 px-3 hover:bg-accent/50 rounded-md transition-colors group text-left"
+      className="flex items-center w-full py-2 px-3 hover:bg-accent/50 rounded-md transition-colors group text-left outline-none focus-visible:bg-accent/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
     >
       <div className="flex gap-3 flex-row flex-1 items-center min-w-0">
         {isLoading ? (

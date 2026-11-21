@@ -44,7 +44,7 @@ const Switch = ({ className, onCheckedChange, ...props }: ComponentProps<typeof 
         'data-[state=checked]:border-transparent data-[state=checked]:bg-brand-muted data-[state=checked]:bg-origin-border',
         'data-[state=checked]:[background-image:var(--gradient-brand-muted)]',
         // Focus + disabled (disabled keeps its outline).
-        'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
+        'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring',
         'disabled:cursor-not-allowed disabled:border-border disabled:opacity-50',
         className,
       )}

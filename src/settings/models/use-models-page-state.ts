@@ -30,7 +30,7 @@ export const useModelsPageState = () => {
   const { panel, deleteConfirmId, mutationError } = state
   const isAddPanelOpen = panel?.kind === 'add'
   const activeModelId = panel?.kind === 'detail' || panel?.kind === 'edit' ? panel.modelId : null
-  const { data: allModels = [] } = useQuery({
+  const { data: allModels = [], isLoading } = useQuery({
     queryKey: ['models'],
     query: toCompilableQuery(getAllModels(db)),
   })
@@ -126,6 +126,7 @@ export const useModelsPageState = () => {
     panel,
     deleteConfirmId,
     models,
+    isLoading,
     activeModelId,
     activeModel,
     editingModel,

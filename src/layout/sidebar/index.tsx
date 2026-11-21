@@ -17,6 +17,7 @@ import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
 import { miniAppPath, useChatDestination } from '@/mini-apps/use-chat-destination'
 import { useSearchPalette } from '@/search/search-palette-context'
+import { useLingui } from '@lingui/react/macro'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useCallback, useMemo, useRef } from 'react'
@@ -30,6 +31,7 @@ import { toCompilableQuery } from '@powersync/drizzle-driver'
  * Main sidebar component that orchestrates between chat and settings sidebars
  */
 export default function Sidebar() {
+  const { t } = useLingui()
   const db = useDatabase()
   const navigate = useNavigate()
   const location = useLocation()
@@ -147,7 +149,7 @@ export default function Sidebar() {
   }
 
   return (
-    <SidebarRoot collapsible={isMobile ? 'offcanvas' : 'icon'}>
+    <SidebarRoot collapsible={isMobile ? 'offcanvas' : 'icon'} role="navigation" aria-label={t`Sidebar`}>
       <TooltipProvider>
         {activeSection === 'settings' ? (
           <SettingsSidebarContent

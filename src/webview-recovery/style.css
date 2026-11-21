@@ -54,7 +54,7 @@ button:active:enabled {
 }
 
 button:focus-visible {
-  @apply ring-[3px] ring-ring/50;
+  @apply ring-[3px] ring-ring;
 }
 
 button:disabled {

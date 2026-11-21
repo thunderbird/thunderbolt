@@ -21,7 +21,7 @@ import { useChatAutomation } from '@/chats/use-chat-automation'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { AppLogo } from '../app-logo'
 import { getGreeting } from './chat-ui-greeting'
-import { useLingui } from '@lingui/react/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { ChatContentReady } from './chat-content-ready'
 
 const MiniAppApprovalHost = lazy(() =>
@@ -120,6 +120,9 @@ export default function ChatUI() {
 
   return (
     <div className="h-full w-full" style={{ paddingBottom: 'var(--kb, 0px)' }}>
+      <h1 className="sr-only">
+        <Trans>Chat</Trans>
+      </h1>
       {showModelSetup && (
         <div className="flex h-full w-full items-center justify-center overflow-y-auto p-6">
           <ChatModelSetup />

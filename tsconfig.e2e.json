@@ -6,5 +6,5 @@
   // and specs import app code that relies on them.
   "extends": "./tsconfig.json",
   "compilerOptions": { "noEmit": true },
-  "include": ["e2e", "src/**/*.d.ts", "playwright.config.ts", "playwright.e2ee.config.ts"]
+  "include": ["e2e", "a11y", "src/**/*.d.ts", "playwright.config.ts", "playwright.e2ee.config.ts"]
 }

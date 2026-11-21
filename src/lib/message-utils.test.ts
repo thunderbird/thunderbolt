@@ -4,7 +4,7 @@
 
 import type { UIMessage } from 'ai'
 import { describe, expect, test } from 'bun:test'
-import { extractTextFromParts, hasAssistantContent } from './message-utils'
+import { extractTextFromParts, hasAssistantContent, messageExcerpt } from './message-utils'
 
 const textPart = (text: string): UIMessage['parts'][number] => ({ type: 'text', text }) as UIMessage['parts'][number]
 
@@ -66,5 +66,30 @@ describe('extractTextFromParts', () => {
 
   test('joins multiple non-empty text parts with separator', () => {
     expect(extractTextFromParts([textPart('first'), textPart('second')])).toBe('first\n\nsecond')
+  })
+})
+
+describe('messageExcerpt', () => {
+  test('collapses whitespace and returns short text unchanged', () => {
+    expect(messageExcerpt('  Hello \n\n world ')).toBe('Hello world')
+  })
+
+  test('strips leading markdown punctuation and code fences', () => {
+    expect(messageExcerpt('## **Title**')).toBe('Title')
+    expect(messageExcerpt('```ts\nconst a = 1\n```')).toBe('const a = 1')
+  })
+
+  test('strips paired inline emphasis and code markers anywhere', () => {
+    expect(messageExcerpt('Use *a* and __b__ with `c` and **d** and _e_')).toBe('Use a and b with c and d and e')
+    expect(messageExcerpt('keep snake_case_names')).toBe('keep snake_case_names')
+  })
+
+  test('reduces links to their text', () => {
+    expect(messageExcerpt('See [the docs](https://example.com/x) now')).toBe('See the docs now')
+  })
+
+  test('truncates by code point with an ellipsis', () => {
+    expect(messageExcerpt('a'.repeat(50))).toBe(`${'a'.repeat(40)}…`)
+    expect(messageExcerpt('😀'.repeat(41))).toBe(`${'😀'.repeat(40)}…`)
   })
 })

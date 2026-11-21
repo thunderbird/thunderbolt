@@ -18,6 +18,8 @@ import { getProviderDisplay, ModelProviderIconTile } from './model-presentation'
 
 type ModelsListProps = {
   models: Model[]
+  /** True while the models query is still resolving; marks the list busy and withholds the empty state. */
+  isLoading?: boolean
   activeModelId: string | null
   onSelect: (modelId: string) => void
   onToggle: (modelId: string, enabled: boolean) => void
@@ -27,12 +29,21 @@ type ModelsListProps = {
 }
 
 /** Presentational list of configured models with enable toggles and the add affordance. */
-export const ModelsList = ({ models, activeModelId, onSelect, onToggle, onAdd, onEdit, onRemove }: ModelsListProps) => {
+export const ModelsList = ({
+  models,
+  isLoading = false,
+  activeModelId,
+  onSelect,
+  onToggle,
+  onAdd,
+  onEdit,
+  onRemove,
+}: ModelsListProps) => {
   const { i18n, t } = useLingui()
   const appName = useAppName()
 
   return (
-    <SettingsListBody className={settingsListBodyRowsClass}>
+    <SettingsListBody className={settingsListBodyRowsClass} aria-busy={isLoading || undefined}>
       {models.map((model) => {
         const isEnabled = model.enabled === 1
         const modelName = model.name
@@ -78,7 +89,7 @@ export const ModelsList = ({ models, activeModelId, onSelect, onToggle, onAdd, o
           />
         )
       })}
-      {models.length === 0 && (
+      {models.length === 0 && !isLoading && (
         <SettingsEmptyState
           icon={<Cpu className="size-10 text-muted-foreground" />}
           title={t`No models configured`}

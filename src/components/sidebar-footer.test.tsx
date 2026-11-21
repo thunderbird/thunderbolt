@@ -125,6 +125,14 @@ describe('SidebarFooter', () => {
       expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
     })
 
+    it('names the account menu trigger after its visible label', () => {
+      const authClient = createMockAuthClient({
+        session: { user: { id: 'real-1', email: 'user@example.com', name: 'Real User' } },
+      })
+      renderWithProviders(authClient)
+      expect(screen.getByRole('button', { name: 'Real User, account menu' })).toBeInTheDocument()
+    })
+
     it('falls back to the email when the account has no display name', () => {
       const authClient = createMockAuthClient({
         session: { user: { id: 'real-2', email: 'noname@example.com', isAnonymous: false } },
@@ -141,7 +149,7 @@ describe('SidebarFooter', () => {
         session: { user: { id: 'real-3', email: '', name: '', isAnonymous: false } },
       })
       renderWithProviders(authClient)
-      const button = screen.getByRole('button', { name: 'Account menu' })
+      const button = screen.getByRole('button', { name: /account menu/i })
       expect(button.className).toContain('h-[var(--touch-height-lg)]')
       expect(button.className).toContain('w-[var(--touch-height-lg)]')
       expect(button.querySelector('span')).toBeNull()
@@ -153,7 +161,7 @@ describe('SidebarFooter', () => {
       }
       renderWithProviders(createMockAuthClient({ session }), <MobileSidebarStateProbe />)
       fireEvent.click(screen.getByRole('button', { name: 'Open test sidebar' }))
-      const trigger = screen.getByRole('button', { name: 'Account menu' })
+      const trigger = screen.getByRole('button', { name: /account menu/i })
       fireEvent.click(trigger)
       const menu = screen.getByRole('dialog', { name: 'Account menu' })
       expect(menu).toHaveAttribute('data-slot', mobile ? 'drawer-content' : 'popover-content')
@@ -172,7 +180,7 @@ describe('SidebarFooter', () => {
       const signOut = mock(async () => ({ data: { success: true }, error: null }))
       const authClient = createMockAuthClient({ session, signOut })
       renderWithProviders(authClient)
-      const trigger = screen.getByRole('button', { name: 'Account menu' })
+      const trigger = screen.getByRole('button', { name: /account menu/i })
       fireEvent.click(trigger)
       fireEvent.click(screen.getByRole('button', { name: 'Log out' }))
       await act(async () => getClock().runAllAsync())
@@ -196,7 +204,7 @@ describe('SidebarFooter', () => {
       await clearAllKeys()
       useLocalSettingsStore.setState({ syncEnabled: false })
       renderWithProviders(createMockAuthClient({ session }))
-      const trigger = screen.getByRole('button', { name: 'Account menu' })
+      const trigger = screen.getByRole('button', { name: /account menu/i })
       fireEvent.click(trigger)
       await act(async () => {
         fireEvent.click(screen.getByRole('switch', { name: 'Enable cloud sync' }))
@@ -230,7 +238,7 @@ describe('SidebarFooter', () => {
 
       expect(screen.getByRole('button', { name: 'New Chat' })).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
-      expect(screen.queryByRole('button', { name: 'Account menu' })).toBeNull()
+      expect(screen.queryByRole('button', { name: /account menu/i })).toBeNull()
       expect(screen.queryByText('Real')).toBeNull()
       expect(screen.queryByText('real@example.com')).toBeNull()
       expect(screen.queryByText('Cloud Sync')).toBeNull()
@@ -384,7 +392,7 @@ describe('sync retry flow', () => {
   })
 
   const openAccountMenu = async () => {
-    fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
+    fireEvent.click(screen.getByRole('button', { name: /account menu/i }))
     await screen.findByText('Cloud Sync')
   }
 

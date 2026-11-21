@@ -274,7 +274,7 @@ describe('AssistantMessage actions', () => {
       />,
     )
 
-    const copyButton = screen.getByRole('button', { name: 'Copy message' })
+    const copyButton = screen.getByRole('button', { name: /^Copy message/ })
     const shareButton = screen.getByRole('button', { name: 'Share transcript' })
     expect(copyButton.parentElement).toBe(shareButton.parentElement)
 

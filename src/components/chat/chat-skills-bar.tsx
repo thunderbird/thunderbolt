@@ -314,7 +314,7 @@ export const ChatSkillsBar = ({
             key={skill.id}
             label={skillDisplayName(skill)}
             onClick={() => onAddToChat(skill)}
-            onAddInstruction={() => onAddInstruction(skillInstruction(skill))}
+            onAddInstruction={async () => onAddInstruction(await skillInstruction(skill))}
             onEdit={
               isContractSkillId(skill.id) ? undefined : () => openCreateItem({ kind: 'skill', skillId: skill.id })
             }

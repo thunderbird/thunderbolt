@@ -4,9 +4,7 @@
 
 import { hashValues } from '@/lib/utils'
 import { officeSkillNames } from '@/office/constants'
-import { officeDocxSkill } from '@/office/skills/docx'
-import { officePptxSkill } from '@/office/skills/pptx'
-import { officeXlsxSkill } from '@/office/skills/xlsx'
+import { loadOfficeSkillBody, officeSkillLengths, type OfficeSkillFormat } from '@/office/skills'
 import type { Skill, SkillRow } from '@/types'
 import { instructions as askWidgetInstruction } from '@/widgets/ask/instructions'
 import { instructions as connectIntegrationWidgetInstruction } from '@/widgets/connect-integration/instructions'
@@ -253,7 +251,7 @@ export const defaultSkillMap: Skill = {
 /**
  * The whole `instruction` of an Office row. Builds older than the Office tool get these rows through sync but have no
  * `run_office_script`, so the row says only what is true there, also for an external agent that can write the file
- * with its own tools. A build with the tool serves its own manual through {@link skillInstruction}, so the text always
+ * with its own tools. A build with the tool serves its own manual through {@link officeSkillManual}, so the text always
  * matches the sandbox it runs in.
  */
 const officeSkillStub =
@@ -309,25 +307,42 @@ const widgetSkillIds = new Set([
   defaultSkillMap.id,
 ])
 
-/** The manual this build serves for each Office row, by stable id. Changing one needs no `defaultSkillsVersion` bump. */
-const officeSkillBodies = new Map([
-  [defaultSkillOfficeDocx.id, officeDocxSkill],
-  [defaultSkillOfficeXlsx.id, officeXlsxSkill],
-  [defaultSkillOfficePptx.id, officePptxSkill],
+/** The Office format whose manual this build serves for each Office row, by stable id. Changing a manual needs no
+ *  `defaultSkillsVersion` bump. */
+const officeSkillFormats = new Map<string, OfficeSkillFormat>([
+  [defaultSkillOfficeDocx.id, 'docx'],
+  [defaultSkillOfficeXlsx.id, 'xlsx'],
+  [defaultSkillOfficePptx.id, 'pptx'],
 ])
 
 /** Whether a skill id belongs to a model-facing widget rendering contract. */
 export const isWidgetSkillId = (id: string): boolean => widgetSkillIds.has(id)
 
 /** Whether a skill id is an Office format skill, which only a request with `run_office_script` may offer. */
-export const isOfficeSkillId = (id: string): boolean => officeSkillBodies.has(id)
+export const isOfficeSkillId = (id: string): boolean => officeSkillFormats.has(id)
 
 /**
- * The instructions a skill gives the model and the user on this build: an Office row's manual from the code, which
- * the row only stubs, and any other row's own `instruction`.
+ * An Office row's manual from this build, which the row only stubs, or undefined for any other row. It loads from its
+ * own chunk on first use, so it stays out of the entry bundle and out of every request that does not use it. The
+ * promise is the same on every call, which React's `use()` can read.
  */
-export const skillInstruction = (skill: Pick<Skill, 'id' | 'instruction'>): string =>
-  officeSkillBodies.get(skill.id) ?? skill.instruction
+export const officeSkillManual = (id: string): Promise<string> | undefined => {
+  const format = officeSkillFormats.get(id)
+  return format ? loadOfficeSkillBody(format) : undefined
+}
+
+/**
+ * The instructions a skill gives the model and the user on this build: an Office row's manual, and any other row's
+ * own `instruction`.
+ */
+export const skillInstruction = async (skill: Pick<Skill, 'id' | 'instruction'>): Promise<string> =>
+  officeSkillManual(skill.id) ?? skill.instruction
+
+/** The length of {@link skillInstruction}'s text, known without loading an Office manual. */
+export const skillInstructionLength = (skill: Pick<Skill, 'id' | 'instruction'>): number => {
+  const format = officeSkillFormats.get(skill.id)
+  return format ? officeSkillLengths[format] : skill.instruction.length
+}
 
 /**
  * The skills without any row that shares a name with an Office row, which then answers to that name alone. Names are

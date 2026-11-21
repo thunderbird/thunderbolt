@@ -29,7 +29,7 @@ rule for changing a default).
 | `models`         | `defaultModelsVersion` (`shared/defaults/models.ts:175`)  | `hashModel` (`shared/defaults/models.ts:58`)                   | `id`      | `frozenFields: ['isConfidential', 'provider']`, `metadataFields: ['description', 'vendor']` |
 | `model_profiles` | none (rides the models gate)                              | `hashModelProfile` (`src/defaults/model-profiles/index.ts:20`) | `modelId` | `insertMissing: true`                                                                       |
 | `tasks`          | `defaultTasksVersion` (`src/defaults/tasks.ts:70`)        | `hashTask` (`src/defaults/tasks.ts:13`)                        | `id`      |                                                                                             |
-| `skills`         | `defaultSkillsVersion` (`src/defaults/skills.ts:374`)     | `hashSkill` (`src/defaults/skills.ts:26`)                      | `id`      | `frozenFields: ['enabled', 'pinnedOrder']` for contract skills (widget + Office) only       |
+| `skills`         | `defaultSkillsVersion` (`src/defaults/skills.ts:389`)     | `hashSkill` (`src/defaults/skills.ts:24`)                      | `id`      | `frozenFields: ['enabled', 'pinnedOrder']` for contract skills (widget + Office) only       |
 | `settings`       | `defaultSettingsVersion` (`src/defaults/settings.ts:268`) | `hashSetting` (`src/defaults/settings.ts:14`)                  | `key`     |                                                                                             |
 
 - `prompts` left the list in THU-547, when skills superseded the default automations.
@@ -61,7 +61,7 @@ now ships, a value the user chose before it became the default: reconcile takes 
   the user to update. That is true on any build older than the tool, and for its external agents:
   those builds get the rows through sync and would otherwise load a manual for a tool they lack. A
   build with the tool serves the manual from its own code (`skillInstruction`,
-  `src/defaults/skills.ts:329`), so the text matches its sandbox and never reaches another build. The
+  `src/defaults/skills.ts:338`), so the text matches its sandbox and never reaches another build. The
   hash covers the stub, so a manual change in `src/office/skills/` needs no `defaultSkillsVersion`
   bump; the label, description or stub still do. An older build can edit or delete an Office row as
   an ordinary skill; reconcile leaves the edit as the user's, and cannot restore the delete, whose

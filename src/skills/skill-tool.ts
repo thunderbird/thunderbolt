@@ -8,19 +8,20 @@ import { isWidgetSkillId, skillInstruction, withoutOfficeNameClashes } from '@/d
 import { tool, type Tool } from 'ai'
 import { z } from 'zod'
 
-type StoredSkillDefinition = SkillDefinition & {
-  readonly id: string
-  readonly enabled: number
-}
+/** A skill offered to one built-in request. Its id lets an Office skill's manual load only when the skill is used. */
+export type RequestSkillDefinition = SkillDefinition & { readonly id: string }
+
+type StoredSkillDefinition = RequestSkillDefinition & { readonly enabled: number }
 
 /**
  * Select enabled skills and discard persistence-only fields.
  *
  * @param skills - skill rows from any app data source
  * @returns enabled skill definitions suitable for prompt and tool injection;
- *   in minimal mode only the widget rendering contracts. An Office skill
- *   carries this build's manual rather than its row's stub, and no other row
- *   may share its name.
+ *   in minimal mode only the widget rendering contracts. Each keeps its id, so
+ *   an Office skill's manual loads through `skillInstruction` only when the
+ *   `skill` tool or a `/slug` asks for it; until then it carries its row's
+ *   stub. No other row may share an Office skill's name.
  *
  * Minimal mode withholds every user-invocable skill (the listing, the `skill`
  * tool and the ACP skills metadata are built from this list) but keeps the
@@ -30,11 +31,11 @@ type StoredSkillDefinition = SkillDefinition & {
  * emit widgets the app renders. Reads the store imperatively, like
  * `resolveSkillTokenInstructions`, because the callers sit outside React.
  */
-export const selectEnabledSkillDefinitions = (skills: readonly StoredSkillDefinition[]): SkillDefinition[] =>
+export const selectEnabledSkillDefinitions = (skills: readonly StoredSkillDefinition[]): RequestSkillDefinition[] =>
   withoutOfficeNameClashes(skills)
     .filter((skill) => skill.enabled === 1)
     .filter((skill) => !selectMinimalMode(useConfigStore.getState().config) || isWidgetSkillId(skill.id))
-    .map((skill) => ({ name: skill.name, description: skill.description, instruction: skillInstruction(skill) }))
+    .map(({ id, name, description, instruction }) => ({ id, name, description, instruction }))
 
 /**
  * Create AI SDK tool that loads one enabled skill's full instructions.
@@ -44,7 +45,7 @@ export const selectEnabledSkillDefinitions = (skills: readonly StoredSkillDefini
  * @returns skill lookup tool shared by classic and Pi request paths
  */
 export const createSkillTool = (
-  skills: readonly SkillDefinition[],
+  skills: readonly RequestSkillDefinition[],
   onSkillLoaded?: (name: string) => void,
 ): Tool<{ name: string }, string> =>
   tool({
@@ -58,10 +59,10 @@ export const createSkillTool = (
       if (!skill) {
         throw new Error(`Skill "${name}" was not found or is disabled.`)
       }
-      const instruction = skill.instruction
-      if (instruction.trim()) {
+      // The row's own text decides, so the notification stays synchronous: an Office row's stub is never empty.
+      if (skill.instruction.trim()) {
         onSkillLoaded?.(skill.name)
       }
-      return instruction
+      return skillInstruction(skill)
     },
   })

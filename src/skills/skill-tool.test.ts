@@ -2,12 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { toPiAgentTools } from '@shared/agent-core/mcp-tools'
 import type { ToolCallOptions } from 'ai'
 import { defaultSkillOfficeXlsx } from '@/defaults/skills'
 import { officeXlsxSkill } from '@/office/skills/xlsx'
-import { resolveSkillTokenInstructions } from './resolve-skill-system-messages'
+import { stubAppServer } from '@/test-utils/app-server'
+import { loadSkillTokenInstructions, resolveSkillTokenInstructions } from './resolve-skill-system-messages'
 import { createSkillTool, selectEnabledSkillDefinitions } from './skill-tool'
 
 const toolCallOptions: ToolCallOptions = { toolCallId: 'skill-call', messages: [] }
@@ -29,6 +30,8 @@ const storedSkills = [
 ]
 
 describe('createSkillTool', () => {
+  afterEach(() => mock.restore())
+
   it('returns full instructions for an enabled skill name or slug', async () => {
     const skillTool = createSkillTool(selectEnabledSkillDefinitions(storedSkills))
 
@@ -70,11 +73,11 @@ describe('createSkillTool', () => {
     const clash = { id: 'user-skill', name: 'office-xlsx', description: 'Mine', instruction: 'My notes', enabled: 1 }
     const skills = selectEnabledSkillDefinitions([clash, defaultSkillOfficeXlsx])
     const skillTool = createSkillTool(skills)
+    stubAppServer()
 
     expect(skills.filter(({ name }) => name === 'office-xlsx')).toHaveLength(1)
     expect(await skillTool.execute!({ name: '/office-xlsx' }, toolCallOptions)).toBe(officeXlsxSkill)
-    const instructionBySlug = new Map(skills.map(({ name, instruction }) => [name, instruction]))
-    expect(resolveSkillTokenInstructions('/office-xlsx', instructionBySlug)).toEqual([officeXlsxSkill])
+    expect(await loadSkillTokenInstructions('/office-xlsx', skills)).toEqual([officeXlsxSkill])
     // A disabled Office row still owns its name.
     const disabled = selectEnabledSkillDefinitions([clash, { ...defaultSkillOfficeXlsx, enabled: 0 }])
     expect(disabled.map(({ name }) => name)).toEqual([])

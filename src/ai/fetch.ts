@@ -37,8 +37,8 @@ import { getAllSkills, getIntegrationStatus, getModel, getModelProfile, getSetti
 import { getMessageCache } from '@/dal/chat-messages'
 import { isOfficeSkillId, isWidgetSkillId } from '@/defaults/skills'
 import { getActiveLocale } from '@/i18n/active-locale'
-import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
-import { createSkillTool, selectEnabledSkillDefinitions } from '@/skills/skill-tool'
+import { extractLastUserText, loadSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
+import { createSkillTool, selectEnabledSkillDefinitions, type RequestSkillDefinition } from '@/skills/skill-tool'
 import { isVoiceModeActive, voiceModeSystemNote } from '@/voice/voice-mode'
 import { collectAskEntriesFromCache, formatAskResponsesNote } from '@/widgets/ask/lib'
 import { getDb } from '@/db/database'
@@ -562,7 +562,7 @@ export type PreparedAiRequestConfig = {
   readonly supportsTools: boolean
   readonly sourceCollector: SourceMetadata[]
   readonly toolset: Record<string, Tool>
-  readonly skills: readonly SkillDefinition[]
+  readonly skills: readonly RequestSkillDefinition[]
   readonly mcpToolsMetadata: UIMessageMetadata['mcpTools']
   readonly stableSystemPrompt: string
   /** Per-send tail of the system prompt: the date/time, plus the open Mini App's
@@ -590,7 +590,7 @@ export type PrepareAiRequestConfigOptions = {
 /** Register progressive skill loading only for models that support tools. */
 export const addSkillTool = (
   toolset: Record<string, Tool>,
-  skills: readonly SkillDefinition[],
+  skills: readonly RequestSkillDefinition[],
   supportsTools: boolean,
   webToolBudget?: WebToolBudget,
 ): Record<string, Tool> => {
@@ -1047,8 +1047,7 @@ export const aiFetchStreamingResponse = async ({
     // the context-overflow estimate so the budget and the actual injection
     // stay in lockstep.
     const lastUserText = extractLastUserText(messages)
-    const instructionBySlug = new Map(skills.map(({ name, instruction }) => [name, instruction]))
-    const skillSystemMessages = resolveSkillTokenInstructions(lastUserText, instructionBySlug)
+    const skillSystemMessages = await loadSkillTokenInstructions(lastUserText, skills)
 
     // Preserve the upstream status (and detail) when surfacing an API error to
     // the client. The SDK otherwise flattens an APICallError to a bare "Bad

@@ -22,6 +22,7 @@ import { getDb } from '@/db/database'
 import { skillsTable } from '@/db/tables'
 import { defaultSkillOfficeXlsx, defaultSkillWeather } from '@/defaults/skills'
 import { officeXlsxSkill } from '@/office/skills/xlsx'
+import { stubAppServer } from '@/test-utils/app-server'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 import { SkillsView } from './skills-view'
@@ -102,10 +103,18 @@ describe('SkillsView state machine', () => {
 
       renderWithReactivity(<SkillsView />, { tables: ['skills'], wrapper: Wrapper })
 
-      fireEvent.click(await waitForElement(() => screen.queryByText('Excel workbooks')))
-      await flush()
-      expect(screen.getByText((text) => text.startsWith(officeXlsxSkill.split('\n')[0]))).toBeInTheDocument()
-      expect(screen.queryByText(defaultSkillOfficeXlsx.instruction)).not.toBeInTheDocument()
+      const row = await waitForElement(() => screen.queryByText('Excel workbooks'))
+      const server = stubAppServer()
+      try {
+        // The manual loads from its own chunk once the detail opens; an async act lets the suspended panel retry.
+        await act(async () => {
+          fireEvent.click(row)
+        })
+        expect(screen.getByText((text) => text.startsWith(officeXlsxSkill.split('\n')[0]))).toBeInTheDocument()
+        expect(screen.queryByText(defaultSkillOfficeXlsx.instruction)).not.toBeInTheDocument()
+      } finally {
+        server.mockRestore()
+      }
     })
   })
 

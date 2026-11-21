@@ -49,9 +49,11 @@ export type ConnectToAgentContext = {
 export type ConnectToAgentDeps = BuiltInAdapterOptions & AcpAdapterDeps
 
 /** Read enabled skills from same DAL source used by built-in agent. The Office skills stay behind: they teach the
- *  app's `run_office_script`, which an external agent does not have. */
+ *  app's `run_office_script`, which an external agent does not have. Row ids stay behind too, off the wire. */
 const getEnabledSkills = async () =>
-  selectEnabledSkillDefinitions((await getAllSkills(getDb())).filter(({ id }) => !isOfficeSkillId(id)))
+  selectEnabledSkillDefinitions((await getAllSkills(getDb())).filter(({ id }) => !isOfficeSkillId(id))).map(
+    ({ name, description, instruction }) => ({ name, description, instruction }),
+  )
 
 /**
  * Build an `AgentAdapter` for the given agent. Exhaustive over `AgentType`, so a

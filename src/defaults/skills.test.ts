@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it, test } from 'bun:test'
+import { afterEach, describe, expect, it, mock, test } from 'bun:test'
 
 import { instructions as askWidgetInstruction } from '@/widgets/ask/instructions'
 import { instructions as connectIntegrationWidgetInstruction } from '@/widgets/connect-integration/instructions'
@@ -12,6 +12,7 @@ import { instructions as weatherForecastWidgetInstruction } from '@/widgets/weat
 import { officeDocxSkill } from '@/office/skills/docx'
 import { officePptxSkill } from '@/office/skills/pptx'
 import { officeXlsxSkill } from '@/office/skills/xlsx'
+import { stubAppServer } from '@/test-utils/app-server'
 import {
   defaultSkillDailyBrief,
   defaultSkillImportantEmails,
@@ -31,7 +32,9 @@ import {
   isContractSkillId,
   isOfficeSkillId,
   isWidgetSkillId,
+  officeSkillManual,
   skillInstruction,
+  skillInstructionLength,
   withoutOfficeNameClashes,
 } from './skills'
 
@@ -65,6 +68,8 @@ describe('defaultSkills version snapshot', () => {
 })
 
 describe('defaultSkills', () => {
+  afterEach(() => mock.restore())
+
   it('ships spontaneous widget skills with load-bearing descriptions and canonical instruction bodies', () => {
     const widgetSkills = [
       {
@@ -137,7 +142,8 @@ describe('defaultSkills', () => {
     expect(isWidgetSkillId('user-skill-id')).toBe(false)
   })
 
-  it('ships one Office skill per format as a read-only contract that is not a widget', () => {
+  it('ships one Office skill per format as a read-only contract that is not a widget', async () => {
+    stubAppServer()
     const officeSkills = [
       { skill: defaultSkillOfficeDocx, name: 'office-docx', body: officeDocxSkill },
       { skill: defaultSkillOfficeXlsx, name: 'office-xlsx', body: officeXlsxSkill },
@@ -151,8 +157,11 @@ describe('defaultSkills', () => {
       expect(skill.instruction).toBe(
         'If run_office_script is not one of your tools, this version of the app cannot run it. Create the file with your own tools if you have them; otherwise tell the user to update the app to create or edit Word, Excel or PowerPoint files.',
       )
-      expect(skillInstruction(skill)).toBe(body)
-      expect(skillInstruction({ ...skill, instruction: 'Edited on another device' })).toBe(body)
+      expect(await skillInstruction(skill)).toBe(body)
+      expect(await skillInstruction({ ...skill, instruction: 'Edited on another device' })).toBe(body)
+      // The same promise every time, which React's `use()` needs.
+      expect(officeSkillManual(skill.id)).toBe(officeSkillManual(skill.id))
+      expect(skillInstructionLength(skill)).toBe(body.length)
       expect(skill.description).toStartWith('Load before using run_office_script')
       expect(skill.pinnedOrder).toBeNull()
       expect(isOfficeSkillId(skill.id)).toBe(true)
@@ -163,7 +172,9 @@ describe('defaultSkills', () => {
     expect(isContractSkillId(defaultSkillWeather.id)).toBe(true)
     expect(isOfficeSkillId(defaultSkillWeather.id)).toBe(false)
     expect(isContractSkillId(defaultSkillDailyBrief.id)).toBe(false)
-    expect(skillInstruction(defaultSkillWeather)).toBe(weatherForecastWidgetInstruction)
+    expect(await skillInstruction(defaultSkillWeather)).toBe(weatherForecastWidgetInstruction)
+    expect(officeSkillManual(defaultSkillWeather.id)).toBeUndefined()
+    expect(skillInstructionLength(defaultSkillWeather)).toBe(weatherForecastWidgetInstruction.length)
     expect(new Set(defaultSkills.map(({ id }) => id)).size).toBe(defaultSkills.length)
   })
 

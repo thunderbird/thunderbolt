@@ -69,7 +69,7 @@ import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { handleSessionRejected } from '@/lib/session-rejected'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { ModelProfile, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
-import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
+import { extractLastUserText, loadSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { getPlatform } from '@/lib/platform'
 import type { AppHarness, CompactionCheckpoint, PiModelDescriptor, SeedTurn } from '@shared/agent-core'
 import { buildClientIdentityBlock } from '@shared/agent-core/client-identity'
@@ -750,8 +750,8 @@ const fetchViaHarness = async (
   const supersededCallIds =
     config.embeddedSurface === 'mini-app' ? supersededAppContextCallIds(messages) : new Set<string>()
   const transformMessage = (message: AgentMessage) => supersedeHarnessAppContext(message, supersededCallIds)
-  const instructionBySlug = new Map(config.skills.map(({ name, instruction }) => [name, instruction]))
-  const skillInstructions = resolveSkillTokenInstructions(extractLastUserText(messages), instructionBySlug)
+  const skillInstructions = await loadSkillTokenInstructions(extractLastUserText(messages), config.skills)
+  init.signal?.throwIfAborted()
   const { history, prompt, files, compaction } = await prepareConversation(messages, skillInstructions, {
     workspace: config.supportsTools,
   })

@@ -9,7 +9,7 @@ import { useCurrentChatSession } from '@/chats/chat-store'
 import { usePendingQuotes, usePendingQuotesStore } from '@/chats/pending-quotes-store'
 import { mergeIntoDraft, useConsumePendingPrompt } from '@/chats/pending-prompt-store'
 import { useCreateItem } from '@/components/create-item/context'
-import { estimateTokensForText } from '@/ai/tokenizers'
+import { estimateTokensForLength, estimateTokensForText } from '@/ai/tokenizers'
 import { useContextTracking as useContextTracking_default } from '@/hooks/use-context-tracking'
 import { useIsMobile as useIsMobile_default } from '@/hooks/use-mobile'
 import { isMobile as isPlatformMobile } from '@/lib/platform'
@@ -30,7 +30,7 @@ import {
   foldPendingSigils,
   normalizeSkillTokensToSlugs,
 } from '@/skills/parse-skill-tokens'
-import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
+import { resolveSkillTokenSkills } from '@/skills/resolve-skill-system-messages'
 import { SlashPopup } from '@/skills/slash-popup'
 import { trackSkillEvent } from '@/skills/telemetry'
 import { useSlashCommand } from '@/skills/use-slash-command'
@@ -90,7 +90,7 @@ import { FileCard } from './file-card'
 import { useNativeFileDrop as useNativeFileDrop_default } from './use-native-file-drop'
 import { preloadChatMessageList } from './chat-messages-loader'
 import { isBuiltInAgent } from '@/defaults/agents'
-import { isOfficeSkillId, skillInstruction, withoutOfficeNameClashes } from '@/defaults/skills'
+import { isOfficeSkillId, skillInstructionLength, withoutOfficeNameClashes } from '@/defaults/skills'
 import { useAppName } from '@/lib/branding-selectors'
 import { selectBuiltInAgentEnabled, selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
@@ -623,19 +623,11 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
       return () => cancelAnimationFrame(frame)
     }, [focusRequested, navigate, location.pathname, location.search])
 
-    // Map of enabled-skill slug → instruction. Shared by the overflow
-    // estimate below and the send-time resolver in `ai/fetch.ts` (via
-    // `resolveSkillTokenInstructions`), so a future change to resolution
-    // semantics moves both surfaces together.
-    const enabledInstructionBySlug = useMemo(() => {
-      const map = new Map<string, string>()
-      for (const skill of library) {
-        if (isEnabled(skill.id)) {
-          map.set(skill.name, skillInstruction(skill))
-        }
-      }
-      return map
-    }, [library, isEnabled])
+    // The enabled skills a `/slug` can resolve to. The overflow estimate below
+    // and the send-time resolver in `ai/fetch.ts` resolve tokens through the
+    // same helper (`resolveSkillTokenSkills`), so a future change to
+    // resolution semantics moves both surfaces together.
+    const enabledSkills = useMemo(() => library.filter((skill) => isEnabled(skill.id)), [library, isEnabled])
 
     // Estimate the token cost of resolved skill instructions and pending
     // quote passages so the overflow modal fires correctly when /name tokens
@@ -654,16 +646,16 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
 
     const additionalInputTokens = useMemo(() => {
       // The resolver (shared with the send path in ai/fetch.ts) only speaks slugs.
-      const instructions = resolveSkillTokenInstructions(normalizedInput, enabledInstructionBySlug)
+      // Sized by length, so an Office manual is measured without loading it.
       let total = 0
-      for (const instruction of instructions) {
-        total += estimateTokensForText(instruction)
+      for (const skill of resolveSkillTokenSkills(normalizedInput, enabledSkills)) {
+        total += estimateTokensForLength(skillInstructionLength(skill))
       }
       for (const quote of quotes) {
         total += estimateTokensForText(quote.data.text)
       }
       return total
-    }, [normalizedInput, enabledInstructionBySlug, quotes])
+    }, [normalizedInput, enabledSkills, quotes])
 
     const builtInContext = useContextTracking({
       model: selectedModel,

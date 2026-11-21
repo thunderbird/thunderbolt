@@ -6,6 +6,7 @@ import { createWebToolBudget } from '@/ai/web-tool-budget'
 import { createModel as insertModel, updateModel } from '@/dal/models'
 import { updateSettings } from '@/dal/settings'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { stubAppServer } from '@/test-utils/app-server'
 import { getDb } from '@/db/database'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
@@ -20,8 +21,9 @@ import {
   defaultSkillOfficeXlsx,
   defaultSkillResearch,
   defaultSkillWeather,
-  skillInstruction,
 } from '@/defaults/skills'
+import { officeDocxSkill } from '@/office/skills/docx'
+import { officePptxSkill } from '@/office/skills/pptx'
 import { officeXlsxSkill } from '@/office/skills/xlsx'
 import { skillsTable } from '@/db/tables'
 import { eq } from 'drizzle-orm'
@@ -30,7 +32,7 @@ import { fetch as baseFetch } from '@/lib/fetch'
 import type { MCPClient, NamedMCPClient } from '@/lib/mcp-provider'
 import { appVersionUnsupported, resetAppVersionBlockedForTesting } from '@/lib/app-version-unsupported'
 import { createProxyFetch, type FetchFn } from '@/lib/proxy-fetch'
-import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
+import { loadSkillTokenInstructions, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { selectEnabledSkillDefinitions } from '@/skills/skill-tool'
 import { useConfigStore } from '@/api/config-store'
 import type { Model, Skill } from '@/types'
@@ -137,12 +139,13 @@ const named = (name: string, tools: () => Promise<Record<string, Tool>>): NamedM
 describe('addSkillTool', () => {
   const skills = [
     {
+      id: 'weather',
       name: 'weather',
       description: 'Use for weather forecasts.',
       instruction: 'Emit the weather widget contract.',
     },
-    { name: 'search', description: 'Search', instruction: 'Search instructions' },
-    { name: 'research', description: 'Research', instruction: 'Research instructions' },
+    { id: 'search', name: 'search', description: 'Search', instruction: 'Search instructions' },
+    { id: 'research', name: 'research', description: 'Research', instruction: 'Research instructions' },
   ]
 
   it('registers the skill tool only for tool-capable models', () => {
@@ -1124,7 +1127,7 @@ describe('prepareAiRequestConfig — Office skills', () => {
   const httpClient = createClient({ prefixUrl: 'https://backend.test' })
   const office = [defaultSkillOfficeDocx, defaultSkillOfficeXlsx, defaultSkillOfficePptx]
   const officeNames = office.map(({ name }) => name)
-  const headings = office.map((skill) => skillInstruction(skill).split('\n')[0])
+  const headings = [officeDocxSkill, officeXlsxSkill, officePptxSkill].map((body) => body.split('\n')[0])
   const loadSentence = 'Before writing or editing a script, load the listed Office skill'
 
   /** One send's Office surface: the prompt, the tool description, and the Office skills `/slug` resolves. */
@@ -1145,6 +1148,7 @@ describe('prepareAiRequestConfig — Office skills', () => {
   })
 
   afterEach(async () => {
+    mock.restore()
     useConfigStore.setState({ config: {} })
     await teardownTestDatabase()
   })
@@ -1164,10 +1168,15 @@ describe('prepareAiRequestConfig — Office skills', () => {
       `${loadSentence} for each format you will use, unless its instructions are already in context: office-docx, office-xlsx.`,
     )
     expect(slashOffice).toEqual(['office-docx', 'office-xlsx'])
-    // The bundled manual, not the stub its synced row holds.
+    // Preparing the request leaves the manuals unloaded: each skill still carries its row's stub.
+    const xlsx = config.skills.find(({ name }) => name === 'office-xlsx')
+    expect(xlsx?.instruction).toBe(defaultSkillOfficeXlsx.instruction)
+    // The bundled manual, not the stub its synced row holds, through the tool and through a `/slug`.
+    stubAppServer()
     expect(await config.toolset.skill?.execute?.({ name: 'office-xlsx' }, { toolCallId: 'c', messages: [] })).toBe(
       officeXlsxSkill,
     )
+    expect(await loadSkillTokenInstructions('/office-xlsx make a budget', config.skills)).toEqual([officeXlsxSkill])
   })
 
   it('offers none in minimal mode, where there is no skill tool, but keeps the Office tool', async () => {

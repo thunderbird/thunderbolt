@@ -32,7 +32,7 @@ each Office format, ships as a seeded skill.
 | `office-xlsx`         | Excel workbooks          | Office contract | yes           | no           |
 | `office-pptx`         | PowerPoint presentations | Office contract | yes           | no           |
 
-**Any change here requires bumping [`defaultSkillsVersion`](../../../src/defaults/skills.ts#L374)**,
+**Any change here requires bumping [`defaultSkillsVersion`](../../../src/defaults/skills.ts#L389)**,
 the signal reconciliation uses to pick which device owns the newest defaults; an unbumped change
 silently breaks convergence across a sync group. The snapshot test
 ([`src/defaults/skills.test.ts:51`](../../../src/defaults/skills.test.ts#L51)) catches it. Algorithm:
@@ -81,10 +81,11 @@ const skillDisclosure = supportsTools ? buildSkillListing(skills) : buildFallbac
 | [`buildSkillListing`](../../../shared/agent-core/skills.ts#L102)           | The `## Skills` catalog, plus a line telling the model to call the `skill` tool before acting on a skill and that a `/name` token means those instructions are already loaded.                                                    |
 | [`buildFallbackSkillDisclosure`](../../../shared/agent-core/skills.ts#L87) | The same catalog with every instruction body inline, for models without tools. [`selectPromptSkillDefinitions`](../../../src/ai/fetch.ts#L611) narrows that set to widget contracts, since there is no way to fetch a body later. |
 
-[`createSkillTool`](../../../src/skills/skill-tool.ts#L46) returns an enabled skill's instructions by
-bare name or `/slug`, throwing on an unknown or disabled name. It and every other send path get them
-from [`selectEnabledSkillDefinitions`](../../../src/skills/skill-tool.ts#L33), which swaps in an Office
-skill's manual for the stub its row holds. Registered only when the model
+[`createSkillTool`](../../../src/skills/skill-tool.ts#L47) returns an enabled skill's instructions by
+bare name or `/slug`, throwing on an unknown or disabled name. It and every other send path get the
+skills from [`selectEnabledSkillDefinitions`](../../../src/skills/skill-tool.ts#L34), which keeps each
+row's id so the tool and `/slug` resolution can load an Office skill's manual in place of the stub its
+row holds, at the moment it is used. Registered only when the model
 supports tools ([`addSkillTool`](../../../src/ai/fetch.ts#L490)).
 
 `search` and `research` also widen the turn's web-tool budget: both map to wider intents in
@@ -108,10 +109,12 @@ former at send time. Display names are not unique, so
 unresolvable token degrading to plain text beats sending the wrong instructions.
 
 Resolution is not persisted; a replay re-resolves against the library as it stands then.
-[`resolveSkillTokenInstructions`](../../../src/skills/resolve-skill-system-messages.ts#L22) is the
+[`resolveSkillTokenInstructions`](../../../src/skills/resolve-skill-system-messages.ts#L31) is the
 single entry point, shared by two surfaces that must not drift: `chat-prompt-input.tsx` sums the
 instructions into the context-overflow token estimate, and the send path prepends them as system
-messages.
+messages. The built-in paths and the estimate reach it through `resolveSkillTokenSkills`, which
+returns the named skills themselves: the estimate measures them and `loadSkillTokenInstructions`
+loads their text, so an Office manual loads only for its own `/office-…` token.
 
 All three agent paths call it: `src/ai/fetch.ts` (built-in), `src/acp/built-in-adapter.ts` (Pi
 harness), `src/chats/chat-instance.ts` (external ACP agents, which have no system channel). In the
@@ -129,9 +132,9 @@ transparent rather than removed, so caret alignment against the textarea holds.
 Eight seeded defaults are contracts the app ships and corrects: five model-facing widget rendering
 contracts, whose `instruction` is imported from a widget's `instructions.ts`
 ([`src/defaults/skills.ts:11`](../../../src/defaults/skills.ts#L11)), and the three Office format skills
-(next section). [`isContractSkillId`](../../../src/defaults/skills.ts#L346) covers all eight;
-[`isWidgetSkillId`](../../../src/defaults/skills.ts#L320) and
-[`isOfficeSkillId`](../../../src/defaults/skills.ts#L323) name each group.
+(next section). [`isContractSkillId`](../../../src/defaults/skills.ts#L361) covers all eight;
+[`isWidgetSkillId`](../../../src/defaults/skills.ts#L319) and
+[`isOfficeSkillId`](../../../src/defaults/skills.ts#L322) name each group.
 
 | Operation                 | On a contract skill                             |
 | ------------------------- | ----------------------------------------------- |
@@ -142,7 +145,7 @@ contracts, whose `instruction` is imported from a widget's `instructions.ts`
 Settings → Skills shows a contract as "Built-in skill · Read-only" with only its toggle, and the
 composer's skills bar never offers one as a pin.
 
-[`hashSkill`](../../../src/defaults/skills.ts#L26) leaves `enabled`, `pinnedOrder` and `deletedAt` out
+[`hashSkill`](../../../src/defaults/skills.ts#L24) leaves `enabled`, `pinnedOrder` and `deletedAt` out
 of a contract id's hash, in for an editable default's.
 
 ```ts
@@ -184,11 +187,16 @@ they would load a manual for a tool they lack, and their external ACP agents wou
 it in every new session. The stub is worded for both: the built-in model there tells the user to
 update, and an external agent that can write the file itself is not told to refuse. A
 build with the tool reads its own manual through
-[`skillInstruction`](../../../src/defaults/skills.ts#L329), by stable id, so the text always matches
+[`skillInstruction`](../../../src/defaults/skills.ts#L338), by stable id, so the text always matches
 the sandbox it runs in and a newer build's manual never reaches an older one. Every place a body
-reaches the model or the user goes through it: `selectEnabledSkillDefinitions` (the `skill` tool,
-`/slug` resolution in the legacy pipeline and the Pi harness, the prompt), the composer's token
-estimate and skills bar, and the read-only detail in Settings. The search index still holds the stub,
+reaches the model or the user goes through it: the `skill` tool, `/slug` resolution at send time in
+the legacy pipeline and the Pi harness (`loadSkillTokenInstructions`), and the skills bar's Add
+instructions. The read-only detail in Settings reads the same cached promise through
+[`officeSkillManual`](../../../src/defaults/skills.ts#L329) with React's `use()`. Each manual is a
+chunk of its own, loaded only by one of those actions, so the entry bundle and the preparation of an
+ordinary request never carry one. The composer's token estimate stays synchronous: it sizes a token
+with `skillInstructionLength`, whose Office character counts `src/defaults/skills.test.ts` keeps
+equal to the manuals. The search index still holds the stub,
 since its triggers read the row, so a search excerpt can show it. Changing a manual needs no
 `defaultSkillsVersion` bump.
 
@@ -199,7 +207,7 @@ hash would need to recognize the row. The manual still comes from this build's c
 
 **An Office row owns its name.** Names have no unique constraint, and a row created on a build
 without the Office skills or a reconcile insert skips the DAL's name check, so another row can share
-`office-xlsx`. [`withoutOfficeNameClashes`](../../../src/defaults/skills.ts#L337) drops such a row
+`office-xlsx`. [`withoutOfficeNameClashes`](../../../src/defaults/skills.ts#L352) drops such a row
 wherever the Office row is in the list, enabled or not, so `resolveSkill`'s first match and the
 `/slug` maps' last match agree on the Office row. Where the Office rows are left out (below), the
 other row keeps the name.
@@ -294,7 +302,9 @@ IDs, skill IDs, account-derived hashes, or authored content.
 - The Office skills reach only the built-in agent with a model that uses tools, outside minimal mode.
   A new path that discloses skills must leave them out, or it promises a tool that is not there.
 - Read a skill's text through `skillInstruction`, never `.instruction`, wherever it reaches the model
-  or the user: an Office row's `instruction` is the stub meant for older builds.
+  or the user: an Office row's `instruction` is the stub meant for older builds. Never import a
+  manual from `src/office/skills/<format>.ts` statically in app code: that puts it back in the
+  entry bundle.
 - Changing a default without bumping `defaultSkillsVersion` breaks multi-device convergence.
 
 ## Tests

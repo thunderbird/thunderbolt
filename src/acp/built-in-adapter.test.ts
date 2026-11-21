@@ -975,6 +975,7 @@ describe('createBuiltInAdapter persistent harness', () => {
         toolset,
         skills: [
           {
+            id: 'review',
             name: 'review',
             description: 'Use for reviews.',
             instruction: 'Follow project style.',
@@ -1206,11 +1207,25 @@ const createBudgetAdapter = (
           },
         }),
       },
-      [{ name: 'research', description: 'Research', instruction: 'Research within the current web budget.' }],
+      [
+        {
+          id: 'research',
+          name: 'research',
+          description: 'Research',
+          instruction: 'Research within the current web budget.',
+        },
+      ],
       true,
       webToolBudget,
     ),
-    skills: [{ name: 'research', description: 'Research', instruction: 'Research within the current web budget.' }],
+    skills: [
+      {
+        id: 'research',
+        name: 'research',
+        description: 'Research',
+        instruction: 'Research within the current web budget.',
+      },
+    ],
     mcpToolsMetadata: undefined,
     stableSystemPrompt: 'Complete the report.',
     volatileSystemPrompt: 'Now.',

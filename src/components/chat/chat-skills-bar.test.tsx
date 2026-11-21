@@ -10,6 +10,8 @@ import { useConfigStore } from '@/api/config-store'
 import { CreateItemProvider } from '@/components/create-item/context'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { defaultSkillOfficeXlsx, defaultSkillWeather } from '@/defaults/skills'
+import { officeXlsxSkill } from '@/office/skills/xlsx'
+import { stubAppServer } from '@/test-utils/app-server'
 import { CreateRequestProbe } from '@/test-utils/create-request-probe'
 import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
@@ -87,6 +89,7 @@ describe('ChatSkillsBar', () => {
   afterEach(() => {
     cleanup()
     restoreViewport()
+    mock.restore()
   })
 
   it('renders nothing when there are no pinned skills and nothing to pin', () => {
@@ -162,6 +165,23 @@ describe('ChatSkillsBar', () => {
     await act(async () => fireEvent.click(unpin!))
 
     expect(togglePin).toHaveBeenCalledWith(defaultSkillOfficeXlsx.id)
+  })
+
+  it("adds an Office skill's manual, not its row's stub, as instructions", async () => {
+    const onAddInstruction = mock((_instruction: string) => undefined)
+    renderBar({
+      onAddInstruction,
+      usePinnedSkills: fakeUsePinnedSkills({ pinned: [defaultSkillOfficeXlsx] }),
+      useLibrarySkills: fakeUseLibrarySkills([defaultSkillOfficeXlsx]),
+      useEnabledSkills: fakeUseEnabledSkills(new Set([defaultSkillOfficeXlsx.id])),
+    })
+
+    fireEvent.contextMenu(screen.getByText('Excel workbooks'))
+    const add = await waitForElement(() => screen.queryByText('Add instructions to chat'))
+    stubAppServer()
+    await act(async () => fireEvent.click(add))
+
+    expect(onAddInstruction).toHaveBeenCalledWith(officeXlsxSkill)
   })
 
   it('keeps the "+ Add a skill" trigger clickable when every enabled skill is already pinned (popover still offers New skill)', () => {

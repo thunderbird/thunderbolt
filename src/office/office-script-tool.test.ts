@@ -915,6 +915,25 @@ saveFile('pictures.docx', fflate.zipSync(parts))
 `
     const result = await call(deps, retargeted, ['pictures.docx'])
     expect(result.ok ? '' : result.error).toStartWith('"pictures.docx" was not saved: the script added a field')
+
+    // A part that is XML only by its content type keeps its fields too.
+    const mainType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml'
+    const renamed = storeAttachment(
+      'renamed.docx',
+      zipSync({
+        '[Content_Types].xml': strToU8(
+          `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/word/document.dat" ContentType="${mainType}"/></Types>`,
+        ),
+        'word/document.dat': strToU8(document(picture)),
+      }),
+    )
+    const edit = `
+const parts = fflate.unzipSync(readFile('renamed.docx'))
+parts['word/document.dat'] = fflate.strToU8(fflate.strFromU8(parts['word/document.dat']) + '<!-- edited -->')
+saveFile('renamed.docx', fflate.zipSync(parts))
+`
+    const renamedDeps = { listThreadFiles: async () => [renamed] }
+    expect((await okFiles(call(renamedDeps, edit, ['renamed.docx']))).files).toHaveLength(1)
   })
 
   it('refuses a part name that is not a plain path inside the zip', async () => {

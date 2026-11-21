@@ -185,12 +185,16 @@ const checker = (maxXmlBytes: number, maxUnzipBytes: number) => `(() => {
       Array.from({ length: count }, (_, index) => {
         try {
           const bytes = __inputFile(index)
-          return partNames(bytes)
-            .filter((name) => /^word\\/.*\\.xml$/i.test(name))
-            .flatMap((name) => {
-              const data = fflate.unzipSync(bytes, { filter: (file) => file.name === name })[name]
-              return inclusions(new xmldom.DOMParser({ onError: () => {} }).parseFromString(decode(data), 'text/xml'))
-            })
+          const names = partNames(bytes)
+          const read = (name) =>
+            new xmldom.DOMParser({ onError: () => {} }).parseFromString(
+              decode(fflate.unzipSync(bytes, { filter: (file) => file.name === name })[name]),
+              'text/xml',
+            )
+          // The parts the saved file's check reads: XML by name, or by the content type the package gives it.
+          const types = names.find(isContentTypes)
+          const typeOf = types === undefined ? () => undefined : contentTypes(read(types))
+          return names.filter((name) => isXmlPart(name) || isXmlType(typeOf(name))).flatMap((name) => inclusions(read(name)))
         } catch (error) {
           reason(error)
           return []

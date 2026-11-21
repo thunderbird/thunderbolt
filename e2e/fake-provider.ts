@@ -24,6 +24,10 @@ import {
   officeRetryScript,
   officeScript,
   officeScriptPrompt,
+  officeSkillHeading,
+  officeSkillLoadPrompt,
+  officeSkillName,
+  officeSkillWorkbookPrompt,
   officeWorkbookPrompt,
   officeWorkbookScript,
 } from './office-script-fixture'
@@ -79,6 +83,8 @@ const emailBodyFromToolResult = ({ messages }: FakeRequest) => {
  * workbook script does the same with Excelize.
  * The Office edits do the same with the attached document, deck or workbook as the script's input. The turn's text also
  * carries the attachment, so an edit prompt is matched anywhere in that text.
+ * The Office skill scripts load the Excel skill first; one then replies, the other builds the workbook once the skill's
+ * body has arrived.
  */
 const scriptedToolCall = (request: FakeRequest): { name: string; input: Record<string, JSONValue> } | null => {
   const text = lastUserContent(request)?.text
@@ -91,7 +97,17 @@ const scriptedToolCall = (request: FakeRequest): { name: string; input: Record<s
   if (text === officeRetryPrompt) {
     return { name: 'run_office_script', input: { script: officeRetryScript } }
   }
+  if (text === officeSkillLoadPrompt || text === officeSkillWorkbookPrompt) {
+    return { name: 'skill', input: { name: officeSkillName } }
+  }
   const [prompt, call, result] = request.messages.slice(-3)
+  if (
+    prompt?.content.text === officeSkillWorkbookPrompt &&
+    call?.content.toolCall === 'skill' &&
+    result?.content.toolResult?.includes(officeSkillHeading)
+  ) {
+    return { name: 'run_office_script', input: { script: officeWorkbookScript } }
+  }
   if (
     prompt?.content.text === officeRetryPrompt &&
     call?.content.toolCall === 'run_office_script' &&

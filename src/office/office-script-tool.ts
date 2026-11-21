@@ -9,7 +9,7 @@ import { parseToolOutput } from '@/lib/tool-output'
 import type { ToolConfig } from '@/types'
 import { type DynamicToolUIPart, getToolName, isToolOrDynamicToolUIPart, type ToolUIPart, type UIMessage } from 'ai'
 import { z } from 'zod'
-import { maxFormulaErrors, officeScriptToolName, sandboxLimits } from './constants'
+import { officeScriptToolName, officeSkillNames, sandboxLimits } from './constants'
 import { runInSandboxWorker } from './run-in-worker'
 import type { FileFormulaError, SandboxJob, SandboxResult, SavedFile } from './sandbox'
 import { type ReadWorkspaceFile, resolveInputs, type ThreadFile } from './script-inputs'
@@ -146,9 +146,7 @@ const officeScriptParameters = z.object({
     .string()
     .min(1)
     .nullish()
-    .describe(
-      'JavaScript that runs as the body of an async function, so `await` works. Example: `const doc = new docx.Document({ sections: [{ children: [new docx.Paragraph("Hello")] }] }); saveFile("hello.docx", await docx.Packer.toArrayBuffer(doc))`',
-    ),
+    .describe('JavaScript that runs as the body of an async function, so `await` works.'),
   edit: z
     .object({
       scriptId: z.string(),
@@ -237,27 +235,84 @@ export type OfficeScriptToolDeps = {
   listThreadFiles?: () => Promise<ThreadFile[]>
   /** The built-in agent's workspace. The legacy pipeline has none. */
   readWorkspaceFile?: ReadWorkspaceFile
+  /** Names of the Office skills the model can load in this send. The description tells it to load them first. */
+  skills?: string[]
 }
 
 const mib = (bytes: number) => bytes / 1024 / 1024
 
-const describeTool = (hasWorkspace: boolean) =>
+/**
+ * The description sent with every request, so it holds only the tool's contract. How to use each library lives in
+ * the Office skills (`./skills`), which the model loads on demand.
+ */
+const describeTool = (hasWorkspace: boolean, skills: string[]) =>
   [
-    'Create or edit a Word document (.docx), an Excel workbook (.xlsx, or .xlsm when you edit one that has macros) or a PowerPoint presentation (.pptx) that the user can download.',
-    'Write a short script using the loaded globals: `docx`, `PptxGenJS`, `excelize` (excelize-wasm), `fflate` and `xmldom` (@xmldom/xmldom).',
-    'If a failed result includes `scriptId`, retry in this send with `edit` containing that ID and exact `find`/`replace` pairs in `replacements`.',
-    'Build each requested file in one call. Check the finished bytes in memory (e.g. unzip and read back the changed parts), then save once as the final step with `saveFile(filename, bytes)`. Every saved file is shown to the user as a deliverable, so save only the files the user asked for, never a test, draft or scratch file; keep intermediate bytes in memory. To try an API or inspect a file, call without saveFile and console.log what you need: a run that saves nothing succeeds, returns its logs, and shows the user nothing. Do not save a file again to adjust it: call again for a file only to fix a reported error, for a new user request, or for requested files a run could not fit. The name must end in .docx, .xlsx, .xlsm or .pptx. Get the bytes for Word from `await docx.Packer.toArrayBuffer(doc)` and for Excel from `f.WriteToBuffer().buffer`; `Packer.toBuffer`, `Packer.toBlob` and `pres.writeFile` do not work here.',
-    "Give each PowerPoint animation target a unique objectName. For a 13⅓ × 7½ inch canvas set pres.layout = 'LAYOUT_WIDE' before adding slides. Get bytes from await pres.write({outputType:'uint8array'}) or readFile(name). Example: const out = animatePptx(bytes, {effects:[{slide:1, shape:'badge', effect:'blink', start:'withPrevious', repeat:'indefinite'}], transitions:[{slide:1, effect:'fade'}]}). Check out and saveFile(name,out) once.",
-    "Slides are 1-based in presentation order. Effects run in entry order: appear, fadeIn, flyIn, wipeIn, blink, pulse, growShrink, spin, disappear, fadeOut. Start defaults to onClick. Use withPrevious for simultaneous effects or slide entry, afterPrevious after the longest finite member (or one cycle of the longest if all repeat indefinitely), delayMs for a wait, durationMs for a timed cycle, repeat for total plays or 'indefinite'. Transitions are fade, wipe, push, zoom, cover and dissolve with optional speed fast/medium/slow. The direction option takes a from-edge top/right/bottom/left for flyIn, wipeIn, wipe, push and cover, or in/out for zoom. Use fflate and xmldom for other effects, custom paths or edits to existing timing or transitions.",
-    `For a workbook, start with \`const f = excelize.NewFile()\` or \`const f = excelize.OpenReader(readFile(name))\`, then call its methods, such as \`f.SetCellValue("Sheet1", "B2", 1200)\`, \`f.SetCellFormula("Sheet1", "B5", "SUM(B2:B4)")\`, \`f.SetCellStyle("Sheet1", "B2", "B5", f.NewStyle({ NumFmt: 4 }).style)\` and \`f.AddChart(...)\`. They are synchronous and return what excelize-wasm returns; a call that fails throws an Error with the reason. For money, set the format with \`CustomNumFmt\` and quote the symbol or give a locale tag, such as \`f.NewStyle({ CustomNumFmt: '"R$" #,##0.00' })\` or \`'[$€-407] #,##0.00'\`: \`NumFmt\` 5 to 8 are not saved, and an unquoted \`R$\` shows as a plain number. Opening a workbook keeps what the script does not change, including styles, charts, images, pivot tables and macros. When the workbook is saved, every formula is computed and its result stored, so the file shows numbers even where nothing recalculates. A formula that could not be computed is listed with its sheet and cell in \`formulaErrors\` of what \`WriteToBuffer\` returns, so log that instead of saving a test file, and again in the tool result with its file (at most ${maxFormulaErrors}); the file is saved anyway. Never rebuild an attached workbook from its extracted text or the copy in your workspace: that loses its formulas and formatting. Open it with excelize, or tell the user why you cannot. \`excelize.OpenReader(bytes, { Password: "..." })\` opens a password-encrypted workbook, but \`WriteToBuffer\` takes no options and saves an unencrypted copy, so tell the user the copy no longer asks for a password; sheet and workbook protection (\`ProtectSheet\`, \`ProtectWorkbook\`) stay. This tool never adds macros: \`AddVBAProject\` throws, and a .xlsm can be saved only from a .xlsm the run read, under its own extension. Save every other workbook as .xlsx, including one opened from a .xlsx. excelize opens workbooks of up to ${mib(sandboxLimits.maxWorkbookBytes)} MiB; for a larger one, tell the user it is too large to edit here instead of working around the limit. The chat cannot attach a .xlsm, so do not ask the user to upload one; a .xlsm this tool saved earlier in the chat${hasWorkspace ? ' or one in your workspace' : ''} can still be read and edited.`,
-    `To read a file, list it in \`inputs\` and call \`readFile(name)\`, which returns its bytes as a Uint8Array. The files you can read are the ones attached in this chat and the ones this tool made earlier in it. Name a file by its file name to get the newest file with that name, or by its id to get that exact file, such as an older version.${hasWorkspace ? ' A name that matches none of them is read from your workspace, as a path relative to it, so a script can use data you prepared there.' : ''}`,
-    'When the user names a file, list that exact name in `inputs`, even when another file is attached. If no file has that name, the call fails and lists the files there are: ask the user which one they mean. Never edit a different file in its place, and never save under the name of a file that does not exist unless the user asked for a new file.',
-    'To edit a file, read it, change it, and save the result under exactly the same name, without a suffix such as "_edited" or "_v2": the user gets an edited copy, the original stays as it was, and the next edit finds the newest version by that name. A file saved under another name is a new file, and `notes` in the result say so. `await docx.patchDocument({ outputType: "uint8array", data: readFile(name), patches })` replaces `{{key}}` placeholders and keeps everything else, including comments and tracked changes. For changes docx and PptxGenJS cannot make, such as adding a tracked change or copying a slide, unzip the file with `fflate.unzipSync`, edit its XML parts with `xmldom.DOMParser` and `xmldom.XMLSerializer` (`fflate.strFromU8` and `fflate.strToU8` convert the bytes), and zip it again with `fflate.zipSync`. Only the sync fflate functions work here.',
-    `Every saved file is checked before it is stored. If a zip does not open, unzips to more than ${mib(sandboxLimits.unzipBytes)} MiB or has a part name that is not a plain path inside it, or an XML part does not parse or holds a DDE field, nothing is saved, and the error names the file and, for XML, the part. The same goes for a file that adds a remote template, an external link, a Word field that loads content from outside the file (such as INCLUDEPICTURE) or an OLE object that no file of its type the run read had, and for a file saved with no change from a file the run read. Leave the parts you were not asked to change as they are, even when their XML declares an encoding such as windows-1252.`,
-    'The sandbox has no network, DOM, fetch, imports or Node globals (require, Buffer, fs, process), so write all new content into the script. Use Uint8Array for bytes and fflate for ZIPs.',
-    'Do not paste the contents of a saved file into your reply.',
-    `Limits per run: ${sandboxLimits.timeoutMs / 1000} seconds of script time (loading the libraries does not count), ${mib(sandboxLimits.memoryBytes)} MiB of memory, ${mib(sandboxLimits.workbookMemoryBytes)} MiB of memory for excelize, ${mib(sandboxLimits.textOutputBytes)} MiB of console output and ${sandboxLimits.maxFiles} files. The files this tool makes in one chat may take ${mib(sandboxLimits.threadFileBytes)} MiB in all. If the result is { ok: false }, read the error: fix the script when the error is about it, then call the tool again.`,
-  ].join(' ')
+    'Create or edit a Word (.docx), Excel (.xlsx, or .xlsm when editing one with macros) or PowerPoint (.pptx) file for the user to download.',
+    skills.length > 0
+      ? `Before writing or editing a script, load the listed Office skill for each format you will use, unless its instructions are already in context: ${skills.join(', ')}.`
+      : '',
+    'Globals: `docx`, `PptxGenJS`, `excelize` (excelize-wasm), `animatePptx`, `fflate` (sync only), `xmldom`, `readFile(name)` (a Uint8Array) and `saveFile(name, bytes)`. Bytes come from `await docx.Packer.toArrayBuffer(doc)`, `f.WriteToBuffer().buffer` or `await pres.write({ outputType: "uint8array" })`. No network, DOM, imports or Node globals.',
+    'Build each requested file in one call and save it once, as the last step. Every saved file is shown to the user, so never save a test or draft, and do not save a file again to adjust it. A run that saves nothing succeeds and returns its console output in `logs`: use it to inspect a file or try an API.',
+    `List each file the script reads in \`inputs\`: one attached in this chat or made by this tool in it, by name for the newest or by id for that version.${hasWorkspace ? ' Other names are paths in your workspace.' : ''} When the user names a file, list that exact name; if it is missing, the call fails and lists the files: ask the user, never edit another file instead.`,
+    'To edit a file, open it with `readFile` (rebuilding it from extracted text loses formulas and formatting) and save it under exactly the same name, with no suffix such as "_v2"; another name makes a new file.',
+    'Nothing is saved if a file has a broken zip or XML part or a DDE field, adds a remote template, external link, external Word field or OLE object its input lacked, or is an unchanged copy of an input.',
+    'A password-protected workbook opens but saves unencrypted: tell the user. Macros are kept, never added.',
+    `Limits per run: ${sandboxLimits.timeoutMs / 1000} s, ${mib(sandboxLimits.memoryBytes)} MiB of memory (${mib(sandboxLimits.workbookMemoryBytes)} MiB for excelize), ${mib(sandboxLimits.textOutputBytes)} MiB of logs, ${sandboxLimits.maxFiles} files, ${mib(sandboxLimits.unzipBytes)} MiB unzipped per file; ${mib(sandboxLimits.threadFileBytes)} MiB of files per chat.`,
+    'If a failed result has `scriptId`, fix it with `edit: { scriptId, replacements: [{ find, replace }] }`.',
+    'Do not paste a saved file into your reply.',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+/** Each format's skill, by what names the format in an error or a script. */
+const skillFormats = [
+  { skill: officeSkillNames.xlsx, pattern: /excelize|xls[xm]/i },
+  { skill: officeSkillNames.docx, pattern: /docx/i },
+  { skill: officeSkillNames.pptx, pattern: /pptx/i },
+]
+
+const cellHint =
+  'Cells are A1 names: f.SetCellValue("Sheet1", "B2", 1200) and f.SetCellFormula("Sheet1", "F2", "SUM(C2:E2)") with no leading "="; from numbers use excelize.CoordinatesToCellName(col, row).cell.'
+const styleHint =
+  'Style options are objects and colors are arrays: f.NewStyle({ Fill: { Type: "pattern", Pattern: 1, Color: ["#FFC7CE"] }, CustomNumFmt: \'"R$" #,##0.00\' }).style. NewConditionalStyle ids are a separate sequence that starts at 0.'
+
+/** How to call the Excelize methods models most often get wrong, for a send whose Excel skill is not available. */
+const excelizeHints = new Map([
+  [
+    'SetConditionalFormat',
+    'SetConditionalFormat takes an array of rules: f.SetConditionalFormat("Sheet1", "A2:F13", [{ Type: "formula", Criteria: "$F2>$B2", Format: f.NewConditionalStyle({ Font: { Color: "#9C0006" } }).style }]).',
+  ],
+  [
+    'AddChart',
+    'AddChart takes an object with a type constant: f.AddChart("Sheet1", "H2", { Type: excelize.Col, Series: [{ Name: "Sheet1!$F$1", Categories: "Sheet1!$A$2:$A$13", Values: "Sheet1!$F$2:$F$13" }], Title: { Paragraph: [{ Text: "Totals" }] } }).',
+  ],
+  ['SetCellValue', cellHint],
+  ['SetCellFormula', cellHint],
+  ['NewStyle', styleHint],
+  ['NewConditionalStyle', styleHint],
+  ['SetColWidth', 'Columns are letters: f.SetColWidth("Sheet1", "A", "F", 15).'],
+])
+
+/**
+ * One sentence for a failed script: load the skill for the format that failed, when the send offers it, or else how
+ * to call the Excelize method that failed. The format comes from the error, or from the script when the error names
+ * none. Undefined when there is nothing specific to say.
+ */
+const failureHint = (error: string, script: string, skills: string[]) => {
+  // workbook-bridge.ts says this for a workbook too large to open, which no retry or skill can fix.
+  if (error.includes('Stop and tell the user')) {
+    return undefined
+  }
+  const named = (text: string) => skillFormats.filter(({ pattern }) => pattern.test(text)).map(({ skill }) => skill)
+  const formats = named(error).length > 0 ? named(error) : named(script)
+  const available = formats.filter((skill) => skills.includes(skill))
+  if (available.length > 0) {
+    return `Before you fix this, load the Office skill for this format unless its instructions are already in context: ${available.join(', ')}.`
+  }
+  // Excelize failures start with the method's name; see `settle` in workbook-bridge.ts.
+  const method = /^\w*Error: (\w+): /.exec(error)?.[1]
+  return method === undefined ? undefined : excelizeHints.get(method)
+}
 
 /**
  * Build the tool for one send. Each saved file becomes a new attachment-store entry; nothing is ever overwritten.
@@ -269,14 +324,17 @@ export const createOfficeScriptTool = ({
   storeFiles = putAttachments,
   listThreadFiles = async () => [],
   readWorkspaceFile,
+  skills = [],
 }: OfficeScriptToolDeps = {}): ToolConfig => {
   const madeThisSend: ThreadFile[] = []
   const failures = new Map<string, ScriptSource>()
   // Bytes that calls in this send are still storing, so calls running together cannot pass the chat's limit.
   let storingBytes = 0
+  // A send gets one hint: repeated, it would only lengthen each later error.
+  let hinted = false
   return {
     name: officeScriptToolName,
-    description: describeTool(readWorkspaceFile !== undefined),
+    description: describeTool(readWorkspaceFile !== undefined, skills),
     verb: 'Creating file',
     parameters: officeScriptParameters,
     execute: async (input: OfficeScriptInput, options?: { abortSignal?: AbortSignal }): Promise<OfficeScriptOutput> => {
@@ -305,7 +363,9 @@ export const createOfficeScriptTool = ({
       }
       const result = await runScript({ script, inputs: resolved.inputs }, options?.abortSignal)
       if (!result.ok) {
-        return fail(result.error, result.logs)
+        const hint = hinted ? undefined : failureHint(result.error, script, skills)
+        hinted ||= hint !== undefined
+        return fail(hint === undefined ? result.error : `${result.error.trimEnd()}\n${hint}`, result.logs)
       }
       if (result.files.length === 0) {
         return {

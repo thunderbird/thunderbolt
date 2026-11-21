@@ -1122,7 +1122,7 @@ describe('createBuiltInAdapter persistent harness', () => {
 
 type ProviderToolCall = { name: string; args: Record<string, unknown> }
 type ProviderRequest = {
-  tools?: Array<{ function: { name: string } }>
+  tools?: Array<{ function: { name: string; description?: string } }>
   messages: Array<{
     role: string
     content: unknown
@@ -1485,6 +1485,12 @@ it.each([
     expect(system.includes('### weather')).toBe(!offered)
     expect(system.includes('- research:')).toBe(offered)
     expect(system.includes('### research')).toBe(false)
+    // The Office skills ride the same rule, and the Office tool names them only when they can be loaded.
+    const officeTool = request.tools?.find(({ function: { name } }) => name === 'run_office_script')
+    expect(officeTool).toBeDefined()
+    expect(officeTool?.function.description?.includes('load the listed Office skill')).toBe(offered)
+    expect(system.includes('- office-xlsx:')).toBe(offered)
+    expect(system.includes('# Excel workbooks with run_office_script')).toBe(false)
   } finally {
     run.adapter.disconnect()
     await teardownTestDatabase()

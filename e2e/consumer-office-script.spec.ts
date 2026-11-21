@@ -28,6 +28,8 @@ import {
   officeScriptFilename,
   officeScriptMarker,
   officeScriptPrompt,
+  officeSkillLoadPrompt,
+  officeSkillWorkbookPrompt,
   officeWorkbookFilename,
   officeWorkbookPrompt,
 } from './office-script-fixture'
@@ -41,6 +43,10 @@ const isExcelizeDownload = (url: string) => {
   const { pathname, searchParams } = new URL(url)
   return /excelize[^/]*\.gz$/.test(pathname) && !searchParams.has('import')
 }
+
+/** The sandbox and what it loads: QuickJS, the Office libraries and the spreadsheet engines. */
+const isOfficeSandboxRequest = (url: string) =>
+  /office-script\.worker|quickjs|office-sandbox|excelize|ironcalc/.test(new URL(url).pathname)
 
 const chooseFakeModel = async (page: Page) => {
   await page.getByTestId('model-selector-trigger').click()
@@ -264,6 +270,41 @@ test('the agent builds a workbook with Excelize and the downloaded file holds th
     .file('xl/worksheets/sheet1.xml')
     ?.async('string')
   // The total is stored as a number, so a viewer that does not calculate still shows it.
+  expect(sheet).toContain('<c r="B3"><f>SUM(B1:B2)</f><v>1650</v></c>')
+
+  expect(errors).toEqual([])
+})
+
+test('the agent reads the Excel skill without starting the sandbox, then builds one workbook from it', async ({
+  page,
+}) => {
+  const errors = collectPageErrors(page)
+  const workerUrls: string[] = []
+  page.on('worker', (worker) => workerUrls.push(worker.url()))
+  const sandboxRequests: string[] = []
+  page.on('request', (request) => isOfficeSandboxRequest(request.url()) && sandboxRequests.push(request.url()))
+  await loginViaEmailCode(page)
+  await chooseFakeModel(page)
+
+  await sendChatPrompt(page, officeSkillLoadPrompt)
+  await expect(page.locator('[data-quotable-message-id]').last()).toContainText(fakeProviderReply)
+  await expect(page.getByRole('button', { name: 'Stop generating', exact: true })).toHaveCount(0)
+  // Listing the skills and loading one only hand the model text.
+  expect(workerUrls.filter((url) => url.includes('office-script.worker'))).toEqual([])
+  expect(sandboxRequests).toEqual([])
+
+  await sendChatPrompt(page, officeSkillWorkbookPrompt)
+  const reply = page.locator('[data-quotable-message-id]').last()
+  const download = reply.getByRole('button', { name: `Download ${officeWorkbookFilename}` })
+  await expect(download).toBeVisible({ timeout: 60_000 })
+  await expect(reply).toContainText(fakeProviderReply)
+  await expect(page.getByRole('button', { name: `Download ${officeWorkbookFilename}` })).toHaveCount(1)
+  expect(workerUrls.some((url) => url.includes('office-script.worker'))).toBe(true)
+
+  const [file] = await Promise.all([page.waitForEvent('download'), download.click()])
+  const sheet = await (await JSZip.loadAsync(await readFile(await file.path())))
+    .file('xl/worksheets/sheet1.xml')
+    ?.async('string')
   expect(sheet).toContain('<c r="B3"><f>SUM(B1:B2)</f><v>1650</v></c>')
 
   expect(errors).toEqual([])

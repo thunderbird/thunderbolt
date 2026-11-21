@@ -29,7 +29,7 @@ rule for changing a default).
 | `models`         | `defaultModelsVersion` (`shared/defaults/models.ts:175`)  | `hashModel` (`shared/defaults/models.ts:58`)                   | `id`      | `frozenFields: ['isConfidential', 'provider']`, `metadataFields: ['description', 'vendor']` |
 | `model_profiles` | none (rides the models gate)                              | `hashModelProfile` (`src/defaults/model-profiles/index.ts:20`) | `modelId` | `insertMissing: true`                                                                       |
 | `tasks`          | `defaultTasksVersion` (`src/defaults/tasks.ts:70`)        | `hashTask` (`src/defaults/tasks.ts:13`)                        | `id`      |                                                                                             |
-| `skills`         | `defaultSkillsVersion` (`src/defaults/skills.ts:283`)     | `hashSkill` (`src/defaults/skills.ts:22`)                      | `id`      | `frozenFields: ['enabled', 'pinnedOrder']` for widget skills only                           |
+| `skills`         | `defaultSkillsVersion` (`src/defaults/skills.ts:343`)     | `hashSkill` (`src/defaults/skills.ts:26`)                      | `id`      | `frozenFields: ['enabled', 'pinnedOrder']` for contract skills (widget + Office) only       |
 | `settings`       | `defaultSettingsVersion` (`src/defaults/settings.ts:268`) | `hashSetting` (`src/defaults/settings.ts:14`)                  | `key`     |                                                                                             |
 
 - `prompts` left the list in THU-547, when skills superseded the default automations.
@@ -50,12 +50,12 @@ now ships, a value the user chose before it became the default: reconcile takes 
 - **Changing a hash's field list does the same for that table**: existing rows read as user-edited
   forever. `hashModel` has been through it twice (`apiKey` removed, `supportsParallelToolCalls`
   added), hence the retirement sweep ignoring the hash.
-- **`deletedAt` is hashed for models, profiles and non-widget skills**, so deleting one of those
+- **`deletedAt` is hashed for models, profiles and non-contract skills**, so deleting one of those
   defaults sticks. `hashTask` covers only `item` and `isComplete`; `deleteTask` scrubs the row's
   nullable columns including `default_hash`, which fails the resurrect check just as firmly.
-- **Widget skills hash content only.** `hashSkill` excludes `enabled`, `pinnedOrder` and `deletedAt`
-  for `isWidgetSkillId` ids: the instruction text is a locked contract that must update even on a
-  widget the user turned off. `frozenFields` preserves their state instead.
+- **Contract skills hash content only.** `hashSkill` excludes `enabled`, `pinnedOrder` and `deletedAt`
+  for `isContractSkillId` ids (the widget and Office skills): the instruction text is a locked contract
+  that must update even on a skill the user turned off. `frozenFields` preserves their state instead.
 - **A null `default_hash` means user-created**, exempting the row from retirement. Reconcile
   bootstraps a missing hash on a row it recognizes.
 - **`metadataFields` sit outside the hash.** `description` and `vendor` are server-owned copy;
@@ -113,11 +113,11 @@ options; the latter two default to `canOverwrite`.
 Listed fields keep the existing row's value on update, and the stored hash reflects that post-freeze
 state so later passes still read the row as unedited.
 
-| Field                    | Table         | Why frozen                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ------------------------ | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `isConfidential`         | models        | A thread binds `isEncrypted` to it at creation ([`src/dal/chat-threads.ts:85`](../../../src/dal/chat-threads.ts)) and sending throws on disagreement ([`src/chats/chat-instance.ts:1114`](../../../src/chats/chat-instance.ts)); `resolveSessionModel` ([`src/chats/resolve-session-model.ts`](../../../src/chats/resolve-session-model.ts)) swaps the built-in onto a matching model when one exists; flipping it strands every thread bound to that id |
-| `provider`               | models        | Routes inference; flipping it under an existing id misroutes silently                                                                                                                                                                                                                                                                                                                                                                                    |
-| `enabled`, `pinnedOrder` | widget skills | Counterpart to their content-only hash: the contract text updates, the user's on/off and pin state does not                                                                                                                                                                                                                                                                                                                                              |
+| Field                    | Table           | Why frozen                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------ | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `isConfidential`         | models          | A thread binds `isEncrypted` to it at creation ([`src/dal/chat-threads.ts:85`](../../../src/dal/chat-threads.ts)) and sending throws on disagreement ([`src/chats/chat-instance.ts:1114`](../../../src/chats/chat-instance.ts)); `resolveSessionModel` ([`src/chats/resolve-session-model.ts`](../../../src/chats/resolve-session-model.ts)) swaps the built-in onto a matching model when one exists; flipping it strands every thread bound to that id |
+| `provider`               | models          | Routes inference; flipping it under an existing id misroutes silently                                                                                                                                                                                                                                                                                                                                                                                    |
+| `enabled`, `pinnedOrder` | contract skills | Counterpart to their content-only hash: the contract text updates, the user's on/off and pin state does not                                                                                                                                                                                                                                                                                                                                              |
 
 **To change a frozen field on a model, ship a fresh model id.** Freezing applies to updates only;
 inserts use the default as-is.

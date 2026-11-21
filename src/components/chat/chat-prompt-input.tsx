@@ -90,6 +90,7 @@ import { FileCard } from './file-card'
 import { useNativeFileDrop as useNativeFileDrop_default } from './use-native-file-drop'
 import { preloadChatMessageList } from './chat-messages-loader'
 import { isBuiltInAgent } from '@/defaults/agents'
+import { isOfficeSkillId } from '@/defaults/skills'
 import { useAppName } from '@/lib/branding-selectors'
 import { selectBuiltInAgentEnabled, selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
@@ -311,7 +312,14 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
     })
     const summaryView = useCompactionSummaryState(messages)
 
-    const { skills: library } = useLibrarySkills()
+    const { skills: storedSkills } = useLibrarySkills()
+    // The Office skills teach the built-in agent's `run_office_script`, which a model without tools and every other
+    // agent lack. The send paths leave them out there, so the menu, the highlight and the token estimate do too.
+    const officeSkillsUsable = isBuiltInAgent(selectedAgent) && selectedModel.toolUsage !== 0
+    const library = useMemo(
+      () => (officeSkillsUsable ? storedSkills : storedSkills.filter(({ id }) => !isOfficeSkillId(id))),
+      [officeSkillsUsable, storedSkills],
+    )
     const { isEnabled } = useEnabledSkills()
     // Minimal mode treats `/` as ordinary text: no popup, token resolution,
     // highlighting or token-aware editing (resolution is gated in

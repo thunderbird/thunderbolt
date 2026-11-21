@@ -27,6 +27,7 @@ import type { Agent, AgentAdapter } from '@/types/acp'
 import { getAllSkills } from '@/dal'
 import { isAgentActive } from '@/dal/agents'
 import { getDb } from '@/db/database'
+import { isOfficeSkillId } from '@/defaults/skills'
 import { createAgentUnavailableError } from '@/lib/error-utils'
 import { selectEnabledSkillDefinitions } from '@/skills/skill-tool'
 import type { AcpAdapterDeps } from './acp-adapter'
@@ -47,8 +48,10 @@ export type ConnectToAgentContext = {
 
 export type ConnectToAgentDeps = BuiltInAdapterOptions & AcpAdapterDeps
 
-/** Read enabled skills from same DAL source used by built-in agent. */
-const getEnabledSkills = async () => selectEnabledSkillDefinitions(await getAllSkills(getDb()))
+/** Read enabled skills from same DAL source used by built-in agent. The Office skills stay behind: they teach the
+ *  app's `run_office_script`, which an external agent does not have. */
+const getEnabledSkills = async () =>
+  selectEnabledSkillDefinitions((await getAllSkills(getDb())).filter(({ id }) => !isOfficeSkillId(id)))
 
 /**
  * Build an `AgentAdapter` for the given agent. Exhaustive over `AgentType`, so a

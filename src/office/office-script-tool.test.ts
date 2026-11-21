@@ -1244,6 +1244,112 @@ saveFile('renamed.docx', fflate.zipSync(parts))
   })
 })
 
+describe('Office script tool description', () => {
+  const workspace: ReadWorkspaceFile = async () => ({ status: 'missing' })
+
+  it('stays short, since every request sends it', () => {
+    expect(createOfficeScriptTool().description.length).toBeLessThan(1_950)
+    expect(createOfficeScriptTool({ readWorkspaceFile: workspace }).description.length).toBeLessThan(1_950)
+  })
+
+  it('tells the model to load the Office skills only when it has some', () => {
+    const load = 'Before writing or editing a script, load the listed Office skill'
+    expect(createOfficeScriptTool().description).not.toContain(load)
+    expect(createOfficeScriptTool({ skills: [] }).description).not.toContain(load)
+    expect(createOfficeScriptTool({ skills: ['office-docx', 'office-xlsx'] }).description).toContain(
+      'unless its instructions are already in context: office-docx, office-xlsx.',
+    )
+  })
+})
+
+describe('Office script failure hints', () => {
+  const pointer = 'Before you fix this, load the Office skill for this format'
+  const conditionalFormat = `const f = excelize.NewFile()
+f.SetConditionalFormat("Sheet1", "A1:A2", [{ Type: "expression", Criteria: "$A1>1", Format: 0 }])`
+  const failing =
+    (error: string): OfficeScriptToolDeps['runScript'] =>
+    async () => ({ ok: false, error, logs: 'log' })
+  const errorOf = async (output: Promise<OfficeScriptOutput>) => {
+    const result = await output
+    if (result.ok) {
+      throw new Error('Expected a failed run')
+    }
+    return result
+  }
+
+  it('points the first failure of a send to the visible skill for its format, and only the first', async () => {
+    const tool = createOfficeScriptTool({
+      runScript: (job) => inProcess(job, sandboxLimits),
+      storeFiles,
+      skills: ['office-xlsx', 'office-docx'],
+    })
+
+    const first = await errorOf(tool.execute({ script: conditionalFormat }))
+    expect(first.error).toStartWith('Error: SetConditionalFormat: ')
+    expect(first.error).toEndWith(`${pointer} unless its instructions are already in context: office-xlsx.`)
+    expect(first.scriptId).toBeString()
+    expect(first.retry).toContain(first.scriptId!)
+
+    const second = await errorOf(tool.execute({ script: conditionalFormat }))
+    expect(second.error).not.toContain(pointer)
+    expect(second.error).not.toContain('SetConditionalFormat takes')
+    expect(second.scriptId).toBeString()
+  })
+
+  it('reads the format from the script when the error names none', async () => {
+    const tool = createOfficeScriptTool({
+      runScript: failing('TypeError: cannot read property of undefined'),
+      skills: ['office-docx', 'office-pptx'],
+    })
+    const { error } = await errorOf(tool.execute({ script: 'const pres = new PptxGenJS()\npres.addSlide().x.y = 1' }))
+    expect(error).toEndWith(': office-pptx.')
+  })
+
+  it('gives how to call the failing Excelize method when the Excel skill is not offered', async () => {
+    const hints = {
+      'Error: SetConditionalFormat: parameter is invalid': 'SetConditionalFormat takes an array of rules',
+      'Error: AddChart: invalid argument data type: argument 3.Type is a string, where Excelize takes a number':
+        'Type: excelize.Col',
+      'Error: SetCellValue: invalid arguments in call': 'Cells are A1 names',
+      'Error: NewConditionalStyle: invalid argument data type': 'separate sequence that starts at 0',
+      'Error: SetColWidth: invalid argument data type: the arguments are a string, a number, a number, a number':
+        'f.SetColWidth("Sheet1", "A", "F", 15)',
+    }
+    for (const [message, hint] of Object.entries(hints)) {
+      const tool = createOfficeScriptTool({ runScript: failing(message), skills: ['office-docx'] })
+      const { error } = await errorOf(tool.execute({ script: 'const f = excelize.NewFile()' }))
+      expect(error).toStartWith(message)
+      expect(error).toContain(hint)
+      expect(error).not.toContain(pointer)
+    }
+  })
+
+  it('adds nothing when neither a skill nor a known method applies', async () => {
+    const unknown = 'Error: GetRows: sheet Budget does not exist'
+    const tool = createOfficeScriptTool({ runScript: failing(unknown) })
+    expect((await errorOf(tool.execute({ script: 'const f = excelize.NewFile()' }))).error).toBe(unknown)
+  })
+
+  it('adds nothing to an error that tells the model to stop', async () => {
+    const tooLarge = `Error: This workbook is larger than the ${sandboxLimits.maxWorkbookBytes / 1024 / 1024} MiB excelize can open here. Stop and tell the user it is too large to edit here; do not rebuild or unzip it.`
+    const tool = createOfficeScriptTool({ runScript: failing(tooLarge), skills: ['office-xlsx'] })
+    expect((await errorOf(tool.execute({ script: 'excelize.OpenReader(new Uint8Array(1))' }))).error).toBe(tooLarge)
+  })
+
+  it('keeps the missing-file guidance as it was and still hints the next script failure', async () => {
+    const tool = createOfficeScriptTool({
+      runScript: failing('Error: SetConditionalFormat: parameter is invalid'),
+      skills: ['office-xlsx'],
+    })
+    const missing = await errorOf(tool.execute({ script: 'readFile("budget.xlsx")', inputs: ['budget.xlsx'] }))
+    expect(missing.error).not.toContain(pointer)
+    expect(missing.error).toContain('budget.xlsx')
+
+    const failed = await errorOf(tool.execute({ script: 'const f = excelize.NewFile()' }))
+    expect(failed.error).toContain(`${pointer} unless its instructions are already in context: office-xlsx.`)
+  })
+})
+
 describe('runSandboxedScript', () => {
   it('does not count loading the libraries against the script time', async () => {
     // A clock that moves one unit per reading, so the outcome depends on how much code runs, not on how fast

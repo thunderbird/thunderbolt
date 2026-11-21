@@ -415,3 +415,29 @@ describe('connectToAgent — remote-acp dispatch', () => {
     expect(sent.endsWith('newest question')).toBe(true)
   })
 })
+
+describe('connectToAgent: Office skills stay in the app', () => {
+  it.each([
+    ['session/new metadata', { skills: true }, null],
+    ['session/resume metadata', { skills: true, resume: true }, 'stored-session'],
+    ['the fallback disclosure', { skills: false }, null],
+  ])('leaves them out of %s', async (_, capabilities, acpSessionId) => {
+    await setupTestDatabase()
+    try {
+      const { calls, FakeConnection, openTransport } = buildFakeAcpDeps({ capabilities })
+      const adapter = await connectToAgent(
+        remoteAgent,
+        { httpClient, getProxyFetch },
+        { openTransport, ClientSideConnection: FakeConnection as never, isAgentActive },
+      )
+      await adapter.fetch(promptInit('hi'), baseAdapterContext({ acpSessionId }))
+
+      const sent = JSON.stringify(calls)
+      expect(sent).toContain(`${defaultSkillWeather.name}`)
+      expect(sent).not.toContain('office-')
+      expect(sent).not.toContain('run_office_script')
+    } finally {
+      await teardownTestDatabase()
+    }
+  })
+})

@@ -3,6 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { hashValues } from '@/lib/utils'
+import { officeSkillNames } from '@/office/constants'
+import { officeDocxSkill } from '@/office/skills/docx'
+import { officePptxSkill } from '@/office/skills/pptx'
+import { officeXlsxSkill } from '@/office/skills/xlsx'
 import type { Skill, SkillRow } from '@/types'
 import { instructions as askWidgetInstruction } from '@/widgets/ask/instructions'
 import { instructions as connectIntegrationWidgetInstruction } from '@/widgets/connect-integration/instructions'
@@ -11,7 +15,7 @@ import { instructions as mapWidgetInstruction } from '@/widgets/map/instructions
 import { instructions as weatherForecastWidgetInstruction } from '@/widgets/weather-forecast/instructions'
 
 /**
- * Hash of reconciled skill fields. Widget contracts hash only their locked
+ * Hash of reconciled skill fields. Contract skills hash only their locked
  * content so enabled or legacy pinned state cannot block contract updates.
  * Editable task defaults also include state and `deletedAt`, so those user
  * changes remain protected from reconciliation.
@@ -27,7 +31,7 @@ export const hashSkill = (
 ): string => {
   const contentFields = [skill.name, skill.label, skill.description, skill.instruction]
   return hashValues(
-    isWidgetSkillId(skill.id) ? contentFields : [...contentFields, skill.enabled, skill.pinnedOrder, skill.deletedAt],
+    isContractSkillId(skill.id) ? contentFields : [...contentFields, skill.enabled, skill.pinnedOrder, skill.deletedAt],
   )
 }
 
@@ -118,9 +122,9 @@ Do not add a Sources or References section; inline citations are sufficient.`
  *
  * New users get Search, Research, and Weather pinned (in that order) as their
  * starter chips; Daily Brief ships enabled but unpinned, and Important Emails
- * ships disabled. Additional model-facing widget contracts ship enabled and
- * unpinned. Task skills may be edited or soft-deleted; widget contracts only
- * expose enabled state.
+ * ships disabled. Additional model-facing widget contracts and the Office
+ * format skills ship enabled and unpinned. Task skills may be edited or
+ * soft-deleted; contract skills only expose enabled state.
  */
 export const defaultSkillDailyBrief: Skill = {
   id: '01996330-0000-7000-8000-000000000001',
@@ -246,6 +250,48 @@ export const defaultSkillMap: Skill = {
   userId: null,
 }
 
+export const defaultSkillOfficeDocx: Skill = {
+  id: '01996330-0000-7000-8000-000000000010',
+  name: officeSkillNames.docx,
+  label: 'Word documents',
+  description:
+    'Load before using run_office_script to create or edit a Word document (.docx), including an attached template.',
+  instruction: officeDocxSkill,
+  enabled: 1,
+  pinnedOrder: null,
+  deletedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
+export const defaultSkillOfficeXlsx: Skill = {
+  id: '01996330-0000-7000-8000-000000000011',
+  name: officeSkillNames.xlsx,
+  label: 'Excel workbooks',
+  description:
+    'Load before using run_office_script to create or edit an Excel workbook (.xlsx or .xlsm), including formulas, charts and conditional formatting.',
+  instruction: officeXlsxSkill,
+  enabled: 1,
+  pinnedOrder: null,
+  deletedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
+export const defaultSkillOfficePptx: Skill = {
+  id: '01996330-0000-7000-8000-000000000012',
+  name: officeSkillNames.pptx,
+  label: 'PowerPoint presentations',
+  description:
+    'Load before using run_office_script to create or edit a PowerPoint deck (.pptx), including slide layouts, animations and transitions.',
+  instruction: officePptxSkill,
+  enabled: 1,
+  pinnedOrder: null,
+  deletedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
 const widgetSkillIds = new Set([
   defaultSkillWeather.id,
   defaultSkillLinkPreview.id,
@@ -254,8 +300,19 @@ const widgetSkillIds = new Set([
   defaultSkillMap.id,
 ])
 
+const officeSkillIds = new Set([defaultSkillOfficeDocx.id, defaultSkillOfficeXlsx.id, defaultSkillOfficePptx.id])
+
 /** Whether a skill id belongs to a model-facing widget rendering contract. */
 export const isWidgetSkillId = (id: string): boolean => widgetSkillIds.has(id)
+
+/** Whether a skill id is an Office format skill, which only a request with `run_office_script` may offer. */
+export const isOfficeSkillId = (id: string): boolean => officeSkillIds.has(id)
+
+/**
+ * Whether a skill id is a shipped, read-only contract: a widget rendering contract or an Office format skill. Its
+ * content is locked and reconciled; the user may only toggle it.
+ */
+export const isContractSkillId = (id: string): boolean => isWidgetSkillId(id) || isOfficeSkillId(id)
 
 export const defaultSkills: ReadonlyArray<Skill> = [
   defaultSkillDailyBrief,
@@ -267,6 +324,9 @@ export const defaultSkills: ReadonlyArray<Skill> = [
   defaultSkillConnectIntegration,
   defaultSkillAsk,
   defaultSkillMap,
+  defaultSkillOfficeDocx,
+  defaultSkillOfficeXlsx,
+  defaultSkillOfficePptx,
 ] as const
 
 /**
@@ -280,4 +340,4 @@ export const defaultSkills: ReadonlyArray<Skill> = [
  * The paired snapshot test in `skills.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultSkillsVersion = 9
+export const defaultSkillsVersion = 10

@@ -9,6 +9,9 @@ import { instructions as connectIntegrationWidgetInstruction } from '@/widgets/c
 import { instructions as linkPreviewWidgetInstruction } from '@/widgets/link-preview/instructions'
 import { instructions as mapWidgetInstruction } from '@/widgets/map/instructions'
 import { instructions as weatherForecastWidgetInstruction } from '@/widgets/weather-forecast/instructions'
+import { officeDocxSkill } from '@/office/skills/docx'
+import { officePptxSkill } from '@/office/skills/pptx'
+import { officeXlsxSkill } from '@/office/skills/xlsx'
 import {
   defaultSkillDailyBrief,
   defaultSkillImportantEmails,
@@ -16,12 +19,17 @@ import {
   defaultSkillConnectIntegration,
   defaultSkillLinkPreview,
   defaultSkillMap,
+  defaultSkillOfficeDocx,
+  defaultSkillOfficePptx,
+  defaultSkillOfficeXlsx,
   defaultSkillResearch,
   defaultSkills,
   defaultSkillSearch,
   defaultSkillsVersion,
   defaultSkillWeather,
   hashSkill,
+  isContractSkillId,
+  isOfficeSkillId,
   isWidgetSkillId,
 } from './skills'
 
@@ -41,8 +49,8 @@ const computeSnapshotHash = () =>
   defaultSkills.map((skill, index) => `${index}:${skill.id}:${hashSkill(skill)}`).join('|')
 
 const expectedSnapshot = {
-  version: 9,
-  hash: '0:01996330-0000-7000-8000-000000000001:mfmi05|1:01996330-0000-7000-8000-000000000002:-669lkj|2:01996330-0000-7000-8000-000000000003:-30vmih|3:01996330-0000-7000-8000-000000000004:-ypyizk|4:01996330-0000-7000-8000-000000000005:-hc6mv3|5:01996330-0000-7000-8000-000000000006:-o0c0ul|6:01996330-0000-7000-8000-000000000007:atrnpq|7:01996330-0000-7000-8000-000000000008:-ue9tpd|8:01996330-0000-7000-8000-000000000009:o1nire',
+  version: 10,
+  hash: '0:01996330-0000-7000-8000-000000000001:mfmi05|1:01996330-0000-7000-8000-000000000002:-669lkj|2:01996330-0000-7000-8000-000000000003:-30vmih|3:01996330-0000-7000-8000-000000000004:-ypyizk|4:01996330-0000-7000-8000-000000000005:-hc6mv3|5:01996330-0000-7000-8000-000000000006:-o0c0ul|6:01996330-0000-7000-8000-000000000007:atrnpq|7:01996330-0000-7000-8000-000000000008:-ue9tpd|8:01996330-0000-7000-8000-000000000009:o1nire|9:01996330-0000-7000-8000-000000000010:-mxthy7|10:01996330-0000-7000-8000-000000000011:-ttruao|11:01996330-0000-7000-8000-000000000012:5i172t',
 }
 
 describe('defaultSkills version snapshot', () => {
@@ -127,8 +135,32 @@ describe('defaultSkills', () => {
     expect(isWidgetSkillId('user-skill-id')).toBe(false)
   })
 
-  it('excludes user-controlled state from widget hashes only', () => {
+  it('ships one Office skill per format as a read-only contract that is not a widget', () => {
+    const officeSkills = [
+      { skill: defaultSkillOfficeDocx, name: 'office-docx', instruction: officeDocxSkill },
+      { skill: defaultSkillOfficeXlsx, name: 'office-xlsx', instruction: officeXlsxSkill },
+      { skill: defaultSkillOfficePptx, name: 'office-pptx', instruction: officePptxSkill },
+    ]
+    for (const { skill, name, instruction } of officeSkills) {
+      expect(defaultSkills).toContain(skill)
+      expect(skill.name).toBe(name)
+      expect(skill.instruction).toBe(instruction)
+      expect(skill.description).toStartWith('Load before using run_office_script')
+      expect(skill.pinnedOrder).toBeNull()
+      expect(isOfficeSkillId(skill.id)).toBe(true)
+      expect(isContractSkillId(skill.id)).toBe(true)
+      // Minimal mode keeps widget contracts inline, which must never pull in an Office manual.
+      expect(isWidgetSkillId(skill.id)).toBe(false)
+    }
+    expect(isContractSkillId(defaultSkillWeather.id)).toBe(true)
+    expect(isOfficeSkillId(defaultSkillWeather.id)).toBe(false)
+    expect(isContractSkillId(defaultSkillDailyBrief.id)).toBe(false)
+    expect(new Set(defaultSkills.map(({ id }) => id)).size).toBe(defaultSkills.length)
+  })
+
+  it('excludes user-controlled state from contract hashes only', () => {
     expect(hashSkill({ ...defaultSkillWeather, enabled: 0, pinnedOrder: 4 })).toBe(hashSkill(defaultSkillWeather))
+    expect(hashSkill({ ...defaultSkillOfficeXlsx, enabled: 0 })).toBe(hashSkill(defaultSkillOfficeXlsx))
     expect(hashSkill({ ...defaultSkillDailyBrief, enabled: 0, pinnedOrder: 4 })).not.toBe(
       hashSkill(defaultSkillDailyBrief),
     )

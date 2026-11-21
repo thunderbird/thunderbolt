@@ -26,7 +26,7 @@ import { ContentViewProvider } from '@/content-view/context'
 import { ActiveContentView } from '@/content-view/active-content-view'
 import { getClock } from '@/testing-library'
 import { builtInAgent } from '@/defaults/agents'
-import { defaultSkillWeather } from '@/defaults/skills'
+import { defaultSkillOfficeXlsx, defaultSkillWeather } from '@/defaults/skills'
 import * as skillHooks from '@/skills/use-skills'
 import * as adapterCache from '@/acp/adapter-cache'
 import * as attachmentStorage from '@/lib/file-blob-storage'
@@ -889,6 +889,51 @@ describe('ChatPromptInput', () => {
         const event = pressBackspace(textarea)
         expect(event.defaultPrevented).toBe(active)
       })
+    })
+  })
+
+  describe('Office skills in the slash menu', () => {
+    const fakeUseLibrarySkills: typeof import('@/skills/use-skills').useLibrarySkills = () => ({
+      skills: [defaultSkillOfficeXlsx],
+      isLoading: false,
+      createSkill: async () => defaultSkillOfficeXlsx,
+      updateSkill: async () => undefined,
+      softDeleteSkill: async () => undefined,
+    })
+    const fakeUseEnabledSkills: typeof import('@/skills/use-skills').useEnabledSkills = () => ({
+      isEnabled: () => true,
+      setEnabled: async () => undefined,
+    })
+
+    it.each([
+      ['the built-in agent with a model that uses tools', {}, true],
+      ['a model without tools', { selectedModel: createMockModel({ toolUsage: 0 }) }, false],
+      ['an external agent', { selectedAgent: remoteAcpAgent }, false],
+    ] as const)('offers them for %s: %p', (_, session, offered) => {
+      const { mockUseChat } = setupStore()
+      useChatStore.getState().updateSession('thread-1', session)
+      const ref = createRef<ChatPromptInputRef>()
+      render(
+        <ChatPromptInput
+          ref={ref}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          useLibrarySkills={fakeUseLibrarySkills}
+          useEnabledSkills={fakeUseEnabledSkills}
+        />,
+        { wrapper: TestWrapper },
+      )
+      act(() => {
+        ref.current?.setInput('/')
+      })
+      const textarea = screen.getByRole('textbox')
+      if (!(textarea instanceof HTMLTextAreaElement)) {
+        throw new Error('Expected the composer textarea')
+      }
+      textarea.setSelectionRange(1, 1)
+      fireEvent.select(textarea)
+
+      expect(screen.queryByText('Excel workbooks') !== null).toBe(offered)
     })
   })
 

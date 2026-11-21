@@ -14,7 +14,15 @@ import { createClient } from '@/lib/http'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { getClock } from '@/testing-library'
 import { assembleBuiltInModelInput, createPrompt } from '@/ai/prompt'
-import { defaultSkillResearch, defaultSkillWeather } from '@/defaults/skills'
+import {
+  defaultSkillOfficeDocx,
+  defaultSkillOfficePptx,
+  defaultSkillOfficeXlsx,
+  defaultSkillResearch,
+  defaultSkillWeather,
+} from '@/defaults/skills'
+import { skillsTable } from '@/db/tables'
+import { eq } from 'drizzle-orm'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { fetch as baseFetch } from '@/lib/fetch'
 import type { MCPClient, NamedMCPClient } from '@/lib/mcp-provider'
@@ -1106,6 +1114,83 @@ describe('withAppVersionHeader', () => {
 
     expect(events).toHaveLength(0)
     window.removeEventListener(appVersionUnsupported, listener)
+  })
+})
+
+describe('prepareAiRequestConfig — Office skills', () => {
+  const modelId = 'office-skills-model'
+  const httpClient = createClient({ prefixUrl: 'https://backend.test' })
+  const office = [defaultSkillOfficeDocx, defaultSkillOfficeXlsx, defaultSkillOfficePptx]
+  const officeNames = office.map(({ name }) => name)
+  const headings = office.map(({ instruction }) => instruction.split('\n')[0])
+  const loadSentence = 'Before writing or editing a script, load the listed Office skill'
+
+  /** One send's Office surface: the prompt, the tool description, and the Office skills `/slug` resolves. */
+  const prepare = async () => {
+    const config = await prepareAiRequestConfig({ modelId, httpClient })
+    return {
+      config,
+      prompt: config.stableSystemPrompt,
+      description: config.toolset.run_office_script?.description ?? '',
+      slashOffice: config.skills.map(({ name }) => name).filter((name) => officeNames.includes(name)),
+    }
+  }
+
+  // The test database seeds every default skill.
+  beforeEach(async () => {
+    await setupTestDatabase()
+    await insertModel(getDb(), { id: modelId, provider: 'openai', model: 'gpt-test', name: 'Test', toolUsage: 1 })
+  })
+
+  afterEach(async () => {
+    useConfigStore.setState({ config: {} })
+    await teardownTestDatabase()
+  })
+
+  it('lists the enabled ones in the prompt and the tool description, with their bodies left to the skill tool', async () => {
+    await getDb().update(skillsTable).set({ enabled: 0 }).where(eq(skillsTable.id, defaultSkillOfficePptx.id))
+
+    const { config, prompt, description, slashOffice } = await prepare()
+
+    expect(prompt).toContain('- office-docx:')
+    expect(prompt).toContain('- office-xlsx:')
+    expect(prompt).not.toContain('office-pptx')
+    for (const heading of headings) {
+      expect(prompt).not.toContain(heading)
+    }
+    expect(description).toContain(
+      `${loadSentence} for each format you will use, unless its instructions are already in context: office-docx, office-xlsx.`,
+    )
+    expect(slashOffice).toEqual(['office-docx', 'office-xlsx'])
+    expect(await config.toolset.skill?.execute?.({ name: 'office-xlsx' }, { toolCallId: 'c', messages: [] })).toBe(
+      defaultSkillOfficeXlsx.instruction,
+    )
+  })
+
+  it('offers none in minimal mode, where there is no skill tool, but keeps the Office tool', async () => {
+    useConfigStore.setState({ config: { minimalMode: true } })
+
+    const { config, prompt, description, slashOffice } = await prepare()
+
+    expect(config.toolset.skill).toBeUndefined()
+    expect(description).not.toBe('')
+    expect(description).not.toContain(loadSentence)
+    expect(slashOffice).toEqual([])
+    for (const text of [...officeNames, ...headings]) {
+      expect(prompt).not.toContain(text)
+    }
+  })
+
+  it('offers none to a model without tools, which gets no Office tool', async () => {
+    await updateModel(getDb(), modelId, { toolUsage: 0 })
+
+    const { config, prompt, slashOffice } = await prepare()
+
+    expect(config.toolset).toEqual({})
+    expect(slashOffice).toEqual([])
+    for (const text of [...officeNames, ...headings]) {
+      expect(prompt).not.toContain(text)
+    }
   })
 })
 

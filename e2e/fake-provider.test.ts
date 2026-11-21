@@ -21,6 +21,10 @@ import {
   officeRetryScript,
   officeScript,
   officeScriptPrompt,
+  officeSkillHeading,
+  officeSkillLoadPrompt,
+  officeSkillName,
+  officeSkillWorkbookPrompt,
   officeWorkbookPrompt,
   officeWorkbookScript,
 } from './office-script-fixture'
@@ -220,6 +224,43 @@ test('plays a model that builds a workbook with run_office_script', async () => 
     expect(call.content).toMatchObject([
       { type: 'tool_use', name: 'run_office_script', input: { script: officeWorkbookScript } },
     ])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('plays a model that loads the Excel skill and builds the workbook only once its body arrives', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: `http://127.0.0.1:${port}`, maxRetries: 0 })
+    const send = (messages: Anthropic.MessageParam[]) =>
+      client.messages.stream({ model: 'test-model', max_tokens: 100, messages }).finalMessage()
+    /** The turn so far once the skill call returns `body`. */
+    const afterSkill = async (prompt: string, body: string): Promise<Anthropic.MessageParam[]> => {
+      const ask: Anthropic.MessageParam = { role: 'user', content: prompt }
+      const call = await send([ask])
+      expect(call.content).toMatchObject([{ type: 'tool_use', name: 'skill', input: { name: officeSkillName } }])
+      return [
+        ask,
+        { role: 'assistant', content: call.content },
+        { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_test', content: body }] },
+      ]
+    }
+    const body = `${officeSkillHeading}\n\nThe rest of the skill.`
+
+    expect((await send(await afterSkill(officeSkillWorkbookPrompt, body))).content).toMatchObject([
+      { type: 'tool_use', name: 'run_office_script', input: { script: officeWorkbookScript } },
+    ])
+    for (const [prompt, result] of [
+      [officeSkillLoadPrompt, body],
+      [officeSkillWorkbookPrompt, 'Skill "office-xlsx" was not found or is disabled.'],
+    ]) {
+      expect((await send(await afterSkill(prompt, result))).content).toMatchObject([
+        { type: 'text', text: fakeProviderReply },
+      ])
+    }
   } finally {
     server.close()
     server.closeAllConnections()

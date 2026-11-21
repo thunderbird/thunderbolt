@@ -35,7 +35,7 @@ import {
 } from '@/ai/step-logic'
 import { getAllSkills, getIntegrationStatus, getModel, getModelProfile, getSettings } from '@/dal'
 import { getMessageCache } from '@/dal/chat-messages'
-import { isWidgetSkillId } from '@/defaults/skills'
+import { isOfficeSkillId, isWidgetSkillId } from '@/defaults/skills'
 import { getActiveLocale } from '@/i18n/active-locale'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { createSkillTool, selectEnabledSkillDefinitions } from '@/skills/skill-tool'
@@ -645,11 +645,18 @@ export const prepareAiRequestConfig = async ({
   const profile = await getModelProfile(db, modelId)
   const storedSkills = await getAllSkills(db)
   telemetry?.endPhase('request_config')
-  const skills = selectEnabledSkillDefinitions(storedSkills)
   const supportsTools = model.toolUsage !== 0
   // Minimal mode offers no `skill` tool, so the widget contracts it keeps are
   // inlined into the prompt (as for non-tool models) instead of loaded on demand.
   const loadsSkillsByTool = supportsTools && !selectMinimalMode(useConfigStore.getState().config)
+  // The Office skills teach `run_office_script`, which only tool-capable models get, and arrive through the `skill`
+  // tool. Without both, the prompt, the tool and a `/office-…` token must not offer them. Chosen by id, before
+  // `selectEnabledSkillDefinitions` drops it.
+  const requestSkills = loadsSkillsByTool ? storedSkills : storedSkills.filter(({ id }) => !isOfficeSkillId(id))
+  const skills = selectEnabledSkillDefinitions(requestSkills)
+  const officeSkills = selectEnabledSkillDefinitions(requestSkills.filter(({ id }) => isOfficeSkillId(id))).map(
+    ({ name }) => name,
+  )
   // Loaded before the toolset so the cross-chat search tool can be registered
   // conditionally alongside the other app tools.
   const projectContext = await loadProjectContextForThread(db, chatThreadId)
@@ -661,7 +668,7 @@ export const prepareAiRequestConfig = async ({
         sourceCollector,
         { settings, integrationStatus, ...(await loadConnectedSearchApis(db)) },
         webToolBudget?.priorSources,
-        { chatThreadId, readWorkspaceFile },
+        { chatThreadId, readWorkspaceFile, skills: officeSkills },
       )
     : []
   const appToolset = addSkillTool(
@@ -788,7 +795,7 @@ export const prepareAiRequestConfig = async ({
     integrationStatus: integrationStatuses.length > 0 ? integrationStatuses.join(', ') : 'READY',
     availableToolNames: Object.keys(merged.toolset),
     mcpServersSummary: merged.summary,
-    skills: selectPromptSkillDefinitions(storedSkills, supportsTools),
+    skills: selectPromptSkillDefinitions(requestSkills, supportsTools),
     supportsTools: loadsSkillsByTool,
     // The resolved locale rather than a `language` settings read: it is synchronous, so
     // it cannot lag behind the watched-query hydration, and it already folds in browser

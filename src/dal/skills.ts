@@ -6,7 +6,7 @@ import { and, asc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { skillsTable } from '../db/tables'
-import { isWidgetSkillId } from '../defaults/skills'
+import { isContractSkillId } from '../defaults/skills'
 import type { DrizzleQueryWithPromise, Skill } from '../types'
 import { nowIso } from '../lib/utils'
 
@@ -193,13 +193,13 @@ export type UpdateSkillInput = Partial<
 /**
  * Patch an existing skill. Throws {@link SkillNameInvalidError} if `name` fails
  * the AgentSkills spec, {@link SkillNameTakenError} if it collides with another
- * skill, or `Error` if a widget rendering contract receives any patch other
- * than `enabled`.
+ * skill, or `Error` if a contract skill (a widget rendering contract or an
+ * Office format skill) receives any patch other than `enabled`.
  */
 export const updateSkill = async (db: AnyDrizzleDatabase, id: string, patch: UpdateSkillInput): Promise<void> => {
-  const changesLockedWidgetField = Object.keys(patch).some((field) => field !== 'enabled')
-  if (isWidgetSkillId(id) && changesLockedWidgetField) {
-    throw new Error(`updateSkill: widget skill "${id}" only supports enabled updates`)
+  const changesLockedField = Object.keys(patch).some((field) => field !== 'enabled')
+  if (isContractSkillId(id) && changesLockedField) {
+    throw new Error(`updateSkill: built-in skill "${id}" only supports enabled updates`)
   }
   if (patch.name !== undefined) {
     const slugError = validateSkillName(patch.name)
@@ -214,12 +214,12 @@ export const updateSkill = async (db: AnyDrizzleDatabase, id: string, patch: Upd
 /**
  * Soft-delete a skill: set `deleted_at` and wipe user content (`name`, `label`,
  * `description`, `instruction`). The tombstone (`id`, `user_id`, `deleted_at`)
- * remains so PowerSync propagates the delete to other devices. Widget
- * rendering contracts cannot be deleted.
+ * remains so PowerSync propagates the delete to other devices. Contract
+ * skills cannot be deleted.
  */
 export const softDeleteSkill = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
-  if (isWidgetSkillId(id)) {
-    throw new Error(`softDeleteSkill: refusing to delete widget skill "${id}"`)
+  if (isContractSkillId(id)) {
+    throw new Error(`softDeleteSkill: refusing to delete built-in skill "${id}"`)
   }
   await db
     .update(skillsTable)
@@ -236,12 +236,12 @@ export const softDeleteSkill = async (db: AnyDrizzleDatabase, id: string): Promi
 
 /**
  * Pin or unpin a skill. Pass `null` to unpin. Pass a number to set the pin position.
- * Throws `Error` when pinning a widget contract or {@link PinLimitExceededError}
- * if pinning would exceed {@link maxPinnedSkills}. Widget contracts may be unpinned.
+ * Throws `Error` when pinning a contract skill or {@link PinLimitExceededError}
+ * if pinning would exceed {@link maxPinnedSkills}. Contract skills may be unpinned.
  */
 export const setPinned = async (db: AnyDrizzleDatabase, id: string, order: number | null): Promise<void> => {
-  if (order !== null && isWidgetSkillId(id)) {
-    throw new Error(`setPinned: refusing to pin widget skill "${id}"`)
+  if (order !== null && isContractSkillId(id)) {
+    throw new Error(`setPinned: refusing to pin built-in skill "${id}"`)
   }
   if (order !== null) {
     const pinned = await countPinned(db, id)
@@ -262,7 +262,7 @@ export const setEnabled = async (db: AnyDrizzleDatabase, id: string, next: boole
 
 /**
  * Rewrite the `pinned_order` of the supplied ids in a single transaction (index = position).
- * Ids not in the list keep their existing order. Widget ids must keep their
+ * Ids not in the list keep their existing order. Contract ids must keep their
  * positions relative to the other pinned skills. Bounded by the 10-pin cap.
  */
 export const reorderPins = async (db: AnyDrizzleDatabase, ids: string[]): Promise<void> => {
@@ -280,22 +280,22 @@ export const reorderPins = async (db: AnyDrizzleDatabase, ids: string[]): Promis
       .orderBy(asc(skillsTable.pinnedOrder))
     const storedPinnedIds = new Set(storedPinned.map(({ id }) => id))
     const submittedIndexById = new Map(ids.map((id, index) => [id, index]))
-    const pinsWidgetSkill = ids.some((id) => isWidgetSkillId(id) && !storedPinnedIds.has(id))
-    const movesWidgetSkill = storedPinned.some((widget, widgetStoredIndex) => {
-      if (!isWidgetSkillId(widget.id)) {
+    const pinsContractSkill = ids.some((id) => isContractSkillId(id) && !storedPinnedIds.has(id))
+    const movesContractSkill = storedPinned.some((contract, contractStoredIndex) => {
+      if (!isContractSkillId(contract.id)) {
         return false
       }
-      const widgetFinalOrder = submittedIndexById.get(widget.id) ?? widget.pinnedOrder!
+      const contractFinalOrder = submittedIndexById.get(contract.id) ?? contract.pinnedOrder!
       return storedPinned.some((skill, skillStoredIndex) => {
-        if (skill.id === widget.id) {
+        if (skill.id === contract.id) {
           return false
         }
         const skillFinalOrder = submittedIndexById.get(skill.id) ?? skill.pinnedOrder!
-        return Math.sign(skillStoredIndex - widgetStoredIndex) !== Math.sign(skillFinalOrder - widgetFinalOrder)
+        return Math.sign(skillStoredIndex - contractStoredIndex) !== Math.sign(skillFinalOrder - contractFinalOrder)
       })
     })
-    if (pinsWidgetSkill || movesWidgetSkill) {
-      throw new Error('reorderPins: refusing to move widget skills')
+    if (pinsContractSkill || movesContractSkill) {
+      throw new Error('reorderPins: refusing to move built-in skills')
     }
     // Two-phase update to avoid hitting the (id, pinned_order) collision space
     // mid-rewrite: stage everything to negative ordinals first, then settle.

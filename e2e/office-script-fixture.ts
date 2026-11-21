@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { officeSkillNames } from '../src/office/constants'
+import { officeXlsxSkill } from '../src/office/skills/xlsx'
+
 /** Sent to the composer; the fake provider answers it by calling `run_office_script` with the script below. */
 export const officeScriptPrompt = 'Write the e2e report as a Word document.'
 
@@ -82,3 +85,15 @@ f.SetSheetRow('Sheet1', 'A2', ['Food', 450])
 f.SetCellFormula('Sheet1', 'B3', 'SUM(B1:B2)')
 saveFile(${JSON.stringify(officeWorkbookFilename)}, f.WriteToBuffer().buffer)
 `
+
+/** The skill the fake provider loads before it builds a workbook. */
+export const officeSkillName = officeSkillNames.xlsx
+
+/** The first line of that skill's body: the fake provider builds the workbook only once the skill's result holds it. */
+export const officeSkillHeading = officeXlsxSkill.split('\n')[0]
+
+/** Sent to the composer; the fake provider loads the Excel skill and then replies in text, running nothing. */
+export const officeSkillLoadPrompt = 'Read the Excel skill before we start.'
+
+/** Sent to the composer; the fake provider loads the Excel skill, then builds {@link officeWorkbookScript}'s file. */
+export const officeSkillWorkbookPrompt = 'Load the Excel skill, then build the e2e budget.'

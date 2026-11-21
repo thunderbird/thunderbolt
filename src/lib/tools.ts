@@ -56,11 +56,14 @@ const loadToolAvailabilityContext = async (): Promise<ToolAvailabilityContext> =
   return { settings, integrationStatus, ...(await loadConnectedSearchApis(db)) }
 }
 
-/** Where the Office tool finds a script's inputs. Without a thread it reads nothing. */
-export type OfficeInputSources = {
+/** What the Office tool gets from the send: where it finds a script's inputs (without a thread, nothing) and the
+ *  Office skills this send offers. */
+export type OfficeToolContext = {
   chatThreadId?: string
   /** The built-in agent's workspace; the legacy pipeline has none. */
   readWorkspaceFile?: ReadWorkspaceFile
+  /** Names of the enabled Office skills the model can load in this send, which the tool's description lists. */
+  skills?: string[]
 }
 
 export const getAvailableTools = async (
@@ -68,7 +71,7 @@ export const getAvailableTools = async (
   sourceCollector?: SourceMetadata[],
   context?: ToolAvailabilityContext,
   priorSources?: readonly SourceMetadata[],
-  { chatThreadId, readWorkspaceFile }: OfficeInputSources = {},
+  { chatThreadId, readWorkspaceFile, skills }: OfficeToolContext = {},
 ): Promise<ToolConfig[]> => {
   const proEnabled = await hasProAccess()
   const {
@@ -82,6 +85,7 @@ export const getAvailableTools = async (
     createOfficeScriptTool({
       listThreadFiles: chatThreadId ? () => loadThreadFiles(chatThreadId) : undefined,
       readWorkspaceFile,
+      skills,
     }),
     ...(experimentalFeatureTasks ? Object.values(tasksTools) : []),
   ]

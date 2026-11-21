@@ -6,7 +6,7 @@ import { useLingui } from '@lingui/react/macro'
 import { useCallback, useReducer } from 'react'
 
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
-import { isWidgetSkillId } from '@/defaults/skills'
+import { isContractSkillId } from '@/defaults/skills'
 import { useAsyncAttempt } from '@/hooks/use-async-attempt'
 import { useConsumeNavState } from '@/hooks/use-consume-nav-state'
 import { useEntityActionIntent } from '@/search/actions/use-entity-action-intent'
@@ -51,7 +51,7 @@ export const SkillsView = () => {
 
   // Route-state deep links retained for settings integrations.
   // `editSkill` selects an existing skill; `startEditSkill` lands directly in
-  // its edit form, except widget contracts remain on read-only detail.
+  // its edit form, except contract skills remain on read-only detail.
   // Composer create/edit actions use route-preserving CreateItemContext.
   useConsumeNavState('editSkill', (id) => {
     submission.cancel()
@@ -256,7 +256,7 @@ export const SkillsView = () => {
           name={skillDisplayName(activeSkill)}
           description={activeSkill.description}
           instruction={activeSkill.instruction}
-          readOnly={isWidgetSkillId(activeSkill.id)}
+          readOnly={isContractSkillId(activeSkill.id)}
           onEdit={() => onEdit(activeSkill.id)}
           onDelete={() => onDelete(activeSkill.id)}
           onClose={() => dispatch({ type: 'BACK_TO_LIST' })}

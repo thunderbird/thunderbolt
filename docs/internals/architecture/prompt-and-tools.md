@@ -139,6 +139,20 @@ own context.
 - A failed run can return a one-use `scriptId` for this send. An `edit` retries that source with ordered,
   literal replacements that must each match once. An invalid edit leaves the ID usable. The retry resolves
   the original input references again unless the caller supplies a new list (including an empty list).
+- The description is sent with every request, so it holds only the contract every call needs: the globals
+  and how to get bytes, `inputs`, same-name edits of the original bytes (never a rebuild from extracted
+  text), one save per file, the output checks, the password and
+  macro caveats and the limits. How to call each library lives in the Office format skills
+  ([skills.md](skills.md#the-office-format-skills)). When the send offers any, the description's second
+  sentence tells the model to load the skill for each format it will use, and names only those offered;
+  the sentence is the same on every send with the same skills, so the prompt cache holds.
+- The first script failure of a send gets one sentence added to its error. When the send offers the skill
+  for the failing format, it says to load that skill; the format is read from the error, or from the script
+  when the error names none. Otherwise, when the failing call is one of the Excelize methods models most
+  often get wrong (`SetConditionalFormat`, `AddChart`, `SetCellValue`, `SetCellFormula`, `NewStyle`,
+  `NewConditionalStyle`, `SetColWidth`), it shows the call that works. Later failures in the send get
+  nothing added, and neither does an error about a missing input, which already lists the files there are,
+  or one that tells the model to stop, such as a workbook too large to open.
 - A script can also read files, which is how it edits one. The call lists them in `inputs`, and the script
   reads each with `readFile(name)`. The host loads them before the run (`src/office/script-inputs.ts`). It
   looks first in the thread's stored files: the user's attachments and the files this tool made earlier in

@@ -5,6 +5,9 @@
 /** Name of the agent tool that builds Office files. Shared by the tool and the transcript, so they can't drift. */
 export const officeScriptToolName = 'run_office_script'
 
+/** Names of the seeded skills that teach the tool, one per format. The tool's error hints point to them by name. */
+export const officeSkillNames = { docx: 'office-docx', xlsx: 'office-xlsx', pptx: 'office-pptx' } as const
+
 /**
  * Limits on one run. The VM interrupt enforces the time; the Worker host backs it up with a watchdog.
  * Kept apart from the sandbox so the host can read them without loading quickjs-wasi.

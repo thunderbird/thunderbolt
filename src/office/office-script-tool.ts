@@ -9,7 +9,7 @@ import { parseToolOutput } from '@/lib/tool-output'
 import type { ToolConfig } from '@/types'
 import { type DynamicToolUIPart, getToolName, isToolOrDynamicToolUIPart, type ToolUIPart, type UIMessage } from 'ai'
 import { z } from 'zod'
-import { officeScriptToolName, officeSkillNames, sandboxLimits } from './constants'
+import { officeScriptToolName, officeSkillNames, sandboxLimits, terminalWorkbookErrorPrefix } from './constants'
 import { runInSandboxWorker } from './run-in-worker'
 import type { FileFormulaError, SandboxJob, SandboxResult, SavedFile } from './sandbox'
 import { type ReadWorkspaceFile, resolveInputs, type ThreadFile } from './script-inputs'
@@ -299,8 +299,8 @@ const excelizeHints = new Map([
  * none. Undefined when there is nothing specific to say.
  */
 const failureHint = (error: string, script: string, skills: string[]) => {
-  // workbook-bridge.ts says this for a workbook too large to open, which no retry or skill can fix.
-  if (error.includes('Stop and tell the user')) {
+  // A workbook too large to open, which no retry or skill can fix: see workbook-bridge.ts.
+  if (error.split('\n', 1)[0].includes(terminalWorkbookErrorPrefix)) {
     return undefined
   }
   const named = (text: string) => skillFormats.filter(({ pattern }) => pattern.test(text)).map(({ skill }) => skill)

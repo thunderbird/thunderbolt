@@ -9,7 +9,7 @@ import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 import readXlsxFile from 'read-excel-file/node'
 import { xlsmMime, xlsxMime } from '@/files/transformers'
 import type { StoredFile } from '@/lib/file-blob-storage'
-import { type SandboxLimits, sandboxLimits } from './constants'
+import { officeSkillNames, type SandboxLimits, sandboxLimits } from './constants'
 import { createOfficeScriptTool, type OfficeScriptOutput } from './office-script-tool'
 import { runSandboxedScript, type SandboxJob, type SandboxResult, type SandboxRuntime } from './sandbox'
 import { loadTestSandboxRuntime } from './sandbox-test-runtime'
@@ -100,12 +100,13 @@ f.SetCellStyle('Sheet1', 'B2', 'C4', money)
 saveFile('budget.xlsx', f.WriteToBuffer().buffer)
 `
 
-/** The tool over one runner, its files kept in the attachment store, with these limits. */
-const toolWith = (runner: Runner, limits: Partial<SandboxLimits> = {}) =>
+/** The tool over one runner, its files kept in the attachment store, with these limits, offering these skills. */
+const toolWith = (runner: Runner, limits: Partial<SandboxLimits> = {}, skills: string[] = []) =>
   createOfficeScriptTool({
     runScript: (job) => runner(job, { ...sandboxLimits, ...limits }),
     storeFiles: async (files) => files.forEach((file) => attachmentStore.set(file.id, file)),
     listThreadFiles: async () => [...attachmentStore.values()],
+    skills,
   })
 
 /** Run a script that must succeed, and the first file it saved. */
@@ -126,11 +127,20 @@ describe.each([
 
   const runOk = (script: string, inputs?: string[]) => runOkWith(runner, script, inputs)
 
-  const errorOf = async (script: string, inputs?: string[], limits?: Partial<SandboxLimits>) => {
-    const output = await run(script, inputs, limits)
+  /** The error of one call to `tool`, which must fail. */
+  const failureOn = async (tool: ReturnType<typeof toolWith>, script: string, inputs?: string[]) => {
+    const output = (await tool.execute({ script, inputs })) as OfficeScriptOutput
     expect(output.ok).toBe(false)
     return output.ok ? '' : output.error
   }
+
+  const errorOf = (script: string, inputs?: string[], limits?: Partial<SandboxLimits>) =>
+    failureOn(toolWith(runner, limits), script, inputs)
+
+  // What `failureHint` in office-script-tool.ts adds to the first failure of a send that offers the Excel skill.
+  const loadHint = `load the Office skill for this format unless its instructions are already in context: ${officeSkillNames.xlsx}.`
+  const recoverable = `const f = excelize.NewFile()
+f.SetConditionalFormat("Sheet1", "A1:A2", [{ Type: "expression", Criteria: "$A1>1", Format: 0 }])`
 
   it('creates a workbook whose formula cells read back as numbers, text and booleans', async () => {
     const { output, file } = await runOk(budgetScript)
@@ -782,12 +792,16 @@ saveFile('budget.xlsx', f.WriteToBuffer().buffer)
     expect(data[3][1]).toBe(2450)
   })
 
+  // A size refusal gets no hint to load the Excel skill, which cannot help, so a later failure still gets it.
   it('refuses to open a workbook over 2 MiB', async () => {
     storeAttachment('big.xlsx', new Uint8Array(2 * mib + 1))
-    const error = await errorOf(`excelize.OpenReader(readFile('big.xlsx'))`, ['big.xlsx'])
+    const tool = toolWith(runner, {}, [officeSkillNames.xlsx])
+    const error = await failureOn(tool, `excelize.OpenReader(readFile('big.xlsx'))`, ['big.xlsx'])
     expect(error).toContain(
       'This workbook is larger than the 2 MiB excelize can open here. Stop and tell the user it is too large to edit here',
     )
+    expect(error).not.toContain(loadHint)
+    expect(await failureOn(tool, recoverable)).toContain(loadHint)
   })
 
   it('refuses a workbook that unzips past the limit', async () => {
@@ -796,10 +810,13 @@ saveFile('budget.xlsx', f.WriteToBuffer().buffer)
       'xl/padding.xml': strToU8(' '.repeat(2 * mib)),
     })
     storeAttachment('bomb.xlsx', bomb)
-    const error = await errorOf(`excelize.OpenReader(readFile('bomb.xlsx'))`, ['bomb.xlsx'], {
-      workbookUnzipBytes: mib,
-    })
-    expect(error).toContain('This workbook unzips to more than 1 MiB, the most excelize can open here.')
+    const tool = toolWith(runner, { workbookUnzipBytes: mib }, [officeSkillNames.xlsx])
+    const error = await failureOn(tool, `excelize.OpenReader(readFile('bomb.xlsx'))`, ['bomb.xlsx'])
+    expect(error).toContain(
+      'This workbook unzips to more than 1 MiB, the most excelize can open here. Stop and tell the user it is too large to edit here',
+    )
+    expect(error).not.toContain(loadHint)
+    expect(await failureOn(tool, recoverable)).toContain(loadHint)
   })
 
   it('stops a run once Excelize passes its memory limit', async () => {

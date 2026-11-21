@@ -9,6 +9,12 @@ export const officeScriptToolName = 'run_office_script'
 export const officeSkillNames = { docx: 'office-docx', xlsx: 'office-xlsx', pptx: 'office-pptx' } as const
 
 /**
+ * Starts a workbook error no retry or skill can fix. The error reaches the tool as text, through QuickJS and the
+ * Worker, so the tool recognizes it by this prefix and adds no hint to load a skill.
+ */
+export const terminalWorkbookErrorPrefix = 'Workbook too large: '
+
+/**
  * Limits on one run. The VM interrupt enforces the time; the Worker host backs it up with a watchdog.
  * Kept apart from the sandbox so the host can read them without loading quickjs-wasi.
  */

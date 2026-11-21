@@ -1525,12 +1525,6 @@ f.SetConditionalFormat("Sheet1", "A1:A2", [{ Type: "expression", Criteria: "$A1>
     expect((await errorOf(tool.execute({ script: 'const f = excelize.NewFile()' }))).error).toBe(unknown)
   })
 
-  it('adds nothing to an error that tells the model to stop', async () => {
-    const tooLarge = `Error: This workbook is larger than the ${sandboxLimits.maxWorkbookBytes / 1024 / 1024} MiB excelize can open here. Stop and tell the user it is too large to edit here; do not rebuild or unzip it.`
-    const tool = createOfficeScriptTool({ runScript: failing(tooLarge), skills: ['office-xlsx'] })
-    expect((await errorOf(tool.execute({ script: 'excelize.OpenReader(new Uint8Array(1))' }))).error).toBe(tooLarge)
-  })
-
   it('keeps the missing-file guidance as it was and still hints the next script failure', async () => {
     const tool = createOfficeScriptTool({
       runScript: failing('Error: SetConditionalFormat: parameter is invalid'),

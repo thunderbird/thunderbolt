@@ -5,7 +5,7 @@
 import { unzipSync, zipSync } from 'fflate'
 import type { QuickJS } from 'quickjs-wasi'
 import { z } from 'zod'
-import type { SandboxLimits } from './constants'
+import { type SandboxLimits, terminalWorkbookErrorPrefix } from './constants'
 import { cacheFormulaResults, type FormulaError, withFuturePrefixes, type WorkbookParts } from './formula-cache'
 import type { Excelize, ExcelizeFile } from './excelize-engine'
 import type { SpreadsheetEngines } from './spreadsheet-engines'
@@ -194,7 +194,7 @@ export const installWorkbooks = (
     }
     if (bytes.byteLength > limits.maxWorkbookBytes) {
       throw new Error(
-        `This workbook is larger than the ${mib(limits.maxWorkbookBytes)} excelize can open here. Stop and tell the user it is too large to edit here; do not rebuild or unzip it.`,
+        `${terminalWorkbookErrorPrefix}This workbook is larger than the ${mib(limits.maxWorkbookBytes)} excelize can open here. Stop and tell the user it is too large to edit here; do not rebuild or unzip it.`,
       )
     }
     const file = excelize.OpenReader(bytes, {
@@ -205,7 +205,7 @@ export const installWorkbooks = (
     })
     if (/unzip size exceeds/.test(file.error ?? '')) {
       throw new Error(
-        `This workbook unzips to more than ${mib(limits.workbookUnzipBytes)}, the most excelize can open here. Stop and tell the user it is too large to edit here; do not rebuild or unzip it.`,
+        `${terminalWorkbookErrorPrefix}This workbook unzips to more than ${mib(limits.workbookUnzipBytes)}, the most excelize can open here. Stop and tell the user it is too large to edit here; do not rebuild or unzip it.`,
       )
     }
     return handleOf(settle('OpenReader', file), bytes)

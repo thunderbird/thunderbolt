@@ -54,7 +54,8 @@ const checker = (maxXmlBytes: number, maxUnzipBytes: number) => `(() => {
     }
   }
   // Each field's code on its own: a simple field's, or the runs between a field's begin and separate marks, which
-  // may split it anywhere. Runs outside any field are joined into one more code.
+  // may split it anywhere. A field nested in a code shows there as {}. Runs outside any field are joined into one
+  // more code.
   const fieldCodes = (doc) => {
     const codes = Array.from(doc.getElementsByTagNameNS('*', 'fldSimple'), (field) => attribute(field, 'instr') ?? '')
     const open = []
@@ -63,7 +64,10 @@ const checker = (maxXmlBytes: number, maxUnzipBytes: number) => `(() => {
       const field = open[open.length - 1]
       if (node.localName === 'fldChar') {
         const type = attribute(node, 'fldCharType')
-        if (type === 'begin') open.push({ code: '', done: false })
+        if (type === 'begin') {
+          if (field !== undefined && !field.done) field.code += '{}'
+          open.push({ code: '', done: false })
+        }
         if (type === 'separate' && field !== undefined) field.done = true
         if (type === 'end' && field !== undefined) codes.push(open.pop().code)
       } else if (node.localName === 'instrText') {
@@ -84,9 +88,10 @@ const checker = (maxXmlBytes: number, maxUnzipBytes: number) => `(() => {
     doc.getElementsByTagNameNS('*', 'ddeLink').length > 0 ||
     fieldCodes(doc).some((code) => /^\\s*DDE(AUTO)?\\b/i.test(code))
   // A Word field that fills itself from another file or a web address when it updates, with no relationship to check.
+  // So is one whose name a nested field computes, as in { {QUOTE 68 68 69} ... }, which spells DDE when Word runs it.
   const inclusions = (doc) =>
     fieldCodes(doc)
-      .filter((code) => /^\\s*(INCLUDEPICTURE|INCLUDETEXT|INCLUDE|IMPORT|LINK)\\b/i.test(code))
+      .filter((code) => /^\\s*(\\{|(INCLUDEPICTURE|INCLUDETEXT|INCLUDE|IMPORT|LINK)\\b)/i.test(code))
       .map((code) => code.replace(/\\s+/g, ' ').trim())
   // Code that Office runs: a VBA project or an Excel 4.0 macro sheet, known by the content type the package gives it.
   const isMacroType = (type) => /^application\\/vnd\\.ms-(office\\.vbaproject|excel\\.(intl)?macrosheet\\+xml)$/i.test(type ?? '')
@@ -309,7 +314,10 @@ const addedContent = new Map([
   ['template', 'a template linked from outside the file, which Word downloads when the file opens'],
   ['link', 'a link to content outside the file, which Office can fetch when the file opens'],
   ['ole', 'an OLE object, which can run a program when it is opened'],
-  ['field', 'a field that fills itself from another file or a web address, which Word can fetch when the file opens'],
+  [
+    'field',
+    'a field that loads content from outside the file, or whose name another field computes, which Word acts on when the file opens',
+  ],
 ])
 
 const unzipsTooLarge = (filename: string, limits: SandboxLimits) =>

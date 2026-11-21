@@ -895,10 +895,12 @@ describe.each([
       '<w:fldSimple w:instr="INCLUDETEXT &quot;\\\\host\\share\\a.docx&quot;"/>',
       field(' IMPORT \\\\host\\share\\a.png '),
       field(' LINK Excel.Sheet.8 "\\\\host\\share\\a.xlsx" "Sheet1!R1C1" \\a '),
+      // Word runs { {QUOTE 68 68 69} ... } as a DDE field.
+      `${mark('begin')}${field(' QUOTE 68 68 69 ')}${run(' "c:\\\\windows\\\\system32\\\\cmd.exe" ')}${mark('separate')}${mark('end')}`,
     ]) {
       const result = await call({}, `saveFile('a.docx', new Uint8Array([${zipWith(document(body)).join(',')}]))`)
       expect(result.ok ? '' : result.error).toStartWith(
-        '"a.docx" was not saved: the script added a field that fills itself from another file or a web address, which Word can fetch when the file opens, in word/document.xml',
+        '"a.docx" was not saved: the script added a field that loads content from outside the file, or whose name another field computes, which Word acts on when the file opens, in word/document.xml',
       )
     }
 

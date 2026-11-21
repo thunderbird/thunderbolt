@@ -121,7 +121,8 @@ const xlsxExamples: Example[] = [
     match: 'saveFile("budget.xlsx"',
     check: ({ output, files }) => {
       expect(output.files.map(({ filename }) => filename)).toEqual(['budget.xlsx'])
-      expect(output.logs).toBe('formula errors: []\n')
+      // The months the red rule marks, which the reply may name.
+      expect(output.logs).toBe('red months: Aug, Sep, Oct, Nov, Dec\nformula errors: []\n')
       expect(output.formulaErrors).toBeUndefined()
       const book = files['budget.xlsx']
 

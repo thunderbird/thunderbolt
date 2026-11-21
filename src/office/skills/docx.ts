@@ -117,4 +117,5 @@ saveFile(name, fflate.zipSync(parts))
 - \`new ImageRun({ data })\` without \`type\`, or a URL for \`data\`: give the type and the bytes.
 - \`Packer.toBuffer(doc)\` or \`Packer.toBlob(doc)\`: use \`await Packer.toArrayBuffer(doc)\`.
 - \`console.log(value)\` prints [object Object]: log \`JSON.stringify(value)\`.
+- Checking the page count with bash or LibreOffice: nothing here renders a document, so size the text for the length asked and tell the user the page count is approximate.
 - Counts in the reply from memory ("10 milestones" for a table of 9): count the rows the script built.`

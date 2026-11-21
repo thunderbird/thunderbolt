@@ -16,7 +16,7 @@ import { ResponsivePopover } from '@/components/ui/responsive-popover'
 import { SearchInput } from '@/components/ui/search-input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { maxPinnedSkills } from '@/dal'
-import { isContractSkillId } from '@/defaults/skills'
+import { isContractSkillId, isWidgetSkillId, skillInstruction } from '@/defaults/skills'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { skillDisplayName, skillMatchesQuery } from '@/skills/display'
@@ -314,7 +314,7 @@ export const ChatSkillsBar = ({
             key={skill.id}
             label={skillDisplayName(skill)}
             onClick={() => onAddToChat(skill)}
-            onAddInstruction={() => onAddInstruction(skill.instruction)}
+            onAddInstruction={() => onAddInstruction(skillInstruction(skill))}
             onEdit={
               isContractSkillId(skill.id) ? undefined : () => openCreateItem({ kind: 'skill', skillId: skill.id })
             }
@@ -326,7 +326,8 @@ export const ChatSkillsBar = ({
                     dispatch({ type: 'REORDER_OPENED' })
                   }
             }
-            onUnpin={isContractSkillId(skill.id) ? undefined : () => handleTogglePin(skill, 'unpin')}
+            // This build never pins an Office skill, so a pin comes from an older build and the user may drop it.
+            onUnpin={isWidgetSkillId(skill.id) ? undefined : () => handleTogglePin(skill, 'unpin')}
           />
         ))}
         {addControl}

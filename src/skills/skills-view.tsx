@@ -6,7 +6,7 @@ import { useLingui } from '@lingui/react/macro'
 import { useCallback, useReducer } from 'react'
 
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
-import { isContractSkillId } from '@/defaults/skills'
+import { isContractSkillId, skillInstruction } from '@/defaults/skills'
 import { useAsyncAttempt } from '@/hooks/use-async-attempt'
 import { useConsumeNavState } from '@/hooks/use-consume-nav-state'
 import { useEntityActionIntent } from '@/search/actions/use-entity-action-intent'
@@ -255,7 +255,7 @@ export const SkillsView = () => {
         <SkillDetail
           name={skillDisplayName(activeSkill)}
           description={activeSkill.description}
-          instruction={activeSkill.instruction}
+          instruction={skillInstruction(activeSkill)}
           readOnly={isContractSkillId(activeSkill.id)}
           onEdit={() => onEdit(activeSkill.id)}
           onDelete={() => onDelete(activeSkill.id)}

@@ -31,6 +31,8 @@ import {
   isContractSkillId,
   isOfficeSkillId,
   isWidgetSkillId,
+  skillInstruction,
+  withoutOfficeNameClashes,
 } from './skills'
 
 /**
@@ -50,7 +52,7 @@ const computeSnapshotHash = () =>
 
 const expectedSnapshot = {
   version: 10,
-  hash: '0:01996330-0000-7000-8000-000000000001:mfmi05|1:01996330-0000-7000-8000-000000000002:-669lkj|2:01996330-0000-7000-8000-000000000003:-30vmih|3:01996330-0000-7000-8000-000000000004:-ypyizk|4:01996330-0000-7000-8000-000000000005:-hc6mv3|5:01996330-0000-7000-8000-000000000006:-o0c0ul|6:01996330-0000-7000-8000-000000000007:atrnpq|7:01996330-0000-7000-8000-000000000008:-ue9tpd|8:01996330-0000-7000-8000-000000000009:o1nire|9:01996330-0000-7000-8000-000000000010:-mxthy7|10:01996330-0000-7000-8000-000000000011:-ttruao|11:01996330-0000-7000-8000-000000000012:5i172t',
+  hash: '0:01996330-0000-7000-8000-000000000001:mfmi05|1:01996330-0000-7000-8000-000000000002:-669lkj|2:01996330-0000-7000-8000-000000000003:-30vmih|3:01996330-0000-7000-8000-000000000004:-ypyizk|4:01996330-0000-7000-8000-000000000005:-hc6mv3|5:01996330-0000-7000-8000-000000000006:-o0c0ul|6:01996330-0000-7000-8000-000000000007:atrnpq|7:01996330-0000-7000-8000-000000000008:-ue9tpd|8:01996330-0000-7000-8000-000000000009:o1nire|9:01996330-0000-7000-8000-000000000010:oywjh5|10:01996330-0000-7000-8000-000000000011:l7i1mb|11:01996330-0000-7000-8000-000000000012:-v6vndz',
 }
 
 describe('defaultSkills version snapshot', () => {
@@ -137,14 +139,20 @@ describe('defaultSkills', () => {
 
   it('ships one Office skill per format as a read-only contract that is not a widget', () => {
     const officeSkills = [
-      { skill: defaultSkillOfficeDocx, name: 'office-docx', instruction: officeDocxSkill },
-      { skill: defaultSkillOfficeXlsx, name: 'office-xlsx', instruction: officeXlsxSkill },
-      { skill: defaultSkillOfficePptx, name: 'office-pptx', instruction: officePptxSkill },
+      { skill: defaultSkillOfficeDocx, name: 'office-docx', body: officeDocxSkill },
+      { skill: defaultSkillOfficeXlsx, name: 'office-xlsx', body: officeXlsxSkill },
+      { skill: defaultSkillOfficePptx, name: 'office-pptx', body: officePptxSkill },
     ]
-    for (const { skill, name, instruction } of officeSkills) {
+    for (const { skill, name, body } of officeSkills) {
       expect(defaultSkills).toContain(skill)
       expect(skill.name).toBe(name)
-      expect(skill.instruction).toBe(instruction)
+      // The synced row holds what a build without the Office tool, or its external agents, must read; this build
+      // serves its own manual.
+      expect(skill.instruction).toBe(
+        'If run_office_script is not one of your tools, this version of the app cannot run it. Create the file with your own tools if you have them; otherwise tell the user to update the app to create or edit Word, Excel or PowerPoint files.',
+      )
+      expect(skillInstruction(skill)).toBe(body)
+      expect(skillInstruction({ ...skill, instruction: 'Edited on another device' })).toBe(body)
       expect(skill.description).toStartWith('Load before using run_office_script')
       expect(skill.pinnedOrder).toBeNull()
       expect(isOfficeSkillId(skill.id)).toBe(true)
@@ -155,7 +163,17 @@ describe('defaultSkills', () => {
     expect(isContractSkillId(defaultSkillWeather.id)).toBe(true)
     expect(isOfficeSkillId(defaultSkillWeather.id)).toBe(false)
     expect(isContractSkillId(defaultSkillDailyBrief.id)).toBe(false)
+    expect(skillInstruction(defaultSkillWeather)).toBe(weatherForecastWidgetInstruction)
     expect(new Set(defaultSkills.map(({ id }) => id)).size).toBe(defaultSkills.length)
+  })
+
+  it('lets an Office row alone answer to its name', () => {
+    const clash = { ...defaultSkillDailyBrief, id: 'user-skill', name: 'office-xlsx' }
+    const other = { ...defaultSkillDailyBrief, id: 'other-skill', name: 'other' }
+
+    expect(withoutOfficeNameClashes([clash, defaultSkillOfficeXlsx, other])).toEqual([defaultSkillOfficeXlsx, other])
+    // Where the Office rows are left out, as for an external agent, the other row keeps the name.
+    expect(withoutOfficeNameClashes([clash, other])).toEqual([clash, other])
   })
 
   it('excludes user-controlled state from contract hashes only', () => {

@@ -90,7 +90,7 @@ import { FileCard } from './file-card'
 import { useNativeFileDrop as useNativeFileDrop_default } from './use-native-file-drop'
 import { preloadChatMessageList } from './chat-messages-loader'
 import { isBuiltInAgent } from '@/defaults/agents'
-import { isOfficeSkillId } from '@/defaults/skills'
+import { isOfficeSkillId, skillInstruction, withoutOfficeNameClashes } from '@/defaults/skills'
 import { useAppName } from '@/lib/branding-selectors'
 import { selectBuiltInAgentEnabled, selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
@@ -315,9 +315,13 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
     const { skills: storedSkills } = useLibrarySkills()
     // The Office skills teach the built-in agent's `run_office_script`, which a model without tools and every other
     // agent lack. The send paths leave them out there, so the menu, the highlight and the token estimate do too.
+    // Where they are offered, an Office row owns its name, as it does on the send path.
     const officeSkillsUsable = isBuiltInAgent(selectedAgent) && selectedModel.toolUsage !== 0
     const library = useMemo(
-      () => (officeSkillsUsable ? storedSkills : storedSkills.filter(({ id }) => !isOfficeSkillId(id))),
+      () =>
+        officeSkillsUsable
+          ? withoutOfficeNameClashes(storedSkills)
+          : storedSkills.filter(({ id }) => !isOfficeSkillId(id)),
       [officeSkillsUsable, storedSkills],
     )
     const { isEnabled } = useEnabledSkills()
@@ -627,7 +631,7 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
       const map = new Map<string, string>()
       for (const skill of library) {
         if (isEnabled(skill.id)) {
-          map.set(skill.name, skill.instruction)
+          map.set(skill.name, skillInstruction(skill))
         }
       }
       return map

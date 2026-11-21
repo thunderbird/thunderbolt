@@ -27,6 +27,8 @@ import { ActiveContentView } from '@/content-view/active-content-view'
 import { getClock } from '@/testing-library'
 import { builtInAgent } from '@/defaults/agents'
 import { defaultSkillOfficeXlsx, defaultSkillWeather } from '@/defaults/skills'
+import { estimateTokensForText } from '@/ai/tokenizers'
+import { officeXlsxSkill } from '@/office/skills/xlsx'
 import * as skillHooks from '@/skills/use-skills'
 import * as adapterCache from '@/acp/adapter-cache'
 import * as attachmentStorage from '@/lib/file-blob-storage'
@@ -934,6 +936,32 @@ describe('ChatPromptInput', () => {
       fireEvent.select(textarea)
 
       expect(screen.queryByText('Excel workbooks') !== null).toBe(offered)
+    })
+
+    it('counts the manual this build serves, not the row stub, toward the context estimate', () => {
+      const { mockUseChat } = setupStore()
+      const extraTokens: number[] = []
+      const useContextTracking: typeof import('@/hooks/use-context-tracking').useContextTracking = (options) => {
+        extraTokens.push(options.additionalInputTokens ?? 0)
+        return createMockUseContextTracking()()
+      }
+      const ref = createRef<ChatPromptInputRef>()
+      render(
+        <ChatPromptInput
+          ref={ref}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          useLibrarySkills={fakeUseLibrarySkills}
+          useEnabledSkills={fakeUseEnabledSkills}
+          useContextTracking={useContextTracking}
+        />,
+        { wrapper: TestWrapper },
+      )
+      act(() => {
+        ref.current?.setInput('/office-xlsx make a budget')
+      })
+
+      expect(extraTokens.at(-1)).toBe(estimateTokensForText(officeXlsxSkill))
     })
   })
 

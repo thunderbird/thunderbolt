@@ -65,6 +65,9 @@ const parseOptions = (call: string, value: WorkbookValue) => {
 
 const formulaArguments = z.tuple([z.string(), z.string(), z.string()]).rest(workbookValue)
 
+/** `SetCellValue` given a formula, which Excelize would store as text. */
+const formulaAsValue = z.tuple([workbookValue, workbookValue, z.string().startsWith('=')]).rest(workbookValue)
+
 export type WorkbookFunction = (...args: WorkbookValue[]) => WorkbookValue
 
 /** An Excelize object's own functions, by name, bound to it. */
@@ -256,6 +259,17 @@ export const installWorkbooks = (
       )
     }
     return (...args) => {
+      // Both mistakes save without an error and leave the user a sheet that does not do what was asked.
+      if (method === 'SetCellValue' && formulaAsValue.safeParse(args).success) {
+        throw new TypeError(
+          'SetCellValue stores a value that starts with "=" as text, not as a formula. Write a formula with SetCellFormula, without the "=", or use SetCellStr for text that must start with "=".',
+        )
+      }
+      if (method === 'SetConditionalFormat' && !Array.isArray(args[2])) {
+        throw new TypeError(
+          'SetConditionalFormat takes its rules as an array: f.SetConditionalFormat(sheet, "A2:F13", [{ Type: "formula", Criteria: "$F2>$B2", Format: style }]).',
+        )
+      }
       const formula = method === 'SetCellFormula' ? formulaArguments.safeParse(args) : undefined
       if (!formula?.success) {
         return settle(method, workbookCall(...args))

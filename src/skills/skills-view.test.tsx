@@ -20,7 +20,8 @@ import '@/test-utils/framer-motion-mock'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { skillsTable } from '@/db/tables'
-import { defaultSkillWeather } from '@/defaults/skills'
+import { defaultSkillOfficeXlsx, defaultSkillWeather } from '@/defaults/skills'
+import { officeXlsxSkill } from '@/office/skills/xlsx'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 import { SkillsView } from './skills-view'
@@ -94,6 +95,17 @@ describe('SkillsView state machine', () => {
       await flush()
       const disabledWeather = await getSkill(getDb(), defaultSkillWeather.id)
       expect(disabledWeather?.enabled).toBe(0)
+    })
+
+    it('shows the manual this build serves for an Office skill, not the stub its row holds', async () => {
+      await getDb().insert(skillsTable).values(defaultSkillOfficeXlsx)
+
+      renderWithReactivity(<SkillsView />, { tables: ['skills'], wrapper: Wrapper })
+
+      fireEvent.click(await waitForElement(() => screen.queryByText('Excel workbooks')))
+      await flush()
+      expect(screen.getByText((text) => text.startsWith(officeXlsxSkill.split('\n')[0]))).toBeInTheDocument()
+      expect(screen.queryByText(defaultSkillOfficeXlsx.instruction)).not.toBeInTheDocument()
     })
   })
 

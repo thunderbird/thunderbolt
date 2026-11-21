@@ -250,13 +250,22 @@ export const defaultSkillMap: Skill = {
   userId: null,
 }
 
+/**
+ * The whole `instruction` of an Office row. Builds older than the Office tool get these rows through sync but have no
+ * `run_office_script`, so the row says only what is true there, also for an external agent that can write the file
+ * with its own tools. A build with the tool serves its own manual through {@link skillInstruction}, so the text always
+ * matches the sandbox it runs in.
+ */
+const officeSkillStub =
+  'If run_office_script is not one of your tools, this version of the app cannot run it. Create the file with your own tools if you have them; otherwise tell the user to update the app to create or edit Word, Excel or PowerPoint files.'
+
 export const defaultSkillOfficeDocx: Skill = {
   id: '01996330-0000-7000-8000-000000000010',
   name: officeSkillNames.docx,
   label: 'Word documents',
   description:
     'Load before using run_office_script to create or edit a Word document (.docx), including an attached template.',
-  instruction: officeDocxSkill,
+  instruction: officeSkillStub,
   enabled: 1,
   pinnedOrder: null,
   deletedAt: null,
@@ -270,7 +279,7 @@ export const defaultSkillOfficeXlsx: Skill = {
   label: 'Excel workbooks',
   description:
     'Load before using run_office_script to create or edit an Excel workbook (.xlsx or .xlsm), including formulas, charts and conditional formatting.',
-  instruction: officeXlsxSkill,
+  instruction: officeSkillStub,
   enabled: 1,
   pinnedOrder: null,
   deletedAt: null,
@@ -284,7 +293,7 @@ export const defaultSkillOfficePptx: Skill = {
   label: 'PowerPoint presentations',
   description:
     'Load before using run_office_script to create or edit a PowerPoint deck (.pptx), including slide layouts, animations and transitions.',
-  instruction: officePptxSkill,
+  instruction: officeSkillStub,
   enabled: 1,
   pinnedOrder: null,
   deletedAt: null,
@@ -300,13 +309,35 @@ const widgetSkillIds = new Set([
   defaultSkillMap.id,
 ])
 
-const officeSkillIds = new Set([defaultSkillOfficeDocx.id, defaultSkillOfficeXlsx.id, defaultSkillOfficePptx.id])
+/** The manual this build serves for each Office row, by stable id. Changing one needs no `defaultSkillsVersion` bump. */
+const officeSkillBodies = new Map([
+  [defaultSkillOfficeDocx.id, officeDocxSkill],
+  [defaultSkillOfficeXlsx.id, officeXlsxSkill],
+  [defaultSkillOfficePptx.id, officePptxSkill],
+])
 
 /** Whether a skill id belongs to a model-facing widget rendering contract. */
 export const isWidgetSkillId = (id: string): boolean => widgetSkillIds.has(id)
 
 /** Whether a skill id is an Office format skill, which only a request with `run_office_script` may offer. */
-export const isOfficeSkillId = (id: string): boolean => officeSkillIds.has(id)
+export const isOfficeSkillId = (id: string): boolean => officeSkillBodies.has(id)
+
+/**
+ * The instructions a skill gives the model and the user on this build: an Office row's manual from the code, which
+ * the row only stubs, and any other row's own `instruction`.
+ */
+export const skillInstruction = (skill: Pick<Skill, 'id' | 'instruction'>): string =>
+  officeSkillBodies.get(skill.id) ?? skill.instruction
+
+/**
+ * The skills without any row that shares a name with an Office row, which then answers to that name alone. Names are
+ * not unique in the table: a row created on a build without the Office skills, or a reconcile insert, skips the
+ * DAL's name check, and name lookups take the first or last match.
+ */
+export const withoutOfficeNameClashes = <T extends Pick<Skill, 'id' | 'name'>>(skills: readonly T[]): T[] => {
+  const officeNames = new Set(skills.filter(({ id }) => isOfficeSkillId(id)).map(({ name }) => name))
+  return skills.filter(({ id, name }) => isOfficeSkillId(id) || !officeNames.has(name))
+}
 
 /**
  * Whether a skill id is a shipped, read-only contract: a widget rendering contract or an Office format skill. Its

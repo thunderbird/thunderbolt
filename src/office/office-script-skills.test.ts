@@ -117,7 +117,7 @@ const slideParts = (parts: Parts) => Object.keys(parts).filter((name) => /^ppt\/
 
 const xlsxExamples: Example[] = [
   {
-    name: 'a new workbook has values, formulas with results, R$ cells, a red rule and a column chart',
+    name: 'a new workbook has values, formulas with results, currency cells, a red rule and a column chart',
     match: 'saveFile("budget.xlsx"',
     check: ({ output, files }) => {
       expect(output.files.map(({ filename }) => filename)).toEqual(['budget.xlsx'])
@@ -134,7 +134,7 @@ const xlsxExamples: Example[] = [
         all(styles, 'numFmt').map((f) => [f.getAttribute('numFmtId'), f.getAttribute('formatCode')]),
       )
       const cellFormats = all(all(styles, 'cellXfs')[0], 'xf')
-      expect(formats.get(cellFormats[cell(book, 'F14').style].getAttribute('numFmtId'))).toBe('"R$" #,##0.00')
+      expect(formats.get(cellFormats[cell(book, 'F14').style].getAttribute('numFmtId'))).toBe('"$" #,##0.00')
       // Without Pattern: 1 a fill is saved as patternType "none" and shows nothing.
       const headerFill = all(all(styles, 'fills')[0], 'fill')[
         Number(cellFormats[cell(book, 'A1').style].getAttribute('fillId'))
@@ -195,7 +195,7 @@ const docxExamples: Example[] = [
       const bold = all(body, 'r').filter((r) => all(r, 'b').length > 0)
       expect(bold.map(text)).toContain('12%')
       const [table] = all(body, 'tbl')
-      expect(all(table, 'tr').map(text)).toEqual(['RegionRevenue', 'NorthR$ 120.000', 'SouthR$ 95.000'])
+      expect(all(table, 'tr').map(text)).toEqual(['RegionRevenue', 'North$120,000', 'South$95,000'])
       expect(all(table, 'tblHeader')).toHaveLength(1)
       const lists = all(body, 'numId').map((numId) => numId.getAttribute('w:val'))
       expect(lists).toHaveLength(4)
@@ -335,6 +335,10 @@ describe.each([
   { skill: 'office-pptx', instructions: officePptxSkill, examples: pptxExamples },
 ])('$skill', ({ instructions, examples }) => {
   const blocks = examplesIn(instructions)
+
+  it('stays at or under 12,000 characters, since a turn that loads it pays for all of it', () => {
+    expect(instructions.length).toBeLessThanOrEqual(12_000)
+  })
 
   it('pairs each fenced block with exactly one checked example, in order', () => {
     expect(blocks.length).toBeGreaterThan(0)

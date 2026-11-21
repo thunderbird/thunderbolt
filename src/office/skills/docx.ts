@@ -39,8 +39,8 @@ const doc = new Document({
         width: { size: 100, type: WidthType.PERCENTAGE },
         rows: [
           new TableRow({ tableHeader: true, children: [cell("Region", true), cell("Revenue", true)] }),
-          new TableRow({ children: [cell("North"), cell("R$ 120.000")] }),
-          new TableRow({ children: [cell("South"), cell("R$ 95.000")] }),
+          new TableRow({ children: [cell("North"), cell("$120,000")] }),
+          new TableRow({ children: [cell("South"), cell("$95,000")] }),
         ],
       }),
       new Paragraph({ text: "Next steps", heading: HeadingLevel.HEADING_1 }),
@@ -60,7 +60,7 @@ saveFile("report.docx", await Packer.toArrayBuffer(doc))
 - Tables: a \`TableCell\`'s children are paragraphs or tables, never strings. \`tableHeader: true\` repeats a row on each page; a cell takes \`shading: { fill: "D9E1F2" }\` and \`columnSpan\`.
 - Pages: \`new Paragraph({ children: [new PageBreak()] })\` or \`pageBreakBefore: true\`. A section's \`properties: { page: { size: { orientation: PageOrientation.LANDSCAPE }, margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 } } }\` sets the page (1440 is one inch). \`headers: { default: new Header({ children }) }\` sits beside \`footers\`.
 - Links: \`new ExternalHyperlink({ link: "https://example.com", children: [new TextRun({ text: "site", style: "Hyperlink" })] })\` inside a paragraph's children.
-- Pictures: \`new ImageRun({ type, data, transformation: { width, height } })\` in a paragraph's children, with \`type\` "png", "jpg", "gif" or "bmp" and \`data\` the bytes. There is no network: read an attached picture with \`readFile\`, or take one from another file's \`word/media/\` with fflate.
+- Pictures: \`new ImageRun({ type, data, transformation: { width, height } })\` in a paragraph's children, with \`type\` "png", "jpg", "gif" or "bmp" and \`data\` the bytes. There is no network: read an attached picture with \`readFile\`, or take one from another file's \`word/media/\` with fflate. The next example applies only when the user attached logo.png, listed in \`inputs\`.
 
 \`\`\`js
 const logo = new docx.ImageRun({ type: "png", data: readFile("logo.png"), transformation: { width: 160, height: 90 } })

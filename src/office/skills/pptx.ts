@@ -35,8 +35,8 @@ results.addText(
 results.addTable(
   [
     [{ text: "Region", options: { bold: true, fill: { color: "D9E1F2" } } }, { text: "Revenue", options: { bold: true, fill: { color: "D9E1F2" } } }],
-    ["North", "R$ 120.000"],
-    ["South", "R$ 95.000"],
+    ["North", "$120,000"],
+    ["South", "$95,000"],
   ],
   { objectName: "regions", x: 0.6, y: 4.2, w: 5.6, colW: [2.8, 2.8], fontSize: 16, border: { type: "solid", pt: 1, color: "BFBFBF" } },
 )
@@ -72,7 +72,7 @@ saveFile("review.pptx", animated)
 - Shapes: \`slide.addShape(pres.ShapeType.rect, { x, y, w, h, fill: { color }, line: { color, width } })\`, also \`ellipse\`, \`roundRect\` and \`line\`.
 - Tables: \`slide.addTable(rows, { x, y, w, colW, fontSize, border })\`; a cell is a string or \`{ text, options: { bold, color, fill: { color } } }\`.
 - Charts: \`slide.addChart(pres.ChartType.bar, [{ name, labels, values }], { x, y, w, h, barDir: "col" })\`, one object per series. \`barDir: "col"\` draws vertical bars and \`"bar"\` horizontal ones; other types are \`line\`, \`pie\`, \`doughnut\`, \`area\` and \`radar\`. For \`scatter\` the first object holds the X values, \`{ name: "X", values }\`, and each later object one series of Y values. \`showTitle\`, \`title\`, \`showLegend\` and \`legendPos: "b"\` label it.
-- Pictures: \`slide.addImage({ data: "image/png;base64,...", x, y, w, h })\`. There is no network, so a \`path\` or URL never loads: read an attached picture with \`readFile\` and turn its bytes into base64, as below. A GIF keeps its animation.
+- Pictures: \`slide.addImage({ data: "image/png;base64,...", x, y, w, h })\`. There is no network, so a \`path\` or URL never loads: read an attached picture with \`readFile\` and turn its bytes into base64, as below, which applies only when the user attached logo.png, listed in \`inputs\`. A GIF keeps its animation.
 - Notes: \`slide.addNotes(text)\`. Background: \`slide.background = { color }\`.
 
 \`\`\`js

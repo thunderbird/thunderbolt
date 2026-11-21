@@ -9,7 +9,7 @@ import { MemoryRouter } from 'react-router'
 import { useConfigStore } from '@/api/config-store'
 import { CreateItemProvider } from '@/components/create-item/context'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { defaultSkillWeather } from '@/defaults/skills'
+import { defaultSkillOfficeXlsx, defaultSkillWeather } from '@/defaults/skills'
 import { CreateRequestProbe } from '@/test-utils/create-request-probe'
 import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
@@ -145,6 +145,23 @@ describe('ChatSkillsBar', () => {
     expect(screen.queryByText('Edit skill')).toBeNull()
     expect(screen.queryByText('Reorder')).toBeNull()
     expect(screen.queryByText('Unpin')).toBeNull()
+  })
+
+  it('lets a pinned Office skill be unpinned, since only an older build could have pinned it', async () => {
+    const togglePin = mock(async (_id: string) => undefined)
+    renderBar({
+      usePinnedSkills: fakeUsePinnedSkills({ pinned: [defaultSkillOfficeXlsx], togglePin }),
+      useLibrarySkills: fakeUseLibrarySkills([defaultSkillOfficeXlsx]),
+      useEnabledSkills: fakeUseEnabledSkills(new Set([defaultSkillOfficeXlsx.id])),
+    })
+
+    fireEvent.contextMenu(screen.getByText('Excel workbooks'))
+    const unpin = await waitForElement(() => screen.queryByText('Unpin'))
+    expect(screen.queryByText('Edit skill')).toBeNull()
+    expect(screen.queryByText('Reorder')).toBeNull()
+    await act(async () => fireEvent.click(unpin!))
+
+    expect(togglePin).toHaveBeenCalledWith(defaultSkillOfficeXlsx.id)
   })
 
   it('keeps the "+ Add a skill" trigger clickable when every enabled skill is already pinned (popover still offers New skill)', () => {

@@ -32,12 +32,13 @@ each Office format, ships as a seeded skill.
 | `office-xlsx`         | Excel workbooks          | Office contract | yes           | no           |
 | `office-pptx`         | PowerPoint presentations | Office contract | yes           | no           |
 
-**Any change here requires bumping [`defaultSkillsVersion`](../../../src/defaults/skills.ts#L343)**,
+**Any change here requires bumping [`defaultSkillsVersion`](../../../src/defaults/skills.ts#L374)**,
 the signal reconciliation uses to pick which device owns the newest defaults; an unbumped change
 silently breaks convergence across a sync group. The snapshot test
 ([`src/defaults/skills.test.ts:51`](../../../src/defaults/skills.test.ts#L51)) catches it. Algorithm:
 [reconciled-defaults.md](reconciled-defaults.md); other versioned tables:
-[AGENTS.md](../../../AGENTS.md#reconciled-defaults-and-version-bumps).
+[AGENTS.md](../../../AGENTS.md#reconciled-defaults-and-version-bumps). The Office manuals are not row
+content and need no bump ([below](#the-office-format-skills)).
 
 Seeded `label` and `description` are **not** localized: they are reconciled by content hash, so a
 translation reads as a user edit on a device running another language.
@@ -80,8 +81,10 @@ const skillDisclosure = supportsTools ? buildSkillListing(skills) : buildFallbac
 | [`buildSkillListing`](../../../shared/agent-core/skills.ts#L102)           | The `## Skills` catalog, plus a line telling the model to call the `skill` tool before acting on a skill and that a `/name` token means those instructions are already loaded.                                                    |
 | [`buildFallbackSkillDisclosure`](../../../shared/agent-core/skills.ts#L87) | The same catalog with every instruction body inline, for models without tools. [`selectPromptSkillDefinitions`](../../../src/ai/fetch.ts#L611) narrows that set to widget contracts, since there is no way to fetch a body later. |
 
-[`createSkillTool`](../../../src/skills/skill-tool.ts#L31) returns an enabled skill's `instruction` by
-bare name or `/slug`, throwing on an unknown or disabled name. Registered only when the model
+[`createSkillTool`](../../../src/skills/skill-tool.ts#L46) returns an enabled skill's instructions by
+bare name or `/slug`, throwing on an unknown or disabled name. It and every other send path get them
+from [`selectEnabledSkillDefinitions`](../../../src/skills/skill-tool.ts#L33), which swaps in an Office
+skill's manual for the stub its row holds. Registered only when the model
 supports tools ([`addSkillTool`](../../../src/ai/fetch.ts#L490)).
 
 `search` and `research` also widen the turn's web-tool budget: both map to wider intents in
@@ -126,9 +129,9 @@ transparent rather than removed, so caret alignment against the textarea holds.
 Eight seeded defaults are contracts the app ships and corrects: five model-facing widget rendering
 contracts, whose `instruction` is imported from a widget's `instructions.ts`
 ([`src/defaults/skills.ts:11`](../../../src/defaults/skills.ts#L11)), and the three Office format skills
-(next section). [`isContractSkillId`](../../../src/defaults/skills.ts#L315) covers all eight;
-[`isWidgetSkillId`](../../../src/defaults/skills.ts#L306) and
-[`isOfficeSkillId`](../../../src/defaults/skills.ts#L309) name each group.
+(next section). [`isContractSkillId`](../../../src/defaults/skills.ts#L346) covers all eight;
+[`isWidgetSkillId`](../../../src/defaults/skills.ts#L320) and
+[`isOfficeSkillId`](../../../src/defaults/skills.ts#L323) name each group.
 
 | Operation                 | On a contract skill                             |
 | ------------------------- | ----------------------------------------------- |
@@ -168,10 +171,38 @@ Recipe for a new model-facing widget:
 
 `office-docx`, `office-xlsx` and `office-pptx` teach the `run_office_script` tool: working calls for
 the `docx`, `excelize` and `PptxGenJS` globals, how to edit an attached file, and the mistakes models
-made in real runs. The instructions live in [`src/office/skills/`](../../../src/office/skills), one
-module per format with no imports, so seeding or returning one never loads the sandbox or downloads a
-library. `src/office/office-script-skills.test.ts` runs every `js` block in them through the real
-sandbox and checks the saved files.
+made in real runs. The manuals live in [`src/office/skills/`](../../../src/office/skills), one module
+per format with no imports, so returning one never loads the sandbox or downloads a library.
+`src/office/office-script-skills.test.ts` runs every `js` block in them through the real sandbox,
+checks the saved files, and holds each manual to 12,000 characters.
+
+**The row holds a stub; the build holds the manual.** The synced row keeps the label, description
+and enabled toggle, but its `instruction` is a short stub: if `run_office_script` is not one of your
+tools, this version of the app cannot run it, so create the file with your own tools or tell the
+user to update. Builds older than `run_office_script` get the rows through sync: with the full text
+they would load a manual for a tool they lack, and their external ACP agents would get about 28 KB of
+it in every new session. The stub is worded for both: the built-in model there tells the user to
+update, and an external agent that can write the file itself is not told to refuse. A
+build with the tool reads its own manual through
+[`skillInstruction`](../../../src/defaults/skills.ts#L329), by stable id, so the text always matches
+the sandbox it runs in and a newer build's manual never reaches an older one. Every place a body
+reaches the model or the user goes through it: `selectEnabledSkillDefinitions` (the `skill` tool,
+`/slug` resolution in the legacy pipeline and the Pi harness, the prompt), the composer's token
+estimate and skills bar, and the read-only detail in Settings. The search index still holds the stub,
+since its triggers read the row, so a search excerpt can show it. Changing a manual needs no
+`defaultSkillsVersion` bump.
+
+An older build treats the Office rows as ordinary skills. A user there can pin one (the skills bar
+here lets them unpin it, though it never pins one), edit one, or delete one. Reconcile reads an edit
+as the user's and leaves it, and a delete is permanent: `softDeleteSkill` clears the content the
+hash would need to recognize the row. The manual still comes from this build's code.
+
+**An Office row owns its name.** Names have no unique constraint, and a row created on a build
+without the Office skills or a reconcile insert skips the DAL's name check, so another row can share
+`office-xlsx`. [`withoutOfficeNameClashes`](../../../src/defaults/skills.ts#L337) drops such a row
+wherever the Office row is in the list, enabled or not, so `resolveSkill`'s first match and the
+`/slug` maps' last match agree on the Office row. Where the Office rows are left out (below), the
+other row keeps the name.
 
 There is one per format because a turn usually needs one format, and a single manual would make the
 model read the other two each time. The tool's description keeps only the contract every call
@@ -258,9 +289,12 @@ IDs, skill IDs, account-derived hashes, or authored content.
 - A new injected system section needs both the built-in and the ACP paths, or it vanishes when the
   user switches agents
   ([chat-runtime.md](chat-runtime.md#what-must-stay-in-step-when-you-change-send-behaviour)).
-- Contract ids are locked in the DAL, not just the UI. `updateSkill` on one throws.
+- Contract ids are locked in the DAL, not just the UI. `updateSkill` on one throws. That holds on
+  builds that know the contract: an older build can still edit or delete an Office row.
 - The Office skills reach only the built-in agent with a model that uses tools, outside minimal mode.
   A new path that discloses skills must leave them out, or it promises a tool that is not there.
+- Read a skill's text through `skillInstruction`, never `.instruction`, wherever it reaches the model
+  or the user: an Office row's `instruction` is the stub meant for older builds.
 - Changing a default without bumping `defaultSkillsVersion` breaks multi-device convergence.
 
 ## Tests

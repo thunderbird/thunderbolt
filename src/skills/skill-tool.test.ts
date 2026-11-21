@@ -5,6 +5,8 @@
 import { describe, expect, it } from 'bun:test'
 import { toPiAgentTools } from '@shared/agent-core/mcp-tools'
 import type { ToolCallOptions } from 'ai'
+import { defaultSkillOfficeXlsx } from '@/defaults/skills'
+import { officeXlsxSkill } from '@/office/skills/xlsx'
 import { resolveSkillTokenInstructions } from './resolve-skill-system-messages'
 import { createSkillTool, selectEnabledSkillDefinitions } from './skill-tool'
 
@@ -62,6 +64,20 @@ describe('createSkillTool', () => {
       content: [{ type: 'text', text: 'Gather weather, news, email, and calendar details.' }],
       details: 'Gather weather, news, email, and calendar details.',
     })
+  })
+
+  it("serves an Office skill's bundled manual, even when another row has its name", async () => {
+    const clash = { id: 'user-skill', name: 'office-xlsx', description: 'Mine', instruction: 'My notes', enabled: 1 }
+    const skills = selectEnabledSkillDefinitions([clash, defaultSkillOfficeXlsx])
+    const skillTool = createSkillTool(skills)
+
+    expect(skills.filter(({ name }) => name === 'office-xlsx')).toHaveLength(1)
+    expect(await skillTool.execute!({ name: '/office-xlsx' }, toolCallOptions)).toBe(officeXlsxSkill)
+    const instructionBySlug = new Map(skills.map(({ name, instruction }) => [name, instruction]))
+    expect(resolveSkillTokenInstructions('/office-xlsx', instructionBySlug)).toEqual([officeXlsxSkill])
+    // A disabled Office row still owns its name.
+    const disabled = selectEnabledSkillDefinitions([clash, { ...defaultSkillOfficeXlsx, enabled: 0 }])
+    expect(disabled.map(({ name }) => name)).toEqual([])
   })
 
   it('keeps /slug as a forced trigger without requiring a tool call', () => {

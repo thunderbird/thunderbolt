@@ -20,7 +20,9 @@ import {
   defaultSkillOfficeXlsx,
   defaultSkillResearch,
   defaultSkillWeather,
+  skillInstruction,
 } from '@/defaults/skills'
+import { officeXlsxSkill } from '@/office/skills/xlsx'
 import { skillsTable } from '@/db/tables'
 import { eq } from 'drizzle-orm'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
@@ -1122,7 +1124,7 @@ describe('prepareAiRequestConfig — Office skills', () => {
   const httpClient = createClient({ prefixUrl: 'https://backend.test' })
   const office = [defaultSkillOfficeDocx, defaultSkillOfficeXlsx, defaultSkillOfficePptx]
   const officeNames = office.map(({ name }) => name)
-  const headings = office.map(({ instruction }) => instruction.split('\n')[0])
+  const headings = office.map((skill) => skillInstruction(skill).split('\n')[0])
   const loadSentence = 'Before writing or editing a script, load the listed Office skill'
 
   /** One send's Office surface: the prompt, the tool description, and the Office skills `/slug` resolves. */
@@ -1162,8 +1164,9 @@ describe('prepareAiRequestConfig — Office skills', () => {
       `${loadSentence} for each format you will use, unless its instructions are already in context: office-docx, office-xlsx.`,
     )
     expect(slashOffice).toEqual(['office-docx', 'office-xlsx'])
+    // The bundled manual, not the stub its synced row holds.
     expect(await config.toolset.skill?.execute?.({ name: 'office-xlsx' }, { toolCallId: 'c', messages: [] })).toBe(
-      defaultSkillOfficeXlsx.instruction,
+      officeXlsxSkill,
     )
   })
 

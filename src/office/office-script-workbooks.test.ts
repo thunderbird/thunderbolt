@@ -659,6 +659,35 @@ for (let row = 1; row < 1e6; row++) f.SetSheetRow('Sheet1', 'A' + row, Array.fro
     )
   })
 
+  it('refuses a formula given to SetCellValue, and keeps text that starts with "=" through SetCellStr', async () => {
+    expect(await errorOf(`excelize.NewFile().SetCellValue('Sheet1', 'F2', '=SUM(C2:E2)')`)).toContain(
+      'TypeError: SetCellValue stores a value that starts with "=" as text, not as a formula. Write a formula with SetCellFormula, without the "=", or use SetCellStr for text that must start with "=".',
+    )
+    const { file } = await runOk(`
+const f = excelize.NewFile()
+f.SetCellStr('Sheet1', 'A1', '=not a formula')
+f.SetCellValue('Sheet1', 'A2', 'a = b')
+saveFile('text.xlsx', f.WriteToBuffer().buffer)
+`)
+    const [{ data }] = await rowsOf(file)
+    expect(data).toEqual([['=not a formula'], ['a = b']])
+    expect(textOf(await partsOf(file), 'xl/worksheets/sheet1.xml')).not.toContain('<f>')
+  })
+
+  it('refuses conditional-format rules that are not an array', async () => {
+    const setRules = (rules: string) => `
+const f = excelize.NewFile()
+const style = f.NewConditionalStyle({ Font: { Color: '#9C0006' } }).style
+f.SetConditionalFormat('Sheet1', 'A2:F13', ${rules})
+`
+    const expected =
+      'TypeError: SetConditionalFormat takes its rules as an array: f.SetConditionalFormat(sheet, "A2:F13", [{ Type: "formula", Criteria: "$F2>$B2", Format: style }]).'
+    expect(await errorOf(setRules(`{ Type: 'formula', Criteria: '$F2>$B2', Format: style }`))).toContain(expected)
+    expect(
+      await errorOf(setRules(`JSON.stringify([{ Type: 'formula', Criteria: '$F2>$B2', Format: style }])`)),
+    ).toContain(expected)
+  })
+
   it('throws the reason of a workbook call that fails', async () => {
     const error = await errorOf(`excelize.NewFile().SetCellValue('Nope', 'A1', 1)`)
     expect(error).toContain('SetCellValue: sheet Nope does not exist')

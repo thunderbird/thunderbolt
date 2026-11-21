@@ -33,7 +33,7 @@ for (const col of ["B", "C", "D", "E", "F"]) {
   f.SetCellFormula(sheet, col + "14", "SUM(" + col + "2:" + col + "13)")
 }
 const header = f.NewStyle({ Font: { Bold: true }, Fill: { Type: "pattern", Pattern: 1, Color: ["#D9E1F2"] } }).style
-const money = f.NewStyle({ CustomNumFmt: '"R$" #,##0.00' }).style
+const money = f.NewStyle({ CustomNumFmt: '"$" #,##0.00' }).style
 f.SetCellStyle(sheet, "A1", "F1", header)
 f.SetCellStyle(sheet, "B2", "F14", money)
 f.SetColWidth(sheet, "A", "F", 15)
@@ -55,7 +55,7 @@ saveFile("budget.xlsx", buffer)
 
 - Start: \`excelize.NewFile()\` (one sheet, "Sheet1") or \`excelize.OpenReader(readFile(name))\`.
 - Values: \`f.SetCellValue(sheet, "B2", 1200)\`; \`f.SetSheetRow(sheet, "A2", [...])\` fills rightwards from A2, \`f.SetSheetCol(sheet, "A2", [...])\` downwards. Numbers stay numbers. A JS Date is saved as text ("2027-03-03T00:00:00.000Z"): write a date as \`f.SetCellFormula(sheet, "A2", "DATE(2027,3,3)")\` with a style such as \`CustomNumFmt: "dd/mm/yyyy"\`.
-- Formulas: \`f.SetCellFormula(sheet, "F2", "SUM(C2:E2)")\`, without a leading "=".
+- Formulas: \`f.SetCellFormula(sheet, "F2", "SUM(C2:E2)")\`, without a leading "=". SetCellValue refuses a string that starts with "="; \`f.SetCellStr\` writes text that must.
 - From numbers to names: \`excelize.CoordinatesToCellName(6, 14).cell\` is "F14" (column, row, from 1); \`excelize.ColumnNumberToName(6).col\` is "F".
 - Styles: \`f.NewStyle({ Font: { Bold: true, Size: 12, Color: "#1F3864" }, Fill: { Type: "pattern", Pattern: 1, Color: ["#D9E1F2"] }, Alignment: { Horizontal: "center", WrapText: true }, Border: [{ Type: "bottom", Color: "#000000", Style: 1 }], NumFmt: 9 }).style\`, then \`f.SetCellStyle(sheet, "A1", "F1", id)\`. A cell has one style, and SetCellStyle replaces it, so give one NewStyle everything a cell needs.
 - Number formats: \`NumFmt\` 3 is #,##0, 4 is #,##0.00, 9 is 0%, 10 is 0.00%, 14 is a date. For money use \`CustomNumFmt\` with the symbol in quotes, \`'"R$" #,##0.00'\`, or a locale tag, \`'[$€-407] #,##0.00'\`. \`NumFmt\` 5 to 8 are not saved, and an unquoted R$ shows as a plain number.
@@ -67,7 +67,7 @@ saveFile("budget.xlsx", buffer)
   - \`{ Type: "cell", Criteria: ">", Value: "100", Format }\`, or \`Criteria: "between"\` with \`MinValue\` and \`MaxValue\`; values are strings.
   - \`{ Type: "text", Criteria: "containing", Value: "late", Format }\`.
   - With \`Criteria: "="\`: \`top\` and \`bottom\` (\`Value: "3"\`, \`Format\`), \`duplicate\` and \`unique\` (\`Format\`), \`2_color_scale\` and \`3_color_scale\` (\`MinType: "min"\`, \`MaxType: "max"\`, \`MinColor\`, \`MaxColor\`, plus \`MidType: "percentile"\`, \`MidValue: "50"\`, \`MidColor\`), and \`data_bar\` (\`MinType\`, \`MaxType\`, \`BarColor\`).
-- Charts: \`f.AddChart(sheet, "H2", { Type, Series: [{ Name, Categories, Values }], Title: { Paragraph: [{ Text }] }, Legend: { Position: "bottom" }, Dimension: { Width: 480, Height: 290 }, YAxis: { NumFmt: { CustomNumFmt: '"R$" #,##0' }, MajorGridLines: true }, XAxis: { Title: { Paragraph: [{ Text }] } } })\`.
+- Charts: \`f.AddChart(sheet, "H2", { Type, Series: [{ Name, Categories, Values }], Title: { Paragraph: [{ Text }] }, Legend: { Position: "bottom" }, Dimension: { Width: 480, Height: 290 }, YAxis: { NumFmt: { CustomNumFmt: '"$" #,##0' }, MajorGridLines: true }, XAxis: { Title: { Paragraph: [{ Text }] } } })\`.
   - Types are constants on \`excelize\`: \`Col\` (vertical bars), \`ColStacked\`, \`Bar\` (horizontal bars), \`BarStacked\`, \`Line\`, \`Pie\`, \`Doughnut\`, \`Area\`, \`Scatter\`, \`Radar\`; 3-D types have 3D in the name.
   - \`Name\`, \`Categories\` and \`Values\` are absolute references that name the sheet, never literal text: \`Name: "Sheet1!$F$1"\`, \`Values: "Sheet1!$F$2:$F$13"\`, or "'Monthly budget'!$F$2:$F$13" when the name has a space. \`Name: "Spending"\` or \`Values: "F2:F13"\` saves without an error and points at nothing. Add one Series object per series.
   - Every chart excelize writes holds a view3D element; that does not make it a 3-D chart.
@@ -81,14 +81,14 @@ saveFile("budget.xlsx", buffer)
 | \`f.SetColWidth(sheet, "A", 16)\` | \`f.SetColWidth(sheet, "A", "A", 16)\` |
 | \`f.SetCellStyle(sheet, "B2", "F14", f.NewStyle(options))\` | \`f.SetCellStyle(sheet, "B2", "F14", f.NewStyle(options).style)\` |
 | \`f.SetCellValue(sheet, excelize.CoordinatesToCellName(1, 2), 5)\` | \`excelize.CoordinatesToCellName(1, 2).cell\` |
-| \`f.SetCellValue(sheet, "F2", "=SUM(C2:E2)")\`, which stores that text | \`f.SetCellFormula(sheet, "F2", "SUM(C2:E2)")\` |
+| \`f.SetCellValue(sheet, "F2", "=SUM(C2:E2)")\`, which throws | \`f.SetCellFormula(sheet, "F2", "SUM(C2:E2)")\` |
 | \`Type: "col"\`, \`Type: excelize.ChartTypeCol\`, or a guessed number: \`Type: 1\` is a stacked area chart | \`Type: excelize.Col\` |
 | \`f.AddChart(sheet, "H2", JSON.stringify(chart))\`, \`{ type: "bar", series, title }\` | a JS object with PascalCase keys, as above |
 | \`Title: "Totals"\`, \`Title: { Name: "Totals" }\` | \`Title: { Paragraph: [{ Text: "Totals" }] }\` |
 | \`Series: ["Sheet1!$F$2:$F$13"]\`, \`Paragraph: ["Totals"]\`: excelize stops without an error, and the next call fails with "Go program has already exited" | \`Series: [{ Name, Categories, Values }]\`, \`Paragraph: [{ Text: "Totals" }]\` |
 | \`{ Type: "expression", Formula: "..." }\` | \`{ Type: "formula", Criteria: "$F2>$B2", Format }\` |
 | \`Criteria: "=$F2>$B2"\` | \`Criteria: "$F2>$B2"\` |
-| one rule object instead of an array: it succeeds and adds nothing | \`[{ Type: "formula", ... }]\` |
+| one rule object instead of an array, which throws | \`[{ Type: "formula", ... }]\` |
 | \`Format: f.NewStyle(...).style\` ("invalid style ID") | \`Format: f.NewConditionalStyle(...).style\` |
 | \`if (!red) throw ...\` on the first conditional style | 0 is the first valid id |
 | \`Fill: { Type: "pattern", Color: "#FFC7CE" }\` or two colors | \`Fill: { Type: "pattern", Pattern: 1, Color: ["#FFC7CE"] }\` |

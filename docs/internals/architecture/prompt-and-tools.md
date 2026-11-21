@@ -194,7 +194,9 @@ own context.
   host function (`src/office/workbook-bridge.ts`). Arguments cross as JSON with the bytes beside them, so the VM
   pays for building them, and the host checks them as they arrive. The script can call a workbook's own methods
   and Excelize's pure helpers, nothing else. A failed call throws, where Excelize would return an `error` field
-  the model might ignore. Excelize and IronCalc are about 6.7 MB, so the Worker loads them only for a script that
+  the model might ignore. Two calls that Excelize accepts but that leave a sheet doing less than asked throw too:
+  `SetCellValue` with a string that starts with "=" (saved as text, not a formula; `SetCellStr` writes such
+  text), and `SetConditionalFormat` with rules that are not an array (it adds nothing). Excelize and IronCalc are about 6.7 MB, so the Worker loads them only for a script that
   names `excelize` (`src/office/spreadsheet-engines.ts`). A chat that never builds a workbook never downloads them.
 - A workbook opens only up to 2 MiB, and up to 64 MiB unzipped. Excelize holds about 1.2 KB per cell outside the
   VM's 64 MiB, so a run stops once Excelize's memory passes 512 MiB. WebAssembly memory never shrinks, and the

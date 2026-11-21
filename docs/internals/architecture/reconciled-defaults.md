@@ -29,7 +29,7 @@ rule for changing a default).
 | `models`         | `defaultModelsVersion` (`shared/defaults/models.ts:175`)  | `hashModel` (`shared/defaults/models.ts:58`)                   | `id`      | `frozenFields: ['isConfidential', 'provider']`, `metadataFields: ['description', 'vendor']` |
 | `model_profiles` | none (rides the models gate)                              | `hashModelProfile` (`src/defaults/model-profiles/index.ts:20`) | `modelId` | `insertMissing: true`                                                                       |
 | `tasks`          | `defaultTasksVersion` (`src/defaults/tasks.ts:70`)        | `hashTask` (`src/defaults/tasks.ts:13`)                        | `id`      |                                                                                             |
-| `skills`         | `defaultSkillsVersion` (`src/defaults/skills.ts:343`)     | `hashSkill` (`src/defaults/skills.ts:26`)                      | `id`      | `frozenFields: ['enabled', 'pinnedOrder']` for contract skills (widget + Office) only       |
+| `skills`         | `defaultSkillsVersion` (`src/defaults/skills.ts:374`)     | `hashSkill` (`src/defaults/skills.ts:26`)                      | `id`      | `frozenFields: ['enabled', 'pinnedOrder']` for contract skills (widget + Office) only       |
 | `settings`       | `defaultSettingsVersion` (`src/defaults/settings.ts:268`) | `hashSetting` (`src/defaults/settings.ts:14`)                  | `key`     |                                                                                             |
 
 - `prompts` left the list in THU-547, when skills superseded the default automations.
@@ -56,6 +56,16 @@ now ships, a value the user chose before it became the default: reconcile takes 
 - **Contract skills hash content only.** `hashSkill` excludes `enabled`, `pinnedOrder` and `deletedAt`
   for `isContractSkillId` ids (the widget and Office skills): the instruction text is a locked contract
   that must update even on a skill the user turned off. `frozenFields` preserves their state instead.
+- **An Office row's `instruction` is only a stub.** It says that without `run_office_script` this
+  version of the app cannot run it, so the reader should create the file with its own tools or tell
+  the user to update. That is true on any build older than the tool, and for its external agents:
+  those builds get the rows through sync and would otherwise load a manual for a tool they lack. A
+  build with the tool serves the manual from its own code (`skillInstruction`,
+  `src/defaults/skills.ts:329`), so the text matches its sandbox and never reaches another build. The
+  hash covers the stub, so a manual change in `src/office/skills/` needs no `defaultSkillsVersion`
+  bump; the label, description or stub still do. An older build can edit or delete an Office row as
+  an ordinary skill; reconcile leaves the edit as the user's, and cannot restore the delete, whose
+  tombstone no longer matches the hash.
 - **A null `default_hash` means user-created**, exempting the row from retirement. Reconcile
   bootstraps a missing hash on a row it recognizes.
 - **`metadataFields` sit outside the hash.** `description` and `vendor` are server-owned copy;
@@ -205,7 +215,8 @@ gets the same value, so the two cannot disagree.
 
 1. Edit the defaults file.
 2. **Bump its version constant.** The gate requires strictly newer; without the bump nothing changes
-   on any existing account.
+   on any existing account. The Office skill manuals are the exception: they are code, not row
+   content, so they ship with the build.
 3. Update the colocated snapshot test (`shared/defaults/models.test.ts`,
    `src/defaults/skills.test.ts`, `src/defaults/tasks.test.ts`, `src/defaults/settings.test.ts`). It
    fails on any content change without a matching bump and prints what to update.

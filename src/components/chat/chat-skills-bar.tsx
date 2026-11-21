@@ -73,6 +73,9 @@ type ChatSkillsBarProps = {
   onAddToChat: (skill: Skill) => void
   /** Insert the resolved skill's instruction prose into the chat input. */
   onAddInstruction: (instruction: string) => void
+  /** Whether the composer offers this skill to the selected agent and model. A chip it does not, such as an Office
+   *  skill an older build pinned, can only be unpinned. */
+  canInsertSkill: (skillId: string) => boolean
   // Dependency injection for tests / Storybook.
   usePinnedSkills?: typeof usePinnedSkills_default
   useLibrarySkills?: typeof useLibrarySkills_default
@@ -92,6 +95,7 @@ type ChatSkillsBarProps = {
 export const ChatSkillsBar = ({
   onAddToChat,
   onAddInstruction,
+  canInsertSkill,
   usePinnedSkills = usePinnedSkills_default,
   useLibrarySkills = useLibrarySkills_default,
   useEnabledSkills = useEnabledSkills_default,
@@ -313,8 +317,10 @@ export const ChatSkillsBar = ({
           <SuggestionChip
             key={skill.id}
             label={skillDisplayName(skill)}
-            onClick={() => onAddToChat(skill)}
-            onAddInstruction={async () => onAddInstruction(await skillInstruction(skill))}
+            onClick={canInsertSkill(skill.id) ? () => onAddToChat(skill) : undefined}
+            onAddInstruction={
+              canInsertSkill(skill.id) ? async () => onAddInstruction(await skillInstruction(skill)) : undefined
+            }
             onEdit={
               isContractSkillId(skill.id) ? undefined : () => openCreateItem({ kind: 'skill', skillId: skill.id })
             }

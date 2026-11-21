@@ -25,6 +25,7 @@ import { CreateItemProvider } from '@/components/create-item/context'
 import { ContentViewProvider } from '@/content-view/context'
 import { ActiveContentView } from '@/content-view/active-content-view'
 import { getClock } from '@/testing-library'
+import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { builtInAgent } from '@/defaults/agents'
 import { defaultSkillOfficeXlsx, defaultSkillWeather } from '@/defaults/skills'
 import { estimateTokensForText } from '@/ai/tokenizers'
@@ -963,6 +964,46 @@ describe('ChatPromptInput', () => {
 
       expect(extraTokens.at(-1)).toBe(estimateTokensForText(officeXlsxSkill))
     })
+
+    it.each([
+      ['an external agent', { selectedAgent: remoteAcpAgent }, false],
+      ['the built-in agent with a model that uses tools', {}, true],
+    ] as const)(
+      'lets a pinned Office chip add itself to the chat only where the menu offers it: %s',
+      async (_, session, offered) => {
+        const { mockUseChat } = setupStore()
+        useChatStore.getState().updateSession('thread-1', session)
+        const previousConfig = useConfigStore.getState()
+        useConfigStore.setState({ config: {}, configLoaded: true })
+        const pinnedQuery = spyOn(skillHooks, 'usePinnedSkills').mockReturnValue({
+          pinned: [defaultSkillOfficeXlsx],
+          pinnedSet: new Set([defaultSkillOfficeXlsx.id]),
+          togglePin: async () => undefined,
+          reorderPins: async () => undefined,
+        })
+        try {
+          render(
+            <ChatPromptInput
+              useChat={mockUseChat}
+              useIsMobile={createMockUseIsMobile()}
+              useLibrarySkills={fakeUseLibrarySkills}
+              useEnabledSkills={fakeUseEnabledSkills}
+              useWarmAcpCommands={noWarmUp}
+            />,
+            { wrapper: TestWrapper },
+          )
+          fireEvent.contextMenu(screen.getByText('Excel workbooks'))
+          await waitForElement(() => screen.queryByText('Unpin'))
+
+          expect(screen.queryByText('Add to chat') !== null).toBe(offered)
+          expect(screen.queryByText('Add instructions to chat') !== null).toBe(offered)
+        } finally {
+          cleanup()
+          pinnedQuery.mockRestore()
+          useConfigStore.setState(previousConfig)
+        }
+      },
+    )
   })
 
   describe('agent availability', () => {

@@ -71,7 +71,7 @@ describe('createSkillTool', () => {
 
   it("serves an Office skill's bundled manual, even when another row has its name", async () => {
     const clash = { id: 'user-skill', name: 'office-xlsx', description: 'Mine', instruction: 'My notes', enabled: 1 }
-    const skills = selectEnabledSkillDefinitions([clash, defaultSkillOfficeXlsx])
+    const skills = selectEnabledSkillDefinitions([clash, defaultSkillOfficeXlsx], true)
     const skillTool = createSkillTool(skills)
     stubAppServer()
 
@@ -79,8 +79,17 @@ describe('createSkillTool', () => {
     expect(await skillTool.execute!({ name: '/office-xlsx' }, toolCallOptions)).toBe(officeXlsxSkill)
     expect(await loadSkillTokenInstructions('/office-xlsx', skills)).toEqual([officeXlsxSkill])
     // A disabled Office row still owns its name.
-    const disabled = selectEnabledSkillDefinitions([clash, { ...defaultSkillOfficeXlsx, enabled: 0 }])
+    const disabled = selectEnabledSkillDefinitions([clash, { ...defaultSkillOfficeXlsx, enabled: 0 }], true)
     expect(disabled.map(({ name }) => name)).toEqual([])
+  })
+
+  it('offers no Office skill unless the caller opts in, and the user row keeps its name', async () => {
+    const clash = { id: 'user-skill', name: 'office-xlsx', description: 'Mine', instruction: 'My notes', enabled: 1 }
+    const skills = selectEnabledSkillDefinitions([clash, defaultSkillOfficeXlsx])
+
+    expect(skills.map(({ id }) => id)).toEqual(['user-skill'])
+    expect(await createSkillTool(skills).execute!({ name: '/office-xlsx' }, toolCallOptions)).toBe('My notes')
+    expect(await loadSkillTokenInstructions('/office-xlsx', skills)).toEqual(['My notes'])
   })
 
   it('keeps /slug as a forced trigger without requiring a tool call', () => {

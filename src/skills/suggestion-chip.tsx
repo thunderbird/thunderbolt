@@ -23,8 +23,9 @@ export const chipSurfaceClass =
 
 /**
  * Pinned-skill chip shown above the chat input. Click → adds the slash
- * token to the input (does not auto-submit). Right-click / long-press on
- * mobile → context menu with add-to-chat / add-instructions plus optional
+ * token to the input (does not auto-submit), or opens the menu when the chip
+ * has no `onClick`. Right-click / long-press on mobile → context menu with
+ * the add-to-chat / add-instructions actions it was given plus optional
  * edit / reorder / unpin actions for mutable skills.
  */
 export const SuggestionChip = ({
@@ -38,8 +39,9 @@ export const SuggestionChip = ({
   /** Human display name of the pinned skill (no slash — chips read as names,
    *  the `/slug` form lives in the composer's token badges). */
   label: string
-  onClick: () => void
-  onAddInstruction: () => void
+  /** Insert the slash token. Without it, as for a skill the chat cannot use, a click opens the menu instead. */
+  onClick?: () => void
+  onAddInstruction?: () => void
   /** Open the route-preserving skill editor. */
   onEdit?: () => void
   onReorder?: () => void
@@ -95,6 +97,10 @@ export const SuggestionChip = ({
       longPressFiredRef.current = false
       return
     }
+    if (!onClick) {
+      setOpen(true)
+      return
+    }
     onClick()
   }
 
@@ -121,12 +127,18 @@ export const SuggestionChip = ({
   )
 
   const actions: ResponsiveActionMenuAction[] = [
-    { label: t`Add to chat`, icon: <Plus className="size-[var(--icon-size-sm)]" />, onSelect: onClick },
-    {
-      label: t`Add instructions to chat`,
-      icon: <File className="size-[var(--icon-size-sm)]" />,
-      onSelect: onAddInstruction,
-    },
+    ...(onClick
+      ? [{ label: t`Add to chat`, icon: <Plus className="size-[var(--icon-size-sm)]" />, onSelect: onClick }]
+      : []),
+    ...(onAddInstruction
+      ? [
+          {
+            label: t`Add instructions to chat`,
+            icon: <File className="size-[var(--icon-size-sm)]" />,
+            onSelect: onAddInstruction,
+          },
+        ]
+      : []),
     ...(onEdit
       ? [{ label: t`Edit skill`, icon: <SquarePen className="size-[var(--icon-size-sm)]" />, onSelect: onEdit }]
       : []),

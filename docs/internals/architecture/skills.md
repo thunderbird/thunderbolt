@@ -32,7 +32,7 @@ each Office format, ships as a seeded skill.
 | `office-xlsx`         | Excel workbooks          | Office contract | yes           | no           |
 | `office-pptx`         | PowerPoint presentations | Office contract | yes           | no           |
 
-**Any change here requires bumping [`defaultSkillsVersion`](../../../src/defaults/skills.ts#L389)**,
+**Any change here requires bumping [`defaultSkillsVersion`](../../../src/defaults/skills.ts#L398)**,
 the signal reconciliation uses to pick which device owns the newest defaults; an unbumped change
 silently breaks convergence across a sync group. The snapshot test
 ([`src/defaults/skills.test.ts:51`](../../../src/defaults/skills.test.ts#L51)) catches it. Algorithm:
@@ -79,11 +79,11 @@ const skillDisclosure = supportsTools ? buildSkillListing(skills) : buildFallbac
 | Builder                                                                    | Emits                                                                                                                                                                                                                             |
 | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`buildSkillListing`](../../../shared/agent-core/skills.ts#L102)           | The `## Skills` catalog, plus a line telling the model to call the `skill` tool before acting on a skill and that a `/name` token means those instructions are already loaded.                                                    |
-| [`buildFallbackSkillDisclosure`](../../../shared/agent-core/skills.ts#L87) | The same catalog with every instruction body inline, for models without tools. [`selectPromptSkillDefinitions`](../../../src/ai/fetch.ts#L611) narrows that set to widget contracts, since there is no way to fetch a body later. |
+| [`buildFallbackSkillDisclosure`](../../../shared/agent-core/skills.ts#L87) | The same catalog with every instruction body inline, for models without tools. [`selectPromptSkillDefinitions`](../../../src/ai/fetch.ts#L612) narrows that set to widget contracts, since there is no way to fetch a body later. |
 
-[`createSkillTool`](../../../src/skills/skill-tool.ts#L47) returns an enabled skill's instructions by
+[`createSkillTool`](../../../src/skills/skill-tool.ts#L52) returns an enabled skill's instructions by
 bare name or `/slug`, throwing on an unknown or disabled name. It and every other send path get the
-skills from [`selectEnabledSkillDefinitions`](../../../src/skills/skill-tool.ts#L34), which keeps each
+skills from [`selectEnabledSkillDefinitions`](../../../src/skills/skill-tool.ts#L36), which keeps each
 row's id so the tool and `/slug` resolution can load an Office skill's manual in place of the stub its
 row holds, at the moment it is used. Registered only when the model
 supports tools ([`addSkillTool`](../../../src/ai/fetch.ts#L490)).
@@ -118,7 +118,7 @@ loads their text, so an Office manual loads only for its own `/office-…` token
 
 All three agent paths call it: `src/ai/fetch.ts` (built-in), `src/acp/built-in-adapter.ts` (Pi
 harness), `src/chats/chat-instance.ts` (external ACP agents, which have no system channel). In the
-built-in pipeline they land in [`buildVolatileSystemNotes`](../../../src/ai/fetch.ts#L629) after the
+built-in pipeline they land in [`buildVolatileSystemNotes`](../../../src/ai/fetch.ts#L830) after the
 date/time and voice notes, in the per-send half of the prompt, kept out of the cacheable stable
 half.
 
@@ -132,7 +132,7 @@ transparent rather than removed, so caret alignment against the textarea holds.
 Eight seeded defaults are contracts the app ships and corrects: five model-facing widget rendering
 contracts, whose `instruction` is imported from a widget's `instructions.ts`
 ([`src/defaults/skills.ts:11`](../../../src/defaults/skills.ts#L11)), and the three Office format skills
-(next section). [`isContractSkillId`](../../../src/defaults/skills.ts#L361) covers all eight;
+(next section). [`isContractSkillId`](../../../src/defaults/skills.ts#L370) covers all eight;
 [`isWidgetSkillId`](../../../src/defaults/skills.ts#L319) and
 [`isOfficeSkillId`](../../../src/defaults/skills.ts#L322) name each group.
 
@@ -201,16 +201,17 @@ since its triggers read the row, so a search excerpt can show it. Changing a man
 `defaultSkillsVersion` bump.
 
 An older build treats the Office rows as ordinary skills. A user there can pin one (the skills bar
-here lets them unpin it, though it never pins one), edit one, or delete one. Reconcile reads an edit
+here lets them unpin it, though it never pins one, and inserts it only where the composer offers it),
+edit one, or delete one. Reconcile reads an edit
 as the user's and leaves it, and a delete is permanent: `softDeleteSkill` clears the content the
 hash would need to recognize the row. The manual still comes from this build's code.
 
 **An Office row owns its name.** Names have no unique constraint, and a row created on a build
 without the Office skills or a reconcile insert skips the DAL's name check, so another row can share
-`office-xlsx`. [`withoutOfficeNameClashes`](../../../src/defaults/skills.ts#L352) drops such a row
-wherever the Office row is in the list, enabled or not, so `resolveSkill`'s first match and the
-`/slug` maps' last match agree on the Office row. Where the Office rows are left out (below), the
-other row keeps the name.
+`office-xlsx`. Where the Office skills are offered,
+[`selectOfferedSkillRows`](../../../src/defaults/skills.ts#L355) drops such a row wherever the Office
+row is in the list, enabled or not, so `resolveSkill`'s first match and the `/slug` maps' last match
+agree on the Office row. Where the Office rows are left out (below), the other row keeps the name.
 
 There is one per format because a turn usually needs one format, and a single manual would make the
 model read the other two each time. The tool's description keeps only the contract every call
@@ -218,19 +219,22 @@ needs ([prompt-and-tools.md](prompt-and-tools.md#tools-what-exists-and-when)).
 
 **When they are offered.** Only where the model can both load one and run what it teaches: the
 built-in agent, a model with tools (`toolUsage !== 0`, so `run_office_script` is registered), outside
-minimal mode (so the `skill` tool exists), and the row enabled. `prepareAiRequestConfig`
-([`src/ai/fetch.ts:655`](../../../src/ai/fetch.ts#L655)) decides it once, by id, before the rows lose
-their ids. The same list feeds the prompt catalog, the `skill` tool, `/slug` resolution, and the
-skill names in the Office tool's description and error hints. The legacy pipeline and the Pi harness
-both go through it.
+minimal mode (so the `skill` tool exists), and the row enabled. One helper makes the decision:
+`selectOfferedSkillRows` leaves the Office rows out unless its caller passes `offersOfficeSkills`, and
+`selectEnabledSkillDefinitions` delegates to it, so a path that forgets the flag offers none.
+`prepareAiRequestConfig` ([`src/ai/fetch.ts:662`](../../../src/ai/fetch.ts#L662)) passes its
+tool-capability decision once, and that list feeds the prompt catalog, the `skill` tool, `/slug`
+resolution, and the skill names in the Office tool's description and error hints. The legacy pipeline
+and the Pi harness both go through it. The composer passes the same decision for the built-in agent
+with a model that uses tools.
 
-They are never offered elsewhere:
+Every other path takes the default and leaves them out:
 
-| Path                                                                      | Where they are left out                                                                                                |
-| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| External ACP agents (both capability branches, new and restored sessions) | [`getEnabledSkills`](../../../src/acp/connect.ts#L53), the one source of their skills metadata and fallback disclosure |
-| External ACP agents and the hosted agent, `/slug` tokens                  | [`resolveAcpSkillInstructions`](../../../src/chats/chat-instance.ts#L349)                                              |
-| Composer slash menu, highlight and token estimate                         | `chat-prompt-input.tsx`, for any agent but the built-in one, or a model without tools                                  |
+| Path                                                                      | Where they are left out                                                                                                     |
+| ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| External ACP agents (both capability branches, new and restored sessions) | [`getEnabledSkills`](../../../src/acp/connect.ts#L52), the one source of their skills metadata and fallback disclosure      |
+| External ACP agents and the hosted agent, `/slug` tokens                  | [`resolveAcpSkillInstructions`](../../../src/chats/chat-instance.ts#L349)                                                   |
+| Composer slash menu, highlight, token estimate and pinned chips           | `chat-prompt-input.tsx`, for any agent but the built-in one, or a model without tools; a chip it does not offer only unpins |
 
 A disabled Office skill is gone from all of these, and the tool's error hints do not point to it.
 
@@ -300,7 +304,9 @@ IDs, skill IDs, account-derived hashes, or authored content.
 - Contract ids are locked in the DAL, not just the UI. `updateSkill` on one throws. That holds on
   builds that know the contract: an older build can still edit or delete an Office row.
 - The Office skills reach only the built-in agent with a model that uses tools, outside minimal mode.
-  A new path that discloses skills must leave them out, or it promises a tool that is not there.
+  Read skills for a new path through `selectEnabledSkillDefinitions` or `selectOfferedSkillRows`,
+  which leave them out unless the path passes `offersOfficeSkills`; opting in where
+  `run_office_script` is missing promises a tool that is not there.
 - Read a skill's text through `skillInstruction`, never `.instruction`, wherever it reaches the model
   or the user: an Office row's `instruction` is the stub meant for older builds. Never import a
   manual from `src/office/skills/<format>.ts` statically in app code: that puts it back in the

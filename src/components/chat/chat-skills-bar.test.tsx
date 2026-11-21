@@ -70,6 +70,7 @@ const renderBar = (props: Partial<Parameters<typeof ChatSkillsBar>[0]> = {}, sho
           <ChatSkillsBar
             onAddToChat={props.onAddToChat ?? (() => undefined)}
             onAddInstruction={props.onAddInstruction ?? (() => undefined)}
+            canInsertSkill={props.canInsertSkill ?? (() => true)}
             usePinnedSkills={props.usePinnedSkills ?? fakeUsePinnedSkills({ pinned: [] })}
             useLibrarySkills={props.useLibrarySkills ?? fakeUseLibrarySkills([])}
             useEnabledSkills={props.useEnabledSkills ?? fakeUseEnabledSkills(new Set())}
@@ -152,19 +153,30 @@ describe('ChatSkillsBar', () => {
 
   it('lets a pinned Office skill be unpinned, since only an older build could have pinned it', async () => {
     const togglePin = mock(async (_id: string) => undefined)
+    const onAddToChat = mock((_skill: Skill) => undefined)
+    const onAddInstruction = mock((_instruction: string) => undefined)
     renderBar({
+      onAddToChat,
+      onAddInstruction,
+      // The composer does not offer the Office skills to this agent, as for an external one.
+      canInsertSkill: (skillId) => skillId !== defaultSkillOfficeXlsx.id,
       usePinnedSkills: fakeUsePinnedSkills({ pinned: [defaultSkillOfficeXlsx], togglePin }),
       useLibrarySkills: fakeUseLibrarySkills([defaultSkillOfficeXlsx]),
       useEnabledSkills: fakeUseEnabledSkills(new Set([defaultSkillOfficeXlsx.id])),
     })
 
-    fireEvent.contextMenu(screen.getByText('Excel workbooks'))
+    // A click opens the menu instead of inserting the token.
+    fireEvent.click(screen.getByText('Excel workbooks'))
     const unpin = await waitForElement(() => screen.queryByText('Unpin'))
+    expect(screen.queryByText('Add to chat')).toBeNull()
+    expect(screen.queryByText('Add instructions to chat')).toBeNull()
     expect(screen.queryByText('Edit skill')).toBeNull()
     expect(screen.queryByText('Reorder')).toBeNull()
     await act(async () => fireEvent.click(unpin!))
 
     expect(togglePin).toHaveBeenCalledWith(defaultSkillOfficeXlsx.id)
+    expect(onAddToChat).not.toHaveBeenCalled()
+    expect(onAddInstruction).not.toHaveBeenCalled()
   })
 
   it("adds an Office skill's manual, not its row's stub, as instructions", async () => {

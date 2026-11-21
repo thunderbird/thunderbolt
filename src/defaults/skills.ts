@@ -345,11 +345,20 @@ export const skillInstructionLength = (skill: Pick<Skill, 'id' | 'instruction'>)
 }
 
 /**
- * The skills without any row that shares a name with an Office row, which then answers to that name alone. Names are
- * not unique in the table: a row created on a build without the Office skills, or a reconcile insert, skips the
- * DAL's name check, and name lookups take the first or last match.
+ * The skill rows one surface may offer, whole and disabled ones included. The Office skills teach the built-in
+ * agent's `run_office_script`, so they stay out unless the caller opts in for a request that has that tool and the
+ * `skill` tool; a user row sharing an Office name keeps it then. Opted in, an Office row, even a disabled one, owns
+ * its name and drops every other row that has it. Names are not unique in the table: a row created on a build
+ * without the Office skills, or a reconcile insert, skips the DAL's name check, and name lookups take the first or
+ * last match.
  */
-export const withoutOfficeNameClashes = <T extends Pick<Skill, 'id' | 'name'>>(skills: readonly T[]): T[] => {
+export const selectOfferedSkillRows = <T extends Pick<Skill, 'id' | 'name'>>(
+  skills: readonly T[],
+  offersOfficeSkills = false,
+): T[] => {
+  if (!offersOfficeSkills) {
+    return skills.filter(({ id }) => !isOfficeSkillId(id))
+  }
   const officeNames = new Set(skills.filter(({ id }) => isOfficeSkillId(id)).map(({ name }) => name))
   return skills.filter(({ id, name }) => isOfficeSkillId(id) || !officeNames.has(name))
 }

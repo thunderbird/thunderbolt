@@ -4,7 +4,7 @@
 
 import { resolveSkill, type SkillDefinition } from '@shared/agent-core/skills'
 import { selectMinimalMode, useConfigStore } from '@/api/config-store'
-import { isWidgetSkillId, skillInstruction, withoutOfficeNameClashes } from '@/defaults/skills'
+import { isWidgetSkillId, selectOfferedSkillRows, skillInstruction } from '@/defaults/skills'
 import { tool, type Tool } from 'ai'
 import { z } from 'zod'
 
@@ -17,11 +17,13 @@ type StoredSkillDefinition = RequestSkillDefinition & { readonly enabled: number
  * Select enabled skills and discard persistence-only fields.
  *
  * @param skills - skill rows from any app data source
+ * @param offersOfficeSkills - true only for a built-in request with `run_office_script` and the `skill` tool; see
+ *   `selectOfferedSkillRows`, which drops the Office skills otherwise
  * @returns enabled skill definitions suitable for prompt and tool injection;
  *   in minimal mode only the widget rendering contracts. Each keeps its id, so
  *   an Office skill's manual loads through `skillInstruction` only when the
  *   `skill` tool or a `/slug` asks for it; until then it carries its row's
- *   stub. No other row may share an Office skill's name.
+ *   stub.
  *
  * Minimal mode withholds every user-invocable skill (the listing, the `skill`
  * tool and the ACP skills metadata are built from this list) but keeps the
@@ -31,8 +33,11 @@ type StoredSkillDefinition = RequestSkillDefinition & { readonly enabled: number
  * emit widgets the app renders. Reads the store imperatively, like
  * `resolveSkillTokenInstructions`, because the callers sit outside React.
  */
-export const selectEnabledSkillDefinitions = (skills: readonly StoredSkillDefinition[]): RequestSkillDefinition[] =>
-  withoutOfficeNameClashes(skills)
+export const selectEnabledSkillDefinitions = (
+  skills: readonly StoredSkillDefinition[],
+  offersOfficeSkills = false,
+): RequestSkillDefinition[] =>
+  selectOfferedSkillRows(skills, offersOfficeSkills)
     .filter((skill) => skill.enabled === 1)
     .filter((skill) => !selectMinimalMode(useConfigStore.getState().config) || isWidgetSkillId(skill.id))
     .map(({ id, name, description, instruction }) => ({ id, name, description, instruction }))

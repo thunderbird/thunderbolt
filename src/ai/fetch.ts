@@ -605,11 +605,19 @@ export const addSkillTool = (
 /**
  * Select skills disclosed in the built-in model's system prompt.
  *
- * Tool-capable models receive every enabled skill, while non-tool models only
- * receive widget rendering contracts inline.
+ * Tool-capable models receive every enabled skill, the Office skills only with
+ * `offersOfficeSkills`, while non-tool models only receive widget rendering
+ * contracts inline.
  */
-export const selectPromptSkillDefinitions = (skills: readonly Skill[], supportsTools: boolean): SkillDefinition[] =>
-  selectEnabledSkillDefinitions(supportsTools ? skills : skills.filter(({ id }) => isWidgetSkillId(id)))
+export const selectPromptSkillDefinitions = (
+  skills: readonly Skill[],
+  supportsTools: boolean,
+  offersOfficeSkills = false,
+): SkillDefinition[] =>
+  selectEnabledSkillDefinitions(
+    supportsTools ? skills : skills.filter(({ id }) => isWidgetSkillId(id)),
+    offersOfficeSkills,
+  )
 
 /** Load model/profile/settings and build one send's app + MCP tools and prompt. */
 export const prepareAiRequestConfig = async ({
@@ -650,13 +658,9 @@ export const prepareAiRequestConfig = async ({
   // inlined into the prompt (as for non-tool models) instead of loaded on demand.
   const loadsSkillsByTool = supportsTools && !selectMinimalMode(useConfigStore.getState().config)
   // The Office skills teach `run_office_script`, which only tool-capable models get, and arrive through the `skill`
-  // tool. Without both, the prompt, the tool and a `/office-…` token must not offer them. Chosen by id, before
-  // `selectEnabledSkillDefinitions` drops it.
-  const requestSkills = loadsSkillsByTool ? storedSkills : storedSkills.filter(({ id }) => !isOfficeSkillId(id))
-  const skills = selectEnabledSkillDefinitions(requestSkills)
-  const officeSkills = selectEnabledSkillDefinitions(requestSkills.filter(({ id }) => isOfficeSkillId(id))).map(
-    ({ name }) => name,
-  )
+  // tool. Without both, the prompt, the tool and a `/office-…` token must not offer them.
+  const skills = selectEnabledSkillDefinitions(storedSkills, loadsSkillsByTool)
+  const officeSkills = skills.filter(({ id }) => isOfficeSkillId(id)).map(({ name }) => name)
   // Loaded before the toolset so the cross-chat search tool can be registered
   // conditionally alongside the other app tools.
   const projectContext = await loadProjectContextForThread(db, chatThreadId)
@@ -795,7 +799,7 @@ export const prepareAiRequestConfig = async ({
     integrationStatus: integrationStatuses.length > 0 ? integrationStatuses.join(', ') : 'READY',
     availableToolNames: Object.keys(merged.toolset),
     mcpServersSummary: merged.summary,
-    skills: selectPromptSkillDefinitions(requestSkills, supportsTools),
+    skills: selectPromptSkillDefinitions(storedSkills, supportsTools, loadsSkillsByTool),
     supportsTools: loadsSkillsByTool,
     // The resolved locale rather than a `language` settings read: it is synchronous, so
     // it cannot lag behind the watched-query hydration, and it already folds in browser

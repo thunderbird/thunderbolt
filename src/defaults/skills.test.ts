@@ -33,9 +33,9 @@ import {
   isOfficeSkillId,
   isWidgetSkillId,
   officeSkillManual,
+  selectOfferedSkillRows,
   skillInstruction,
   skillInstructionLength,
-  withoutOfficeNameClashes,
 } from './skills'
 
 /**
@@ -178,13 +178,19 @@ describe('defaultSkills', () => {
     expect(new Set(defaultSkills.map(({ id }) => id)).size).toBe(defaultSkills.length)
   })
 
-  it('lets an Office row alone answer to its name', () => {
+  it('offers the Office rows only on opt-in, and then lets one alone answer to its name', () => {
     const clash = { ...defaultSkillDailyBrief, id: 'user-skill', name: 'office-xlsx' }
     const other = { ...defaultSkillDailyBrief, id: 'other-skill', name: 'other' }
+    const disabledOffice = { ...defaultSkillOfficeXlsx, enabled: 0 }
 
-    expect(withoutOfficeNameClashes([clash, defaultSkillOfficeXlsx, other])).toEqual([defaultSkillOfficeXlsx, other])
-    // Where the Office rows are left out, as for an external agent, the other row keeps the name.
-    expect(withoutOfficeNameClashes([clash, other])).toEqual([clash, other])
+    // Left out by default, as for an external agent, and the other row keeps the name.
+    expect(selectOfferedSkillRows([clash, defaultSkillOfficeXlsx, other])).toEqual([clash, other])
+    expect(selectOfferedSkillRows([clash, defaultSkillOfficeXlsx, other], true)).toEqual([
+      defaultSkillOfficeXlsx,
+      other,
+    ])
+    // Rows stay whole: a disabled Office row is kept, and still owns its name.
+    expect(selectOfferedSkillRows([clash, disabledOffice, other], true)).toEqual([disabledOffice, other])
   })
 
   it('excludes user-controlled state from contract hashes only', () => {

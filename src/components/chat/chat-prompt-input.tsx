@@ -90,7 +90,7 @@ import { FileCard } from './file-card'
 import { useNativeFileDrop as useNativeFileDrop_default } from './use-native-file-drop'
 import { preloadChatMessageList } from './chat-messages-loader'
 import { isBuiltInAgent } from '@/defaults/agents'
-import { isOfficeSkillId, skillInstructionLength, withoutOfficeNameClashes } from '@/defaults/skills'
+import { selectOfferedSkillRows, skillInstructionLength } from '@/defaults/skills'
 import { useAppName } from '@/lib/branding-selectors'
 import { selectBuiltInAgentEnabled, selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
@@ -314,16 +314,14 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
 
     const { skills: storedSkills } = useLibrarySkills()
     // The Office skills teach the built-in agent's `run_office_script`, which a model without tools and every other
-    // agent lack. The send paths leave them out there, so the menu, the highlight and the token estimate do too.
-    // Where they are offered, an Office row owns its name, as it does on the send path.
+    // agent lack. The send paths leave them out there, so the menu, the highlight, the token estimate and the pinned
+    // chips do too. Where they are offered, an Office row owns its name, as it does on the send path.
     const officeSkillsUsable = isBuiltInAgent(selectedAgent) && selectedModel.toolUsage !== 0
     const library = useMemo(
-      () =>
-        officeSkillsUsable
-          ? withoutOfficeNameClashes(storedSkills)
-          : storedSkills.filter(({ id }) => !isOfficeSkillId(id)),
+      () => selectOfferedSkillRows(storedSkills, officeSkillsUsable),
       [officeSkillsUsable, storedSkills],
     )
+    const librarySkillIds = useMemo(() => new Set(library.map(({ id }) => id)), [library])
     const { isEnabled } = useEnabledSkills()
     // Minimal mode treats `/` as ordinary text: no popup, token resolution,
     // highlighting or token-aware editing (resolution is gated in
@@ -1084,7 +1082,11 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
                 thread starts; the composer owns ongoing skill insertion. */}
             {messages.length === 0 && (
               <div className="pointer-events-auto pb-2">
-                <ChatSkillsBar onAddToChat={handleAddChipFromBar} onAddInstruction={insertInstructionText} />
+                <ChatSkillsBar
+                  onAddToChat={handleAddChipFromBar}
+                  onAddInstruction={insertInstructionText}
+                  canInsertSkill={(skillId) => librarySkillIds.has(skillId)}
+                />
               </div>
             )}
             <AnimatePresence initial={false}>

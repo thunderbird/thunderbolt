@@ -26,11 +26,11 @@ import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getAllSkills as defaultGetAllSkills, getAvailableModels as defaultGetAvailableModels } from '@/dal'
 import { isAgentActive as defaultIsAgentActive } from '@/dal/agents'
 import { isBuiltInAgent, isHostedAgent } from '@/defaults/agents'
-import { isOfficeSkillId } from '@/defaults/skills'
 import { isModelReady, matchesThreadConfidentiality } from '@/settings/models/model-policy'
 import { loadProjectContextForThread as defaultLoadProjectContext } from '@/projects/load-project-context'
 import { buildProjectPromptSection } from '@/projects/project-prompt'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
+import { selectEnabledSkillDefinitions } from '@/skills/skill-tool'
 import { getDb as defaultGetDb } from '@/db/database'
 import {
   beginDebugTranscriptTurn,
@@ -343,8 +343,8 @@ export const createAgentRoutingFetch = (
   /** Resolve user-skill (`/slug`) instructions from the latest user message, so
    *  ACP agents can receive them in the prompt (the built-in pipeline injects
    *  these itself in `ai/fetch.ts`, so this only runs for non-built-in agents).
-   *  The Office skills are left out: they teach the app's `run_office_script`,
-   *  which neither an ACP agent nor the hosted agent has.
+   *  The Office skills are left out by default: they teach the app's
+   *  `run_office_script`, which neither an ACP agent nor the hosted agent has.
    *  Cheap-exits before touching the DB when there's no message or no `/` token. */
   const resolveAcpSkillInstructions = async (messages: ThunderboltUIMessage[] | undefined): Promise<string[]> => {
     if (!messages?.length) {
@@ -354,12 +354,9 @@ export const createAgentRoutingFetch = (
     if (!lastUserText.includes('/')) {
       return []
     }
-    const instructionBySlug = new Map<string, string>()
-    for (const skill of await getAllSkills(getDb())) {
-      if (skill.enabled === 1 && skill.name && skill.instruction && !isOfficeSkillId(skill.id)) {
-        instructionBySlug.set(skill.name, skill.instruction)
-      }
-    }
+    const instructionBySlug = new Map(
+      selectEnabledSkillDefinitions(await getAllSkills(getDb())).map(({ name, instruction }) => [name, instruction]),
+    )
     return resolveSkillTokenInstructions(lastUserText, instructionBySlug)
   }
 

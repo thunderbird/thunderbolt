@@ -1090,6 +1090,9 @@ describe.each([
     expect(await errorOf(long)).toEndWith(
       `${long.slice(long.length - 160)}\n${' '.repeat(160 - (long.length - long.indexOf('(:') - 1))}^`,
     )
+    // A thrown string can claim any column; the caret stops at the end of the real line.
+    const forged = 'throw "script.js:1:200000000"'
+    expect(await errorOf(forged)).toEndWith(`Line 1 of the script:\n${forged}\n${' '.repeat(forged.length)}^`)
   })
 
   it('stops a run at the time limit', async () => {

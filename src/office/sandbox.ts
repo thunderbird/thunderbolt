@@ -114,8 +114,9 @@ const withSourceLine = (error: string, script: string) => {
   if (!at) {
     return error
   }
-  const column = Math.max(1, at.line === 1 ? at.column - scriptStart.length : at.column)
   const text = lines[at.line - 1].replace(/\t/g, ' ')
+  // The script can throw any text, so a column is trusted only within its line: it sizes a host-side string.
+  const column = Math.min(Math.max(1, at.line === 1 ? at.column - scriptStart.length : at.column), text.length + 1)
   const start = Math.max(0, Math.min(column - 1 - sourceWindow / 2, text.length - sourceWindow))
   const shown = text.slice(start, start + sourceWindow)
   return `${error.trimEnd()}\nLine ${at.line} of the script:\n${shown}\n${' '.repeat(column - 1 - start)}^`

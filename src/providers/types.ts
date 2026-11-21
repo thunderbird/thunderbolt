@@ -9,6 +9,7 @@ export const providerTypes = [
   'openrouter',
   'tinfoil',
   'otari',
+  'trustedrouter',
   'exa',
   'brave',
   'tavily',

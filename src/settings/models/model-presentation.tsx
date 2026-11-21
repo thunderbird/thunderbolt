@@ -6,7 +6,7 @@ import type { I18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
 import { SiAnthropic } from '@icons-pack/react-simple-icons'
-import { Server } from 'lucide-react'
+import { Server, ShieldCheck } from 'lucide-react'
 
 import openAiLogoSrc from '@/assets/openai.svg'
 import { AppLogo } from '@/components/app-logo'
@@ -28,6 +28,7 @@ const providerBrandNames: Record<Exclude<Model['provider'], 'thunderbolt' | 'cus
   otari: 'Otari',
   openai: 'OpenAI',
   openrouter: 'OpenRouter',
+  trustedrouter: 'TrustedRouter',
   anthropic: 'Anthropic',
 }
 
@@ -76,6 +77,8 @@ export const ModelProviderIcon = ({
       return <img src={openAiLogoSrc} alt="" className={cn('size-5 dark:invert', className)} />
     case 'anthropic':
       return <SiAnthropic className={cn('size-5', className)} aria-hidden="true" />
+    case 'trustedrouter':
+      return <ShieldCheck className={cn('size-5 text-muted-foreground', className)} aria-hidden="true" />
     case 'openrouter':
     case 'tinfoil':
     case 'otari':

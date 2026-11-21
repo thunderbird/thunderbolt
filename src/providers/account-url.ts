@@ -8,6 +8,7 @@ import type { ProviderConnection } from './types'
 const accountUrls = {
   tinfoil: 'https://dash.tinfoil.sh/',
   openrouter: 'https://openrouter.ai/settings/keys',
+  trustedrouter: 'https://trustedrouter.com/console/api-keys',
   anthropic: 'https://platform.claude.com/',
   exa: 'https://dashboard.exa.ai/',
   brave: 'https://api-dashboard.search.brave.com/',

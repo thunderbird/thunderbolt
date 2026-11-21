@@ -12,7 +12,7 @@ After the first meaningful commit has been pushed with `thunder-push`:
 cd "$WORKTREE_PATH"
 
 gh pr create --draft \
-  --title "⚡ <IDENTIFIER>: <concise title>" \
+  --title "<type>(<IDENTIFIER>): <concise title>" \
   --body "$(cat <<'EOF'
 ## Summary
 <2-3 bullet points of what changed and why>
@@ -32,7 +32,9 @@ EOF
 
 ### Title Format
 
-`⚡ <IDENTIFIER>: <concise description>`, for example `⚡ THU-303: add email notification preferences`.
+`<type>(<IDENTIFIER>): <concise description>`, for example `feat(THU-303): add email notification preferences`.
+
+`.github/workflows/lint-pr-title.yml` rejects any title without a Conventional Commits type. PRs merge by squash, so the title becomes the commit on `main`: use the type of the branch's main commit, following the `fix:` rule in [commit-conventions.md](../../thunder-push/references/commit-conventions.md).
 
 Save the PR number for all subsequent steps:
 

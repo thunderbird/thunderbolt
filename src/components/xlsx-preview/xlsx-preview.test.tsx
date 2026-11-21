@@ -240,6 +240,13 @@ describe('the spreadsheet preview', () => {
     expect(document.activeElement).toBe(budget)
     fireEvent.keyDown(screen.getByRole('tablist'), { key: 'End' })
     expect(document.activeElement).toBe(notes)
+    fireEvent.keyDown(screen.getByRole('tablist'), { key: 'Home' })
+    expect(document.activeElement).toBe(budget)
+    fireEvent.keyDown(screen.getByRole('tablist'), { key: 'ArrowLeft' })
+    expect(document.activeElement).toBe(notes)
+    // Arrows only move focus: the sheet changes when a tab is chosen, as with manual activation.
+    expect(budget.getAttribute('aria-selected')).toBe('true')
+    expect(notes.getAttribute('aria-selected')).toBe('false')
   })
 
   it('stops at the row and column caps and says how many it shows', async () => {

@@ -6,6 +6,7 @@ import { useLingui } from '@lingui/react/macro'
 import { useFormatters } from '@/i18n/use-formatters'
 import type { Overlay } from '@/office/xlsx-preview-reader'
 import type { CSSProperties } from 'react'
+import { barSpans } from './chart-geometry'
 
 type ChartOverlay = Extract<Overlay, { type: 'chart' }>
 
@@ -25,9 +26,6 @@ const clipTo = (text: string, width: number) => {
   const most = Math.max(1, Math.floor(width / 6))
   return text.length > most ? `${text.slice(0, most - 1)}…` : text
 }
-
-/** A value kept within what a double holds, so sums of huge values stay finite. */
-const finite = (value: number) => Math.min(Number.MAX_VALUE, Math.max(-Number.MAX_VALUE, value))
 
 /**
  * A pie's slices, each in its palette colour. An empty slice is skipped, and a slice that is the whole pie is a circle:
@@ -53,33 +51,6 @@ const pieSlices = (values: number[], cx: number, cy: number, radius: number) => 
     const d = `M${cx},${cy} L${cx + radius * Math.cos(start)},${cy + radius * Math.sin(start)} A${radius},${radius} 0 ${large} 1 ${cx + radius * Math.cos(end)},${cy + radius * Math.sin(end)} Z`
     return <path key={i} d={d} fill={colorAt(i)} stroke="#fff" />
   })
-}
-
-/** A bar's span on the value axis: from where it starts to where it ends. */
-type Span = { from: number; to: number }
-
-/**
- * Each series' bars as spans, by series then point. Side by side, a bar runs from zero. Stacked, it starts where the
- * series below it ended, with positive and negative values stacked separately. Percent-stacked, each point is a share
- * of its category.
- */
-const barSpans = ({ series, stacking }: ChartOverlay, count: number): Span[][] => {
-  if (stacking === 'none') {
-    return series.map(({ values }) => values.map((value) => ({ from: 0, to: value })))
-  }
-  const totals = Array.from({ length: count }, (_, i) =>
-    series.reduce((sum, { values }) => finite(sum + Math.abs(values[i] ?? 0)), 0),
-  )
-  const ends = { up: Array.from({ length: count }, () => 0), down: Array.from({ length: count }, () => 0) }
-  return series.map(({ values }) =>
-    values.map((raw, i) => {
-      const value = stacking === 'percent' ? (raw / (totals[i] || 1)) * 100 : raw
-      const side = value >= 0 ? ends.up : ends.down
-      const from = side[i]
-      side[i] = finite(from + value)
-      return { from, to: side[i] }
-    }),
-  )
 }
 
 /**

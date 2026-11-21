@@ -928,6 +928,35 @@ stack depends on its AppArmor sysctl, KVM and emulator libraries, Playwright dep
 - Every Maestro process runs with `MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED=true`, because Maestro's "Analyze with
   AI" banner filled the error a failed replay run keeps.
 
+## Desktop shell
+
+The `desktop` platform is Chromium at 1280x800, so it never runs the Tauri app. The `desktop-shell` job does, with no
+explorer: `scripts/desktop.ts` drives the Linux debug app through `tauri-driver` and WebKitWebDriver under Xvfb, the
+setup of the nightly `native-linux` smoke, against the backend and fake provider of `e2e/native-smoke/services.sh`. It
+runs every week and in any dispatch whose `charters` is empty or names `desktop-shell`, never in a fix-only run. It
+holds no secret, no environment and only `contents: read`, and runs no model, so it sits outside the zones.
+
+It signs in, then checks, each on its own row of the run summary:
+
+- the reply's Copy button puts the reply on the X clipboard (read with `xclip`);
+- Ctrl+K sent through X (`xdotool`), not WebDriver, opens the search palette;
+- an image attached through the composer's file input shows its preview;
+- Export My Data writes a JSON file to the Downloads folder (the profile's `user-dirs.dirs` points `$DOWNLOAD` at a
+  temp dir);
+- a resize to 400px stops at the window's 500px minimum, `<html>` keeps `force-desktop`, and the layout probe finds
+  nothing on the chat;
+- the app's own quit (`plugin:process|exit`, as the tray's Quit) and a new launch on the same profile keep the
+  account and list the chat in Recents.
+
+A failed check fails the job, which `notify` sees, and leaves a screenshot in `qa-desktop-shell` with the
+driver and stack logs. Nothing is filed. The dev config has no updater endpoints, so the lane dismisses the "Update
+failed" toast every launch shows before it measures the layout. Run it on Linux with the services up and the app built as in the job:
+`xvfb-run -a bun .github/qa/scripts/desktop.ts --out qa-out/desktop`.
+
+What it cannot see: WebKit answers the file chooser itself while a page is under automation, so the GTK dialog never
+opens and the check fills the input instead; Xvfb has no window manager; and only the Linux shell runs (macOS has no
+WKWebView driver, Windows would need its own runner and stack).
+
 ## Fake Google
 
 `scripts/fake-google.ts` stands in for Google on `127.0.0.1:9880` by default: the account chooser, the token endpoint,
@@ -1275,7 +1304,10 @@ Never run on GitHub (only locally, or read in the action's code):
   the gate on the seeds that order it badly, and that ticket waits for a later run;
 - the narrow `sudo` stop of the `qa-backend` backend in the real-AI legs. That copy also proved the `ss` port check, the
   lock and the stop of the fix job's dev stack as `qa-dev`. Its start failed in the first fix jobs on GitHub because
-  Storybook's cache sat under `node_modules/.cache`, so the `qa` job in `ci.yml` now checks the start as `qa-dev`.
+  Storybook's cache sat under `node_modules/.cache`, so the `qa` job in `ci.yml` now checks the start as `qa-dev`;
+- the `desktop-shell` job. `desktop.ts` ran in an Ubuntu 24.04 container on aarch64 with the job's packages and
+  build. On main the preview check and the quit-and-reopen check failed and the other five passed. With `blob:` added
+  to `img-src` and the database kept out of memory, all seven passed.
 
 Also:
 

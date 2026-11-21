@@ -6,6 +6,7 @@ import { partChecksums, unzipWithinLimits, ZipLimitError } from '@/files/unzip-w
 import { promptFileName, safeFileName } from '@/lib/safe-file-name'
 import { type JSValueHandle, QuickJS } from 'quickjs-wasi'
 import type { SandboxLimits } from './constants'
+import { decodeXml, externalDataFormulas } from './formula-cache'
 import type { SandboxInput, SandboxRuntime, SavedFile } from './sandbox'
 
 // A DOM in QuickJS takes several times the memory of its XML; a 1,000-page document.xml is about 3.5 MB.
@@ -30,10 +31,13 @@ const checker = (maxXmlBytes: number, maxUnzipBytes: number) => `(() => {
   const declaration = /^<\\?xml[^>]*\\sencoding\\s*=\\s*["']([^"']*)["']/
   const decode = (data) => {
     const encoding = utf16[(data[0] << 8) | data[1]] ?? 'utf-8'
-    // A legacy encoding such as windows-1252 writes markup in the same bytes as ASCII, so one character per byte
-    // checks the XML as well as decoding it would.
+    // A legacy single-byte encoding such as windows-1252 writes markup in the same bytes as ASCII, so one character per
+    // byte checks the XML as well as decoding it would. One that shifts state, such as UTF-7, spells other text.
     const head = declaration.exec(latin1(data.subarray(0, 256)))?.[1]
     if (encoding === 'utf-8' && head !== undefined && !/^utf-(8|16)$/i.test(head)) {
+      if (!/^((us-)?ascii|iso-8859-\\d+|windows-125\\d)$/i.test(head)) {
+        throw new Error('the XML declaration says encoding="' + head + '", which this check cannot read; declare UTF-8 or leave the encoding out')
+      }
       return latin1(data)
     }
     const text = new TextDecoder(encoding, { fatal: true }).decode(data)
@@ -48,33 +52,56 @@ const checker = (maxXmlBytes: number, maxUnzipBytes: number) => `(() => {
   const isXmlPart = (name) => /\\.(xml|rels)$/i.test(name)
   // A part name is a relative path inside the zip; another program could take one of these as a place on its disk.
   const isBadName = (name) => /^$|^\\/|\\\\|:|(^|\\/)\\.\\.?(\\/|$)|\\/\\//.test(name)
-  const attribute = (node, name) => {
-    for (let i = 0; i < node.attributes.length; i += 1) {
-      if (node.attributes[i].localName === name) return node.attributes[i].value
-    }
-  }
-  // Each field's code on its own: a simple field's, or the runs between a field's begin and separate marks, which
-  // may split it anywhere. A field nested in a code shows there as {}. Runs outside any field are joined into one
-  // more code.
+  // Only the attribute in the element's own namespace, as Word reads w:fldCharType, not a decoy x:fldCharType beside it.
+  const attribute = (node, name) =>
+    Array.from(node.attributes).find((a) => a.localName === name && a.namespaceURI === node.namespaceURI)?.value
+  // Whether Word shows this field mark or code text as a tracked deletion.
+  const deleted = (node) =>
+    node.localName === 'delInstrText' ||
+    (node.parentNode !== null && (/^(del|moveFrom)$/.test(node.parentNode.localName) || deleted(node.parentNode)))
+  // Markup in a field code that Word may read otherwise than this check: an element in another namespace than the
+  // begin mark (one Word ignores, or mc:AlternateContent, of whose branches Word reads one), a simple field, whose
+  // result may become code, or a mark or code text whose tracked deletion differs from the begin mark's.
+  const unreadable = (node, field) =>
+    node.nodeType === 1 &&
+    (node.namespaceURI !== field.ns ||
+      node.localName === 'fldSimple' ||
+      (/^(fldChar|instrText|delInstrText)$/.test(node.localName) && deleted(node) !== field.deleted))
+  // Each field's code on its own: each instr of a simple field, or the runs between a field's begin and separate
+  // marks, which may split it anywhere. A field nested in a code shows there inside braces, and markup Word may read
+  // otherwise as {}. Runs outside any field are joined into one more code.
   const fieldCodes = (doc) => {
-    const codes = Array.from(doc.getElementsByTagNameNS('*', 'fldSimple'), (field) => attribute(field, 'instr') ?? '')
+    const codes = Array.from(doc.getElementsByTagNameNS('*', 'fldSimple')).flatMap((field) =>
+      Array.from(field.attributes)
+        .filter((a) => a.localName === 'instr')
+        .map((a) => a.value),
+    )
     const open = []
     let stray = ''
     for (let node = doc.documentElement; node !== null; ) {
       const field = open[open.length - 1]
+      if (field !== undefined && !field.done && unreadable(node, field)) field.code += '{}'
       if (node.localName === 'fldChar') {
         const type = attribute(node, 'fldCharType')
+        // A mark with no type Word reads may begin, split or end a code where this check cannot tell.
+        if (type === undefined) codes.push('{}')
         if (type === 'begin') {
-          if (field !== undefined && !field.done) field.code += '{}'
-          open.push({ code: '', done: false })
+          if (field !== undefined && !field.done) field.code += '{'
+          open.push({ code: '', done: false, ns: node.namespaceURI, deleted: deleted(node) })
         }
         if (type === 'separate' && field !== undefined) field.done = true
-        if (type === 'end' && field !== undefined) codes.push(open.pop().code)
-      } else if (node.localName === 'instrText') {
+        if (type === 'end' && field !== undefined) {
+          const { code } = open.pop()
+          codes.push(code)
+          const parent = open[open.length - 1]
+          if (parent !== undefined && !parent.done) parent.code += code + '}'
+        }
+      } else if (node.localName === 'instrText' || node.localName === 'delInstrText') {
         if (field === undefined) stray += node.textContent
         else if (!field.done) field.code += node.textContent
       }
-      if (node.firstChild !== null) {
+      // Run properties are formatting, which Word writes in other namespaces too, never a mark or code text it reads.
+      if (node.firstChild !== null && node.localName !== 'rPr') {
         node = node.firstChild
         continue
       }
@@ -83,16 +110,32 @@ const checker = (maxXmlBytes: number, maxUnzipBytes: number) => `(() => {
     }
     return [...codes, ...open.map(({ code }) => code), stray]
   }
-  // A DDE field runs a program when a document opens, as does a DDE link in a workbook.
+  // A DDE field runs a program when a document opens, as does a DDE link in a workbook. Its name counts though markup
+  // splits it or comes before it.
   const hasDde = (doc) =>
     doc.getElementsByTagNameNS('*', 'ddeLink').length > 0 ||
-    fieldCodes(doc).some((code) => /^\\s*DDE(AUTO)?\\b/i.test(code))
-  // A Word field that fills itself from another file or a web address when it updates, with no relationship to check.
-  // So is one whose name a nested field computes, as in { {QUOTE 68 68 69} ... }, which spells DDE when Word runs it.
+    fieldCodes(doc).some(
+      (code) => /^\\s*DDE(AUTO)?\\b/i.test(code.replaceAll('{}', '')) || /\\{\\}[\\s\\S]*\\bDDE(AUTO)?\\b/i.test(code),
+    )
+  // A Word field that fills itself from another file, a database or a web address when it updates, with no
+  // relationship to check. So is one whose name a nested field or markup decides, as in { {QUOTE 68 68 69} ... },
+  // which spells DDE when Word runs it: a { before the first space. A formula field, { ={PAGE}+1 }, only computes.
   const inclusions = (doc) =>
     fieldCodes(doc)
-      .filter((code) => /^\\s*(\\{|(INCLUDEPICTURE|INCLUDETEXT|INCLUDE|IMPORT|LINK)\\b)/i.test(code))
+      .filter((code) =>
+        /^\\s*((INCLUDEPICTURE|INCLUDETEXT|INCLUDE|IMPORT|LINK|DATABASE|RD)\\b|(?!=)[^\\s{]*\\{)/i.test(code),
+      )
       .map((code) => code.replace(/\\s+/g, ' ').trim())
+  // An action PowerPoint runs without a click, a mouse-over action or an OLE verb command in a slide's timing, or a
+  // Power Query, which Excel runs when its data connection refreshes.
+  const autoRun = (doc, text) => {
+    if (doc.documentElement.localName === 'DataMashup') return 'query'
+    // An element's name cannot be escaped, so a part whose text lacks these names has none of these elements.
+    if (!/hlinkHover|hlinkMouseOver|cmd/.test(text)) return undefined
+    const hover = ['hlinkHover', 'hlinkMouseOver'].some((name) => doc.getElementsByTagNameNS('*', name).length > 0)
+    const verb = Array.from(doc.getElementsByTagNameNS('*', 'cmd')).some((node) => node.getAttribute('type')?.trim() === 'verb')
+    return hover || verb ? 'autoAction' : undefined
+  }
   // Code that Office runs: a VBA project or an Excel 4.0 macro sheet, known by the content type the package gives it.
   const isMacroType = (type) => /^application\\/vnd\\.ms-(office\\.vbaproject|excel\\.(intl)?macrosheet\\+xml)$/i.test(type ?? '')
   // Only application/ and text/ types: an image/svg+xml picture holds no fields, and a strict parse refuses valid ones.
@@ -128,12 +171,46 @@ const checker = (maxXmlBytes: number, maxUnzipBytes: number) => `(() => {
     if (error instanceof InternalError || /out of memory|stack overflow/i.test(text)) throw error
     return text.replace(/\\s+/g, ' ').trim()
   }
-  // Content that Office fetches from outside the file, or runs. A hyperlink opens only on a click, so it does not count.
+  const read = (bytes, name) => fflate.unzipSync(bytes, { filter: (file) => file.name === name })[name]
+  const readXml = (bytes, name) =>
+    new xmldom.DOMParser({ onError: () => {} }).parseFromString(decode(read(bytes, name)), 'text/xml')
+  const isExternal = (relationship) => /^external$/i.test(relationship.getAttribute('TargetMode') ?? '')
+  // Parts inside the file that Office runs, or acts on when it opens or refreshes, by the type of relationship.
+  const internalKinds = [
+    [/\\/(vbaProject|wordVbaData|xlMacrosheet|xlIntlMacrosheet)$/i, 'macros'],
+    [/\\/oleObject$/i, 'ole'],
+    [/\\/aFChunk$/i, 'chunk'],
+    [/\\/(control|activeXControlBinary)$/i, 'activeX'],
+    [/\\/connections$/i, 'connection'],
+    [/\\/package$/i, 'package'],
+  ]
+  // Content that Office fetches from outside the file, or runs. A hyperlink opens on a click, so it does not count; a
+  // mouse-over action, which needs none, is found in the part that holds it.
   const activeKind = (relationship) => {
-    const type = relationship.getAttribute('Type') ?? ''
-    if (/\\/oleObject$/.test(type)) return 'ole'
-    if (!/^external$/i.test(relationship.getAttribute('TargetMode') ?? '') || /\\/hyperlink$/.test(type)) return undefined
-    return /\\/attachedTemplate$/.test(type) ? 'template' : 'link'
+    const type = (relationship.getAttribute('Type') ?? '').trim()
+    if (!isExternal(relationship)) return internalKinds.find(([pattern]) => pattern.test(type))?.[1]
+    if (/\\/hyperlink$/i.test(type)) return undefined
+    if (/\\/attachedTemplate$/i.test(type)) return 'template'
+    return /\\/oleObject$/i.test(type) ? 'ole' : 'link'
+  }
+  const uriDecoded = (text) => {
+    try {
+      return decodeURIComponent(text)
+    } catch {
+      return text
+    }
+  }
+  // The parts an internal target names, matched without case as OPC compares part names, as written or with its
+  // percent-encoding decoded. A target starting with / is from the package root, any other from the folder of the
+  // part the relationships are for.
+  const targetParts = (relationships, target, names) => {
+    const path = target.startsWith('/') ? [] : relationships.replace(/_rels\\/[^\\/]*$/i, '').split('/').slice(0, -1)
+    for (const segment of target.split('/')) {
+      if (segment === '..') path.pop()
+      else if (segment !== '.' && segment !== '') path.push(segment)
+    }
+    const wanted = path.join('/').toLowerCase()
+    return names.filter((name) => name.toLowerCase() === wanted || name.toLowerCase() === uriDecoded(wanted))
   }
   const partNames = (bytes) => {
     const names = []
@@ -145,39 +222,78 @@ const checker = (maxXmlBytes: number, maxUnzipBytes: number) => `(() => {
     })
     return names
   }
-  // Each piece of active content, keyed by the kind of document it is in, read from every relationships part.
-  const activeContent = (bytes) => {
-    const names = partNames(bytes)
-    const documentKind = ['word', 'xl', 'ppt'].find((folder) => names.some((name) => name.startsWith(folder + '/')))
-    return names
+  // Each relationship to active content, read from every relationships part: an external one keyed by its type and
+  // target, an internal one with the parts its target names.
+  const activeContent = (bytes, names) =>
+    names
       .filter((name) => /\\.rels$/i.test(name))
       .flatMap((part) => {
         // Office cannot read this part either, so it points nowhere.
         try {
-          const data = fflate.unzipSync(bytes, { filter: (file) => file.name === part })[part]
-          const doc = new xmldom.DOMParser({ onError: () => {} }).parseFromString(decode(data), 'text/xml')
-          return Array.from(doc.getElementsByTagNameNS('*', 'Relationship'), activeKind)
-            .filter((kind) => kind !== undefined)
-            .map((kind) => ({ key: documentKind + ':' + kind, kind, part }))
+          return Array.from(readXml(bytes, part).getElementsByTagNameNS('*', 'Relationship')).flatMap((relationship) => {
+            const kind = activeKind(relationship)
+            const target = relationship.getAttribute('Target') ?? ''
+            if (kind === undefined) return []
+            return isExternal(relationship)
+              ? [{ kind, part, key: (relationship.getAttribute('Type') ?? '') + ' ' + target }]
+              : [{ kind, part, targets: targetParts(part, target, names) }]
+          })
         } catch (error) {
           reason(error)
           return []
         }
       })
-  }
   let inputContent
-  // Read once per check, from inputs the user gave, so a damaged one counts as having none.
+  // The external active content of the inputs, read once per check; a damaged input has none.
   const inputKeys = (count) =>
     (inputContent ??= new Set(
       Array.from({ length: count }, (_, index) => {
         try {
-          return activeContent(__inputFile(index)).map(({ key }) => key)
+          const bytes = __inputFile(index)
+          return activeContent(bytes, partNames(bytes)).flatMap(({ key }) => key ?? [])
         } catch (error) {
           reason(error)
           return []
         }
       }).flat(),
     ))
+  let inputParts
+  // Each input part with the kinds of content it holds in its input: the kind of each relationship to it, macros
+  // for a macro content type, and xml for an XML part, which this check parses. A saved part is kept only as a kind
+  // an input part of the same bytes had: an earlier output passed this check, so a part it hid elsewhere, or under
+  // another kind, does not count. Listed once per check from the central directory, inflating only the
+  // relationships and content types; a damaged input has none.
+  const keptParts = (count) =>
+    (inputParts ??= Array.from({ length: count }, (_, index) => {
+      try {
+        const bytes = __inputFile(index)
+        const sizes = new Map()
+        fflate.unzipSync(bytes, {
+          filter: ({ name, originalSize }) => {
+            sizes.set(name, originalSize)
+            return false
+          },
+        })
+        const names = [...sizes.keys()]
+        const types = names.find(isContentTypes)
+        const typeOf = types === undefined ? () => undefined : contentTypes(readXml(bytes, types))
+        const kinds = new Map(names.map((name) => [name, isXmlPart(name) || isXmlType(typeOf(name)) ? ['xml'] : []]))
+        names.filter((name) => isMacroType(typeOf(name))).forEach((name) => kinds.get(name).push('macros'))
+        for (const { kind, targets = [] } of activeContent(bytes, names)) {
+          targets.forEach((target) => kinds.get(target).push(kind))
+        }
+        return names.map((name) => ({ index, name, size: sizes.get(name), kinds: kinds.get(name) }))
+      } catch (error) {
+        reason(error)
+        return []
+      }
+    }).flat())
+  // Whether an input has a part of this kind with these bytes; only parts of the same size are inflated.
+  const keptPart = (count, data, kind) =>
+    keptParts(count).some(
+      (part) =>
+        part.kinds.includes(kind) && part.size === data.length && sameBytes(read(__inputFile(part.index), part.name), data),
+    )
   let inputInclusions
   // The inclusion fields the inputs hold, read once per check and only for a saved file that has one.
   const keptInclusions = (count) =>
@@ -186,46 +302,48 @@ const checker = (maxXmlBytes: number, maxUnzipBytes: number) => `(() => {
         try {
           const bytes = __inputFile(index)
           const names = partNames(bytes)
-          const read = (name) =>
-            new xmldom.DOMParser({ onError: () => {} }).parseFromString(
-              decode(fflate.unzipSync(bytes, { filter: (file) => file.name === name })[name]),
-              'text/xml',
-            )
           // The parts the saved file's check reads: XML by name, or by the content type the package gives it.
           const types = names.find(isContentTypes)
-          const typeOf = types === undefined ? () => undefined : contentTypes(read(types))
-          return names.filter((name) => isXmlPart(name) || isXmlType(typeOf(name))).flatMap((name) => inclusions(read(name)))
+          const typeOf = types === undefined ? () => undefined : contentTypes(readXml(bytes, types))
+          return names
+            .filter((name) => isXmlPart(name) || isXmlType(typeOf(name)))
+            .flatMap((name) => inclusions(readXml(bytes, name)))
         } catch (error) {
           reason(error)
           return []
         }
       }).flat(),
     ))
-  let inputMacros
-  // The bytes of every macro part the inputs hold, read once per check; a damaged input holds none.
-  const keptMacros = (count) =>
-    (inputMacros ??= Array.from({ length: count }, (_, index) => {
-      try {
-        const bytes = __inputFile(index)
-        const types = fflate.unzipSync(bytes, { filter: ({ name }) => name === '[Content_Types].xml' })['[Content_Types].xml']
-        const doc = new xmldom.DOMParser({ onError: () => {} }).parseFromString(decode(types), 'text/xml')
-        return macroParts(bytes, doc, partNames(bytes)).map(([, data]) => data)
-      } catch (error) {
-        reason(error)
-        return []
-      }
-    }).flat())
+  // What a relationship to active content adds: an external one no input had with the same type and target, or an
+  // internal one whose part no input had with the same bytes. An embedded package no input had is checked like the
+  // file. A target this check cannot find is refused, because Office might resolve a name the check cannot.
+  const addedBy = (bytes, { kind, part, key, targets }, inputs) => {
+    if (key !== undefined) return inputKeys(inputs).has(key) ? undefined : { added: kind, part }
+    if (targets.length === 0) return kind === 'macros' ? { addedMacros: true, part } : { added: kind, part }
+    for (const target of targets) {
+      const data = read(bytes, target)
+      if (keptPart(inputs, data, kind)) continue
+      if (kind === 'macros') return { addedMacros: true, part: target }
+      if (kind !== 'package') return { added: kind, part: target }
+      // The formula scan after this check reads a package only as a zip that starts at its first byte.
+      if (!(data[0] === 0x50 && data[1] === 0x4b && data[2] === 3 && data[3] === 4)) return { added: 'package', part: target }
+      const problem = checkPackage(data, null, null, inputs)
+      if (problem?.reason !== undefined && problem.part === undefined) return { added: 'package', part: target }
+      if (problem !== undefined) return { ...problem, part: problem.part === undefined ? target : target + ': ' + problem.part }
+    }
+  }
   // \`macros\` is true for a .xlsm name, false for .xlsx and null for anything else; Excel opens a workbook only when
   // its content type agrees. \`only\` lists the XML parts to parse, besides the content types; null parses them all.
   // \`inputs\` is how many files the run read: active content none of them had is the script's own.
-  globalThis.__check = (index, macros, only, inputs) => {
-    const bytes = __savedFile(index)
+  const checkPackage = (bytes, macros, only, inputs) => {
     const all = []
     const names = []
     const sizes = new Map()
     let declared = 0
     let total = 0
     let badName
+    let duplicate
+    const seen = new Set()
     let types
     const included = []
     // Excelize rewrites an external link it read, so its parts are parsed for a DDE link however the file was made.
@@ -237,6 +355,9 @@ const checker = (maxXmlBytes: number, maxUnzipBytes: number) => `(() => {
           all.push(name)
           sizes.set(name, originalSize)
           badName ??= isBadName(name) ? name : undefined
+          // OPC forbids two parts whose names differ only in case: Office may read either, and this check the last.
+          duplicate ??= seen.has(name.toLowerCase()) ? name : undefined
+          seen.add(name.toLowerCase())
           total += originalSize
           if (isXmlPart(name) && parsed(name)) {
             // The content types come first: they name the other parts that are XML whatever their name.
@@ -253,6 +374,9 @@ const checker = (maxXmlBytes: number, maxUnzipBytes: number) => `(() => {
     if (badName !== undefined) {
       return { badName }
     }
+    if (duplicate !== undefined) {
+      return { duplicate }
+    }
     if (declared > ${maxXmlBytes}) {
       return { tooLarge: true }
     }
@@ -262,7 +386,7 @@ const checker = (maxXmlBytes: number, maxUnzipBytes: number) => `(() => {
     for (const name of names) {
       let data
       try {
-        data = fflate.unzipSync(bytes, { filter: (file) => file.name === name })[name]
+        data = read(bytes, name)
       } catch (error) {
         return { reason: reason(error) }
       }
@@ -276,6 +400,17 @@ const checker = (maxXmlBytes: number, maxUnzipBytes: number) => `(() => {
       }
       if (hasDde(doc)) {
         return { part: name, dde: true }
+      }
+      // Excelize never writes these, so the parts it wrote lose nothing by being skipped. An action's target is in the
+      // part's relationships, so they are kept too.
+      const action = autoRun(doc, text)
+      if (action !== undefined) {
+        const slash = name.lastIndexOf('/') + 1
+        const relationships = (name.slice(0, slash) + '_rels/' + name.slice(slash) + '.rels').toLowerCase()
+        const own = all.filter((part) => part.toLowerCase() === relationships).map((part) => read(bytes, part))
+        if ([data, ...own].some((part) => !keptPart(inputs, part, 'xml'))) {
+          return { changed: action, part: name }
+        }
       }
       included.push(...inclusions(doc).map((code) => ({ code, part: name })))
       if (isContentTypes(name)) {
@@ -293,21 +428,24 @@ const checker = (maxXmlBytes: number, maxUnzipBytes: number) => `(() => {
         names.push(...typedXml)
       }
     }
-    const added = activeContent(bytes).find(({ key }) => !inputKeys(inputs).has(key))
-    if (added !== undefined) {
-      return { added: added.kind, part: added.part }
+    for (const relationship of activeContent(bytes, all)) {
+      const added = addedBy(bytes, relationship, inputs)
+      if (added !== undefined) {
+        return added
+      }
     }
     // An edit may keep a field the user's file had, unchanged, but never add one or point one elsewhere.
     const field = included.find(({ code }) => !keptInclusions(inputs).has(code))
     if (field !== undefined) {
-      return { added: 'field', part: field.part }
+      return { added: 'field', part: field.part, detail: field.code }
     }
     // A script may keep the macros of a file it read, byte for byte, but never add or change any.
-    const macro = types && macroParts(bytes, types, all).find(([, data]) => !keptMacros(inputs).some((kept) => sameBytes(data, kept)))
+    const macro = types && macroParts(bytes, types, all).find(([, data]) => !keptPart(inputs, data, 'macros'))
     if (macro) {
       return { addedMacros: true, part: macro[0] }
     }
   }
+  globalThis.__check = (index, macros, only, inputs) => checkPackage(__savedFile(index), macros, only, inputs)
 })()`
 
 const tooLargeToCheck = (filename: string) =>
@@ -320,9 +458,38 @@ const addedContent = new Map([
   ['ole', 'an OLE object, which can run a program when it is opened'],
   [
     'field',
-    'a field that loads content from outside the file, or whose name another field computes, which Word acts on when the file opens',
+    'a field that loads content from outside the file, or whose name another field, a tracked change or markup Word skips decides, which Word acts on when the file opens',
+  ],
+  [
+    'chunk',
+    'an imported chunk (w:altChunk) of RTF, HTML or another document, which Word merges in when the file opens and this tool cannot check',
+  ],
+  ['activeX', 'an ActiveX control, which Office can load and run when the file opens'],
+  ['connection', 'a data connection, which Excel can refresh from outside the file'],
+  ['package', 'an embedded Office document this tool could not find or open to check'],
+  [
+    'formula',
+    'a formula that fetches data from outside the file (WEBSERVICE, IMAGE, RTD or an IMPORT function), which Excel or Google Sheets runs when the workbook calculates',
   ],
 ])
+
+/** `detail`, the field code or formula refused, lets the model tell its own addition from the user's content it moved. */
+const addedProblem = (filename: string, added: string, part: string | undefined, detail?: string) => {
+  const quoted = detail === undefined ? '' : ` (${JSON.stringify(detail.replace(/\s+/g, ' ').trim().slice(0, 80))})`
+  return `${promptFileName(filename)} was not saved: the script added ${addedContent.get(added)}, in ${part}${quoted}, and no file it read had the same one unchanged. This tool does not add such content to a file. Explain to the user what was refused and why.`
+}
+
+/** Parts saved only as a file the script read had them, with their relationships, described as the model is told it. */
+const keptOnly = new Map([
+  [
+    'autoAction',
+    'holds a mouse-over action or an OLE verb command, which PowerPoint runs during a slide show without a click',
+  ],
+  ['query', 'is a Power Query (DataMashup) part, which Excel runs when its data connection refreshes'],
+])
+
+const changedProblem = (filename: string, changed: string, part: string | undefined) =>
+  `${promptFileName(filename)} was not saved: ${part} ${keptOnly.get(changed)}, and no file the script read had that part and its relationships byte for byte. Leave both exactly as they were, without parsing and serializing them again, or explain to the user what was refused and why.`
 
 const unzipsTooLarge = (filename: string, limits: SandboxLimits) =>
   `${promptFileName(filename)} unzips to more than ${limits.unzipBytes / 1024 / 1024} MiB, the most a saved file may hold. Make it smaller, for example with smaller images, then call the tool again.`
@@ -345,6 +512,10 @@ const describeProblem = (filename: string, problem: JSValueHandle, limits: Sandb
   if (badName !== undefined) {
     return `${name} has a part named ${JSON.stringify(badName.slice(0, 100))}, which Office does not accept. Name each part as a path inside the zip, without a leading "/", "\\", ":", "." or ".." folders, then call the tool again.`
   }
+  const duplicate = text('duplicate')
+  if (duplicate !== undefined) {
+    return `${name} has two parts named ${JSON.stringify(duplicate.slice(0, 100))}, ignoring case, which Office does not accept. Keep one part under each name, then call the tool again.`
+  }
   const macros = problem.getProp('macros').consume((handle) => (handle.isUndefined ? undefined : handle.toBoolean()))
   if (macros !== undefined) {
     // Never ask for .xlsm here: that would turn a workbook into one with macros.
@@ -358,7 +529,11 @@ const describeProblem = (filename: string, problem: JSValueHandle, limits: Sandb
   }
   const added = text('added')
   if (added !== undefined) {
-    return `${name} was not saved: the script added ${addedContent.get(added)}, in ${part}, and no file it read of this type had one. This tool does not add such content to a file. Explain to the user what was refused and why.`
+    return addedProblem(filename, added, part, text('detail'))
+  }
+  const changed = text('changed')
+  if (changed !== undefined) {
+    return changedProblem(filename, changed, part)
   }
   if (flag('addedMacros')) {
     return `${name} was not saved: the script added or changed the macros in ${part}. This tool keeps the macros of a file it read exactly as they are and never adds or changes any. Explain to the user what was refused and why.`
@@ -392,14 +567,127 @@ const findUnchanged = (files: SavedFile[], inputs: readonly SandboxInput[]) => {
   })
 }
 
+/** A zip's parts, unpacked within what `budget` has left, which they then use up. */
+const unpack = (zip: Uint8Array, budget: { bytes: number }) => {
+  const parts = unzipWithinLimits(zip, { bytes: budget.bytes, parts: 0xffff })
+  budget.bytes -= [...parts.values()].reduce((total, part) => total + part.byteLength, 0)
+  return parts
+}
+
+const isZip = (data: Uint8Array) => data[0] === 0x50 && data[1] === 0x4b && data[2] === 3 && data[3] === 4
+
+const isXmlSpace = (byte: number) => byte === 0x20 || byte === 0x09 || byte === 0x0a || byte === 0x0d
+
+/** A part's text, if Office could read it as XML: UTF-16 after its byte-order mark, or UTF-8 from a first `<`. */
+const xmlTextOf = (data: Uint8Array) => {
+  if ((data[0] === 0xff && data[1] === 0xfe) || (data[0] === 0xfe && data[1] === 0xff)) {
+    return new TextDecoder(data[0] === 0xff ? 'utf-16le' : 'utf-16be').decode(data)
+  }
+  const utf8Mark = data[0] === 0xef && data[1] === 0xbb && data[2] === 0xbf ? 3 : 0
+  return data.subarray(utf8Mark).find((byte) => !isXmlSpace(byte)) === 0x3c ? new TextDecoder().decode(data) : undefined
+}
+
+type PartFormula = { part: string; formula: string }
+
+/**
+ * Whether a package's content types make it a Word or PowerPoint file, not a workbook. Office Math writes a fraction
+ * as `<m:f>`, so such a file's own parts are not scanned as a workbook's; a workbook inside it still is.
+ */
+const isDocumentOrDeck = (parts: Map<string, Uint8Array>) => {
+  const types = [...parts].find(([name]) => /^\[content_types\]\.xml$/i.test(name))?.[1]
+  const text = decodeXml((types && xmlTextOf(types)) ?? '')
+  return (
+    /(wordprocessingml|presentationml|ms-word|ms-powerpoint)\.[\w.]*main\+xml/i.test(text) &&
+    !/(spreadsheetml|ms-excel)\.[\w.]*main/i.test(text)
+  )
+}
+
+/**
+ * Each formula in these parts that fetches data from outside the file, with its part. A part that is a zip, such as
+ * the workbook behind a chart, is unpacked within `budget` and scanned too, unless `isKept` says a file the run read
+ * holds it as it is, with the same formulas; one that does not unpack throws.
+ */
+const fetchingFormulas = (
+  parts: Map<string, Uint8Array>,
+  budget: { bytes: number },
+  isKept: (data: Uint8Array) => boolean,
+): PartFormula[] => {
+  const scansText = !isDocumentOrDeck(parts)
+  return [...parts].flatMap(([name, data]) => {
+    if (isZip(data)) {
+      return isKept(data)
+        ? []
+        : fetchingFormulas(unpack(data, budget), budget, isKept).map(({ part, formula }) => ({
+            part: `${name}: ${part}`,
+            formula,
+          }))
+    }
+    const text = scansText ? xmlTextOf(data) : undefined
+    return text === undefined ? [] : externalDataFormulas(text).map((formula) => ({ part: name, formula }))
+  })
+}
+
+/** The fetching formulas of a zip and the zips inside it, which together unpack within `unzipBytes` or throw. */
+const fetchingFormulasOf = (zip: Uint8Array, limits: SandboxLimits, isKept: (data: Uint8Array) => boolean) => {
+  const budget = { bytes: limits.unzipBytes }
+  return fetchingFormulas(unpack(zip, budget), budget, isKept)
+}
+
+/**
+ * Whether `data` is byte for byte a part of one of these zips. The parts are listed once from their central
+ * directories, and only those of the same size are unpacked: the saved zip's own checksums are the script's to write.
+ */
+const isPartOf = (zips: readonly SandboxInput[]) => {
+  let sized: { zip: Uint8Array; name: string; size: number }[] | undefined
+  return (data: Uint8Array) =>
+    (sized ??= zips.flatMap(({ bytes }) =>
+      [...(checksumsOf(bytes) ?? [])].map(([name, sum]) => ({ zip: bytes, name, size: Number(sum.split(':')[1]) })),
+    )).some(({ zip, name, size }) => {
+      if (size !== data.length) {
+        return false
+      }
+      try {
+        // Only this part, whose size is known, is unpacked, so no byte limit is needed.
+        const part = unzipWithinLimits(zip, { bytes: Infinity, parts: 0xffff }, (entry) => entry === name).get(name)
+        // A stored part may declare more bytes than it holds, so the length is compared too.
+        return part?.length === data.length && part.every((byte, index) => byte === data[index])
+      } catch {
+        return false
+      }
+    })
+}
+
+/** The fetching formulas the inputs hold; one that is not a zip, or is damaged, holds none. */
+const keptFormulas = (inputs: readonly SandboxInput[], limits: SandboxLimits) =>
+  new Set(
+    inputs.flatMap(({ bytes }) => {
+      try {
+        return fetchingFormulasOf(bytes, limits, () => false).map(({ formula }) => formula)
+      } catch {
+        return []
+      }
+    }),
+  )
+
 /**
  * Why a saved zip would unpack past `unzipBytes`, found by unpacking every part with each stopped at the size it
  * declares, so a part that understates its size fails as damaged instead of unpacking in full in another program.
+ * The parts are then scanned for a formula that fetches outside data, which no input had (see `externalDataFormulas`):
+ * here, because a sheet too large for the check VM to parse in time takes the Worker milliseconds.
  */
-const findUnpackProblem = (files: SavedFile[], limits: SandboxLimits) => {
+const findUnpackProblem = (files: SavedFile[], inputs: readonly SandboxInput[], limits: SandboxLimits) => {
+  let kept: Set<string> | undefined
+  const isInputPart = isPartOf(inputs)
   for (const { filename, bytes } of files) {
     try {
-      unzipWithinLimits(bytes, { bytes: limits.unzipBytes, parts: 0xffff })
+      const formulas = fetchingFormulasOf(bytes, limits, isInputPart)
+      if (formulas.length > 0) {
+        kept ??= keptFormulas(inputs, limits)
+        const added = formulas.find(({ formula }) => !kept?.has(formula))
+        if (added !== undefined) {
+          return addedProblem(filename, 'formula', added.part, added.formula)
+        }
+      }
     } catch (error) {
       return error instanceof ZipLimitError && error.limit === 'bytes'
         ? unzipsTooLarge(filename, limits)
@@ -418,16 +706,23 @@ const macrosExpected = (filename: string) => {
 /**
  * Why Word, Excel or PowerPoint would refuse one of the saved files, or why it is not safe to hand over, worded for
  * the model. Returns `undefined` when every file passes these checks:
- * - its zip opens, unzips within `unzipBytes` and has valid part names;
+ * - its zip opens, unzips within `unzipBytes` and has valid part names, no two alike but for case;
  * - every XML part parses, and none holds a DDE field or link;
  * - a workbook's extension matches whether it has macros;
- * - it adds no remote template, external link or OLE object that no input of its type had;
- * - it adds no Word field that fills itself from outside the file, such as INCLUDEPICTURE, unless an input had it;
- * - every macro part matches an input's byte for byte;
+ * - every external template, link or OLE object has the type and target of one an input had;
+ * - every part behind a macro, OLE, imported-chunk, ActiveX or data-connection relationship, or typed as macros, is
+ *   byte for byte one an input held as the same kind; an embedded package that is not passes these checks itself;
+ * - every Word field that fills itself from outside the file, such as INCLUDEPICTURE, or whose name Word may read
+ *   otherwise than this check, is one an input had;
+ * - every part with a mouse-over action, an OLE verb command or a Power Query is byte for byte an input's XML part,
+ *   and so are its relationships;
+ * - every formula that fetches outside data, such as WEBSERVICE, is one an input had, outside a Word or PowerPoint
+ *   file's own parts;
  * - it is not an input saved unchanged.
  *
  * The files are the model's own bytes, so their XML is parsed in a fresh VM with its own memory limit and the
- * script's deadline, never on the Worker's heap. Only the final unzip, bounded by `unzipBytes`, runs on the Worker.
+ * script's deadline, never on the Worker's heap. Only the final unzip, bounded by `unzipBytes`, and the formula scan
+ * of what it unpacked run on the Worker.
  * A file in `fromExcelize` has only the listed parts parsed: Excelize wrote the rest, and parsing a large workbook
  * would take most of the script's time.
  */
@@ -492,7 +787,7 @@ export const findBrokenFile = async (
   } finally {
     vm.dispose()
   }
-  const unpacked = findUnpackProblem(files, limits)
+  const unpacked = findUnpackProblem(files, inputs, limits)
   if (unpacked !== undefined) {
     return unpacked
   }

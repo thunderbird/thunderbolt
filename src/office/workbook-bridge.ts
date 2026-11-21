@@ -68,6 +68,19 @@ const formulaArguments = z.tuple([z.string(), z.string(), z.string()]).rest(work
 /** `SetCellValue` given a formula, which Excelize would store as text. */
 const formulaAsValue = z.tuple([workbookValue, workbookValue, z.string().startsWith('=')]).rest(workbookValue)
 
+const validationArguments = z.tuple([z.string(), z.record(z.string(), workbookValue)]).rest(workbookValue)
+
+/** A validation with `Formula1` and `Formula2` escaped as XML text: Excelize writes those two into the sheet raw. */
+const escapeFormulas = (validation: Record<string, WorkbookValue>) =>
+  Object.fromEntries(
+    Object.entries(validation).map(([key, value]) => [
+      key,
+      /^Formula[12]$/.test(key) && typeof value === 'string'
+        ? value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        : value,
+    ]),
+  )
+
 export type WorkbookFunction = (...args: WorkbookValue[]) => WorkbookValue
 
 /** An Excelize object's own functions, by name, bound to it. */
@@ -271,12 +284,17 @@ export const installWorkbooks = (
         )
       }
       const formula = method === 'SetCellFormula' ? formulaArguments.safeParse(args) : undefined
-      if (!formula?.success) {
-        return settle(method, workbookCall(...args))
+      if (formula?.success) {
+        // Excelize's own examples start a formula with "=", which it keeps and Excel then refuses.
+        const [sheet, cell, text, ...rest] = formula.data
+        return settle(method, workbookCall(sheet, cell, withFuturePrefixes(text.replace(/^=/, '')), ...rest))
       }
-      // Excelize's own examples start a formula with "=", which it keeps and Excel then refuses.
-      const [sheet, cell, text, ...rest] = formula.data
-      return settle(method, workbookCall(sheet, cell, withFuturePrefixes(text.replace(/^=/, '')), ...rest))
+      const validation = method === 'AddDataValidation' ? validationArguments.safeParse(args) : undefined
+      if (validation?.success) {
+        const [sheet, options, ...rest] = validation.data
+        return settle(method, workbookCall(sheet, escapeFormulas(options), ...rest))
+      }
+      return settle(method, workbookCall(...args))
     }
   }
 

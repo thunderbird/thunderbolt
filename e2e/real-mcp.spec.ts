@@ -48,10 +48,12 @@ test('the model calls an MCP tool through the proxy and displays its result', as
 
   await expect.poll(() => toolCalls.length, { timeout: 90_000 }).toBeGreaterThan(0)
   expect(toolCalls.some((body) => body.includes(marker))).toBe(true)
-  await expect(page.locator('.tool-invocation-card')).toBeVisible()
-  await page.locator('.tool-invocation-card').getByRole('button').first().click()
-  await page
-    .locator('.tool-invocation-card')
+  // The model loads the echo tool with `load_tools` first; if it writes text between the two calls they land
+  // in separate cards, and the echo call is in the last one.
+  const toolCard = page.locator('.tool-invocation-card').last()
+  await expect(toolCard).toBeVisible()
+  await toolCard.getByRole('button').first().click()
+  await toolCard
     .getByRole('region')
     .getByRole('button', { name: /Test Echo.*echo/i })
     .click()

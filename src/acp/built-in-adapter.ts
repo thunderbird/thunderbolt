@@ -60,6 +60,7 @@ import {
   supersededAppContextOutput,
 } from '@/mini-apps/mini-app-context-note'
 import { webToolNames } from '@/lib/tools'
+import { loadedToolNamesFromCalls, loadedToolNamesFromHistory, selectActiveToolNames } from '@/ai/load-tools-tool'
 import { tinfoilSession } from '@/lib/tinfoil-session'
 import { createLiveProxyFetch } from '@/lib/proxy-fetch'
 import { isSsoMode } from '@/lib/auth-mode'
@@ -507,17 +508,42 @@ const buildHarnessRecord = async (
   return { harness, baseTools: harness.getTools(), systemPrompt }
 }
 
-/** Refresh per-send prompt and app/MCP tool closures on a persistent harness. */
+/** Refresh per-send prompt and app/MCP tool closures on a persistent harness.
+ *  Connection tools start inactive unless an earlier turn in `messages` loaded them. */
 const prepareHarnessForSend = async (
   agentCore: AgentCoreModule,
   record: HarnessRecord,
   config: PreparedAiRequestConfig,
+  messages: readonly ThunderboltUIMessage[],
 ): Promise<void> => {
   record.systemPrompt.current = composeAppHarnessSystemPrompt(config)
   const tools = await agentCore.toPiAgentTools(config.toolset)
   const allTools = [...record.baseTools, ...tools]
-  const activeToolNames = config.model.toolUsage === 0 ? [] : allTools.map((tool) => tool.name)
+  const activeToolNames =
+    config.model.toolUsage === 0
+      ? []
+      : selectActiveToolNames(
+          allTools.map((tool) => tool.name),
+          config.connectionToolNames,
+          loadedToolNamesFromHistory(messages, config.connectionToolNames),
+        )
   await record.harness.setTools(allTools, activeToolNames)
+}
+
+/** Activate connection tools as `load_tools` calls succeed during a turn. Returns the unsubscribe. */
+const installToolLoader = (harness: AgentHarness, connectionToolNames: ReadonlySet<string>): (() => void) => {
+  if (connectionToolNames.size === 0) {
+    return () => undefined
+  }
+  return harness.on('tool_result', async (event) => {
+    const loaded = event.isError ? [] : loadedToolNamesFromCalls([event], connectionToolNames)
+    if (loaded.length === 0) {
+      return undefined
+    }
+    const active = harness.getActiveTools().map(({ name }) => name)
+    await harness.setActiveTools([...new Set([...active, ...loaded])])
+    return undefined
+  })
 }
 
 /** Estimate prompt/schema overhead when restored history has no provider usage yet. */
@@ -784,7 +810,7 @@ const fetchViaHarness = async (
   init.signal?.throwIfAborted()
   await record.harness.setReasoningEffort(context.reasoningEffort, resolved.thinkingLevel)
   init.signal?.throwIfAborted()
-  await prepareHarnessForSend(agentCore, record, config)
+  await prepareHarnessForSend(agentCore, record, config, messages)
   init.signal?.throwIfAborted()
   // Not fatal: workspace copies are a cache of IndexedDB and the prompt keeps the preview.
   const failures = await agentCore.writeAgentWorkspaceFiles(context.threadId, files)
@@ -811,6 +837,7 @@ const fetchViaHarness = async (
           throw new Error('Web tool budget exhausted. Retry manually to start a new research attempt.')
         }
         const removeBudgetFloor = installWebToolBudgetFloor(harness, context.webToolBudget)
+        const removeToolLoader = installToolLoader(harness, config.connectionToolNames)
         const removeContext = harness.on('context', async ({ messages }) => {
           const prepared = await harness.compaction.prepareRequest(messages, {
             signal: init.signal ?? undefined,
@@ -849,6 +876,7 @@ const fetchViaHarness = async (
           throw error
         } finally {
           removeBudgetFloor()
+          removeToolLoader()
           removeContext()
           removeCheckpoint()
         }
@@ -1022,7 +1050,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
     init.signal?.throwIfAborted()
     await record.harness.setReasoningEffort(context.reasoningEffort, resolved.thinkingLevel)
     init.signal?.throwIfAborted()
-    await prepareHarnessForSend(agentCore, record, config)
+    await prepareHarnessForSend(agentCore, record, config, messages)
     init.signal?.throwIfAborted()
     const failures = await agentCore.writeAgentWorkspaceFiles(context.threadId, files)
     init.signal?.throwIfAborted()

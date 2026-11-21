@@ -86,7 +86,7 @@ describe('MCPProvider reconnect', () => {
       await act(async () => {
         const send = await mergeMcpTools({}, result.current.getEnabledClients(), result.current.reconnectClient)
         expect(send.toolset).toEqual({ server_1_search: recoveredTool })
-        expect(send.summary).toBe('- server_1 (1 tool)')
+        expect(send.summary).toBe('- server_1: server_1_search')
       })
       expect(result.current.servers[0]).toMatchObject({ isConnected: true, error: null, client: fresh })
       expect(initial.closeCount()).toBe(1)

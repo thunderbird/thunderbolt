@@ -883,6 +883,38 @@ describe.each([
     ).toHaveLength(1)
   })
 
+  it('refuses a Word field that fills itself from outside the file, unless the edited file had it', async () => {
+    const run = (text: string) => `<w:r><w:instrText xml:space="preserve">${text}</w:instrText></w:r>`
+    const mark = (type: string) => `<w:r><w:fldChar w:fldCharType="${type}"/></w:r>`
+    const field = (...codes: string[]) => `${mark('begin')}${codes.map(run).join('')}${mark('separate')}${mark('end')}`
+    const document = (body: string) => `<w:document xmlns:w="urn:w"><w:body><w:p>${body}</w:p></w:body></w:document>`
+    const picture = field(' INCLUDEPICTURE "https://example.com/a.png" \\* MERGEFORMATINET ')
+    for (const body of [
+      picture,
+      field(' INCLUDE', 'PICTURE "https://example.com/a.png" \\d '),
+      '<w:fldSimple w:instr="INCLUDETEXT &quot;\\\\host\\share\\a.docx&quot;"/>',
+      field(' IMPORT \\\\host\\share\\a.png '),
+      field(' LINK Excel.Sheet.8 "\\\\host\\share\\a.xlsx" "Sheet1!R1C1" \\a '),
+    ]) {
+      const result = await call({}, `saveFile('a.docx', new Uint8Array([${zipWith(document(body)).join(',')}]))`)
+      expect(result.ok ? '' : result.error).toStartWith(
+        '"a.docx" was not saved: the script added a field that fills itself from another file or a web address, which Word can fetch when the file opens, in word/document.xml',
+      )
+    }
+
+    const pictures = storeAttachment('pictures.docx', zipWith(document(picture)))
+    const deps = { listThreadFiles: async () => [pictures] }
+    const kept = `saveFile('pictures.docx', ${editedCopy('pictures.docx')})`
+    expect((await okFiles(call(deps, kept, ['pictures.docx']))).files).toHaveLength(1)
+    const retargeted = `
+const parts = fflate.unzipSync(readFile('pictures.docx'))
+parts['word/document.xml'] = fflate.strToU8(fflate.strFromU8(parts['word/document.xml']).replace('example.com', 'example.org'))
+saveFile('pictures.docx', fflate.zipSync(parts))
+`
+    const result = await call(deps, retargeted, ['pictures.docx'])
+    expect(result.ok ? '' : result.error).toStartWith('"pictures.docx" was not saved: the script added a field')
+  })
+
   it('refuses a part name that is not a plain path inside the zip', async () => {
     for (const name of ['../../evil.xml', '/abs.bin', 'C:\\evil.bin', 'word/./a.bin', 'word//a.bin']) {
       const bytes = zipSync({ '[Content_Types].xml': strToU8('<Types/>'), [name]: new Uint8Array([1]) })

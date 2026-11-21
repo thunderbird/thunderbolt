@@ -526,6 +526,24 @@ saveFile('${input}', fflate.zipSync(parts))
     expect(error).not.toContain('as .xlsm')
   })
 
+  it('judges the macros of a workbook by the name it is stored under, without trailing dots or spaces', async () => {
+    storeAttachment('SimpleMacro.xlsm', await fixture('SimpleMacro.xlsm'))
+    const edit = (name: string) => `
+const f = excelize.OpenReader(readFile('SimpleMacro.xlsm'))
+f.SetCellValue(f.GetSheetList().list[0], 'B2', 1200)
+saveFile(${JSON.stringify(name)}, f.WriteToBuffer().buffer)
+`
+    for (const name of ['copy.xlsx.', 'copy.xlsx ']) {
+      expect(await errorOf(edit(name), ['SimpleMacro.xlsm'])).toStartWith(
+        `${JSON.stringify(name)} is marked as a workbook with macros, which Excel does not open as .xlsx.`,
+      )
+    }
+    const plain = `saveFile('new.xlsm ', excelize.NewFile().WriteToBuffer().buffer)`
+    expect(await errorOf(plain, ['SimpleMacro.xlsm'])).toStartWith(
+      '"new.xlsm " has no macros, and Excel opens an .xlsm file only when it has them.',
+    )
+  })
+
   it('edits an attached workbook, keeping its styles, charts, conditional formats and app name', async () => {
     const original = await fixture('WithChart.xlsx')
     storeAttachment('chart.xlsx', original)

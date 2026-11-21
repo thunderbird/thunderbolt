@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { partChecksums, unzipWithinLimits, ZipLimitError } from '@/files/unzip-within-limits'
-import { promptFileName } from '@/lib/safe-file-name'
+import { promptFileName, safeFileName } from '@/lib/safe-file-name'
 import { type JSValueHandle, QuickJS } from 'quickjs-wasi'
 import type { SandboxLimits } from './constants'
 import type { SandboxInput, SandboxRuntime, SavedFile } from './sandbox'
@@ -83,6 +83,11 @@ const checker = (maxXmlBytes: number, maxUnzipBytes: number) => `(() => {
   const hasDde = (doc) =>
     doc.getElementsByTagNameNS('*', 'ddeLink').length > 0 ||
     fieldCodes(doc).some((code) => /^\\s*DDE(AUTO)?\\b/i.test(code))
+  // A Word field that fills itself from another file or a web address when it updates, with no relationship to check.
+  const inclusions = (doc) =>
+    fieldCodes(doc)
+      .filter((code) => /^\\s*(INCLUDEPICTURE|INCLUDETEXT|INCLUDE|IMPORT|LINK)\\b/i.test(code))
+      .map((code) => code.replace(/\\s+/g, ' ').trim())
   // Code that Office runs: a VBA project or an Excel 4.0 macro sheet, known by the content type the package gives it.
   const isMacroType = (type) => /^application\\/vnd\\.ms-(office\\.vbaproject|excel\\.(intl)?macrosheet\\+xml)$/i.test(type ?? '')
   // Only application/ and text/ types: an image/svg+xml picture holds no fields, and a strict parse refuses valid ones.
@@ -168,6 +173,25 @@ const checker = (maxXmlBytes: number, maxUnzipBytes: number) => `(() => {
         }
       }).flat(),
     ))
+  let inputInclusions
+  // The inclusion fields the inputs hold, read once per check and only for a saved file that has one.
+  const keptInclusions = (count) =>
+    (inputInclusions ??= new Set(
+      Array.from({ length: count }, (_, index) => {
+        try {
+          const bytes = __inputFile(index)
+          return partNames(bytes)
+            .filter((name) => /^word\\/.*\\.xml$/i.test(name))
+            .flatMap((name) => {
+              const data = fflate.unzipSync(bytes, { filter: (file) => file.name === name })[name]
+              return inclusions(new xmldom.DOMParser({ onError: () => {} }).parseFromString(decode(data), 'text/xml'))
+            })
+        } catch (error) {
+          reason(error)
+          return []
+        }
+      }).flat(),
+    ))
   let inputMacros
   // The bytes of every macro part the inputs hold, read once per check; a damaged input holds none.
   const keptMacros = (count) =>
@@ -194,6 +218,7 @@ const checker = (maxXmlBytes: number, maxUnzipBytes: number) => `(() => {
     let total = 0
     let badName
     let types
+    const included = []
     // Excelize rewrites an external link it read, so its parts are parsed for a DDE link however the file was made.
     const parsed = (name) =>
       only === null || only.includes(name) || isContentTypes(name) || /^xl\\/externalLinks\\//.test(name)
@@ -243,6 +268,7 @@ const checker = (maxXmlBytes: number, maxUnzipBytes: number) => `(() => {
       if (hasDde(doc)) {
         return { part: name, dde: true }
       }
+      included.push(...inclusions(doc).map((code) => ({ code, part: name })))
       if (isContentTypes(name)) {
         if (macros !== null && text.includes('macroEnabled.main+xml') !== macros) {
           return { macros }
@@ -262,6 +288,11 @@ const checker = (maxXmlBytes: number, maxUnzipBytes: number) => `(() => {
     if (added !== undefined) {
       return { added: added.kind, part: added.part }
     }
+    // An edit may keep a field the user's file had, unchanged, but never add one or point one elsewhere.
+    const field = included.find(({ code }) => !keptInclusions(inputs).has(code))
+    if (field !== undefined) {
+      return { added: 'field', part: field.part }
+    }
     // A script may keep the macros of a file it read, byte for byte, but never add or change any.
     const macro = types && macroParts(bytes, types, all).find(([, data]) => !keptMacros(inputs).some((kept) => sameBytes(data, kept)))
     if (macro) {
@@ -278,6 +309,7 @@ const addedContent = new Map([
   ['template', 'a template linked from outside the file, which Word downloads when the file opens'],
   ['link', 'a link to content outside the file, which Office can fetch when the file opens'],
   ['ole', 'an OLE object, which can run a program when it is opened'],
+  ['field', 'a field that fills itself from another file or a web address, which Word can fetch when the file opens'],
 ])
 
 const unzipsTooLarge = (filename: string, limits: SandboxLimits) =>
@@ -365,10 +397,10 @@ const findUnpackProblem = (files: SavedFile[], limits: SandboxLimits) => {
   return undefined
 }
 
-/** `true` for a .xlsm name, `false` for .xlsx, `null` for any other file. */
+/** `true` for a name stored as .xlsm (`report.xlsm.` is stored as `report.xlsm`), `false` for .xlsx, `null` otherwise. */
 const macrosExpected = (filename: string) => {
-  const extension = /\.(xlsx|xlsm)$/i.exec(filename)?.[1].toLowerCase()
-  return extension === undefined ? null : extension === 'xlsm'
+  const { extension } = safeFileName(filename)
+  return extension === 'xlsx' || extension === 'xlsm' ? extension === 'xlsm' : null
 }
 
 /**
@@ -378,6 +410,7 @@ const macrosExpected = (filename: string) => {
  * - every XML part parses, and none holds a DDE field or link;
  * - a workbook's extension matches whether it has macros;
  * - it adds no remote template, external link or OLE object that no input of its type had;
+ * - it adds no Word field that fills itself from outside the file, such as INCLUDEPICTURE, unless an input had it;
  * - every macro part matches an input's byte for byte;
  * - it is not an input saved unchanged.
  *

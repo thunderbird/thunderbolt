@@ -94,6 +94,7 @@ saveFile("budget.xlsx", buffer)
 | \`Fill: { Type: "pattern", Color: "#FFC7CE" }\` or two colors | \`Fill: { Type: "pattern", Pattern: 1, Color: ["#FFC7CE"] }\` |
 | \`Font: { Color: "red" }\` | \`Font: { Color: "#9C0006" }\` |
 | try/catch around a call, then saving anyway | let it throw, so a file without its chart or highlight is never saved |
+| sample data where no row meets the highlight the user asked for, found after saving and fixed with a second save; or a reply naming highlighted rows from memory | choose values that meet the rule, \`console.log\` the matching rows from the arrays you wrote, in the run that saves, and name only those rows in the reply |
 | writing chart, drawing or conditional-format XML with fflate after AddChart or SetConditionalFormat fails | fix the failing call; the rows above cover the usual mistakes |
 | \`saveFile("probe.xlsx", ...)\` or \`saveFile("errors.txt", ...)\` to see a result | \`console.log\` it in a run that saves nothing |
 | \`console.log(result)\`, which prints [object Object] | \`console.log(JSON.stringify(result))\` |

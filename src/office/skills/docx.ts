@@ -116,4 +116,5 @@ saveFile(name, fflate.zipSync(parts))
 - \`italic: true\`: the option is \`italics\`.
 - \`new ImageRun({ data })\` without \`type\`, or a URL for \`data\`: give the type and the bytes.
 - \`Packer.toBuffer(doc)\` or \`Packer.toBlob(doc)\`: use \`await Packer.toArrayBuffer(doc)\`.
-- \`console.log(value)\` prints [object Object]: log \`JSON.stringify(value)\`.`
+- \`console.log(value)\` prints [object Object]: log \`JSON.stringify(value)\`.
+- Counts in the reply from memory ("10 milestones" for a table of 9): count the rows the script built.`

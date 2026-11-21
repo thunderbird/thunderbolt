@@ -11,7 +11,7 @@ export type OfficeSkillFormat = keyof typeof officeSkillNames
  * Characters in each manual, so the composer can size a `/office-…` token without loading the text.
  * `src/defaults/skills.test.ts` keeps them equal to the manuals.
  */
-export const officeSkillLengths = { docx: 7524, xlsx: 11107, pptx: 9441 } satisfies Record<OfficeSkillFormat, number>
+export const officeSkillLengths = { docx: 7627, xlsx: 11428, pptx: 9654 } satisfies Record<OfficeSkillFormat, number>
 
 // Each import starts only once the app's server answers: Safari never retries a module that failed to load.
 const loaders = {

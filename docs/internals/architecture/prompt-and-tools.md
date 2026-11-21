@@ -129,8 +129,13 @@ own context.
   (`src/office/constants.ts`), and the host terminates a Worker that stops answering. Each file the script
   saves becomes a new entry in the attachment store, and the tool result lists them. The transcript builds
   one chip per listed file (`src/components/chat/created-file-card.tsx`), and a device without the bytes
-  says so. On the device that has the bytes, clicking the chip opens the file in the side view, like the
-  card of an attached file. The harness environment block names this tool as the way to deliver a file.
+  says so. The chips appear when the turn ends, including any auto-retry (`holdFiles` in
+  `src/components/chat/chat-messages.tsx`), so the user never sees a file the model may still replace. Only
+  the tab running the turn holds them: another tab or device that opens the thread mid-turn loads the
+  partial reply and shows its chips. A run may save nothing, to try an API or inspect a file: it succeeds and
+  returns only its logs and a note that the user sees nothing. On the device that has the bytes, clicking the
+  chip opens the file in the side view, like the card of an attached file. The harness environment block
+  names this tool as the way to deliver a file.
 - A failed run can return a one-use `scriptId` for this send. An `edit` retries that source with ordered,
   literal replacements that must each match once. An invalid edit leaves the ID usable. The retry resolves
   the original input references again unless the caller supplies a new list (including an empty list).
@@ -191,7 +196,7 @@ own context.
   Some cells keep what Excelize saved: a formula IronCalc cannot compute (`AGGREGATE`, for example), an error
   result, an array or data-table formula, and every formula of a workbook that counts dates from 1904. The tool
   result lists each in `formulaErrors` with its file, sheet and cell. `WriteToBuffer` returns the same list, so a
-  script can check it before saving anything.
+  script can check it before saving anything, or log it from a run that saves nothing.
 - Parsing every XML part of a large workbook would take most of the script's time, so the output check skips the
   parts Excelize wrote when the script saves the bytes `WriteToBuffer` returned unchanged. Parts Excelize copied
   from the opened file without parsing them, such as charts, are still parsed.

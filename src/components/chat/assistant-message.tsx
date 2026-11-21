@@ -31,6 +31,8 @@ type AssistantMessageProps = {
    *  (see `useThreadSources`). Defaults to the message's own `metadata.sources`. */
   sources?: SourceMetadata[]
   isStreaming: boolean
+  /** Hide the created-file cards until the turn ends, so a file the model may still replace never shows. */
+  holdFiles?: boolean
   isLastMessage?: boolean
   isLastAssistantMessage?: boolean
   lastAssistantAction?: ReactNode
@@ -68,9 +70,11 @@ export const mountMessageParts = (
   mcpTools?: UIMessageMetadata['mcpTools'],
 ) => {
   const partElements: ReactNode[] = []
+  // File chips are not counted, so holding them back never moves another part's animation class.
+  let appended = 0
 
   const appendPart = (element: ReactNode, key: number) => {
-    const index = partElements.length
+    const index = appended++
     // The second part replaces the loading indicator in place.
     partElements.push(
       <div key={key} className={index === 1 ? '' : animationClasses}>
@@ -163,13 +167,17 @@ export const AssistantMessage = memo(
     message,
     sources: threadSources,
     isStreaming,
+    holdFiles = false,
     isLastMessage = false,
     isLastAssistantMessage = false,
     lastAssistantAction,
     activity,
   }: AssistantMessageProps) => {
     // Memoize filtering and grouping to avoid recomputing on every render
-    const groupedParts = useMemo(() => groupMessageParts(filterMessageParts(message.parts)), [message.parts])
+    const groupedParts = useMemo(() => {
+      const grouped = groupMessageParts(filterMessageParts(message.parts))
+      return holdFiles ? grouped.filter((part) => part.type !== 'created_files') : grouped
+    }, [message.parts, holdFiles])
 
     // Read metadata fields directly. During streaming `message.parts` grows every
     // token, so `groupedParts` — and therefore `partElements` below — already
@@ -266,6 +274,7 @@ export const AssistantMessage = memo(
       prevProps.message.metadata === nextProps.message.metadata &&
       prevProps.sources === nextProps.sources &&
       prevProps.isStreaming === nextProps.isStreaming &&
+      prevProps.holdFiles === nextProps.holdFiles &&
       prevProps.isLastMessage === nextProps.isLastMessage &&
       prevProps.isLastAssistantMessage === nextProps.isLastAssistantMessage &&
       prevProps.lastAssistantAction === nextProps.lastAssistantAction &&

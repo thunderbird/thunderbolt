@@ -316,4 +316,47 @@ describe('the chip for a file the agent created', () => {
     await renderMessage(finishedCall({ ok: false, error: 'Error: boom', logs: '' }))
     expect(screen.queryByText('report.docx')).toBeNull()
   })
+
+  it('holds the chips while the turn is active and shows them once it ends', async () => {
+    const parts: ThunderboltUIMessage['parts'] = [
+      { ...finishedCall({ ok: true, files: [{ ...report, id: 'draft' }], logs: '' }), toolCallId: 'draft' },
+      { type: 'text', text: 'Here is the report.' },
+      { ...finishedCall({ ok: true, files: [report], logs: '' }), toolCallId: 'final' },
+    ]
+    const view = (active: boolean) => (
+      <ContentViewProvider>
+        <AssistantMessage message={{ id: 'm1', role: 'assistant', parts }} isStreaming={active} holdFiles={active} />
+      </ContentViewProvider>
+    )
+    const { rerender } = render(view(true))
+    await act(async () => void (await getClock().runAllAsync()))
+    expect(screen.getByText('Here is the report.')).toBeDefined()
+    expect(screen.queryByText('report.docx')).toBeNull()
+    expect(screen.queryByRole('button', { name: '1 earlier version' })).toBeNull()
+
+    rerender(view(false))
+    await act(async () => void (await getClock().runAllAsync()))
+    expect(screen.getAllByRole('button', { name: 'Download report.docx' })).toHaveLength(1)
+    expect(screen.getByRole('button', { name: '1 earlier version' })).toBeDefined()
+  })
+
+  it('keeps the reply text from replaying its fade-in when the held chips appear', async () => {
+    const parts: ThunderboltUIMessage['parts'] = [
+      finishedCall({ ok: true, files: [report], logs: '' }),
+      { type: 'text', text: 'Here is the report.' },
+    ]
+    const view = (holdFiles: boolean) => (
+      <ContentViewProvider>
+        <AssistantMessage message={{ id: 'm1', role: 'assistant', parts }} isStreaming={false} holdFiles={holdFiles} />
+      </ContentViewProvider>
+    )
+    const { rerender } = render(view(true))
+    await act(async () => void (await getClock().runAllAsync()))
+    expect(screen.getByText('Here is the report.').closest('.animate-in')).toBeNull()
+
+    rerender(view(false))
+    await act(async () => void (await getClock().runAllAsync()))
+    expect(screen.getByRole('button', { name: 'Download report.docx' })).toBeDefined()
+    expect(screen.getByText('Here is the report.').closest('.animate-in')).toBeNull()
+  })
 })

@@ -53,6 +53,15 @@ test('a new load, with new generated ids, quotes the same unnamed controls', asy
   expect(lines.filter((line) => line.includes('unnamed-control'))).toEqual(unnamedLines)
 })
 
+test('a control Tab or a screen reader reaches needs a name, whatever its pointer-events or opacity', async ({
+  page,
+}) =>
+  expect(await problemsOf(page, 'reachable.html')).toEqual([
+    { kind: 'unnamed-control', target: 'button "loader-circle icon after Reply"' },
+    { kind: 'unnamed-control', target: 'button "send icon after Composer"' },
+    { kind: 'unnamed-control', target: 'button "ellipsis icon after Message"' },
+  ]))
+
 test('a fixed footer over a button is covered', async ({ page }) =>
   expect(await problemsOf(page, 'covered.html')).toEqual([{ kind: 'covered', target: 'button "Continue"' }]))
 
@@ -62,7 +71,7 @@ test('a button pushed out of a fixed container is offscreen', async ({ page }) =
 test('a button below the fold of a scrollable page is fine', async ({ page }) =>
   expect(await problemsOf(page, 'scrollable.html')).toEqual([]))
 
-test('the background of a modal is not covered', async ({ page }) =>
+test('the background of a modal is neither covered nor unnamed', async ({ page }) =>
   expect(await problemsOf(page, 'modal.html')).toEqual([]))
 
 test('an overlay that leaves after 200 ms is never reported', async ({ page }) => {

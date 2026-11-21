@@ -96,6 +96,16 @@
   const inheritsNoPointer = (el) =>
     getComputedStyle(el).pointerEvents === 'none' && getComputedStyle(el.parentElement).pointerEvents === 'none'
   const isCandidate = (el) => isVisible(el) && !el.closest('[aria-hidden=true], [inert]') && !inheritsNoPointer(el)
+  // Tab and a screen reader reach a control whatever its pointer-events or opacity (a hover-only action, the #1481
+  // placeholder in a wrapper that stops clicks). Both skip a hidden or inert one; a screen reader reads no name for an
+  // aria-hidden one, which modal.html pins behind a modal. A focusable control under aria-hidden is another defect.
+  // Base UI's focus guards are no controls: on WebKit with VoiceOver they turn into a role=button span so the focus
+  // trap catches VoiceOver's cursor (FocusGuard in @base-ui/react), and they hand focus on at once.
+  const focusGuard = '[data-base-ui-focus-guard]'
+  const isReachable = (el) =>
+    el.checkVisibility({ visibilityProperty: true }) &&
+    !el.closest('[aria-hidden=true], [inert]') &&
+    !el.matches(focusGuard)
 
   // The math of src/hooks/use-keyboard-inset.ts.
   const keyboardOpen = (vv) => innerHeight - vv.height - vv.offsetTop > 100
@@ -336,7 +346,7 @@
           ].filter(Boolean)
         : []
     const unnamed = [...document.querySelectorAll(controls)]
-      .filter((el) => !accessibleName(el) && isCandidate(el))
+      .filter((el) => !accessibleName(el) && isReachable(el))
       .map((el) => ({ kind: 'unnamed-control', target: `${roleOf(el)} "${whereOf(el).slice(0, 80)}"` }))
     return [...found, ...keyboard, ...focus, ...unnamed, ...overflows()]
   }

@@ -273,7 +273,10 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `focused-clipped`, a scroll box or the screen edge cutting off the focused field while the keyboard is open, and
    `unnamed-control`, a control a screen reader cannot name),
    all with `console.error`, so they pass the MCP's `--console-level error`. A problem line is a `layout` finding.
-   An `unnamed-control` line has no name to quote, so it quotes which control it is: the control's own `id` as
+   The name check covers every control Tab or a screen reader reaches, whatever its `pointer-events` or opacity
+   (a disabled button, a hover-only action, a placeholder in a wrapper that stops clicks); only a hidden,
+   `aria-hidden` or `inert` one is left out. The geometry kinds also skip a control that inherits
+   `pointer-events: none`, as the page behind a modal does. An `unnamed-control` line has no name to quote, so it quotes which control it is: the control's own `id` as
    `#<id>`, its `data-testid` as `[data-testid=<value>]` or its `name` attribute as `[name=<value>]`. React's and
    Radix's generated ids (`:r3:`, `«r3»`, `_r_3_`, `radix-…`) change between renders and do not count. Without
    one, it quotes the lucide icon the control draws and the nearest text a screen reader reads before it

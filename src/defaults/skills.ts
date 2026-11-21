@@ -116,7 +116,7 @@ Do not add a Sources or References section; inline citations are sufficient.`
  * Default skills seeded for new users on first sign-in. UUIDs are stable so
  * the reconciler can recognize them across devices and across app restarts.
  *
- * New users get Search, Research, and Weather pinned (in that order) as their
+ * New users get Search and Weather pinned (in that order) as their
  * starter chips; Daily Brief ships enabled but unpinned, and Important Emails
  * ships disabled. Additional model-facing widget contracts ship enabled and
  * unpinned. Task skills may be edited or soft-deleted; widget contracts only
@@ -172,7 +172,7 @@ export const defaultSkillResearch: Skill = {
     'Use this skill when the user wants an exhaustive, multi-source deep dive on a topic rather than a quick answer.',
   instruction: researchInstruction,
   enabled: 1,
-  pinnedOrder: 1,
+  pinnedOrder: null,
   deletedAt: null,
   defaultHash: null,
   userId: null,
@@ -185,7 +185,7 @@ export const defaultSkillWeather: Skill = {
   description: 'Use this skill when the user asks about the weather or wants a forecast for a location.',
   instruction: weatherForecastWidgetInstruction,
   enabled: 1,
-  pinnedOrder: 2,
+  pinnedOrder: 1,
   deletedAt: null,
   defaultHash: null,
   userId: null,
@@ -257,6 +257,27 @@ const widgetSkillIds = new Set([
 /** Whether a skill id belongs to a model-facing widget rendering contract. */
 export const isWidgetSkillId = (id: string): boolean => widgetSkillIds.has(id)
 
+const systemSkillIds = new Set([
+  defaultSkillResearch.id,
+  defaultSkillLinkPreview.id,
+  defaultSkillConnectIntegration.id,
+  defaultSkillAsk.id,
+  defaultSkillMap.id,
+])
+
+/** Whether a skill id belongs to a default that only the agent loads. */
+export const isSystemSkillId = (id: string): boolean => systemSkillIds.has(id)
+
+/**
+ * Whether the library hides a skill: a system skill in its shipped state. A row
+ * the user edited, disabled or pinned stays visible, so it can still be managed.
+ */
+export const isHiddenSystemSkill = (skill: Skill): boolean =>
+  isSystemSkillId(skill.id) &&
+  skill.enabled === 1 &&
+  skill.pinnedOrder === null &&
+  skill.defaultHash === hashSkill(skill)
+
 export const defaultSkills: ReadonlyArray<Skill> = [
   defaultSkillDailyBrief,
   defaultSkillImportantEmails,
@@ -280,4 +301,4 @@ export const defaultSkills: ReadonlyArray<Skill> = [
  * The paired snapshot test in `skills.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultSkillsVersion = 9
+export const defaultSkillsVersion = 10

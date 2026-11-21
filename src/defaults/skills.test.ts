@@ -4,6 +4,7 @@
 
 import { describe, expect, it, test } from 'bun:test'
 
+import type { Skill } from '@/types'
 import { instructions as askWidgetInstruction } from '@/widgets/ask/instructions'
 import { instructions as connectIntegrationWidgetInstruction } from '@/widgets/connect-integration/instructions'
 import { instructions as linkPreviewWidgetInstruction } from '@/widgets/link-preview/instructions'
@@ -22,6 +23,8 @@ import {
   defaultSkillsVersion,
   defaultSkillWeather,
   hashSkill,
+  isHiddenSystemSkill,
+  isSystemSkillId,
   isWidgetSkillId,
 } from './skills'
 
@@ -41,8 +44,8 @@ const computeSnapshotHash = () =>
   defaultSkills.map((skill, index) => `${index}:${skill.id}:${hashSkill(skill)}`).join('|')
 
 const expectedSnapshot = {
-  version: 9,
-  hash: '0:01996330-0000-7000-8000-000000000001:mfmi05|1:01996330-0000-7000-8000-000000000002:-669lkj|2:01996330-0000-7000-8000-000000000003:-30vmih|3:01996330-0000-7000-8000-000000000004:-ypyizk|4:01996330-0000-7000-8000-000000000005:-hc6mv3|5:01996330-0000-7000-8000-000000000006:-o0c0ul|6:01996330-0000-7000-8000-000000000007:atrnpq|7:01996330-0000-7000-8000-000000000008:-ue9tpd|8:01996330-0000-7000-8000-000000000009:o1nire',
+  version: 10,
+  hash: '0:01996330-0000-7000-8000-000000000001:mfmi05|1:01996330-0000-7000-8000-000000000002:-669lkj|2:01996330-0000-7000-8000-000000000003:-30vmih|3:01996330-0000-7000-8000-000000000004:-ckrbbt|4:01996330-0000-7000-8000-000000000005:-hc6mv3|5:01996330-0000-7000-8000-000000000006:-o0c0ul|6:01996330-0000-7000-8000-000000000007:atrnpq|7:01996330-0000-7000-8000-000000000008:-ue9tpd|8:01996330-0000-7000-8000-000000000009:o1nire',
 }
 
 describe('defaultSkills version snapshot', () => {
@@ -102,11 +105,48 @@ describe('defaultSkills', () => {
     expect(names).not.toContain('document-result')
   })
 
-  it('pins exactly Search, Research, Weather (in that order) as the starter chips for new users', () => {
+  it('pins exactly Search, Weather (in that order) as the starter chips for new users', () => {
     const pinned = defaultSkills
       .filter((skill) => skill.pinnedOrder !== null)
       .sort((a, b) => (a.pinnedOrder ?? 0) - (b.pinnedOrder ?? 0))
-    expect(pinned).toEqual([defaultSkillSearch, defaultSkillResearch, defaultSkillWeather])
+    expect(pinned).toEqual([defaultSkillSearch, defaultSkillWeather])
+  })
+
+  it('marks research and the widget contracts except weather as system skills', () => {
+    const systemNames = defaultSkills.filter((skill) => isSystemSkillId(skill.id)).map((skill) => skill.name)
+    expect(systemNames).toEqual(['research', 'link-preview', 'connect-integration', 'ask', 'map'])
+  })
+
+  describe('isHiddenSystemSkill', () => {
+    const stamped = (skill: Skill): Skill => ({ ...skill, defaultHash: hashSkill(skill) })
+
+    it('hides system skills in their shipped state', () => {
+      const hidden = defaultSkills.map(stamped).filter(isHiddenSystemSkill)
+      expect(hidden.map((skill) => skill.name)).toEqual([
+        'research',
+        'link-preview',
+        'connect-integration',
+        'ask',
+        'map',
+      ])
+    })
+
+    it('shows a system skill the user edited, disabled or pinned', () => {
+      const research = stamped(defaultSkillResearch)
+      expect(isHiddenSystemSkill({ ...research, instruction: 'Mine' })).toBe(false)
+      expect(isHiddenSystemSkill({ ...research, enabled: 0 })).toBe(false)
+      expect(isHiddenSystemSkill({ ...research, pinnedOrder: 0 })).toBe(false)
+    })
+
+    it('shows a disabled or pinned widget contract, whose hash ignores both fields', () => {
+      const map = stamped(defaultSkillMap)
+      expect(isHiddenSystemSkill({ ...map, enabled: 0 })).toBe(false)
+      expect(isHiddenSystemSkill({ ...map, pinnedOrder: 0 })).toBe(false)
+    })
+
+    it('shows a system skill without a default hash', () => {
+      expect(isHiddenSystemSkill(defaultSkillResearch)).toBe(false)
+    })
   })
 
   it('identifies widget contracts by stable default id', () => {

@@ -6,6 +6,7 @@ import { describe, expect, it, mock } from 'bun:test'
 import { act, renderHook } from '@testing-library/react'
 import { createElement, createRef, type KeyboardEvent, Profiler, type ReactNode, useState } from 'react'
 
+import { defaultSkillResearch, hashSkill } from '@/defaults/skills'
 import type { Skill } from '@/types'
 import { chipMarker, deleteSkillTokenAt, pendingSigilForKey } from './parse-skill-tokens'
 import { getSlashState, useSlashCommand } from './use-slash-command'
@@ -220,6 +221,42 @@ describe('useSlashCommand selectSkill', () => {
   })
 })
 
+describe('useSlashCommand hidden system skills', () => {
+  it('leaves hidden system skills out of the popup', () => {
+    const hidden = { ...defaultSkillResearch, defaultHash: hashSkill(defaultSkillResearch) }
+    const hook = renderHook(() =>
+      useSlashCommand({
+        value: '/',
+        setValue: () => undefined,
+        inputRef: createRef<HTMLTextAreaElement>(),
+        library: [hidden, fakeSkill('daily-brief')],
+        isEnabled: () => true,
+      }),
+    )
+    act(() => hook.result.current.setCursorPos(1))
+    expect(hook.result.current.popupItems.map((i) => i.name)).toEqual(['daily-brief'])
+  })
+
+  it('drops an agent command that shares a hidden system skill name', () => {
+    const hidden = { ...defaultSkillResearch, defaultHash: hashSkill(defaultSkillResearch) }
+    const hook = renderHook(() =>
+      useSlashCommand({
+        value: '/',
+        setValue: () => undefined,
+        inputRef: createRef<HTMLTextAreaElement>(),
+        library: [hidden],
+        isEnabled: () => true,
+        agentCommands: [
+          { name: 'research', description: 'agent research' },
+          { name: 'review', description: 'agent review' },
+        ],
+      }),
+    )
+    act(() => hook.result.current.setCursorPos(1))
+    expect(hook.result.current.popupItems.map((i) => `${i.kind}:${i.name}`)).toEqual(['command:review'])
+  })
+})
+
 describe('useSlashCommand label search', () => {
   const inputRef = createRef<HTMLTextAreaElement>()
 
@@ -430,6 +467,12 @@ describe('useSlashCommand pending sigil', () => {
 
   it('leaves "/" literal when nothing could be suggested', () => {
     const { press } = setup('', [])
+    expect(press('/', 0).preventDefault).not.toHaveBeenCalled()
+  })
+
+  it('leaves "/" literal when only hidden system skills are enabled', () => {
+    const hidden = { ...defaultSkillResearch, defaultHash: hashSkill(defaultSkillResearch) }
+    const { press } = setup('', [hidden])
     expect(press('/', 0).preventDefault).not.toHaveBeenCalled()
   })
 

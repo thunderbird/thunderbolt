@@ -17,17 +17,23 @@ skill.
 [`src/defaults/skills.ts`](../../../src/defaults/skills.ts) ships nine rows, seeded per user by
 `reconcileDefaults` during app initialization ([app-initialization.md](app-initialization.md)).
 
-| Slug                  | Label               | Kind            | Ships enabled | Ships pinned |
-| --------------------- | ------------------- | --------------- | ------------- | ------------ |
-| `daily-brief`         | Daily Brief         | editable        | yes           | no           |
-| `important-emails`    | Important Emails    | editable        | no            | no           |
-| `search`              | Search              | editable        | yes           | position 0   |
-| `research`            | Research            | editable        | yes           | position 1   |
-| `weather`             | Weather             | widget contract | yes           | position 2   |
-| `link-preview`        | Link Preview        | widget contract | yes           | no           |
-| `connect-integration` | Connect Integration | widget contract | yes           | no           |
-| `ask`                 | Ask                 | widget contract | yes           | no           |
-| `map`                 | Map                 | widget contract | yes           | no           |
+| Slug                  | Label               | Kind            | Ships enabled | Ships pinned | System skill |
+| --------------------- | ------------------- | --------------- | ------------- | ------------ | ------------ |
+| `daily-brief`         | Daily Brief         | editable        | yes           | no           | no           |
+| `important-emails`    | Important Emails    | editable        | no            | no           | no           |
+| `search`              | Search              | editable        | yes           | position 0   | no           |
+| `research`            | Research            | editable        | yes           | no           | yes          |
+| `weather`             | Weather             | widget contract | yes           | position 1   | no           |
+| `link-preview`        | Link Preview        | widget contract | yes           | no           | yes          |
+| `connect-integration` | Connect Integration | widget contract | yes           | no           | yes          |
+| `ask`                 | Ask                 | widget contract | yes           | no           | yes          |
+| `map`                 | Map                 | widget contract | yes           | no           | yes          |
+
+System skills are ones only the agent loads. `isHiddenSystemSkill` hides a system skill from the
+library and the `/` menu while it is in its shipped state: enabled, unpinned, and with
+`default_hash` equal to its content hash. Editing, disabling or pinning it makes the row visible.
+Typed `/` tokens, Cmd+K search and palette actions still resolve hidden rows, and an agent command
+that shares a hidden skill's name is dropped from the `/` menu.
 
 **Any change here requires bumping [`defaultSkillsVersion`](../../../src/defaults/skills.ts#L283)**,
 the signal reconciliation uses to pick which device owns the newest defaults; an unbumped change

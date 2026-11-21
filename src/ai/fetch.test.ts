@@ -25,6 +25,8 @@ import {
 import { officeDocxSkill } from '@/office/skills/docx'
 import { officePptxSkill } from '@/office/skills/pptx'
 import { officeXlsxSkill } from '@/office/skills/xlsx'
+import * as officeSkills from '@/office/skills'
+import * as attachments from '@/lib/attachments'
 import { skillsTable } from '@/db/tables'
 import { eq } from 'drizzle-orm'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
@@ -51,6 +53,7 @@ import {
 } from '@/debug-transcript/recorder'
 import {
   addSkillTool,
+  aiFetchStreamingResponse,
   buildVolatileSystemNotes,
   createModel,
   mergeMcpTools,
@@ -1203,6 +1206,63 @@ describe('prepareAiRequestConfig — Office skills', () => {
     for (const text of [...officeNames, ...headings]) {
       expect(prompt).not.toContain(text)
     }
+  })
+})
+
+describe('aiFetchStreamingResponse — an Office skill token', () => {
+  const modelId = 'office-token-model'
+
+  beforeEach(async () => {
+    await setupTestDatabase()
+    await insertModel(getDb(), {
+      id: modelId,
+      provider: 'openai',
+      model: 'gpt-test',
+      name: 'Test',
+      apiKey: 'test-key',
+      toolUsage: 1,
+    })
+  })
+
+  afterEach(async () => {
+    mock.restore()
+    await teardownTestDatabase()
+  })
+
+  it('stops a send aborted while the manual loads, before any attachment or provider work', async () => {
+    // Held at the loader so the load is cold whatever another test already loaded: the loader keeps a manual once
+    // it has it, so a held reachability check would only be reached on a cold run.
+    const requested = Promise.withResolvers<void>()
+    const manual = Promise.withResolvers<string>()
+    spyOn(officeSkills, 'loadOfficeSkillBody').mockImplementation(() => {
+      requested.resolve()
+      return manual.promise
+    })
+    const hydrate = spyOn(attachments, 'hydrateAttachmentsAsFileParts')
+    const transport = mock(async () => new Response())
+    const controller = new AbortController()
+    const reason = new DOMException('Stopped', 'AbortError')
+
+    const response = aiFetchStreamingResponse({
+      init: {
+        method: 'POST',
+        body: JSON.stringify({
+          id: 'thread-1',
+          messages: [{ id: 'm1', role: 'user', parts: [{ type: 'text', text: '/office-xlsx make a budget' }] }],
+        }),
+        signal: controller.signal,
+      },
+      modelId,
+      httpClient: createClient({ prefixUrl: 'https://backend.test' }),
+      getProxyFetch: () => Object.assign(transport, { preconnect: () => Promise.resolve(false) }),
+    })
+    await requested.promise
+    controller.abort(reason)
+    manual.resolve(officeXlsxSkill)
+
+    await expect(response).rejects.toBe(reason)
+    expect(hydrate).not.toHaveBeenCalled()
+    expect(transport).not.toHaveBeenCalled()
   })
 })
 

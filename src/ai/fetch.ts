@@ -1052,6 +1052,8 @@ export const aiFetchStreamingResponse = async ({
     // stay in lockstep.
     const lastUserText = extractLastUserText(messages)
     const skillSystemMessages = await loadSkillTokenInstructions(lastUserText, skills)
+    // An Office manual can take a network round trip to load; a send stopped meanwhile must not reach the provider.
+    abortSignal?.throwIfAborted()
 
     // Preserve the upstream status (and detail) when surfacing an API error to
     // the client. The SDK otherwise flattens an APICallError to a bare "Bad
@@ -1237,6 +1239,10 @@ export const aiFetchStreamingResponse = async ({
 
     return createUIMessageStreamResponse({ stream })
   } catch (error) {
+    // A stopped send is not a failure, so the caller gets its abort back rather than an error response.
+    if (abortSignal?.aborted) {
+      throw error
+    }
     console.error('aiFetchStreamingResponse error', error)
     const status =
       (error as { status?: number }).status ?? (error as { response?: { status?: number } }).response?.status

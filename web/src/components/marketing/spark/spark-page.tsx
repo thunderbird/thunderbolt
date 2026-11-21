@@ -54,7 +54,7 @@ export const SparkPage = ({ release }: { release: DownloadRelease }) => {
       <a className="spark-skip" href="#spark-main">
         Skip to content
       </a>
-      <SparkHeader downloads={downloads} />
+      <SparkHeader />
       <main id="spark-main">
         <section className="spark-hero" aria-labelledby="spark-title">
           <div className="spark-hero-heading spark-shell">
@@ -66,7 +66,7 @@ export const SparkPage = ({ release }: { release: DownloadRelease }) => {
             <p>
               <span>An open-source AI workspace for chat, research, code, and getting things done.</span>
             </p>
-            <DownloadPicker {...downloads} continueToDownloadPage showWebLink />
+            <DownloadPicker {...downloads} continueToDownloadPage />
           </div>
           <ProductPreview />
         </section>

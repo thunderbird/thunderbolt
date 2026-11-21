@@ -7,8 +7,6 @@ import './spark-chrome.css'
 import { productLinks } from '../../../data/website-product'
 import { useSparkHeaderState } from './use-spark-header-state'
 import { SiteThemeToggle } from '../../site-theme/site-theme-toggle'
-import { HeaderDownload } from '../download/header-download'
-import type { useDownloadState } from '../download/use-download-state'
 
 const primaryPages = [
   { label: 'Privacy', href: '/privacy/' },
@@ -22,12 +20,11 @@ const morePages = [
 ] as const
 
 type SparkHeaderProps = {
-  downloads: ReturnType<typeof useDownloadState>
   currentPage?: (typeof primaryPages | typeof morePages)[number]['label']
   as?: 'header' | 'div'
 }
 
-export const SparkHeader = ({ currentPage, as: Element = 'header', downloads }: SparkHeaderProps) => {
+export const SparkHeader = ({ currentPage, as: Element = 'header' }: SparkHeaderProps) => {
   const { isOpen, toggleNavigation, closeNavigation, onNavigationBlur, navigationRef, triggerRef } =
     useSparkHeaderState()
   const panelId = useId()
@@ -73,6 +70,9 @@ export const SparkHeader = ({ currentPage, as: Element = 'header', downloads }: 
           </button>
           <div className="spark-nav-panel" id={panelId} hidden={!isOpen}>
             <div className="spark-nav-pages">
+              <a className="spark-nav-mobile-web" href={productLinks.web} onClick={closeNavigation}>
+                Login <span aria-hidden="true">↗</span>
+              </a>
               {[...primaryPages, ...morePages].map((page) => (
                 <a
                   key={page.href}
@@ -107,7 +107,9 @@ export const SparkHeader = ({ currentPage, as: Element = 'header', downloads }: 
       </nav>
       <div className="spark-header-actions">
         <SiteThemeToggle />
-        <HeaderDownload {...downloads} />
+        <a className="spark-nav-cta" href={productLinks.web}>
+          Try it on the web <span aria-hidden="true">↗</span>
+        </a>
       </div>
     </Element>
   )

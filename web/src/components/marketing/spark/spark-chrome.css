@@ -351,3 +351,12 @@
     display: flex;
   }
 }
+
+.spark-nav-pages > .spark-nav-mobile-web {
+  display: none;
+}
+@media (max-width: 600px) {
+  .spark-nav-pages > .spark-nav-mobile-web {
+    display: flex;
+  }
+}

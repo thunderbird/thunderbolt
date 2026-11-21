@@ -4,14 +4,18 @@
 
 import { msg } from '@lingui/core/macro'
 import { i18n } from '@lingui/core'
+import { useChatStore } from '@/chats/chat-store'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { getMcpToolDisplay } from '@/lib/mcp-tool-display'
+import { isTouchPlatform } from '@/lib/platform'
 import { trackEvent as defaultTrackEvent } from '@/lib/posthog'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
 import { formatToolOutput } from '@/lib/utils'
 import type { UIMessageMetadata } from '@/types'
 import { getToolName, type DynamicToolUIPart, type ReasoningUIPart, type ToolUIPart } from 'ai'
-import { createContext, type ReactNode, useCallback, useContext, useState } from 'react'
+import { createContext, type ReactNode, useCallback, useContext, useReducer } from 'react'
 import type { SidebarWebviewConfig } from './use-sidebar-webview'
+import { useBackClosesView } from './use-back-closes-view'
 import type { CompactionSummary } from '@/components/context-usage'
 
 /** A tool call (built-in or MCP dynamic-tool) or a reasoning part shown in the object view. */
@@ -19,12 +23,19 @@ export type ObjectViewContent = ToolUIPart | DynamicToolUIPart | ReasoningUIPart
 
 export type ObjectViewData = {
   title: string
+  /** The call's arguments; tool calls only. */
+  input?: string
   output: string
 }
 
 export type SideviewData = {
   sideviewType: string
   sideviewId: string
+  /**
+   * What had focus when the file opened, usually its card in the chat. It gets focus back when Escape closes the panel.
+   * Kept here and not in the viewer, because Try again remounts the viewer.
+   */
+  opener: Element | null
 }
 
 /** A verified HTML artifact shown in the side panel. */
@@ -53,6 +64,27 @@ type ContentViewState =
   | { type: 'sideview'; data: SideviewData }
   | { type: 'artifact'; data: ArtifactViewData }
   | { type: 'compaction-summary'; data: CompactionSummary }
+
+const closedView: ContentViewState = { type: null, data: null }
+
+type ProviderState = { view: ContentViewState; previewHidden: boolean; sessionId: string | null }
+
+type ProviderAction =
+  | { type: 'show'; view: ContentViewState }
+  | { type: 'hide-preview'; hidden: boolean }
+  | { type: 'switch-chat'; sessionId: string | null }
+
+/** The open view, whether its preview is hidden, and the chat it belongs to. Switching chats closes the view. */
+const providerReducer = (state: ProviderState, action: ProviderAction): ProviderState => {
+  switch (action.type) {
+    case 'show':
+      return { ...state, view: action.view }
+    case 'hide-preview':
+      return { ...state, previewHidden: action.hidden }
+    case 'switch-chat':
+      return { ...state, sessionId: action.sessionId, view: closedView }
+  }
+}
 
 type ContentViewContextType = {
   state: ContentViewState
@@ -92,8 +124,17 @@ export const ContentViewProvider = ({
   children: ReactNode
   trackEvent?: typeof defaultTrackEvent
 }) => {
-  const [state, setState] = useState<ContentViewState>({ type: null, data: null })
-  const [previewHidden, setPreviewHidden] = useState(false)
+  // The provider sits above the routes, so a view would outlive the chat it shows a file from: switching chats closes it.
+  const currentSessionId = useChatStore((store) => store.currentSessionId)
+  const [{ view: state, previewHidden, sessionId }, dispatch] = useReducer(providerReducer, {
+    view: closedView,
+    previewHidden: false,
+    sessionId: currentSessionId,
+  })
+  if (sessionId !== currentSessionId) {
+    dispatch({ type: 'switch-chat', sessionId: currentSessionId })
+  }
+  const setPreviewHidden = useCallback((hidden: boolean) => dispatch({ type: 'hide-preview', hidden }), [])
 
   const showObjectView = useCallback(
     (content: ObjectViewContent, mcpTools?: UIMessageMetadata['mcpTools']) => {
@@ -101,7 +142,10 @@ export const ContentViewProvider = ({
         trackEvent('content_view_open', { view_type: 'object-view', reasoning: true })
         // Resolved eagerly in the click handler: the title is a snapshot stored
         // in state, so it uses the `i18n` singleton rather than `useLingui`.
-        setState({ type: 'object-view', data: { title: i18n._(reasoningViewTitle), output: content.text } })
+        dispatch({
+          type: 'show',
+          view: { type: 'object-view', data: { title: i18n._(reasoningViewTitle), output: content.text } },
+        })
         return
       }
 
@@ -111,13 +155,18 @@ export const ContentViewProvider = ({
         content.type === 'dynamic-tool'
           ? getMcpToolDisplay(toolName, mcpTools, content.title).displayName
           : getToolMetadataSync(toolName, content.input).displayName
+      const input =
+        content.input ?? (content.state === 'output-error' && 'rawInput' in content ? content.rawInput : undefined)
       // Surface the error text when a tool failed; otherwise show its output.
       const output = content.state === 'output-error' ? content.errorText : formatToolOutput(content.output)
       trackEvent('content_view_open', {
         view_type: 'object-view',
         tool_name: content.type === 'dynamic-tool' ? 'mcp' : toolName,
       })
-      setState({ type: 'object-view', data: { title, output } })
+      dispatch({
+        type: 'show',
+        view: { type: 'object-view', data: { title, input: formatToolOutput(input), output } },
+      })
     },
     [trackEvent],
   )
@@ -126,12 +175,9 @@ export const ContentViewProvider = ({
     (url: string) => {
       trackEvent('content_view_open', { view_type: 'preview' })
       trackEvent('preview_open')
-      setState({
-        type: 'preview',
-        data: {
-          url,
-          onClose: () => setState({ type: null, data: null }),
-        },
+      dispatch({
+        type: 'show',
+        view: { type: 'preview', data: { url, onClose: () => dispatch({ type: 'show', view: closedView }) } },
       })
     },
     [trackEvent],
@@ -140,11 +186,14 @@ export const ContentViewProvider = ({
   const showSideview = useCallback(
     (sideviewType: string | null, sideviewId: string | null) => {
       if (sideviewType === null || sideviewId === null) {
-        setState({ type: null, data: null })
+        dispatch({ type: 'show', view: closedView })
         return
       }
       trackEvent('content_view_open', { view_type: 'sideview', sideview_type: sideviewType })
-      setState({ type: 'sideview', data: { sideviewType, sideviewId } })
+      dispatch({
+        type: 'show',
+        view: { type: 'sideview', data: { sideviewType, sideviewId, opener: document.activeElement } },
+      })
     },
     [trackEvent],
   )
@@ -152,7 +201,7 @@ export const ContentViewProvider = ({
   const showArtifact = useCallback(
     (data: ArtifactViewData) => {
       trackEvent('content_view_open', { view_type: 'artifact' })
-      setState({ type: 'artifact', data })
+      dispatch({ type: 'show', view: { type: 'artifact', data } })
     },
     [trackEvent],
   )
@@ -161,13 +210,18 @@ export const ContentViewProvider = ({
     if (state.type !== null) {
       trackEvent('content_view_close', { view_type: state.type })
     }
-    setState({ type: null, data: null })
+    dispatch({ type: 'show', view: closedView })
   }, [state.type, trackEvent])
+
+  // Below the breakpoint the view is a full-window dialog, so Back closes it like any other screen. On a phone or a
+  // tablet it does at any width: Android's Back closes what is on top, the side panel of a rotated phone included.
+  const { isMobile } = useIsMobile()
+  useBackClosesView((isMobile || isTouchPlatform()) && state.type !== null, close)
 
   const showCompactionSummary = useCallback(
     (checkpoint: CompactionSummary) => {
       trackEvent('content_view_open', { view_type: 'compaction-summary' })
-      setState({ type: 'compaction-summary', data: checkpoint })
+      dispatch({ type: 'show', view: { type: 'compaction-summary', data: checkpoint } })
     },
     [trackEvent],
   )
@@ -246,6 +300,7 @@ export const useSideview = () => {
   return {
     sideviewType: state.type === 'sideview' ? state.data.sideviewType : null,
     sideviewId: state.type === 'sideview' ? state.data.sideviewId : null,
+    opener: state.type === 'sideview' ? state.data.opener : null,
     showSideview,
     closeSideview: close,
   }

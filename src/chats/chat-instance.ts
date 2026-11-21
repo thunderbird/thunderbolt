@@ -57,7 +57,7 @@ import {
   isToolSupportRejectionError,
 } from '@/lib/error-utils'
 import type { HttpClient } from '@/lib/http'
-import { hasAssistantContent } from '@/lib/message-utils'
+import { hasAssistantContent, withoutPendingPiHeaders } from '@/lib/message-utils'
 import { trackEvent as defaultTrackEvent } from '@/lib/posthog'
 import { collectThreadSources } from '@/lib/source-utils'
 import type { FetchFn } from '@/lib/proxy-fetch'
@@ -443,7 +443,7 @@ export const createAgentRoutingFetch = (
       // Hydration supplies a durable prefix, and historical edits save themselves.
       // Keep the predecessor too: the SDK does not await the previous onFinish,
       // so its assistant row may still need inserting before the new user's parent is set.
-      await saveMessages({ id, messages: requestMessages.slice(-2) })
+      await saveMessages({ id, messages: requestMessages.slice(-2).map(withoutPendingPiHeaders) })
       telemetry?.endPhase('persist_user_message')
     }
 

@@ -105,6 +105,7 @@ afterEach(() => {
 // rides the WS subprotocol). Methods are no-ops cast through unknown.
 const stubHttpClient = {
   get: () => Promise.resolve(new Response()),
+  head: () => Promise.resolve(new Response()),
   post: () => Promise.resolve(new Response()),
   delete: () => Promise.resolve(new Response()),
 } as unknown as Parameters<typeof openTransport>[0]['httpClient']

@@ -69,10 +69,10 @@ the same `contentView` fragment into two containers:
 shared chrome: title, optional actions, close button. `object-view`, `artifact` and `preview` render
 it themselves.
 
-**A sideview does not.** The viewer supplies its own header and calls `close()`
-([`pdf-sidebar-viewer.tsx:87`](../../../src/widgets/document-result/pdf-sidebar-viewer.tsx)). A new
-sideview kind that forgets this has no close affordance on desktop; the mobile dialog supplies its
-own.
+**A sideview does not.** The viewer supplies its own header and calls `close()`. The PDF/DOCX/PPTX viewer
+and the spreadsheet preview both get that header from
+[`document-preview-frame.tsx`](../../../src/widgets/document-result/document-preview-frame.tsx). A new
+sideview kind that forgets this has no close affordance on desktop; the mobile dialog supplies its own.
 
 The header's padding is window-chrome clearance: at mobile width the panel fills the window and the
 header lands under the macOS traffic lights; open on desktop it occupies the top-right corner where
@@ -129,8 +129,16 @@ PostHog client.
 [`sideview.tsx:31`](../../../src/content-view/sideview.tsx), lazy-load the viewer if it pulls in a heavy
 dependency, render a `ContentViewHeader` in it, and call `showSideview('<your-type>', id)` from the
 trigger. `sideviewType` is a plain string so a new kind needs no context change. (The PDF path
-defers react-pdf and pdfjs; its DOCX branch defers mammoth inside the shared
-[`docxToHtml`](../../../src/files/transformers/docx-to-html.ts) transformer.)
+defers react-pdf and pdfjs; its DOCX branch defers docx-preview until a DOCX opens, in
+[`docx-snapshot.ts`](../../../src/widgets/document-result/docx-snapshot.ts), and its PPTX branch defers the slide
+renderer until a deck opens, in [`pptx-snapshot.ts`](../../../src/widgets/document-result/pptx-snapshot.ts).)
+
+A viewer whose code does not load shows a notice with **Try again**. Wrap it in
+[`retryableLazy`](../../../src/content-view/retryable-lazy.ts), fed by one
+[`importWhenReachable`](../../../src/lib/import-when-reachable.ts) loader per module: Safari never loads a module
+again once it failed to fetch it, so the import waits for a HEAD of the app's server. Try again
+still cannot help when the network drops between that check and the import, or when a deploy has removed the old
+chunks; only reloading the page does.
 
 **A whole new kind:** extend the `ContentViewState` union and the context type, add a `showX` action
 that emits `content_view_open`, and add the render branch in `main-layout.tsx`. Only when the payload

@@ -4,7 +4,7 @@
 
 import type { DynamicToolUIPart, ReasoningUIPart, TextUIPart, ToolUIPart, UIMessage } from 'ai'
 import { describe, expect, it } from 'bun:test'
-import { filterMessageParts, groupMessageParts } from './assistant-message'
+import { filterMessageParts, type GroupedUIPart, groupMessageParts } from './assistant-message'
 
 const createToolPart = (toolName: string): ToolUIPart =>
   ({
@@ -187,6 +187,133 @@ describe('assistant-message utilities', () => {
       const second = createArtifactPart('a2', { ok: true, target: 'panel' })
 
       expect(groupMessageParts([first, second])).toEqual([first, second])
+    })
+  })
+
+  describe('groupMessageParts — run_office_script', () => {
+    const officeCall = (output?: ToolUIPart['output']): ToolUIPart =>
+      output === undefined
+        ? { type: 'tool-run_office_script', toolCallId: 'o1', state: 'input-available', input: { script: 's' } }
+        : {
+            type: 'tool-run_office_script',
+            toolCallId: 'o1',
+            state: 'output-available',
+            input: { script: 's' },
+            output,
+          }
+    const createdReport = {
+      ok: true,
+      files: [{ id: 'f1', filename: 'report.docx', mimeType: 'application/docx', edited: false }],
+      logs: '',
+    }
+
+    const first = createdReport.files[0]
+    const second = { ...first, id: 'f2', edited: true }
+    const third = { ...first, id: 'f3' }
+    const other = { ...first, id: 'f4', filename: 'budget.xlsx' }
+    const save = (...files: typeof createdReport.files): ToolUIPart => ({
+      ...officeCall({ ...createdReport, files }),
+      toolCallId: `call-${files[0].id}`,
+    })
+    const steps = (...calls: ToolUIPart[]): GroupedUIPart => ({
+      type: 'reasoning_group',
+      items: calls.map((content) => ({ type: 'tool', content, id: content.toolCallId })),
+    })
+    const row = (latest: typeof first, ...earlier: typeof createdReport.files): GroupedUIPart => ({
+      type: 'created_files',
+      files: [{ latest, earlier }],
+    })
+
+    const foldedRow: GroupedUIPart = { type: 'created_files', files: [] }
+
+    it('folds two same-name saves at their last step', () => {
+      const calls = [save(first), save(second)]
+      expect(groupMessageParts(calls)).toEqual([steps(calls[0]), foldedRow, steps(calls[1]), row(second, first)])
+    })
+
+    it('orders three snapshots newest first and preserves their edit flags', () => {
+      const calls = [save(first), save(second), save(third)]
+      expect(groupMessageParts(calls)).toEqual([
+        steps(calls[0]),
+        foldedRow,
+        steps(calls[1]),
+        foldedRow,
+        steps(calls[2]),
+        row(third, second, first),
+      ])
+    })
+
+    it('keeps a sibling file at its original step when only one output is saved again', () => {
+      const both = save(first, other)
+      const retry = save(second)
+      expect(groupMessageParts([both, retry])).toEqual([steps(both), row(other), steps(retry), row(second, first)])
+    })
+
+    it('keeps a failed retry as a step without adding a version', () => {
+      const failed = officeCall({ ok: false, error: 'boom', logs: '' })
+      const calls = [save(first), failed, save(second)]
+      expect(groupMessageParts(calls)).toEqual([
+        steps(calls[0]),
+        foldedRow,
+        steps(failed, calls[2]),
+        row(second, first),
+      ])
+    })
+
+    it('leaves different filenames at their own steps', () => {
+      const a = save(first)
+      const b = save(other)
+      expect(groupMessageParts([a, b])).toEqual([steps(a), row(first), steps(b), row(other)])
+    })
+
+    it('keeps the same filename independent in separate messages', () => {
+      const a = save(first)
+      const b = save(second)
+      expect([groupMessageParts([a]), groupMessageParts([b])]).toEqual([
+        [steps(a), row(first)],
+        [steps(b), row(second)],
+      ])
+    })
+
+    it('keeps a run that created files as a step and shows its chips right after the group', () => {
+      const bash = createToolPart('bash')
+      const office = officeCall(createdReport)
+      const text: TextUIPart = { type: 'text', text: 'Done' }
+
+      expect(groupMessageParts([bash, office, text])).toEqual([
+        {
+          type: 'reasoning_group',
+          items: [
+            { type: 'tool', content: bash, id: bash.toolCallId },
+            { type: 'tool', content: office, id: office.toolCallId },
+          ],
+        },
+        row(first),
+        text,
+      ])
+    })
+
+    it('keeps the step in place when the running call finishes, so a one-call turn keeps its group', () => {
+      const running = officeCall()
+      const finished = officeCall(createdReport)
+      const runningGroup = groupMessageParts([running])
+      const finishedGroup = groupMessageParts([finished])
+
+      expect(runningGroup).toEqual([
+        { type: 'reasoning_group', items: [{ type: 'tool', content: running, id: running.toolCallId }] },
+      ])
+      expect(finishedGroup).toEqual([
+        { type: 'reasoning_group', items: [{ type: 'tool', content: finished, id: finished.toolCallId }] },
+        row(first),
+      ])
+    })
+
+    it('shows no chips for a failed run, only its step', () => {
+      const failed = officeCall({ ok: false, error: 'boom', logs: '' })
+
+      expect(groupMessageParts([failed])).toEqual([
+        { type: 'reasoning_group', items: [{ type: 'tool', content: failed, id: failed.toolCallId }] },
+      ])
     })
   })
 

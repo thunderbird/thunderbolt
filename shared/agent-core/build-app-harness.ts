@@ -38,6 +38,7 @@ import { mountAgentFs } from './browser-env/mount.ts'
 import { createBrowserCodingTools } from './coding-tools/index.ts'
 import { ensureBufferPolyfill } from './ensure-buffer.ts'
 import { buildSeedMessages, type SeedTurn } from './seed-history.ts'
+import { installOutputLimitRecovery } from './output-limit.ts'
 import {
   createHarnessCompaction,
   restoreCompaction,
@@ -198,6 +199,47 @@ export const writeAgentWorkspaceFiles = async (
   return failures
 }
 
+/** A workspace file read under a size limit. */
+export type WorkspaceFileRead =
+  | { readonly status: 'read'; readonly bytes: Uint8Array<ArrayBuffer> }
+  | { readonly status: 'too-large' }
+  | { readonly status: 'missing' }
+
+/**
+ * Read a file from a thread's workspace. The path is workspace-relative, and one that leaves the workspace is
+ * refused like a missing file.
+ *
+ * @param threadId - the thread whose workspace holds the file
+ * @param path - the file's path, relative to the workspace
+ * @param maxBytes - the largest file to read; a larger one is refused before any of it is read
+ * @returns the file's bytes, `too-large`, or `missing` when it is not a readable file in the workspace
+ */
+export const readAgentWorkspaceFile = async (
+  threadId: string,
+  path: string,
+  maxBytes: number,
+): Promise<WorkspaceFileRead> => {
+  await mountAgentFs()
+  const env = new BrowserExecutionEnv({ cwd: workspaceDirFor(threadId) })
+  // Checked first: the in-memory fallback reads a folder as bytes instead of failing.
+  const info = await env.fileInfo(path)
+  if (!info.ok || info.value.kind !== 'file') {
+    return { status: 'missing' }
+  }
+  if (info.value.size > maxBytes) {
+    return { status: 'too-large' }
+  }
+  const read = await env.readBinaryFile(path)
+  if (!read.ok) {
+    return { status: 'missing' }
+  }
+  // Checked again in case the file grew after `fileInfo`.
+  return read.value.byteLength > maxBytes
+    ? { status: 'too-large' }
+    : // `readBinaryFile` returns a fresh copy, which owns its own ArrayBuffer.
+      { status: 'read', bytes: read.value as Uint8Array<ArrayBuffer> }
+}
+
 /**
  * Build a ready-to-run app harness for a thread. Mounts the ZenFS singleton
  * (once), carves the thread's isolated workspace under {@link workspaceRoot},
@@ -257,6 +299,7 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
     thinkingLevel: options.thinkingLevel,
     systemPrompt: options.systemPrompt,
   })
+  installOutputLimitRecovery(harness)
 
   // Seed prior turns into the (idle) session so the first prompt runs with full
   // conversational context. `appendMessage` writes straight to the session while

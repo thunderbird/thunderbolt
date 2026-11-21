@@ -21,6 +21,7 @@ export const HttpClientProvider = ({ children, httpClient }: { children: ReactNo
     () => ({
       httpClient: {
         get: (url, options) => clientRef.current.get(url, options),
+        head: (url, options) => clientRef.current.head(url, options),
         post: (url, options) => clientRef.current.post(url, options),
         delete: (url, options) => clientRef.current.delete(url, options),
       },

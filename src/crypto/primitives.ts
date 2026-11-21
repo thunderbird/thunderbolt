@@ -897,11 +897,17 @@ export const decryptBytes = async (data: EncryptedBytes, key: CryptoKey): Promis
 // Base64 helpers
 // =============================================================================
 
-/** Encode bytes as base64 (binary-safe, no Buffer dependency). */
+/** Bytes per `String.fromCharCode` call: well under the engines' argument limits. */
+const base64ChunkBytes = 0x8000
+
+/**
+ * Encode bytes as base64 (binary-safe, no Buffer dependency). A chunk at a time: one character at a time
+ * held gigabytes of intermediate strings for a 64 MiB file.
+ */
 export const uint8ArrayToBase64 = (bytes: Uint8Array): string => {
   let binary = ''
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i])
+  for (let i = 0; i < bytes.length; i += base64ChunkBytes) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + base64ChunkBytes))
   }
   return btoa(binary)
 }

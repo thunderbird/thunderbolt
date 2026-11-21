@@ -3,13 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /** happy-dom exposes its control API on `window.happyDOM`, but the global
- *  registrator doesn't augment the DOM lib's `Window`. Declare the one method
- *  these helpers drive so `tsc --noEmit` stays green. */
+ *  registrator doesn't augment the DOM lib's `Window`. Declare the methods
+ *  tests drive so `tsc --noEmit` stays green. */
 declare global {
   // Global augmentation requires declaration merging, which only `interface` supports.
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   interface Window {
-    happyDOM?: { setViewport: (viewport: { width: number }) => void }
+    happyDOM?: { setViewport: (viewport: { width: number }) => void; setURL: (url: string) => void }
   }
 }
 

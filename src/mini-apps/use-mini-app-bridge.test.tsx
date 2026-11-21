@@ -1170,11 +1170,11 @@ describe('useMiniAppBridge downloads', () => {
     }
   })
 
-  /** The platform's message reaches the app, so it can say why rather than that. */
-  it('reports a save that failed with the platform message', async () => {
+  /** The app learns why the save failed, without the platform's text and the local paths it names. */
+  it('reports a save that failed with the reason in plain words', async () => {
     const original = URL.createObjectURL
     URL.createObjectURL = () => {
-      throw new Error('quota exceeded')
+      throw new Error('No space left on device (os error 28): /Users/someone/Downloads/report.csv')
     }
     try {
       const { bridge, replyTo, send, envelope, handshake, settle } = mountBridge()
@@ -1184,7 +1184,7 @@ describe('useMiniAppBridge downloads', () => {
       await settle()
 
       expect(replyTo(9)).toMatchObject({
-        error: { code: miniAppRpcErrors.downloadRejected, message: 'quota exceeded' },
+        error: { code: miniAppRpcErrors.downloadRejected, message: 'There is not enough free space on this device.' },
       })
     } finally {
       URL.createObjectURL = original

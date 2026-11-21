@@ -1,0 +1,84 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/** Sent to the composer; the fake provider answers it by calling `run_office_script` with the script below. */
+export const officeScriptPrompt = 'Write the e2e report as a Word document.'
+
+export const officeScriptFilename = 'e2e-report.docx'
+
+/** Text the document must contain once it is downloaded and unzipped. */
+export const officeScriptMarker = 'Sandbox report OFFICE-7Q2X'
+
+/** What a model would write: build a document with the preloaded `docx` library and save it. */
+export const officeScript = `
+const doc = new docx.Document({ sections: [{ children: [new docx.Paragraph(${JSON.stringify(officeScriptMarker)})] }] })
+saveFile(${JSON.stringify(officeScriptFilename)}, await docx.Packer.toArrayBuffer(doc))
+`
+
+/** The first call throws before saving. Its retry deletes the failing line. */
+export const officeRetryPrompt = 'Repair the e2e report script and save its Word document.'
+export const officeRetryFind = "throw new Error('retry fixture')"
+export const officeRetryScript = officeRetryFind + officeScript
+
+/** The fake provider edits this attachment under its original filename. */
+export const officeEditPrompt = 'Mark the attached brief as final.'
+
+export const officeEditFilename = 'e2e-brief.docx'
+
+/** The attached document holds this placeholder; the edited copy holds {@link officeEditMarker} in its place. */
+export const officeEditPlaceholder = '{{status}}'
+
+export const officeEditMarker = 'Final OFFICE-EDIT-3K9P'
+
+/** What a model would write to edit the attachment: read it, patch its placeholder, save it under its own name. */
+export const officeEditScript = `
+const patched = await docx.patchDocument({
+  outputType: 'uint8array',
+  data: readFile(${JSON.stringify(officeEditFilename)}),
+  patches: { status: { type: docx.PatchType.PARAGRAPH, children: [new docx.TextRun(${JSON.stringify(officeEditMarker)})] } },
+})
+saveFile(${JSON.stringify(officeEditFilename)}, patched)
+`
+
+/** Sent with an attached deck; the fake provider answers it by calling `run_office_script` to edit that deck. */
+export const officeDeckEditPrompt =
+  'Mark the attached deck as final. Fade in the status and add a fade slide transition.'
+export const officeDeckEditFilename = 'e2e-deck.pptx'
+/** The attached deck's first slide holds {@link officeEditPlaceholder}; the edited copy holds this in its place. */
+export const officeDeckEditMarker = 'Final OFFICE-DECK-5M2R'
+/** What a model would write to edit a slide directly: unzip the deck, replace the text in its XML, zip it again. */
+export const officeDeckEditScript = `
+const parts = fflate.unzipSync(readFile(${JSON.stringify(officeDeckEditFilename)}))
+const slide = 'ppt/slides/slide1.xml'
+parts[slide] = fflate.strToU8(fflate.strFromU8(parts[slide]).replace(${JSON.stringify(officeEditPlaceholder)}, ${JSON.stringify(officeDeckEditMarker)}))
+const out = animatePptx(fflate.zipSync(parts), {
+  effects: [{ slide: 1, shape: 'Status', effect: 'fadeIn' }],
+  transitions: [{ slide: 1, effect: 'fade' }],
+})
+saveFile(${JSON.stringify(officeDeckEditFilename)}, out)
+`
+
+/** Sent with an attached workbook whose chart reads Sheet1; the fake provider answers it by editing a value there. */
+export const officeChartEditPrompt = 'Set the fourth value to 90.'
+export const officeChartEditFilename = 'e2e-chart.xlsx'
+/** What a model would write: change one cell the chart reads, and save the workbook under its own name. */
+export const officeChartEditScript = `
+const f = excelize.OpenReader(readFile(${JSON.stringify(officeChartEditFilename)}))
+f.SetCellValue('Sheet1', 'B4', 90)
+saveFile(${JSON.stringify(officeChartEditFilename)}, f.WriteToBuffer().buffer)
+`
+
+/** Sent to the composer; the fake provider answers it by calling `run_office_script` to build a workbook. */
+export const officeWorkbookPrompt = 'Build the e2e budget as a spreadsheet.'
+
+export const officeWorkbookFilename = 'e2e-budget.xlsx'
+
+/** What a model would write: two rows and a total with the preloaded `excelize` API. */
+export const officeWorkbookScript = `
+const f = excelize.NewFile()
+f.SetSheetRow('Sheet1', 'A1', ['Rent', 1200])
+f.SetSheetRow('Sheet1', 'A2', ['Food', 450])
+f.SetCellFormula('Sheet1', 'B3', 'SUM(B1:B2)')
+saveFile(${JSON.stringify(officeWorkbookFilename)}, f.WriteToBuffer().buffer)
+`

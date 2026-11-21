@@ -9,6 +9,8 @@ import { useAuth, useDatabase } from '@/contexts'
 import { useSignInModal } from '@/contexts/sign-in-modal-context'
 import { exportUserData, importUserData, summarizeExportEnvelope, type ExportSummary } from '@/dal'
 import { downloadJson, exportFilenameFor } from '@/lib/export-download'
+import { saveErrorMessage } from '@/lib/download'
+import { i18n } from '@/i18n'
 import { readJsonFile } from '@/lib/import-upload'
 import { useLocalStorage } from '@/hooks/use-local-storage'
 import { useLocationNameDisplay } from '@/hooks/use-location-name-display'
@@ -501,7 +503,16 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
         id: userId,
         email: session?.user?.email ?? null,
       })
-      await downloadJson(exportFilenameFor(new Date()), payload)
+      try {
+        await downloadJson(exportFilenameFor(new Date()), payload)
+      } catch (error) {
+        console.error('Failed to save the data export:', error)
+        dispatch({
+          type: 'SET_EXPORT_ERROR',
+          payload: i18n._(saveErrorMessage(error instanceof Error ? error.message : String(error))),
+        })
+        return
+      }
       trackEvent('settings_data_export')
     } catch (error) {
       console.error('Failed to export data:', error)

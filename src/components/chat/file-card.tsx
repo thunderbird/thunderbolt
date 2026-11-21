@@ -5,12 +5,15 @@
 import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
-import { FileText, X } from 'lucide-react'
+import { docxMime, pptxMime, xlsmMime, xlsxMime } from '@/files/transformers'
+import { withoutBidiControls } from '@/lib/safe-file-name'
+import { FileSpreadsheet, FileText, Presentation, X } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { DeferredPdfThumbnail } from './deferred-pdf-thumbnail'
 import { DocxThumbnail } from './docx-thumbnail'
 import { ImageThumbnail } from './image-thumbnail'
 import { MarkdownThumbnail } from './markdown-thumbnail'
-import { docxMimeType, isTextualAttachment, TextSnippet } from './text-snippet'
+import { isTextualAttachment, TextSnippet } from './text-snippet'
 
 type FileCardProps = {
   localFileId: string
@@ -26,21 +29,32 @@ type FileCardProps = {
   resendTargets?: readonly ('text' | 'images')[]
   /** Re-deliver this file as the chosen mode and re-run the turn. */
   onResend?: (target: 'text' | 'images') => void
+  /** A control in the top-right corner, such as a download button. */
+  action?: ReactNode
+  /** A short line under the card, such as why the file can't be opened here. */
+  note?: ReactNode
 }
 
+/** The icon a card shows while it has no preview, by file type. */
+const placeholderIcons = new Map([
+  [pptxMime, Presentation],
+  [xlsxMime, FileSpreadsheet],
+  [xlsmMime, FileSpreadsheet],
+])
+
 /** Human label for a non-native delivery mode. */
-const deliverAsLabel: Record<'text' | 'images', MessageDescriptor> = {
+const deliverAsLabel = {
   text: msg`Sent as text`,
   images: msg`Sent as images`,
-}
+} satisfies Record<'text' | 'images', MessageDescriptor>
 
 /** Label for a resend control option. A whole message per mode rather than the
  *  mode name interpolated into "Resend as …" — a bare noun dropped into a
  *  translated frame gets the grammar wrong in most languages. */
-const resendAsLabel: Record<'text' | 'images', MessageDescriptor> = {
+const resendAsLabel = {
   text: msg`Resend as text`,
   images: msg`Resend as images`,
-}
+} satisfies Record<'text' | 'images', MessageDescriptor>
 
 /** Short type badge from the file extension, falling back to the mime type. */
 const typeBadge = (filename: string, mimeType: string): string => {
@@ -59,32 +73,36 @@ const typeBadge = (filename: string, mimeType: string): string => {
  */
 export const FileCard = ({
   localFileId,
-  filename,
+  filename: rawFilename,
   mimeType,
   onOpen,
   onRemove,
   deliverAs,
   resendTargets,
   onResend,
+  action,
+  note,
 }: FileCardProps) => {
-  const { i18n } = useLingui()
+  const { i18n, t } = useLingui()
+  const filename = withoutBidiControls(rawFilename)
   const ext = filename.split('.').pop()?.toLowerCase()
+  const PlaceholderIcon = placeholderIcons.get(mimeType) ?? FileText
   const isPdf = mimeType === 'application/pdf'
   const isImage = mimeType.startsWith('image/')
   const isMarkdown = mimeType === 'text/markdown' || ext === 'md' || ext === 'markdown'
-  const isDocx = mimeType === docxMimeType
+  const isDocx = mimeType === docxMime
   // Plain text (txt / csv / …) gets the raw mini-page; md and docx get formatted thumbnails.
   const isPlainText = !isPdf && !isImage && !isMarkdown && !isDocx && isTextualAttachment(filename, mimeType)
 
   const preview = (
     <div className="relative flex h-36 w-28 items-center justify-center overflow-hidden rounded-xl border bg-muted [--thumb-scale:0.2333] sm:h-44 sm:w-36 sm:[--thumb-scale:0.3]">
       {/* Placeholder shown until (and unless) a real preview renders on top. */}
-      <FileText className="size-7 text-muted-foreground sm:size-8" aria-hidden="true" />
+      <PlaceholderIcon className="size-7 text-muted-foreground sm:size-8" aria-hidden="true" />
       {isPdf && <DeferredPdfThumbnail localFileId={localFileId} />}
       {isImage && <ImageThumbnail localFileId={localFileId} alt={filename} />}
       {isMarkdown && <MarkdownThumbnail localFileId={localFileId} />}
       {isDocx && <DocxThumbnail localFileId={localFileId} title={filename} />}
-      {isPlainText && <TextSnippet localFileId={localFileId} mimeType={mimeType} />}
+      {isPlainText && <TextSnippet localFileId={localFileId} />}
       {deliverAs && (
         <span className="absolute left-1.5 top-1.5 rounded bg-black/65 px-1.5 py-px text-[length:var(--font-size-xs)] font-medium text-white">
           {i18n._(deliverAsLabel[deliverAs])}
@@ -117,12 +135,14 @@ export const FileCard = ({
         <button
           type="button"
           onClick={onRemove}
-          aria-label={`Remove ${filename}`}
+          aria-label={t`Remove ${filename}`}
           className="absolute -right-1.5 -top-1.5 cursor-pointer rounded-full border bg-background p-0.5 text-muted-foreground shadow-sm hover:text-foreground"
         >
           <X className="size-3.5" />
         </button>
       )}
+      {action && <div className="absolute right-0 top-0">{action}</div>}
+      {note && <p className="mt-1 w-28 text-[length:var(--font-size-xs)] text-muted-foreground sm:w-36">{note}</p>}
       {onResend && resendTargets && resendTargets.length > 0 && (
         <div className="mt-1 flex flex-wrap items-center justify-end gap-1">
           {resendTargets.map((target) => (

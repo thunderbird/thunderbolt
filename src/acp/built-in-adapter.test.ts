@@ -200,7 +200,15 @@ describe('composeAppHarnessSystemPrompt', () => {
       supportsTools,
     })
 
-    for (const text of ['# Environment', '`bash`', '`read`', '`write`', '`edit`', '`render_html`']) {
+    for (const text of [
+      '# Environment',
+      '`bash`',
+      '`read`',
+      '`write`',
+      '`edit`',
+      '`render_html`',
+      '`run_office_script`',
+    ]) {
       expect(composed.includes(text)).toBe(supportsTools)
     }
     expect(composed.startsWith('Stable instructions\n\n')).toBe(true)
@@ -2015,14 +2023,14 @@ describe('attachments in the harness workspace', () => {
         },
       ],
     ])
-    expect(prompts[0]).toContain(`[Attachment: spend.csv — saved as attachments/${localFileId}/spend.tsv]`)
+    expect(prompts[0]).toContain(`[Attachment: "spend.csv" — saved as attachments/${localFileId}/spend.tsv]`)
   })
 
   it('inlines the attachment whole and writes nothing when tools are inactive', async () => {
     const { written, prompts } = await runWithCsvAttachment(0)
 
     expect(written).toEqual([[]])
-    expect(prompts[0]).toBe(`[Attachment: spend.csv]\n\n${csv}\ntotal?`)
+    expect(prompts[0]).toBe(`[Attachment: "spend.csv"]\n\n${csv}\ntotal?`)
   })
 
   it('still prompts, naming and logging the failed path, when a workspace write fails', async () => {

@@ -546,8 +546,10 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
 
     const insertInstructionText = useCallback(
       (text: string) => {
+        // Read the draft and caret now, not at the render that made this callback: an Office manual loads before the
+        // chip calls it, and the user may type meanwhile.
         const ta = getTextarea()
-        const current = foldPendingSigils(input)
+        const current = foldPendingSigils(inputRef.current)
         const start = ta?.selectionStart ?? current.length
         const end = ta?.selectionEnd ?? current.length
         const needsSpace = start > 0 && current[start - 1] !== ' '
@@ -567,7 +569,7 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
           focused?.setSelectionRange(pos, pos)
         })
       },
-      [input, setInput, setCursorPos],
+      [setInput, setCursorPos],
     )
 
     // Run-in-chat router-state nav (Skills v1 §5). Same consume-once shape as

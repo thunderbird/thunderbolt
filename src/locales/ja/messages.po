@@ -5720,6 +5720,7 @@ msgstr "問題が発生しました"
 msgid "Something went wrong while saving the file."
 msgstr "ファイルの保存中に問題が発生しました。"
 
+#: src/components/chat/chat-skills-bar.tsx
 #: src/components/chat/error-message.tsx
 #: src/components/magic-link-verify.tsx
 #: src/components/sign-in/sign-in-email-step.tsx

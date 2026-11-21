@@ -36,7 +36,7 @@ type BarState = {
   reorderMode: boolean
   addOpen: boolean
   addQuery: string
-  /** Last pin/unpin/reorder failure, shown inline; cleared on the next action. */
+  /** Last pin/unpin/reorder or instruction-load failure, shown inline; cleared on the next action. */
   actionError: string | null
 }
 
@@ -132,6 +132,17 @@ export const ChatSkillsBar = ({
         type: 'MUTATION_FAILED',
         message: action === 'pin' ? t`Couldn't pin ${name}.` : t`Couldn't unpin ${name}.`,
       })
+    }
+  }
+
+  // An Office manual loads from its own chunk, which fails when the app's server is unreachable.
+  const handleAddInstruction = async (skill: Skill) => {
+    dispatch({ type: 'MUTATION_STARTED' })
+    try {
+      onAddInstruction(await skillInstruction(skill))
+    } catch (error) {
+      console.error('skillInstruction failed:', error)
+      dispatch({ type: 'MUTATION_FAILED', message: t`Something went wrong. Please try again.` })
     }
   }
 
@@ -318,9 +329,7 @@ export const ChatSkillsBar = ({
             key={skill.id}
             label={skillDisplayName(skill)}
             onClick={canInsertSkill(skill.id) ? () => onAddToChat(skill) : undefined}
-            onAddInstruction={
-              canInsertSkill(skill.id) ? async () => onAddInstruction(await skillInstruction(skill)) : undefined
-            }
+            onAddInstruction={canInsertSkill(skill.id) ? () => handleAddInstruction(skill) : undefined}
             onEdit={
               isContractSkillId(skill.id) ? undefined : () => openCreateItem({ kind: 'skill', skillId: skill.id })
             }

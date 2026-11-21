@@ -5739,6 +5739,7 @@ msgstr "Something went wrong"
 msgid "Something went wrong while saving the file."
 msgstr "Something went wrong while saving the file."
 
+#: src/components/chat/chat-skills-bar.tsx
 #: src/components/chat/error-message.tsx
 #: src/components/magic-link-verify.tsx
 #: src/components/sign-in/sign-in-email-step.tsx

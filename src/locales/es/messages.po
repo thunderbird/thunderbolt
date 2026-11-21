@@ -5758,6 +5758,7 @@ msgstr "Algo salió mal"
 msgid "Something went wrong while saving the file."
 msgstr "Algo salió mal al guardar el archivo."
 
+#: src/components/chat/chat-skills-bar.tsx
 #: src/components/chat/error-message.tsx
 #: src/components/magic-link-verify.tsx
 #: src/components/sign-in/sign-in-email-step.tsx

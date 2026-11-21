@@ -31,6 +31,7 @@ import { defaultSkillOfficeXlsx, defaultSkillWeather } from '@/defaults/skills'
 import { estimateTokensForText } from '@/ai/tokenizers'
 import { officeXlsxSkill } from '@/office/skills/xlsx'
 import * as skillHooks from '@/skills/use-skills'
+import * as officeSkills from '@/office/skills'
 import * as adapterCache from '@/acp/adapter-cache'
 import * as attachmentStorage from '@/lib/file-blob-storage'
 import * as chatMessagesLoader from './chat-messages-loader'
@@ -1004,6 +1005,86 @@ describe('ChatPromptInput', () => {
         }
       },
     )
+
+    describe("adding a pinned chip's instructions while its manual loads", () => {
+      let previousConfig: ReturnType<typeof useConfigStore.getState>
+
+      beforeEach(() => {
+        previousConfig = useConfigStore.getState()
+        useConfigStore.setState({ config: {}, configLoaded: true })
+        spyOn(skillHooks, 'usePinnedSkills').mockReturnValue({
+          pinned: [defaultSkillOfficeXlsx],
+          pinnedSet: new Set([defaultSkillOfficeXlsx.id]),
+          togglePin: async () => undefined,
+          reorderPins: async () => undefined,
+        })
+      })
+
+      afterEach(() => {
+        cleanup()
+        mock.restore()
+        useConfigStore.setState(previousConfig)
+      })
+
+      /** Renders an empty chat whose pinned Excel chip the built-in agent offers, and returns its composer. */
+      const renderComposer = () => {
+        const { mockUseChat } = setupStore()
+        render(
+          <ChatPromptInput
+            useChat={mockUseChat}
+            useIsMobile={createMockUseIsMobile()}
+            useLibrarySkills={fakeUseLibrarySkills}
+            useEnabledSkills={fakeUseEnabledSkills}
+            useWarmAcpCommands={noWarmUp}
+          />,
+          { wrapper: TestWrapper },
+        )
+        const textarea = screen.getByRole('textbox')
+        if (!(textarea instanceof HTMLTextAreaElement)) {
+          throw new Error('Expected the composer textarea')
+        }
+        return textarea
+      }
+
+      const addInstructions = async () => {
+        fireEvent.contextMenu(screen.getByText('Excel workbooks'))
+        const add = await waitForElement(() => screen.queryByText('Add instructions to chat'))
+        await act(async () => fireEvent.click(add))
+      }
+
+      it('inserts the manual at the caret the user left, keeping what they typed during the load', async () => {
+        // Held so the load is cold whatever another test already loaded: the loader keeps a manual once it has it.
+        const manual = Promise.withResolvers<string>()
+        const load = spyOn(officeSkills, 'loadOfficeSkillBody').mockReturnValue(manual.promise)
+        const textarea = renderComposer()
+
+        await addInstructions()
+        expect(load).toHaveBeenCalledWith('xlsx')
+        fireEvent.change(textarea, { target: { value: 'hello world' } })
+        textarea.setSelectionRange(5, 5)
+        fireEvent.select(textarea)
+        await act(async () => manual.resolve('MANUAL'))
+
+        expect(textarea.value).toBe('hello MANUAL world')
+      })
+
+      it('says the load failed once and leaves the draft alone', async () => {
+        const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+        spyOn(officeSkills, 'loadOfficeSkillBody').mockImplementation(async () => {
+          throw new TypeError('Load failed')
+        })
+        const textarea = renderComposer()
+        fireEvent.change(textarea, { target: { value: 'keep me' } })
+
+        await addInstructions()
+
+        expect(screen.getAllByRole('alert').map((alert) => alert.textContent)).toEqual([
+          'Something went wrong. Please try again.',
+        ])
+        expect(textarea.value).toBe('keep me')
+        expect(consoleError).toHaveBeenCalled()
+      })
+    })
   })
 
   describe('agent availability', () => {

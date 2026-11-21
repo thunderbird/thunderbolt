@@ -15,11 +15,6 @@ export type WorkbookParts = Record<string, Uint8Array>
 // A quoted attribute value may contain the tag's closing delimiter.
 const attributeToken = `(?:[^<>"']|"[^"<]*"|'[^'<]*')`
 
-/**
- * A pattern for an element: its tag, its attribute text and its content. Sheet parts can hold hundreds of thousands
- * of cells, too many for a DOM, so they are scanned with patterns. Element names may carry a namespace prefix
- * (`x:c`), which some generators write.
- */
 // A namespace prefix is any XML name, which may hold non-ASCII letters, so only the characters that end one are left
 // out. XML whitespace is listed by hand: JavaScript's \s also matches characters an XML name may hold.
 const prefixName = `[^ \\t\\r\\n<>/:="'!?]+`
@@ -27,6 +22,11 @@ const prefix = `(?:${prefixName}:)?`
 // Where an element name ends; \b would also end one inside a non-ASCII name, so <fée> would read as <f>.
 const nameEnd = `(?=[ \\t\\r\\n/>])`
 
+/**
+ * A pattern for an element: its tag, its attribute text and its content. Sheet parts can hold hundreds of thousands
+ * of cells, too many for a DOM, so they are scanned with patterns. Element names may carry a namespace prefix
+ * (`x:c`), which some generators write.
+ */
 const element = (name: string, flags = '') =>
   new RegExp(`<(${prefix}${name})${nameEnd}(${attributeToken}*?)(?:/>|>([\\s\\S]*?)</\\1\\s*>)`, flags)
 

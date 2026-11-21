@@ -20,8 +20,15 @@ const attributeToken = `(?:[^<>"']|"[^"<]*"|'[^'<]*')`
  * of cells, too many for a DOM, so they are scanned with patterns. Element names may carry a namespace prefix
  * (`x:c`), which some generators write.
  */
+// A namespace prefix is any XML name, which may hold non-ASCII letters, so only the characters that end one are left
+// out. XML whitespace is listed by hand: JavaScript's \s also matches characters an XML name may hold.
+const prefixName = `[^ \\t\\r\\n<>/:="'!?]+`
+const prefix = `(?:${prefixName}:)?`
+// Where an element name ends; \b would also end one inside a non-ASCII name, so <fée> would read as <f>.
+const nameEnd = `(?=[ \\t\\r\\n/>])`
+
 const element = (name: string, flags = '') =>
-  new RegExp(`<((?:[\\w.-]+:)?${name})\\b(${attributeToken}*?)(?:/>|>([\\s\\S]*?)</\\1\\s*>)`, flags)
+  new RegExp(`<(${prefix}${name})${nameEnd}(${attributeToken}*?)(?:/>|>([\\s\\S]*?)</\\1\\s*>)`, flags)
 
 /** The value of attribute `name` (a pattern) in an element's attribute text, or `undefined` when it has none. */
 const attribute = (attributes: string, name: string) =>
@@ -31,7 +38,7 @@ const attribute = (attributes: string, name: string) =>
     .find((v) => v !== undefined)
 
 /** `r:id`, whatever prefix the relationships namespace has. */
-const relationshipId = (attributes: string) => attribute(attributes, '[\\w.-]+:id')
+const relationshipId = (attributes: string) => attribute(attributes, `${prefixName}:id`)
 
 const entities = new Map([
   ['lt', '<'],
@@ -71,7 +78,7 @@ const formulaElement = element('(?:f|formula[12]?|definedName|calculatedColumnFo
 const wrappedFormula = new RegExp(`^\\s*${element('f').source}\\s*$`)
 
 /** Elements whose attribute holds a formula: a colour scale's threshold, and a pivot table's calculated field or item. */
-const formulaAttributes = new RegExp(`<(?:[\\w.-]+:)?(?:cfvo|cacheField|calculatedItem)\\b(${attributeToken}*)`, 'g')
+const formulaAttributes = new RegExp(`<${prefix}(?:cfvo|cacheField|calculatedItem)${nameEnd}(${attributeToken}*)`, 'g')
 
 const tag = /<(?:[^>"']|"[^"]*"|'[^']*')*>/g
 
@@ -263,7 +270,7 @@ type Sheet = { name: string; part: string }
 /** The rows a sheet part hides, by number. Rows a filter hides are hidden this way too. */
 const hiddenRows = (xml: string) => {
   let row = 0
-  const rowTag = new RegExp(String.raw`<(?:[\w.-]+:)?row\b(${attributeToken}*)>`, 'g')
+  const rowTag = new RegExp(`<${prefix}row${nameEnd}(${attributeToken}*)>`, 'g')
   return [...xml.matchAll(rowTag)].flatMap(([, attributes]) => {
     row = Number(attribute(attributes, 'r') ?? row + 1)
     return /^(1|true)$/.test(attribute(attributes, 'hidden') ?? '') ? [row] : []

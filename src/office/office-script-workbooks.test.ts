@@ -628,6 +628,11 @@ saveFile('a.xlsx', f.WriteToBuffer().buffer)
       ['<f>WEB<!-- -->SERVICE("https://example.com")</f>', ''],
       ['<f><![CDATA[_xlfn.IMAGE("https://example.com/a.png")]]></f>', ''],
       ['<f>_xlfn.WEBSERVICE("https://example.com")</f>', '\\uFEFF'],
+      // A namespace prefix may hold letters outside ASCII.
+      [
+        '<é:f xmlns:é="http://schemas.openxmlformats.org/spreadsheetml/2006/main">_xlfn.WEBSERVICE("https://example.com")</é:f>',
+        '',
+      ],
     ]) {
       const script = `
 const parts = fflate.unzipSync(excelize.NewFile().WriteToBuffer().buffer)

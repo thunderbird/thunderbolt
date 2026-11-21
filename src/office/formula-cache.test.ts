@@ -88,6 +88,10 @@ describe('externalDataFormulas', () => {
       '<cfvo type="formula" val="WEBSERVICE(&quot;https://x&quot;)"/>',
       '<cacheField name="c" numFmtId="0" formula="IMAGE(&quot;https://x/a.png&quot;)"/>',
       '<calculatedItem formula="RTD(&quot;a.b&quot;,,&quot;t&quot;)"><pivotArea/></calculatedItem>',
+      // A prefix is any XML name, so it may hold letters outside ASCII.
+      '<c r="A1"><ñ:f>WEBSERVICE("https://x")</ñ:f></c>',
+      '<c r="A1"><表-1:f>WEBSERVICE("https://x")</表-1:f></c>',
+      '<ñ:cfvo type="formula" val="WEBSERVICE(&quot;https://x&quot;)"/>',
     ]) {
       expect(externalDataFormulas(xml)).toHaveLength(1)
     }
@@ -108,6 +112,8 @@ describe('externalDataFormulas', () => {
       `<c r="A1"><f>Table1['[Image (URL)']]</f></c>`,
       '<x14:dataValidation><x14:formula1><xm:f>"Image (URL),Text"</xm:f></x14:formula1></x14:dataValidation>',
       '<cfvo type="num" val="0"/><cacheField name="IMAGE(1)" numFmtId="0"/>',
+      '<x14:dataValidation><x14:formula1><ñ:f>A1:A3</ñ:f></x14:formula1></x14:dataValidation>',
+      '<c r="A1"><fée>WEBSERVICE("https://x")</fée></c>',
     ]) {
       expect(externalDataFormulas(xml)).toEqual([])
     }

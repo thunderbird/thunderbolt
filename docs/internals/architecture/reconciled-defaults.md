@@ -29,7 +29,7 @@ rule for changing a default).
 | `models`         | `defaultModelsVersion` (`shared/defaults/models.ts:175`)  | `hashModel` (`shared/defaults/models.ts:58`)                   | `id`      | `frozenFields: ['isConfidential', 'provider']`, `metadataFields: ['description', 'vendor']` |
 | `model_profiles` | none (rides the models gate)                              | `hashModelProfile` (`src/defaults/model-profiles/index.ts:20`) | `modelId` | `insertMissing: true`                                                                       |
 | `tasks`          | `defaultTasksVersion` (`src/defaults/tasks.ts:70`)        | `hashTask` (`src/defaults/tasks.ts:13`)                        | `id`      |                                                                                             |
-| `skills`         | `defaultSkillsVersion` (`src/defaults/skills.ts:389`)     | `hashSkill` (`src/defaults/skills.ts:24`)                      | `id`      | `frozenFields: ['enabled', 'pinnedOrder']` for contract skills (widget + Office) only       |
+| `skills`         | `defaultSkillsVersion` (`src/defaults/skills.ts`)         | `hashSkill` (`src/defaults/skills.ts:24`)                      | `id`      | `frozenFields: ['enabled', 'pinnedOrder']` for contract skills (widget + Office) only       |
 | `settings`       | `defaultSettingsVersion` (`src/defaults/settings.ts:268`) | `hashSetting` (`src/defaults/settings.ts:14`)                  | `key`     |                                                                                             |
 
 - `prompts` left the list in THU-547, when skills superseded the default automations.

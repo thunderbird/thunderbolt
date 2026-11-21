@@ -152,7 +152,7 @@ const officeMimeTypes = new Set([docxMime, xlsxMime, pptxMime])
 /**
  * Label a workspace-backed attachment: where its files live, then its preview. The workspace holds only an Office
  * file's text, so its label also says the original is stored and how the Office script tool, which every turn with a
- * workspace has, reads it: only for an edit, because the tool fails a script that saves no file. Measure any change
+ * workspace has, reads it: only for an edit or a new file built from it. Measure any change
  * to this wording on real models: close rewordings changed how often they told the user the file had not arrived.
  */
 const workspaceAttachment = (data: AttachmentData, files: WorkspaceFile[], preview: string): PreparedPart => {

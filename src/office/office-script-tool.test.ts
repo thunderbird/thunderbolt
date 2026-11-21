@@ -1200,8 +1200,19 @@ saveFile('renamed.docx', fflate.zipSync(parts))
     expect(await errorOf('await new Promise(() => {})')).toContain('never finished')
   })
 
-  it('refuses a run that saves nothing, bytes of the wrong type, a name it cannot deliver, or one name twice', async () => {
-    expect(await errorOf('console.log("no file")')).toContain('without saving a file')
+  it('returns the logs of a run that saves nothing and stores nothing', async () => {
+    const store = mock(storeFiles)
+
+    expect(await tool({ storeFiles: store }).execute({ script: 'console.log("probe")' })).toEqual({
+      ok: true,
+      files: [],
+      logs: 'probe\n',
+      notes: ['No file was saved, so the user sees nothing from this run.'],
+    })
+    expect(store).not.toHaveBeenCalled()
+  })
+
+  it('refuses bytes of the wrong type, a name it cannot deliver, or one name twice', async () => {
     expect(await errorOf('saveFile("a.docx", "UEsDBBQ")')).toContain(
       'needs the bytes as a Uint8Array or an ArrayBuffer',
     )

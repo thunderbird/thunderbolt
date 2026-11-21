@@ -11,25 +11,20 @@ import { NewConnectionPicker } from './new-connection-picker'
 
 afterEach(cleanup)
 
-test.each([undefined, 'models', 'search'] as const)('hides Otari by default in the %s picker', (capability) => {
-  const picker = (enabled = false) => (
+test.each([undefined, 'models', 'search'] as const)('lists Otari in the %s picker', (capability) => {
+  render(
     <I18nProvider i18n={i18n}>
-      <NewConnectionPicker capability={capability} otariEnabled={enabled} onProvider={() => {}} />
-    </I18nProvider>
+      <NewConnectionPicker capability={capability} onProvider={() => {}} />
+    </I18nProvider>,
   )
-  const view = render(picker())
-  expect(screen.queryByRole('button', { name: 'Otari Models and search' })).toBeNull()
-  view.rerender(picker(true))
   expect(screen.getByRole('button', { name: 'Otari Models and search' })).toBeVisible()
-  view.rerender(picker())
-  expect(screen.queryByRole('button', { name: 'Otari Models and search' })).toBeNull()
 })
 
 test('describes both capabilities for Otari and Tinfoil while preserving provider selection', () => {
   const onProvider = mock((_provider: ProviderType) => {})
   render(
     <I18nProvider i18n={i18n}>
-      <NewConnectionPicker otariEnabled onProvider={onProvider} onMcp={() => {}} />
+      <NewConnectionPicker onProvider={onProvider} onMcp={() => {}} />
     </I18nProvider>,
   )
   fireEvent.click(screen.getByRole('button', { name: 'Otari Models and search' }))
@@ -42,7 +37,7 @@ test('describes both capabilities for Otari and Tinfoil while preserving provide
 test('pins generic connections before alphabetical provider choices', () => {
   render(
     <I18nProvider i18n={i18n}>
-      <NewConnectionPicker otariEnabled onProvider={() => {}} onMcp={() => {}} />
+      <NewConnectionPicker onProvider={() => {}} onMcp={() => {}} />
     </I18nProvider>,
   )
   const [mcp, custom, ...buttons] = screen
@@ -66,7 +61,6 @@ test('filters all connection groups and restores them when the search is cleared
   render(
     <I18nProvider i18n={i18n}>
       <NewConnectionPicker
-        otariEnabled
         onProvider={onProvider}
         onMcp={onMcp}
         onIntegration={onIntegration}
@@ -114,7 +108,7 @@ test('filters all connection groups and restores them when the search is cleared
 test('searches within the supported capability instead of exposing unrelated connections', () => {
   render(
     <I18nProvider i18n={i18n}>
-      <NewConnectionPicker otariEnabled capability="search" onProvider={() => {}} />
+      <NewConnectionPicker capability="search" onProvider={() => {}} />
     </I18nProvider>,
   )
   const search = screen.getByRole('searchbox', { name: 'Search connections' })
@@ -131,7 +125,6 @@ test('combines type checkboxes with search and restores all types when cleared',
   render(
     <I18nProvider i18n={i18n}>
       <NewConnectionPicker
-        otariEnabled
         onProvider={() => {}}
         onMcp={() => {}}
         integrations={['google', 'microsoft'].map((provider) => ({

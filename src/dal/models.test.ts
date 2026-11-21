@@ -309,25 +309,6 @@ describe('Models DAL', () => {
   })
 
   describe('getAvailableModels', () => {
-    it('keeps Otari unavailable until its preview flag is on without changing saved models or selection', async () => {
-      const db = getDb()
-      const otariId = uuidv7()
-      const fallbackId = uuidv7()
-      await db.insert(modelsTable).values([
-        { id: otariId, provider: 'otari', name: 'Otari', model: 'test', enabled: 1, isSystem: 0 },
-        { id: fallbackId, provider: 'openai', name: 'Fallback', model: 'test', enabled: 1, isSystem: 1 },
-      ])
-      await updateSettings(db, { selected_model: otariId })
-      expect((await getAvailableModels(db)).map(({ id }) => id)).toEqual([fallbackId])
-      expect((await getSelectedModel(db)).id).toBe(fallbackId)
-      await updateSettings(db, { experimental_feature_otari: true })
-      expect((await getAvailableModels(db)).map(({ id }) => id)).toEqual([fallbackId, otariId])
-      expect((await getSelectedModel(db)).id).toBe(otariId)
-      await updateSettings(db, { experimental_feature_otari: false })
-      expect((await getAvailableModels(db)).map(({ id }) => id)).toEqual([fallbackId])
-      expect((await getSelectedModel(db)).id).toBe(fallbackId)
-      expect(await getModel(db, otariId)).toMatchObject({ enabled: 1, deletedAt: null })
-    })
     it('gates OAuth models on connection access without changing model preferences or BYOK access', async () => {
       const db = getDb()
       useLocalSettingsStore.setState({ cloudUrl: '' })

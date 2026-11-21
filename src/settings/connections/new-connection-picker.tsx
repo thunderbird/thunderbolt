@@ -28,13 +28,11 @@ export const NewConnectionPicker = ({
   integrations = [],
   onIntegration,
   capability,
-  otariEnabled = false,
 }: {
   onProvider: (provider: ProviderType) => void
   onMcp?: () => void
   integrations?: Integration[]
   onIntegration?: (id: string) => void
-  otariEnabled?: boolean
   capability?: ProviderCapability
 }) => {
   const { t, i18n } = useLingui()
@@ -72,7 +70,6 @@ export const NewConnectionPicker = ({
     .filter(
       (provider) =>
         provider.id !== 'custom' &&
-        (provider.id !== 'otari' || otariEnabled) &&
         (!capability || provider.capabilities.includes(capability)) &&
         matchesType(provider.capabilities),
     )

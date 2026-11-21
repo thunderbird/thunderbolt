@@ -236,7 +236,6 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
     dataCollection,
     experimentalFeatureTasks,
     experimentalFeatureVoice,
-    experimentalFeatureOtari,
     distanceUnit,
     temperatureUnit,
     timeFormat,
@@ -252,7 +251,6 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
     data_collection: false,
     experimental_feature_tasks: false,
     experimental_feature_voice: false,
-    experimental_feature_otari: false,
     // Empty, not a US default. `useUnitDefaults` seeds these asynchronously, so
     // an existing user who skipped the location step can reach this page before
     // the write lands — and a confidently wrong "Imperial (mi)" is worse than a
@@ -976,23 +974,6 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
                 checked={experimentalFeatureVoice.value}
                 onCheckedChange={(value) => experimentalFeatureVoice.setValue(value)}
                 aria-label={t`Custom voice provider`}
-              />
-            </div>
-            <div className="flex flex-row items-center gap-4">
-              <div className="flex-1">
-                <ModificationIndicator
-                  as="label"
-                  className="text-sm font-medium"
-                  hasModifications={experimentalFeatureOtari.isModified}
-                  onReset={experimentalFeatureOtari.reset}
-                >
-                  <Trans>Otari</Trans>
-                </ModificationIndicator>
-              </div>
-              <Switch
-                checked={experimentalFeatureOtari.value}
-                onCheckedChange={(value) => experimentalFeatureOtari.setValue(value)}
-                aria-label={t`Otari`}
               />
             </div>
           </div>

@@ -4,7 +4,7 @@
 
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useId } from 'react'
-import { Input } from '@/components/ui/input'
+import { DateField } from '../../components/date-field'
 import { todayDateInput } from './credential-expiry'
 import { describedBy, FormField } from './form-field'
 
@@ -15,13 +15,13 @@ export const ExpiryField = ({ value, onChange }: { value: string; onChange: (val
   const hint = t`Optional. It stops working at the end of that day. Without a date, it expires in a year.`
   return (
     <FormField id={id} label={<Trans>Credential expires on</Trans>} hint={hint}>
-      <Input
+      <DateField
         id={id}
-        type="date"
         min={todayDateInput()}
         value={value}
+        placeholder={<Trans>Pick a date</Trans>}
         aria-describedby={describedBy(id, { hint })}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={onChange}
       />
     </FormField>
   )

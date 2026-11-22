@@ -81,6 +81,8 @@ export type Formatters = {
   weekdayDate: (value: DateInput) => string
   /** Abbreviated weekday on its own: "Wed". */
   weekday: (value: DateInput) => string
+  /** A calendar month heading: "August 2026". */
+  monthYear: (value: DateInput) => string
   /** "2 hours ago", "yesterday", "in 3 days". Past is negative, i.e. before `now`. */
   relativeTime: (value: DateInput, now?: Date) => string
   /**
@@ -110,6 +112,7 @@ const createFormatters = (locale: AppLocale): Formatters => {
   const dateFormat = new Intl.DateTimeFormat(locale, { dateStyle: 'medium' })
   const weekdayDateFormat = new Intl.DateTimeFormat(locale, { weekday: 'long', month: 'short', day: 'numeric' })
   const weekdayFormat = new Intl.DateTimeFormat(locale, { weekday: 'short' })
+  const monthYearFormat = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' })
   // `numeric: 'auto'` is what buys "yesterday" and "last month" over the
   // literal "1 day ago" — CLDR carries those phrasings per locale.
   const relativeFormat = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
@@ -146,6 +149,7 @@ const createFormatters = (locale: AppLocale): Formatters => {
     date: (value) => dateFormat.format(toDate(value)),
     weekdayDate: (value) => weekdayDateFormat.format(toDate(value)),
     weekday: (value) => weekdayFormat.format(toDate(value)),
+    monthYear: (value) => monthYearFormat.format(toDate(value)),
     relativeTime: (value, now = new Date()) => {
       const { value: amount, unit } = selectRelativeUnit(toDate(value).getTime() - now.getTime())
       return relativeFormat.format(amount, unit)

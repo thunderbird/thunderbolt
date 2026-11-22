@@ -3,6 +3,7 @@
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
 import { toDate } from '@/i18n/format'
+import { toLocalDay } from '../../components/date-field'
 
 /** The ISO start of a date input's `YYYY-MM-DD` day, in local time: the audit `from` bound. */
 export const toRangeStart = (day: string): string => toDate(day).toISOString()
@@ -23,6 +24,5 @@ export const toDayInput = (iso: string | undefined): string => {
   if (Number.isNaN(date.getTime())) {
     return ''
   }
-  const pad = (value: number) => String(value).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+  return toLocalDay(date)
 }

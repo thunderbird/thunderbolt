@@ -3,11 +3,12 @@
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getClock } from '@/testing-library'
 import type { AdminConnectionDetail, ScimCredential } from '@shared/admin-api'
 import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
-import { createAdminTestHarness, flush, type FakeReply, type FakeRequest } from '../../test-utils'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { createAdminTestHarness, flush, pickDate, type FakeReply, type FakeRequest } from '../../test-utils'
 import { ScimSection } from './scim-section'
 
 const credential: ScimCredential = {
@@ -59,6 +60,10 @@ const holdsToken = (harness: ReturnType<typeof createAdminTestHarness>) =>
 
 describe('ScimSection', () => {
   beforeAll(setupTestDatabase)
+  // The expiry picker refuses past days, so the date the tests pick has to stay in the future.
+  beforeEach(() => {
+    getClock().setSystemTime(new Date('2026-11-20T00:00:00'))
+  })
   afterAll(teardownTestDatabase)
   afterEach(() => {
     cleanup()
@@ -70,7 +75,7 @@ describe('ScimSection', () => {
     )
     expect(screen.getByText(/makes sign-in through this connection SSO-only/)).toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText('Credential expires on'), { target: { value: '2027-03-09' } })
+    pickDate('Credential expires on', '2027-03-09')
     fireEvent.click(screen.getByRole('button', { name: 'Turn on SCIM' }))
     await flush()
 

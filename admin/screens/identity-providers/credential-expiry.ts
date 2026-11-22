@@ -3,6 +3,7 @@
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
 import type { Timestamp } from '@shared/admin-api'
+import { toLocalDay } from '../../components/date-field'
 
 /**
  * A SCIM credential's expiry from a date input (`YYYY-MM-DD`): the end of that day in local time,
@@ -18,7 +19,4 @@ export const toExpiresAt = (date: string): Timestamp | undefined => {
 }
 
 /** Today as a date input value, in local time: the earliest expiry a credential can take. */
-export const todayDateInput = (now = new Date()) => {
-  const pad = (value: number) => String(value).padStart(2, '0')
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
-}
+export const todayDateInput = (now = new Date()) => toLocalDay(now)

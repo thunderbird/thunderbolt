@@ -183,6 +183,7 @@
     "qrcode": "^1.5.4",
     "quickjs-wasi": "^3.6.4",
     "react": "^19.2.1",
+    "react-day-picker": "^10.0.2",
     "react-dom": "^19.2.1",
     "react-hook-form": "^7.62.0",
     "react-markdown": "^10.1.0",

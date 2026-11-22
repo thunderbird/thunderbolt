@@ -5,9 +5,10 @@
 import { createClient } from '@/lib/http'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
+import { getFormatters, toDate } from '@/i18n/format'
 import { getClock } from '@/testing-library'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act } from '@testing-library/react'
+import { act, fireEvent, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 
@@ -64,3 +65,26 @@ export const flush = () =>
   act(async () => {
     await getClock().runAllAsync()
   })
+
+/** A day button's accessible name, which says "Today, " and ", selected" around the date when they apply. */
+const dayButtonName = (day: string) =>
+  new RegExp(`^(Today, )?${day.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(, selected)?$`)
+
+/**
+ * Pick `day` (`YYYY-MM-DD`) in the empty `DateField` labelled `label`: open it, page from the current
+ * month to the day's month, and click the day.
+ */
+export const pickDate = (label: string, day: string) => {
+  const formatters = getFormatters('en')
+  const date = toDate(day)
+  const target = formatters.monthYear(date)
+  const step = date > new Date() ? 'Next month' : 'Previous month'
+  fireEvent.click(screen.getByLabelText(label))
+  for (let pages = 0; screen.getByRole('grid').getAttribute('aria-label') !== target; pages++) {
+    if (pages > 120) {
+      throw new Error(`The calendar never reached ${target}`)
+    }
+    fireEvent.click(screen.getByRole('button', { name: step }))
+  }
+  fireEvent.click(screen.getByRole('button', { name: dayButtonName(formatters.date(date)) }))
+}

@@ -305,6 +305,9 @@ secret known and checks no row holds it.
 - Every request runs under a server-generated id (`request-context.ts`), and each event it writes
   carries it as `request_id`, so the several events one request causes correlate.
 - `GET /v1/admin/audit-events` pages admins through the log, newest first, at most 100 a page.
+  Each event carries `actorLabel` and `targetLabel`, the actor's and target's names looked up in the
+  org at read time ([labels.ts](../../../backend/src/identity/audit/labels.ts)); a person is named only
+  while they're a member, and a deleted target reads as null.
   Viewing a page is not audited. Every admin route goes through `createAdminMacro`, which re-checks the
   admin role on each request and records a denied attempt as `admin.access_denied`.
 

@@ -10,6 +10,7 @@ import { t } from 'elysia'
 import { createAdminRoutes } from '../admin-macro'
 import { decodeCursor, defaultAdminPageSize, pageQuery, toPage } from '../admin/pagination'
 import { getCurrentOrganizationId } from '../current-organization'
+import { labelAuditEvents } from './labels'
 
 type Cursor = { occurredAt: Date; id: string }
 
@@ -71,7 +72,7 @@ export const createAuditRoutes = (auth: Auth, database: typeof DbType) =>
         .limit(limit + 1)
 
       const { items, nextCursor } = toPage(rows, limit, (event) => [event.occurredAt.toISOString(), event.id])
-      return { events: items, nextCursor }
+      return { events: await labelAuditEvents(database, getCurrentOrganizationId(), items), nextCursor }
     },
     { query: auditQuery },
   )

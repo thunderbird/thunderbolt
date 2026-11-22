@@ -5,13 +5,17 @@
 import { expect, type Browser, type Page, type ViewportSize } from '@playwright/test'
 import { adminAppUrl, adminTest as test, e2eSignInCode, readInviteUrl, uniqueEmail } from './admin/helpers'
 
-/** Invite `email` from the Invitations screen. */
+/** Invite `email` from the Members screen. */
 const invite = async (page: Page, email: string) => {
   await page.getByRole('button', { name: 'Invite member' }).click()
   await page.getByLabel('Email', { exact: true }).fill(email)
   await page.getByRole('button', { name: 'Send invitation' }).click()
   await expect(page.getByText(`Invitation sent to ${email}.`)).toBeVisible()
 }
+
+/** The Members row for `email`: an invitation or, once they sign in, the member. */
+const row = (page: Page, email: string) =>
+  page.locator('[data-slot="card"]', { has: page.getByRole('button', { name: email, exact: true }) })
 
 /** A page signed in as nobody, in this project's viewport. */
 const openSignedOut = async (browser: Browser, viewport: ViewportSize | null) => {
@@ -23,15 +27,16 @@ const openSignedOut = async (browser: Browser, viewport: ViewportSize | null) =>
   return { page: await context.newPage(), close: () => context.close() }
 }
 
-test('an invitation shows as pending, its link signs the person in, and it then shows as accepted', async ({
+test('an invitation shows in Members as pending, and its link signs the person in as a member', async ({
   page,
   browser,
   viewport,
 }) => {
   const email = uniqueEmail('invitee')
-  await page.goto('/admin/invitations')
+  await page.goto('/admin/members')
   await invite(page, email)
-  await expect(page.getByLabel(email, { exact: true })).toBeVisible()
+  await expect(page).toHaveURL(/\/admin\/members$/)
+  await expect(row(page, email)).toContainText('Invitation expires')
 
   const invitee = await openSignedOut(browser, viewport)
   await invitee.page.goto(await readInviteUrl(email))
@@ -43,22 +48,24 @@ test('an invitation shows as pending, its link signs the person in, and it then 
   await invitee.close()
 
   await page.reload()
-  await expect(page.getByLabel(email, { exact: true })).toHaveCount(0)
-  await page.getByRole('radio', { name: 'Accepted' }).click()
-  await expect(page.getByLabel(email, { exact: true })).toBeVisible()
+  await expect(row(page, email)).toHaveCount(1)
+  await expect(row(page, email)).not.toContainText('Invitation expires')
 })
 
 test('a revoked invitation link is refused', async ({ page, browser, viewport }) => {
   const email = uniqueEmail('revoked')
-  await page.goto('/admin/invitations')
+  await page.goto('/admin/members')
   await invite(page, email)
   const inviteUrl = await readInviteUrl(email)
 
-  await page.getByRole('button', { name: `Revoke invitation to ${email}` }).click()
+  await page.getByRole('button', { name: email, exact: true }).click()
+  await page.getByRole('button', { name: 'Revoke invitation' }).click()
   await page.getByRole('alertdialog').getByRole('button', { name: 'Revoke invitation' }).click()
-  await expect(page.getByLabel(email, { exact: true })).toHaveCount(0)
-  await page.getByRole('radio', { name: 'Revoked' }).click()
-  await expect(page.getByLabel(email, { exact: true })).toBeVisible()
+  await expect(page.getByText(`Invitation to ${email} revoked.`)).toBeVisible()
+  await expect(row(page, email)).toHaveCount(0)
+  await page.getByRole('button', { name: 'More', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Show revoked invitations' }).click()
+  await expect(row(page, email)).toContainText('Revoked')
 
   const invitee = await openSignedOut(browser, viewport)
   await invitee.page.goto(inviteUrl)
@@ -68,10 +75,10 @@ test('a revoked invitation link is refused', async ({ page, browser, viewport })
   await invitee.close()
 })
 
-test('the Members screen opens the invite form', async ({ page }) => {
+test('Members opens the invite form in place', async ({ page }) => {
   await page.goto('/admin/members')
   await page.getByRole('button', { name: 'Invite member' }).click()
 
-  await expect(page).toHaveURL(/\/admin\/invitations\?edit=new$/)
+  await expect(page).toHaveURL(/\/admin\/members\?edit=new$/)
   await expect(page.getByRole('button', { name: 'Send invitation' })).toBeVisible()
 })

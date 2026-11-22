@@ -190,14 +190,12 @@ from their first verified sign-in, and an admin can make others admins from ther
 
 | Screen             | What an admin does there                                                                          |
 | ------------------ | ------------------------------------------------------------------------------------------------- |
-| Members            | Find people, rename them, block or unblock them, grant or revoke admin, detach a provider link, permanently delete a member who has lost access |
+| Members            | Find people, invite people by email (pending invitations show in the list until the person signs in, and revoked ones behind the ⋯ menu), rename them, block or unblock them, grant or revoke admin, detach a provider link, permanently delete a member who has lost access. An admin's detail says whether they can still sign in when the identity provider is down, with the email-code sign-in address to keep, and the list warns when no admin can |
 | Groups             | Create local groups, add and remove members, make a group's members admins                        |
-| Invitations        | Invite people by email, revoke pending invitations                                                |
 | Identity providers | Add and edit SSO connections, add SCIM and issue or revoke its tokens, map provider groups to admin, see rejected SCIM requests, retire a connection |
 | Domains            | Add a domain, verify it with a DNS record, claim it for a connection, turn on domain enrollment   |
 | Link reviews       | Approve or reject an identity waiting to link to an existing account                              |
 | Audit log          | Read and filter the organization's audit events                                                   |
-| Break-glass        | See whether an admin can still sign in when the identity provider is down, and the email-code sign-in address to keep |
 
 Every screen calls the admin API under `/v1/admin`, which is also the way to script any of it. The
 endpoints are listed in [Provisioning](../self-hosting/provisioning.md) and

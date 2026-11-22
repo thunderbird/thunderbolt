@@ -320,7 +320,7 @@ export type Invitation = {
   createdAt: Timestamp
 }
 
-export type ListInvitationsQuery = PageQuery & { status?: InvitationStatus }
+export type ListInvitationsQuery = PageQuery & { status?: InvitationStatus; q?: string }
 
 export type CreateInvitationBody = { email: string; idpOverride?: boolean }
 

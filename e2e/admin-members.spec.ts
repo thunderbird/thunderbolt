@@ -3,9 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { expect, type APIRequestContext } from '@playwright/test'
-import { scimBasePath, type LinkReviewPage } from '../shared/admin-api'
+import { scimBasePath, type BreakGlassStatus, type LinkReviewPage } from '../shared/admin-api'
 import {
   adminApiBaseUrl,
+  adminAppUrl,
   adminRouteStatus,
   adminTest as test,
   otpCooldownMs,
@@ -51,6 +52,27 @@ test('an admin finds a member by search and renames them', async ({ page, adminA
   await page.getByLabel('Name', { exact: true }).fill(name)
   await page.getByRole('button', { name: 'Save name' }).click()
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible()
+})
+
+test("a local admin's panel gives the email-code sign-in address, with no warning on Members", async ({
+  page,
+  adminApi,
+  adminSession,
+}) => {
+  // Bootstrap admins sign in by email code, so the org always has an admin who doesn't need the IdP here.
+  const status = await adminApi.request<BreakGlassStatus>('GET', 'admin/break-glass')
+  expect(status.allAdminsIdpManaged).toBe(false)
+
+  await page.goto('/admin/members')
+  await page.getByRole('button', { name: 'Search', exact: true }).last().click()
+  await page.getByRole('searchbox', { name: 'Search members' }).fill(adminSession.email)
+  await page.getByText(adminSession.email, { exact: true }).first().click()
+
+  await expect(page.getByText('Can sign in without your identity provider', { exact: true })).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Email-code sign-in address' })).toHaveValue(
+    `${adminAppUrl}/sign-in/email-code`,
+  )
+  await expect(page.getByText('No admin can sign in without your identity provider')).toHaveCount(0)
 })
 
 test('blocking a member refuses their next request, and unblocking lets them sign in again', async ({

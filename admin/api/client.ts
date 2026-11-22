@@ -188,7 +188,10 @@ export const createAdminApi = (http: HttpClient, { onAdminRequired }: AdminApiOp
     invitations: {
       list: (query: ListInvitationsQuery = {}) =>
         read<Page<Invitation>>(
-          http.get('admin/invitations', { searchParams: { ...page(query), status: query.status } }),
+          // The API refuses an empty `q`, like the members list.
+          http.get('admin/invitations', {
+            searchParams: { ...page(query), status: query.status, q: query.q || undefined },
+          }),
         ),
       create: (body: CreateInvitationBody) => read<Invitation>(http.post('admin/invitations', { json: body })),
       revoke: (invitationId: string) => send(http.post(`admin/invitations/${segment(invitationId)}/revoke`)),

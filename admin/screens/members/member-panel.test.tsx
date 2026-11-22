@@ -203,6 +203,47 @@ describe('MemberPanel', () => {
     expect(changes(harness)).toMatchObject([{ method: 'DELETE', path: 'admin/members/user-1/roles/admin' }])
   })
 
+  it("gives a local admin's email-code sign-in address for when the identity provider is down", async () => {
+    const harness = createAdminTestHarness(backend(makeMember({ roles: [{ role: 'admin', from: 'local' }] })))
+    renderPanel(harness)
+    await flush()
+
+    expect(screen.getByText('Can sign in without your identity provider')).toBeInTheDocument()
+    expect(screen.getByLabelText('Email-code sign-in address')).toHaveValue(`${window.location.origin}/`)
+  })
+
+  it('gives a SCIM-only admin the email-code address too, since no identity provider requires SSO of them', async () => {
+    const harness = createAdminTestHarness(
+      backend(makeScimMember('active', { roles: [{ role: 'admin', from: 'local' }] })),
+    )
+    renderPanel(harness)
+    await flush()
+
+    expect(screen.getByText('Can sign in without your identity provider')).toBeInTheDocument()
+    expect(screen.getByLabelText('Email-code sign-in address')).toHaveValue(`${window.location.origin}/`)
+  })
+
+  it('says an admin the identity provider requires SSO of depends on it to sign in', async () => {
+    const member = makeScimMember('active', { roles: [{ role: 'admin', from: 'local' }], requiresSso: true })
+    const harness = createAdminTestHarness(backend(member))
+    renderPanel(harness)
+    await flush()
+
+    expect(
+      screen.getByText("Signs in only through Okta. If it goes down, this admin can't get in."),
+    ).toBeInTheDocument()
+    expect(screen.queryByLabelText('Email-code sign-in address')).not.toBeInTheDocument()
+  })
+
+  it('says nothing about signing in without the identity provider for a member who is not an admin', async () => {
+    const harness = createAdminTestHarness(backend(makeMember()))
+    renderPanel(harness)
+    await flush()
+
+    expect(screen.queryByText(/sign in without your identity provider/)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Email-code sign-in address')).not.toBeInTheDocument()
+  })
+
   it('confirms before you revoke your own last admin role', async () => {
     const self = makeMember({ userId: 'admin-1', roles: [{ role: 'admin', from: 'bootstrap' }] })
     const harness = createAdminTestHarness(backend(self))

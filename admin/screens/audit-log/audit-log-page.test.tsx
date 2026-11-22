@@ -6,7 +6,7 @@ import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
-import { createAdminTestHarness, flush, type FakeRequest } from '../../test-utils'
+import { createAdminTestHarness, flush, pickDate, type FakeRequest } from '../../test-utils'
 import { AuditLogPage } from './audit-log-page'
 
 const auditRequests = (requests: FakeRequest[]) => requests.filter((request) => request.path === 'admin/audit-events')
@@ -34,19 +34,11 @@ describe('AuditLogPage', () => {
     expect(screen.getByText('No events match these filters.')).toBeInTheDocument()
   })
 
-  it('fetches the events again on Refresh', async () => {
-    const { requests } = await renderPage()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
-    await flush()
-
-    expect(auditRequests(requests)).toHaveLength(2)
-  })
-
   it('queries with the filters it writes to the URL', async () => {
     const { requests } = await renderPage()
 
-    fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-11-01' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Filters' }))
+    pickDate('From', '2026-11-01')
     await flush()
 
     const last = auditRequests(requests).at(-1)

@@ -485,6 +485,10 @@ export type AuditEvent = {
   /** Sign-in events only. */
   ipAddress: string | null
   userAgent: string | null
+  /** The actor's name (a person's name or email, a connection or API key's name), or null when none is known. */
+  actorLabel: string | null
+  /** The target's name (a person, connection, group, domain or invitation), or null when none is known. */
+  targetLabel: string | null
 }
 
 /** The wire shape of `GET /admin/audit-events`; the admin client returns it as a `Page`. */

@@ -44,6 +44,8 @@ const failure: AuditEvent = {
   changes: null,
   metadata: { method: 'POST', resourceType: 'Users', status: 400, detail: 'externalId is required' },
   ipAddress: null,
+  actorLabel: null,
+  targetLabel: null,
   userAgent: null,
 }
 

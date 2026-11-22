@@ -12,6 +12,7 @@ import {
   isIndexedDbAvailable,
   isPrPreview,
   isTouchPlatform,
+  parseUserAgent,
   prPreviewHostRegex,
 } from './platform'
 
@@ -300,5 +301,25 @@ describe('isTouchPlatform', () => {
   it('is false for a Windows touchscreen laptop', () => {
     stubNavigator('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36', 10)
     expect(isTouchPlatform()).toBe(false)
+  })
+})
+
+describe('parseUserAgent', () => {
+  it('reads the OS and browser from a stored user agent', () => {
+    expect(
+      parseUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:133.0) Gecko/20100101 Firefox/133.0'),
+    ).toEqual({ os: 'macos', browser: 'firefox' })
+    expect(
+      parseUserAgent(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0',
+      ),
+    ).toEqual({ os: 'windows', browser: 'edge' })
+    expect(
+      parseUserAgent(
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1',
+      ),
+    ).toEqual({ os: 'ios', browser: 'safari' })
+    expect(parseUserAgent('curl/8.7.1')).toEqual({ os: 'unknown', browser: 'unknown' })
+    expect(parseUserAgent('Thunderbolt/1 CFNetwork/1490 Darwin/23.0.0').os).toBe('unknown')
   })
 })

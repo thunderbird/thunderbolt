@@ -3,40 +3,24 @@
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { useQueryClient } from '@tanstack/react-query'
-import { RefreshCw } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router'
-import { Button } from '@/components/ui/button'
+import type { AuditEventQuery } from '@shared/admin-api'
 import { auditLogPath, parseAuditLogSearch } from '../../api/audit-log-url'
-import { adminQueryKeys } from '../../api/query-keys'
 import { AdminPage } from '../../components/admin-page'
 import { AuditEventList } from '../../components/audit-event-list'
-import { AuditLogFilters } from './audit-log-filters'
+import { AuditLogFilterChips, AuditLogFiltersButton } from './audit-log-filters'
 
 /** The org's audit log, newest first. The filters live in the URL, so other screens can link to a view. */
 export const AuditLogPage = () => {
   const { t } = useLingui()
   const [params] = useSearchParams()
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
   const filters = parseAuditLogSearch(params)
+  const setFilters = (next: AuditEventQuery) => navigate(auditLogPath(next), { replace: true })
 
   return (
-    <AdminPage
-      title={t`Audit log`}
-      action={
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => void queryClient.invalidateQueries({ queryKey: adminQueryKeys.auditEvents.all })}
-        >
-          <RefreshCw />
-          <Trans>Refresh</Trans>
-        </Button>
-      }
-    >
-      <AuditLogFilters filters={filters} onChange={(next) => navigate(auditLogPath(next), { replace: true })} />
+    <AdminPage title={t`Audit log`} action={<AuditLogFiltersButton filters={filters} onChange={setFilters} />}>
+      <AuditLogFilterChips filters={filters} onChange={setFilters} />
       <AuditEventList filters={filters} emptyMessage={<Trans>No events match these filters.</Trans>} />
     </AdminPage>
   )

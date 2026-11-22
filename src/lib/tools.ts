@@ -64,6 +64,8 @@ export type OfficeToolContext = {
   readWorkspaceFile?: ReadWorkspaceFile
   /** Names of the enabled Office skills the model can load in this send, which the tool's description lists. */
   skills?: string[]
+  /** Names of the skills the `skill` tool returned so far in this send. */
+  loadedSkills?: ReadonlySet<string>
 }
 
 export const getAvailableTools = async (
@@ -71,7 +73,7 @@ export const getAvailableTools = async (
   sourceCollector?: SourceMetadata[],
   context?: ToolAvailabilityContext,
   priorSources?: readonly SourceMetadata[],
-  { chatThreadId, readWorkspaceFile, skills }: OfficeToolContext = {},
+  { chatThreadId, readWorkspaceFile, skills, loadedSkills }: OfficeToolContext = {},
 ): Promise<ToolConfig[]> => {
   const proEnabled = await hasProAccess()
   const {
@@ -86,6 +88,7 @@ export const getAvailableTools = async (
       listThreadFiles: chatThreadId ? () => loadThreadFiles(chatThreadId) : undefined,
       readWorkspaceFile,
       skills,
+      loadedSkills,
     }),
     ...(experimentalFeatureTasks ? Object.values(tasksTools) : []),
   ]

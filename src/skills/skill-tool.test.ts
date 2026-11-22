@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { toPiAgentTools } from '@shared/agent-core/mcp-tools'
 import type { ToolCallOptions } from 'ai'
 import { defaultSkillOfficeXlsx } from '@/defaults/skills'
+import * as officeSkills from '@/office/skills'
 import { officeXlsxSkill } from '@/office/skills/xlsx'
 import { stubAppServer } from '@/test-utils/app-server'
 import { loadSkillTokenInstructions, resolveSkillTokenInstructions } from './resolve-skill-system-messages'
@@ -81,6 +82,18 @@ describe('createSkillTool', () => {
     // A disabled Office row still owns its name.
     const disabled = selectEnabledSkillDefinitions([clash, { ...defaultSkillOfficeXlsx, enabled: 0 }], true)
     expect(disabled.map(({ name }) => name)).toEqual([])
+  })
+
+  it('records a skill as loaded only once its instructions are returned', async () => {
+    const loaded = new Set<string>()
+    const skillTool = createSkillTool(selectEnabledSkillDefinitions([defaultSkillOfficeXlsx], true), undefined, loaded)
+    spyOn(officeSkills, 'loadOfficeSkillBody').mockRejectedValueOnce(new Error('offline'))
+
+    await expect(skillTool.execute!({ name: 'office-xlsx' }, toolCallOptions)).rejects.toThrow('offline')
+    expect([...loaded]).toEqual([])
+    stubAppServer()
+    expect(await skillTool.execute!({ name: '/office-xlsx' }, toolCallOptions)).toBe(officeXlsxSkill)
+    expect([...loaded]).toEqual(['office-xlsx'])
   })
 
   it('offers no Office skill unless the caller opts in, and the user row keeps its name', async () => {

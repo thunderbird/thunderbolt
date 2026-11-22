@@ -211,8 +211,17 @@ const resolveSource = (
       }
     }
     if (matches !== 1) {
+      // Models often retype a line instead of copying it, so name the first line the script lacks. A line an earlier
+      // replacement removed is still in the kept script, so naming it would be false.
+      const missing =
+        matches === 0
+          ? find.split('\n').find((line) => !edited.includes(line) && !base.script.includes(line))
+          : undefined
       return {
-        error: `Replacement ${i + 1}: ${matches} matches. Use a nonempty, unique find and retry the same scriptId.`,
+        error:
+          missing === undefined
+            ? `Replacement ${i + 1}: ${matches} matches. Use a nonempty, unique find and retry the same scriptId.`
+            : `Replacement ${i + 1}: the script has no line ${JSON.stringify(missing.length > 200 ? `${missing.slice(0, 200)}…` : missing)}. The script is kept: copy find from it exactly and retry the same scriptId.`,
       }
     }
     if (edited.length - find.length + replace.length > maxScriptLength) {
@@ -237,6 +246,8 @@ export type OfficeScriptToolDeps = {
   readWorkspaceFile?: ReadWorkspaceFile
   /** Names of the Office skills the model can load in this send. The description tells it to load them first. */
   skills?: string[]
+  /** Names of the skills the `skill` tool returned so far in this send, filled in while the send runs. */
+  loadedSkills?: ReadonlySet<string>
 }
 
 const mib = (bytes: number) => bytes / 1024 / 1024
@@ -296,16 +307,19 @@ const excelizeHints = new Map([
 /**
  * One sentence for a failed script: load the skill for the format that failed, when the send offers it, or else how
  * to call the Excelize method that failed. The format comes from the error, or from the script when the error names
- * none. Undefined when there is nothing specific to say.
+ * none. Undefined when there is nothing specific to say, or when this send already loaded each format's skill.
  */
-const failureHint = (error: string, script: string, skills: string[]) => {
+const failureHint = (error: string, script: string, skills: string[], loadedSkills: ReadonlySet<string>) => {
   // A workbook too large to open, which no retry or skill can fix: see workbook-bridge.ts.
   if (error.split('\n', 1)[0].includes(terminalWorkbookErrorPrefix)) {
     return undefined
   }
   const named = (text: string) => skillFormats.filter(({ pattern }) => pattern.test(text)).map(({ skill }) => skill)
   const formats = named(error).length > 0 ? named(error) : named(script)
-  const available = formats.filter((skill) => skills.includes(skill))
+  if (formats.length > 0 && formats.every((skill) => skills.includes(skill) && loadedSkills.has(skill))) {
+    return undefined
+  }
+  const available = formats.filter((skill) => skills.includes(skill) && !loadedSkills.has(skill))
   if (available.length > 0) {
     return `Before you fix this, load the Office skill for this format unless its instructions are already in context: ${available.join(', ')}.`
   }
@@ -325,6 +339,7 @@ export const createOfficeScriptTool = ({
   listThreadFiles = async () => [],
   readWorkspaceFile,
   skills = [],
+  loadedSkills = new Set(),
 }: OfficeScriptToolDeps = {}): ToolConfig => {
   const madeThisSend: ThreadFile[] = []
   const failures = new Map<string, ScriptSource>()
@@ -363,7 +378,7 @@ export const createOfficeScriptTool = ({
       }
       const result = await runScript({ script, inputs: resolved.inputs }, options?.abortSignal)
       if (!result.ok) {
-        const hint = hinted ? undefined : failureHint(result.error, script, skills)
+        const hint = hinted ? undefined : failureHint(result.error, script, skills, loadedSkills)
         hinted ||= hint !== undefined
         return fail(hint === undefined ? result.error : `${result.error.trimEnd()}\n${hint}`, result.logs)
       }

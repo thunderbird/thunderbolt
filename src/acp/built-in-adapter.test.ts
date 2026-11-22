@@ -34,6 +34,8 @@ import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { getTransformer } from '@/files/transformers'
 import { defaultSkillResearch } from '@/defaults/skills'
+import * as officeWorker from '@/office/run-in-worker'
+import { stubAppServer } from '@/test-utils/app-server'
 import * as realAgentCore from '@shared/agent-core'
 import { tool } from 'ai'
 import { z } from 'zod'
@@ -1511,6 +1513,34 @@ it.each([
     await teardownTestDatabase()
   }
 })
+
+it.each([
+  [true, false],
+  [false, true],
+])(
+  'through Pi, a failed Excel script after the skill tool loaded office-xlsx (%s) asks to load it: %s',
+  async (loads, asks) => {
+    await setupTestDatabase()
+    spyOn(officeWorker, 'runInSandboxWorker').mockResolvedValue({ ok: false, error: 'TypeError: x is null', logs: '' })
+    stubAppServer()
+    const script = [{ name: 'run_office_script', args: { script: 'const f = excelize.NewFile()' } }]
+    const run = createBudgetAdapter(
+      [...(loads ? [[{ name: 'skill', args: { name: 'office-xlsx' } }]] : []), script, 'Done.'],
+      prepareAiRequestConfig,
+    )
+    try {
+      await insertModel(getDb(), { ...run.context.selectedModel, enabled: 1 })
+      await run.send()
+      const results = JSON.stringify(run.requests.at(-1)?.messages.filter(({ role }) => role === 'tool'))
+      expect(results).toContain('TypeError: x is null')
+      expect(results.includes('load the Office skill for this format')).toBe(asks)
+    } finally {
+      mock.restore()
+      run.adapter.disconnect()
+      await teardownTestDatabase()
+    }
+  },
+)
 
 it('keeps real adapter citation metadata across a below-cap harness rebuild', async () => {
   await setupTestDatabase()

@@ -188,11 +188,18 @@ describe('Office script retries', () => {
     const call = send({ runScript, storeFiles: store })
     const badLine = "throw Error('aaa')\r\n"
     const scriptId = failedId(await call({ script: badLine + docxScript('retry.docx'), edit: null }))
-    for (const [find, matches] of [
-      ['xyz', 0],
-      ['aa', 2],
-      ['Paragraph', 3],
-      ['', 0],
+    for (const [find, error] of [
+      ['xyz', 'Replacement 2: the script has no line "xyz". The script is kept: copy find from it exactly'],
+      ["throw Error('aaa')\nnot in it", 'Replacement 2: the script has no line "not in it".'],
+      // A long retyped line comes back cut short.
+      ['y'.repeat(10_000), `the script has no line "${'y'.repeat(200)}…". The script is kept`],
+      // Each line is in the script, only not one after the other.
+      ["throw Error('aaa')\nParagraph", 'Replacement 2: 0 matches'],
+      // Replacement 1 changed it, but the kept script still has it.
+      ["  new Paragraph({ text: 'Quarterly report', heading: HeadingLevel.HEADING_1 }),", 'Replacement 2: 0 matches'],
+      ['aa', 'Replacement 2: 2 matches'],
+      ['Paragraph', 'Replacement 2: 3 matches'],
+      ['', 'Replacement 2: 0 matches'],
     ] as const) {
       const result = await call({
         edit: {
@@ -205,7 +212,7 @@ describe('Office script retries', () => {
       })
       expect(result).toEqual({
         ok: false,
-        error: expect.stringContaining(`Replacement 2: ${matches} matches`),
+        error: expect.stringContaining(error),
         logs: '',
       })
     }
@@ -1517,6 +1524,36 @@ f.SetConditionalFormat("Sheet1", "A1:A2", [{ Type: "expression", Criteria: "$A1>
       expect(error).toContain(hint)
       expect(error).not.toContain(pointer)
     }
+  })
+
+  it('adds nothing for a format whose skill the send already loaded, and still points to one it did not', async () => {
+    const loadedSkills = new Set<string>()
+    const conditional = 'Error: SetConditionalFormat: parameter is invalid'
+    const tool = createOfficeScriptTool({
+      runScript: async ({ script }) => ({
+        ok: false,
+        error: script.includes('excelize') ? conditional : 'x',
+        logs: '',
+      }),
+      skills: ['office-xlsx', 'office-docx'],
+      loadedSkills,
+    })
+    // Loaded while the send runs, after the tool was built.
+    loadedSkills.add('office-xlsx')
+    expect((await errorOf(tool.execute({ script: 'const f = excelize.NewFile()' }))).error).toBe(conditional)
+    const { error } = await errorOf(tool.execute({ script: 'const { Document } = docx' }))
+    expect(error).toBe(`x\n${pointer} unless its instructions are already in context: office-docx.`)
+  })
+
+  it('still gives the Excelize method hint when a loaded skill of that name was not the offered Office skill', async () => {
+    const conditional = 'Error: SetConditionalFormat: parameter is invalid'
+    const tool = createOfficeScriptTool({
+      runScript: failing(conditional),
+      skills: ['office-docx'],
+      loadedSkills: new Set(['office-xlsx']),
+    })
+    const { error } = await errorOf(tool.execute({ script: 'const f = excelize.NewFile()' }))
+    expect(error).toContain('SetConditionalFormat takes an array of rules')
   })
 
   it('adds nothing when neither a skill nor a known method applies', async () => {

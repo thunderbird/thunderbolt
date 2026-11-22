@@ -47,11 +47,13 @@ export const selectEnabledSkillDefinitions = (
  *
  * @param skills - enabled skills available for this request
  * @param onSkillLoaded - synchronous notification after resolving non-empty instructions
+ * @param loaded - collects the name of each skill whose instructions the tool returned, once they did
  * @returns skill lookup tool shared by classic and Pi request paths
  */
 export const createSkillTool = (
   skills: readonly RequestSkillDefinition[],
   onSkillLoaded?: (name: string) => void,
+  loaded?: Set<string>,
 ): Tool<{ name: string }, string> =>
   tool({
     description:
@@ -68,6 +70,9 @@ export const createSkillTool = (
       if (skill.instruction.trim()) {
         onSkillLoaded?.(skill.name)
       }
-      return skillInstruction(skill)
+      // An Office manual can fail to load, and then the model has not read it.
+      const instruction = await skillInstruction(skill)
+      loaded?.add(skill.name)
+      return instruction
     },
   })

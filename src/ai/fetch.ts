@@ -587,17 +587,22 @@ export type PrepareAiRequestConfigOptions = {
   readonly telemetry?: TurnTelemetry
 }
 
-/** Register progressive skill loading only for models that support tools. */
+/** Register progressive skill loading only for models that support tools. `loadedSkills` collects what it returned. */
 export const addSkillTool = (
   toolset: Record<string, Tool>,
   skills: readonly RequestSkillDefinition[],
   supportsTools: boolean,
   webToolBudget?: WebToolBudget,
+  loadedSkills?: Set<string>,
 ): Record<string, Tool> => {
   if (supportsTools) {
-    toolset.skill = createSkillTool(skills, (name) => {
-      webToolBudget?.promote(resolveSkillWebToolIntent(name))
-    })
+    toolset.skill = createSkillTool(
+      skills,
+      (name) => {
+        webToolBudget?.promote(resolveSkillWebToolIntent(name))
+      },
+      loadedSkills,
+    )
   }
   return toolset
 }
@@ -661,6 +666,8 @@ export const prepareAiRequestConfig = async ({
   // tool. Without both, the prompt, the tool and a `/office-…` token must not offer them.
   const skills = selectEnabledSkillDefinitions(storedSkills, loadsSkillsByTool)
   const officeSkills = skills.filter(({ id }) => isOfficeSkillId(id)).map(({ name }) => name)
+  // Skills the `skill` tool returned in this send, so a failed Office script does not ask for one again.
+  const loadedSkills = new Set<string>()
   // Loaded before the toolset so the cross-chat search tool can be registered
   // conditionally alongside the other app tools.
   const projectContext = await loadProjectContextForThread(db, chatThreadId)
@@ -672,7 +679,7 @@ export const prepareAiRequestConfig = async ({
         sourceCollector,
         { settings, integrationStatus, ...(await loadConnectedSearchApis(db)) },
         webToolBudget?.priorSources,
-        { chatThreadId, readWorkspaceFile, skills: officeSkills },
+        { chatThreadId, readWorkspaceFile, skills: officeSkills, loadedSkills },
       )
     : []
   const appToolset = addSkillTool(
@@ -680,6 +687,7 @@ export const prepareAiRequestConfig = async ({
     skills,
     loadsSkillsByTool,
     webToolBudget,
+    loadedSkills,
   )
   // Cross-chat recall is a tool, not an injection: it costs nothing when unused
   // and leaves the cacheable stable prompt untouched. Only registered when there

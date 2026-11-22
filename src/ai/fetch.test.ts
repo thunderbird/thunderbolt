@@ -26,6 +26,7 @@ import { officeDocxSkill } from '@/office/skills/docx'
 import { officePptxSkill } from '@/office/skills/pptx'
 import { officeXlsxSkill } from '@/office/skills/xlsx'
 import * as officeSkills from '@/office/skills'
+import * as officeWorker from '@/office/run-in-worker'
 import * as attachments from '@/lib/attachments'
 import { skillsTable } from '@/db/tables'
 import { eq } from 'drizzle-orm'
@@ -58,6 +59,7 @@ import {
   createModel,
   mergeMcpTools,
   prepareAiRequestConfig,
+  type PreparedAiRequestConfig,
   recordLegacyEmptyResponseRetry,
   resolveManagedAnthropicConnection,
   resolveOpenAiCompatConnection,
@@ -1180,6 +1182,22 @@ describe('prepareAiRequestConfig — Office skills', () => {
       officeXlsxSkill,
     )
     expect(await loadSkillTokenInstructions('/office-xlsx make a budget', config.skills)).toEqual([officeXlsxSkill])
+  })
+
+  it('asks a failed script to load the Excel skill only when the skill tool has not returned it in this send', async () => {
+    spyOn(officeWorker, 'runInSandboxWorker').mockResolvedValue({ ok: false, error: 'TypeError: x is null', logs: '' })
+    stubAppServer()
+    const options = { toolCallId: 'c', messages: [] }
+    const fail = (config: PreparedAiRequestConfig) =>
+      config.toolset.run_office_script?.execute?.({ script: 'const f = excelize.NewFile()' }, options)
+    const pointer = 'load the Office skill for this format'
+
+    expect(await fail((await prepare()).config)).toMatchObject({ error: expect.stringContaining(pointer) })
+    const { config } = await prepare()
+    await config.toolset.skill?.execute?.({ name: 'office-xlsx' }, options)
+    expect(await fail(config)).toMatchObject({ ok: false, error: 'TypeError: x is null' })
+    // The next send has not loaded it.
+    expect(await fail((await prepare()).config)).toMatchObject({ error: expect.stringContaining(pointer) })
   })
 
   it('offers none in minimal mode, where there is no skill tool, but keeps the Office tool', async () => {

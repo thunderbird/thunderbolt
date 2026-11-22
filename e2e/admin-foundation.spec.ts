@@ -6,14 +6,7 @@ import { expect, type Page } from '@playwright/test'
 import { openSidebarOnMobile } from './helpers'
 import { adminBackendUrl, adminTest as test, openAdminSection, readInviteUrl, uniqueEmail } from './admin/helpers'
 
-const screens = [
-  'Members',
-  'Groups',
-  'Identity providers',
-  'Domains',
-  'Link reviews',
-  'Audit log',
-]
+const screens = ['Members', 'Groups', 'Sign-in methods', 'Link reviews', 'Audit log']
 
 const sectionToggle = (page: Page) => page.getByRole('navigation', { name: 'Sidebar sections' })
 

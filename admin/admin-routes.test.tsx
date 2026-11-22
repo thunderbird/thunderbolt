@@ -14,8 +14,7 @@ import { createAdminTestHarness, type FakeRequest } from './test-utils'
 const screens = [
   ['/admin/members', 'Members'],
   ['/admin/groups', 'Groups'],
-  ['/admin/identity-providers', 'Identity providers'],
-  ['/admin/domains', 'Domains'],
+  ['/admin/sign-in-methods', 'Sign-in methods'],
   ['/admin/link-reviews', 'Link reviews'],
   ['/admin/audit-log', 'Audit log'],
 ]

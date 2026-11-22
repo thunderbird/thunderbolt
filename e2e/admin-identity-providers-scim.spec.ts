@@ -38,7 +38,7 @@ test.afterEach(async ({ adminApi }) => {
 })
 
 const openConnection = async (page: Page, connectionId: string, section: string) => {
-  await page.goto(`/admin/identity-providers?edit=${connectionId}`)
+  await page.goto(`/admin/sign-in-methods?edit=connection:${connectionId}`)
   await page.getByRole('radio', { name: section }).click()
 }
 
@@ -53,8 +53,8 @@ const dateInDays = (days: number) => {
 }
 
 test('a SCIM token works until its credential is revoked', async ({ page, request, adminApi }) => {
-  await page.goto('/admin/identity-providers')
-  await page.getByRole('button', { name: 'Add connection' }).click()
+  await page.goto('/admin/sign-in-methods')
+  await page.getByRole('button', { name: 'Add sign-in method' }).click()
   await page.getByRole('button', { name: 'SCIM provisioning only' }).click()
   await page.getByLabel('Name', { exact: true }).fill(uniqueName('SCIM'))
   await page.getByRole('button', { name: 'Create connection' }).click()
@@ -64,8 +64,8 @@ test('a SCIM token works until its credential is revoked', async ({ page, reques
   expect(await listUsersStatus(request, firstToken)).toBe(200)
   await page.getByRole('button', { name: 'Done' }).click()
 
-  await expect(page).toHaveURL(/edit=(?!new\b)/)
-  const connectionId = new URL(page.url()).searchParams.get('edit')!
+  await expect(page).toHaveURL(/edit=connection(:|%3A)/)
+  const connectionId = new URL(page.url()).searchParams.get('edit')!.replace(/^connection:/, '')
   seeded.push(connectionId)
 
   // A second credential, with a chosen expiry, works alongside the first.

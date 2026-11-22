@@ -3,7 +3,7 @@
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
 import { msg } from '@lingui/core/macro'
-import { Boxes, Globe, KeyRound, Link2, ScrollText, Users } from 'lucide-react'
+import { Boxes, KeyRound, Link2, ScrollText, Users } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { SectionSidebar, type SectionNavGroup } from '@/layout/sidebar/section-sidebar'
 import type { SidebarSection } from '@/layout/sidebar/types'
@@ -20,17 +20,10 @@ export const adminNavGroups: SectionNavGroup[] = [
     ],
   },
   {
-    id: 'sign-in',
-    label: msg`Sign-in`,
-    items: [
-      { path: '/admin/identity-providers', label: msg`Identity providers`, icon: KeyRound },
-      { path: '/admin/domains', label: msg`Domains`, icon: Globe },
-    ],
-  },
-  {
     id: 'security',
     label: msg`Security`,
     items: [
+      { path: '/admin/sign-in-methods', label: msg`Sign-in methods`, icon: KeyRound },
       { path: '/admin/link-reviews', label: msg`Link reviews`, icon: Link2, useBadge: usePendingLinkReviewCount },
       { path: '/admin/audit-log', label: msg`Audit log`, icon: ScrollText },
     ],

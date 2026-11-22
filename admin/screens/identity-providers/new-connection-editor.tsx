@@ -25,22 +25,24 @@ const kinds: { id: ConnectionKind; title: MessageDescriptor; description: Messag
 
 type NewConnectionEditorProps = {
   onClose: () => void
+  /** Adding a domain was picked instead: open its form. */
+  onAddDomain: () => void
   /** The connection was created: open it. */
   onCreated: (connectionId: string) => void
   onDirty: (dirty: boolean) => void
 }
 
-/** The `?edit=new` panel: pick what the connection does, then fill in its form. */
-export const NewConnectionEditor = ({ onClose, onCreated, onDirty }: NewConnectionEditorProps) => {
+/** The `?edit=new` panel: pick a connection's kind (or a domain), then fill in its form. */
+export const NewConnectionEditor = ({ onClose, onAddDomain, onCreated, onDirty }: NewConnectionEditorProps) => {
   const { t, i18n } = useLingui()
   const [kind, setKind] = useState<ConnectionKind | null>(null)
 
   return (
-    <DetailPanel title={t`New connection`} onClose={onClose}>
+    <DetailPanel title={t`Add a sign-in method`} onClose={onClose}>
       {kind === null ? (
         <div className="flex flex-col gap-3">
           <p className="text-muted-foreground">
-            <Trans>What should this identity provider do?</Trans>
+            <Trans>Connect an identity provider, or add a domain your organization owns.</Trans>
           </p>
           {kinds.map((item) => (
             <SettingsSelectableRow
@@ -51,6 +53,12 @@ export const NewConnectionEditor = ({ onClose, onCreated, onDirty }: NewConnecti
               onSelect={() => setKind(item.id)}
             />
           ))}
+          <SettingsSelectableRow
+            title={t`Domain`}
+            subtitle={t`Verify a domain you own, then let people on it join or send them to an identity provider.`}
+            ariaLabel={t`Domain`}
+            onSelect={onAddDomain}
+          />
         </div>
       ) : kind === 'scim' ? (
         <NewScimConnectionForm onCreated={onCreated} onCancel={onClose} onDirty={onDirty} />

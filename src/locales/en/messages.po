@@ -23,8 +23,8 @@ msgstr "\"{filename}\" isn't a supported file type."
 
 #. placeholder {0}: review.attempts
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+attempt%7D+other+%7B%23+attempts%7D%7D&pluralize_on=0
-#: admin/screens/link-reviews/link-review-panel.tsx
-#: admin/screens/link-reviews/link-reviews-page.tsx
+#: admin/screens/members/link-review-panel.tsx
+#: admin/screens/members/pending-link-reviews.tsx
 msgid "# attempt"
 msgid_plural "# attempts"
 msgstr[0] "# attempt"
@@ -124,12 +124,20 @@ msgstr[1] "# tools"
 msgid "{0} is only available on desktop"
 msgstr "{0} is only available on desktop"
 
+#: admin/components/audit-event-list.tsx
+msgid "{action} {target} by {actor}"
+msgstr "{action} {target} by {actor}"
+
+#: admin/components/audit-event-list.tsx
+msgid "{action} by {actor}"
+msgstr "{action} by {actor}"
+
 #. js-lingui:icu=%7BadminCount%2C+plural%2C+one+%7BThis+organization+has+%23+admin.%7D+other+%7BThis+organization+has+%23+admins.%7D%7D&pluralize_on=adminCount
 #: admin/screens/break-glass/break-glass-page.tsx
-msgid "This organization has # admin."
-msgid_plural "This organization has # admins."
-msgstr[0] "This organization has # admin."
-msgstr[1] "This organization has # admins."
+#~ msgid "This organization has # admin."
+#~ msgid_plural "This organization has # admins."
+#~ msgstr[0] "This organization has # admin."
+#~ msgstr[1] "This organization has # admins."
 
 #: src/components/chat/chat-prompt-input.tsx
 msgid "{agentName} can't take attachments. Remove the attached files to send."
@@ -171,7 +179,11 @@ msgstr "{appName} wants to connect to {providerName} Email and Calendar"
 msgid "{appName} will use it across the app. You can change it later in Preferences."
 msgstr "{appName} will use it across the app. You can change it later in Preferences."
 
-#: admin/screens/link-reviews/link-reviews-page.tsx
+#: admin/components/audit-event-list.tsx
+msgid "{browserName} on {osName}"
+msgstr "{browserName} on {osName}"
+
+#: admin/screens/members/pending-link-reviews.tsx
 msgid "{connection}, {lastSeen}"
 msgstr "{connection}, {lastSeen}"
 
@@ -181,6 +193,20 @@ msgstr "{connection}, {lastSeen}"
 #~ msgid_plural "# chats"
 #~ msgstr[0] "# chat"
 #~ msgstr[1] "# chats"
+
+#. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+identity+waiting+to+be+linked%7D+other+%7B%23+identities+waiting+to+be+linked%7D%7D&pluralize_on=count
+#: admin/screens/members/pending-link-reviews.tsx
+#~ msgid "# identity waiting to be linked"
+#~ msgid_plural "# identities waiting to be linked"
+#~ msgstr[0] "# identity waiting to be linked"
+#~ msgstr[1] "# identities waiting to be linked"
+
+#. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7BMore+than+%23+identity+waiting+to+be+linked%7D+other+%7BMore+than+%23+identities+waiting+to+be+linked%7D%7D&pluralize_on=count
+#: admin/screens/members/pending-link-reviews.tsx
+#~ msgid "More than # identity waiting to be linked"
+#~ msgid_plural "More than # identities waiting to be linked"
+#~ msgstr[0] "More than # identity waiting to be linked"
+#~ msgstr[1] "More than # identities waiting to be linked"
 
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7BOne+skill+references+this.+If+you+delete+it%2C+that+skill+may+no+longer+resolve.%7D+other+%7B%23+skills+reference+this.+If+you+delete+it%2C+they+may+no+longer+resolve.%7D%7D&pluralize_on=count
 #: src/skills/dependents-dialog.tsx
@@ -196,6 +222,10 @@ msgid_plural "# skills reference this. If you disable it, they may no longer res
 msgstr[0] "One skill references this. If you disable it, that skill may no longer resolve."
 msgstr[1] "# skills reference this. If you disable it, they may no longer resolve."
 
+#: src/components/ui/calendar.tsx
+msgid "{day}, selected"
+msgstr "{day}, selected"
+
 #. js-lingui:icu=%7BenabledSkills%2C+plural%2C+one+%7B%23+skill%7D+other+%7B%23+skills%7D%7D&pluralize_on=enabledSkills
 #: src/components/settings/agents/agent-detail.tsx
 msgid "# skill"
@@ -207,11 +237,11 @@ msgstr[1] "# skills"
 msgid "{fileName} will be saved to your Downloads folder."
 msgstr "{fileName} will be saved to your Downloads folder."
 
-#: admin/screens/link-reviews/link-review-confirm-dialog.tsx
+#: admin/screens/members/link-review-confirm-dialog.tsx
 msgid "{incoming} (subject <0>{subject}</0>) from {connection} stays unlinked from {existing}, and is refused until an admin approves the link."
 msgstr "{incoming} (subject <0>{subject}</0>) from {connection} stays unlinked from {existing}, and is refused until an admin approves the link."
 
-#: admin/screens/link-reviews/link-review-confirm-dialog.tsx
+#: admin/screens/members/link-review-confirm-dialog.tsx
 msgid "{incoming} (subject <0>{subject}</0>) from {connection} will be linked to the existing account {existing}. The next sign-in or provisioning attempt from this connection attaches to that account."
 msgstr "{incoming} (subject <0>{subject}</0>) from {connection} will be linked to the existing account {existing}. The next sign-in or provisioning attempt from this connection attaches to that account."
 
@@ -236,10 +266,10 @@ msgstr[1] "# charts or pictures not shown in full"
 
 #. js-lingui:icu=%7BlocalAdminCount%2C+plural%2C+one+%7B%23+admin+can+sign+in+without+your+identity+provider%7D+other+%7B%23+admins+can+sign+in+without+your+identity+provider%7D%7D&pluralize_on=localAdminCount
 #: admin/screens/break-glass/break-glass-page.tsx
-msgid "# admin can sign in without your identity provider"
-msgid_plural "# admins can sign in without your identity provider"
-msgstr[0] "# admin can sign in without your identity provider"
-msgstr[1] "# admins can sign in without your identity provider"
+#~ msgid "# admin can sign in without your identity provider"
+#~ msgid_plural "# admins can sign in without your identity provider"
+#~ msgstr[0] "# admin can sign in without your identity provider"
+#~ msgstr[1] "# admins can sign in without your identity provider"
 
 #: src/components/chat/image-support-notice.tsx
 msgid "{modelName} can't read images. Switch to a model that can, or remove the image."
@@ -248,6 +278,20 @@ msgstr "{modelName} can't read images. Switch to a model that can, or remove the
 #: admin/screens/domains/domain-enrollment-field.tsx
 msgid "{name} claims this domain, so people on it sign in through that identity provider. Release the claim to open enrollment."
 msgstr "{name} claims this domain, so people on it sign in through that identity provider. Release the claim to open enrollment."
+
+#. js-lingui:icu=%7BrejectedCount%2C+plural%2C+one+%7B%23+rejected%7D+other+%7B%23+rejected%7D%7D&pluralize_on=rejectedCount
+#: admin/screens/members/pending-link-reviews.tsx
+msgid "# rejected"
+msgid_plural "# rejected"
+msgstr[0] "# rejected"
+msgstr[1] "# rejected"
+
+#. js-lingui:icu=%7BrevokedCount%2C+plural%2C+one+%7B%23+revoked%7D+other+%7B%23+revoked%7D%7D&pluralize_on=revokedCount
+#: admin/screens/members/members-page.tsx
+msgid "# revoked"
+msgid_plural "# revoked"
+msgstr[0] "# revoked"
+msgstr[1] "# revoked"
 
 #. js-lingui:icu=%7Brows%2C+plural%2C+one+%7BThis+file+contains+%23+row+exported+by+%7BimportSourceEmail%7D+on+%7BimportExportedAt%7D.%7D+other+%7BThis+file+contains+%23+rows+exported+by+%7BimportSourceEmail%7D+on+%7BimportExportedAt%7D.%7D%7D&pluralize_on=rows
 #: src/settings/preferences.tsx
@@ -359,7 +403,7 @@ msgstr "A device wants to sign in to your account as the Thunderbolt CLI. Only a
 msgid "A group with this name already exists."
 msgstr "A group with this name already exists."
 
-#: admin/screens/break-glass/email-code-sign-in.tsx
+#: admin/screens/members/email-code-sign-in.tsx
 msgid "A local admin signs in here when the identity provider is down. With one identity provider the sign-in screen goes straight to it, so keep this address somewhere that doesn't depend on it."
 msgstr "A local admin signs in here when the identity provider is down. With one identity provider the sign-in screen goes straight to it, so keep this address somewhere that doesn't depend on it."
 
@@ -409,8 +453,8 @@ msgid "About"
 msgstr "About"
 
 #: admin/screens/invitations/invitations-page.tsx
-msgid "Accepted"
-msgstr "Accepted"
+#~ msgid "Accepted"
+#~ msgstr "Accepted"
 
 #: src/settings/devices.tsx
 msgid "Accepts connections from your devices"
@@ -449,6 +493,10 @@ msgstr "Action"
 msgid "Action needed"
 msgstr "Action needed"
 
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Action: {actionName}"
+msgstr "Action: {actionName}"
+
 #: src/search/palette/search-palette.tsx
 msgid "Actions"
 msgstr "Actions"
@@ -472,6 +520,10 @@ msgstr "Activity"
 msgid "Actor"
 msgstr "Actor"
 
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Actor: <0/>"
+msgstr "Actor: <0/>"
+
 #: src/settings/encryption/passkey-section.tsx
 msgid "Add"
 msgstr "Add"
@@ -489,8 +541,8 @@ msgstr "Add <0>~/.local/bin</0> to your PATH, then restart your shell:"
 #~ msgstr "Add a connection"
 
 #: admin/screens/domains/domains-page.tsx
-msgid "Add a domain, verify it, then let people on it join or hand it to an identity provider."
-msgstr "Add a domain, verify it, then let people on it join or hand it to an identity provider."
+#~ msgid "Add a domain, verify it, then let people on it join or hand it to an identity provider."
+#~ msgstr "Add a domain, verify it, then let people on it join or hand it to an identity provider."
 
 #: src/components/onboarding/onboarding-model-step.tsx
 msgid "Add a model"
@@ -512,6 +564,10 @@ msgstr "Add a passkey"
 msgid "Add a provider in your Otari workspace, then refresh to choose a model."
 msgstr "Add a provider in your Otari workspace, then refresh to choose a model."
 
+#: admin/screens/identity-providers/new-connection-editor.tsx
+msgid "Add a sign-in method"
+msgstr "Add a sign-in method"
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Add a skill"
 msgstr "Add a skill"
@@ -531,7 +587,6 @@ msgstr "Add Agent"
 msgid "Add another instance via API key"
 msgstr "Add another instance via API key"
 
-#: admin/screens/identity-providers/identity-providers-page.tsx
 #: src/components/chat/chat-model-setup.tsx
 #: src/settings/connections/connections-list.tsx
 #: src/settings/search/index.tsx
@@ -539,7 +594,6 @@ msgid "Add connection"
 msgstr "Add connection"
 
 #: admin/screens/domains/add-domain-editor.tsx
-#: admin/screens/domains/domains-page.tsx
 msgid "Add domain"
 msgstr "Add domain"
 
@@ -594,6 +648,10 @@ msgstr "Add SAML sign-in"
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Add Server"
 msgstr "Add Server"
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+msgid "Add sign-in method"
+msgstr "Add sign-in method"
 
 #: admin/screens/identity-providers/sso-connection-form.tsx
 msgid "Add single sign-on"
@@ -712,8 +770,8 @@ msgid "All agents"
 msgstr "All agents"
 
 #: admin/screens/link-reviews/link-reviews-page.tsx
-msgid "All identity providers"
-msgstr "All identity providers"
+#~ msgid "All identity providers"
+#~ msgstr "All identity providers"
 
 #: src/layout/sidebar/project-drop-list.tsx
 #: src/projects/index.tsx
@@ -788,7 +846,7 @@ msgstr "An existing {appName} account already uses this email. Your administrato
 msgid "An identity provider claims this domain."
 msgstr "An identity provider claims this domain."
 
-#: admin/screens/invitations/invite-panel.tsx
+#: admin/screens/members/invite-panel.tsx
 msgid "An identity provider manages this domain"
 msgstr "An identity provider manages this domain"
 
@@ -799,6 +857,10 @@ msgstr "An identity provider manages this domain"
 #: src/lib/tool-metadata.ts
 msgid "Analyzing…"
 msgstr "Analyzing…"
+
+#: admin/components/audit-event-list.tsx
+msgid "Android"
+msgstr "Android"
 
 #: src/projects/emoji-catalog.ts
 msgid "Animals & nature"
@@ -823,6 +885,10 @@ msgstr "Any action"
 #: admin/screens/audit-log/audit-log-filters.tsx
 msgid "Any connection"
 msgstr "Any connection"
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Any date"
+msgstr "Any date"
 
 #: admin/screens/audit-log/audit-log-filters.tsx
 msgid "Any outcome"
@@ -888,8 +954,8 @@ msgstr "App Version"
 msgid "Approval code"
 msgstr "Approval code"
 
-#: admin/screens/link-reviews/link-review-confirm-dialog.tsx
-#: admin/screens/link-reviews/link-review-panel.tsx
+#: admin/screens/members/link-review-confirm-dialog.tsx
+#: admin/screens/members/link-review-panel.tsx
 #: src/components/approve-device/fingerprint-confirmation.tsx
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
@@ -914,11 +980,11 @@ msgstr "Approve this device"
 msgid "Approve this device?"
 msgstr "Approve this device?"
 
-#: admin/screens/link-reviews/link-review-confirm-dialog.tsx
+#: admin/screens/members/link-review-confirm-dialog.tsx
 msgid "Approve this link?"
 msgstr "Approve this link?"
 
-#: admin/screens/link-reviews/link-review-labels.ts
+#: admin/screens/members/link-review-labels.ts
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "Approved"
 msgstr "Approved"
@@ -940,7 +1006,11 @@ msgstr "Are you sure? You will lose any changes that you made."
 msgid "Area chart"
 msgstr "Area chart"
 
-#: admin/screens/link-reviews/link-review-panel.tsx
+#: admin/screens/members/pending-link-reviews.tsx
+msgid "Arrived from an identity provider with the email of an existing account. Approve to link one to that account."
+msgstr "Arrived from an identity provider with the email of an existing account. Approve to link one to that account."
+
+#: admin/screens/members/link-review-panel.tsx
 msgid "Arrived through"
 msgstr "Arrived through"
 
@@ -982,7 +1052,7 @@ msgstr "Assistant"
 msgid "At this time, synced data is not encrypted. Enabling sync will store your data on our servers without encryption. Do you want to continue?"
 msgstr "At this time, synced data is not encrypted. Enabling sync will store your data on our servers without encryption. Do you want to continue?"
 
-#: admin/screens/link-reviews/link-review-panel.tsx
+#: admin/screens/members/link-review-panel.tsx
 msgid "Attempts"
 msgstr "Attempts"
 
@@ -1129,8 +1199,8 @@ msgstr "Brave provides search results. Choose Exa, Tavily, or Tinfoil to read fu
 
 #: admin/admin-sidebar.tsx
 #: admin/screens/break-glass/break-glass-page.tsx
-msgid "Break-glass"
-msgstr "Break-glass"
+#~ msgid "Break-glass"
+#~ msgstr "Break-glass"
 
 #: src/settings/devices.tsx
 msgid "Bridge"
@@ -1164,6 +1234,10 @@ msgstr "Built-in models can't be edited or removed"
 msgid "Built-in skill · Read-only"
 msgstr "Built-in skill · Read-only"
 
+#: admin/components/audit-event-list.tsx
+#~ msgid "by <0/>"
+#~ msgstr "by <0/>"
+
 #: src/waitlist/waitlist-content.tsx
 msgid "By continuing, you agree to our <0>Terms of Service</0> and <1>Privacy Policy</1>."
 msgstr "By continuing, you agree to our <0>Terms of Service</0> and <1>Privacy Policy</1>."
@@ -1185,6 +1259,10 @@ msgstr "Can only sign in through single sign-on"
 msgid "Can sign in"
 msgstr "Can sign in"
 
+#: admin/screens/members/member-admin-sign-in.tsx
+msgid "Can sign in without your identity provider"
+msgstr "Can sign in without your identity provider"
+
 #: admin/screens/identity-providers/sso-connection-form.tsx
 msgid "Can't change later."
 msgstr "Can't change later."
@@ -1193,7 +1271,7 @@ msgstr "Can't change later."
 #: admin/screens/groups/group-panel.tsx
 #: admin/screens/identity-providers/new-scim-connection-form.tsx
 #: admin/screens/identity-providers/sso-connection-form.tsx
-#: admin/screens/invitations/invite-panel.tsx
+#: admin/screens/members/invite-panel.tsx
 #: admin/screens/members/member-access-section.tsx
 #: src/components/app-error-screen.tsx
 #: src/components/approve-device/approve-device-dialog.tsx
@@ -1387,6 +1465,10 @@ msgstr "Choose a connection"
 msgid "Choose a model"
 msgstr "Choose a model"
 
+#: src/components/ui/calendar.tsx
+msgid "Choose a month"
+msgstr "Choose a month"
+
 #: src/components/search-provider-setup/search-provider-setup.tsx
 msgid "Choose a provider"
 msgstr "Choose a provider"
@@ -1480,6 +1562,10 @@ msgstr "Choose your email provider to access your email and calendar"
 msgid "Choose your setup"
 msgstr "Choose your setup"
 
+#: admin/components/audit-event-list.tsx
+msgid "Chrome"
+msgstr "Chrome"
+
 #: src/settings/preferences.tsx
 msgid "City or region"
 msgstr "City or region"
@@ -1493,8 +1579,8 @@ msgid "Claimed"
 msgstr "Claimed"
 
 #: admin/screens/domains/domains-page.tsx
-msgid "Claimed by {name}"
-msgstr "Claimed by {name}"
+#~ msgid "Claimed by {name}"
+#~ msgstr "Claimed by {name}"
 
 #: admin/screens/domains/domain-claim-section.tsx
 msgid "Claimed by <0>{name}</0>"
@@ -1513,6 +1599,10 @@ msgstr "Claiming turns enrollment off. Releasing the claim doesn't turn it back 
 #: src/components/app-error-screen.tsx
 msgid "Clear Database"
 msgstr "Clear Database"
+
+#: admin/components/date-field.tsx
+msgid "Clear date"
+msgstr "Clear date"
 
 #: admin/screens/audit-log/audit-log-filters.tsx
 msgid "Clear filters"
@@ -1596,8 +1686,8 @@ msgstr "Close reorder"
 #~ msgstr "Close this window"
 
 #: admin/screens/domains/domains-page.tsx
-msgid "Closed to enrollment"
-msgstr "Closed to enrollment"
+#~ msgid "Closed to enrollment"
+#~ msgstr "Closed to enrollment"
 
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Cloud"
@@ -1781,6 +1871,10 @@ msgstr "Connect a remote agent that speaks the Agent Client Protocol."
 msgid "Connect a search provider to let your agents search the web."
 msgstr "Connect a search provider to let your agents search the web."
 
+#: admin/screens/identity-providers/new-connection-editor.tsx
+msgid "Connect an identity provider, or add a domain your organization owns."
+msgstr "Connect an identity provider, or add a domain your organization owns."
+
 #: src/components/otari-connection/otari-connection.tsx
 #~ msgid "Connect another account"
 #~ msgstr "Connect another account"
@@ -1881,8 +1975,12 @@ msgid "Connect your AI"
 msgstr "Connect your AI"
 
 #: admin/screens/identity-providers/identity-providers-page.tsx
-msgid "Connect your identity provider to sign people in and keep accounts in step with it."
-msgstr "Connect your identity provider to sign people in and keep accounts in step with it."
+#~ msgid "Connect your identity provider to sign people in and keep accounts in step with it."
+#~ msgstr "Connect your identity provider to sign people in and keep accounts in step with it."
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+msgid "Connect your identity providers to sign people in and keep accounts in step, and verify the domains your organization owns."
+msgstr "Connect your identity providers to sign people in and keep accounts in step, and verify the domains your organization owns."
 
 #: src/settings/connections/connections-list.tsx
 #~ msgid "Connect your own MCP servers to give agents more tools."
@@ -2059,6 +2157,10 @@ msgstr "Connection verified"
 msgid "Connection Verified"
 msgstr "Connection Verified"
 
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Connection: {connectionLabel}"
+msgstr "Connection: {connectionLabel}"
+
 #: admin/screens/audit-log/audit-filter-options.ts
 #: src/components/chat/chat-add-menu.tsx
 #: src/components/settings/agents/agent-detail.tsx
@@ -2215,7 +2317,7 @@ msgstr "Copy SCIM token"
 msgid "Copy service provider metadata URL"
 msgstr "Copy service provider metadata URL"
 
-#: admin/screens/break-glass/email-code-sign-in.tsx
+#: admin/screens/members/email-code-sign-in.tsx
 msgid "Copy the sign-in address"
 msgstr "Copy the sign-in address"
 
@@ -2736,7 +2838,7 @@ msgstr "Data"
 msgid "Debug transcript sharing is turned off on this server."
 msgstr "Debug transcript sharing is turned off on this server."
 
-#: admin/screens/link-reviews/link-review-panel.tsx
+#: admin/screens/members/link-review-panel.tsx
 msgid "Decided {decidedAt}"
 msgstr "Decided {decidedAt}"
 
@@ -3154,8 +3256,25 @@ msgstr "Do not ask again"
 
 #: admin/api/audit-action-labels.ts
 #: admin/screens/domains/add-domain-editor.tsx
+#: admin/screens/identity-providers/new-connection-editor.tsx
 msgid "Domain"
 msgstr "Domain"
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+msgid "Domain · Closed to enrollment"
+msgstr "Domain · Closed to enrollment"
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+msgid "Domain · Open to enrollment"
+msgstr "Domain · Open to enrollment"
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+msgid "Domain · Signs people in through {name}"
+msgstr "Domain · Signs people in through {name}"
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+msgid "Domain · Waiting for verification"
+msgstr "Domain · Waiting for verification"
 
 #: admin/api/audit-action-labels.ts
 msgid "Domain added"
@@ -3179,8 +3298,8 @@ msgstr "Domain verified"
 
 #: admin/admin-sidebar.tsx
 #: admin/screens/domains/domains-page.tsx
-msgid "Domains"
-msgstr "Domains"
+#~ msgid "Domains"
+#~ msgstr "Domains"
 
 #: src/components/onboarding/onboarding-celebration-step.tsx
 msgid "Donate anonymous usage data"
@@ -3277,6 +3396,10 @@ msgstr "e.g., llama3.3"
 #~ msgid "Early Access Login"
 #~ msgstr "Early Access Login"
 
+#: admin/components/audit-event-list.tsx
+msgid "Edge"
+msgstr "Edge"
+
 #: src/components/settings/detail-actions-menu.tsx
 #: src/components/settings/edit-delete-context-menu.tsx
 #: src/projects/project-action-menu-items.tsx
@@ -3322,8 +3445,8 @@ msgstr "Editing {fileName}…"
 msgid "Editing…"
 msgstr "Editing…"
 
-#: admin/screens/invitations/invite-panel.tsx
-#: admin/screens/link-reviews/link-review-panel.tsx
+#: admin/screens/members/invite-panel.tsx
+#: admin/screens/members/link-review-panel.tsx
 #: admin/screens/members/member-profile-section.tsx
 #: src/components/onboarding/onboarding-auth-step.tsx
 #: src/components/sign-in/sign-in-email-step.tsx
@@ -3336,10 +3459,10 @@ msgid "Email address"
 msgstr "Email address"
 
 #: admin/screens/break-glass/break-glass-page.tsx
-msgid "Email-code sign-in"
-msgstr "Email-code sign-in"
+#~ msgid "Email-code sign-in"
+#~ msgstr "Email-code sign-in"
 
-#: admin/screens/break-glass/email-code-sign-in.tsx
+#: admin/screens/members/email-code-sign-in.tsx
 msgid "Email-code sign-in address"
 msgstr "Email-code sign-in address"
 
@@ -3525,10 +3648,10 @@ msgid "Entra ID, Okta, Keycloak and most providers."
 msgstr "Entra ID, Okta, Keycloak and most providers."
 
 #: admin/screens/break-glass/break-glass-page.tsx
-msgid "Every admin signs in through an identity provider. If it goes down, no one can administer this organization. Give the admin role to a member no identity provider manages, from <0>Members</0>."
-msgstr "Every admin signs in through an identity provider. If it goes down, no one can administer this organization. Give the admin role to a member no identity provider manages, from <0>Members</0>."
+#~ msgid "Every admin signs in through an identity provider. If it goes down, no one can administer this organization. Give the admin role to a member no identity provider manages, from <0>Members</0>."
+#~ msgstr "Every admin signs in through an identity provider. If it goes down, no one can administer this organization. Give the admin role to a member no identity provider manages, from <0>Members</0>."
 
-#: admin/screens/break-glass/email-code-sign-in.tsx
+#: admin/screens/members/email-code-sign-in.tsx
 msgid "Every admin signs in with an email code from the app's sign-in page."
 msgstr "Every admin signs in with an email code from the app's sign-in page."
 
@@ -3552,7 +3675,7 @@ msgstr "Exa provides search and page content through Tinfoil’s encrypted conne
 msgid "example.com"
 msgstr "example.com"
 
-#: admin/screens/link-reviews/link-review-panel.tsx
+#: admin/screens/members/link-review-panel.tsx
 msgid "Existing account"
 msgstr "Existing account"
 
@@ -3569,20 +3692,25 @@ msgid "Expand Sidebar"
 msgstr "Expand Sidebar"
 
 #: admin/screens/identity-providers/scim-credential-list.tsx
+#: admin/screens/members/members-page.tsx
 msgid "Expired"
 msgstr "Expired"
 
 #: admin/screens/invitations/invitations-page.tsx
-msgid "Expired {expiresOn}"
-msgstr "Expired {expiresOn}"
+#~ msgid "Expired {expiresOn}"
+#~ msgstr "Expired {expiresOn}"
+
+#: admin/screens/members/invitation-panel.tsx
+msgid "Expired on {expiresOn}. Invite them again to send a new link."
+msgstr "Expired on {expiresOn}. Invite them again to send a new link."
 
 #: admin/screens/identity-providers/scim-section.tsx
 msgid "Expires"
 msgstr "Expires"
 
 #: admin/screens/invitations/invitations-page.tsx
-msgid "Expires {expiresOn}"
-msgstr "Expires {expiresOn}"
+#~ msgid "Expires {expiresOn}"
+#~ msgstr "Expires {expiresOn}"
 
 #: src/settings/preferences.tsx
 msgid "Export all of your data as JSON."
@@ -3745,11 +3873,15 @@ msgstr "Finish securing"
 msgid "Finish securing after revoking {deviceName}"
 msgstr "Finish securing after revoking {deviceName}"
 
+#: admin/components/audit-event-list.tsx
+msgid "Firefox"
+msgstr "Firefox"
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "First device setup"
 msgstr "First device setup"
 
-#: admin/screens/link-reviews/link-review-panel.tsx
+#: admin/screens/members/link-review-panel.tsx
 msgid "First seen"
 msgstr "First seen"
 
@@ -3785,6 +3917,10 @@ msgstr "From the group {groupName} in {connectionName}. Change it in your identi
 #: admin/screens/members/member-roles-section.tsx
 msgid "From the group <0>{groupName}</0>. Remove them from the group to take it away."
 msgstr "From the group <0>{groupName}</0>. Remove them from the group to take it away."
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "From: {fromDate}"
+msgstr "From: {fromDate}"
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Funnel chart"
@@ -4046,8 +4182,7 @@ msgstr "Identifies the provider and can't change later."
 #: admin/api/audit-action-labels.ts
 #: admin/screens/domains/domain-claim-section.tsx
 #: admin/screens/identity-providers/sso-connection-form.tsx
-#: admin/screens/link-reviews/link-review-panel.tsx
-#: admin/screens/link-reviews/link-reviews-page.tsx
+#: admin/screens/members/link-review-panel.tsx
 msgid "Identity provider"
 msgstr "Identity provider"
 
@@ -4074,10 +4209,10 @@ msgstr "Identity provider override used"
 
 #: admin/admin-sidebar.tsx
 #: admin/screens/identity-providers/identity-providers-page.tsx
-msgid "Identity providers"
-msgstr "Identity providers"
+#~ msgid "Identity providers"
+#~ msgstr "Identity providers"
 
-#: admin/screens/invitations/invitations-page.tsx
+#: admin/screens/members/members-page.tsx
 msgid "IdP override"
 msgstr "IdP override"
 
@@ -4163,7 +4298,7 @@ msgstr "In your own words: what were you trying to do, and what did the agent do
 msgid "Include the version prefix (e.g. /v1). Then hit “Load models” to populate the pickers below."
 msgstr "Include the version prefix (e.g. /v1). Then hit “Load models” to populate the pickers below."
 
-#: admin/screens/link-reviews/link-review-panel.tsx
+#: admin/screens/members/link-review-panel.tsx
 msgid "Incoming identity"
 msgstr "Incoming identity"
 
@@ -4218,6 +4353,7 @@ msgid "Invalid verification link. Please request a new one."
 msgstr "Invalid verification link. Please request a new one."
 
 #: admin/api/audit-action-labels.ts
+#: admin/screens/members/invitation-panel.tsx
 #: admin/screens/members/member-labels.ts
 msgid "Invitation"
 msgstr "Invitation"
@@ -4226,7 +4362,16 @@ msgstr "Invitation"
 msgid "Invitation accepted"
 msgstr "Invitation accepted"
 
+#: admin/screens/members/members-page.tsx
+msgid "Invitation expired {expiresOn}"
+msgstr "Invitation expired {expiresOn}"
+
+#: admin/screens/members/members-page.tsx
+msgid "Invitation expires {expiresOn}"
+msgstr "Invitation expires {expiresOn}"
+
 #: admin/api/audit-action-labels.ts
+#: admin/screens/members/members-page.tsx
 msgid "Invitation revoked"
 msgstr "Invitation revoked"
 
@@ -4234,16 +4379,25 @@ msgstr "Invitation revoked"
 msgid "Invitation sent"
 msgstr "Invitation sent"
 
-#: admin/screens/invitations/invitations-page.tsx
-msgid "Invitation sent to {lastInvited}."
-msgstr "Invitation sent to {lastInvited}."
+#. placeholder {0}: notice.email
+#: admin/screens/members/members-page.tsx
+msgid "Invitation sent to {0}."
+msgstr "Invitation sent to {0}."
 
 #: admin/screens/invitations/invitations-page.tsx
-msgid "Invitation status"
-msgstr "Invitation status"
+#~ msgid "Invitation sent to {lastInvited}."
+#~ msgstr "Invitation sent to {lastInvited}."
 
-#: admin/admin-sidebar.tsx
 #: admin/screens/invitations/invitations-page.tsx
+#~ msgid "Invitation status"
+#~ msgstr "Invitation status"
+
+#. placeholder {0}: notice.email
+#: admin/screens/members/members-page.tsx
+msgid "Invitation to {0} revoked."
+msgstr "Invitation to {0} revoked."
+
+#: admin/screens/members/members-page.tsx
 msgid "Invitations"
 msgstr "Invitations"
 
@@ -4251,23 +4405,38 @@ msgstr "Invitations"
 msgid "Invitations and domains"
 msgstr "Invitations and domains"
 
-#: admin/screens/invitations/invite-panel.tsx
+#: admin/screens/members/invite-panel.tsx
 msgid "Invite anyway"
 msgstr "Invite anyway"
 
-#: admin/screens/invitations/invitations-page.tsx
-#: admin/screens/invitations/invite-panel.tsx
+#: admin/screens/members/invite-panel.tsx
 #: admin/screens/members/members-page.tsx
 msgid "Invite member"
 msgstr "Invite member"
 
 #: admin/screens/invitations/invitations-page.tsx
-msgid "Invite people by email. Each invitation link works once and expires after seven days."
-msgstr "Invite people by email. Each invitation link works once and expires after seven days."
+#~ msgid "Invite people by email. Each invitation link works once and expires after seven days."
+#~ msgstr "Invite people by email. Each invitation link works once and expires after seven days."
+
+#: admin/screens/members/members-page.tsx
+msgid "Invite people by email. They show here until they sign in."
+msgstr "Invite people by email. They show here until they sign in."
+
+#: admin/screens/members/invitation-panel.tsx
+msgid "Invited"
+msgstr "Invited"
 
 #: admin/screens/invitations/invitations-page.tsx
-msgid "Invited {invitedOn}"
-msgstr "Invited {invitedOn}"
+#~ msgid "Invited {invitedOn}"
+#~ msgstr "Invited {invitedOn}"
+
+#: admin/screens/members/invitation-panel.tsx
+msgid "Invited past the identity provider that claims this domain. The audit log records it."
+msgstr "Invited past the identity provider that claims this domain. The audit log records it."
+
+#: admin/components/audit-event-list.tsx
+msgid "iOS"
+msgstr "iOS"
 
 #: src/components/settings/agents/validate-agent-url.ts
 msgid "iOS requires a secure URL (wss://)"
@@ -4310,7 +4479,7 @@ msgstr "It's optional. You can turn this off now or change it later in Settings.
 msgid "Its instructions are removed. Chats in the project are kept and become ordinary chats."
 msgstr "Its instructions are removed. Chats in the project are kept and become ordinary chats."
 
-#: admin/screens/invitations/invitations-page.tsx
+#: admin/screens/members/invitation-panel.tsx
 msgid "Its link stops working. You can invite the address again later."
 msgstr "Its link stops working. You can invite the address again later."
 
@@ -4396,7 +4565,7 @@ msgstr "Language"
 msgid "Last checked {lastChecked}"
 msgstr "Last checked {lastChecked}"
 
-#: admin/screens/link-reviews/link-review-panel.tsx
+#: admin/screens/members/link-review-panel.tsx
 msgid "Last seen"
 msgstr "Last seen"
 
@@ -4482,16 +4651,20 @@ msgstr "Link review rejected"
 
 #: admin/admin-sidebar.tsx
 #: admin/screens/link-reviews/link-reviews-page.tsx
-msgid "Link reviews"
-msgstr "Link reviews"
+#~ msgid "Link reviews"
+#~ msgstr "Link reviews"
 
-#: admin/screens/link-reviews/link-review-labels.ts
+#: admin/screens/members/link-review-labels.ts
 msgid "Linked"
 msgstr "Linked"
 
 #: admin/screens/audit-log/audit-filter-options.ts
 msgid "Linking"
 msgstr "Linking"
+
+#: admin/components/audit-event-list.tsx
+msgid "Linux"
+msgstr "Linux"
 
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Listening"
@@ -4611,6 +4784,10 @@ msgstr "Low"
 msgid "Lowercase letters, numbers and hyphens. It appears in the URLs you give your identity provider and can't change later."
 msgstr "Lowercase letters, numbers and hyphens. It appears in the URLs you give your identity provider and can't change later."
 
+#: admin/components/audit-event-list.tsx
+msgid "macOS"
+msgstr "macOS"
+
 #: src/widgets/weather-forecast/lib.ts
 msgid "Mainly clear"
 msgstr "Mainly clear"
@@ -4658,8 +4835,16 @@ msgstr "Manage provider connection"
 #~ msgstr "Manage subscription"
 
 #: admin/screens/members/members-page.tsx
-msgid "Manage who can sign in, their admin role, and the identity providers they come from."
-msgstr "Manage who can sign in, their admin role, and the identity providers they come from."
+#~ msgid "Manage who can sign in and who is an admin."
+#~ msgstr "Manage who can sign in and who is an admin."
+
+#: admin/screens/members/members-page.tsx
+#~ msgid "Manage who can sign in, their admin role, and the identity providers they come from."
+#~ msgstr "Manage who can sign in, their admin role, and the identity providers they come from."
+
+#: admin/screens/members/members-page.tsx
+#~ msgid "Manage who can sign in, their admin role, and the identity providers they come from. Invited people show here until they sign in."
+#~ msgstr "Manage who can sign in, their admin role, and the identity providers they come from. Invited people show here until they sign in."
 
 #: admin/screens/members/member-profile-section.tsx
 msgid "Managed by {managedBy}"
@@ -4878,6 +5063,14 @@ msgstr "Modified model"
 msgid "More"
 msgstr "More"
 
+#: admin/screens/audit-log/audit-log-filters.tsx
+#~ msgid "More filters"
+#~ msgstr "More filters"
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+#~ msgid "More filters ({moreCount})"
+#~ msgstr "More filters ({moreCount})"
+
 #: src/layout/sidebar/chat-list-item.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
 #: src/projects/project-badge.tsx
@@ -4905,7 +5098,7 @@ msgstr "My Agent"
 #: admin/screens/identity-providers/new-scim-connection-form.tsx
 #: admin/screens/identity-providers/sso-connection-form.tsx
 #: admin/screens/identity-providers/sso-settings-section.tsx
-#: admin/screens/link-reviews/link-review-panel.tsx
+#: admin/screens/members/link-review-panel.tsx
 #: admin/screens/members/member-profile-section.tsx
 #: src/components/onboarding/onboarding-name-step.tsx
 #: src/components/settings/agents/add-custom-agent-form.tsx
@@ -4986,8 +5179,8 @@ msgid "New code"
 msgstr "New code"
 
 #: admin/screens/identity-providers/new-connection-editor.tsx
-msgid "New connection"
-msgstr "New connection"
+#~ msgid "New connection"
+#~ msgstr "New connection"
 
 #: src/components/create-item/context.tsx
 #: src/settings/connections/connections-list.tsx
@@ -5034,12 +5227,15 @@ msgstr "New tab"
 msgid "New Task"
 msgstr "New Task"
 
+#: src/components/ui/calendar.tsx
+msgid "Next month"
+msgstr "Next month"
+
 #: admin/screens/members/members-page.tsx
 msgid "No access"
 msgstr "No access"
 
 #: admin/components/break-glass-banner.tsx
-#: admin/screens/break-glass/break-glass-page.tsx
 msgid "No admin can sign in without your identity provider"
 msgstr "No admin can sign in without your identity provider"
 
@@ -5081,8 +5277,8 @@ msgid "No devices yet. Sign in with sync to see devices here."
 msgstr "No devices yet. Sign in with sync to see devices here."
 
 #: admin/screens/domains/domains-page.tsx
-msgid "No domains yet"
-msgstr "No domains yet"
+#~ msgid "No domains yet"
+#~ msgstr "No domains yet"
 
 #: admin/screens/audit-log/audit-log-page.tsx
 msgid "No events match these filters."
@@ -5105,12 +5301,16 @@ msgid "No identity provider can claim this domain yet. <0>Add an identity provid
 msgstr "No identity provider can claim this domain yet. <0>Add an identity provider</0> first."
 
 #: admin/screens/identity-providers/identity-providers-page.tsx
-msgid "No identity providers yet. Add one to sign people in or provision them."
-msgstr "No identity providers yet. Add one to sign people in or provision them."
+#~ msgid "No identity providers yet. Add one to sign people in or provision them."
+#~ msgstr "No identity providers yet. Add one to sign people in or provision them."
+
+#: admin/screens/members/members-page.tsx
+msgid "No invitation was sent to an address like that."
+msgstr "No invitation was sent to an address like that."
 
 #: admin/screens/invitations/invitations-page.tsx
-msgid "No invitations here."
-msgstr "No invitations here."
+#~ msgid "No invitations here."
+#~ msgstr "No invitations here."
 
 #: src/components/ui/searchable-menu/searchable-menu.tsx
 msgid "No items found"
@@ -5121,8 +5321,8 @@ msgid "No items found."
 msgstr "No items found."
 
 #: admin/screens/link-reviews/link-reviews-page.tsx
-msgid "No links are waiting for review."
-msgstr "No links are waiting for review."
+#~ msgid "No links are waiting for review."
+#~ msgstr "No links are waiting for review."
 
 #: src/components/location-search-combobox.tsx
 msgid "No locations found."
@@ -5145,8 +5345,15 @@ msgstr "No matches"
 msgid "No matching connections."
 msgstr "No matching connections."
 
-#: admin/screens/audit-log/audit-actor-picker.tsx
 #: admin/screens/members/members-page.tsx
+msgid "No matching invitations"
+msgstr "No matching invitations"
+
+#: admin/screens/members/members-page.tsx
+msgid "No matching members"
+msgstr "No matching members"
+
+#: admin/screens/audit-log/audit-actor-picker.tsx
 msgid "No matching members."
 msgstr "No matching members."
 
@@ -5174,6 +5381,10 @@ msgstr "No matching skills."
 #: admin/screens/groups/group-panel.tsx
 msgid "No members to add."
 msgstr "No members to add."
+
+#: admin/screens/members/members-page.tsx
+msgid "No members yet"
+msgstr "No members yet"
 
 #: src/settings/models/add-provider-models.tsx
 msgid "No model providers connected."
@@ -5214,6 +5425,10 @@ msgstr "No one is in {groupName} yet."
 #~ msgid "No passkeys yet"
 #~ msgstr "No passkeys yet"
 
+#: admin/screens/members/members-page.tsx
+msgid "No pending invitations"
+msgstr "No pending invitations"
+
 #: src/projects/index.tsx
 #~ msgid "No projects yet"
 #~ msgstr "No projects yet"
@@ -5231,12 +5446,16 @@ msgid "No results found."
 msgstr "No results found."
 
 #: admin/screens/link-reviews/link-reviews-page.tsx
-msgid "No reviews."
-msgstr "No reviews."
+#~ msgid "No reviews."
+#~ msgstr "No reviews."
 
 #: src/settings/search/index.tsx
 msgid "No search connections available"
 msgstr "No search connections available"
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+msgid "No sign-in methods yet. Connect an identity provider to sign people in, or add a domain your organization owns."
+msgstr "No sign-in methods yet. Connect an identity provider to sign people in, or add a domain your organization owns."
 
 #: src/skills/skills-list.tsx
 msgid "No skills yet"
@@ -5258,9 +5477,13 @@ msgstr "No tasks yet"
 msgid "No verification record was found. DNS changes can take a while to appear."
 msgstr "No verification record was found. DNS changes can take a while to appear."
 
-#: admin/screens/identity-providers/identity-providers-page.tsx
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
 msgid "Nobody can sign in through it any more, and members only it admitted lose access. This can't be undone."
 msgstr "Nobody can sign in through it any more, and members only it admitted lose access. This can't be undone."
+
+#: admin/screens/members/members-page.tsx
+msgid "Nobody's name or email matches that search."
+msgstr "Nobody's name or email matches that search."
 
 #: src/components/approve-device/approve-device-dialog.tsx
 msgid "None of these match"
@@ -5338,6 +5561,10 @@ msgstr "Nothing completed the handshake at {0}. Check that the app is running, a
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "Nothing to compact yet."
 msgstr "Nothing to compact yet."
+
+#: admin/screens/members/pending-link-reviews.tsx
+msgid "Nothing waiting to be linked"
+msgstr "Nothing waiting to be linked"
 
 #: src/services/revoke-failure.ts
 msgid "Nothing was changed — the recovery keys the server offered could not be verified against this device. This can indicate tampering."
@@ -5460,7 +5687,7 @@ msgstr "Open {skillName}"
 msgid "Open {title}"
 msgstr "Open {title}"
 
-#: admin/screens/break-glass/email-code-sign-in.tsx
+#: admin/screens/members/email-code-sign-in.tsx
 msgid "Open <0>{path}</0> on your organization's web app."
 msgstr "Open <0>{path}</0> on your organization's web app."
 
@@ -5534,7 +5761,6 @@ msgid "Open Thunderbolt CLI"
 msgstr "Open Thunderbolt CLI"
 
 #: admin/screens/domains/domain-enrollment-field.tsx
-#: admin/screens/domains/domains-page.tsx
 msgid "Open to enrollment"
 msgstr "Open to enrollment"
 
@@ -5666,6 +5892,10 @@ msgstr "Other provider"
 msgid "Outcome"
 msgstr "Outcome"
 
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Outcome: {outcomeName}"
+msgstr "Outcome: {outcomeName}"
+
 #: src/widgets/connect-integration/widget.tsx
 msgid "Outlook & Calendar"
 msgstr "Outlook & Calendar"
@@ -5738,8 +5968,7 @@ msgstr "Paste an <0>mcpServers</0> config. Only remote (http/sse) servers are su
 msgid "Peer-to-peer via iroh — the connection is verified when a chat starts."
 msgstr "Peer-to-peer via iroh — the connection is verified when a chat starts."
 
-#: admin/screens/invitations/invitations-page.tsx
-#: admin/screens/link-reviews/link-review-labels.ts
+#: admin/screens/members/link-review-labels.ts
 msgid "Pending"
 msgstr "Pending"
 
@@ -5763,11 +5992,15 @@ msgstr "People already sign in through this connection, so this field can't chan
 msgid "People can't sign in through this connection: it only provisions them."
 msgstr "People can't sign in through this connection: it only provisions them."
 
-#: admin/screens/invitations/invite-panel.tsx
+#: admin/screens/members/invite-panel.tsx
 msgid "People on this domain normally sign in through your identity provider. You can still invite this address; the override is recorded in the audit log."
 msgstr "People on this domain normally sign in through your identity provider. You can still invite this address; the override is recorded in the audit log."
 
-#: admin/screens/domains/domains-page.tsx
+#: admin/screens/members/members-page.tsx
+msgid "People show here once they sign in or an identity provider adds them."
+msgstr "People show here once they sign in or an identity provider adds them."
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
 msgid "People who joined through this domain stay members. Adding it again needs a new verification record."
 msgstr "People who joined through this domain stay members. Adding it again needs a new verification record."
 
@@ -5807,6 +6040,10 @@ msgstr "Personal connections"
 #: src/settings/preferences.tsx
 msgid "Personalization"
 msgstr "Personalization"
+
+#: admin/screens/identity-providers/expiry-field.tsx
+msgid "Pick a date"
+msgstr "Pick a date"
 
 #: src/components/sso-sign-in/sso-connection-list.tsx
 msgid "Pick the identity provider your organization uses for you."
@@ -5899,6 +6136,10 @@ msgstr "Preview not available for this file type. Use the download button to vie
 #: src/content-view/sidebar-webview.tsx
 msgid "Preview webview is only available in the desktop app"
 msgstr "Preview webview is only available in the desktop app"
+
+#: src/components/ui/calendar.tsx
+msgid "Previous month"
+msgstr "Previous month"
 
 #: src/settings/models/model-detail.tsx
 msgid "Privacy"
@@ -6052,6 +6293,14 @@ msgstr "Recents"
 #~ msgid "Reconnect {name}"
 #~ msgstr "Reconnect {name}"
 
+#: admin/screens/domains/domain-record-section.tsx
+msgid "Record name"
+msgstr "Record name"
+
+#: admin/screens/domains/domain-record-section.tsx
+msgid "Record value"
+msgstr "Record value"
+
 #: src/hooks/use-sync-setup.ts
 msgid "Recovery failed"
 msgstr "Recovery failed"
@@ -6083,8 +6332,8 @@ msgid "Redirect URI"
 msgstr "Redirect URI"
 
 #: admin/screens/audit-log/audit-log-page.tsx
-msgid "Refresh"
-msgstr "Refresh"
+#~ msgid "Refresh"
+#~ msgstr "Refresh"
 
 #: src/settings/devices.tsx
 msgid "Refresh keys and retry"
@@ -6103,18 +6352,22 @@ msgstr "Refreshing keys…"
 msgid "Registering this device and detecting your account status."
 msgstr "Registering this device and detecting your account status."
 
-#: admin/screens/link-reviews/link-review-confirm-dialog.tsx
-#: admin/screens/link-reviews/link-review-panel.tsx
+#: admin/screens/members/link-review-confirm-dialog.tsx
+#: admin/screens/members/link-review-panel.tsx
 msgid "Reject"
 msgstr "Reject"
 
-#: admin/screens/link-reviews/link-review-confirm-dialog.tsx
+#: admin/screens/members/link-review-confirm-dialog.tsx
 msgid "Reject this link?"
 msgstr "Reject this link?"
 
-#: admin/screens/link-reviews/link-review-labels.ts
+#: admin/screens/members/link-review-labels.ts
 msgid "Rejected"
 msgstr "Rejected"
+
+#: admin/screens/members/pending-link-reviews.tsx
+#~ msgid "Rejected links"
+#~ msgstr "Rejected links"
 
 #: admin/screens/domains/domain-claim-section.tsx
 msgid "Release claim"
@@ -6163,7 +6416,7 @@ msgstr "Remove {memberName} from the group"
 msgid "Remove {name}"
 msgstr "Remove {name}"
 
-#: admin/screens/domains/domains-page.tsx
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
 msgid "Remove {removingName}?"
 msgstr "Remove {removingName}?"
 
@@ -6176,7 +6429,7 @@ msgid "Remove connection"
 msgstr "Remove connection"
 
 #: admin/screens/domains/domain-editor.tsx
-#: admin/screens/domains/domains-page.tsx
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
 msgid "Remove domain"
 msgstr "Remove domain"
 
@@ -6203,8 +6456,36 @@ msgid "Remove quote"
 msgstr "Remove quote"
 
 #: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Remove the action filter"
+msgstr "Remove the action filter"
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Remove the actor filter"
+msgstr "Remove the actor filter"
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Remove the connection filter"
+msgstr "Remove the connection filter"
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Remove the end date"
+msgstr "Remove the end date"
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Remove the outcome filter"
+msgstr "Remove the outcome filter"
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Remove the start date"
+msgstr "Remove the start date"
+
+#: admin/screens/audit-log/audit-log-filters.tsx
 msgid "Remove the target filter"
 msgstr "Remove the target filter"
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Remove the target type filter"
+msgstr "Remove the target type filter"
 
 #: src/components/remove-bridge-dialog.tsx
 msgid "Remove this bridge?"
@@ -6327,7 +6608,7 @@ msgid "Retained messages and tool results"
 msgstr "Retained messages and tool results"
 
 #: admin/screens/identity-providers/connection-editor.tsx
-#: admin/screens/identity-providers/identity-providers-page.tsx
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
 msgid "Retire connection"
 msgstr "Retire connection"
 
@@ -6343,7 +6624,7 @@ msgstr "Retire SCIM provisioning on this connection first."
 msgid "Retire SCIM provisioning?"
 msgstr "Retire SCIM provisioning?"
 
-#: admin/screens/identity-providers/identity-providers-page.tsx
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
 msgid "Retire this connection?"
 msgstr "Retire this connection?"
 
@@ -6389,8 +6670,8 @@ msgid "Return to Thunderbolt"
 msgstr "Return to Thunderbolt"
 
 #: admin/components/break-glass-banner.tsx
-msgid "Review break-glass access"
-msgstr "Review break-glass access"
+#~ msgid "Review break-glass access"
+#~ msgstr "Review break-glass access"
 
 #: src/components/recovery-continuity/recovery-continuity-banner.tsx
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
@@ -6403,7 +6684,6 @@ msgstr "Review the transcript and note below. Automatic redaction may miss sensi
 
 #: admin/screens/identity-providers/scim-credential-list.tsx
 #: admin/screens/identity-providers/scim-section.tsx
-#: admin/screens/invitations/invitations-page.tsx
 #: src/components/revoke-device-dialog.tsx
 #: src/settings/devices.tsx
 msgid "Revoke"
@@ -6425,13 +6705,13 @@ msgstr "Revoke credential {id}"
 msgid "Revoke credential {revokingId}?"
 msgstr "Revoke credential {revokingId}?"
 
-#: admin/screens/invitations/invitations-page.tsx
+#: admin/screens/members/invitation-panel.tsx
 msgid "Revoke invitation"
 msgstr "Revoke invitation"
 
 #: admin/screens/invitations/invitations-page.tsx
-msgid "Revoke invitation to {email}"
-msgstr "Revoke invitation to {email}"
+#~ msgid "Revoke invitation to {email}"
+#~ msgstr "Revoke invitation to {email}"
 
 #: src/components/revoke-device-dialog.tsx
 msgid "Revoke this CLI?"
@@ -6441,15 +6721,19 @@ msgstr "Revoke this CLI?"
 msgid "Revoke this device?"
 msgstr "Revoke this device?"
 
-#: admin/screens/invitations/invitations-page.tsx
+#: admin/screens/members/invitation-panel.tsx
 msgid "Revoke this invitation?"
 msgstr "Revoke this invitation?"
 
 #: admin/screens/identity-providers/scim-credential-list.tsx
-#: admin/screens/invitations/invitations-page.tsx
+#: admin/screens/members/members-page.tsx
 #: src/settings/devices.tsx
 msgid "Revoked"
 msgstr "Revoked"
+
+#: admin/screens/members/invitation-panel.tsx
+msgid "Revoked. Its link no longer works."
+msgstr "Revoked. Its link no longer works."
 
 #: src/components/revoke-device-dialog.tsx
 #: src/settings/devices.tsx
@@ -6485,6 +6769,10 @@ msgstr "Run command"
 #: src/components/settings/iroh-pairing-panel.tsx
 msgid "Run this on the machine hosting the bridge, then add it — the connection is verified on first use."
 msgstr "Run this on the machine hosting the bridge, then add it — the connection is verified on first use."
+
+#: admin/components/audit-event-list.tsx
+msgid "Safari"
+msgstr "Safari"
 
 #: admin/screens/identity-providers/connection-labels.ts
 msgid "SAML sign-in"
@@ -6621,7 +6909,7 @@ msgid "SCIM group updated"
 msgstr "SCIM group updated"
 
 #: admin/screens/identity-providers/connection-labels.ts
-#: admin/screens/link-reviews/link-review-labels.ts
+#: admin/screens/members/link-review-labels.ts
 #: admin/screens/members/member-labels.ts
 msgid "SCIM provisioning"
 msgstr "SCIM provisioning"
@@ -6890,7 +7178,7 @@ msgstr "Selected server"
 msgid "Send code"
 msgstr "Send code"
 
-#: admin/screens/invitations/invite-panel.tsx
+#: admin/screens/members/invite-panel.tsx
 msgid "Send invitation"
 msgstr "Send invitation"
 
@@ -6937,6 +7225,10 @@ msgstr "Sent as images"
 #: src/components/chat/file-card.tsx
 msgid "Sent as text"
 msgstr "Sent as text"
+
+#: admin/screens/members/members-page.tsx
+msgid "Sent by email, and shown here until the person signs in."
+msgstr "Sent by email, and shown here until the person signs in."
 
 #. placeholder {0}: i + 1
 #: src/components/xlsx-preview/chart-svg.tsx
@@ -7109,6 +7401,14 @@ msgstr "Show QR"
 msgid "Show QR code for {deviceName}"
 msgstr "Show QR code for {deviceName}"
 
+#: admin/screens/members/members-page.tsx
+msgid "Show rejected links"
+msgstr "Show rejected links"
+
+#: admin/screens/members/members-page.tsx
+msgid "Show revoked invitations"
+msgstr "Show revoked invitations"
+
 #: src/tasks/index.tsx
 msgid "Showing 50 of {totalCount} tasks"
 msgstr "Showing 50 of {totalCount} tasks"
@@ -7231,7 +7531,6 @@ msgstr "Sign in with your fingerprint, face, or device PIN."
 msgid "Sign out"
 msgstr "Sign out"
 
-#: admin/admin-sidebar.tsx
 #: admin/screens/identity-providers/connection-editor.tsx
 msgid "Sign-in"
 msgstr "Sign-in"
@@ -7244,6 +7543,11 @@ msgstr "Sign-in and sessions"
 msgid "Sign-in approved"
 msgstr "Sign-in approved"
 
+#: admin/screens/identity-providers/scim-section.tsx
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "Sign-in becomes SSO-only"
+msgstr "Sign-in becomes SSO-only"
+
 #: src/components/device-approval.tsx
 msgid "Sign-in denied"
 msgstr "Sign-in denied"
@@ -7251,6 +7555,11 @@ msgstr "Sign-in denied"
 #: src/components/sso-error.tsx
 msgid "Sign-in failed"
 msgstr "Sign-in failed"
+
+#: admin/admin-sidebar.tsx
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+msgid "Sign-in methods"
+msgstr "Sign-in methods"
 
 #: src/components/welcome-dialog.tsx
 msgid "Sign-in successful"
@@ -7300,6 +7609,14 @@ msgstr "Signing in…"
 #: src/components/magic-link-verify.tsx
 msgid "Signing you in…"
 msgstr "Signing you in…"
+
+#: admin/screens/members/member-admin-sign-in.tsx
+msgid "Signs in only through {name}. If it goes down, this admin can't get in."
+msgstr "Signs in only through {name}. If it goes down, this admin can't get in."
+
+#: admin/screens/members/member-admin-sign-in.tsx
+msgid "Signs in only through your identity providers. If they go down, this admin can't get in."
+msgstr "Signs in only through your identity providers. If they go down, this admin can't get in."
 
 #: admin/screens/members/member-profile-section.tsx
 msgid "Signs in with SSO only"
@@ -7424,7 +7741,7 @@ msgstr "SSO"
 msgid "SSO + SCIM"
 msgstr "SSO + SCIM"
 
-#: admin/screens/link-reviews/link-review-labels.ts
+#: admin/screens/members/link-review-labels.ts
 msgid "SSO sign-in"
 msgstr "SSO sign-in"
 
@@ -7457,7 +7774,7 @@ msgstr "Started from an app that is no longer available"
 msgid "Starting…"
 msgstr "Starting…"
 
-#: admin/screens/link-reviews/link-reviews-page.tsx
+#: admin/screens/members/invitation-panel.tsx
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Status"
 msgstr "Status"
@@ -7482,7 +7799,7 @@ msgstr "Storage is disabled"
 msgid "STT model"
 msgstr "STT model"
 
-#: admin/screens/link-reviews/link-review-panel.tsx
+#: admin/screens/members/link-review-panel.tsx
 msgid "Subject"
 msgstr "Subject"
 
@@ -7584,6 +7901,10 @@ msgstr "Tap to check for updates."
 #: admin/screens/audit-log/audit-log-filters.tsx
 msgid "Target type"
 msgstr "Target type"
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Target type: {targetTypeLabel}"
+msgstr "Target type: {targetTypeLabel}"
 
 #: admin/screens/audit-log/audit-log-filters.tsx
 msgid "Target: <0>{targetId}</0>"
@@ -7936,8 +8257,8 @@ msgid "There is not enough free space on this device."
 msgstr "There is not enough free space on this device."
 
 #: admin/screens/link-reviews/link-reviews-page.tsx
-msgid "These identities arrived from an identity provider with the email of an existing account, and no automatic rule could link them. Approve to link one to that account."
-msgstr "These identities arrived from an identity provider with the email of an existing account, and no automatic rule could link them. Approve to link one to that account."
+#~ msgid "These identities arrived from an identity provider with the email of an existing account, and no automatic rule could link them. Approve to link one to that account."
+#~ msgstr "These identities arrived from an identity provider with the email of an existing account, and no automatic rule could link them. Approve to link one to that account."
 
 #. placeholder {0}: state.modelsWithoutTools.join(', ')
 #: src/settings/models/add-provider-models.tsx
@@ -7948,7 +8269,7 @@ msgstr "These models do not support tools and cannot use features like web searc
 msgid "These settings are for a different sign-in protocol."
 msgstr "These settings are for a different sign-in protocol."
 
-#: admin/screens/invitations/invite-panel.tsx
+#: admin/screens/members/invite-panel.tsx
 msgid "They get an email with a link that signs them in. Inviting the same address again replaces the earlier link."
 msgstr "They get an email with a link that signs them in. Inviting the same address again replaces the earlier link."
 
@@ -8149,7 +8470,7 @@ msgstr "This invitation no longer exists."
 msgid "This is the first device on your account. We'll create an encryption key to protect your data and give you a recovery key to keep safe."
 msgstr "This is the first device on your account. We'll create an encryption key to protect your data and give you a recovery key to keep safe."
 
-#: admin/screens/link-reviews/link-review-panel.tsx
+#: admin/screens/members/link-review-panel.tsx
 msgid "This is your own account, so another admin has to approve the link."
 msgstr "This is your own account, so another admin has to approve the link."
 
@@ -8438,8 +8759,8 @@ msgid "This workbook is too large to preview"
 msgstr "This workbook is too large to preview"
 
 #: admin/screens/break-glass/break-glass-page.tsx
-msgid "Those who sign in with an email code can still administer it if your identity provider is down."
-msgstr "Those who sign in with an email code can still administer it if your identity provider is down."
+#~ msgid "Those who sign in with an email code can still administer it if your identity provider is down."
+#~ msgstr "Those who sign in with an email code can still administer it if your identity provider is down."
 
 #: src/components/chat/reasoning-group-title.tsx
 msgid "Thought for {duration}"
@@ -8576,6 +8897,18 @@ msgstr "To retire this connection, retire its SCIM provisioning first."
 #: src/lib/encrypted-sync-support.ts
 msgid "To use encrypted sync, open this app over HTTPS and use an up-to-date browser or operating system."
 msgstr "To use encrypted sync, open this app over HTTPS and use an up-to-date browser or operating system."
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "To: {toDate}"
+msgstr "To: {toDate}"
+
+#: src/components/ui/calendar.tsx
+msgid "Today, {day}"
+msgstr "Today, {day}"
+
+#: src/components/ui/calendar.tsx
+msgid "Today, {day}, selected"
+msgstr "Today, {day}, selected"
 
 #: src/search/commands/use-commands.ts
 msgid "Toggle sidebar"
@@ -9054,13 +9387,17 @@ msgstr "Verified on this device"
 msgid "Verify"
 msgstr "Verify"
 
+#: admin/screens/identity-providers/new-connection-editor.tsx
+msgid "Verify a domain you own, then let people on it join or send them to an identity provider."
+msgstr "Verify a domain you own, then let people on it join or send them to an identity provider."
+
 #: src/components/chat/attestation/attestation-panel.tsx
 msgid "Verify connection"
 msgstr "Verify connection"
 
 #: admin/screens/domains/domains-page.tsx
-msgid "Verify the domains your organization owns, then decide how people on each one join."
-msgstr "Verify the domains your organization owns, then decide how people on each one join."
+#~ msgid "Verify the domains your organization owns, then decide how people on each one join."
+#~ msgstr "Verify the domains your organization owns, then decide how people on each one join."
 
 #: admin/screens/domains/domain-claim-section.tsx
 msgid "Verify this domain before an identity provider can claim it."
@@ -9156,9 +9493,13 @@ msgstr "Waiting for a spark… Thunderbolt opens on its own."
 msgid "Waiting for approval"
 msgstr "Waiting for approval"
 
+#: admin/screens/members/invitation-panel.tsx
+msgid "Waiting for them to sign in. The link works until {expiresOn}."
+msgstr "Waiting for them to sign in. The link works until {expiresOn}."
+
 #: admin/screens/domains/domains-page.tsx
-msgid "Waiting for verification"
-msgstr "Waiting for verification"
+#~ msgid "Waiting for verification"
+#~ msgstr "Waiting for verification"
 
 #: src/mini-apps/mini-app-page.tsx
 #~ msgid "Waiting for your approval in the app"
@@ -9167,6 +9508,10 @@ msgstr "Waiting for verification"
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Waiting for your other device…"
 msgstr "Waiting for your other device…"
+
+#: admin/screens/members/pending-link-reviews.tsx
+msgid "Waiting to be linked"
+msgstr "Waiting to be linked"
 
 #: admin/screens/members/member-labels.ts
 #: src/components/onboarding/onboarding-server-step.tsx
@@ -9282,8 +9627,8 @@ msgid "What it uses"
 msgstr "What it uses"
 
 #: admin/screens/identity-providers/new-connection-editor.tsx
-msgid "What should this identity provider do?"
-msgstr "What should this identity provider do?"
+#~ msgid "What should this identity provider do?"
+#~ msgstr "What should this identity provider do?"
 
 #: src/components/onboarding/onboarding-name-step.tsx
 msgid "What should we call you?"
@@ -9300,6 +9645,10 @@ msgstr "What would you like to do with your local data?"
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "What's in it?"
 msgstr "What's in it?"
+
+#: admin/screens/members/pending-link-reviews.tsx
+msgid "When an identity provider sends someone with the email of an existing account and no rule can link them, they wait here for you."
+msgstr "When an identity provider sends someone with the email of an existing account and no rule can link them, they wait here for you."
 
 #: src/settings/preferences.tsx
 #~ msgid "When enabled, requests are routed through Thunderbolt's cloud proxy."
@@ -9336,6 +9685,10 @@ msgstr "Who can read it?"
 #: src/components/window-controls.tsx
 msgid "Window controls"
 msgstr "Window controls"
+
+#: admin/components/audit-event-list.tsx
+msgid "Windows"
+msgstr "Windows"
 
 #: admin/screens/identity-providers/scim-section.tsx
 msgid "With SCIM, your identity provider creates, updates and removes people in {appName}."

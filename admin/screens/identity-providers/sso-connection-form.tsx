@@ -4,8 +4,7 @@
 
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useId, type ReactNode } from 'react'
-import { CopyCommandRow } from '@/components/settings/copy-command-row'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { DetailField } from '@/components/settings/detail-field'
 import { Button } from '@/components/ui/button'
 import { FormFooter } from '@/components/ui/form-footer'
 import { Input } from '@/components/ui/input'
@@ -18,6 +17,7 @@ import { providerPresets, type ProviderPreset } from './provider-presets'
 import { oidcRedirectUri, samlAcsUrl } from './setup-urls'
 import type { SsoFormField } from './sso-field-errors'
 import { useSsoConnectionForm, type SsoAttachTarget, type SsoCreateTextField } from './use-sso-connection-form'
+import { CopyableField } from '../../components/copyable-field'
 import { InlineError } from '../../components/inline-error'
 
 type SsoConnectionFormProps = {
@@ -112,15 +112,13 @@ export const SsoConnectionForm = ({ protocol, attachTo, onCreated, onCancel, onD
         hint: t`Lowercase letters, numbers and hyphens. It appears in the URLs you give your identity provider and can't change later.`,
       })}
       {providerId && (
-        <div className="flex flex-col gap-1">
-          <span className="text-[length:var(--font-size-sm)] text-muted-foreground">
-            {protocol === 'oidc' ? <Trans>Redirect URI</Trans> : <Trans>Assertion consumer service URL</Trans>}
-          </span>
-          <CopyCommandRow
-            command={protocol === 'oidc' ? oidcRedirectUri(cloudUrl, providerId) : samlAcsUrl(cloudUrl, providerId)}
-            label={protocol === 'oidc' ? t`Copy redirect URI` : t`Copy assertion consumer service URL`}
+        <DetailField label={protocol === 'oidc' ? t`Redirect URI` : t`Assertion consumer service URL`}>
+          <CopyableField
+            label={protocol === 'oidc' ? t`Redirect URI` : t`Assertion consumer service URL`}
+            copyLabel={protocol === 'oidc' ? t`Copy redirect URI` : t`Copy assertion consumer service URL`}
+            value={protocol === 'oidc' ? oidcRedirectUri(cloudUrl, providerId) : samlAcsUrl(cloudUrl, providerId)}
           />
-        </div>
+        </DetailField>
       )}
       {protocol === 'oidc' ? (
         <>
@@ -159,14 +157,12 @@ export const SsoConnectionForm = ({ protocol, attachTo, onCreated, onCancel, onD
         hint: t`Its value must be the person's SCIM externalId. It decides which account a sign-in belongs to, and it locks once someone signs in.`,
       })}
       {draft.preset === 'entra' && (
-        <Alert>
-          <AlertDescription>
-            <Trans>
-              In Entra's provisioning attribute mappings, map externalId to objectId. Entra sends mailNickname by
-              default, which won't match.
-            </Trans>
-          </AlertDescription>
-        </Alert>
+        <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
+          <Trans>
+            In Entra's provisioning attribute mappings, map externalId to objectId. Entra sends mailNickname by default,
+            which won't match.
+          </Trans>
+        </p>
       )}
       <InlineError error={form.formError} />
       <FormFooter>

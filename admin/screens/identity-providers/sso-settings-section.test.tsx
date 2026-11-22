@@ -55,7 +55,8 @@ describe('SsoSettingsSection', () => {
     expect(screen.getByLabelText('Client ID')).toHaveValue('client')
     expect(screen.getByLabelText('Client ID')).not.toHaveAttribute('readonly')
     expect(screen.getByLabelText('New client secret')).toHaveValue('')
-    expect(screen.getByText('https://idp.test')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Issuer' })).toHaveValue('https://idp.test')
+    expect(screen.getByRole('textbox', { name: 'Issuer' })).toHaveAttribute('readonly')
     expect(screen.getByText(/can't change\. To use a different one/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
   })
@@ -85,7 +86,9 @@ describe('SsoSettingsSection', () => {
   it('shows the env connection read-only', () => {
     renderSection({ ...oidcDetail, sso: { ...oidcDetail.sso!, envOwned: true } })
     expect(screen.getByText("Set by this server's OIDC or SAML settings. Change them there.")).toBeInTheDocument()
-    expect(screen.queryByRole('textbox')).toBeNull()
+    for (const field of screen.getAllByRole('textbox')) {
+      expect(field).toHaveAttribute('readonly')
+    }
     expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull()
   })
 

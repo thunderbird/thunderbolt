@@ -112,7 +112,9 @@ describe('IdentityProvidersPage', () => {
     const harness = renderPage(backend([]))
     await flush()
     fillOidcForm()
-    expect(screen.getByText(/\/api\/auth\/sso\/callback\/okta$/)).toBeInTheDocument()
+    expect((screen.getByRole('textbox', { name: 'Redirect URI' }) as HTMLInputElement).value).toEndWith(
+      '/api/auth/sso/callback/okta',
+    )
 
     fireEvent.click(screen.getByRole('button', { name: 'Create connection' }))
     await flush()

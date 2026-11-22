@@ -33,7 +33,8 @@ export const AdminPage = ({ title, action, actionsClassName, search, panel, onCl
   return (
     <div className="relative flex h-full">
       <div className="min-w-0 flex-1 overflow-hidden">
-        <SettingsListPane>
+        {/* The same header gap and bottom runway as the settings list pages (Models, Search). */}
+        <SettingsListPane className="gap-6 md:pb-12">
           {search ? (
             <PageSearch onSearch={search.onSearch}>
               {header}

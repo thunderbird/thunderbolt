@@ -72,7 +72,9 @@ test('an admin adds an OIDC connection, people sign in through it, and a new sec
   await page.getByRole('combobox', { name: 'Identity provider' }).click()
   await page.getByRole('option', { name: 'Keycloak' }).click()
   await page.getByLabel('Provider ID').fill(providerId)
-  await expect(page.getByText(`/v1/api/auth/sso/callback/${providerId}`)).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Redirect URI' })).toHaveValue(
+    new RegExp(`/v1/api/auth/sso/callback/${providerId}$`),
+  )
   await page.getByLabel('Issuer').fill(adminIdpUrls.spare)
   await page.getByLabel('Client ID').fill('thunderbolt-admin-e2e')
   await page.getByLabel('Client secret').fill(`${adminSpareIdpSecretPrefix}first`)
@@ -83,7 +85,9 @@ test('an admin adds an OIDC connection, people sign in through it, and a new sec
   const connectionId = new URL(page.url()).searchParams.get('edit')!
   seeded.push(connectionId)
   await expect(page.getByLabel('Client ID')).toHaveValue('thunderbolt-admin-e2e')
-  await expect(page.getByText(`/v1/api/auth/sso/callback/${providerId}`)).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Redirect URI' })).toHaveValue(
+    new RegExp(`/v1/api/auth/sso/callback/${providerId}$`),
+  )
 
   const identity = { sub: `e2e-sub-${crypto.randomUUID()}`, email: uniqueEmail('sso') }
   const first = await signInThroughConnection(browser, viewport, name, identity)

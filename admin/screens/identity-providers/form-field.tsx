@@ -4,6 +4,7 @@
 
 import type { ReactNode } from 'react'
 import { DetailField } from '@/components/settings/detail-field'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
 type FormFieldProps = {
@@ -35,12 +36,10 @@ export const FormField = ({ id, label, hint, error, children }: FormFieldProps) 
   </DetailField>
 )
 
-/** A value shown, never edited, with why when it matters. */
-export const ReadOnlyField = ({ label, value, hint }: { label: ReactNode; value: ReactNode; hint?: ReactNode }) => (
+/** A value shown, never edited, in a read-only input the height of the editable ones, with why when it matters. */
+export const ReadOnlyField = ({ label, value, hint }: { label: string; value: string; hint?: ReactNode }) => (
   <DetailField label={label}>
-    <code className="block break-all rounded-md bg-muted px-2 py-1 font-mono text-[length:var(--font-size-sm)]">
-      {value}
-    </code>
+    <Input readOnly aria-label={label} value={value} className="font-mono" />
     {hint && <p className="text-[length:var(--font-size-sm)] text-muted-foreground">{hint}</p>}
   </DetailField>
 )

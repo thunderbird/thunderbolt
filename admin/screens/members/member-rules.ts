@@ -18,6 +18,13 @@ const unavailable = (reason: MessageDescriptor): Availability => ({ available: f
 /** Whether the member holds the admin role from any source. */
 export const isAdmin = (member: AdminMember) => member.roles.some((source) => source.role === adminRole)
 
+/**
+ * Whether the member can still sign in when every identity provider is down: they have access and no
+ * IdP requires SSO of them, so a SCIM-only connection leaves email-code sign-in open. The same rule
+ * the backend's count of such admins uses.
+ */
+export const canSignInWithoutIdp = (member: AdminMember) => member.access.allowed && !member.requiresSso
+
 const isAdminGrant = (source: MemberRoleSource) => source.from === 'local' || source.from === 'bootstrap'
 
 /** The member's own grant of admin, local or bootstrap: the only kind a revoke removes. */

@@ -61,6 +61,18 @@ describe('useMembersPageState', () => {
     expect(result.current.list.items.map((member) => member.userId)).toEqual(['user-2'])
   })
 
+  it('flags when no admin can sign in without the identity provider', async () => {
+    const harness = createAdminTestHarness((request) =>
+      request.path === 'admin/break-glass'
+        ? { body: { allAdminsIdpManaged: true, adminCount: 2, localAdminCount: 0 } }
+        : backend(request),
+    )
+    const { result } = renderHook(useMembersPageState, { wrapper: harness.wrapper })
+    await flush()
+
+    expect(result.current.noLocalAdmin).toBe(true)
+  })
+
   it('purges a member and refetches the list', async () => {
     const harness = createAdminTestHarness(backend)
     const { result } = renderHook(useMembersPageState, { wrapper: harness.wrapper })

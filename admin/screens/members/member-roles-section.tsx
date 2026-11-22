@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { adminRole, type AdminMember, type MemberRoleSource } from '@shared/admin-api'
 import { InlineError } from '../../components/inline-error'
+import { MemberAdminSignIn } from './member-admin-sign-in'
 import { getRevokeAdminState, isAdmin } from './member-rules'
 import type { MemberPanelState } from './use-member-panel-state'
 
@@ -75,6 +76,7 @@ export const MemberRolesSection = ({ member, selfId, grantAdmin, revokeAdmin }: 
           </li>
         )}
       </ul>
+      {isAdmin(member) && <MemberAdminSignIn member={member} />}
       <div className="mt-2 flex flex-col items-start gap-1">
         {revokeState.available ? (
           <Button

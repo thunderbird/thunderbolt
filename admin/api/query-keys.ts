@@ -23,7 +23,7 @@ export const adminQueryKeys = {
   },
   invitations: {
     all: ['admin', 'invitations'] as const,
-    list: (status: InvitationStatus) => ['admin', 'invitations', 'list', status] as const,
+    list: (status: InvitationStatus, q?: string) => ['admin', 'invitations', 'list', status, { q }] as const,
   },
   connections: {
     all: ['admin', 'connections'] as const,

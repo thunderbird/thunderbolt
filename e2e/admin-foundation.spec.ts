@@ -9,12 +9,10 @@ import { adminBackendUrl, adminTest as test, openAdminSection, readInviteUrl, un
 const screens = [
   'Members',
   'Groups',
-  'Invitations',
   'Identity providers',
   'Domains',
   'Link reviews',
   'Audit log',
-  'Break-glass',
 ]
 
 const sectionToggle = (page: Page) => page.getByRole('navigation', { name: 'Sidebar sections' })
@@ -35,7 +33,7 @@ test('a bootstrap admin reaches every admin screen from the sidebar', async ({ p
     await page.locator('[data-sidebar="menu-button"]', { hasText: screen }).click()
     await expect(page.getByRole('heading', { name: screen, exact: true })).toBeVisible()
   }
-  await expect(page).toHaveURL(/\/admin\/break-glass$/)
+  await expect(page).toHaveURL(/\/admin\/audit-log$/)
 })
 
 test('a member sees no admin entry, is sent home from /admin, and gets 403 from the API', async ({

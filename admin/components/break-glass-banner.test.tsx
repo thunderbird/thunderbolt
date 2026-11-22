@@ -5,7 +5,6 @@
 import '@testing-library/jest-dom'
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'bun:test'
-import { MemoryRouter } from 'react-router'
 import { BreakGlassBanner, hasBreakGlassWarning } from './break-glass-banner'
 
 describe('BreakGlassBanner', () => {
@@ -19,16 +18,8 @@ describe('BreakGlassBanner', () => {
     expect(hasBreakGlassWarning(undefined)).toBe(false)
   })
 
-  it('links to the break-glass page', () => {
-    render(
-      <MemoryRouter>
-        <BreakGlassBanner />
-      </MemoryRouter>,
-    )
+  it('says no admin can sign in without the identity provider', () => {
+    render(<BreakGlassBanner />)
     expect(screen.getByRole('alert')).toHaveTextContent('No admin can sign in without your identity provider')
-    expect(screen.getByRole('link', { name: 'Review break-glass access' })).toHaveAttribute(
-      'href',
-      '/admin/break-glass',
-    )
   })
 })

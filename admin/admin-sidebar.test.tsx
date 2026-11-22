@@ -50,12 +50,10 @@ describe('AdminSidebar', () => {
     for (const label of [
       'Members',
       'Groups',
-      'Invitations',
       'Identity providers',
       'Domains',
       'Link reviews',
       'Audit log',
-      'Break-glass',
     ]) {
       expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
     }

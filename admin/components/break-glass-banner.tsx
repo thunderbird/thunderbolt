@@ -4,7 +4,6 @@
 
 import { Trans } from '@lingui/react/macro'
 import { TriangleAlert } from 'lucide-react'
-import { Link } from 'react-router'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import type { BreakGlassWarning } from '@shared/admin-api'
 import { cn } from '@/lib/utils'
@@ -13,7 +12,7 @@ import { cn } from '@/lib/utils'
 export const hasBreakGlassWarning = (response: BreakGlassWarning | undefined): boolean =>
   response?.warning === 'NO_LOCAL_ADMIN'
 
-/** Shown after a role change that left every admin depending on the identity provider to sign in. */
+/** Shown when every admin depends on the identity provider to sign in: on Members, and after a role change that did it. */
 export const BreakGlassBanner = ({ className }: { className?: string }) => (
   <Alert variant="destructive" className={cn(className)}>
     <TriangleAlert />
@@ -27,9 +26,6 @@ export const BreakGlassBanner = ({ className }: { className?: string }) => (
           in by email code.
         </Trans>
       </p>
-      <Link to="/admin/break-glass" className="font-medium underline underline-offset-4">
-        <Trans>Review break-glass access</Trans>
-      </Link>
     </AlertDescription>
   </Alert>
 )

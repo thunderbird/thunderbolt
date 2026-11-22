@@ -4,11 +4,9 @@
 
 import { Navigate, Route, Routes } from 'react-router'
 import { AuditLogPage } from './screens/audit-log/audit-log-page'
-import { BreakGlassPage } from './screens/break-glass/break-glass-page'
 import { DomainsPage } from './screens/domains/domains-page'
 import { GroupsPage } from './screens/groups/groups-page'
 import { IdentityProvidersPage } from './screens/identity-providers/identity-providers-page'
-import { InvitationsPage } from './screens/invitations/invitations-page'
 import { LinkReviewsPage } from './screens/link-reviews/link-reviews-page'
 import { MembersPage } from './screens/members/members-page'
 
@@ -18,12 +16,10 @@ const AdminRoutes = () => (
     <Route index element={<Navigate to="members" replace />} />
     <Route path="members" element={<MembersPage />} />
     <Route path="groups" element={<GroupsPage />} />
-    <Route path="invitations" element={<InvitationsPage />} />
     <Route path="identity-providers" element={<IdentityProvidersPage />} />
     <Route path="domains" element={<DomainsPage />} />
     <Route path="link-reviews" element={<LinkReviewsPage />} />
     <Route path="audit-log" element={<AuditLogPage />} />
-    <Route path="break-glass" element={<BreakGlassPage />} />
     <Route path="*" element={<Navigate to="/admin/members" replace />} />
   </Routes>
 )

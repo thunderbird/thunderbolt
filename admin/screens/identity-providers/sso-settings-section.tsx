@@ -5,13 +5,13 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useId, useState } from 'react'
 import { DetailDivider } from '@/components/detail-panel'
-import { CopyCommandRow } from '@/components/settings/copy-command-row'
 import { DetailField } from '@/components/settings/detail-field'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { FormFooter } from '@/components/ui/form-footer'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { TriangleAlert } from 'lucide-react'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { AdminConnectionDetail, SsoProtocol } from '@shared/admin-api'
 import { describeConnection } from './connection-status'
@@ -19,6 +19,7 @@ import { describedBy, FormField, ReadOnlyField } from './form-field'
 import { oidcRedirectUri, samlAcsUrl, samlMetadataUrl } from './setup-urls'
 import { SsoConnectionForm } from './sso-connection-form'
 import { useSsoSettingsState, type SsoConnectionDetail, type SsoSettingsField } from './use-sso-settings-state'
+import { CopyableField } from '../../components/copyable-field'
 import { InlineError } from '../../components/inline-error'
 
 type SectionProps = { detail: AdminConnectionDetail; onDirty: (dirty: boolean) => void }
@@ -49,7 +50,7 @@ const SetupUrls = ({ detail }: { detail: SsoConnectionDetail }) => {
     <>
       {urls.map(({ label, copyLabel, url }) => (
         <DetailField key={label} label={label}>
-          <CopyCommandRow command={url} label={copyLabel} />
+          <CopyableField label={label} copyLabel={copyLabel} value={url} />
         </DetailField>
       ))}
     </>
@@ -83,11 +84,9 @@ const ReadOnlySettings = ({ detail }: { detail: SsoConnectionDetail }) => {
   return (
     <div className="flex flex-col gap-5">
       {sso.envOwned && (
-        <Alert>
-          <AlertDescription>
-            <Trans>Set by this server's OIDC or SAML settings. Change them there.</Trans>
-          </AlertDescription>
-        </Alert>
+        <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
+          <Trans>Set by this server's OIDC or SAML settings. Change them there.</Trans>
+        </p>
       )}
       <IdentityFields detail={detail} />
       {sso.protocol === 'oidc' ? (
@@ -210,6 +209,10 @@ const SsoSettingsForm = ({ detail, onDirty }: { detail: SsoConnectionDetail; onD
 /** What attaching an SSO side does to the members this connection already provisions. */
 const AttachSsoWarning = () => (
   <Alert>
+    <TriangleAlert />
+    <AlertTitle>
+      <Trans>Sign-in becomes SSO-only</Trans>
+    </AlertTitle>
     <AlertDescription>
       <Trans>
         Adding sign-in makes this connection SSO-only: the people it provisions can no longer sign in with an email

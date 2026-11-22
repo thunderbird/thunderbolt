@@ -3,6 +3,7 @@
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
 import { Trans } from '@lingui/react/macro'
+import { DetailField } from '@/components/settings/detail-field'
 import { Button } from '@/components/ui/button'
 import { CopyableField } from './copyable-field'
 
@@ -32,10 +33,9 @@ export const CopyOnceSecret = ({ label, copyLabel, secret, details = [], onDone 
       </div>
       <CopyableField label={label} copyLabel={copyLabel} value={secret} />
       {details.map((detail) => (
-        <div key={detail.label} className="flex flex-col gap-1">
-          <span className="text-[length:var(--font-size-sm)] text-muted-foreground">{detail.label}</span>
+        <DetailField key={detail.label} label={detail.label}>
           <CopyableField label={detail.label} copyLabel={detail.copyLabel} value={detail.value} />
-        </div>
+        </DetailField>
       ))}
       <div className="flex justify-end">
         <Button type="button" onClick={onDone}>

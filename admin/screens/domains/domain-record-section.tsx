@@ -3,9 +3,9 @@
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { CopyCommandRow } from '@/components/settings/copy-command-row'
 import { DetailField } from '@/components/settings/detail-field'
 import type { OrgDomain } from '@shared/admin-api'
+import { CopyableField } from '../../components/copyable-field'
 
 /** The TXT record that proves the org controls the domain. */
 export const DomainRecordSection = ({ domain }: { domain: OrgDomain }) => {
@@ -24,13 +24,13 @@ export const DomainRecordSection = ({ domain }: { domain: OrgDomain }) => {
           <Trans>Name</Trans>
         </dt>
         <dd className="min-w-0">
-          <CopyCommandRow command={domain.record.name} label={t`Copy record name`} />
+          <CopyableField label={t`Record name`} copyLabel={t`Copy record name`} value={domain.record.name} />
         </dd>
         <dt className="text-muted-foreground">
           <Trans>Value</Trans>
         </dt>
         <dd className="min-w-0">
-          <CopyCommandRow command={domain.record.value} label={t`Copy record value`} />
+          <CopyableField label={t`Record value`} copyLabel={t`Copy record value`} value={domain.record.value} />
         </dd>
       </dl>
     </DetailField>

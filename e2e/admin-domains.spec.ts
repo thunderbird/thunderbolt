@@ -32,8 +32,8 @@ test('an admin adds a domain, sees its record, fails to verify it and removes it
   await form.getByRole('button', { name: 'Add domain' }).click()
 
   await expect(page.getByRole('heading', { name: domain, exact: true })).toBeVisible()
-  await expect(page.getByText(`_thunderbolt-verification.${domain}`, { exact: true })).toBeVisible()
-  await expect(page.getByText(/^thunderbolt-verification=\S+$/)).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Record name' })).toHaveValue(`_thunderbolt-verification.${domain}`)
+  await expect(page.getByRole('textbox', { name: 'Record value' })).toHaveValue(/^thunderbolt-verification=\S+$/)
 
   await page.getByRole('button', { name: 'Verify', exact: true }).click()
   // The backend's resolver retries before it gives up on a lookup.

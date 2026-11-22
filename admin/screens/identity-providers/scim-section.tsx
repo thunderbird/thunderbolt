@@ -4,15 +4,16 @@
 
 import { Trans, useLingui } from '@lingui/react/macro'
 import { DetailDivider } from '@/components/detail-panel'
-import { CopyCommandRow } from '@/components/settings/copy-command-row'
 import { DetailField } from '@/components/settings/detail-field'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { useFormatters } from '@/i18n/use-formatters'
 import { useAppName } from '@/lib/branding-selectors'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { AdminConnectionDetail, ScimCredential } from '@shared/admin-api'
+import { TriangleAlert } from 'lucide-react'
+import { CopyableField } from '../../components/copyable-field'
 import { CopyOnceSecret } from '../../components/copy-once-secret'
 import { InlineError } from '../../components/inline-error'
 import { describeConnection } from './connection-status'
@@ -79,6 +80,10 @@ export const ScimSection = ({
           </p>
           {detail.sso && (
             <Alert>
+              <TriangleAlert />
+              <AlertTitle>
+                <Trans>Sign-in becomes SSO-only</Trans>
+              </AlertTitle>
               <AlertDescription>
                 <Trans>
                   Turning on SCIM makes sign-in through this connection SSO-only, and a person needs a SCIM record
@@ -122,9 +127,12 @@ export const ScimSection = ({
     }
     return (
       <>
-        <DetailField label={<Trans>SCIM base URL</Trans>}>
-          <CopyCommandRow command={scimBaseUrl(cloudUrl)} label={t`Copy SCIM base URL`} />
-        </DetailField>
+        {/* An issued token's card already shows the base URL beside it. */}
+        {!scim.issued && (
+          <DetailField label={<Trans>SCIM base URL</Trans>}>
+            <CopyableField label={t`SCIM base URL`} copyLabel={t`Copy SCIM base URL`} value={scimBaseUrl(cloudUrl)} />
+          </DetailField>
+        )}
         <DetailField label={<Trans>Credentials</Trans>}>
           <ScimCredentialList credentials={detail.scimCredentials} onRevoke={scim.requestRevoke} />
         </DetailField>

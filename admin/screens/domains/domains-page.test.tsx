@@ -75,8 +75,8 @@ describe('DomainsPage', () => {
     await flush()
 
     expect(screen.getByRole('heading', { name: 'example.com' })).toBeInTheDocument()
-    expect(screen.getByText('_thunderbolt-verification.example.com')).toBeInTheDocument()
-    expect(screen.getByText('thunderbolt-verification=token')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Record name' })).toHaveValue('_thunderbolt-verification.example.com')
+    expect(screen.getByRole('textbox', { name: 'Record value' })).toHaveValue('thunderbolt-verification=token')
   })
 
   it('opens the add form from the header and lands on the new domain', async () => {
@@ -97,7 +97,7 @@ describe('DomainsPage', () => {
 
     expect(harness.requests.find((request) => request.method === 'POST')?.body).toEqual({ domain: 'acme.test' })
     expect(screen.getByRole('heading', { name: 'acme.test' })).toBeInTheDocument()
-    expect(screen.getByText('_thunderbolt-verification.acme.test')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Record name' })).toHaveValue('_thunderbolt-verification.acme.test')
   })
 
   it('opens nothing for an id that matches no domain', async () => {

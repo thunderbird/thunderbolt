@@ -12,6 +12,7 @@ import type { OrgDomain } from '@shared/admin-api'
 import { getConnectionKindLabel } from './domain-rules'
 import { useClaimDomain, useClaimableConnections, useReleaseDomain } from './use-domains'
 import { InlineError } from '../../components/inline-error'
+import { connectionEditId } from '../sign-in-methods/sign-in-method-ids'
 
 const hintClass = 'text-[length:var(--font-size-sm)] text-muted-foreground'
 
@@ -30,7 +31,7 @@ const ClaimPicker = ({ domain }: { domain: OrgDomain }) => {
       <p className={hintClass}>
         <Trans>
           No identity provider can claim this domain yet.{' '}
-          <Link to="/admin/identity-providers" className={linkClass}>
+          <Link to="/admin/sign-in-methods" className={linkClass}>
             Add an identity provider
           </Link>{' '}
           first.
@@ -87,7 +88,10 @@ const ClaimHolder = ({ domain, claimedBy }: { domain: OrgDomain; claimedBy: NonN
         <p className="min-w-0 text-[length:var(--font-size-sm)]">
           <Trans>
             Claimed by{' '}
-            <Link to={`/admin/identity-providers?edit=${encodeURIComponent(claimedBy.id)}`} className={linkClass}>
+            <Link
+              to={`/admin/sign-in-methods?edit=${encodeURIComponent(connectionEditId(claimedBy.id))}`}
+              className={linkClass}
+            >
               {name}
             </Link>
           </Trans>

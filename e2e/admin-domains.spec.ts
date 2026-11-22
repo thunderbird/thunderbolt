@@ -23,10 +23,11 @@ test('an admin adds a domain, sees its record, fails to verify it and removes it
   const domain = `e2e-${crypto.randomUUID().slice(0, 8)}.thunderbolt.test`
   added.push(domain)
 
-  await page.goto('/admin/domains')
-  await expect(page.getByRole('heading', { name: 'Domains', exact: true })).toBeVisible()
+  await page.goto('/admin/sign-in-methods')
+  await expect(page.getByRole('heading', { name: 'Sign-in methods', exact: true })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Add domain' }).click()
+  await page.getByRole('button', { name: 'Add sign-in method' }).click()
+  await page.getByRole('button', { name: 'Domain', exact: true }).click()
   const form = page.locator('form', { has: page.getByRole('textbox', { name: 'Domain' }) })
   await form.getByRole('textbox', { name: 'Domain' }).fill(domain)
   await form.getByRole('button', { name: 'Add domain' }).click()

@@ -19,6 +19,7 @@ import { SsoSettingsSection } from './sso-settings-section'
 import { SyncErrorsSection } from './sync-errors-section'
 import { useConnection } from './use-connection-queries'
 import { InlineError } from '../../components/inline-error'
+import { connectionEditId } from '../sign-in-methods/sign-in-method-ids'
 
 type Section = 'sign-in' | 'provisioning' | 'groups' | 'sync-errors'
 
@@ -61,7 +62,10 @@ export const ConnectionEditor = ({ connectionId, page }: { connectionId: string;
       actions={
         summary.canRetireSso && (
           <DetailActionsMenu>
-            <DropdownMenuItem variant="destructive" onClick={() => page.patch({ removeId: detail.id })}>
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => page.patch({ removeId: connectionEditId(detail.id) })}
+            >
               <Archive />
               <Trans>Retire connection</Trans>
             </DropdownMenuItem>

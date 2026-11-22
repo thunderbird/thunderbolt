@@ -25,7 +25,7 @@ test.afterEach(async ({ adminApi }) => {
 })
 
 const openConnection = async (page: Page, connectionId: string) => {
-  await page.goto(`/admin/identity-providers?edit=${connectionId}`)
+  await page.goto(`/admin/sign-in-methods?edit=connection:${connectionId}`)
   await expect(page.getByRole('radio', { name: 'Sign-in' })).toBeVisible()
 }
 
@@ -65,8 +65,8 @@ test('an admin adds an OIDC connection, people sign in through it, and a new sec
   const name = uniqueName('Keycloak')
   const providerId = `e2e-${crypto.randomUUID().slice(0, 8)}`
 
-  await page.goto('/admin/identity-providers')
-  await page.getByRole('button', { name: 'Add connection' }).click()
+  await page.goto('/admin/sign-in-methods')
+  await page.getByRole('button', { name: 'Add sign-in method' }).click()
   await page.getByRole('button', { name: 'Single sign-on with OIDC' }).click()
   await page.getByLabel('Name', { exact: true }).fill(name)
   await page.getByRole('combobox', { name: 'Identity provider' }).click()
@@ -81,8 +81,8 @@ test('an admin adds an OIDC connection, people sign in through it, and a new sec
   await expect(page.getByLabel('Match claim')).toHaveValue('sub')
   await page.getByRole('button', { name: 'Create connection' }).click()
 
-  await expect(page).toHaveURL(/edit=(?!new\b)/)
-  const connectionId = new URL(page.url()).searchParams.get('edit')!
+  await expect(page).toHaveURL(/edit=connection(:|%3A)/)
+  const connectionId = new URL(page.url()).searchParams.get('edit')!.replace(/^connection:/, '')
   seeded.push(connectionId)
   await expect(page.getByLabel('Client ID')).toHaveValue('thunderbolt-admin-e2e')
   await expect(page.getByRole('textbox', { name: 'Redirect URI' })).toHaveValue(

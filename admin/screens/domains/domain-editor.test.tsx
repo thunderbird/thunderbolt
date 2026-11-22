@@ -8,7 +8,7 @@ import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { createAdminTestHarness, flush, type FakeReply, type FakeRequest } from '../../test-utils'
-import { DomainsPage } from './domains-page'
+import { SignInMethodsPage } from '../sign-in-methods/sign-in-methods-page'
 import { makeConnection, makeDomain } from './fixtures'
 
 const verifiedAt = '2026-11-17T01:00:00.000Z'
@@ -64,7 +64,7 @@ const createBackend = ({ domain, connections = [okta], check = null, refuse }: B
 
 /** Opens the domain's panel from its row. */
 const openDomain = async (harness: ReturnType<typeof createAdminTestHarness>, name = 'example.com') => {
-  render(<DomainsPage />, { wrapper: harness.wrapper })
+  render(<SignInMethodsPage />, { wrapper: harness.wrapper })
   await flush()
   fireEvent.click(screen.getByRole('button', { name }))
   await flush()
@@ -129,7 +129,10 @@ describe('DomainEditor', () => {
     expect(enrollmentSwitch()).toHaveAccessibleDescription(
       /Okta claims this domain, so people on it sign in through that identity provider\./,
     )
-    expect(screen.getByRole('link', { name: 'Okta' })).toHaveAttribute('href', '/admin/identity-providers?edit=c1')
+    expect(screen.getByRole('link', { name: 'Okta' })).toHaveAttribute(
+      'href',
+      '/admin/sign-in-methods?edit=connection%3Ac1',
+    )
   })
 
   it.each<[DomainCheckError, string]>([
@@ -187,12 +190,12 @@ describe('DomainEditor', () => {
     ])
   })
 
-  it('points to the identity providers when none can claim', async () => {
+  it('points to Sign-in methods when no identity provider can claim', async () => {
     await openDomain(createBackend({ domain: makeDomain({ verifiedAt }), connections: [] }))
 
     expect(screen.getByRole('link', { name: 'Add an identity provider' })).toHaveAttribute(
       'href',
-      '/admin/identity-providers',
+      '/admin/sign-in-methods',
     )
     expect(screen.queryByRole('combobox', { name: 'Identity provider' })).not.toBeInTheDocument()
   })

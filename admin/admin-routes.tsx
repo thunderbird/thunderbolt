@@ -4,11 +4,10 @@
 
 import { Navigate, Route, Routes } from 'react-router'
 import { AuditLogPage } from './screens/audit-log/audit-log-page'
-import { DomainsPage } from './screens/domains/domains-page'
 import { GroupsPage } from './screens/groups/groups-page'
-import { IdentityProvidersPage } from './screens/identity-providers/identity-providers-page'
 import { LinkReviewsPage } from './screens/link-reviews/link-reviews-page'
 import { MembersPage } from './screens/members/members-page'
+import { SignInMethodsPage } from './screens/sign-in-methods/sign-in-methods-page'
 
 /** The admin screens, mounted at `/admin/*`. A detail panel opens through `?edit=<id>`, never a nested route. */
 const AdminRoutes = () => (
@@ -16,8 +15,7 @@ const AdminRoutes = () => (
     <Route index element={<Navigate to="members" replace />} />
     <Route path="members" element={<MembersPage />} />
     <Route path="groups" element={<GroupsPage />} />
-    <Route path="identity-providers" element={<IdentityProvidersPage />} />
-    <Route path="domains" element={<DomainsPage />} />
+    <Route path="sign-in-methods" element={<SignInMethodsPage />} />
     <Route path="link-reviews" element={<LinkReviewsPage />} />
     <Route path="audit-log" element={<AuditLogPage />} />
     <Route path="*" element={<Navigate to="/admin/members" replace />} />

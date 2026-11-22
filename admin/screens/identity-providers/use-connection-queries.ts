@@ -35,14 +35,15 @@ export const useScimGroups = (connectionId: string) => {
 }
 
 /**
- * Refresh every connection read, and the members too when access may have changed (retiring a
- * side stops counting the sources it admitted).
+ * Refresh every connection read and the domains that name a connection, and the members too when
+ * access may have changed (retiring a side stops counting the sources it admitted).
  */
 const useInvalidateConnections = () => {
   const queryClient = useQueryClient()
   return ({ members = false }: { members?: boolean } = {}) =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: adminQueryKeys.connections.all }),
+      queryClient.invalidateQueries({ queryKey: adminQueryKeys.domains.all }),
       members && queryClient.invalidateQueries({ queryKey: adminQueryKeys.members.all }),
     ])
 }

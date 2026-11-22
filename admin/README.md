@@ -1,7 +1,7 @@
 # Admin
 
-The org admin screens: members (with their invitations), groups, identity providers, domains, link reviews and the
-audit log. They call the `/v1/admin/*` API, whose request and response types live in `shared/admin-api.ts`.
+The org admin screens: members (with their invitations), groups, sign-in methods (identity providers and domains),
+link reviews and the audit log. They call the `/v1/admin/*` API, whose request and response types live in `shared/admin-api.ts`.
 
 ## Licensing
 

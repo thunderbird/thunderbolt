@@ -2,15 +2,27 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { auditEvent, memberRoleGrant, orgMembership, organization, user } from '@/db/schema'
+import {
+  auditEvent,
+  identityConnection,
+  localGroup,
+  memberRoleGrant,
+  orgMembership,
+  organization,
+  user,
+} from '@/db/schema'
 import { authHeaders, createTestApp, type TestAppHandle } from '@/test-utils/e2e'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { and, eq } from 'drizzle-orm'
 import { adminDenialAuditBudget } from '../admin-macro'
 import { getCurrentOrganizationId } from '../current-organization'
+import { scimAuditEvent } from '../scim/actor'
 import { insertAuditEvent } from './write'
 
-type AuditPage = { events: { id: string; action: string; orgId: string }[]; nextCursor: string | null }
+type AuditPage = {
+  events: { id: string; action: string; orgId: string; actorLabel: string | null; targetLabel: string | null }[]
+  nextCursor: string | null
+}
 
 describe('GET /v1/admin/audit-events', () => {
   let harness: TestAppHandle
@@ -131,6 +143,42 @@ describe('GET /v1/admin/audit-events', () => {
     expect(second.events).toHaveLength(1)
     expect(second.nextCursor).toBeNull()
     expect(new Set([...first.events, ...second.events].map((event) => event.id)).size).toBe(3)
+  })
+
+  it("names each event's actor and target, and leaves a missing, non-member or other org's one unnamed", async () => {
+    await makeAdmin()
+    const orgId = getCurrentOrganizationId()
+    await harness.db.update(user).set({ name: 'Ada Admin' }).where(eq(user.id, userId))
+    await harness.db.insert(localGroup).values({ id: 'ops', orgId, name: 'Ops' })
+    await harness.db
+      .insert(identityConnection)
+      .values({ id: 'okta', orgId, name: 'Okta', scimConnectionId: 'scim-okta' })
+    await harness.db.insert(organization).values({ id: 'other-org', name: 'Other', slug: 'other-org' })
+    await harness.db.insert(localGroup).values({ id: 'theirs', orgId: 'other-org', name: 'Not yours' })
+    const write = (actor: { type: 'user'; id: string }, target: { type: string; id: string }) =>
+      insertAuditEvent(harness.db, { action: 'local_group.updated', outcome: 'success', actor, target })
+    await write({ type: 'user', id: userId }, { type: 'local_group', id: 'ops' })
+    // Through the SCIM event writer, so the actor id is the one real SCIM events carry.
+    await insertAuditEvent(
+      harness.db,
+      scimAuditEvent('local_group.updated', {
+        identityConnectionId: 'okta',
+        credentialId: null,
+        target: { type: 'identity_connection', id: 'okta' },
+      }),
+    )
+    await write({ type: 'user', id: userId }, { type: 'local_group', id: 'gone' })
+    await write({ type: 'user', id: userId }, { type: 'local_group', id: 'theirs' })
+    const [outsider] = await harness.db
+      .insert(user)
+      .values({ id: 'outsider', name: 'Not a member', email: 'outsider@elsewhere.test', emailVerified: true })
+      .returning()
+    await write({ type: 'user', id: outsider.id }, { type: 'user', id: outsider.id })
+
+    const page = (await (await list('?action=local_group.updated')).json()) as AuditPage
+    // Written in the same millisecond, the events' order is not theirs to keep.
+    const labels = page.events.map(({ actorLabel, targetLabel }) => `${actorLabel} → ${targetLabel}`).sort()
+    expect(labels).toEqual(['Ada Admin → Ops', 'Ada Admin → null', 'Ada Admin → null', 'Okta → Okta', 'null → null'])
   })
 
   it('rejects a page larger than the maximum and a malformed cursor', async () => {

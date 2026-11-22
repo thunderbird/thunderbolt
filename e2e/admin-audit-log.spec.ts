@@ -4,17 +4,13 @@
 
 import { expect, type Page } from '@playwright/test'
 import type { AuditEventPage } from '../shared/admin-api'
-import { adminTest as test } from './admin/helpers'
+import { adminTest as test, pickDate } from './admin/helpers'
 
 /** The audit rows: list items with a time, unlike the sidebar's. */
 const eventRows = (page: Page) => page.getByRole('listitem').filter({ has: page.locator('time') })
 
-/** Narrow screens fold the filters behind a button. */
-const showFilters = async (page: Page) => {
-  if ((page.viewportSize()?.width ?? 768) < 768) {
-    await page.getByRole('button', { name: /^Filters/ }).click()
-  }
-}
+/** Every filter sits in the popover behind the header's Filters button. */
+const openFilters = (page: Page) => page.getByRole('button', { name: /^Filters/ }).click()
 
 const pick = async (page: Page, filter: string, option: string) => {
   await page.getByRole('combobox', { name: filter }).click()
@@ -25,16 +21,16 @@ const pick = async (page: Page, filter: string, option: string) => {
 const expectListed = (page: Page) =>
   expect(eventRows(page).first().or(page.getByText('No events match these filters.'))).toBeVisible()
 
-test('an admin action shows up after one refresh, and the action filter narrows to it', async ({ page, adminApi }) => {
+test('an admin action shows up after a reload, and the action filter narrows to it', async ({ page, adminApi }) => {
   await page.goto('/admin/audit-log')
   await expectListed(page)
 
   const group = await adminApi.seedGroup()
-  await page.getByRole('button', { name: 'Refresh' }).click()
-  const created = eventRows(page).filter({ hasText: group.id })
+  await page.reload()
+  const created = eventRows(page).filter({ hasText: group.name })
   await expect(created).toContainText('Group created')
 
-  await showFilters(page)
+  await openFilters(page)
   await pick(page, 'Action', 'Group created')
   await expect(page).toHaveURL(/[?&]action=local_group\.created/)
   await expect(created).toBeVisible()
@@ -50,23 +46,19 @@ test('a link to one target lists it alone, and outcome and date filters narrow i
   await expect(eventRows(page)).toContainText('Group created')
   await expect(page.getByText(`Target: ${group.id}`)).toBeVisible()
 
-  await showFilters(page)
+  await openFilters(page)
   await pick(page, 'Outcome', 'Denied')
   await expect(page.getByText('No events match these filters.')).toBeVisible()
 
   await page.goto(targetLink)
   await expect(eventRows(page)).toHaveCount(1)
-  await showFilters(page)
-  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000)
-  const day = (value: number) => String(value).padStart(2, '0')
-  await page
-    .getByLabel('From')
-    .fill(`${tomorrow.getFullYear()}-${day(tomorrow.getMonth() + 1)}-${day(tomorrow.getDate())}`)
+  await openFilters(page)
+  await pickDate(page, 'From', new Date(Date.now() + 24 * 60 * 60 * 1000))
   await expect(page).toHaveURL(/[?&]from=/)
   await expect(page.getByText('No events match these filters.')).toBeVisible()
 })
 
-test("a sign-in shows its person as actor, with the client's details", async ({ page, adminApi }) => {
+test('a sign-in names its person once, with a readable client and the IP', async ({ page, adminApi }) => {
   const member = await adminApi.seedMember()
   const { events } = await adminApi.request<AuditEventPage>(
     'GET',
@@ -74,19 +66,23 @@ test("a sign-in shows its person as actor, with the client's details", async ({ 
   )
   const [signIn] = events
   expect(signIn.userAgent).toBeTruthy()
+  expect(signIn.actorLabel).toBe(member.email)
 
   await page.goto('/admin/audit-log')
-  await showFilters(page)
+  await openFilters(page)
+  await pick(page, 'Action', 'Signed in')
   await page.getByRole('combobox', { name: 'Actor' }).click()
   await page.getByPlaceholder('Search by name or email').fill(member.email)
   await page.getByRole('option').filter({ hasText: member.email }).click()
-  await pick(page, 'Action', 'Signed in')
 
   await expect(page).toHaveURL(new RegExp(`[?&]actorId=${member.userId}`))
-  const row = eventRows(page).filter({ hasText: member.userId })
+  await expect(page.getByText(`Actor: ${member.email}`)).toBeVisible()
+  const row = eventRows(page).filter({ hasText: member.email })
   await expect(row).toHaveCount(1)
-  await expect(row).toContainText('Person')
-  await expect(row).toContainText(signIn.userAgent ?? '')
+  await expect(row.getByText(member.email)).toHaveCount(1)
+  // The Nightly runs this on every browser and device, so any readable pair passes.
+  await expect(row).toContainText(/(Chrome|Edge|Firefox|Safari) on (macOS|Windows|Linux|iOS|Android)/)
+  await expect(row).not.toContainText(signIn.userAgent ?? '')
   if (signIn.ipAddress) {
     await expect(row).toContainText(signIn.ipAddress)
   }

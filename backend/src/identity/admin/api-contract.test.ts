@@ -11,6 +11,7 @@ import type {
 import type * as Api from '@shared/admin-api'
 import { describe, expect, it } from 'bun:test'
 import type { AccessDecision, AccessRefusal } from '../access'
+import type { AuditLabels } from '../audit/labels'
 import type { DomainCheckError } from '../domains'
 import type { SsoLockableField, SsoSettings } from '../sso-connections'
 import type { approveLinkReview, listLinkReviews } from '../link-reviews'
@@ -77,7 +78,7 @@ describe('admin API contract', () => {
       contract<Same<Wire<Resolved<typeof listLinkReviews>>, Api.LinkReviewPage>>(),
       contract<Same<Wire<Resolved<typeof approveLinkReview>>, Api.LinkReviewRecord>>(),
       // Audit
-      contract<Same<Wire<typeof auditEvent.$inferSelect>, Api.AuditEvent>>(),
+      contract<Same<Wire<typeof auditEvent.$inferSelect> & AuditLabels, Api.AuditEvent>>(),
     ]
     expect(checks.every(Boolean)).toBe(true)
   })

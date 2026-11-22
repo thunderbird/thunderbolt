@@ -4,9 +4,10 @@
 
 import type { QueryableDatabase } from '@/db/client'
 import { identityConnection, invitation, orgDomain } from '@/db/schema'
-import { and, asc, desc, eq } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike } from 'drizzle-orm'
 import { getCurrentOrganizationId } from '../current-organization'
 import { verificationRecordName, verificationRecordValue } from '../domains'
+import { escapeLike } from './members'
 import { beforeTimestampCursor, exactTimestamp, type Page, toPage } from './pagination'
 
 export type InvitationStatus = (typeof invitation.$inferSelect)['status']
@@ -32,10 +33,10 @@ export const toInvitationView = (row: typeof invitation.$inferSelect): Invitatio
   createdAt: row.createdAt,
 })
 
-/** The org's invitations in one status, newest first, one page at a time. */
+/** The org's invitations in one status, newest first, one page at a time. `q` matches part of the email. */
 export const listInvitations = async (
   database: QueryableDatabase,
-  { status, after, limit }: { status: InvitationStatus; after?: [string, string]; limit: number },
+  { status, q, after, limit }: { status: InvitationStatus; q?: string; after?: [string, string]; limit: number },
 ): Promise<Page<InvitationView>> => {
   const rows = await database
     .select({ invitation, cursorAt: exactTimestamp(invitation.createdAt) })
@@ -44,6 +45,7 @@ export const listInvitations = async (
       and(
         eq(invitation.orgId, getCurrentOrganizationId()),
         eq(invitation.status, status),
+        q ? ilike(invitation.email, `%${escapeLike(q)}%`) : undefined,
         after ? beforeTimestampCursor(invitation.createdAt, invitation.id, after) : undefined,
       ),
     )

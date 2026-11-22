@@ -227,7 +227,7 @@ const toMemberViews = async (database: QueryableDatabase, rows: MembershipWithUs
 }
 
 /** `%`, `_` and `\` match literally in a substring search. */
-const escapeLike = (value: string) => value.replace(/[\\%_]/g, (character) => `\\${character}`)
+export const escapeLike = (value: string) => value.replace(/[\\%_]/g, (character) => `\\${character}`)
 
 /** The org's members by email, one page at a time. `q` matches part of the email or name. */
 export const listMembers = async (

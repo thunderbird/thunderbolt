@@ -34,6 +34,7 @@ export const createAdmissionAdminRoutes = (auth: Auth, database: typeof DbType) 
       ({ query }) =>
         listInvitations(database, {
           status: query.status ?? 'pending',
+          q: query.q,
           after: timestampCursor(query.cursor),
           limit: query.limit ?? defaultAdminPageSize,
         }),
@@ -41,6 +42,7 @@ export const createAdmissionAdminRoutes = (auth: Auth, database: typeof DbType) 
         query: t.Object({
           ...pageQuery,
           status: t.Optional(t.Union([t.Literal('pending'), t.Literal('accepted'), t.Literal('revoked')])),
+          q: t.Optional(t.String({ minLength: 1, maxLength: 200 })),
         }),
       },
     )

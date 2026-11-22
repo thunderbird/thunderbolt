@@ -854,6 +854,24 @@ describe('admin API', () => {
         expect(new Set(seen)).toEqual(new Set(ids))
       })
 
+      it('searches invitations by part of the email, matching % and _ literally', async () => {
+        for (const email of ['ada@corp.test', 'grace@corp.test', 'ada_100%@corp.test']) {
+          await call('POST', '/v1/admin/invitations', { email })
+        }
+        const search = async (q: string) =>
+          (
+            await json<{ items: { email: string }[] }>(
+              await call('GET', `/v1/admin/invitations?q=${encodeURIComponent(q)}`),
+            )
+          ).items
+            .map((item) => item.email)
+            .sort()
+
+        expect(await search('ADA')).toEqual(['ada@corp.test', 'ada_100%@corp.test'])
+        expect(await search('_100%')).toEqual(['ada_100%@corp.test'])
+        expect((await call('GET', '/v1/admin/invitations?q=')).status).toBe(422)
+      })
+
       it('answers a malformed invitation cursor with 400', async () => {
         const bad = Buffer.from(JSON.stringify(['not a time', 'id'])).toString('base64url')
         for (const cursor of ['nonsense', bad]) {

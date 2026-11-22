@@ -359,6 +359,26 @@ describe.each([
   })
 })
 
+it.each([
+  {
+    mistake: 'a total that adds income to spending',
+    from: '"SUM(C" + row',
+    to: '"SUM(B" + row',
+    error: 'Red months: Jan, Feb, Mar, Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec; wanted: Aug, Sep, Oct, Nov, Dec',
+  },
+  // Without the option a styled cell computes to text such as "$ 4,300.00", which is no number.
+  {
+    mistake: 'when its check reads formatted values',
+    from: ', { RawCellValue: true }',
+    to: '',
+    error: 'Red months: ; wanted: Aug',
+  },
+])('the budget example refuses to save $mistake', async ({ from, to, error }) => {
+  const budget = examplesIn(officeXlsxSkill).find((block) => block.includes('saveFile("budget.xlsx"'))!
+  expect(budget).toContain(from)
+  await expect(run(budget.replace(from, to))).rejects.toThrow(error)
+})
+
 it('states the workbook size limit the bridge enforces', () => {
   expect(officeXlsxSkill).toContain(`up to ${sandboxLimits.maxWorkbookBytes / 1024 / 1024} MiB`)
 })

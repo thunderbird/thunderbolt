@@ -46,10 +46,12 @@ f.AddChart(sheet, "H2", {
   Title: { Paragraph: [{ Text: "Monthly spending" }] },
   Legend: { Position: "bottom" },
 })
-// Check the sample data against the rule before saving, so the reply names only rows that really turn red.
-const over = months.filter((_, i) => 2200 + 1500 + i * 250 + 600 > 6000)
-if (over.length === 0) throw new Error("No month meets the red rule: change the sample values")
-console.log("red months:", over.join(", "))
+// Decide the red rows first, then check the workbook's own formulas against them.
+const wantRed = ["Aug", "Sep", "Oct", "Nov", "Dec"]
+const num = (cell) => Number(f.CalcCellValue(sheet, cell, { RawCellValue: true }).value)
+const redMonths = months.filter((_, i) => num("F" + (i + 2)) > num("B" + (i + 2)))
+if (redMonths.join() !== wantRed.join()) throw new Error("Red months: " + redMonths.join(", ") + "; wanted: " + wantRed.join(", "))
+console.log("red months:", redMonths.join(", "))
 const { buffer, formulaErrors } = f.WriteToBuffer()
 console.log("formula errors:", JSON.stringify(formulaErrors))
 saveFile("budget.xlsx", buffer)
@@ -65,7 +67,7 @@ saveFile("budget.xlsx", buffer)
 - Number formats: \`NumFmt\` 3 is #,##0, 4 is #,##0.00, 9 is 0%, 10 is 0.00%, 14 is a date. For money use \`CustomNumFmt\` with the symbol in quotes, \`'"R$" #,##0.00'\`, or a locale tag, \`'[$€-407] #,##0.00'\`. \`NumFmt\` 5 to 8 are not saved, and an unquoted R$ shows as a plain number.
 - Layout: \`f.SetColWidth(sheet, "A", "F", 15)\` (first and last column), \`f.SetRowHeight(sheet, 1, 24)\`, \`f.MergeCell(sheet, "A1", "F1")\`, and a frozen header row with \`f.SetPanes(sheet, { Freeze: true, YSplit: 1, TopLeftCell: "A2", ActivePane: "bottomLeft" })\`.
 - Sheets: \`f.NewSheet("Summary")\`, \`f.SetSheetName("Sheet1", "Budget")\` (then use the new name everywhere, chart references included), \`f.GetSheetList().list\`.
-- Reading: \`f.GetRows(sheet).result\` (rows of formatted strings), \`f.GetCellValue(sheet, "B2").value\`, or with \`{ RawCellValue: true }\` for the unformatted value. A formula set in this run reads as "", even after \`WriteToBuffer\`; \`f.CalcCellValue(sheet, "F2").value\` computes it.
+- Reading: \`f.GetRows(sheet).result\` (rows of formatted strings), \`f.GetCellValue(sheet, "B2").value\`, or with \`{ RawCellValue: true }\` for the unformatted value. A formula set in this run reads as "", even after \`WriteToBuffer\`; \`f.CalcCellValue(sheet, "F2", { RawCellValue: true }).value\` computes it as text, "4300"; without that option a styled cell gives "$ 4,300.00".
 - Conditional formats: \`f.SetConditionalFormat(sheet, range, [rules])\` takes an array of rules. \`Format\` is an id from \`f.NewConditionalStyle(style).style\`, a sequence of its own that starts at 0, which is valid. Rule types:
   - \`{ Type: "formula", Criteria: "$F2>$B2", Format }\`: the formula is written for the range's top-left cell, with $ before what must not shift.
   - \`{ Type: "cell", Criteria: ">", Value: "100", Format }\`, or \`Criteria: "between"\` with \`MinValue\` and \`MaxValue\`; values are strings.
@@ -98,7 +100,7 @@ saveFile("budget.xlsx", buffer)
 | \`Fill: { Type: "pattern", Color: "#FFC7CE" }\` or two colors | \`Fill: { Type: "pattern", Pattern: 1, Color: ["#FFC7CE"] }\` |
 | \`Font: { Color: "red" }\` | \`Font: { Color: "#9C0006" }\` |
 | try/catch around a call, then saving anyway | let it throw, so a file without its chart or highlight is never saved |
-| sample data where no row meets the highlight the user asked for, found after saving and fixed with a second save; or a reply naming highlighted rows from memory | choose values that meet the rule, compute the matching rows from the arrays you wrote, throw before saving when there are none, log them, and name only the logged rows in the reply |
+| highlighting no row or the wrong rows; checking the arrays you typed, not the formulas; naming highlighted rows from memory | pick the red rows first and set values from the rule (income below that month's spending), not sums in your head; check the formulas as the example does, and name only those rows |
 | writing chart, drawing or conditional-format XML with fflate after AddChart or SetConditionalFormat fails | fix the failing call; the rows above cover the usual mistakes |
 | \`saveFile("probe.xlsx", ...)\` or \`saveFile("errors.txt", ...)\` to see a result | \`console.log\` it in a run that saves nothing |
 | \`console.log(result)\`, which prints [object Object] | \`console.log(JSON.stringify(result))\` |

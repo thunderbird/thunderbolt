@@ -219,6 +219,24 @@ export const routeIdpIdentity = async (page: Page, identity: IdpIdentity) => {
   }
 }
 
+/**
+ * Pick `date` in the empty date field labelled `label`: open its calendar, page from this month to the
+ * date's month, and click the day. Labels are the English ones the app renders in the e2e locale.
+ */
+export const pickDate = async (page: Page, label: string, date: Date) => {
+  const month = new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric' }).format(date)
+  const step = date > new Date() ? 'Next month' : 'Previous month'
+  await page.getByLabel(label, { exact: true }).click()
+  const grid = page.getByRole('grid')
+  for (let pages = 0; (await grid.getAttribute('aria-label')) !== month; pages++) {
+    expect(pages, `the calendar never reached ${month}`).toBeLessThan(120)
+    await page.getByRole('button', { name: step }).click()
+  }
+  const day = new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(date)
+  // The day button's name says "Today, " and ", selected" around the date when they apply.
+  await grid.getByRole('button', { name: new RegExp(`^(Today, )?${day}(, selected)?$`) }).click()
+}
+
 /** Open the sidebar (a drawer at phone width), then switch it to the Admin section. */
 export const openAdminSection = async (page: Page) => {
   await openSidebarOnMobile(page)

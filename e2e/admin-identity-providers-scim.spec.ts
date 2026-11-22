@@ -8,6 +8,7 @@ import {
   adminApiBaseUrl,
   adminIdpUrls,
   adminTest as test,
+  pickDate,
   retireConnection,
   uniqueEmail,
   uniqueName,
@@ -43,17 +44,13 @@ const openConnection = async (page: Page, connectionId: string, section: string)
 
 const readToken = (page: Page) => page.getByRole('textbox', { name: 'SCIM token' }).inputValue()
 
-/** A date input value `days` from today, and the expiry the server should store for it. */
-const dateInDays = (page: Page, days: number) =>
-  page.evaluate((offset) => {
-    const date = new Date()
-    date.setDate(date.getDate() + offset)
-    const value = [date.getFullYear(), date.getMonth() + 1, date.getDate()]
-      .map((part) => String(part).padStart(2, '0'))
-      .join('-')
-    const end = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999)
-    return { value, expiresAt: end.toISOString(), year: String(date.getFullYear()) }
-  }, days)
+/** A day `days` from today, and the expiry the server should store for it (the end of that local day). */
+const dateInDays = (days: number) => {
+  const date = new Date()
+  date.setDate(date.getDate() + days)
+  const end = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999)
+  return { date, expiresAt: end.toISOString(), year: String(date.getFullYear()) }
+}
 
 test('a SCIM token works until its credential is revoked', async ({ page, request, adminApi }) => {
   await page.goto('/admin/identity-providers')
@@ -73,8 +70,8 @@ test('a SCIM token works until its credential is revoked', async ({ page, reques
 
   // A second credential, with a chosen expiry, works alongside the first.
   await page.getByRole('radio', { name: 'Provisioning' }).click()
-  const expiry = await dateInDays(page, 30)
-  await page.getByLabel('Credential expires on').fill(expiry.value)
+  const expiry = dateInDays(30)
+  await pickDate(page, 'Credential expires on', expiry.date)
   await page.getByRole('button', { name: 'Issue a new credential' }).click()
   const secondToken = await readToken(page)
   expect(secondToken).not.toBe(firstToken)

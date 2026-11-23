@@ -47,7 +47,7 @@ describe('AdminSidebar', () => {
     const onNavigate = mock((_path: string) => {})
     renderSidebar('/admin/members', onNavigate)
 
-    for (const label of ['Members', 'Groups', 'Sign-in methods', 'Link reviews', 'Audit log']) {
+    for (const label of ['Members', 'Groups', 'Sign-in methods', 'Audit log']) {
       expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
     }
     fireEvent.click(screen.getByRole('button', { name: 'Audit log' }))

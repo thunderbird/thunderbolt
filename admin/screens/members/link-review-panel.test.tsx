@@ -9,7 +9,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
 import { adminQueryKeys } from '../../api/query-keys'
 import { createAdminTestHarness, flush, type FakeReply, type FakeRequest } from '../../test-utils'
-import { linkReview } from './fixtures'
+import { linkReview } from './link-review-fixtures'
 import { LinkReviewPanel } from './link-review-panel'
 
 const adminRequests = (requests: FakeRequest[]) => requests.filter((request) => request.path.startsWith('admin/'))

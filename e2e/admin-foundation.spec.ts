@@ -6,7 +6,7 @@ import { expect, type Page } from '@playwright/test'
 import { openSidebarOnMobile } from './helpers'
 import { adminBackendUrl, adminTest as test, openAdminSection, readInviteUrl, uniqueEmail } from './admin/helpers'
 
-const screens = ['Members', 'Groups', 'Sign-in methods', 'Link reviews', 'Audit log']
+const screens = ['Members', 'Groups', 'Sign-in methods', 'Audit log']
 
 const sectionToggle = (page: Page) => page.getByRole('navigation', { name: 'Sidebar sections' })
 
@@ -24,7 +24,7 @@ test('a bootstrap admin reaches every admin screen from the sidebar', async ({ p
   for (const screen of screens) {
     await openSidebarOnMobile(page)
     await page.locator('[data-sidebar="menu-button"]', { hasText: screen }).click()
-    await expect(page.getByRole('heading', { name: screen, exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: screen, exact: true, level: 1 })).toBeVisible()
   }
   await expect(page).toHaveURL(/\/admin\/audit-log$/)
 })

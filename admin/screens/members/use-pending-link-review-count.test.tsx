@@ -9,7 +9,7 @@ import { adminQueryKeys } from '../../api/query-keys'
 import { useCursorList } from '../../api/use-cursor-list'
 import { useAdminApi } from '../../api/use-admin-api'
 import { createAdminTestHarness, flush, type FakeReply } from '../../test-utils'
-import { linkReview } from './fixtures'
+import { linkReview } from './link-review-fixtures'
 import { usePendingLinkReviewCount } from './use-pending-link-review-count'
 
 const page = (count: number, nextCursor: string | null = null): FakeReply => ({

@@ -71,10 +71,12 @@ const expectRefused = async (
 const reviewsOn = (adminApi: AdminApiRequest, connectionId: string, status: string) =>
   adminApi.request<{ reviews: LinkReview[] }>('GET', `admin/link-reviews?status=${status}&connectionId=${connectionId}`)
 
-/** Open the person's review from the queue, under `status`. */
-const openReview = async (page: Page, email: string, status = 'Pending') => {
-  await page.goto('/admin/link-reviews')
-  await page.getByRole('radio', { name: status }).click()
+/**
+ * Open the person's review from the section above Members, with the rejected ones listed too when
+ * `rejected`. Other workers' reviews share the org, so the section's count isn't asserted.
+ */
+const openReview = async (page: Page, email: string, { rejected = false } = {}) => {
+  await page.goto(rejected ? '/admin/members?rejected=1' : '/admin/members')
   await page.getByRole('button', { name: email, exact: true }).click()
 }
 
@@ -97,7 +99,7 @@ test.afterEach(async ({ adminApi }) => {
   }
 })
 
-test('a held SSO link waits in the queue, and approving it lets the person sign in linked', async ({
+test('a held SSO link waits above Members, and approving it lets the person sign in linked', async ({
   page,
   browser,
   viewport,
@@ -108,9 +110,8 @@ test('a held SSO link waits in the queue, and approving it lets the person sign 
 
   await page.goto('/admin/audit-log')
   await openSidebarOnMobile(page)
-  const navItem = page.locator('[data-sidebar="menu-item"]', { hasText: 'Link reviews' })
+  const navItem = page.locator('[data-sidebar="menu-item"]', { hasText: 'Members' })
   await expect(navItem.locator('[data-sidebar="menu-badge"]')).toHaveText(/^\d+\+?$/)
-  await navItem.locator('[data-sidebar="menu-button"]').click()
 
   await openReview(page, person.email)
   const incoming = page.getByRole('region', { name: 'Incoming identity' })
@@ -120,9 +121,8 @@ test('a held SSO link waits in the queue, and approving it lets the person sign 
   await expect(page.getByRole('region', { name: 'Existing account' }).getByText(person.email)).toBeVisible()
   await decide(page, 'Approve')
 
+  await expect(page.getByRole('heading', { name: person.email, exact: true })).toBeHidden()
   await expect(page.getByRole('button', { name: person.email, exact: true })).toBeHidden()
-  await page.getByRole('radio', { name: 'Approved' }).click()
-  await expect(page.getByRole('button', { name: person.email, exact: true })).toBeVisible()
 
   const linked = await visitorPage(browser, viewport)
   await signInThrough(linked, connection.name, { sub: person.heldSub, email: person.email })
@@ -132,7 +132,7 @@ test('a held SSO link waits in the queue, and approving it lets the person sign 
   expect(reviews.map((review) => review.incomingEmail)).toContain(person.email)
 })
 
-test('rejecting a held link keeps the person refused, and leaves it to approve later', async ({
+test('rejecting a held link keeps the person refused, and the rejected link can still be approved', async ({
   page,
   browser,
   viewport,
@@ -144,7 +144,7 @@ test('rejecting a held link keeps the person refused, and leaves it to approve l
   await decide(page, 'Reject')
 
   await expectRefused(browser, viewport, connection, person)
-  await openReview(page, person.email, 'Rejected')
+  await openReview(page, person.email, { rejected: true })
   await expect(page.getByRole('button', { name: 'Approve', exact: true })).toBeEnabled()
   await expect(page.getByRole('button', { name: 'Reject', exact: true })).toHaveCount(0)
 })

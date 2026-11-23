@@ -5,7 +5,6 @@
 import { Navigate, Route, Routes } from 'react-router'
 import { AuditLogPage } from './screens/audit-log/audit-log-page'
 import { GroupsPage } from './screens/groups/groups-page'
-import { LinkReviewsPage } from './screens/link-reviews/link-reviews-page'
 import { MembersPage } from './screens/members/members-page'
 import { SignInMethodsPage } from './screens/sign-in-methods/sign-in-methods-page'
 
@@ -16,7 +15,6 @@ const AdminRoutes = () => (
     <Route path="members" element={<MembersPage />} />
     <Route path="groups" element={<GroupsPage />} />
     <Route path="sign-in-methods" element={<SignInMethodsPage />} />
-    <Route path="link-reviews" element={<LinkReviewsPage />} />
     <Route path="audit-log" element={<AuditLogPage />} />
     <Route path="*" element={<Navigate to="/admin/members" replace />} />
   </Routes>

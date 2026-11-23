@@ -4,11 +4,12 @@
 
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getClock } from '@/testing-library'
-import type { Invitation, InvitationStatus } from '@shared/admin-api'
+import type { Invitation, InvitationStatus, LinkReview } from '@shared/admin-api'
 import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { createAdminTestHarness, flush, type FakeReply, type FakeRequest } from '../../test-utils'
+import { linkReview } from './link-review-fixtures'
 import { makeMember } from './member-fixtures'
 import { MembersPage } from './members-page'
 
@@ -21,6 +22,9 @@ const invitation = (email: string, status: InvitationStatus, idpOverride = false
   invitedBy: 'admin-1',
   createdAt: '2026-11-17T00:00:00.000Z',
 })
+
+/** The link reviews the backend holds; a test sets them before rendering. */
+let reviews: LinkReview[] = []
 
 const invitations = [
   invitation('pending@example.com', 'pending'),
@@ -37,12 +41,23 @@ const backend = ({ method, path, search, body }: FakeRequest): FakeReply => {
   if (method === 'GET' && path === 'admin/members') {
     return { body: { items: [makeMember()].filter((member) => member.email.includes(q)), nextCursor: null } }
   }
+  if (method === 'GET' && path === 'admin/link-reviews') {
+    return { body: { reviews: reviews.filter((review) => review.status === search.get('status')), nextCursor: null } }
+  }
   if (method === 'GET' && path === 'admin/invitations') {
     const items = invitations.filter((item) => item.status === search.get('status') && item.email.includes(q))
     return { body: { items, nextCursor: null } }
   }
   if (method === 'GET') {
     return { status: 404, body: {} }
+  }
+  const decided = path.match(/^admin\/link-reviews\/(.+)\/(approve|reject)$/)
+  if (decided) {
+    const [, id, decision] = decided
+    reviews = reviews.map((review) =>
+      review.id === id ? { ...review, status: decision === 'approve' ? 'approved' : 'rejected' } : review,
+    )
+    return { body: reviews.find((review) => review.id === id) }
   }
   if (path.endsWith('/revoke')) {
     return { status: 204 }
@@ -84,6 +99,7 @@ describe('MembersPage', () => {
   })
   afterEach(() => {
     cleanup()
+    reviews = []
   })
 
   it('lists pending invitations with their expiry and no status badge, and no accepted or revoked ones', async () => {
@@ -100,6 +116,7 @@ describe('MembersPage', () => {
     await renderPage(['/admin/members?revoked=1'])
 
     expect(within(row('revoked@example.com')).getByText('Revoked')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Invitations 1 1 revoked' })).toBeInTheDocument()
   })
 
   it('hides the revoked invitations again when the option is turned off', async () => {
@@ -199,5 +216,84 @@ describe('MembersPage', () => {
 
     expect(within(row('override@corp.example')).getByText('IdP override')).toBeInTheDocument()
     invitations.pop()
+  })
+
+  describe('identities waiting to be linked', () => {
+    const okta = linkReview({ id: 'r1', incomingEmail: 'ada@gmail.com' })
+    const keycloak = linkReview({
+      id: 'r2',
+      incomingEmail: 'bob@corp.example',
+      connection: { id: 'c2', name: 'Keycloak' },
+    })
+
+    it('shows every section open, with an empty state when nothing waits to be linked', async () => {
+      reviews = [{ ...okta, status: 'approved' }]
+      await renderPage()
+
+      const links = screen.getByRole('button', { name: 'Waiting to be linked' })
+      expect(links).toHaveAttribute('aria-expanded', 'true')
+      expect(screen.getByRole('button', { name: /^Invitations/ })).toHaveAttribute('aria-expanded', 'true')
+      expect(screen.getByRole('button', { name: 'Members' })).toHaveAttribute('aria-expanded', 'true')
+      expect(screen.getByText('Nothing waiting to be linked')).toBeInTheDocument()
+    })
+
+    it('shows an empty state for invitations and members that match nothing', async () => {
+      await renderPage()
+      fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+      fireEvent.change(screen.getByRole('searchbox', { name: 'Search members' }), { target: { value: 'nobody' } })
+      await flush()
+
+      expect(screen.getByText('No matching invitations')).toBeInTheDocument()
+      expect(screen.getByText('No matching members')).toBeInTheDocument()
+    })
+
+    it('shows the count, opens a review from its row, and folds the rows away from its title', async () => {
+      reviews = [okta, keycloak]
+      await renderPage()
+
+      fireEvent.click(screen.getByRole('button', { name: 'ada@gmail.com' }))
+      await flush()
+      expect(screen.getByRole('heading', { name: 'ada@gmail.com' })).toBeInTheDocument()
+
+      const header = screen.getByRole('button', { name: 'Waiting to be linked 2' })
+      fireEvent.click(header)
+      expect(header).toHaveAttribute('aria-expanded', 'false')
+      expect(screen.queryByRole('button', { name: 'bob@corp.example' })).toBeNull()
+    })
+
+    it("opens a review from its link, and it leaves the list once it's decided", async () => {
+      reviews = [okta]
+      await renderPage(['/admin/members?edit=link:r1'])
+
+      expect(screen.getByRole('heading', { name: 'ada@gmail.com' })).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+      fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Approve' }))
+      await flush()
+
+      expect(screen.queryByRole('heading', { name: 'ada@gmail.com' })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Waiting to be linked' })).toBeInTheDocument()
+    })
+
+    it('lists rejected reviews from the ⋯ menu, and approving one undoes the rejection', async () => {
+      reviews = [{ ...okta, status: 'rejected' }]
+      await renderPage()
+      expect(screen.getByRole('button', { name: 'Waiting to be linked' })).toBeInTheDocument()
+
+      await act(async () => {
+        fireEvent.pointerDown(screen.getByRole('button', { name: 'More' }), { button: 0 })
+      })
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Show rejected links' }))
+      await flush()
+      expect(screen.getByRole('button', { name: 'Waiting to be linked 1 rejected' })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'ada@gmail.com' }))
+      await flush()
+      fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+      fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Approve' }))
+      await flush()
+
+      expect(reviews[0].status).toBe('approved')
+      expect(screen.queryByText('1 rejected')).toBeNull()
+    })
   })
 })

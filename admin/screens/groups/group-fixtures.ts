@@ -48,6 +48,9 @@ export const groupBackend = (removeReply: FakeReply = { body: {} }, self?: Admin
     if (method === 'PATCH') {
       return { body: { ...ops, ...(body as object) } }
     }
+    if (path === 'admin/link-reviews') {
+      return { body: { reviews: [], nextCursor: null } }
+    }
     if (path === 'admin/role-mappings') {
       return { body: { items: [] } }
     }

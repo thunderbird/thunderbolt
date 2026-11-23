@@ -130,7 +130,7 @@ provider's job.
   and no SCIM provider may manage it. Otherwise the sign-in fails with "account not linked". An account
   that already signs in through another SSO provider links only on a domain this provider claims;
   otherwise the sign-in fails with `LINK_REVIEW_PENDING` and waits for an admin under
-  **Admin → Link reviews**. It also
+  **Admin → Members**. It also
   fails when an OIDC provider reports the email as not verified (`email_verified` false), so mark
   addresses verified at the provider. See
   [Authentication](../self-hosting/authentication.md#what-single-sign-on-looks-like-to-the-user).
@@ -190,10 +190,9 @@ from their first verified sign-in, and an admin can make others admins from ther
 
 | Screen             | What an admin does there                                                                          |
 | ------------------ | ------------------------------------------------------------------------------------------------- |
-| Members            | Find people, invite people by email (pending invitations show in the list until the person signs in, and revoked ones behind the ⋯ menu), rename them, block or unblock them, grant or revoke admin, detach a provider link, permanently delete a member who has lost access. An admin's detail says whether they can still sign in when the identity provider is down, with the email-code sign-in address to keep, and the list warns when no admin can |
+| Members            | Find people, invite people by email (pending invitations show in the list until the person signs in, and revoked ones behind the ⋯ menu), rename them, block or unblock them, grant or revoke admin, detach a provider link, permanently delete a member who has lost access. An admin's detail says whether they can still sign in when the identity provider is down, with the email-code sign-in address to keep, and the list warns when no admin can. Identities waiting to link to an existing account show in a collapsed section above the list, where an admin approves or rejects them; rejected ones are behind the ⋯ menu, and approving one undoes the rejection |
 | Groups             | Create local groups, add and remove members, make a group's members admins                        |
 | Sign-in methods    | One list of identity provider connections and domains. Add and edit SSO connections, add SCIM and issue or revoke its tokens, map provider groups to admin, see rejected SCIM requests, retire a connection; add a domain, verify it with a DNS record, claim it for a connection, turn on domain enrollment |
-| Link reviews       | Approve or reject an identity waiting to link to an existing account                              |
 | Audit log          | Read and filter the organization's audit events                                                   |
 
 Every screen calls the admin API under `/v1/admin`, which is also the way to script any of it. The

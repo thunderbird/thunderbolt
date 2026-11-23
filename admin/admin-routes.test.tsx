@@ -15,7 +15,6 @@ const screens = [
   ['/admin/members', 'Members'],
   ['/admin/groups', 'Groups'],
   ['/admin/sign-in-methods', 'Sign-in methods'],
-  ['/admin/link-reviews', 'Link reviews'],
   ['/admin/audit-log', 'Audit log'],
 ]
 
@@ -57,7 +56,7 @@ describe('AdminRoutes', () => {
 
   it.each(screens)('renders %s as "%s"', (path, title) => {
     renderAt(path)
-    expect(screen.getByRole('heading', { name: title })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: title, level: 1 })).toBeInTheDocument()
   })
 
   it('opens on members', () => {

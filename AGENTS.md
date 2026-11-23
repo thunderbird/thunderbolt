@@ -5,7 +5,7 @@ Each workspace below has its own dependencies and its own checks; there is no si
 | Directory            | What it is                                                                                                                                 |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `src/`               | The React app — chat, settings, PowerSync database layer, search, widgets.                                                                 |
-| `admin/`             | The org admin screens — members and invitations, groups, sign-in methods, link reviews, audit log. UNLICENSED (`admin/LICENSE`), lazy-loaded by the app. |
+| `admin/`             | The org admin screens — members, invitations and link reviews, groups, sign-in methods, audit log. UNLICENSED (`admin/LICENSE`), lazy-loaded by the app. |
 | `shared/`            | Code imported by more than one workspace. `shared/agent-core` (the in-browser adapter around the npm Pi package) has its own test command. |
 | `backend/`           | The Elysia API: auth, proxy, PowerSync tokens, transactional email, Drizzle schema and migrations.                                         |
 | `cli/`               | The single-binary terminal coding agent. Its own `package.json` and `bun.lock`, released by `cli-release.yml`.                             |

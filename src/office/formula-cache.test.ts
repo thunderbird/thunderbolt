@@ -110,11 +110,24 @@ describe('externalDataFormulas', () => {
     expect(escaped).toEqual({
       formula: 'WEBSERVICE("https://x/<x:y/>"&B1)',
       key: 'text:WEBSERVICE("https://x/<x:y/>"&B1)',
+      dde: false,
     })
     expect(markup).toEqual({
       formula: 'WEBSERVICE("https://x/<x:y/>"&amp;B1)',
       key: 'markup:WEBSERVICE("https://x/<x:y/>"&amp;B1)',
+      dde: false,
     })
+  })
+
+  it('tells a DDE request in a formula with markup from its decoded text, not as written', () => {
+    const [pipe] = externalDataFormulas(`<c r="A1"><f>cmd&#124;' /C calc'!A0<x:y/></f></c>`)
+    const [quoted] = externalDataFormulas('<c r="A1"><f>WEBSERVICE(&quot;a|b&quot;)<x:y/></f></c>')
+
+    expect(pipe.dde).toBe(true)
+    expect(quoted.dde).toBe(false)
+    // A tag's own attribute is no part of the formula, and a tag may split a function's name.
+    expect(externalDataFormulas('<c r="A1"><f>WEBSERVICE(&quot;a<x:y a="|"/>b&quot;)</f></c>')[0].dde).toBe(false)
+    expect(externalDataFormulas('<c r="A1"><f>D<x:y/>DE(A1,B1,C1)</f></c>')[0].dde).toBe(true)
   })
 
   it('leaves text, cached values and look-alike names alone', () => {

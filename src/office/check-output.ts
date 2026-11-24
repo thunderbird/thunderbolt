@@ -6,7 +6,7 @@ import { partChecksums, unzipWithinLimits, ZipLimitError } from '@/files/unzip-w
 import { promptFileName, safeFileName } from '@/lib/safe-file-name'
 import { type JSValueHandle, QuickJS } from 'quickjs-wasi'
 import type { SandboxLimits } from './constants'
-import { decodeXml, type ExternalDataFormula, externalDataFormulas, isDdeFormula } from './formula-cache'
+import { decodeXml, type ExternalDataFormula, externalDataFormulas } from './formula-cache'
 import type { SandboxInput, SandboxRuntime, SavedFile } from './sandbox'
 
 // A DOM in QuickJS takes several times the memory of its XML; a 1,000-page document.xml is about 3.5 MB.
@@ -254,12 +254,7 @@ const findUnpackProblem = (files: SavedFile[], inputs: readonly SandboxInput[], 
         kept ??= keptFormulas(inputs, limits)
         const added = formulas.find(({ key }) => !kept?.has(key))
         if (added !== undefined) {
-          return addedProblem(
-            filename,
-            isDdeFormula(added.formula) ? 'ddeFormula' : 'formula',
-            added.part,
-            added.formula,
-          )
+          return addedProblem(filename, added.dde ? 'ddeFormula' : 'formula', added.part, added.formula)
         }
       }
     } catch (error) {

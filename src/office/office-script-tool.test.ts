@@ -2038,6 +2038,10 @@ describe('findBrokenFile', () => {
       expect(await check('a.xlsx', edited(escaped), [book(markup)])).toStartWith(refusal)
       expect(await check('a.xlsx', edited(markup), [book(markup)])).toBeUndefined()
       expect(await check('a.xlsx', edited(escaped), [book(escaped)])).toBeUndefined()
+      // An encoded pipe beside markup is still told to the model as a DDE request.
+      expect(await check('a.xlsx', edited(`cmd&#124;' /C calc'!A0<x:y/>`))).toStartWith(
+        '"a.xlsx" was not saved: the script added a DDE formula',
+      )
     })
   })
 })

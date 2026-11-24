@@ -141,6 +141,9 @@ export const isDdeFormula = (formula: string) => {
 
 const formulaElement = element('(?:f|formula[12]?|definedName|calculatedColumnFormula|totalsRowFormula)', 'g')
 
+/** A tag inside a formula's body, its quoted attribute values included. */
+const markupTag = new RegExp(`<${attributeToken}*>`)
+
 /** The one `xm:f` an x14 data validation wraps its `formula1` or `formula2` in. */
 const wrappedFormula = new RegExp(`^\\s*${element('f').source}\\s*$`)
 
@@ -148,11 +151,12 @@ const wrappedFormula = new RegExp(`^\\s*${element('f').source}\\s*$`)
 const formulaAttributes = new RegExp(`<${prefix}(?:cfvo|cacheField|calculatedItem)${nameEnd}(${attributeToken}*)`, 'g')
 
 /**
- * A formula that fetches outside data: its text, and the key that compares it with another file's. A formula with
- * markup inside is shown and keyed as written, any other as decoded, under different keys, so `&lt;x:y/&gt;` in a URL
- * never matches a real `<x:y/>` element, which Excel may drop with or without its content.
+ * A formula that fetches outside data: its text, the key that compares it with another file's, and whether it is a
+ * DDE request, read from its decoded text. A formula with markup inside is shown and keyed as written, any other as
+ * decoded, under different keys, so `&lt;x:y/&gt;` in a URL never matches a real `<x:y/>` element, which Excel may
+ * drop with or without its content.
  */
-export type ExternalDataFormula = { formula: string; key: string }
+export type ExternalDataFormula = { formula: string; key: string; dde: boolean }
 
 /**
  * The formulas in a part's XML that fetch data from outside the file, such as `WEBSERVICE(...)` or a DDE request
@@ -177,15 +181,18 @@ export const externalDataFormulas = (xml: string): ExternalDataFormula[] => {
       .map(({ value }) => value.trim()),
   )
   const fetches = (formula: string) => isDdeFormula(formula) || externalDataCall.test(outsideQuotes(formula))
+  const asText = (formula: string) => ({ formula, key: `text:${formula}`, dde: isDdeFormula(formula) })
   return [
     ...bodies.flatMap((raw) => {
       if (raw.includes('<')) {
-        return [{ formula: raw, key: `markup:${raw}` }]
+        // Only for the label: the text between the tags, so a tag neither hides a DDE name nor adds a | of its own.
+        const text = decodeXml(raw.split(markupTag).join(''))
+        return [{ formula: raw, key: `markup:${raw}`, dde: isDdeFormula(text) }]
       }
-      const formula = decodeXml(raw).trim()
-      return fetches(formula) ? [{ formula, key: `text:${formula}` }] : []
+      const decoded = decodeXml(raw).trim()
+      return fetches(decoded) ? [asText(decoded)] : []
     }),
-    ...values.filter(fetches).map((formula) => ({ formula, key: `text:${formula}` })),
+    ...values.filter(fetches).map(asText),
   ]
 }
 

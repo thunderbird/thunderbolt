@@ -4,6 +4,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { setActiveLocale } from '@/i18n/active-locale'
+import { getClock } from '@/testing-library'
 import { appVersionUnsupported, resetAppVersionBlockedForTesting } from './app-version-unsupported'
 import { createAuthenticatedClient, createClient, HttpError } from './http'
 import { invalidateAuthRequests } from './auth-token'
@@ -92,6 +93,32 @@ describe('createClient', () => {
     expect(req.method).toBe('POST')
     expect(req.headers.get('Content-Type')).toBe('application/json')
     expect(await req.json()).toEqual({ name: 'test' })
+  })
+
+  it('makes HEAD requests', async () => {
+    const fetch = mockFetch()
+    const client = createClient({ fetch })
+    await client.head('https://example.com/app.js', { cache: 'no-store' })
+    const req = fetch.mock.calls[0][0] as Request
+    expect(req.method).toBe('HEAD')
+    expect(req.url).toBe('https://example.com/app.js')
+  })
+
+  it('rejects once the timeout passes without an answer', async () => {
+    const fetch = mock<FetchFn>(
+      (request) =>
+        new Promise((_, reject) => {
+          const { signal } = request as Request
+          signal.addEventListener('abort', () => reject(signal.reason))
+        }),
+    )
+    const client = createClient({ fetch })
+    const outcome = client.head('https://example.com/app.js', { timeout: 5000 }).then(
+      () => 'answered',
+      (error: DOMException) => error.name,
+    )
+    await getClock().tickAsync(5000)
+    expect(await outcome).toBe('TimeoutError')
   })
 
   it('appends search params', async () => {

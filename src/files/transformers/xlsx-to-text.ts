@@ -3,7 +3,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { StoredFile } from '@/lib/file-blob-storage'
+import { importWhenReachable } from '@/lib/import-when-reachable'
+import type { readerGrids } from '@/office/sheet-grid'
+import type { visitStartTags } from '@/office/xlsx-drawings'
+import type { UnzipFileInfo } from 'fflate'
 import type { CellValue } from 'read-excel-file/browser'
+
+// They share chunks with the workbook preview, which Safari never loads once a fetch of them failed, so they wait for
+// the app's server.
+const xlsxDrawingsModule = importWhenReachable(() => import('@/office/xlsx-drawings'))
+const sheetGridModule = importWhenReachable(() => import('@/office/sheet-grid'))
 
 /**
  * Renders a spreadsheet date as ISO 8601: `2026-09-01`, or `2026-09-01 14:30`
@@ -36,40 +45,175 @@ const cellText = (value: CellValue | null): string => {
   return String(value)
 }
 
-/** True when a row has no content, so blank spacer rows don't reach the model as `, , ,`. */
-const isEmptyRow = (row: (CellValue | null)[]): boolean => row.every((cell) => cell === null || cell === '')
+/** Puts a cell on one line and quotes it when it holds a comma or quote, doubling any embedded quotes, so `Stark, Inc.`
+ *  stays one cell. It flattens the same line breaks as `toTsv`, so a row is one labeled line that a preview cannot cut
+ *  in half, and a cell reads the same here as in the sheet's `.tsv`. */
+const csvField = (text: string): string => {
+  const line = text.replace(/[\r\n\v\f\u0085\u2028\u2029]+/g, ' ')
+  return /[",]/.test(line) ? `"${line.replaceAll('"', '""')}"` : line
+}
 
-/** Quotes a field that contains a separator, quote, or line break, doubling any
- *  embedded quotes, so `Stark, Inc.` stays one cell instead of reading as two. */
-const csvField = (text: string): string => (/[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text)
-
-/** One worksheet as text cells, blank spacer rows removed. */
+/** One worksheet as text cells. `rows[i]` is row `i + 1` of the sheet: a blank row stays as an empty array, so a `.tsv`
+ *  written from it keeps the sheet's row numbers as line numbers. */
 export type SpreadsheetSheet = {
   readonly name: string
   readonly rows: string[][]
+  /** Hidden from the sheet tabs, though still in the workbook. */
+  readonly hidden?: boolean
 }
 
-/** Reads every worksheet of an XLSX blob as text cells via a lazily-imported read-excel-file. */
+/**
+ * Whether each sheet `xl/workbook.xml` lists is hidden, in the order the sheet reader returns them: every `<sheet>`
+ * with a name, whatever its prefix, outside comments. Run only on XML the reader has parsed, so every tag closes.
+ */
+const hiddenSheets = (workbookXml: string, visit: typeof visitStartTags): boolean[] => {
+  const hidden: boolean[] = []
+  visit(workbookXml.replace(/<!--[\s\S]*?-->/g, ''), new Set(['sheet']), (_, attributes) => {
+    if (attributes.some(({ local }) => local === 'name')) {
+      hidden.push(/^(?:hidden|veryHidden)$/.test(attributes.findLast(({ local }) => local === 'state')?.value ?? ''))
+    }
+    return true
+  })
+  return hidden
+}
+
+type SheetGrid = ReturnType<typeof readerGrids>[number]
+
+const mib = 1024 * 1024
+// WebKit's peak memory while reading is about 16 times the unpacked size, so this keeps it near 0.5 GiB.
+const maxUnpackedMib = 32
+// The rewritten zip is a classic (non-ZIP64) zip, which stores its entry count in 16 bits.
+const maxEntries = 65_535
+
+/**
+ * Throws, with a message for the model, when unpacking and rewriting a workbook's zip could exhaust memory or change
+ * what the reader sees. A deflated entry inflates to at most the size it declares, but a stored one is copied at its
+ * compressed size, which can be larger, so each entry counts at the larger of the two.
+ */
+const checkEntries = (entries: readonly UnzipFileInfo[]): void => {
+  const unpacked = entries.reduce((total, { size, originalSize }) => total + Math.max(size, originalSize), 0)
+  if (unpacked > maxUnpackedMib * mib) {
+    throw new Error(
+      `This spreadsheet unpacks to ${Math.ceil(unpacked / mib)} MiB, over the ${maxUnpackedMib} MiB limit for reading it.`,
+    )
+  }
+  const names = entries.map(({ name }) => name)
+  // Unpacking stores each entry under its name in a plain object, where `__proto__` would replace the prototype.
+  if (names.includes('__proto__')) {
+    throw new Error('This spreadsheet has a part named __proto__, which cannot be read safely.')
+  }
+  // Repeated empty folder entries are harmless; repeated files leave it unclear which one the reader sees.
+  const files = names.filter((name) => !name.endsWith('/'))
+  if (new Set(files).size < files.length) {
+    throw new Error('This spreadsheet has two parts with the same name, so it is unclear which one to read.')
+  }
+}
+
+// The sheet reader's grid costs WebKit about 80 bytes a cell when every row holds a value, so this keeps it near
+// 0.5 GiB, as `maxUnpackedMib` keeps the cells themselves. Each row it builds, even one it drops, costs about a cell.
+const maxGridCells = 6_000_000
+
+/**
+ * Throws, with a message for the model, when the grids the sheet reader would build hold more than `maxGridCells`
+ * cells and rows together, naming the sheet that takes them past it.
+ */
+const checkGrids = (grids: readonly SheetGrid[], sheetName: (part: string) => string): void => {
+  const total = { cells: 0 }
+  for (const { part, rows, cols, cells } of grids) {
+    total.cells += cells + rows
+    if (total.cells > maxGridCells) {
+      throw new Error(
+        `Sheet "${sheetName(part)}" spans ${rows} rows by ${cols} columns, which takes this spreadsheet to ${total.cells} cells and rows, over the ${maxGridCells} limit for reading it.`,
+      )
+    }
+  }
+}
+
+// The reader keeps one copy of a shared string however many cells use it, but the text and each sheet's `.tsv` repeat
+// it in every cell, so a few KiB of strings can make GiB of text. The largest real workbooks tried hold about 6 million.
+const maxTextChars = 16 * mib
+
+/** Throws, with a message for the model, when the sheets' cells hold more than `maxTextChars` characters together. */
+const checkText = (sheets: readonly SpreadsheetSheet[]): void => {
+  const chars = sheets.reduce(
+    (total, { rows }) => rows.reduce((sum, row) => row.reduce((cells, cell) => cells + cell.length, sum), total),
+    0,
+  )
+  if (chars > maxTextChars) {
+    throw new Error(
+      `The cells of this spreadsheet hold ${chars} characters of text, over the ${maxTextChars}-character limit for reading it.`,
+    )
+  }
+}
+
+/**
+ * Reads every worksheet of an XLSX blob as text cells, once {@link checkEntries} accepts its zip and
+ * {@link checkGrids} the grids its sheets make, and returns them once {@link checkText} accepts the text they hold.
+ * The zip and sheet readers are imported lazily.
+ */
 export const readXlsxSheets = async (file: StoredFile): Promise<SpreadsheetSheet[]> => {
-  const { default: readXlsxFile } = await import('read-excel-file/browser')
-  const sheets = await readXlsxFile(file.blob)
-  return sheets.map(({ sheet, data }) => ({
+  const [
+    { default: readXlsxFile },
+    { strFromU8, unzipSync, zipSync },
+    { unzipWithinLimits },
+    { visitStartTags, workbookParts },
+    { readerGrids },
+  ] = await Promise.all([
+    import('read-excel-file/browser'),
+    import('fflate'),
+    import('@/files/unzip-within-limits'),
+    xlsxDrawingsModule(),
+    sheetGridModule(),
+  ])
+  const zip = new Uint8Array(await file.blob.arrayBuffer())
+  const entries: UnzipFileInfo[] = []
+  unzipSync(zip, {
+    filter: (entry) => {
+      // Checked here because a forged entry count keeps this listing going past the end of the real directory.
+      if (entries.length === maxEntries) {
+        throw new Error(`This spreadsheet has more than ${maxEntries} parts, over the limit for reading it.`)
+      }
+      entries.push(entry)
+      return false
+    },
+  })
+  checkEntries(entries)
+  // `unzipSync` inflates a part that understates its size in full before dropping what does not fit, which can freeze
+  // the tab for seconds on a GiB of data. This stops each part at its declared size.
+  const parts = unzipWithinLimits(zip, { bytes: maxUnpackedMib * mib, parts: maxEntries })
+  checkGrids(
+    readerGrids(parts),
+    (part) => workbookParts(Object.fromEntries(parts)).sheets.find((sheet) => sheet.part === part)?.name ?? part,
+  )
+  // The app's CSP blocks the `blob:` Workers the reader starts to inflate compressed sheets, so store every entry.
+  const sheets = await readXlsxFile(zipSync(Object.fromEntries(parts), { level: 0 }).buffer)
+  const hidden = hiddenSheets(strFromU8(parts.get('xl/workbook.xml') ?? new Uint8Array()), visitStartTags)
+  const read = sheets.map(({ sheet, data }, index) => ({
     name: sheet,
-    rows: data.filter((row) => !isEmptyRow(row)).map((row) => row.map(cellText)),
+    hidden: hidden[index] ?? false,
+    // The reader pads a blank row to the sheet's width with null, its value for every empty cell; an empty array keeps
+    // the row one byte in a `.tsv`.
+    rows: data.map((row) => (row.every((cell) => cell === null) ? [] : row.map(cellText))),
   }))
+  checkText(read)
+  return read
 }
 
 /**
  * Renders sheets as a plain-text table dump. Multiple sheets are concatenated
  * with a heading per sheet so the model can tell them apart; rows are joined as
  * CSV-ish text rather than a Markdown table, since spreadsheet column counts and
- * widths vary too widely for a fixed-width table to stay readable.
+ * widths vary too widely for a fixed-width table to stay readable. Blank rows are
+ * left out and every other row is labeled with its row number, so the model reads
+ * row numbers instead of counting lines.
  */
-const sheetsToText = (sheets: readonly SpreadsheetSheet[]): string =>
+export const sheetsToText = (sheets: readonly SpreadsheetSheet[]): string =>
   sheets
-    .map(({ name, rows }) => {
-      const text = rows.map((row) => row.map(csvField).join(', ')).join('\n')
-      return `## Sheet: ${name}\n${text}`
+    .map(({ name, rows, hidden }) => {
+      const lines = rows.flatMap((row, index) =>
+        row.length === 0 ? [] : [`Row ${index + 1}: ${row.map(csvField).join(', ')}`],
+      )
+      return `## Sheet: ${name}${hidden ? ' (hidden)' : ''}\n${lines.join('\n')}`
     })
     .join('\n\n')
     .trim()

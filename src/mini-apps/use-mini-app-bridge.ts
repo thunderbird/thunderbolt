@@ -44,7 +44,8 @@ import { useResolvedTheme } from '@/lib/theme-provider'
 import { getPlatform, isIosPlatform, isTauri } from '@/lib/platform'
 import { createPendingRequests, elementAtTimeoutMs } from '@/components/embedded'
 import { useHttpClient } from '@/contexts'
-import { downloadFile } from '@/lib/download'
+import { i18n } from '@/i18n'
+import { downloadFile, saveErrorMessage } from '@/lib/download'
 import { fetchMiniAppToken } from './mini-app-auth'
 import { prepareMiniAppDownload } from './mini-app-download'
 import { useMiniAppStore } from './mini-app-store'
@@ -682,9 +683,9 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
           }
           post({ jsonrpc: '2.0', protocol: miniAppProtocolMarker, id: message.id, result: {} })
         } catch (error) {
-          // The platform's own message: a missing grant and a full disk call for
-          // different fixes, and only the original text tells them apart.
-          reject(error instanceof Error ? error.message : String(error))
+          console.error('[mini-apps] Could not save the file', error)
+          // The app may show this to the user, and the platform's own text names local paths.
+          reject(i18n._(saveErrorMessage(error instanceof Error ? error : String(error))))
         }
         return
       }

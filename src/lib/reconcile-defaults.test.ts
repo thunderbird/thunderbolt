@@ -24,11 +24,13 @@ import {
 } from '@shared/defaults/models'
 import { defaultSettings, defaultSettingsVersion, hashSetting } from '../defaults/settings'
 import {
+  defaultSkillOfficeXlsx,
   defaultSkillWeather,
   defaultSkills,
   defaultSkillsVersion,
   hashSkill,
-  isWidgetSkillId,
+  isContractSkillId,
+  isOfficeSkillId,
 } from '../defaults/skills'
 import { defaultTasks, defaultTasksVersion, hashTask } from '../defaults/tasks'
 import { hashValues } from './utils'
@@ -1353,9 +1355,9 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     await reconcileDefaults(db)
 
     // Every editable skill row is user-edited (hash mismatch) and the marker
-    // is rewound. Locked widget contracts remain at target. Reconcile skips
+    // is rewound. Locked contracts remain at target. Reconcile skips
     // each editable row, so `mutated=false` and the marker stays rewound.
-    for (const skill of defaultSkills.filter((defaultSkill) => !isWidgetSkillId(defaultSkill.id))) {
+    for (const skill of defaultSkills.filter((defaultSkill) => !isContractSkillId(defaultSkill.id))) {
       await db
         .update(skillsTable)
         .set({ label: `user-edited ${skill.id}` })
@@ -1781,6 +1783,41 @@ describe('widget skill reconciliation', () => {
     expect(updated?.enabled).toBe(0)
     expect(updated?.pinnedOrder).toBe(4)
     expect(updated?.defaultHash).toBe(hashSkill({ ...defaultSkillWeather, enabled: 0, pinnedOrder: 4 }))
+  })
+})
+
+describe('Office skill reconciliation', () => {
+  test('a fresh account gets the three Office skills enabled and unpinned', async () => {
+    const db = getDb()
+    await reconcileDefaults(db)
+
+    const office = (await db.select().from(skillsTable)).filter(({ id }) => isOfficeSkillId(id))
+    expect(office.map(({ name, enabled, pinnedOrder }) => ({ name, enabled, pinnedOrder }))).toEqual([
+      { name: 'office-docx', enabled: 1, pinnedOrder: null },
+      { name: 'office-xlsx', enabled: 1, pinnedOrder: null },
+      { name: 'office-pptx', enabled: 1, pinnedOrder: null },
+    ])
+  })
+
+  test('newer defaults correct a disabled Office skill and keep it disabled', async () => {
+    const db = getDb()
+    await reconcileDefaults(db)
+    const shipped = { ...defaultSkillOfficeXlsx, instruction: 'Shipped Excel instructions with a mistake' }
+    await db
+      .update(skillsTable)
+      .set({ instruction: shipped.instruction, enabled: 0, defaultHash: hashSkill(shipped) })
+      .where(eq(skillsTable.id, shipped.id))
+    await db
+      .update(settingsTable)
+      .set({ value: String(defaultSkillsVersion - 1) })
+      .where(eq(settingsTable.key, versionMarkerKeys.skills))
+
+    await reconcileDefaults(db)
+
+    const updated = await db.select().from(skillsTable).where(eq(skillsTable.id, shipped.id)).get()
+    expect(updated?.instruction).toBe(defaultSkillOfficeXlsx.instruction)
+    expect(updated?.enabled).toBe(0)
+    expect(updated?.pinnedOrder).toBeNull()
   })
 })
 

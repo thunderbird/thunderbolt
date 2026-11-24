@@ -3,8 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { StoredFile } from '@/lib/file-blob-storage'
-import { describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import * as pdfjs from 'pdfjs-dist'
+import { stubAppServer } from '@/test-utils/app-server'
 import { pdfToText } from './pdf-to-text'
 
 const file: StoredFile = {
@@ -17,6 +18,12 @@ const file: StoredFile = {
 }
 
 describe('pdfToText resource lifecycle', () => {
+  // The app's server answers the check made before pdfjs is imported.
+  beforeAll(() => {
+    stubAppServer()
+  })
+  afterAll(() => mock.restore())
+
   it('preserves page text and releases the loading task after success', async () => {
     const destroy = mock(async () => {})
     const getPage = mock(async (pageNumber: number) => ({

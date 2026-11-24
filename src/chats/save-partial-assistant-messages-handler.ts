@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { withoutPendingPiHeaders } from '@/lib/message-utils'
 import { useThrottledCallback } from '@/hooks/use-throttle'
 import type { SaveStreamingMessageFunction, ThunderboltUIMessage } from '@/types'
 import { type PropsWithChildren, useEffect } from 'react'
@@ -53,7 +54,6 @@ export const SavePartialAssistantMessagesHandler = ({
     // `getLastMessage` query and can never self-reference the row being written.
     const latestMessage = messages[messages.length - 1]
     const parentId = messages[messages.length - 2]?.id ?? null
-    const isAssistantLatest = latestMessage?.role === 'assistant'
 
     if (!isStreaming) {
       // onFinish owns the authoritative final save, including errors and aborts.
@@ -62,12 +62,12 @@ export const SavePartialAssistantMessagesHandler = ({
       return
     }
 
-    // A turn that has opened but produced no part yet has nothing to recover, and
-    // persisting the empty shell outlives the in-memory drop an aborted turn does
-    // (chat-instance.ts) — on reload it resurfaces as a failed turn the user had
-    // deliberately stopped.
-    if (isAssistantLatest && latestMessage.parts.some((part) => part.type !== 'step-start')) {
-      throttledSave(latestMessage, parentId)
+    if (latestMessage?.role !== 'assistant') {
+      return
+    }
+    const snapshot = withoutPendingPiHeaders(latestMessage)
+    if (snapshot.parts.some((part) => part.type !== 'step-start')) {
+      throttledSave(snapshot, parentId)
     }
   }, [messages, isStreaming, throttledSave])
 

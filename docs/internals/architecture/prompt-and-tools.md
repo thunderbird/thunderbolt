@@ -109,6 +109,7 @@ own context.
 | Tool(s)                               | Available when                                                          | Source                                                                            |
 | ------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | `render_html`                         | Always (a core capability, not an integration)                          | [`src/artifacts/render-html-tool.ts`](../../../src/artifacts/render-html-tool.ts) |
+| `run_office_script`                   | Always, like `render_html`                                              | [`src/office/office-script-tool.ts`](../../../src/office/office-script-tool.ts)   |
 | `addTasks`, `getTasks`, `deleteTasks` | `experimental_feature_tasks` (default `false`)                          | `src/extensions/tasks/tools.ts`                                                   |
 | `search`, `fetch_content`             | `hasProAccess()` **and** `integrations_pro_is_enabled` (default `true`) | `src/integrations/thunderbolt-pro/tools.ts`                                       |
 | `google_*` (5 tools)                  | `integrationStatus.googleEnabled` (connected _and_ not switched off)    | `src/integrations/google/tools.ts:546`                                            |
@@ -120,6 +121,101 @@ own context.
 - A `ToolConfig` (`src/types.ts:226`) carries `name`, `description`, `parameters` (Zod), a UI `verb`
   and an optional `cacheable` flag. `verb` is the loading phrase, `{param}` filled from the call's
   input (`src/lib/tool-metadata.ts:45`): `'searching for {query}'` → `Searching for "…"…`.
+- `run_office_script` builds `.docx`, `.xlsx` and `.pptx` files. The model writes a JavaScript script, and the app
+  runs it in a QuickJS VM inside a Web Worker (`src/office/office-script.worker.ts`), with no network, no
+  DOM and no app state. The `docx` and `pptxgenjs` browser builds are loaded into the VM first. The Worker,
+  the WASM files and the libraries are files the app serves, fetched on the first run, so the entry chunk
+  and the CSP stay as they are. A run stops at 30 s, 64 MiB of memory or 4 MiB of console output
+  (`src/office/constants.ts`), and the host terminates a Worker that stops answering. Each file the script
+  saves becomes a new entry in the attachment store, and the tool result lists them. The transcript builds
+  one chip per listed file (`src/components/chat/created-file-card.tsx`), and a device without the bytes
+  says so. The chips appear when the turn ends, including any auto-retry (`holdFiles` in
+  `src/components/chat/chat-messages.tsx`), so the user never sees a file the model may still replace. Only
+  the tab running the turn holds them: another tab or device that opens the thread mid-turn loads the
+  partial reply and shows its chips. A run may save nothing, to try an API or inspect a file: it succeeds and
+  returns only its logs and a note that the user sees nothing. On the device that has the bytes, clicking the
+  chip opens the file in the side view, like the card of an attached file. The harness environment block
+  names this tool as the way to deliver a file.
+- A failed run can return a one-use `scriptId` for this send. An `edit` retries that source with ordered,
+  literal replacements that must each match once. An invalid edit leaves the ID usable. The retry resolves
+  the original input references again unless the caller supplies a new list (including an empty list).
+- The description is sent with every request, so it holds only the contract every call needs: the globals
+  and how to get bytes, `inputs`, same-name edits of the original bytes (never a rebuild from extracted
+  text), one save per file, the output checks, the password and
+  macro caveats and the limits. How to call each library lives in the Office format skills
+  ([skills.md](skills.md#the-office-format-skills)). When the send offers any, the description's second
+  sentence tells the model to load the skill for each format it will use, and names only those offered;
+  the sentence is the same on every send with the same skills, so the prompt cache holds.
+- The first script failure of a send gets one sentence added to its error. When the send offers the skill
+  for the failing format, it says to load that skill; the format is read from the error, or from the script
+  when the error names none. Otherwise, when the failing call is one of the Excelize methods models most
+  often get wrong (`SetConditionalFormat`, `AddChart`, `SetCellValue`, `SetCellFormula`, `NewStyle`,
+  `NewConditionalStyle`, `SetColWidth`), it shows the call that works. Later failures in the send get
+  nothing added, and neither does an error about a missing input, which already lists the files there are,
+  or one that tells the model to stop, such as a workbook too large to open.
+- A script can also read files, which is how it edits one. The call lists them in `inputs`, and the script
+  reads each with `readFile(name)`. The host loads them before the run (`src/office/script-inputs.ts`). It
+  looks first in the thread's stored files: the user's attachments and the files this tool made earlier in
+  the thread (`src/office/thread-files.ts`). On the harness only, it then looks in the agent's workspace.
+  A name gets the newest stored file under it, and an id gets that exact file. The tool stores what it
+  saves under a cleaned name, and its result keeps the name the script gave (`savedAs`), so a file it
+  made also answers to that name: `REPORT.DOCX` finds the `REPORT.docx` saved under it, but never an
+  upload named `REPORT.docx`. A script cannot reach
+  another chat's files. A saved file is marked as edited, and its chip says so, when its cleaned name
+  matches the cleaned name of a file the script read. A file saved under another name is new. When the
+  script read a file of the same type, the tool result adds a note. It tells the model the output is a new
+  file, and to list the exact name in `inputs` if the user wanted that file edited. So reading
+  `report.docx` and saving `report_v2.docx` gives a new file and a note. The original entry is never
+  changed, so each chip opens the file as it was when the chip was made.
+- The VM also has `fflate` and `@xmldom/xmldom`, for edits `docx` and `pptxgenjs` cannot make. xmldom ships
+  only CommonJS files, so `?sandbox-script` (`scripts/office-sandbox-script.ts`) bundles
+  `src/office/ooxml-globals.ts` into one script at build time. Before a run returns, a second QuickJS VM
+  checks the output (`src/office/check-output.ts`). It starts after the script's VM is gone, opens every
+  saved file, and parses each XML part on its own with errors and warnings set to throw. It reads a part
+  as UTF-8, or as UTF-16 when the part starts with a byte-order mark, and refuses a part whose XML
+  declaration names another encoding. The bytes come from the model, so the check has its own memory
+  limit (four times the script's), stops at the script's deadline, and never parses on the Worker's heap.
+  By default the parser lets an undefined entity or an unquoted attribute through; Word and PowerPoint
+  refuse both. If any file fails, the run saves nothing. The error names the part, says the XML is too
+  large to check, or says the check ran out of time.
+- PowerPoint scripts can call `animatePptx(bytes, { effects, transitions })` with bytes from PptxGenJS or an
+  attached deck. Both arrays are optional. Slides are 1-based in presentation order. Effects address a
+  top-level shape, picture, group or native table by unique object name and require a unique drawing ID.
+  A target with local geometry must overlap the canvas using its unrotated rectangle. An effect starts
+  on click, with the previous group, or after its longest finite member finishes, including delays and repeats.
+  If all members repeat indefinitely, the next group starts after the latest first-cycle end. Loops continue playing.
+  Fly In and Wipe In accept a from-edge direction. The other presets are Appear, Fade In, Blink, Pulse,
+  Grow/Shrink, Spin, Disappear and Fade Out. The six transitions are fade, wipe, push, zoom, cover and dissolve.
+  The helper refuses existing timing when adding effects and existing transitions when adding a transition.
+  Other package parts retain their original bytes. Scripts can edit existing timing or create custom paths
+  with the raw ZIP and XML globals.
+- Workbooks go through Excelize (`excelize-wasm`). It is WebAssembly, which QuickJS cannot run, so it runs in
+  the same Worker outside the VM. The script reaches it through a global `excelize`, and every call goes to one
+  host function (`src/office/workbook-bridge.ts`). Arguments cross as JSON with the bytes beside them, so the VM
+  pays for building them, and the host checks them as they arrive. The script can call a workbook's own methods
+  and Excelize's pure helpers, nothing else. A failed call throws, where Excelize would return an `error` field
+  the model might ignore. Two calls that Excelize accepts but that leave a sheet doing less than asked throw too:
+  `SetCellValue` with a string that starts with "=" (saved as text, not a formula; `SetCellStr` writes such
+  text), and `SetConditionalFormat` with rules that are not an array (it adds nothing). Excelize and IronCalc are about 6.7 MB, so the Worker loads them only for a script that
+  names `excelize` (`src/office/spreadsheet-engines.ts`). A chat that never builds a workbook never downloads them.
+- A workbook opens only up to 2 MiB, and up to 64 MiB unzipped. Excelize holds about 1.2 KB per cell outside the
+  VM's 64 MiB, so a run stops once Excelize's memory passes 512 MiB. WebAssembly memory never shrinks, and the
+  Worker is closed after every run anyway. A new workbook names "Microsoft Excel" as its application, because
+  LibreOffice draws some charts differently for an application it does not know. An opened one keeps its own.
+  A workbook with a VBA project gets the macro content type, and the output check holds the name to it: `.xlsm`
+  with macros, `.xlsx` without, or Excel refuses the file.
+- Excelize saves a formula with no result and marks it as text, so a viewer that does not calculate shows an
+  empty cell. When the script saves a workbook, `src/office/formula-cache.ts` loads its values, formulas, hidden
+  rows and defined names into IronCalc (`@ironcalc/wasm`), computes every formula, and writes each result into
+  the sheet XML as the cell's cached value, typed as a number, text or boolean. IronCalc cannot return a raw
+  number, so results are formatted to 15 significant digits and parsed back. Excelize expands shared formulas.
+  Some cells keep what Excelize saved: a formula IronCalc cannot compute (`AGGREGATE`, for example), an error
+  result, an array or data-table formula, and every formula of a workbook that counts dates from 1904. The tool
+  result lists each in `formulaErrors` with its file, sheet and cell. `WriteToBuffer` returns the same list, so a
+  script can check it before saving anything, or log it from a run that saves nothing.
+- Parsing every XML part of a large workbook would take most of the script's time, so the output check skips the
+  parts Excelize wrote when the script saves the bytes `WriteToBuffer` returned unchanged. Parts Excelize copied
+  from the opened file without parsing them, such as charts, are still parsed.
 - `hasProAccess` resolves a hardcoded `isProUser = true`
   (`src/integrations/thunderbolt-pro/utils.ts:8`), so the settings flag is the only real gate on the
   web tools.
@@ -253,6 +349,7 @@ not in a type error.
 | Project section                            | `src/projects/project-prompt.ts`, `src/projects/project-search-tool.ts`                                                 |
 | Tool availability, dedupe, budget wrapper  | `src/lib/tools.ts`                                                                                                      |
 | Tool display metadata                      | `src/lib/tool-metadata.ts`                                                                                              |
+| Office file tool, sandbox and Worker       | `src/office/`                                                                                                           |
 | Per-send config, MCP merge, volatile notes | `src/ai/fetch.ts`                                                                                                       |
 | Pi harness composition and tool install    | `src/acp/built-in-adapter.ts`, `src/acp/built-in-conversation.ts`                                                       |
 | Web budget                                 | `src/ai/web-tool-budget.ts`, `src/ai/turn-web-budget.ts`                                                                |

@@ -64,14 +64,14 @@ export type OpenAiCompatFetch = (input: string | URL, init?: RequestInit) => Pro
 /** Default protocol for OpenAI-compatible providers. */
 const apiName = 'openai-completions'
 
-/** Context window used when the app model carries none. Only consumed by Pi's
- *  token-budget math (irrelevant to openai-completions, which never caps tokens
- *  unless the caller passes `maxTokens`), so a generous default is harmless. */
+/** Context window used when the app model carries none. Pi clamps the output
+ *  budget ({@link defaultMaxTokens}) to what is left of it after the prompt. */
 const defaultContextWindow = 128_000
-/** Advisory max-output budget on the synthetic model. openai-completions only
- *  sends `max_completion_tokens` when the caller sets `options.maxTokens` (the
- *  harness does not), so this value never reaches the wire — it exists solely to
- *  satisfy the `Model` shape. */
+/** Output budget when the caller passes none. Pi sends it on every request
+ *  (`max_completion_tokens` on completions, `max_output_tokens` on Responses),
+ *  clamped to the room left in the context window, and reasoning counts against
+ *  it. Kept modest because user endpoints reject a budget above the model's own
+ *  output cap (gpt-4o caps at 16,384). */
 const defaultMaxTokens = 8_192
 
 /** Inputs for {@link buildOpenAiCompatModel}. */
@@ -95,6 +95,8 @@ export type BuildOpenAiCompatModelOptions = {
   readonly reasoning: boolean
   /** Optional upstream context window for the synthetic model descriptor. */
   readonly contextWindow?: number
+  /** Output budget sent on every request; defaults to {@link defaultMaxTokens}. */
+  readonly maxTokens?: number
   /** Whether the upstream model accepts image input. When false, the synthetic
    *  descriptor advertises text-only and Pi strips image blocks before the wire
    *  (`downgradeUnsupportedImages`), so a vision model would never see the bytes. */
@@ -153,7 +155,7 @@ const synthesizeModel = (opts: BuildOpenAiCompatModelOptions): Model<Api> => ({
   input: opts.supportsImages ? ['text', 'image'] : ['text'],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   contextWindow: opts.contextWindow ?? defaultContextWindow,
-  maxTokens: defaultMaxTokens,
+  maxTokens: opts.maxTokens ?? defaultMaxTokens,
   compat: opts.compat,
   thinkingLevelMap: opts.thinkingLevelMap,
 })

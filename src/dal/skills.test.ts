@@ -4,7 +4,7 @@
 
 import { getDb } from '@/db/database'
 import { skillsTable } from '@/db/tables'
-import { defaultSkillDailyBrief, defaultSkillWeather } from '@/defaults/skills'
+import { defaultSkillDailyBrief, defaultSkillOfficeXlsx, defaultSkillWeather } from '@/defaults/skills'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import {
@@ -222,12 +222,27 @@ describe('skills DAL', () => {
       ]
 
       for (const patch of disallowedPatches) {
-        await expect(updateSkill(getDb(), widget.id, patch)).rejects.toThrow(/widget skill/i)
+        await expect(updateSkill(getDb(), widget.id, patch)).rejects.toThrow(/built-in skill/i)
       }
 
       const after = await getSkill(getDb(), widget.id)
       expect(after?.enabled).toBe(1)
       expect(after?.description).toBe(defaultSkillWeather.description)
+    })
+  })
+
+  describe('Office skills', () => {
+    it('can be disabled but not edited, deleted or pinned', async () => {
+      await getDb().insert(skillsTable).values(defaultSkillOfficeXlsx)
+      const { id } = defaultSkillOfficeXlsx
+
+      await expect(updateSkill(getDb(), id, { instruction: 'Changed instruction' })).rejects.toThrow(/built-in skill/i)
+      await expect(updateSkill(getDb(), id, { name: 'my-excel' })).rejects.toThrow(/built-in skill/i)
+      await expect(softDeleteSkill(getDb(), id)).rejects.toThrow(/built-in skill/i)
+      await expect(setPinned(getDb(), id, 0)).rejects.toThrow(/built-in skill/i)
+      await updateSkill(getDb(), id, { enabled: 0 })
+
+      expect(await getSkill(getDb(), id)).toEqual({ ...defaultSkillOfficeXlsx, enabled: 0 })
     })
   })
 
@@ -266,7 +281,7 @@ describe('skills DAL', () => {
     it('rejects deleting widget skills', async () => {
       const widget = await seedWidgetSkill()
 
-      await expect(softDeleteSkill(getDb(), widget.id)).rejects.toThrow(/widget skill/i)
+      await expect(softDeleteSkill(getDb(), widget.id)).rejects.toThrow(/built-in skill/i)
       expect(await getSkill(getDb(), widget.id)).toEqual(widget)
     })
   })
@@ -275,7 +290,7 @@ describe('skills DAL', () => {
     it('rejects pinning widget skills but allows unpinning them', async () => {
       const widget = await seedWidgetSkill()
 
-      await expect(setPinned(getDb(), widget.id, 0)).rejects.toThrow(/widget skill/i)
+      await expect(setPinned(getDb(), widget.id, 0)).rejects.toThrow(/built-in skill/i)
       await setPinned(getDb(), widget.id, null)
 
       expect((await getSkill(getDb(), widget.id))?.pinnedOrder).toBeNull()
@@ -387,7 +402,7 @@ describe('skills DAL', () => {
         .insert(skillsTable)
         .values({ ...defaultSkillWeather, pinnedOrder: null })
 
-      await expect(reorderPins(getDb(), [a.id, defaultSkillWeather.id])).rejects.toThrow(/widget skill/i)
+      await expect(reorderPins(getDb(), [a.id, defaultSkillWeather.id])).rejects.toThrow(/built-in skill/i)
 
       expect((await getSkill(getDb(), defaultSkillWeather.id))?.pinnedOrder).toBeNull()
     })

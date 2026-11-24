@@ -3,6 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { hashValues } from '@/lib/utils'
+import { officeSkillNames } from '@/office/constants'
+import { loadOfficeSkillBody, officeSkillLengths, type OfficeSkillFormat } from '@/office/skills'
 import type { Skill, SkillRow } from '@/types'
 import { instructions as askWidgetInstruction } from '@/widgets/ask/instructions'
 import { instructions as connectIntegrationWidgetInstruction } from '@/widgets/connect-integration/instructions'
@@ -11,7 +13,7 @@ import { instructions as mapWidgetInstruction } from '@/widgets/map/instructions
 import { instructions as weatherForecastWidgetInstruction } from '@/widgets/weather-forecast/instructions'
 
 /**
- * Hash of reconciled skill fields. Widget contracts hash only their locked
+ * Hash of reconciled skill fields. Contract skills hash only their locked
  * content so enabled or legacy pinned state cannot block contract updates.
  * Editable task defaults also include state and `deletedAt`, so those user
  * changes remain protected from reconciliation.
@@ -27,7 +29,7 @@ export const hashSkill = (
 ): string => {
   const contentFields = [skill.name, skill.label, skill.description, skill.instruction]
   return hashValues(
-    isWidgetSkillId(skill.id) ? contentFields : [...contentFields, skill.enabled, skill.pinnedOrder, skill.deletedAt],
+    isContractSkillId(skill.id) ? contentFields : [...contentFields, skill.enabled, skill.pinnedOrder, skill.deletedAt],
   )
 }
 
@@ -118,9 +120,9 @@ Do not add a Sources or References section; inline citations are sufficient.`
  *
  * New users get Search, Research, and Weather pinned (in that order) as their
  * starter chips; Daily Brief ships enabled but unpinned, and Important Emails
- * ships disabled. Additional model-facing widget contracts ship enabled and
- * unpinned. Task skills may be edited or soft-deleted; widget contracts only
- * expose enabled state.
+ * ships disabled. Additional model-facing widget contracts and the Office
+ * format skills ship enabled and unpinned. Task skills may be edited or
+ * soft-deleted; contract skills only expose enabled state.
  */
 export const defaultSkillDailyBrief: Skill = {
   id: '01996330-0000-7000-8000-000000000001',
@@ -246,6 +248,57 @@ export const defaultSkillMap: Skill = {
   userId: null,
 }
 
+/**
+ * The whole `instruction` of an Office row. Builds older than the Office tool get these rows through sync but have no
+ * `run_office_script`, so the row says only what is true there, also for an external agent that can write the file
+ * with its own tools. A build with the tool serves its own manual through {@link officeSkillManual}, so the text always
+ * matches the sandbox it runs in.
+ */
+const officeSkillStub =
+  'If run_office_script is not one of your tools, this version of the app cannot run it. Create the file with your own tools if you have them; otherwise tell the user to update the app to create or edit Word, Excel or PowerPoint files.'
+
+export const defaultSkillOfficeDocx: Skill = {
+  id: '01996330-0000-7000-8000-000000000010',
+  name: officeSkillNames.docx,
+  label: 'Word documents',
+  description:
+    'Load before using run_office_script to create or edit a Word document (.docx), including an attached template.',
+  instruction: officeSkillStub,
+  enabled: 1,
+  pinnedOrder: null,
+  deletedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
+export const defaultSkillOfficeXlsx: Skill = {
+  id: '01996330-0000-7000-8000-000000000011',
+  name: officeSkillNames.xlsx,
+  label: 'Excel workbooks',
+  description:
+    'Load before using run_office_script to create or edit an Excel workbook (.xlsx or .xlsm), including formulas, charts and conditional formatting.',
+  instruction: officeSkillStub,
+  enabled: 1,
+  pinnedOrder: null,
+  deletedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
+export const defaultSkillOfficePptx: Skill = {
+  id: '01996330-0000-7000-8000-000000000012',
+  name: officeSkillNames.pptx,
+  label: 'PowerPoint presentations',
+  description:
+    'Load before using run_office_script to create or edit a PowerPoint deck (.pptx), including slide layouts, animations and transitions.',
+  instruction: officeSkillStub,
+  enabled: 1,
+  pinnedOrder: null,
+  deletedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
 const widgetSkillIds = new Set([
   defaultSkillWeather.id,
   defaultSkillLinkPreview.id,
@@ -254,8 +307,67 @@ const widgetSkillIds = new Set([
   defaultSkillMap.id,
 ])
 
+/** The Office format whose manual this build serves for each Office row, by stable id. Changing a manual needs no
+ *  `defaultSkillsVersion` bump. */
+const officeSkillFormats = new Map<string, OfficeSkillFormat>([
+  [defaultSkillOfficeDocx.id, 'docx'],
+  [defaultSkillOfficeXlsx.id, 'xlsx'],
+  [defaultSkillOfficePptx.id, 'pptx'],
+])
+
 /** Whether a skill id belongs to a model-facing widget rendering contract. */
 export const isWidgetSkillId = (id: string): boolean => widgetSkillIds.has(id)
+
+/** Whether a skill id is an Office format skill, which only a request with `run_office_script` may offer. */
+export const isOfficeSkillId = (id: string): boolean => officeSkillFormats.has(id)
+
+/**
+ * An Office row's manual from this build, which the row only stubs, or undefined for any other row. It loads from its
+ * own chunk on first use, so it stays out of the entry bundle and out of every request that does not use it. The
+ * promise is the same on every call, which React's `use()` can read.
+ */
+export const officeSkillManual = (id: string): Promise<string> | undefined => {
+  const format = officeSkillFormats.get(id)
+  return format ? loadOfficeSkillBody(format) : undefined
+}
+
+/**
+ * The instructions a skill gives the model and the user on this build: an Office row's manual, and any other row's
+ * own `instruction`.
+ */
+export const skillInstruction = async (skill: Pick<Skill, 'id' | 'instruction'>): Promise<string> =>
+  officeSkillManual(skill.id) ?? skill.instruction
+
+/** The length of {@link skillInstruction}'s text, known without loading an Office manual. */
+export const skillInstructionLength = (skill: Pick<Skill, 'id' | 'instruction'>): number => {
+  const format = officeSkillFormats.get(skill.id)
+  return format ? officeSkillLengths[format] : skill.instruction.length
+}
+
+/**
+ * The skill rows one surface may offer, whole and disabled ones included. The Office skills teach the built-in
+ * agent's `run_office_script`, so they stay out unless the caller opts in for a request that has that tool and the
+ * `skill` tool; a user row sharing an Office name keeps it then. Opted in, an Office row, even a disabled one, owns
+ * its name and drops every other row that has it. Names are not unique in the table: a row created on a build
+ * without the Office skills, or a reconcile insert, skips the DAL's name check, and name lookups take the first or
+ * last match.
+ */
+export const selectOfferedSkillRows = <T extends Pick<Skill, 'id' | 'name'>>(
+  skills: readonly T[],
+  offersOfficeSkills = false,
+): T[] => {
+  if (!offersOfficeSkills) {
+    return skills.filter(({ id }) => !isOfficeSkillId(id))
+  }
+  const officeNames = new Set(skills.filter(({ id }) => isOfficeSkillId(id)).map(({ name }) => name))
+  return skills.filter(({ id, name }) => isOfficeSkillId(id) || !officeNames.has(name))
+}
+
+/**
+ * Whether a skill id is a shipped, read-only contract: a widget rendering contract or an Office format skill. Its
+ * content is locked and reconciled; the user may only toggle it.
+ */
+export const isContractSkillId = (id: string): boolean => isWidgetSkillId(id) || isOfficeSkillId(id)
 
 export const defaultSkills: ReadonlyArray<Skill> = [
   defaultSkillDailyBrief,
@@ -267,6 +379,9 @@ export const defaultSkills: ReadonlyArray<Skill> = [
   defaultSkillConnectIntegration,
   defaultSkillAsk,
   defaultSkillMap,
+  defaultSkillOfficeDocx,
+  defaultSkillOfficeXlsx,
+  defaultSkillOfficePptx,
 ] as const
 
 /**
@@ -280,4 +395,4 @@ export const defaultSkills: ReadonlyArray<Skill> = [
  * The paired snapshot test in `skills.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultSkillsVersion = 9
+export const defaultSkillsVersion = 10

@@ -648,6 +648,18 @@ saveFile('a.xlsx', fflate.zipSync(parts))
     }
   })
 
+  it('refuses a DDE formula written by hand, and says what to do', async () => {
+    const script = `
+const parts = fflate.unzipSync(excelize.NewFile().WriteToBuffer().buffer)
+const sheet = fflate.strFromU8(parts['xl/worksheets/sheet1.xml'])
+parts['xl/worksheets/sheet1.xml'] = fflate.strToU8(sheet.replace('<sheetData></sheetData>', '<sheetData><row r="1"><c r="A1"><f>cmd|\\' /C calc\\'!A0</f></c></row></sheetData>'))
+saveFile('a.xlsx', fflate.zipSync(parts))
+`
+    expect(await errorOf(script)).toBe(
+      `"a.xlsx" was not saved: the script added a DDE formula (app|topic!item, or the DDE function), which asks another program for data and can start it when the workbook calculates, in xl/worksheets/sheet1.xml ("cmd|' /C calc'!A0"), and no file it read had the same one unchanged. This tool does not add such content to a file. Explain to the user what was refused and why.`,
+    )
+  })
+
   it('keeps a fetching formula the workbook had, and look-alikes that fetch nothing', async () => {
     const engines = await loadSpreadsheetEngines(
       await packageFile('excelize-wasm/excelize.wasm.gz'),

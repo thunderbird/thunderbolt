@@ -57,8 +57,63 @@ export const decodeXml = (text: string) =>
     return decimal ? String.fromCodePoint(Number(decimal)) : (entities.get(name ?? '') ?? match)
   })
 
+/** An attribute as Go's encoding/xml reads it: its prefix, empty when it has none, its local name and decoded value. */
+export type XmlAttribute = { prefix: string; local: string; value: string }
+
+/** XML whitespace; JavaScript's \s also matches characters an XML name may hold. */
+export const isSpace = (char: string) => char === ' ' || char === '\t' || char === '\n' || char === '\r'
+
+/** A qualified name split as Go splits it: on its one colon, when both sides are there; otherwise it is all local. */
+export const splitName = (name: string) => {
+  const colon = name.indexOf(':')
+  return colon > 0 && colon < name.length - 1 && name.indexOf(':', colon + 1) === -1
+    ? { prefix: name.slice(0, colon), local: name.slice(colon + 1) }
+    : { prefix: '', local: name }
+}
+
+/**
+ * The attributes of a tag, in order, from the text between its name and its `>`: a character loop, so it stays
+ * linear and has no length limit, which a pattern over megabytes of attribute text does not in JavaScriptCore. A
+ * value is read in either quote style and its references resolved; a name written inside another value is that
+ * value's text. Text that is no attribute, such as the `/` of an empty tag, is skipped.
+ */
+export const readAttributes = (text: string): XmlAttribute[] => {
+  const attributes: XmlAttribute[] = []
+  let at = 0
+  while (at < text.length) {
+    if (isSpace(text[at]) || text[at] === '/') {
+      at += 1
+      continue
+    }
+    const nameStart = at
+    while (at < text.length && !isSpace(text[at]) && text[at] !== '=' && text[at] !== '/') {
+      at += 1
+    }
+    const name = text.slice(nameStart, at)
+    while (at < text.length && isSpace(text[at])) {
+      at += 1
+    }
+    if (text[at] !== '=') {
+      continue
+    }
+    at += 1
+    while (at < text.length && isSpace(text[at])) {
+      at += 1
+    }
+    const quote = text[at]
+    if (quote !== '"' && quote !== "'") {
+      continue
+    }
+    const close = text.indexOf(quote, at + 1)
+    const end = close === -1 ? text.length : close
+    attributes.push({ ...splitName(name), value: decodeXml(text.slice(at + 1, end)) })
+    at = end + 1
+  }
+  return attributes
+}
+
 const externalDataFunctions =
-  'WEBSERVICE|IMAGE|IMPORTTEXT|IMPORTCSV|RTD|IMPORTDATA|IMPORTXML|IMPORTHTML|IMPORTFEED|IMPORTRANGE'
+  'WEBSERVICE|IMAGE|IMPORTTEXT|IMPORTCSV|RTD|IMPORTDATA|IMPORTXML|IMPORTHTML|IMPORTFEED|IMPORTRANGE|DDE'
 
 /** A call to one of them, under any prefix, or `_xleta.NAME`, how a file stores one passed whole to MAP or BYROW. */
 const externalDataCall = new RegExp(
@@ -72,6 +127,18 @@ const externalDataCall = new RegExp(
  */
 const notCalls = /"(?:[^"]|"")*"|'(?:[^']|'')*'|\[(?:'.|[^[\]']|\[(?:'.|[^\]'])*\])*\]/g
 
+/** A formula with its text in quotes, quoted sheet names and bracketed references blanked out. */
+const outsideQuotes = (formula: string) => formula.replace(notCalls, '""')
+
+/**
+ * Whether a formula asks another program for data through DDE, which can start that program: `app|topic!item`,
+ * whose `|` Excel reads only outside quotes, or LibreOffice's `DDE(...)`.
+ */
+export const isDdeFormula = (formula: string) => {
+  const outside = outsideQuotes(formula)
+  return outside.includes('|') || /(?<![\w.])(?:_xl\w+\.)*DDE\s*\(/i.test(outside)
+}
+
 const formulaElement = element('(?:f|formula[12]?|definedName|calculatedColumnFormula|totalsRowFormula)', 'g')
 
 /** The one `xm:f` an x14 data validation wraps its `formula1` or `formula2` in. */
@@ -83,7 +150,8 @@ const formulaAttributes = new RegExp(`<${prefix}(?:cfvo|cacheField|calculatedIte
 const tag = /<(?:[^>"']|"[^"]*"|'[^']*')*>/g
 
 /**
- * The formulas in a part's XML that fetch data from outside the file, such as `WEBSERVICE(...)`, as decoded text:
+ * The formulas in a part's XML that fetch data from outside the file, such as `WEBSERVICE(...)` or a DDE request
+ * (see `isDdeFormula`), as decoded text:
  * those of cells, conditional formats, data validations, defined names, table columns and pivot fields. Comments and
  * processing instructions go and CDATA is unwrapped first, in one pass, so neither can hide the other. Any other
  * markup inside a formula makes it count: Excel drops an element in a namespace it ignores, with or without its
@@ -98,13 +166,20 @@ export const externalDataFormulas = (xml: string) => {
     const wrapped = wrappedFormula.exec(body)
     return wrapped ? (wrapped[3] ?? '') : body
   })
-  const values = [...text.matchAll(formulaAttributes)].flatMap(
-    ([, attributes]) => attribute(attributes, '(?:val|formula)') ?? [],
+  // Every value under these names, any prefix: a value that holds a name is that value's text.
+  const values = [...text.matchAll(formulaAttributes)].flatMap(([, attributes]) =>
+    readAttributes(attributes)
+      .filter(({ local }) => local === 'val' || local === 'formula')
+      .map(({ value }) => value.trim()),
   )
-  return [...bodies, ...values].flatMap((raw) => {
-    const formula = decodeXml(raw.replace(tag, '')).trim()
-    return raw.includes('<') || externalDataCall.test(formula.replace(notCalls, '""')) ? [formula] : []
-  })
+  const fetches = (formula: string) => isDdeFormula(formula) || externalDataCall.test(outsideQuotes(formula))
+  return [
+    ...bodies.flatMap((raw) => {
+      const formula = decodeXml(raw.replace(tag, '')).trim()
+      return raw.includes('<') || fetches(formula) ? [formula] : []
+    }),
+    ...values.filter(fetches),
+  ]
 }
 
 /** Cell text: XML entities, then the `_xHHHH_` escapes OOXML uses for control characters. */

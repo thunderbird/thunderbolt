@@ -6,7 +6,7 @@ import { partChecksums, unzipWithinLimits, ZipLimitError } from '@/files/unzip-w
 import { promptFileName, safeFileName } from '@/lib/safe-file-name'
 import { type JSValueHandle, QuickJS } from 'quickjs-wasi'
 import type { SandboxLimits } from './constants'
-import { decodeXml, externalDataFormulas } from './formula-cache'
+import { decodeXml, externalDataFormulas, isDdeFormula } from './formula-cache'
 import type { SandboxInput, SandboxRuntime, SavedFile } from './sandbox'
 
 // A DOM in QuickJS takes several times the memory of its XML; a 1,000-page document.xml is about 3.5 MB.
@@ -34,6 +34,10 @@ const addedContent = new Map([
   [
     'formula',
     'a formula that fetches data from outside the file (WEBSERVICE, IMAGE, RTD or an IMPORT function), which Excel or Google Sheets runs when the workbook calculates',
+  ],
+  [
+    'ddeFormula',
+    'a DDE formula (app|topic!item, or the DDE function), which asks another program for data and can start it when the workbook calculates',
   ],
 ])
 
@@ -249,7 +253,12 @@ const findUnpackProblem = (files: SavedFile[], inputs: readonly SandboxInput[], 
         kept ??= keptFormulas(inputs, limits)
         const added = formulas.find(({ formula }) => !kept?.has(formula))
         if (added !== undefined) {
-          return addedProblem(filename, 'formula', added.part, added.formula)
+          return addedProblem(
+            filename,
+            isDdeFormula(added.formula) ? 'ddeFormula' : 'formula',
+            added.part,
+            added.formula,
+          )
         }
       }
     } catch (error) {
@@ -280,8 +289,8 @@ const macrosExpected = (filename: string) => {
  *   otherwise than this check, is one an input had;
  * - every part with a mouse-over action, an OLE verb command or a Power Query is byte for byte an input's XML part,
  *   and so are its relationships;
- * - every formula that fetches outside data, such as WEBSERVICE, is one an input had, outside a Word or PowerPoint
- *   file's own parts;
+ * - every formula that fetches outside data, such as WEBSERVICE or a DDE request, is one an input had, outside a
+ *   Word or PowerPoint file's own parts;
  * - it is not an input saved unchanged.
  *
  * The files are the model's own bytes, so their XML is parsed in a fresh VM with its own memory limit and the

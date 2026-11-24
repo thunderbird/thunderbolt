@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { externalDataFormulas, withFuturePrefixes } from './formula-cache'
+import { externalDataFormulas, isDdeFormula, withFuturePrefixes } from './formula-cache'
 
 describe('withFuturePrefixes', () => {
   it('reads escaped quotes in an array constant, and an unclosed constant in linear time', () => {
@@ -117,5 +117,24 @@ describe('externalDataFormulas', () => {
     ]) {
       expect(externalDataFormulas(xml)).toEqual([])
     }
+  })
+
+  it('finds a DDE request written as app|topic!item, but not a | in quotes or a quoted sheet name', () => {
+    expect(externalDataFormulas(`<c r="A1"><f>cmd|' /C calc'!A0</f></c>`)).toEqual([`cmd|' /C calc'!A0`])
+    expect(externalDataFormulas(`<c r="A1"><f>1+c<!-- -->md|'/C calc'!A0</f></c>`)).toHaveLength(1)
+    expect(isDdeFormula(`cmd|' /C calc'!A0`)).toBe(true)
+    expect(externalDataFormulas(`<c r="A1"><f>"a|b"&amp;'x|y'!A1&amp;Table1[a|b]</f></c>`)).toEqual([])
+  })
+
+  it("finds LibreOffice's DDE function", () => {
+    expect(externalDataFormulas('<c r="A1"><f>DDE("soffice";"C:\\a.ods";"A1")</f></c>')).toHaveLength(1)
+    expect(isDdeFormula('_xlfn.DDE("soffice","a","b")')).toBe(true)
+    expect(isDdeFormula('WEBSERVICE("https://x")')).toBe(false)
+  })
+
+  it('reads a formula attribute after another attribute whose value spells one', () => {
+    expect(
+      externalDataFormulas(`<cacheField name=" formula='0'" formula="WEBSERVICE(&quot;https://x&quot;)"/>`),
+    ).toEqual(['WEBSERVICE("https://x")'])
   })
 })

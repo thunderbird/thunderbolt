@@ -5,7 +5,7 @@
 import { DOMParser, type Element } from '@xmldom/xmldom'
 import { strFromU8 } from 'fflate'
 import { xlsxPreviewLimits } from './constants'
-import { decodeXml, resolvePart, type WorkbookParts } from './formula-cache'
+import { isSpace, readAttributes, resolvePart, splitName, type WorkbookParts, type XmlAttribute } from './formula-cache'
 import { WorkbookTooLargeError } from './xlsx-preview-client'
 
 const ns = {
@@ -285,59 +285,8 @@ export const scannableXml = (xml: string) => {
  */
 export const namePrefix = String.raw`(?:[^\s<>/:!?="']+:)?`
 
-/** An attribute as Go's encoding/xml reads it: its prefix, empty when it has none, its local name and decoded value. */
-export type XmlAttribute = { prefix: string; local: string; value: string }
-
-const isSpace = (char: string) => char === ' ' || char === '\t' || char === '\n' || char === '\r'
-
-/** A qualified name split as Go splits it: on its one colon, when both sides are there; otherwise it is all local. */
-const splitName = (name: string) => {
-  const colon = name.indexOf(':')
-  return colon > 0 && colon < name.length - 1 && name.indexOf(':', colon + 1) === -1
-    ? { prefix: name.slice(0, colon), local: name.slice(colon + 1) }
-    : { prefix: '', local: name }
-}
-
-/**
- * The attributes of a tag, in order, from the text between its name and its `>`: a character loop, so it stays
- * linear and has no length limit, which a pattern over megabytes of attribute text does not in JavaScriptCore. A
- * value is read in either quote style and its references resolved; a name written inside another value is that
- * value's text. Text that is no attribute, such as the `/` of an empty tag, is skipped.
- */
-export const readAttributes = (text: string): XmlAttribute[] => {
-  const attributes: XmlAttribute[] = []
-  let at = 0
-  while (at < text.length) {
-    if (isSpace(text[at]) || text[at] === '/') {
-      at += 1
-      continue
-    }
-    const nameStart = at
-    while (at < text.length && !isSpace(text[at]) && text[at] !== '=' && text[at] !== '/') {
-      at += 1
-    }
-    const name = text.slice(nameStart, at)
-    while (at < text.length && isSpace(text[at])) {
-      at += 1
-    }
-    if (text[at] !== '=') {
-      continue
-    }
-    at += 1
-    while (at < text.length && isSpace(text[at])) {
-      at += 1
-    }
-    const quote = text[at]
-    if (quote !== '"' && quote !== "'") {
-      continue
-    }
-    const close = text.indexOf(quote, at + 1)
-    const end = close === -1 ? text.length : close
-    attributes.push({ ...splitName(name), value: decodeXml(text.slice(at + 1, end)) })
-    at = end + 1
-  }
-  return attributes
-}
+// The output check reads attributes too, in the Worker, which must not load this module's XML parser.
+export { readAttributes, type XmlAttribute } from './formula-cache'
 
 /** The value of the last attribute with this local name, whatever its prefix: the one Go's encoding/xml keeps. */
 export const lastValue = (attributes: XmlAttribute[], local: string) =>

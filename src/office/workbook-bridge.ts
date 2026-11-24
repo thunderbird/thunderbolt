@@ -114,6 +114,9 @@ const shim = (helpers: string[], constants: string) => `(() => {
   })
 })()`
 
+/** The longest JSON a workbook call's arguments may take; bytes travel beside it, so real calls stay far below. */
+const maxArgumentsLength = 4_000_000
+
 /** A byte count in MiB, to one decimal, for messages. */
 const mib = (bytes: number) => `${Math.round((bytes / 1024 / 1024) * 10) / 10} MiB`
 
@@ -327,6 +330,12 @@ export const installWorkbooks = (
     if (bytesHandles.length > 1) {
       throw new TypeError(
         'A workbook call takes at most one Uint8Array. Pass the bytes once, in the one argument that takes them.',
+      )
+    }
+    // The text and what it parses to live outside the VM's memory limit too, so its length is read before either.
+    if (json.getProp('length').consume((length) => length.toNumber()) > maxArgumentsLength) {
+      throw new TypeError(
+        `A workbook call takes at most ${maxArgumentsLength / 1_000_000} million characters of arguments as JSON. Pass the data in several smaller calls, for example a few thousand rows of SetSheetRow at a time.`,
       )
     }
     const bytes = bytesHandles.map((bytesHandle) => new Uint8Array(bytesHandle.toArrayBuffer()))

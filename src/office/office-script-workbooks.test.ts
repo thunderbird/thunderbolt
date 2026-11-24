@@ -391,6 +391,13 @@ saveFile('first.xlsx', first)
     expect(error).toContain('MiB of memory and was stopped')
   })
 
+  it('refuses arguments too long to parse outside the VM, before reading them', async () => {
+    const error = await errorOf(`excelize.ColumnNumberToName('x'.repeat(4_000_000))`)
+    expect(error).toContain(
+      'A workbook call takes at most 4 million characters of arguments as JSON. Pass the data in several smaller calls',
+    )
+  })
+
   it('releases each result the script drops, so reading a cell many times stays under the memory limit', async () => {
     const { output } = await runOk(`
 const f = excelize.NewFile()

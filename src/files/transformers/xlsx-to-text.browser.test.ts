@@ -43,20 +43,22 @@ const asFile = (bytes: Uint8Array<ArrayBuffer>): StoredFile => ({
 /** Stands in for the CSP: every Worker is recorded and never answers, so a read that needs one never returns. */
 class BlockedWorker {
   static started = 0
+  static onStart = () => {}
   constructor() {
     BlockedWorker.started++
+    BlockedWorker.onStart()
   }
   postMessage() {}
   terminate() {}
 }
 
-/** Settles with `promise`, or rejects with the number of Workers started if it has not settled after `ms`. */
-const settleWithin = async <T>(promise: Promise<T>, ms: number): Promise<T> => {
-  const late = async (): Promise<never> => {
-    await Bun.sleep(ms)
-    throw new Error(`The read did not finish within ${ms} ms. Workers started: ${BlockedWorker.started}.`)
-  }
-  return Promise.race([promise, late()])
+/** Settles with `promise`, or rejects the moment the read starts a Worker, which would never answer. */
+const failOnWorkerStart = <T>(promise: Promise<T>): Promise<T> => {
+  const workerStarted = new Promise<never>((_, reject) => {
+    BlockedWorker.onStart = () =>
+      reject(new Error(`The read started a Worker. Workers started: ${BlockedWorker.started}.`))
+  })
+  return Promise.race([promise, workerStarted])
 }
 
 describe('xlsx-to-text in the browser build, with Workers blocked', () => {
@@ -82,7 +84,7 @@ describe('xlsx-to-text in the browser build, with Workers blocked', () => {
       Array.from({ length: 50 }, (_, column) => `r${row + 1}c${column + 1}`),
     )
 
-    const { text } = await settleWithin(xlsx.xlsxToText(asFile(workbook(rows))), 4_000)
+    const { text } = await failOnWorkerStart(xlsx.xlsxToText(asFile(workbook(rows))))
 
     const lines = text.split('\n')
     expect(lines[0]).toBe('## Sheet: Sheet1')

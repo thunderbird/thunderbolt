@@ -1272,16 +1272,17 @@ saveFile('renamed.docx', fflate.zipSync(parts))
     }
     // Each call saves a 22-byte zip: one fits, two do not. Storing waits until both scripts have finished.
     let finishedRuns = 0
+    const bothFinished = Promise.withResolvers<void>()
     const concurrent = createOfficeScriptTool({
       runScript: async (job) => {
         const result = await runner(job, sandboxLimits)
-        finishedRuns++
+        if (++finishedRuns === 2) {
+          bothFinished.resolve()
+        }
         return result
       },
       storeFiles: async (files) => {
-        while (finishedRuns < 2) {
-          await Bun.sleep(1)
-        }
+        await bothFinished.promise
         await storeFiles(files)
       },
       listThreadFiles: async () => [earlier],

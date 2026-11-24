@@ -4,7 +4,7 @@
 
 import { WorkbookTooLargeError } from '@/office/xlsx-preview-client'
 import type { RowsRead } from '@/office/xlsx-preview-reader'
-import { describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import type { CSSProperties } from 'react'
 import { createCellStore, rowsPerRead } from './cell-store'
 
@@ -48,6 +48,8 @@ const storeWithReads = () => {
 const cellIn = (row: number): RowsRead => ({ rows: [{ row, cells: [{ col: 0, text: 'x', style: 0 }] }], styles: [] })
 
 describe('the cell store', () => {
+  afterEach(() => mock.restore())
+
   it('keeps one read in flight, then reads the chunk asked for last that rows still wait on', async () => {
     const { store, reads } = storeWithReads()
 

@@ -8,18 +8,20 @@ import { expect } from 'bun:test'
 import { sampleDocxText } from './sample-docx'
 
 /**
- * Waits until the frame `find` returns holds its document. The renderer reads the file on real timers, which the fake
- * clock never runs, so every step also sleeps.
+ * Waits until the frame `find` returns holds its document. The renderer reads the file through real I/O and dynamic
+ * imports that the fake clock never runs, so every step ticks the fake clock for React's scheduler and then yields one
+ * turn of the real event loop. The bound is an iteration count, not a duration; a stuck renderer ends at the test's own
+ * timeout.
  */
 export const waitForPreviewFrame = async (find: () => Element | null) => {
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < 10_000; i++) {
     const frame = find()
     if (frame instanceof HTMLIFrameElement && frame.srcdoc) {
       return frame
     }
     await act(async () => {
       await getClock().tickAsync(20)
-      await Bun.sleep(10)
+      await new Promise((resolve) => setImmediate(resolve))
     })
   }
   throw new Error('The preview frame never got its document')

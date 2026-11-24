@@ -41,7 +41,7 @@ export const useDocumentPreviewFrameState = (fileName: string, state: DocumentBl
       })
     } catch (error) {
       console.error('[preview] Could not save the file', error)
-      setSaveError(i18n._(saveErrorMessage(error instanceof Error ? error.message : String(error))))
+      setSaveError(i18n._(saveErrorMessage(error instanceof Error ? error : String(error))))
     }
   }
 

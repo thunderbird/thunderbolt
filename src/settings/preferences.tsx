@@ -509,7 +509,7 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
         console.error('Failed to save the data export:', error)
         dispatch({
           type: 'SET_EXPORT_ERROR',
-          payload: i18n._(saveErrorMessage(error instanceof Error ? error.message : String(error))),
+          payload: i18n._(saveErrorMessage(error instanceof Error ? error : String(error))),
         })
         return
       }

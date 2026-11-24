@@ -70,7 +70,7 @@ export const ArtifactActions = ({ html, title, buttonClassName }: ArtifactAction
       flagSaved()
     } catch (error) {
       console.error('[artifacts] Could not save the artifact', error)
-      setSaveError(i18n._(saveErrorMessage(error instanceof Error ? error.message : String(error))))
+      setSaveError(i18n._(saveErrorMessage(error instanceof Error ? error : String(error))))
     }
   }
 

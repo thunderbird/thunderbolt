@@ -47,6 +47,7 @@ import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { invoke } from '@tauri-apps/api/core'
 import { BaseDirectory } from '@tauri-apps/api/path'
+import { z } from 'zod'
 import { uint8ArrayToBase64 } from '@/crypto/primitives'
 import { getPlatform, isTauri } from './platform'
 import { safeFileNameString } from './safe-file-name'
@@ -131,6 +132,23 @@ const saveToDocuments = async (request: DownloadRequest, fs: DownloadFs): Promis
     : new Error(`Could not save ${request.name} to Documents: ${String(lastError)}`)
 }
 
+/** What `save_to_downloads` rejects with. Tauri's own failures, such as a missing command, carry no `code`. */
+const nativeRejection = z.object({ code: z.string().optional(), message: z.string() })
+
+/**
+ * A save `save_to_downloads` refused. `code` is the stable reason {@link saveErrorMessage} maps to the user's words;
+ * the message is the platform's text, for the console.
+ */
+export class SaveError extends Error {
+  readonly code: string | undefined
+
+  constructor(code: string | undefined, message: string, options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'SaveError'
+    this.code = code
+  }
+}
+
 /**
  * Hand the file to `save_to_downloads`. The Rust and the Kotlin side both
  * suffix a taken name themselves, so the name it reports is the one to show. Text goes in as UTF-8
@@ -147,10 +165,11 @@ const saveToDownloads = async (request: DownloadRequest, invoke: DownloadNative[
     })
     return saved.name
   } catch (error) {
-    // Kotlin rejects with a plain `{ message }`, which callers' `String(error)` shows as "[object Object]".
-    throw new Error(error instanceof Object && 'message' in error ? String(error.message) : String(error), {
-      cause: error,
-    })
+    // Both sides reject with a plain `{ code, message }`, which callers' `String(error)` shows as "[object Object]".
+    const rejection = nativeRejection.safeParse(error)
+    throw rejection.success
+      ? new SaveError(rejection.data.code, rejection.data.message, { cause: error })
+      : new SaveError(undefined, String(error), { cause: error })
   }
 }
 
@@ -211,33 +230,45 @@ export const downloadFile = async (request: DownloadRequest, native?: DownloadNa
   return isTauri() ? saveNatively(safe, await loadNative()) : saveViaBrowser(safe)
 }
 
-/**
- * Why a save failed, in plain words. The platform's own text names internal paths and OS error numbers, so it goes
- * to the console and the user gets the reason it stands for. Matches the texts `save_to_downloads` (Rust and Kotlin)
- * and plugin-fs reject with.
- */
-const saveErrorReasons: [RegExp, MessageDescriptor][] = [
-  // Checked first, because its text also quotes the OS error behind it.
+const namesTaken = msg`Too many files with this name are already in the folder. Rename or move some of them, then try again.`
+const noFolder = msg`The folder to save into does not exist.`
+
+/** The reasons `save_to_downloads` (Rust and Kotlin) rejects with, by their stable code. */
+const saveErrorCodes = new Map<string, MessageDescriptor>([
+  ['names_taken', namesTaken],
   [
-    /as downloaded from the internet/,
+    'mark_failed',
     msg`The file could not be marked as downloaded from the internet, so it was not saved. The Downloads folder may be on a drive that cannot keep that mark.`,
   ],
-  [
-    /numbered names are taken|os error 17\b|file exists/i,
-    msg`Too many files with this name are already in the folder. Rename or move some of them, then try again.`,
-  ],
+  ['no_downloads_folder', noFolder],
+  ['needs_android_10', msg`Saving files needs Android 10 or later.`],
+])
+
+/**
+ * The OS texts behind errors nobody gave a code: a `write_failed` save, and plugin-fs on iOS. They name internal paths
+ * and OS error numbers, so they go to the console and the user gets the reason they stand for.
+ */
+const osErrorReasons: [RegExp, MessageDescriptor][] = [
+  [/os error 17\b|file exists/i, namesTaken],
   [/os error (28|112)\b|no space left|not enough space/i, msg`There is not enough free space on this device.`],
-  [
-    /os error (2|3)\b|no such file|cannot find the path|as the Downloads folder|find the (home|Downloads) folder/i,
-    msg`The folder to save into does not exist.`,
-  ],
+  [/os error (2|3)\b|no such file|cannot find the path/i, noFolder],
   [
     /os error (1|5|13|30)\b|permission denied|access is denied|forbidden path|read-only/i,
     msg`Thunderbolt is not allowed to save there.`,
   ],
-  [/Android 10/, msg`Saving files needs Android 10 or later.`],
 ]
 
-/** The reason to show for the message of an error from {@link downloadFile}; resolve it with `i18n._`. */
-export const saveErrorMessage = (message: string): MessageDescriptor =>
-  saveErrorReasons.find(([pattern]) => pattern.test(message))?.[1] ?? msg`Something went wrong while saving the file.`
+/**
+ * Why a save from {@link downloadFile} failed, in plain words; resolve it with `i18n._`. Takes the caught error, or
+ * its text when something threw a non-`Error`.
+ */
+export const saveErrorMessage = (error: Error | string): MessageDescriptor => {
+  const coded = error instanceof SaveError && error.code ? saveErrorCodes.get(error.code) : undefined
+  if (coded) {
+    return coded
+  }
+  const message = error instanceof Error ? error.message : error
+  return (
+    osErrorReasons.find(([pattern]) => pattern.test(message))?.[1] ?? msg`Something went wrong while saving the file.`
+  )
+}

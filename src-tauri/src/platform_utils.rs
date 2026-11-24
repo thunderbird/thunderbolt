@@ -46,6 +46,28 @@ struct SavedDownload {
     name: String,
 }
 
+/// Why `save_to_downloads` refused, in the `{ code, message }` shape the Kotlin
+/// plugin rejects with too. `saveErrorMessage` in `src/lib/download.ts` turns
+/// `code` into the words the user sees; `message` is the OS text, for the
+/// console only. Codes: `not_a_file_name`, `names_taken`, `mark_failed`,
+/// `no_downloads_folder`, and `write_failed`, whose OS text the app still reads.
+#[cfg(desktop)]
+#[derive(Debug, PartialEq, Serialize)]
+struct SaveError {
+    code: &'static str,
+    message: String,
+}
+
+#[cfg(desktop)]
+impl SaveError {
+    fn new(code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+}
+
 /// Saves `data` (base64) into the Downloads folder as `name`, marked as
 /// downloaded from the internet the way a browser marks its own downloads, so
 /// whatever opens it treats it as untrusted (Word opens it in Protected View).
@@ -59,16 +81,18 @@ async fn save_to_downloads<R: Runtime>(
     app: AppHandle<R>,
     name: String,
     data: String,
-) -> Result<SavedDownload, String> {
+) -> Result<SavedDownload, SaveError> {
     tauri::async_runtime::spawn_blocking(move || {
         use base64::Engine;
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(data)
-            .map_err(|error| error.to_string())?;
-        save_into(&downloads_folder(&app)?, &name, &bytes, mark_from_internet)
+            .map_err(|error| SaveError::new("write_failed", error.to_string()))?;
+        let folder = downloads_folder(&app)
+            .map_err(|message| SaveError::new("no_downloads_folder", message))?;
+        save_into(&folder, &name, &bytes, mark_from_internet)
     })
     .await
-    .map_err(|error| error.to_string())?
+    .map_err(|error| SaveError::new("write_failed", error.to_string()))?
 }
 
 /// The user's Downloads folder. On Linux `dirs` reads it only from
@@ -122,41 +146,55 @@ fn save_into(
     name: &str,
     bytes: &[u8],
     mark: fn(&Path) -> std::io::Result<()>,
-) -> Result<SavedDownload, String> {
+) -> Result<SavedDownload, SaveError> {
     if !is_plain_basename(name) {
-        return Err(format!("{name:?} is not a file name"));
+        return Err(SaveError::new(
+            "not_a_file_name",
+            format!("{name:?} is not a file name"),
+        ));
     }
+    let write_failed = |candidate: &str, error: std::io::Error| {
+        SaveError::new(
+            "write_failed",
+            format!("Could not save {candidate} to Downloads: {error}"),
+        )
+    };
     for attempt in 0..20 {
         let candidate = with_suffix(name, attempt);
         let path = folder.join(&candidate);
         let mut file = match File::options().write(true).create_new(true).open(&path) {
             Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(format!("Could not save {candidate} to Downloads: {error}")),
+            Err(error) => return Err(write_failed(&candidate, error)),
         };
-        // The app shows this text, so a failed mark says why the save was refused and what to change.
         let filled = mark(&path)
             .map_err(|error| {
-                format!(
-                    "Could not mark {candidate} as downloaded from the internet, so it was not saved ({error}).{MARK_HINT}"
+                SaveError::new(
+                    "mark_failed",
+                    format!("Could not mark {candidate} as downloaded from the internet, so it was not saved ({error})."),
                 )
             })
             .and_then(|()| {
                 file.write_all(bytes)
-                    .map_err(|error| format!("Could not save {candidate} to Downloads: {error}"))
+                    .map_err(|error| write_failed(&candidate, error))
             });
         drop(file);
         return filled
             .map(|()| SavedDownload { name: candidate })
             .map_err(|reason| match std::fs::remove_file(&path) {
                 Ok(()) => reason,
-                Err(removing) => {
-                    format!("{reason} The unfinished file could not be deleted either: {removing}")
-                }
+                Err(removing) => SaveError {
+                    message: format!(
+                        "{} The unfinished file could not be deleted either: {removing}",
+                        reason.message
+                    ),
+                    ..reason
+                },
             });
     }
-    Err(format!(
-        "Could not save {name} to Downloads: it and the next 19 numbered names are taken"
+    Err(SaveError::new(
+        "names_taken",
+        format!("Could not save {name} to Downloads: it and the next 19 numbered names are taken"),
     ))
 }
 
@@ -199,12 +237,6 @@ fn mark_from_internet(path: &Path) -> std::io::Result<()> {
     std::fs::write(zone_identifier_stream(path), ZONE_IDENTIFIER)
 }
 
-/// What to check when the mark fails, added to the error the app shows. Creating
-/// the file does not prove the mark can be written: permissions and the drive
-/// decide that separately.
-#[cfg(windows)]
-const MARK_HINT: &str = " Check the file permissions in Downloads, and that it is on a drive that keeps the mark, such as a local NTFS drive. FAT32 and exFAT drives cannot.";
-
 /// `com.apple.quarantine` as browsers write it: `flags;hex unix time;agent;event id`.
 /// 0001 is `QTN_FLAG_DOWNLOAD` in WebKit's `Source/WebCore/PAL/pal/spi/mac/QuarantineSPI.h`.
 /// The event id stays empty: it only points into a Launch Services history we do not write.
@@ -226,18 +258,11 @@ fn mark_from_internet(path: &Path) -> std::io::Result<()> {
     )
 }
 
-#[cfg(target_os = "macos")]
-const MARK_HINT: &str = " Check the file permissions in Downloads, and that its location accepts macOS quarantine attributes.";
-
 /// Linux has no mark-of-the-web that file managers or office suites read, so nothing is written.
 #[cfg(all(desktop, not(any(windows, target_os = "macos"))))]
 fn mark_from_internet(_path: &Path) -> std::io::Result<()> {
     Ok(())
 }
-
-/// Nothing to check: Linux writes no mark, so it cannot fail.
-#[cfg(all(desktop, not(any(windows, target_os = "macos"))))]
-const MARK_HINT: &str = "";
 
 /// Returns the files a file manager copied and opens them to plugin-fs, as a
 /// dropped file is, so the composer can attach them. WebKitGTK shows a copied
@@ -424,10 +449,7 @@ mod tests {
 
         let error = save_into(&folder, "q3.html", b"x", mark_nothing).unwrap_err();
 
-        assert!(
-            error.contains("next 19 numbered names are taken"),
-            "{error}"
-        );
+        assert_eq!(error.code, "names_taken");
         assert_eq!(names_in(&folder).len(), 20);
         std::fs::remove_dir_all(&folder).unwrap();
     }
@@ -443,12 +465,34 @@ mod tests {
 
         assert_eq!(
             error,
-            format!(
-                "Could not mark report.docx as downloaded from the internet, so it was not saved (no marks here).{MARK_HINT}"
+            SaveError::new(
+                "mark_failed",
+                "Could not mark report.docx as downloaded from the internet, so it was not saved (no marks here)."
             )
         );
         assert!(names_in(&folder).is_empty());
         std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    /// The app reads the OS text behind a generic write failure, so it must survive.
+    #[test]
+    fn keeps_the_os_text_when_the_file_cannot_be_created() {
+        let folder = temp_folder("missing").join("gone");
+
+        let error = save_into(&folder, "report.docx", b"PK", mark_nothing).unwrap_err();
+
+        assert_eq!(error.code, "write_failed");
+        assert!(error.message.contains("os error 2"), "{}", error.message);
+        std::fs::remove_dir_all(folder.parent().unwrap()).unwrap();
+    }
+
+    /// Serialized as the `{ code, message }` object the Kotlin plugin rejects with.
+    #[test]
+    fn reaches_the_app_as_code_and_message() {
+        assert_eq!(
+            serde_json::to_value(SaveError::new("names_taken", "taken")).unwrap(),
+            serde_json::json!({ "code": "names_taken", "message": "taken" })
+        );
     }
 
     /// Marking comes before the bytes, so a write that fails half way still leaves no unmarked copy.
@@ -469,8 +513,9 @@ mod tests {
     fn refuses_anything_but_a_bare_file_name() {
         let folder = temp_folder("names");
         for name in ["", ".", "..", "a/b.docx", "../a.docx", "/etc/passwd", "a/"] {
-            assert!(
-                save_into(&folder, name, b"x", mark_nothing).is_err(),
+            assert_eq!(
+                save_into(&folder, name, b"x", mark_nothing).map_err(|error| error.code),
+                Err("not_a_file_name"),
                 "{name} was accepted"
             );
         }

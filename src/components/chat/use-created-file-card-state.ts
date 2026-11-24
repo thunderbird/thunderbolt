@@ -56,7 +56,7 @@ export const useCreatedFileCardState = (file: CreatedFile) => {
       flagSaved()
     } catch (error) {
       console.error('[office] Could not save the file', error)
-      setSaveError(i18n._(saveErrorMessage(error instanceof Error ? error.message : String(error))))
+      setSaveError(i18n._(saveErrorMessage(error instanceof Error ? error : String(error))))
     }
   }
 

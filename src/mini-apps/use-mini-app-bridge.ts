@@ -685,7 +685,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
         } catch (error) {
           console.error('[mini-apps] Could not save the file', error)
           // The app may show this to the user, and the platform's own text names local paths.
-          reject(i18n._(saveErrorMessage(error instanceof Error ? error.message : String(error))))
+          reject(i18n._(saveErrorMessage(error instanceof Error ? error : String(error))))
         }
         return
       }

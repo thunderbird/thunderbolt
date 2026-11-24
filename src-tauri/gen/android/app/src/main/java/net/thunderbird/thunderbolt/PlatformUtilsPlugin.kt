@@ -67,7 +67,9 @@ class PlatformUtilsPlugin(private val activity: Activity) : Plugin(activity) {
      * Saves base64 `data` into the public Downloads folder through MediaStore and
      * resolves with `{ name }`, the display name MediaStore actually used (it
      * suffixes a taken name). plugin-fs cannot do this: its `Download` is the
-     * app-private getExternalFilesDir. Called from `src/lib/download.ts`.
+     * app-private getExternalFilesDir. Called from `src/lib/download.ts`, which
+     * maps the stable reject codes (`needs_android_10`, `write_failed`) to the
+     * words the user sees; the message carries the OS text for the console.
      */
     @Command
     fun saveToDownloads(invoke: Invoke) {
@@ -75,7 +77,7 @@ class PlatformUtilsPlugin(private val activity: Activity) : Plugin(activity) {
         // upgrade by writing to Environment.getExternalStoragePublicDirectory with
         // WRITE_EXTERNAL_STORAGE if those devices matter.
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            invoke.reject("Saving files needs Android 10 or later")
+            invoke.reject("Saving files needs Android 10 or later", "needs_android_10")
             return
         }
         // Tauri delivers plugin commands on the main thread, where decoding and writing a large
@@ -85,7 +87,7 @@ class PlatformUtilsPlugin(private val activity: Activity) : Plugin(activity) {
                 invoke.resolve(writeToDownloads(invoke.getArgs()))
             } catch (error: Throwable) {
                 // Throwable, so an OutOfMemoryError on a large file rejects instead of crashing the app.
-                invoke.reject(error.message ?: error.toString())
+                invoke.reject(error.message ?: error.toString(), "write_failed")
             }
         }.start()
     }

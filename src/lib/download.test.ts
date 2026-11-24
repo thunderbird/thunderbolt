@@ -7,6 +7,7 @@ import { BaseDirectory } from '@tauri-apps/api/path'
 import { describe, expect, it, mock } from 'bun:test'
 import {
   downloadFile,
+  SaveError,
   saveErrorMessage,
   subscribeToMobileSaves,
   withSuffix,
@@ -153,27 +154,29 @@ describe.each(['macos', 'windows', 'linux', 'android'] as const)('downloadFile o
 })
 
 describe('downloadFile errors from the native command', () => {
-  /** Kotlin rejects with `{ message }`; the caller shows `String(error)`, which would read "[object Object]". */
-  it("surfaces the Android plugin's message as an Error", async () => {
-    const { native } = fakeNative('android')
+  /** Both sides reject with `{ code, message }`; the caller shows `String(error)`, which would read "[object Object]". */
+  it.each(['android', 'windows'] as const)('surfaces the %s code and message as a SaveError', async (platform) => {
+    const { native } = fakeNative(platform)
     const invoke = async () => {
-      throw { message: 'Saving files needs Android 10 or later' }
+      throw { code: 'mark_failed', message: 'Could not mark q3.html (Access is denied.).' }
     }
 
-    await expect(downloadFile(request, { ...native, invoke })).rejects.toThrow(
-      new Error('Saving files needs Android 10 or later'),
-    )
+    const error = await downloadFile(request, { ...native, invoke }).catch((caught: Error) => caught)
+
+    expect(error).toBeInstanceOf(SaveError)
+    expect(error).toMatchObject({ code: 'mark_failed', message: 'Could not mark q3.html (Access is denied.).' })
   })
 
-  /** Rust rejects with a bare string, such as the one that says a file could not be marked. */
-  it('surfaces the desktop message as an Error', async () => {
-    const { native } = fakeNative('windows')
-    const message = 'Could not mark q3.html as downloaded from the internet, so it was not saved (Access is denied.).'
+  /** Tauri itself rejects with a bare string, such as when the command is missing. */
+  it('keeps a bare string rejection as the message, with no code', async () => {
+    const { native } = fakeNative('linux')
     const invoke = async () => {
-      throw message
+      throw 'command save_to_downloads not found'
     }
 
-    await expect(downloadFile(request, { ...native, invoke })).rejects.toThrow(new Error(message))
+    const error = await downloadFile(request, { ...native, invoke }).catch((caught: Error) => caught)
+
+    expect(error).toMatchObject({ code: undefined, message: 'command save_to_downloads not found' })
   })
 })
 
@@ -303,31 +306,47 @@ describe('subscribeToMobileSaves', () => {
 })
 
 describe('saveErrorMessage', () => {
+  const namesTaken =
+    'Too many files with this name are already in the folder. Rename or move some of them, then try again.'
+
+  it.each([
+    ['names_taken', namesTaken],
+    [
+      'mark_failed',
+      'The file could not be marked as downloaded from the internet, so it was not saved. The Downloads folder may be on a drive that cannot keep that mark.',
+    ],
+    ['no_downloads_folder', 'The folder to save into does not exist.'],
+    ['needs_android_10', 'Saving files needs Android 10 or later.'],
+  ])('explains the %s code in plain words', (code, reason) => {
+    // The message quotes an OS error that would map elsewhere, so only the code can pick the reason.
+    expect(i18n._(saveErrorMessage(new SaveError(code, 'Permission denied (os error 13)')))).toBe(reason)
+  })
+
+  it('falls back to the generic reason for a code it has no words for', () => {
+    expect(i18n._(saveErrorMessage(new SaveError('not_a_file_name', '"a/b" is not a file name')))).toBe(
+      'Something went wrong while saving the file.',
+    )
+  })
+
   it.each([
     [
       'failed to open file at path: /var/mobile/Containers/Data/Application/1/Documents/q3 (19).html with error: File exists (os error 17)',
-      'Too many files with this name are already in the folder. Rename or move some of them, then try again.',
+      namesTaken,
     ],
     [
-      'Could not save q3.html to Downloads: it and the next 19 numbered names are taken',
-      'Too many files with this name are already in the folder. Rename or move some of them, then try again.',
-    ],
-    [
-      'Could not use /home/me/Missing/Downloads as the Downloads folder: No such file or directory (os error 2)',
+      'Could not save q3.html to Downloads: No such file or directory (os error 2)',
       'The folder to save into does not exist.',
     ],
     [
       'Could not save q3.html to Downloads: No space left on device (os error 28)',
       'There is not enough free space on this device.',
     ],
+    ['ENOSPC (No space left on device)', 'There is not enough free space on this device.'],
     ['forbidden path: $DOCUMENT/q3.html', 'Thunderbolt is not allowed to save there.'],
-    ['Saving files needs Android 10 or later', 'Saving files needs Android 10 or later.'],
-    [
-      'Could not mark q3.html as downloaded from the internet, so it was not saved (Permission denied (os error 13)).',
-      'The file could not be marked as downloaded from the internet, so it was not saved. The Downloads folder may be on a drive that cannot keep that mark.',
-    ],
     ['something nobody expected', 'Something went wrong while saving the file.'],
-  ])('explains %s in plain words', (raw, reason) => {
+  ])('reads the OS text of an uncoded failure: %s', (raw, reason) => {
+    expect(i18n._(saveErrorMessage(new Error(raw)))).toBe(reason)
+    expect(i18n._(saveErrorMessage(new SaveError('write_failed', raw)))).toBe(reason)
     expect(i18n._(saveErrorMessage(raw))).toBe(reason)
   })
 })

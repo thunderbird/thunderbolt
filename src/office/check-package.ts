@@ -184,10 +184,11 @@ const hasDde = (doc: Document) =>
 // relationship to check. A field also counts when a nested field or markup decides its name, as in
 // { {QUOTE 68 68 69} ... }, which spells DDE when Word runs it: it has a { before the first space.
 // A formula field, { ={PAGE}+1 }, only computes, so it does not count.
+// Compared as written: spacing inside a quoted path names another file.
 const inclusions = (doc: Document) =>
-  fieldCodes(doc)
-    .filter((code) => /^\s*((INCLUDEPICTURE|INCLUDETEXT|INCLUDE|IMPORT|LINK|DATABASE|RD)\b|(?!=)[^\s{]*\{)/i.test(code))
-    .map((code) => code.replace(/\s+/g, ' ').trim())
+  fieldCodes(doc).filter((code) =>
+    /^\s*((INCLUDEPICTURE|INCLUDETEXT|INCLUDE|IMPORT|LINK|DATABASE|RD)\b|(?!=)[^\s{]*\{)/i.test(code),
+  )
 // An action PowerPoint runs without a click, a mouse-over action or an OLE verb command in a slide's timing, or a
 // Power Query, which Excel runs when its data connection refreshes.
 const autoRun = (doc: Document, text: string) => {

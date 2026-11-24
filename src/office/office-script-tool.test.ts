@@ -1159,6 +1159,32 @@ saveFile('renamed.docx', fflate.zipSync(parts))
     expect((await okFiles(call(renamedDeps, edit, ['renamed.docx']))).files).toHaveLength(1)
   })
 
+  it('keeps a Word field only as the edited file wrote it, its spacing included, wherever its runs split', async () => {
+    const run = (text: string) => `<w:r><w:instrText xml:space="preserve">${text}</w:instrText></w:r>`
+    const mark = (type: string) => `<w:r><w:fldChar w:fldCharType="${type}"/></w:r>`
+    const field = `${mark('begin')}${run(' INCLUDETEXT "C:\\\\Team  Files\\\\a.docx" ')}${mark('separate')}${mark('end')}`
+    const report = storeAttachment(
+      'report.docx',
+      zipWith(`<w:document xmlns:w="urn:w"><w:body><w:p>${field}</w:p></w:body></w:document>`),
+    )
+    const deps = { listThreadFiles: async () => [report] }
+    const replaced = (from: string, to: string) => `
+const parts = fflate.unzipSync(readFile('report.docx'))
+parts['word/document.xml'] = fflate.strToU8(fflate.strFromU8(parts['word/document.xml']).replace(${JSON.stringify(from)}, ${JSON.stringify(to)}))
+saveFile('report.docx', fflate.zipSync(parts))
+`
+    const refusal = '"report.docx" was not saved: the script added a field'
+
+    // One space less inside the quotes is another path; outside them, another field code.
+    const respaced = await call(deps, replaced('Team  Files', 'Team Files'), ['report.docx'])
+    expect(respaced.ok ? '' : respaced.error).toStartWith(refusal)
+    const separated = await call(deps, replaced(' INCLUDETEXT "', ' INCLUDETEXT  "'), ['report.docx'])
+    expect(separated.ok ? '' : separated.error).toStartWith(refusal)
+    // The same code split across two runs is the same field.
+    const split = replaced('Team  Files', 'Team </w:instrText></w:r><w:r><w:instrText xml:space="preserve"> Files')
+    expect((await okFiles(call(deps, split, ['report.docx']))).files).toHaveLength(1)
+  })
+
   it('refuses a part name that is not a plain path inside the zip', async () => {
     for (const name of ['../../evil.xml', '/abs.bin', 'C:\\evil.bin', 'word/./a.bin', 'word//a.bin']) {
       const bytes = zipSync({ '[Content_Types].xml': strToU8('<Types/>'), [name]: new Uint8Array([1]) })

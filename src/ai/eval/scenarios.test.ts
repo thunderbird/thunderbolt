@@ -6,6 +6,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   defaultModelDeepSeekV41Flash,
   defaultModelGlm53,
+  defaultModelKimiK31Pro,
   defaultModelOpus55,
   defaultModels,
 } from '@shared/defaults/models'
@@ -17,6 +18,7 @@ describe('eval model matrix', () => {
       { id: defaultModelOpus55.id, name: 'opus', engineName: 'pi' },
       { id: defaultModelDeepSeekV41Flash.id, name: 'flash', engineName: 'pi' },
       { id: defaultModelGlm53.id, name: 'glm', engineName: 'pi' },
+      { id: defaultModelKimiK31Pro.id, name: 'kimi', engineName: 'pi' },
     ])
   })
 

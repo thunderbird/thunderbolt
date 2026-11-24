@@ -6,10 +6,12 @@ import { hashValues } from '@/lib/utils'
 import type { ModelProfile } from '@/types'
 import { defaultModelProfileDeepSeekV41Flash } from './deepseek-flash'
 import { defaultModelProfileGlm53 } from './glm'
+import { defaultModelProfileKimiK31Pro } from './kimi'
 import { defaultModelProfileOpus55 } from './opus'
 
 export { defaultModelProfileDeepSeekV41Flash } from './deepseek-flash'
 export { defaultModelProfileGlm53 } from './glm'
+export { defaultModelProfileKimiK31Pro } from './kimi'
 export { defaultModelProfileOpus55 } from './opus'
 
 /**
@@ -46,4 +48,5 @@ export const defaultModelProfiles: ReadonlyArray<ModelProfile> = [
   defaultModelProfileOpus55,
   defaultModelProfileDeepSeekV41Flash,
   defaultModelProfileGlm53,
+  defaultModelProfileKimiK31Pro,
 ] as const

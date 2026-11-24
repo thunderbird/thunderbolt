@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { WorkspaceFileRead } from '@shared/agent-core'
-import type { StoredFile } from '@/lib/file-blob-storage'
+import { getAttachment, type StoredFile } from '@/lib/file-blob-storage'
 import { promptFileName } from '@/lib/safe-file-name'
 import type { SandboxInput } from './sandbox'
 
@@ -12,11 +12,23 @@ export type ReadWorkspaceFile = (path: string, maxBytes: number) => Promise<Work
 
 export type ResolvedInputs = { ok: true; inputs: SandboxInput[]; filenames: string[] } | { ok: false; error: string }
 
-/** A stored file of a chat thread. For a file this tool made, `savedAs` is the name the script gave it. */
-export type ThreadFile = StoredFile & { savedAs?: string }
+/**
+ * A file of a chat thread, as its messages describe it. A `blob` means the bytes are at hand; without one they are
+ * read from the attachment store when a script names the file. For a file this tool made, `savedAs` is the name the
+ * script gave it, and `size` is absent from a result stored before results carried one.
+ */
+export type ThreadFile = Pick<StoredFile, 'id' | 'filename'> &
+  Partial<Pick<StoredFile, 'size' | 'createdAt' | 'blob'>> & { savedAs?: string }
 
-/** Newest first; between two files stored at the same moment, the later one in the thread comes first. */
-const newestFirst = (files: ThreadFile[]) => [...files].reverse().sort((a, b) => b.createdAt - a.createdAt)
+/** Reads a stored file by id, or returns `null` when it is not on this device. */
+export type ReadThreadFile = (id: string) => Promise<StoredFile | null>
+
+/**
+ * Newest first. Files without a `createdAt` count as oldest, and between files stored at the same moment the later
+ * one in the thread comes first.
+ */
+const newestFirst = (files: ThreadFile[]) =>
+  [...files].reverse().sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
 
 /**
  * The file with this id, else the newest file with this name. A file this tool made also answers to the name the
@@ -26,10 +38,8 @@ const findStored = (files: ThreadFile[], reference: string) =>
   files.find(({ id }) => id === reference) ??
   newestFirst(files).find(({ filename, savedAs }) => filename === reference || savedAs === reference)
 
-const readStored = async (file: StoredFile, maxBytes: number): Promise<WorkspaceFileRead> =>
-  file.blob.size > maxBytes
-    ? { status: 'too-large' }
-    : { status: 'read', bytes: new Uint8Array(await file.blob.arrayBuffer()) }
+const readBlob = async (blob: Blob, maxBytes: number): Promise<WorkspaceFileRead> =>
+  blob.size > maxBytes ? { status: 'too-large' } : { status: 'read', bytes: new Uint8Array(await blob.arrayBuffer()) }
 
 const notFound = (name: string, files: ThreadFile[], hasWorkspace: boolean) => {
   const listed = newestFirst(files)
@@ -47,21 +57,29 @@ const notFound = (name: string, files: ThreadFile[], hasWorkspace: boolean) => {
  * Find the bytes of each input the script named: first among the chat's stored files, by id or by name (the
  * newest wins), then in the agent's workspace when there is one. A file that would take the inputs past
  * `maxBytes` is refused before it is read. `filenames` holds each input's file name, so a saved file can be
- * recognised as an edited copy.
+ * recognised as an edited copy. Only the files named are read from the attachment store.
  */
 export const resolveInputs = async (
   references: string[],
   files: ThreadFile[],
   readWorkspaceFile: ReadWorkspaceFile | undefined,
   maxBytes: number,
+  readThreadFile: ReadThreadFile = getAttachment,
 ): Promise<ResolvedInputs> => {
   const inputs: SandboxInput[] = []
   const filenames: string[] = []
   let remainingBytes = maxBytes
   for (const name of new Set(references)) {
     const stored = findStored(files, name)
-    const found: WorkspaceFileRead = stored
-      ? await readStored(stored, remainingBytes)
+    const blob = stored && (stored.blob ?? (await readThreadFile(stored.id))?.blob)
+    if (stored && !blob) {
+      return {
+        ok: false,
+        error: `${promptFileName(stored.filename)} is part of this chat but is not stored on this device, so it cannot be read here. Tell the user.`,
+      }
+    }
+    const found: WorkspaceFileRead = blob
+      ? await readBlob(blob, remainingBytes)
       : ((await readWorkspaceFile?.(name, remainingBytes)) ?? { status: 'missing' })
     if (found.status === 'missing') {
       return { ok: false, error: notFound(name, files, readWorkspaceFile !== undefined) }

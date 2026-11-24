@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { docxMime, pptxMime, xlsmMime, xlsxMime } from '@/files/transformers'
-import { putAttachments, type StoredFile } from '@/lib/file-blob-storage'
+import { getAttachment, putAttachments, type StoredFile } from '@/lib/file-blob-storage'
 import { promptFileName, safeFileName } from '@/lib/safe-file-name'
 import { parseToolOutput } from '@/lib/tool-output'
 import type { ToolConfig } from '@/types'
@@ -12,14 +12,22 @@ import { z } from 'zod'
 import { officeScriptToolName, officeSkillNames, sandboxLimits, terminalWorkbookErrorPrefix } from './constants'
 import { runInSandboxWorker } from './run-in-worker'
 import type { FileFormulaError, SandboxJob, SandboxResult, SavedFile } from './sandbox'
-import { type ReadWorkspaceFile, resolveInputs, type ThreadFile } from './script-inputs'
+import { type ReadThreadFile, type ReadWorkspaceFile, resolveInputs, type ThreadFile } from './script-inputs'
 
 /**
  * A file the tool added to the attachment store, as listed in its result. The chips are built from this list.
  * `edited` is true when the file keeps the name of a file the script read. `savedAs` is the name the script gave it
  * before cleaning, so a later run asking for that name finds this file.
  */
-export type CreatedFile = { id: string; filename: string; mimeType: string; edited: boolean; savedAs?: string }
+export type CreatedFile = {
+  id: string
+  filename: string
+  mimeType: string
+  /** Absent from results stored before they carried it. */
+  size?: number
+  edited: boolean
+  savedAs?: string
+}
 
 /** `notes` flag saved files that are new even though the run read a file of their type, or a run that saved none. */
 export type OfficeScriptOutput =
@@ -35,11 +43,12 @@ export const isOfficeScriptPart = (part: UIMessage['parts'][number]): part is Of
 const createdFilesSchema = z.object({
   ok: z.literal(true),
   files: z.array(
-    // Results stored before the tool could edit files have no `edited` or `savedAs`.
+    // Results stored before the tool could edit files have no `edited` or `savedAs`, and older ones no `size`.
     z.object({
       id: z.string(),
       filename: z.string(),
       mimeType: z.string(),
+      size: z.number().optional(),
       edited: z.boolean().default(false),
       savedAs: z.string().optional(),
     }),
@@ -240,8 +249,13 @@ const resolveSource = (
 export type OfficeScriptToolDeps = {
   runScript?: (job: SandboxJob, signal?: AbortSignal) => Promise<SandboxResult>
   storeFiles?: (files: StoredFile[]) => Promise<void>
-  /** The stored files of the chat thread: its attachments and the files this tool made in it, with their `savedAs`. */
+  /**
+   * The files of the chat thread: its attachments and the files this tool made in it, with their `savedAs` and
+   * `size`. Listing reads no bytes; a file named in `inputs` is read with `readThreadFile`.
+   */
   listThreadFiles?: () => Promise<ThreadFile[]>
+  /** Reads a stored file, for an input and for the size of a file whose result carries none. Defaults to the store. */
+  readThreadFile?: ReadThreadFile
   /** The built-in agent's workspace. The legacy pipeline has none. */
   readWorkspaceFile?: ReadWorkspaceFile
   /** Names of the Office skills the model can load in this send. The description tells it to load them first. */
@@ -337,6 +351,7 @@ export const createOfficeScriptTool = ({
   runScript = runInSandboxWorker,
   storeFiles = putAttachments,
   listThreadFiles = async () => [],
+  readThreadFile = getAttachment,
   readWorkspaceFile,
   skills = [],
   loadedSkills = new Set(),
@@ -372,7 +387,13 @@ export const createOfficeScriptTool = ({
         return { ok: false, error, logs, scriptId, retry }
       }
       const threadFiles = [...(await listThreadFiles()), ...madeThisSend]
-      const resolved = await resolveInputs(inputs, threadFiles, readWorkspaceFile, sandboxLimits.memoryBytes)
+      const resolved = await resolveInputs(
+        inputs,
+        threadFiles,
+        readWorkspaceFile,
+        sandboxLimits.memoryBytes,
+        readThreadFile,
+      )
       if (!resolved.ok) {
         return fail(resolved.error, '')
       }
@@ -394,9 +415,21 @@ export const createOfficeScriptTool = ({
       if (!deliverable.ok) {
         return fail(deliverable.error, result.logs)
       }
-      // Counted after the script, to include calls that finished or started storing while it ran.
+      // A result stored before results carried a size is read once, here, to learn it.
+      const readSizes = new Map(
+        await Promise.all(
+          madeByTool(threadFiles)
+            .filter(({ size }) => size === undefined)
+            .map(async ({ id }) => [id, (await readThreadFile(id))?.size ?? 0] as const),
+        ),
+      )
+      // Counted after the script and with no await before the claim below, to include calls that finished or started
+      // storing while it ran and to leave no gap for another call to claim the same room.
       const storedBytes =
-        madeByTool([...threadFiles, ...madeThisSend]).reduce((total, file) => total + file.size, 0) + storingBytes
+        madeByTool([...threadFiles, ...madeThisSend]).reduce(
+          (total, { id, size }) => total + (size ?? readSizes.get(id) ?? 0),
+          0,
+        ) + storingBytes
       const newBytes = deliverable.files.reduce((total, { bytes }) => total + bytes.byteLength, 0)
       if (storedBytes + newBytes > sandboxLimits.threadFileBytes) {
         return fail(
@@ -424,10 +457,11 @@ export const createOfficeScriptTool = ({
       }
       // An edit keeps the name of the file it was read from; a new file made from one gets a name of its own.
       const inputNames = new Set(resolved.filenames.filter((name) => name.length <= maxFilenameLength).map(cleanName))
-      const files = saved.map(({ record: { id, filename, mimeType }, savedAs }) => ({
+      const files = saved.map(({ record: { id, filename, mimeType, size }, savedAs }) => ({
         id,
         filename,
         mimeType,
+        size,
         edited: inputNames.has(filename),
         savedAs,
       }))

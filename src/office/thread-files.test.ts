@@ -7,14 +7,21 @@ import type { UIMessage } from 'ai'
 import { docxMime } from '@/files/transformers'
 import { threadFileRefs } from './thread-files'
 
-const created = (ids: string[]) => ({
+const created = (ids: string[], size?: number) => ({
   ok: true,
-  files: ids.map((id) => ({ id, filename: `${id}.docx`, mimeType: docxMime, edited: false, savedAs: `${id}.docx` })),
+  files: ids.map((id) => ({
+    id,
+    filename: `${id}.docx`,
+    mimeType: docxMime,
+    size,
+    edited: false,
+    savedAs: `${id}.docx`,
+  })),
   logs: '',
 })
 
 describe('threadFileRefs', () => {
-  it("lists the user's attachments and the tool's files in thread order, once each, with the tool's saved names", () => {
+  it("lists the user's attachments and the tool's files in thread order, once each, with the tool's saved names and sizes", () => {
     const messages: UIMessage[] = [
       {
         id: 'm1',
@@ -35,7 +42,7 @@ describe('threadFileRefs', () => {
             toolCallId: 'c1',
             state: 'output-available',
             input: {},
-            output: created(['first', 'upload']),
+            output: created(['first', 'upload'], 40),
           },
           // The harness wraps a result in an envelope and may emit it as a dynamic tool.
           {
@@ -51,10 +58,11 @@ describe('threadFileRefs', () => {
     ]
 
     expect(threadFileRefs(messages)).toEqual([
-      { id: 'notes', savedAs: undefined },
-      { id: 'upload', savedAs: 'upload.docx' },
-      { id: 'first', savedAs: 'first.docx' },
-      { id: 'second', savedAs: 'second.docx' },
+      { id: 'notes', filename: 'notes.docx' },
+      { id: 'upload', filename: 'upload.docx', savedAs: 'upload.docx', size: 40 },
+      { id: 'first', filename: 'first.docx', savedAs: 'first.docx', size: 40 },
+      // A result stored before results carried a size.
+      { id: 'second', filename: 'second.docx', savedAs: 'second.docx' },
     ])
   })
 

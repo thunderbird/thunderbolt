@@ -357,10 +357,17 @@ describe.each([
   it('saves a DOCX that a second reader opens', async () => {
     const { files } = await runOk(docxScript('report.docx'))
 
-    expect(files).toEqual([
-      { id: expect.any(String), filename: 'report.docx', mimeType: docxMime, edited: false, savedAs: 'report.docx' },
-    ])
     const file = stored(files[0].id)
+    expect(files).toEqual([
+      {
+        id: expect.any(String),
+        filename: 'report.docx',
+        mimeType: docxMime,
+        size: file.size,
+        edited: false,
+        savedAs: 'report.docx',
+      },
+    ])
     expect(file).toMatchObject({ filename: 'report.docx', mimeType: docxMime })
     expect(file.size).toBeGreaterThan(0)
     const text = await textOf(file)
@@ -372,7 +379,14 @@ describe.each([
     const { files } = await runOk(pptxScript)
 
     expect(files).toEqual([
-      { id: expect.any(String), filename: 'deck.pptx', mimeType: pptxMime, edited: false, savedAs: 'deck.pptx' },
+      {
+        id: expect.any(String),
+        filename: 'deck.pptx',
+        mimeType: pptxMime,
+        size: stored(files[0].id).size,
+        edited: false,
+        savedAs: 'deck.pptx',
+      },
     ])
     const zip = await zipOf(stored(files[0].id))
     expect(await zip.file('ppt/slides/slide1.xml')?.async('string')).toContain('Hello deck')
@@ -436,7 +450,14 @@ describe.each([
     )
 
     expect(files).toEqual([
-      { id: expect.any(String), filename: 'contract.docx', mimeType: docxMime, edited: true, savedAs: 'contract.docx' },
+      {
+        id: expect.any(String),
+        filename: 'contract.docx',
+        mimeType: docxMime,
+        size: stored(files[0].id).size,
+        edited: true,
+        savedAs: 'contract.docx',
+      },
     ])
     expect(files[0].id).not.toBe(attached.id)
     expect(await textOf(stored(files[0].id))).toContain('Reviewed copy')
@@ -1262,6 +1283,70 @@ saveFile('renamed.docx', fflate.zipSync(parts))
     // An attachment of the user's own does not count.
     const attachment = { ...earlier, savedAs: undefined }
     expect((await call({ listThreadFiles: async () => [attachment] }, docxScript('more.docx'))).ok).toBe(true)
+  })
+
+  describe('reading the thread files', () => {
+    /** A stored file, and its entry in a thread listing, which names it without carrying its bytes. */
+    const listed = (filename: string, bytes: Uint8Array<ArrayBuffer>, extra: Partial<ThreadFile> = {}) => {
+      const file = storeAttachment(filename, bytes)
+      return { entry: { id: file.id, filename, ...extra }, file }
+    }
+    const readerOf = (...files: StoredFile[]) =>
+      mock(async (id: string) => files.find((file) => file.id === id) ?? null)
+
+    it('reads no stored file for a call that names no input', async () => {
+      const attachment = listed('brief.docx', zipWith('<a/>'))
+      const made = listed('made.docx', zipWith('<a/>'), { size: 100, savedAs: 'made.docx' })
+      const readThreadFile = readerOf(attachment.file, made.file)
+
+      const result = await call(
+        { listThreadFiles: async () => [attachment.entry, made.entry], readThreadFile },
+        docxScript('more.docx'),
+      )
+
+      expect(result.ok).toBe(true)
+      expect(readThreadFile).not.toHaveBeenCalled()
+    })
+
+    it('reads only the stored file a call names', async () => {
+      const notes = listed('notes.docx', await fixture('testComment.docx'))
+      const other = listed('other.docx', zipWith('<a/>'))
+      const readThreadFile = readerOf(notes.file, other.file)
+
+      const { logs } = await okFiles(
+        call(
+          { listThreadFiles: async () => [notes.entry, other.entry], readThreadFile },
+          `console.log(readFile('notes.docx').length)`,
+          ['notes.docx'],
+        ),
+      )
+
+      expect(logs).toBe(`${notes.file.size}\n`)
+      expect(readThreadFile.mock.calls).toEqual([[notes.file.id]])
+    })
+
+    it('counts the sizes the messages give toward the limit without reading the files', async () => {
+      const earlier = listed('big.docx', zipWith('<a/>'), {
+        size: sandboxLimits.threadFileBytes - 10,
+        savedAs: 'big.docx',
+      })
+      const readThreadFile = readerOf(earlier.file)
+
+      const result = await call({ listThreadFiles: async () => [earlier.entry], readThreadFile }, docxScript('b.docx'))
+
+      expect(result).toMatchObject({ ok: false, error: expect.stringContaining('one chat may hold') })
+      expect(readThreadFile).not.toHaveBeenCalled()
+    })
+
+    it('reads a made file whose result has no size, to learn it', async () => {
+      const earlier = listed('big.docx', zipWith('<a/>'), { savedAs: 'big.docx' })
+      const readThreadFile = readerOf({ ...earlier.file, size: sandboxLimits.threadFileBytes - 10 })
+
+      const result = await call({ listThreadFiles: async () => [earlier.entry], readThreadFile }, docxScript('b.docx'))
+
+      expect(result).toMatchObject({ ok: false, error: expect.stringContaining('one chat may hold') })
+      expect(readThreadFile.mock.calls).toEqual([[earlier.file.id]])
+    })
   })
 
   it('counts the files of a call still being stored against the limit of a call made at the same time', async () => {

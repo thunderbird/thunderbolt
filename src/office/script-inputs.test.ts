@@ -115,6 +115,30 @@ describe('resolveInputs', () => {
     expect(result).toMatchObject({ ok: false, error: expect.stringContaining('The inputs add up to more than') })
   })
 
+  describe('files listed without their bytes', () => {
+    const listing = [
+      { id: 'first', filename: 'notes.docx' },
+      { id: 'second', filename: 'notes.docx' },
+      { id: 'gone', filename: 'gone.docx' },
+    ]
+    const stored = new Map([file('first', 'notes.docx', 1), file('second', 'notes.docx', 2)].map((f) => [f.id, f]))
+    const readThreadFile = async (id: string) => stored.get(id) ?? null
+
+    it('reads the named file from the store, the later one in the thread for a shared name', async () => {
+      const result = await resolveInputs(['notes.docx', 'first'], listing, undefined, 1024, readThreadFile)
+
+      expect(result.ok && result.inputs.map(({ bytes }) => textOf(bytes))).toEqual(['second', 'first'])
+    })
+
+    it('says a file of the chat that is not on this device cannot be read, instead of calling it missing', async () => {
+      expect(await resolveInputs(['gone.docx'], listing, undefined, 1024, readThreadFile)).toEqual({
+        ok: false,
+        error:
+          '"gone.docx" is part of this chat but is not stored on this device, so it cannot be read here. Tell the user.',
+      })
+    })
+  })
+
   it('reads a name given twice once', async () => {
     const result = await resolveInputs(['deck.pptx', 'deck.pptx'], files, undefined, 1024)
     expect(result.ok && result.inputs.map(({ name }) => name)).toEqual(['deck.pptx'])

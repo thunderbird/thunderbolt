@@ -147,16 +147,14 @@ const wrappedFormula = new RegExp(`^\\s*${element('f').source}\\s*$`)
 /** Elements whose attribute holds a formula: a colour scale's threshold, and a pivot table's calculated field or item. */
 const formulaAttributes = new RegExp(`<${prefix}(?:cfvo|cacheField|calculatedItem)${nameEnd}(${attributeToken}*)`, 'g')
 
-const tag = /<(?:[^>"']|"[^"]*"|'[^']*')*>/g
-
 /**
  * The formulas in a part's XML that fetch data from outside the file, such as `WEBSERVICE(...)` or a DDE request
  * (see `isDdeFormula`), as decoded text:
  * those of cells, conditional formats, data validations, defined names, table columns and pivot fields. Comments and
  * processing instructions go and CDATA is unwrapped first, in one pass, so neither can hide the other. Any other
- * markup inside a formula makes it count: Excel drops an element in a namespace it ignores, with or without its
- * content, so it may read a call there that the text does not show. Expects XML that parses: on anything else it may
- * find too much, never too little where Office would read a formula.
+ * markup inside a formula makes it count, and stays in the returned text: Excel drops an element in a namespace it
+ * ignores, with or without its content, so it may read a call there that the text does not show. Expects XML that
+ * parses: on anything else it may find too much, never too little where Office would read a formula.
  */
 export const externalDataFormulas = (xml: string) => {
   const text = xml.replace(/<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<!\[CDATA\[([\s\S]*?)\]\]>/g, (_, cdata?: string) =>
@@ -175,7 +173,7 @@ export const externalDataFormulas = (xml: string) => {
   const fetches = (formula: string) => isDdeFormula(formula) || externalDataCall.test(outsideQuotes(formula))
   return [
     ...bodies.flatMap((raw) => {
-      const formula = decodeXml(raw.replace(tag, '')).trim()
+      const formula = decodeXml(raw).trim()
       return raw.includes('<') || fetches(formula) ? [formula] : []
     }),
     ...values.filter(fetches),

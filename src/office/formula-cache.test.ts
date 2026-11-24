@@ -98,6 +98,10 @@ describe('externalDataFormulas', () => {
     expect(externalDataFormulas('<c r="A1"><f> WEB<!-- -->SERVICE("https://x?a=1&amp;b=2") </f></c>')).toEqual([
       'WEBSERVICE("https://x?a=1&b=2")',
     ])
+    // Markup stays, so a workbook that only changed the markup inside a formula does not match the one it was read from.
+    expect(externalDataFormulas('<c r="A1"><f>WEB<x:y/>SERVICE("https://x")</f></c>')).toEqual([
+      'WEB<x:y/>SERVICE("https://x")',
+    ])
   })
 
   it('leaves text, cached values and look-alike names alone', () => {

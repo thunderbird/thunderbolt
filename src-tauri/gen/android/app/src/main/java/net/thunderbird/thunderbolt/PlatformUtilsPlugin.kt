@@ -14,6 +14,7 @@ import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
+import java.io.IOException
 
 @TauriPlugin
 class PlatformUtilsPlugin(private val activity: Activity) : Plugin(activity) {
@@ -77,7 +78,19 @@ class PlatformUtilsPlugin(private val activity: Activity) : Plugin(activity) {
             invoke.reject("Saving files needs Android 10 or later")
             return
         }
-        val args = invoke.getArgs()
+        // Tauri delivers plugin commands on the main thread, where decoding and writing a large
+        // file would freeze the app long enough for Android to report it as not responding.
+        Thread {
+            try {
+                invoke.resolve(writeToDownloads(invoke.getArgs()))
+            } catch (error: Throwable) {
+                // Throwable, so an OutOfMemoryError on a large file rejects instead of crashing the app.
+                invoke.reject(error.message ?: error.toString())
+            }
+        }.start()
+    }
+
+    private fun writeToDownloads(args: JSObject): JSObject {
         val bytes = Base64.decode(args.getString("data"), Base64.DEFAULT)
         val resolver = activity.contentResolver
         val pending = ContentValues().apply {
@@ -87,14 +100,11 @@ class PlatformUtilsPlugin(private val activity: Activity) : Plugin(activity) {
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
         val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, pending)
-        if (uri == null) {
-            invoke.reject("Could not create ${args.getString("name")} in Downloads")
-            return
-        }
+            ?: throw IOException("Could not create ${args.getString("name")} in Downloads")
         try {
             resolver.openOutputStream(uri)!!.use { it.write(bytes) }
             resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
-        } catch (error: Exception) {
+        } catch (error: Throwable) {
             // Don't leave a half-written file behind in the user's Downloads.
             resolver.delete(uri, null, null)
             throw error
@@ -105,6 +115,6 @@ class PlatformUtilsPlugin(private val activity: Activity) : Plugin(activity) {
         }
         val result = JSObject()
         result.put("name", name)
-        invoke.resolve(result)
+        return result
     }
 }

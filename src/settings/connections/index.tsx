@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useProviderVisibility } from '@/providers/use-provider-visibility'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useReducer } from 'react'
 import { Navigate, useLocation } from 'react-router'
@@ -217,7 +216,6 @@ const ConnectionsPage = ({
 
   const { servers, areServersReady, credentialsById, serverTools } = useMcpServersData(db, mcpServers)
 
-  const { otariEnabled, isProviderVisible } = useProviderVisibility()
   const providerConnections = useAiProviderConnections()
   const aiProviders = providerConnections.providers
   const providerSaved = (id: string) => dispatch({ type: 'PROVIDER_SAVED', id })
@@ -370,7 +368,6 @@ const ConnectionsPage = ({
       return (
         <DetailPanel title={t`New Connection`} onClose={closePanel}>
           <NewConnectionPicker
-            otariEnabled={otariEnabled}
             onProvider={(id) => {
               const existing = aiProviders.find(
                 (connection) => connection.provider === id && connection.authMethod === 'oauth',
@@ -407,7 +404,7 @@ const ConnectionsPage = ({
         />
       )
     }
-    if (selected?.kind === 'add-provider' && isProviderVisible(selected.id)) {
+    if (selected?.kind === 'add-provider') {
       return (
         <DetailPanel title={getProviderDefinition(selected.id).name} onClose={closePanel}>
           <ProviderConnectionForm

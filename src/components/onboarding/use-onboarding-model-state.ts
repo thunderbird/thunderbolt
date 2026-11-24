@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useProviderVisibility } from '@/providers/use-provider-visibility'
 import { getProviderConnections, disconnectProviderConnection } from '@/dal/provider-connections'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
@@ -21,15 +20,12 @@ export const isConfiguredStandaloneModel = (model: Model): boolean =>
 /** Reads the same persisted models used by Settings and the chat picker. */
 export const useOnboardingModelState = () => {
   const db = useDatabase()
-  const { isProviderVisible } = useProviderVisibility()
   const queryClient = useQueryClient()
   const { data: models = [], isLoading: modelsLoading } = useQuery({
     queryKey: ['models', 'onboarding'],
     query: toCompilableQuery(getAllModels(db)),
   })
-  const connectedModels = models.filter(
-    (model) => isProviderVisible(model.provider) && isConfiguredStandaloneModel({ ...model, enabled: 1 }),
-  )
+  const connectedModels = models.filter((model) => isConfiguredStandaloneModel({ ...model, enabled: 1 }))
   const configuredModels = connectedModels.filter((model) => model.enabled === 1)
   const connectedProviders = connectedModels.map(({ provider }): OnboardingProvider | 'otari' | 'custom' =>
     provider === 'openrouter' || provider === 'tinfoil' || provider === 'otari' ? provider : 'custom',

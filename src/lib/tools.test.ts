@@ -288,7 +288,6 @@ describe('selected connection discovery', () => {
   beforeAll(setupTestDatabase)
   afterAll(teardownTestDatabase)
   beforeEach(async () => {
-    await updateSettings(getDb(), { experimental_feature_otari: true })
     await saveProviderConnection(getDb(), {
       id: 'otari',
       provider: 'otari',
@@ -320,26 +319,6 @@ describe('selected connection discovery', () => {
       searchApi: { search: expect.any(Function) },
     })
     expect(fetch).toHaveBeenCalledTimes(1)
-  })
-  it('preserves hidden Otari selection without credentials, discovery or Cloud fallback', async () => {
-    await updateSettings(getDb(), { experimental_feature_otari: false })
-    useLocalSettingsStore.setState({ cloudUrl: 'https://cloud.example/v1', localMode: false })
-    setAuthToken('session')
-    try {
-      const fetch = spyOn(globalThis, 'fetch')
-      const available = await loadConnectedSearchApis(getDb())
-      expect(available).toEqual({ searchConnectionId: 'otari', searchApi: undefined })
-      const tools = await getAvailableTools(
-        stubHttpClient,
-        [],
-        context({ ...available, settings: { experimentalFeatureTasks: false, integrationsProIsEnabled: true } }),
-      )
-      expect(tools.map(({ name }) => name)).toEqual(['render_html'])
-      expect(fetch).not.toHaveBeenCalled()
-      expect(useSearchProviderStore.getState()).toMatchObject({ selection: 'connection', connectionId: 'otari' })
-    } finally {
-      clearAuthToken()
-    }
   })
   it('does not discover Otari when another named connection is selected', async () => {
     await saveProviderConnection(getDb(), {

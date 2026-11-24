@@ -47,7 +47,6 @@ afterAll(async () => {
 })
 
 beforeEach(async () => {
-  await updateSettings(getDb(), { experimental_feature_otari: true })
   originalCloudUrl = getLocalSetting('cloudUrl')
   originalLocalMode = getLocalSetting('localMode')
   useLocalSettingsStore.setState({ cloudUrl: 'https://cloud.example.com/v1', localMode: false })
@@ -171,7 +170,9 @@ describe('OnboardingDialog', () => {
       expect(screen.getByText('Choose your setup')).toBeInTheDocument()
       fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
       await flush()
-      expect(screen.getByRole('radio', { name: 'OpenRouter' })).toBeChecked()
+      expect(screen.getByRole('radio', { name: 'Otari' })).toBeChecked()
+      const providerCards = screen.getAllByRole('radio')
+      expect(providerCards[0]).toHaveAccessibleName('Otari')
       // The lazily mounted provider step starts its own model query.
       await flush()
       expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()

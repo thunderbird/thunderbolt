@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useProviderVisibility } from '@/providers/use-provider-visibility'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useMutation } from '@tanstack/react-query'
@@ -23,7 +22,6 @@ import { modelRequiresServer } from './model-policy'
 export const useModelsPageState = () => {
   const { t } = useLingui()
   const db = useDatabase()
-  const { isProviderVisible } = useProviderVisibility()
   const localProviders = useLocalProviders()
   const editing = useAsyncAttempt()
   const [state, dispatch] = useReducer(modelsPageReducer, initialModelsPageState)
@@ -34,9 +32,7 @@ export const useModelsPageState = () => {
     queryKey: ['models'],
     query: toCompilableQuery(getAllModels(db)),
   })
-  const models = allModels.filter(
-    (model) => isProviderVisible(model.provider) && (!localProviders || !modelRequiresServer(model)),
-  )
+  const models = allModels.filter((model) => !localProviders || !modelRequiresServer(model))
   const activeModel = models.find((model) => model.id === activeModelId)
   const editingModel = panel?.kind === 'edit' ? activeModel : undefined
   const clearMutationError = useCallback(() => dispatch({ type: 'MUTATION_STARTED' }), [])

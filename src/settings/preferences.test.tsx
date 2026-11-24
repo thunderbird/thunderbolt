@@ -79,32 +79,6 @@ describe('PreferencesSettingsPage — sync toggle gating', () => {
     expect(screen.getByPlaceholderText('City or region')).toBeInTheDocument()
   })
 
-  it('offers Otari as a default-off preview feature that can be toggled and reset', async () => {
-    renderPage(createMockAuthClient({ session: null }))
-    const toggle = screen.getByRole('switch', { name: 'Otari' })
-    expect(toggle).not.toBeChecked()
-    fireEvent.click(toggle)
-    await act(async () => {
-      await getClock().runAllAsync()
-    })
-    expect(toggle).toBeChecked()
-    expect(
-      (await getSettingsRecords(getDb(), ['experimental_feature_otari'])).find(
-        (setting) => setting.key === 'experimental_feature_otari',
-      )?.value,
-    ).toBe('true')
-    fireEvent.click(toggle)
-    await act(async () => {
-      await getClock().runAllAsync()
-    })
-    expect(toggle).not.toBeChecked()
-    expect(
-      (await getSettingsRecords(getDb(), ['experimental_feature_otari'])).find(
-        (setting) => setting.key === 'experimental_feature_otari',
-      )?.value,
-    ).toBe('false')
-  })
-
   it('imports an agent without an account as manageable local data', async () => {
     useLocalSettingsStore.setState({ cloudUrl: '' })
     const { container } = renderPage(createMockAuthClient({ session: null }))

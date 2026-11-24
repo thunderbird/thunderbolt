@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getProviderConnection, getProviderCredentials, resolveProviderConnection } from '@/dal/provider-connections'
-import { getSettings } from '@/dal/settings'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { createOtariWebApi } from '@/integrations/otari-search/api'
 import { loadCachedOtariWebCapabilities } from '@/integrations/otari-search/capability-query'
@@ -14,19 +13,14 @@ import { createMcpSearchApi } from './mcp-api'
 import { createStandaloneWebApi } from './api'
 import { isSearchProvider } from './providers'
 import { canSupplySearch } from './eligibility'
-import type { ProviderType } from '@/providers/types'
 import { getIdentitySignal } from '@/lib/identity-lifetime'
-
-/** Applies preview visibility to execution without changing the saved search selection. */
-const isSearchProviderEnabled = async (db: AnyDrizzleDatabase, provider: ProviderType) =>
-  provider !== 'otari' || (await getSettings(db, { experimental_feature_otari: false })).experimentalFeatureOtari
 
 /** Pins a turn to one authorization while allowing its OAuth token to refresh normally. */
 export const getSearchConnectionAuthorization = async (db: AnyDrizzleDatabase, connectionId: string) => {
   const signal = getIdentitySignal()
   const connection = await getProviderConnection(db, connectionId)
   signal.throwIfAborted()
-  if (!connection || !canSupplySearch(connection) || !(await isSearchProviderEnabled(db, connection.provider))) {
+  if (!connection || !canSupplySearch(connection)) {
     return null
   }
   const credentials = await getProviderCredentials(db, connectionId)
@@ -34,18 +28,10 @@ export const getSearchConnectionAuthorization = async (db: AnyDrizzleDatabase, c
     return null
   }
 
-  /** Checks both sides of credential resolution, which can wait for an OAuth refresh. */
-  const assertProviderEnabled = async () => {
-    signal.throwIfAborted()
-    if (!(await isSearchProviderEnabled(db, connection.provider))) {
-      throw new Error('Otari preview is disabled. Enable it in Settings to use this connection.')
-    }
-    signal.throwIfAborted()
-  }
   const getApiKey = async () => {
-    await assertProviderEnabled()
+    signal.throwIfAborted()
     const live = await resolveProviderConnection(db, connectionId)
-    await assertProviderEnabled()
+    signal.throwIfAborted()
     if (
       !canSupplySearch(live.connection) ||
       live.connection.provider !== connection.provider ||

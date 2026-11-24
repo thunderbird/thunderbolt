@@ -29,7 +29,6 @@ afterAll(teardownTestDatabase)
 beforeEach(async () => {
   await resetTestDatabase()
   spyOn(otariAuth, 'revokeOtariToken').mockResolvedValue()
-  await updateSettings(getDb(), { experimental_feature_otari: true })
   useLocalSettingsStore.setState({ cloudUrl: '', localMode: true })
   useSearchProviderStore.getState().clearSearchProvider()
   spyOn(otariCapabilities, 'loadOtariWebCapabilities').mockResolvedValue({

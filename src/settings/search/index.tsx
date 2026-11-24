@@ -45,9 +45,7 @@ const SearchSettingsPage = () => {
   )
   const showCloud = page.cloudVisible && 'thunderbolt'.includes(query)
   const authorization = useProviderAuthorization({ resumeReturn: false, onConnected: (id) => page.setPanel(id) })
-  const adding = providerDefinitions.find(
-    (provider) => page.panel === `add:${provider.id}` && (provider.id !== 'otari' || page.otariEnabled),
-  )
+  const adding = providerDefinitions.find((provider) => page.panel === `add:${provider.id}`)
   const active = page.configuredConnections.find(({ id }) => id === page.panel)
   const close = () => {
     authorization.cancel()
@@ -150,11 +148,7 @@ const SearchSettingsPage = () => {
       <DetailPanelSurface open={page.panel !== null} onClose={close}>
         {page.panel === 'new' && (
           <DetailPanel title={t`New Search Connection`} onClose={close}>
-            <NewConnectionPicker
-              otariEnabled={page.otariEnabled}
-              capability="search"
-              onProvider={(id) => selectPanel(`add:${id}`)}
-            />
+            <NewConnectionPicker capability="search" onProvider={(id) => selectPanel(`add:${id}`)} />
             <Link
               to="/settings/connections"
               className="self-start text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"

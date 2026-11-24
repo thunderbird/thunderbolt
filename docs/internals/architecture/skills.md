@@ -124,11 +124,12 @@ Five seeded defaults are model-facing rendering contracts whose `instruction` is
 widget's `instructions.ts` ([`src/defaults/skills.ts:7`](../../../src/defaults/skills.ts#L7)). Their
 ids are `widgetSkillIds`, exposed as [`isWidgetSkillId`](../../../src/defaults/skills.ts#L258).
 
-| Operation                 | On a widget contract                            |
-| ------------------------- | ----------------------------------------------- |
-| `updateSkill`             | Rejects any patch other than `enabled`          |
-| `softDeleteSkill`         | Refuses outright                                |
-| `setPinned`/`reorderPins` | Refuse to pin or move one; unpinning is allowed |
+| Operation         | On a widget contract                                  |
+| ----------------- | ----------------------------------------------------- |
+| `updateSkill`     | Rejects any patch other than `enabled`                |
+| `softDeleteSkill` | Refuses outright                                      |
+| `setPinned`       | Refuses any pin position; unpinning is allowed        |
+| `reorderPins`     | Refuses to pin an unpinned one; a pinned one can move |
 
 [`hashSkill`](../../../src/defaults/skills.ts#L22) leaves `enabled`, `pinnedOrder` and `deletedAt` out
 of a widget id's hash, in for an editable default's.

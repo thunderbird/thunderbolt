@@ -31,6 +31,29 @@ const jpegPixels = (view: DataView) => {
   return undefined
 }
 
+/**
+ * A GIF's width times height: its logical screen, grown to hold its first frame as browsers grow it. The frame's
+ * offset counts too, which can only overstate the size. Past the screen descriptor and its global color table come
+ * extension blocks, each a run of sub-blocks, then the frame's image descriptor; with no frame, there is no size.
+ */
+const gifPixels = (view: DataView) => {
+  const packed = view.getUint8(10)
+  let at = 13 + (packed & 0x80 ? 3 << ((packed & 0x07) + 1) : 0)
+  while (view.getUint8(at) === 0x21) {
+    at += 2
+    while (view.getUint8(at) !== 0) {
+      at += 1 + view.getUint8(at)
+    }
+    at += 1
+  }
+  if (view.getUint8(at) !== 0x2c) {
+    return undefined
+  }
+  const width = Math.max(view.getUint16(6, true), view.getUint16(at + 1, true) + view.getUint16(at + 5, true))
+  const height = Math.max(view.getUint16(8, true), view.getUint16(at + 3, true) + view.getUint16(at + 7, true))
+  return width * height
+}
+
 /** A WebP's width times height, from its lossy, lossless or extended header. */
 const webpPixels = (view: DataView) => {
   const chunk = String.fromCharCode(...[12, 13, 14, 15].map((i) => view.getUint8(i)))
@@ -59,7 +82,7 @@ export const rasterPixels = (bytes: Uint8Array) => {
       case 'image/png':
         return view.getUint32(16) * view.getUint32(20)
       case 'image/gif':
-        return view.getUint16(6, true) * view.getUint16(8, true)
+        return gifPixels(view)
       case 'image/bmp':
         return Math.abs(view.getInt32(18, true)) * Math.abs(view.getInt32(22, true))
       case 'image/webp':

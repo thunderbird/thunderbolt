@@ -60,12 +60,12 @@ const renderHtmlOutputSchema = z.union([
  * The typed output of a `render_html` part once it has finished (`undefined`
  * before then).
  *
- * This used to be a bare `as RenderHtmlOutput` cast. A result wrapped in an
- * envelope sailed through as an object whose `ok` was `undefined`, so
- * `ArtifactMessagePart` judged a perfectly good artifact unverified and
- * rendered nothing: a card that flashed while the input streamed and then
- * vanished, on some models and not others. {@link parseToolOutput} explains the
- * envelopes it unwraps.
+ * The output is parsed, not cast. A bare `as RenderHtmlOutput` cast lets a
+ * result wrapped in an envelope through as an object whose `ok` is `undefined`.
+ * `ArtifactMessagePart` then judges a good artifact unverified and renders
+ * nothing: the card flashes while the input streams and then vanishes, on some
+ * models and not others. {@link parseToolOutput} explains the envelopes it
+ * unwraps.
  */
 export const renderHtmlOutput = (part: RenderHtmlPart): RenderHtmlOutput | undefined =>
   parseToolOutput(renderHtmlOutputSchema, part)

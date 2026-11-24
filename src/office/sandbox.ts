@@ -111,7 +111,7 @@ const withImportHint = (error: string) =>
     : error
 
 /**
- * Append the script line an error points at, with a caret under its column. The model no longer sees the script it
+ * Append the script line an error points at, with a caret under its column. The model does not see the script it
  * sent, nor the result of an `edit`, so a bare `script.js:38:95` leaves it recounting lines from memory.
  */
 const withSourceLine = (error: string, script: string) => {

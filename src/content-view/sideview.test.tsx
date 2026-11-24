@@ -89,8 +89,8 @@ describe('Sideview', () => {
     await flush()
   }
 
-  // A local file of no previewed type, a remote workbook, and a local workbook too large to preview (the control,
-  // keyed before this change): all show the shared frame without loading anything else.
+  // A local file of no previewed type, a remote workbook, and a local workbook too large to preview (the control):
+  // all show the shared frame without loading anything else.
   const cases = [
     { type: 'local-file', fileName: 'notes.txt', blob: () => new Blob(['notes'], { type: 'text/plain' }) },
     { type: 'document', fileName: 'q1.xlsx', blob: () => new Blob(['remote'], { type: 'text/plain' }) },

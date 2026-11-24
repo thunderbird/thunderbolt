@@ -60,8 +60,8 @@ export const useNativeFileDrop = ({
     }
     onHoverChange(false)
     if (over) {
-      // shortcut: Tauri also decodes the escapes in a link, so an escaped `&`, `=` or `/` comes back bare. Read the
-      // raw `text/uri-list` in `platform_utils.rs` if such links need to arrive unchanged.
+      // Tauri also decodes the escapes in a link, so an escaped `&`, `=` or `/` comes back bare. To keep such links
+      // unchanged, read the raw `text/uri-list` in `platform_utils.rs`.
       onDrop(event.paths.filter(isFilePath), httpLinks(event.paths).map(encodeURI))
     }
   })

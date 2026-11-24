@@ -105,9 +105,11 @@ const attribute = (node: Element, name: string) =>
 const deleted = (node: Node): boolean =>
   node.localName === 'delInstrText' ||
   (node.parentNode !== null && (/^(del|moveFrom)$/.test(node.parentNode.localName ?? '') || deleted(node.parentNode)))
-// Markup in a field code that Word may read otherwise than this check: an element in another namespace than the
-// begin mark (one Word ignores, or mc:AlternateContent, of whose branches Word reads one), a simple field, whose
-// result may become code, or a mark or code text whose tracked deletion differs from the begin mark's.
+// Markup in a field code that Word may read differently from this check. That is any of these:
+// - an element in another namespace than the begin mark (Word ignores one, or reads one branch of an
+//   mc:AlternateContent);
+// - a simple field, whose result may become code;
+// - a mark or code text whose tracked deletion differs from the begin mark's.
 const unreadable = (node: Node, field: OpenField) =>
   node.nodeType === 1 &&
   (node.namespaceURI !== field.ns ||
@@ -179,8 +181,9 @@ const hasDde = (doc: Document) =>
     (code) => /^\s*DDE(AUTO)?\b/i.test(code.replaceAll('{}', '')) || /\{\}[\s\S]*\bDDE(AUTO)?\b/i.test(code),
   )
 // A Word field that fills itself from another file, a database or a web address when it updates, with no
-// relationship to check. So is one whose name a nested field or markup decides, as in { {QUOTE 68 68 69} ... },
-// which spells DDE when Word runs it: a { before the first space. A formula field, { ={PAGE}+1 }, only computes.
+// relationship to check. A field also counts when a nested field or markup decides its name, as in
+// { {QUOTE 68 68 69} ... }, which spells DDE when Word runs it: it has a { before the first space.
+// A formula field, { ={PAGE}+1 }, only computes, so it does not count.
 const inclusions = (doc: Document) =>
   fieldCodes(doc)
     .filter((code) => /^\s*((INCLUDEPICTURE|INCLUDETEXT|INCLUDE|IMPORT|LINK|DATABASE|RD)\b|(?!=)[^\s{]*\{)/i.test(code))
@@ -348,11 +351,11 @@ const inputKeys = (count: number) =>
   ))
 type InputPart = { index: number; name: string; size: number | undefined; kinds: string[] }
 let inputParts: InputPart[] | undefined
-// Each input part with the kinds of content it holds in its input: the kind of each relationship to it, macros
-// for a macro content type, and xml for an XML part, which this check parses. A saved part is kept only as a kind
-// an input part of the same bytes had: an earlier output passed this check, so a part it hid elsewhere, or under
-// another kind, does not count. Listed once per check from the central directory, inflating only the
-// relationships and content types; a damaged input has none.
+// Each input part with the kinds of content it holds in its input: the kind of each relationship to it, `macros`
+// for a macro content type, and `xml` for an XML part, which this check parses. A saved part counts only as a kind
+// an input part with the same bytes had. An earlier output already passed this check, so a part it hid elsewhere,
+// or under another kind, does not count. The list is built once per check from the central directory, inflating
+// only the relationships and content types. A damaged input has none.
 const keptParts = (count: number) =>
   (inputParts ??= Array.from({ length: count }, (_, index): InputPart[] => {
     try {

@@ -698,8 +698,8 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
             continue
           }
           // A file that arrives by path is read into memory, so files are read one at a time and only under the cap.
-          // shortcut: one over the cap is refused unread, so it is never shrunk; read photos and PDFs anyway if Linux
-          // users need that.
+          // A file over the cap is refused unread, so it is never shrunk. If Linux users need it, photos and PDFs over
+          // the cap could be read anyway.
           const loaded = file instanceof File || file.size > maxAttachmentBytes ? file : await file.read()
           if (!loaded) {
             const filename = file.name

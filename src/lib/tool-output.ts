@@ -41,7 +41,7 @@ export const parseToolOutput = <T>(schema: z.ZodType<T>, part: ToolUIPart | Dyna
     return fromDetails.data
   }
 
-  // Last resort: the same object re-serialised into the text block.
+  // Last resort: the same object re-serialized into the text block.
   const text = envelope.data.content?.find((entry) => entry.type === 'text')?.text
   if (text === undefined) {
     return undefined

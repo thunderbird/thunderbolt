@@ -238,7 +238,7 @@ test('a saved reply folds three same-name files and restores their chips after r
     await expect(step).toHaveAttribute('aria-expanded', 'true')
     await expect(versions).toHaveAttribute('aria-expanded', 'false')
     await expect(reply.getByRole('button', { name: 'Copy message' })).toBeVisible()
-    // Click the chevron, where the message actions previously covered the disclosure.
+    // Click the chevron, because the message actions can cover the rest of the disclosure.
     await versions.locator('svg').click({ timeout: 5000 })
     await expect(versions).toHaveAttribute('aria-expanded', 'true')
     await expect(step).toHaveAttribute('aria-expanded', 'true')

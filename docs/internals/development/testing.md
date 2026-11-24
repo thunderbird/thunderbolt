@@ -352,7 +352,7 @@ It runs inside [`nightly-pipeline.yml`](../../../.github/workflows/nightly-pipel
 
 [`nightly.yml`](../../../.github/workflows/nightly.yml) runs the Playwright suite on Linux in desktop and mobile Chromium and Firefox, against PostgreSQL and PowerSync containers. On macOS it runs desktop and iPhone WebKit against in-memory test backends. The PR workflow, [`e2e.yml`](../../../.github/workflows/e2e.yml), runs Chromium only.
 
-The macOS WebKit projects run each test in a saved profile. Safari's private browsing keeps storage in memory instead, so a test that needs that behaviour opens its own context with `browser.newContext()`, like the private-window test in [`consumer-docx-preview.spec.ts`](../../../e2e/consumer-docx-preview.spec.ts) does.
+The macOS WebKit projects run each test in a saved profile. Safari's private browsing keeps storage in memory instead, so a test that needs that behavior opens its own context with `browser.newContext()`, like the private-window test in [`consumer-docx-preview.spec.ts`](../../../e2e/consumer-docx-preview.spec.ts) does.
 
 On a Mac, install WebKit and run the extended config from the repository root:
 

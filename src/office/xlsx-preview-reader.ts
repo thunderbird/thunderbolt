@@ -31,7 +31,7 @@ import { WorkbookTooLargeError } from './xlsx-preview-client'
 
 export type PreviewLimits = typeof xlsxPreviewLimits
 
-/** Where Excel's General alignment puts a value that is not text: numbers and dates at the end, the rest centred. */
+/** Where Excel's General alignment puts a value that is not text: numbers and dates at the end, the rest centered. */
 type CellAlign = 'end' | 'center'
 
 /** A cell with a value or a style: its text in its number format, cut to the cell limit, and its style index. */
@@ -267,11 +267,11 @@ const largestFonts = (xml: string, fontSize: (style: number) => number) => {
 const styleTags = new Set(['fills', 'fill', 'fgColor', 'cellStyleXfs', 'cellXfs', 'xf', 'dxfs'])
 
 /**
- * The cell styles whose fill colour is an RGB value of neither 6 nor 8 digits, such as `FFFFD9E1F2`. Excelize reads
- * one as indexed colour 0, black, which would hide the cell's text; the preview draws no fill instead.
+ * The cell styles whose fill color is an RGB value of neither 6 nor 8 digits, such as `FFFFD9E1F2`. Excelize reads
+ * one as indexed color 0, black, which would hide the cell's text; the preview draws no fill instead.
  */
 const unreadableFills = (xml: string) => {
-  // Whether each fill's colour is unreadable, and each cell style's fill, in the order the part lists them.
+  // Whether each fill's color is unreadable, and each cell style's fill, in the order the part lists them.
   const fills: boolean[] = []
   const styleFills: number[] = []
   const inside = { section: '' }
@@ -448,7 +448,7 @@ export const openPreviewWorkbook = (
     return size
   }
 
-  /** The colour a font's theme or indexed colour stands for, when it has no RGB one. */
+  /** The color a font's theme or indexed color stands for, when it has no RGB one. */
   const baseColorOf = (theme: number | undefined, indexed: number | undefined) => {
     if (theme !== undefined) {
       return settle(file.GetBaseColor('', 0, theme)).color
@@ -457,9 +457,9 @@ export const openPreviewWorkbook = (
   }
 
   /**
-   * A font's colour as hex, its tint applied whatever the base colour. Excelize resolves fill and border colours
-   * from the theme part, but leaves a font's theme or indexed colour and its tint. Not handled: a workbook with no
-   * theme part loses its fill and border colours, RGB ones too. Read the xf's colours from `xl/styles.xml` if such
+   * A font's color as hex, its tint applied whatever the base color. Excelize resolves fill and border colors
+   * from the theme part, but leaves a font's theme or indexed color and its tint. Not handled: a workbook with no
+   * theme part loses its fill and border colors, RGB ones too. Read the xf's colors from `xl/styles.xml` if such
    * workbooks need them.
    */
   const fontColorOf = ({ Color: color, ColorTheme: theme, ColorIndexed: indexed, ColorTint: tint }: Font) => {

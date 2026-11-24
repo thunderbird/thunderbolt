@@ -968,7 +968,7 @@ saveFile('report.docx', fflate.zipSync(parts))
       '"smuggled.docx" was not saved: the script added an OLE object, which can run a program when it is opened, in word/embeddings/oleObject1.bin,',
     )
 
-    // A Word part no longer makes a deck pass for a Word file that may keep OLE objects like the user's.
+    // A Word part does not make a deck pass for a Word file, which may keep OLE objects like the user's.
     const deck = zipSync({
       'ppt/slides/slide1.xml': strToU8('<p:sld xmlns:p="urn:p"/>'),
       'ppt/slides/_rels/slide1.xml.rels': rels('oleObject', '../embeddings/oleObject1.bin'),

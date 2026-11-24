@@ -10,7 +10,7 @@ import { barSpans } from './chart-geometry'
 
 type ChartOverlay = Extract<Overlay, { type: 'chart' }>
 
-/** Office's default series colours. Not read: series colours from the file. Read `c:spPr` if users need them. */
+/** Office's default series colors. The preview does not read the series colors saved in the file; read `c:spPr` if users need them. */
 const palette = ['#4472C4', '#ED7D31', '#A5A5A5', '#FFC000', '#5B9BD5', '#70AD47']
 
 const colorAt = (index: number) => palette[index % palette.length]
@@ -28,7 +28,7 @@ const clipTo = (text: string, width: number) => {
 }
 
 /**
- * A pie's slices, each in its palette colour. An empty slice is skipped, and a slice that is the whole pie is a circle:
+ * A pie's slices, each in its palette color. An empty slice is skipped, and a slice that is the whole pie is a circle:
  * an arc that ends where it starts draws nothing.
  */
 const pieSlices = (values: number[], cx: number, cy: number, radius: number) => {

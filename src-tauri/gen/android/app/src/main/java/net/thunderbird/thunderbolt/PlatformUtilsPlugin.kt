@@ -73,9 +73,9 @@ class PlatformUtilsPlugin(private val activity: Activity) : Plugin(activity) {
      */
     @Command
     fun saveToDownloads(invoke: Invoke) {
-        // shortcut: MediaStore.Downloads needs API 29, so Android 7-9 (minSdk 24) cannot save files;
-        // upgrade by writing to Environment.getExternalStoragePublicDirectory with
-        // WRITE_EXTERNAL_STORAGE if those devices matter.
+        // MediaStore.Downloads needs API 29, so Android 7-9 (minSdk 24) cannot save files.
+        // To support them, write to Environment.getExternalStoragePublicDirectory with
+        // WRITE_EXTERNAL_STORAGE.
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             invoke.reject("Saving files needs Android 10 or later", "needs_android_10")
             return

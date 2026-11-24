@@ -163,7 +163,7 @@ existing `enabled` and `pinned_order` when the reconciler rewrites the row
 mechanism loses a property. The one-off data migration that re-stamped legacy widget hashes stays
 scoped to `isWidgetSkillId`: Office rows never carried an old hash.
 
-`isWidgetSkillId` stays separate because some behaviour belongs to widgets only. Minimal mode and
+`isWidgetSkillId` stays separate because some behavior belongs to widgets only. Minimal mode and
 models without tools keep widget contracts and inline their bodies into the prompt, since cards must
 still render; doing that for the Office skills would put three long manuals into every request.
 
@@ -180,24 +180,28 @@ per format with no imports, so returning one never loads the sandbox or download
 checks the saved files, and holds each manual to 12,000 characters.
 
 **The row holds a stub; the build holds the manual.** The synced row keeps the label, description
-and enabled toggle, but its `instruction` is a short stub: if `run_office_script` is not one of your
+and enabled toggle. Its `instruction` is a short stub: if `run_office_script` is not one of your
 tools, this version of the app cannot run it, so create the file with your own tools or tell the
-user to update. Builds older than `run_office_script` get the rows through sync: with the full text
-they would load a manual for a tool they lack, and their external ACP agents would get about 28 KB of
-it in every new session. The stub is worded for both: the built-in model there tells the user to
-update, and an external agent that can write the file itself is not told to refuse. A
-build with the tool reads its own manual through
-[`skillInstruction`](../../../src/defaults/skills.ts#L338), by stable id, so the text always matches
-the sandbox it runs in and a newer build's manual never reaches an older one. Every place a body
-reaches the model or the user goes through it: the `skill` tool, `/slug` resolution at send time in
-the legacy pipeline and the Pi harness (`loadSkillTokenInstructions`), and the skills bar's Add
+user to update.
+
+The stub exists because builds older than `run_office_script` also get these rows through sync. With
+the full text they would load a manual for a tool they lack, and their external ACP agents would get
+about 28 KB of it in every new session. The stub is worded for both cases: the built-in model there
+tells the user to update, and an external agent that can write the file itself is not told to refuse.
+
+A build with the tool reads its own manual through
+[`skillInstruction`](../../../src/defaults/skills.ts#L338), by stable id. The text therefore always
+matches the sandbox it runs in, and a newer build's manual never reaches an older one. Every place a
+body reaches the model or the user goes through it: the `skill` tool, `/slug` resolution at send time
+in the legacy pipeline and the Pi harness (`loadSkillTokenInstructions`), and the skills bar's Add
 instructions. The read-only detail in Settings reads the same cached promise through
-[`officeSkillManual`](../../../src/defaults/skills.ts#L329) with React's `use()`. Each manual is a
-chunk of its own, loaded only by one of those actions, so the entry bundle and the preparation of an
-ordinary request never carry one. The composer's token estimate stays synchronous: it sizes a token
-with `skillInstructionLength`, whose Office character counts `src/defaults/skills.test.ts` keeps
-equal to the manuals. The search index still holds the stub,
-since its triggers read the row, so a search excerpt can show it. Changing a manual needs no
+[`officeSkillManual`](../../../src/defaults/skills.ts#L329) with React's `use()`.
+
+Each manual is a chunk of its own, loaded only by one of those actions. The entry bundle and the
+preparation of an ordinary request never carry one. The composer's token estimate stays synchronous:
+it sizes a token with `skillInstructionLength`, whose Office character counts
+`src/defaults/skills.test.ts` keeps equal to the manuals. The search index still holds the stub,
+because its triggers read the row, so a search excerpt can show it. Changing a manual needs no
 `defaultSkillsVersion` bump.
 
 An older build treats the Office rows as ordinary skills. A user there can pin one (the skills bar

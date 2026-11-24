@@ -26,7 +26,7 @@ const useChartName = () => {
 const ChartPlaceholder = ({ chart, style }: { chart: PlaceholderOverlay; style: CSSProperties }) => {
   const { i18n } = useLingui()
   return (
-    // The chart sits on the sheet, which stays white in dark mode, so it keeps light-paper colours.
+    // The chart sits on the sheet, which stays white in dark mode, so it keeps light-paper colors.
     <div
       style={style}
       className="flex flex-col items-center justify-center gap-1 overflow-hidden rounded-md border border-dashed border-neutral-300 bg-neutral-50 p-3 text-center text-neutral-600"

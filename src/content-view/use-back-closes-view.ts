@@ -41,7 +41,7 @@ export const useBackClosesView = (open: boolean, onBack: () => void) => {
       onBack()
       return
     }
-    // shortcut: this always steps back, so Forward cannot pass a buried entry; track the direction if that matters.
+    // This always steps back, so Forward cannot pass a buried entry. Track the direction if that ever matters.
     if (isViewEntry()) {
       stepBack(steppingBack)
     }

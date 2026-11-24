@@ -58,7 +58,7 @@ describe('reading a workbook', () => {
   })
   afterAll(() => mock.restore())
 
-  // Rows 1 to 3 and 5 hold data and row 4 is blank, the layout where the model used to read Cedar as row 4.
+  // Rows 1 to 3 and 5 hold data and row 4 is blank, the layout where a reader can mistake Cedar for row 4.
   const blankRow4: WorkbookRows = [['Name', 'Cost'], ['Orchid', 137], ['Maple', 286], [], ['Cedar', 59]]
 
   test('keeps the row numbers of the rows below a blank row in the text', async () => {

@@ -52,7 +52,7 @@ export const SheetRow = memo(({ grid, row, activeCol }: SheetRowProps) => {
       className="relative flex"
       style={{ height: layout.rowHeights[row] }}
     >
-      {/* One grey cover over the row while its cells are read, so it does not pass for a row of empty cells. It is
+      {/* One gray cover over the row while its cells are read, so it does not pass for a row of empty cells. It is
           one element because restyling each cell costs too much: swapping 2,500 cells' classes as each chunk
           landed took WebKit's p95 scroll frame from about 60 ms to 110 ms. */}
       {loading && (

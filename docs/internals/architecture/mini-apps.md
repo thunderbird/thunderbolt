@@ -323,7 +323,7 @@ manager. It asks with `ui/download-file`, MCP Apps' method and params (one embed
   oversized `blob` is refused before it is decoded.
 - Save is disabled for 750 ms after the prompt opens, so a double-click cannot approve a file nobody read.
 - No Office documents yet. Windows and macOS saves carry the mark a browser download does, so Office would open them
-  in Protected View, but allowing them here is a separate change.
+  in Protected View, but allowing them here would be separate work.
 - Each Tauri platform saves its own way, and only a build that carries the matching grant or command can save:
   desktop through `save_to_downloads` in `src-tauri/src/platform_utils.rs`, which marks the file before it writes
   the bytes (on Linux without a Downloads entry in `user-dirs.dirs` it saves into `~/Downloads`), iOS into the app's `Documents` (`$DOCUMENT/*`, granted in `src-tauri/capabilities/ios-documents.json`,

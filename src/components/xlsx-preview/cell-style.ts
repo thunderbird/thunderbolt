@@ -8,7 +8,7 @@ import type { CSSProperties } from 'react'
 /** Carlito, Calibri's metric-compatible stand-in, comes first, so text still fits its columns without Calibri. */
 export const sheetFontStack = 'Carlito, Calibri, Arial, sans-serif'
 
-/** A colour from the file as CSS, only when it is plain hex: `RRGGBB`, or `AARRGGBB` with the alpha dropped. */
+/** A color from the file as CSS, only when it is plain hex: `RRGGBB`, or `AARRGGBB` with the alpha dropped. */
 export const hexColor = (value: string | undefined) => {
   const match = /^#?(?:[\da-f]{2})?([\da-f]{6})$/i.exec(value ?? '')
   return match ? `#${match[1]}` : undefined
@@ -74,7 +74,7 @@ const fillOf = ({ Fill: fill }: Style) => {
 }
 
 /**
- * A cell style from the file as inline CSS. Every value is rebuilt from checked parts instead of copied: colours must
+ * A cell style from the file as inline CSS. Every value is rebuilt from checked parts instead of copied: colors must
  * be hex, a font family keeps only safe characters, sizes are clamped and borders come from a fixed list. No `url()`
  * or other declaration can reach the page. `textAlign` is set only when the file sets an alignment, so the cell can
  * fall back to Excel's General alignment.

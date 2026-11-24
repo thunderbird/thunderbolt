@@ -69,6 +69,8 @@ test('a sent message gets a reply that streams in', async ({ page }) => {
   await composer.pressSequentially('/sea')
   const slash = page.getByRole('listbox', { name: 'Slash commands' })
   await expect(slash.getByRole('option', { name: /^Search/ })).toBeVisible()
+  // "/sea" also matches "research"; built-in system skills stay out of the menu until the user changes them.
+  await expect(slash.getByRole('option', { name: /^Research/ })).toHaveCount(0)
   for (const key of Array.from({ length: 4 }, () => 'ArrowLeft')) {
     await composer.press(key)
   }

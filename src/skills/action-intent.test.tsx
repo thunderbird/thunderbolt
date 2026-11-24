@@ -16,6 +16,8 @@ import { createSkill, getAllSkills } from '@/dal'
 import '@/test-utils/framer-motion-mock'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
+import { skillsTable } from '@/db/tables'
+import { defaultSkillResearch, hashSkill } from '@/defaults/skills'
 import type { EntityActionIntent } from '@/search/actions/types'
 import { PowerSyncReactivityTestProvider } from '@/test-utils/powersync-mock'
 import { waitForElement } from '@/test-utils/powersync-reactivity-test'
@@ -114,5 +116,30 @@ describe('SkillsView palette action intents', () => {
     const dialog = await waitForElement(() => screen.queryByRole('alertdialog'))
     expect(within(dialog).getByText('Delete Skill A?')).toBeInTheDocument()
     expect(within(dialog).getByText(/One skill references this/)).toBeInTheDocument()
+  })
+
+  describe('hidden system skills', () => {
+    const insertHiddenResearch = () =>
+      getDb()
+        .insert(skillsTable)
+        .values({ ...defaultSkillResearch, defaultHash: hashSkill(defaultSkillResearch) })
+
+    it('opens the edit form for a skill hidden from the library', async () => {
+      await insertHiddenResearch()
+
+      await renderWithIntent({ type: 'edit', id: defaultSkillResearch.id })
+
+      await waitForElement(() => screen.queryByText('Edit Skill'))
+      expect((screen.getByRole('textbox', { name: 'Name' }) as HTMLInputElement).value).toBe('Research')
+    })
+
+    it('opens the delete confirmation for a skill hidden from the library', async () => {
+      await insertHiddenResearch()
+
+      await renderWithIntent({ type: 'remove', id: defaultSkillResearch.id })
+
+      const dialog = await waitForElement(() => screen.queryByRole('alertdialog'))
+      expect(within(dialog).getByText('Delete Research?')).toBeInTheDocument()
+    })
   })
 })

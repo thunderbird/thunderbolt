@@ -103,12 +103,18 @@ describe('externalDataFormulas', () => {
     expect(formulasIn('<c r="A1"><f>WEB<x:y/>SERVICE("https://x")</f></c>')).toEqual(['WEB<x:y/>SERVICE("https://x")'])
   })
 
-  it('keys escaped text and real markup apart, though both read the same', () => {
+  it('keys and shows escaped text and real markup apart, though both decode the same', () => {
     const [escaped] = externalDataFormulas('<c r="A1"><f>WEBSERVICE("https://x/&lt;x:y/&gt;"&amp;B1)</f></c>')
     const [markup] = externalDataFormulas('<c r="A1"><f>WEBSERVICE("https://x/<x:y/>"&amp;B1)</f></c>')
 
-    expect(escaped.formula).toBe(markup.formula)
-    expect(escaped.key).not.toBe(markup.key)
+    expect(escaped).toEqual({
+      formula: 'WEBSERVICE("https://x/<x:y/>"&B1)',
+      key: 'text:WEBSERVICE("https://x/<x:y/>"&B1)',
+    })
+    expect(markup).toEqual({
+      formula: 'WEBSERVICE("https://x/<x:y/>"&amp;B1)',
+      key: 'markup:WEBSERVICE("https://x/<x:y/>"&amp;B1)',
+    })
   })
 
   it('leaves text, cached values and look-alike names alone', () => {

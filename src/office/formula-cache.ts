@@ -148,9 +148,9 @@ const wrappedFormula = new RegExp(`^\\s*${element('f').source}\\s*$`)
 const formulaAttributes = new RegExp(`<${prefix}(?:cfvo|cacheField|calculatedItem)${nameEnd}(${attributeToken}*)`, 'g')
 
 /**
- * A formula that fetches outside data: its decoded text, and the key that compares it with another file's. Markup
- * is keyed as written and text as decoded, under different prefixes, so `&lt;x:y/&gt;` in a URL never matches a real
- * `<x:y/>` element, which Excel may drop with or without its content.
+ * A formula that fetches outside data: its text, and the key that compares it with another file's. A formula with
+ * markup inside is shown and keyed as written, any other as decoded, under different keys, so `&lt;x:y/&gt;` in a URL
+ * never matches a real `<x:y/>` element, which Excel may drop with or without its content.
  */
 export type ExternalDataFormula = { formula: string; key: string }
 
@@ -179,10 +179,10 @@ export const externalDataFormulas = (xml: string): ExternalDataFormula[] => {
   const fetches = (formula: string) => isDdeFormula(formula) || externalDataCall.test(outsideQuotes(formula))
   return [
     ...bodies.flatMap((raw) => {
-      const formula = decodeXml(raw).trim()
       if (raw.includes('<')) {
-        return [{ formula, key: `markup:${raw}` }]
+        return [{ formula: raw, key: `markup:${raw}` }]
       }
+      const formula = decodeXml(raw).trim()
       return fetches(formula) ? [{ formula, key: `text:${formula}` }] : []
     }),
     ...values.filter(fetches).map((formula) => ({ formula, key: `text:${formula}` })),

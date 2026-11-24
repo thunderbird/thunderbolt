@@ -1136,7 +1136,7 @@ saveFile('pictures.docx', fflate.zipSync(parts))
     // The refusal quotes the field, so the model can tell the user's own field it changed from one it added.
     expect(result.ok ? '' : result.error).toStartWith('"pictures.docx" was not saved: the script added a field')
     expect(result.ok ? '' : result.error).toContain(
-      `in word/document.xml (${JSON.stringify('INCLUDEPICTURE "https://example.org/a.png" \\* MERGEFORMATINET')}), and no file`,
+      `in word/document.xml (${JSON.stringify(' INCLUDEPICTURE "https://example.org/a.png" \\* MERGEFORMATINET ')}), and no file`,
     )
 
     // A part that is XML only by its content type keeps its fields too.
@@ -1162,7 +1162,9 @@ saveFile('renamed.docx', fflate.zipSync(parts))
   it('keeps a Word field only as the edited file wrote it, its spacing included, wherever its runs split', async () => {
     const run = (text: string) => `<w:r><w:instrText xml:space="preserve">${text}</w:instrText></w:r>`
     const mark = (type: string) => `<w:r><w:fldChar w:fldCharType="${type}"/></w:r>`
-    const field = `${mark('begin')}${run(' INCLUDETEXT "C:\\\\Team  Files\\\\a.docx" ')}${mark('separate')}${mark('end')}`
+    // Longer than the 80 characters a refusal quotes.
+    const code = ` INCLUDETEXT "C:\\\\Team  Files\\\\${'q'.repeat(60)}.docx" `
+    const field = `${mark('begin')}${run(code)}${mark('separate')}${mark('end')}`
     const report = storeAttachment(
       'report.docx',
       zipWith(`<w:document xmlns:w="urn:w"><w:body><w:p>${field}</w:p></w:body></w:document>`),
@@ -1178,6 +1180,10 @@ saveFile('report.docx', fflate.zipSync(parts))
     // One space less inside the quotes is another path; outside them, another field code.
     const respaced = await call(deps, replaced('Team  Files', 'Team Files'), ['report.docx'])
     expect(respaced.ok ? '' : respaced.error).toStartWith(refusal)
+    // The refusal shows the spacing it refused, and marks where it cut the field short.
+    expect(respaced.ok ? '' : respaced.error).toContain(
+      `(${JSON.stringify(code.replace('Team  Files', 'Team Files').slice(0, 80))}…)`,
+    )
     const separated = await call(deps, replaced(' INCLUDETEXT "', ' INCLUDETEXT  "'), ['report.docx'])
     expect(separated.ok ? '' : separated.error).toStartWith(refusal)
     // The same code split across two runs is the same field.

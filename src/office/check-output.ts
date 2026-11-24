@@ -43,7 +43,8 @@ const addedContent = new Map([
 
 /** `detail`, the field code or formula refused, lets the model tell its own addition from the user's content it moved. */
 const addedProblem = (filename: string, added: string, part: string | undefined, detail?: string) => {
-  const quoted = detail === undefined ? '' : ` (${JSON.stringify(detail.replace(/\s+/g, ' ').trim().slice(0, 80))})`
+  // As written, spacing included: the check compares it so, and a spacing change may be all that differs.
+  const quoted = detail === undefined ? '' : ` (${JSON.stringify(detail.slice(0, 80))}${detail.length > 80 ? '…' : ''})`
   return `${promptFileName(filename)} was not saved: the script added ${addedContent.get(added)}, in ${part}${quoted}, and no file it read had the same one unchanged. This tool does not add such content to a file. Explain to the user what was refused and why.`
 }
 

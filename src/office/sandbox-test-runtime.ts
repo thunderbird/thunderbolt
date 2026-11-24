@@ -40,5 +40,6 @@ export const loadTestSandboxRuntime = async (): Promise<SandboxRuntime> => ({
     await Bun.file(besideEntry('pptxgenjs', 'pptxgen.bundle.js')).text(),
   ],
   ooxmlLibrary: await bundleSandboxScript(path.join(import.meta.dir, 'ooxml-globals.ts')),
+  checkScript: await bundleSandboxScript(path.join(import.meta.dir, 'check-package.ts')),
   loadWorkbooks,
 })

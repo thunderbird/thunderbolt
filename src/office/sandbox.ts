@@ -29,6 +29,8 @@ export type SandboxRuntime = {
   libraries: string[]
   /** The `fflate` and `xmldom` script. The script's VM evaluates it after `libraries`; the check VM evaluates only it. */
   ooxmlLibrary: string
+  /** `check-package.ts` as one script, which the check VM evaluates after `ooxmlLibrary`. */
+  checkScript: string
   /** Loads Excelize and IronCalc, which only a script that uses `excelize` waits for: they are several megabytes. */
   loadWorkbooks: () => Promise<InstallWorkbooks>
 }

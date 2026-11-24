@@ -15,6 +15,7 @@ import { fetchAsset, loadBytes } from './app-asset'
 import { sandboxLimits } from './constants'
 // Bundled into the Worker's own chunk as one script: xmldom ships only CommonJS files, which the VM cannot load.
 // The script VM and the output check both evaluate it; the Worker never imports the libraries itself.
+import checkScript from './check-package.ts?sandbox-script'
 import ooxmlScript from './ooxml-globals.ts?sandbox-script'
 import type { SandboxMessage } from './run-in-worker'
 import { type InstallWorkbooks, runSandboxedScript, type SandboxJob, type SandboxResult } from './sandbox'
@@ -48,6 +49,7 @@ const run = async (job: SandboxJob): Promise<SandboxResult> => {
       extensions: [{ name: 'encoding', wasm: encoding }],
       libraries: [docx, pptxgenjs],
       ooxmlLibrary: ooxmlScript,
+      checkScript,
       loadWorkbooks,
     }
     return await runSandboxedScript(runtime, job, sandboxLimits, () =>

@@ -105,7 +105,11 @@ export const matchesThreadConfidentiality = (
  * catalog loads without one.
  */
 export const catalogRequiresApiKey = (provider: Model['provider']): boolean =>
-  provider === 'openai' || provider === 'openrouter' || provider === 'anthropic' || provider === 'otari'
+  provider === 'openai' ||
+  provider === 'openrouter' ||
+  provider === 'trustedrouter' ||
+  provider === 'anthropic' ||
+  provider === 'otari'
 
 /** Providers whose catalog loads without credentials, so forms fetch it eagerly. */
 export const providerAutoFetchesCatalog = (provider: Model['provider']): boolean =>

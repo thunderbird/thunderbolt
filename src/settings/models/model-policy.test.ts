@@ -111,6 +111,7 @@ describe('catalog policy', () => {
   it('requires a key only where the provider list endpoint does', () => {
     expect(catalogRequiresApiKey('openai')).toBe(true)
     expect(catalogRequiresApiKey('openrouter')).toBe(true)
+    expect(catalogRequiresApiKey('trustedrouter')).toBe(true)
     expect(catalogRequiresApiKey('anthropic')).toBe(true)
     expect(catalogRequiresApiKey('otari')).toBe(true)
     expect(catalogRequiresApiKey('tinfoil')).toBe(false)

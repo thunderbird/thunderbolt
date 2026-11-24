@@ -150,11 +150,12 @@ export const classifyErrorKind = (error: unknown): ChatErrorKind | undefined => 
   const normalizedMessage = message?.toLowerCase()
   const isContentRejectionStatus = status === 400 || status === 422
 
-  if (name === 'TinfoilAttestationTimeoutError') {
+  if (name === 'TinfoilAttestationTimeoutError' || name === 'TrustedRouterAttestationTimeoutError') {
     return 'timeout'
   }
   if (
     name === 'TinfoilAttestationError' ||
+    name === 'TrustedRouterAttestationError' ||
     name === 'AttestationError' ||
     (typeof error === 'object' && error !== null && 'category' in error && error.category === 'attestation')
   ) {

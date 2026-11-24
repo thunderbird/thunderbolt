@@ -262,8 +262,8 @@ export const setEnabled = async (db: AnyDrizzleDatabase, id: string, next: boole
 
 /**
  * Rewrite the `pinned_order` of the supplied ids in a single transaction (index = position).
- * Ids not in the list keep their existing order. Contract ids must keep their
- * positions relative to the other pinned skills. Bounded by the 10-pin cap.
+ * Ids not in the list keep their existing order. Pinned contract skills may move,
+ * but an unpinned one can't be pinned this way. Bounded by the 10-pin cap.
  */
 export const reorderPins = async (db: AnyDrizzleDatabase, ids: string[]): Promise<void> => {
   if (ids.length === 0) {
@@ -274,28 +274,12 @@ export const reorderPins = async (db: AnyDrizzleDatabase, ids: string[]): Promis
   }
   await db.transaction(async (tx) => {
     const storedPinned = await tx
-      .select({ id: skillsTable.id, pinnedOrder: skillsTable.pinnedOrder })
+      .select({ id: skillsTable.id })
       .from(skillsTable)
       .where(and(isNull(skillsTable.deletedAt), isNotNull(skillsTable.pinnedOrder)))
-      .orderBy(asc(skillsTable.pinnedOrder))
     const storedPinnedIds = new Set(storedPinned.map(({ id }) => id))
-    const submittedIndexById = new Map(ids.map((id, index) => [id, index]))
-    const pinsContractSkill = ids.some((id) => isContractSkillId(id) && !storedPinnedIds.has(id))
-    const movesContractSkill = storedPinned.some((contract, contractStoredIndex) => {
-      if (!isContractSkillId(contract.id)) {
-        return false
-      }
-      const contractFinalOrder = submittedIndexById.get(contract.id) ?? contract.pinnedOrder!
-      return storedPinned.some((skill, skillStoredIndex) => {
-        if (skill.id === contract.id) {
-          return false
-        }
-        const skillFinalOrder = submittedIndexById.get(skill.id) ?? skill.pinnedOrder!
-        return Math.sign(skillStoredIndex - contractStoredIndex) !== Math.sign(skillFinalOrder - contractFinalOrder)
-      })
-    })
-    if (pinsContractSkill || movesContractSkill) {
-      throw new Error('reorderPins: refusing to move built-in skills')
+    if (ids.some((id) => isContractSkillId(id) && !storedPinnedIds.has(id))) {
+      throw new Error('reorderPins: refusing to pin built-in skills')
     }
     // Two-phase update to avoid hitting the (id, pinned_order) collision space
     // mid-rewrite: stage everything to negative ordinals first, then settle.

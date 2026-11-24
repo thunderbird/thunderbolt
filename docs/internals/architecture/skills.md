@@ -136,11 +136,12 @@ contracts, whose `instruction` is imported from a widget's `instructions.ts`
 [`isWidgetSkillId`](../../../src/defaults/skills.ts#L319) and
 [`isOfficeSkillId`](../../../src/defaults/skills.ts#L322) name each group.
 
-| Operation                 | On a contract skill                             |
-| ------------------------- | ----------------------------------------------- |
-| `updateSkill`             | Rejects any patch other than `enabled`          |
-| `softDeleteSkill`         | Refuses outright                                |
-| `setPinned`/`reorderPins` | Refuse to pin or move one; unpinning is allowed |
+| Operation         | On a contract skill                                   |
+| ----------------- | ----------------------------------------------------- |
+| `updateSkill`     | Rejects any patch other than `enabled`                |
+| `softDeleteSkill` | Refuses outright                                      |
+| `setPinned`       | Refuses any pin position; unpinning is allowed        |
+| `reorderPins`     | Refuses to pin an unpinned one; a pinned one can move |
 
 Settings → Skills shows a contract as "Built-in skill · Read-only" with only its toggle, and the
 composer's skills bar never offers one as a pin.

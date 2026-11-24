@@ -528,6 +528,7 @@ describe('createTinfoilRoutes', () => {
     it.each([
       ['glm-5-3', '1800', '5750'],
       ['deepseek-v4-1-flash', '600', '1450'],
+      ['kimi-k3-1-pro', '4000', '20000'],
       ['glm-5-3-flash', '300', '700'],
       ['glm-5-2', '1500', '5250'],
       ['deepseek-v4-flash', '300', '700'],

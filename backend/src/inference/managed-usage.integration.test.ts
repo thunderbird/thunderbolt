@@ -56,6 +56,11 @@ const officialPriceOracle = {
     outputNanoUsdPerToken: 1_450n,
     cacheReadNanoUsdPerToken: 10n,
   },
+  'tinfoil/kimi-k3-1-pro': {
+    inputNanoUsdPerToken: 4_000n,
+    outputNanoUsdPerToken: 20_000n,
+    cacheReadNanoUsdPerToken: 400n,
+  },
   'fireworks/glm-5p3': { inputNanoUsdPerToken: 1_400n, outputNanoUsdPerToken: 4_400n, cacheReadNanoUsdPerToken: 260n },
   'fireworks/minimax-m3': { inputNanoUsdPerToken: 300n, outputNanoUsdPerToken: 1_200n, cacheReadNanoUsdPerToken: 60n },
 } as const
@@ -405,6 +410,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
         { provider: 'tinfoil', model: 'glm-5-2', ...officialPriceOracle['tinfoil/glm-5-2'] },
         { provider: 'tinfoil', model: 'glm-5-3', ...officialPriceOracle['tinfoil/glm-5-3'] },
         { provider: 'tinfoil', model: 'glm-5-3-flash', ...officialPriceOracle['tinfoil/deepseek-v4-flash'] },
+        { provider: 'tinfoil', model: 'kimi-k3-1-pro', ...officialPriceOracle['tinfoil/kimi-k3-1-pro'] },
       ])
 
       const [{ totalCost }] = (

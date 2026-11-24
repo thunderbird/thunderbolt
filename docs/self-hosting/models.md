@@ -173,7 +173,7 @@ curl -H "Authorization: Bearer $MONITORING_TOKEN" https://your-host/v1/health/mo
 | ---------------- | ----------------------------------------------------------------- |
 | `not-configured` | No server key for that model's provider                           |
 | `missing-price`  | The model has no price entry, so every request will be refused    |
-| `timeout`        | No answer within 20 seconds                                       |
+| `timeout`        | No answer within 30 seconds                                       |
 | `upstream-error` | The provider rejected the request. Usually a bad or exhausted key |
 | `no-text`        | The provider answered but returned nothing usable                 |
 

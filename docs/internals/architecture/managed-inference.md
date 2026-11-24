@@ -182,7 +182,7 @@ Retiring a model is a one-way door. `cleanupRemovedDefaults` soft-deletes every 
 
 Full descriptions: [configuration.md](../../self-hosting/configuration.md#ai-provider-keys). With neither key set the three catalog rows still appear (they are client-side defaults) but every managed request fails; the deployment is BYOK-only.
 
-`GET /v1/health/models` (token-gated, `backend/src/api/health.ts:131`) probes every `defaultModels` entry against its real upstream: one non-streaming completion, 20 s per model, three at a time, confidential ones through a freshly attested enclave. Failures report as `not-configured`, `missing-price`, `timeout`, `upstream-error` or `no-text` ([`model-probe.ts`](../../../backend/src/inference/model-probe.ts)), so the two silent failure modes above are distinguishable without reading logs.
+`GET /v1/health/models` (token-gated, `backend/src/api/health.ts:131`) probes every `defaultModels` entry against its real upstream: one non-streaming completion, 30 s per model, all at once, confidential ones through a freshly attested enclave. Failures report as `not-configured`, `missing-price`, `timeout`, `upstream-error` or `no-text` ([`model-probe.ts`](../../../backend/src/inference/model-probe.ts)), so the two silent failure modes above are distinguishable without reading logs.
 
 ## File map
 

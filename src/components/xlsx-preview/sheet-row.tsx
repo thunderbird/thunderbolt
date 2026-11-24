@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useFormatters } from '@/i18n/use-formatters'
 import type { PreviewCell, SheetLayout } from '@/office/xlsx-preview-reader'
 import { memo, useCallback, useSyncExternalStore } from 'react'
 import type { CellStore } from './cell-store'
@@ -38,6 +39,7 @@ type SheetRowProps = {
 /** One sheet row: its header, then each shown column. Its cells are read from the Worker when the row first shows. */
 export const SheetRow = memo(({ grid, row, activeCol }: SheetRowProps) => {
   const { id, layout, geometry, cells } = grid
+  const formatters = useFormatters()
   const subscribe = useCallback((listener: () => void) => cells.subscribe(row, listener), [cells, row])
   const rowCells = useSyncExternalStore(subscribe, () => cells.cells(row))
   const byCol = new Map((rowCells ?? []).map((cell) => [cell.col, cell]))
@@ -68,7 +70,7 @@ export const SheetRow = memo(({ grid, row, activeCol }: SheetRowProps) => {
         className="sticky start-0 z-[3] flex flex-none items-center justify-center border-e border-b border-border bg-muted text-[length:var(--font-size-xs)] tabular-nums text-muted-foreground"
         style={{ width: rowHeaderWidth }}
       >
-        {row + 1}
+        {formatters.ungroupedInteger(row + 1)}
       </div>
       {layout.cols.map((col, position) => {
         const key = cellKey(row, col)

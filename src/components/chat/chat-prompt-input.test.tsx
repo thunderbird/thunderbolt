@@ -1583,6 +1583,16 @@ describe('ChatPromptInput', () => {
         expect(huge.read).not.toHaveBeenCalled()
       })
 
+      it('never reads a copied file of a type it refuses', async () => {
+        const page = pathFile('page.html', 6, async () => new File(['<html>'], 'page.html'))
+        const textarea = renderOnLinux([page])
+        pasteUriList(textarea, '')
+        await flushAttachments()
+
+        expect(screen.getByText('"page.html" isn\'t a supported file type.')).toBeInTheDocument()
+        expect(page.read).not.toHaveBeenCalled()
+      })
+
       it('names a copied file it cannot read and still attaches the rest', async () => {
         const textarea = renderOnLinux([
           pathFile('locked.docx', 4, async () => null),

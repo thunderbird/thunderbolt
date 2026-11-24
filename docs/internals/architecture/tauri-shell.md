@@ -136,12 +136,25 @@ both in sync.
 ### `platform-utils`: one plugin, two implementations
 
 [`platform_utils.rs`](../../../src-tauri/src/platform_utils.rs) declares an inlined plugin exposing
-`get_android_insets` and `set_bar_color`.
+these commands:
 
-- **Android** replaces the Rust bodies with `PlatformUtilsPlugin.kt`, registered via
-  `register_android_plugin("net.thunderbird.thunderbolt", "PlatformUtilsPlugin")`, reading real
-  `WindowInsetsCompat` values and driving `WindowInsetsControllerCompat`.
-- **Desktop and iOS** fall through to the Rust bodies, deliberate no-ops (`None`, `Ok(())`).
+| Command              | Answered by                        | What it does                                                                                                                                                                                                                                   |
+| -------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `get_android_insets` | Kotlin on Android; Rust elsewhere  | Real `WindowInsetsCompat` values on Android; `None` elsewhere                                                                                                                                                                                  |
+| `set_bar_color`      | Kotlin on Android; Rust elsewhere  | Drives `WindowInsetsControllerCompat` on Android; `Ok(())` elsewhere                                                                                                                                                                           |
+| `save_to_downloads`  | Rust on desktop; Kotlin on Android | Saves into Downloads for [`download.ts`](../../../src/lib/download.ts). Desktop marks the file as downloaded first; Android writes through MediaStore off the main thread and needs Android 10. iOS has no handler and saves through plugin-fs |
+| `copied_files`       | Rust on Linux only                 | Lists the regular files in `x-special/gnome-copied-files` (path, name, size). Grants no plugin-fs scope                                                                                                                                        |
+| `read_copied_file`   | Rust on Linux only                 | Returns the raw bytes of one file the last `copied_files` call listed, up to the composer's 25 MB cap. Refuses any other path                                                                                                                  |
+
+- **Android** answers the first three with `PlatformUtilsPlugin.kt`, registered via
+  `register_android_plugin("net.thunderbird.thunderbolt", "PlatformUtilsPlugin")`. A command the Rust
+  `generate_handler!` also lists never reaches Kotlin, so `save_to_downloads` is registered there for
+  desktop only.
+- **Desktop and iOS** fall through to the Rust bodies of the first two, deliberate no-ops.
+- **A failed save rejects with `{ code, message }`** on both sides. `saveErrorMessage` in `download.ts`
+  maps the stable `code` (`names_taken`, `mark_failed`, `no_downloads_folder`, `needs_android_10`,
+  `not_a_file_name`, `write_failed`) to the words the user sees; `message` is the OS text, for the
+  console only. A `write_failed` save is explained from its OS text, as plugin-fs errors on iOS are.
 
 Callers ([`use-safe-area-inset.ts`](../../../src/hooks/use-safe-area-inset.ts),
 [`set-android-bar-color.ts`](../../../src/lib/set-android-bar-color.ts)) therefore invoke
@@ -150,7 +163,7 @@ unconditionally under Tauri and read `null`/no-op as "use the CSS `env()` defaul
 Command names are declared twice on the Rust side: `generate_handler!` and
 [`build.rs`](../../../src-tauri/build.rs), whose `InlinedPlugin` mints the allow-all-commands
 `platform-utils:default` permission. Kotlin declares the camelCase counterparts (`getAndroidInsets`,
-`setBarColor`) at exactly the package path `register_android_plugin` names; a mismatch is a runtime
+`setBarColor`, `saveToDownloads`) at exactly the package path `register_android_plugin` names; a mismatch is a runtime
 `ClassNotFoundException: net.thunderbird.thunderbolt.PlatformUtilsPlugin`, not a build error.
 Android specifics and the `gen/android` re-init trap:
 [development/mobile-setup.md](../development/mobile-setup.md).
@@ -196,10 +209,13 @@ build and fails in the app is almost always missing an entry there.
 On Linux, WebKitGTK shows a file dragged in from the OS only as `text/uri-list` text, so the composer
 takes the paths from Tauri's drag events (`use-native-file-drop.ts`). Files copied in a file manager
 paste through `copied_files` in `platform_utils.rs`, which reads only `x-special/gnome-copied-files`
-and never `text/uri-list`, where any page can put a `file://` path. The composer stats each path
-first (`fs:allow-stat`) and reads a file only after the count, type and size checks pass, one at a
-time. A path it cannot stat (folder, device, pipe) is skipped, and a read the OS refuses shows in the
-attachment notice. The native handler takes dragged links too, so the composer types http(s) ones at
+and never `text/uri-list`, where any page can put a `file://` path. It lists the regular files with
+their sizes and opens nothing to plugin-fs; the composer reads a file through `read_copied_file`
+only after the count, type and size checks pass, one at a time, and that command reads only a path
+the listing named, up to the composer's size cap. A dropped file instead is opened to plugin-fs by
+the drop handler, as plugin-fs does for a window-level drop, and the composer stats it first
+(`fs:allow-stat`). A path that is not a regular file (folder, device, pipe) is skipped, and a read
+the OS refuses shows in the attachment notice. The native handler takes dragged links too, so the composer types http(s) ones at
 the caret, with no drop hint. When a paste brings no copied files and its `text/plain` reads empty,
 the composer pastes only the http(s) links from its `text/uri-list`, as text.
 

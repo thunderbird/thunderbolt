@@ -264,19 +264,86 @@ fn mark_from_internet(_path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Returns the files a file manager copied and opens them to plugin-fs, as a
-/// dropped file is, so the composer can attach them. WebKitGTK shows a copied
-/// file to the page only as `text/uri-list` text. This reads only
-/// `x-special/gnome-copied-files`, which file managers write (GNOME Files,
-/// Nemo, Caja, PCManFM, Thunar) and web pages cannot. It never reads
-/// `text/uri-list`, where any page can put a `file://` path.
+/// The largest copied file `read_copied_file` reads, the composer's own cap
+/// (`maxAttachmentBytes` in `src/components/chat/chat-prompt-input.tsx`): it
+/// refuses a larger file unread.
+#[cfg(all(desktop, any(test, target_os = "linux")))]
+const MAX_COPIED_FILE_BYTES: u64 = 25 * 1024 * 1024;
+
+/// A file a file manager copied, as `copied_files` lists it.
+#[cfg(all(desktop, any(test, target_os = "linux")))]
+#[derive(Debug, PartialEq, Serialize)]
+struct CopiedFile {
+    path: String,
+    name: String,
+    size: u64,
+}
+
+/// The paths the last `copied_files` call listed: the only ones
+/// `read_copied_file` reads.
+#[cfg(target_os = "linux")]
+#[derive(Default)]
+struct ListedCopiedFiles(std::sync::Mutex<Vec<PathBuf>>);
+
+/// The regular files among `paths`, named and sized. A folder, device, pipe,
+/// a path that cannot be read, or one that is not UTF-8 is left out.
+#[cfg(all(desktop, any(test, target_os = "linux")))]
+fn list_regular_files(paths: Vec<PathBuf>) -> Vec<CopiedFile> {
+    paths
+        .into_iter()
+        .filter_map(|path| {
+            let metadata = std::fs::metadata(&path).ok().filter(|m| m.is_file())?;
+            Some(CopiedFile {
+                name: path.file_name()?.to_str()?.to_owned(),
+                path: path.to_str()?.to_owned(),
+                size: metadata.len(),
+            })
+        })
+        .collect()
+}
+
+/// The bytes of `path`, only if `listed` holds it, it is still a regular file
+/// and it is no larger than [`MAX_COPIED_FILE_BYTES`]. The read stops past the
+/// cap, so a file that grew after the listing is refused, not read whole.
+#[cfg(all(desktop, any(test, target_os = "linux")))]
+fn read_listed_file(listed: &[PathBuf], path: &Path) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+
+    if !listed.iter().any(|allowed| allowed == path) {
+        return Err(format!(
+            "{} was not copied in a file manager",
+            path.display()
+        ));
+    }
+    if !path.is_file() {
+        return Err(format!("{} is not a file", path.display()));
+    }
+    let mut bytes = Vec::new();
+    File::open(path)
+        .and_then(|file| file.take(MAX_COPIED_FILE_BYTES + 1).read_to_end(&mut bytes))
+        .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
+    if bytes.len() as u64 > MAX_COPIED_FILE_BYTES {
+        return Err(format!("{} is too large to attach", path.display()));
+    }
+    Ok(bytes)
+}
+
+/// Lists the files a file manager copied, so the composer can attach them.
+/// WebKitGTK shows a copied file to the page only as `text/uri-list` text.
+/// This reads only `x-special/gnome-copied-files`, which file managers write
+/// (GNOME Files, Nemo, Caja, PCManFM, Thunar) and web pages cannot. It never
+/// reads `text/uri-list`, where any page can put a `file://` path.
+/// It opens nothing to plugin-fs: the composer reads only the files it accepts,
+/// through `read_copied_file`.
 /// GTK reads the clipboard on the main thread, and the request there must not
 /// block: a blocking wait runs a nested loop that delivers the paste twice.
 #[cfg(target_os = "linux")]
 #[command]
-async fn copied_files<R: Runtime>(app: AppHandle<R>) -> Result<Vec<PathBuf>, String> {
+async fn copied_files<R: Runtime>(
+    app: AppHandle<R>,
+    listed: tauri::State<'_, ListedCopiedFiles>,
+) -> Result<Vec<CopiedFile>, String> {
     use gtk::gdk;
-    use tauri_plugin_fs::FsExt;
 
     let (sender, mut receiver) = tauri::async_runtime::channel(1);
     app.run_on_main_thread(move || {
@@ -289,12 +356,27 @@ async fn copied_files<R: Runtime>(app: AppHandle<R>) -> Result<Vec<PathBuf>, Str
         );
     })
     .map_err(|error| error.to_string())?;
-    let paths = copied_file_paths(&receiver.recv().await.unwrap_or_default());
-    let scope = app.fs_scope();
-    for path in &paths {
-        let _ = scope.allow_file(path);
-    }
-    Ok(paths)
+    let files = list_regular_files(copied_file_paths(
+        &receiver.recv().await.unwrap_or_default(),
+    ));
+    *listed.0.lock().map_err(|error| error.to_string())? =
+        files.iter().map(|file| PathBuf::from(&file.path)).collect();
+    Ok(files)
+}
+
+/// The bytes of a file the last `copied_files` call listed, as raw IPC bytes.
+/// Refuses any other path and any file over the composer's size cap.
+#[cfg(target_os = "linux")]
+#[command]
+async fn read_copied_file(
+    path: PathBuf,
+    listed: tauri::State<'_, ListedCopiedFiles>,
+) -> Result<tauri::ipc::Response, String> {
+    let listed = listed.0.lock().map_err(|error| error.to_string())?.clone();
+    tauri::async_runtime::spawn_blocking(move || read_listed_file(&listed, &path))
+        .await
+        .map_err(|error| error.to_string())?
+        .map(tauri::ipc::Response::new)
 }
 
 /// The local files named in an `x-special/gnome-copied-files` entry: `copy` or
@@ -326,8 +408,16 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
         #[cfg(desktop)]
         save_to_downloads,
         #[cfg(target_os = "linux")]
-        copied_files
+        copied_files,
+        #[cfg(target_os = "linux")]
+        read_copied_file
     ]);
+
+    #[cfg(target_os = "linux")]
+    let builder = builder.setup(|app, _api| {
+        app.manage(ListedCopiedFiles::default());
+        Ok(())
+    });
 
     // plugin-fs opens a dropped file only on a window-level drop, but the
     // `unstable` feature makes the main webview a child, which reports
@@ -549,6 +639,63 @@ mod tests {
         assert_eq!(with_suffix("report.final.html", 2), "report.final (2).html");
         assert_eq!(with_suffix("noext", 1), "noext (1)");
         assert_eq!(with_suffix(".hidden", 1), ".hidden (1)");
+    }
+
+    #[test]
+    fn lists_only_regular_files_with_their_name_and_size() {
+        let folder = temp_folder("listed");
+        let deck = folder.join("Q3 deck.pptx");
+        std::fs::write(&deck, b"deck").unwrap();
+
+        let listed = list_regular_files(vec![
+            deck.clone(),
+            folder.clone(),
+            folder.join("missing.docx"),
+        ]);
+
+        assert_eq!(
+            listed,
+            [CopiedFile {
+                path: deck.to_str().unwrap().to_owned(),
+                name: "Q3 deck.pptx".into(),
+                size: 4,
+            }]
+        );
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn reads_only_a_listed_file_under_the_cap() {
+        let folder = temp_folder("read-listed");
+        let deck = folder.join("deck.pptx");
+        let other = folder.join("other.pptx");
+        let huge = folder.join("huge.pptx");
+        std::fs::write(&deck, b"PK").unwrap();
+        std::fs::write(&other, b"PK").unwrap();
+        File::create(&huge)
+            .unwrap()
+            .set_len(MAX_COPIED_FILE_BYTES + 1)
+            .unwrap();
+        let at_cap = folder.join("at-cap.pptx");
+        File::create(&at_cap)
+            .unwrap()
+            .set_len(MAX_COPIED_FILE_BYTES)
+            .unwrap();
+        let listed = [deck.clone(), huge.clone(), folder.clone(), at_cap.clone()];
+
+        assert_eq!(read_listed_file(&listed, &deck).unwrap(), b"PK");
+        assert_eq!(
+            read_listed_file(&listed, &at_cap).unwrap().len() as u64,
+            MAX_COPIED_FILE_BYTES
+        );
+        for refused in [&other, &huge, &folder] {
+            assert!(
+                read_listed_file(&listed, refused).is_err(),
+                "{} was read",
+                refused.display()
+            );
+        }
+        std::fs::remove_dir_all(&folder).unwrap();
     }
 
     #[cfg(target_os = "linux")]

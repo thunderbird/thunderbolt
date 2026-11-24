@@ -42,8 +42,8 @@ export const readsFilesByPath = (): boolean => getPlatform() === 'linux'
 export const httpLinks = (uris: string[]): string[] => uris.filter((uri) => /^https?:\/\//i.test(uri))
 
 /**
- * The regular files among the paths the OS handed over, from a native drag or
- * a file manager copy, without reading their bytes. A path it cannot stat is
+ * The regular files among the paths a native drag handed over, without
+ * reading their bytes. A path it cannot stat is
  * left out. The app opens only regular files to the file system plugin, so
  * folders, devices and pipes are left out too.
  */
@@ -54,21 +54,48 @@ export const filesAtPaths = async (paths: string[], fs: FileSystem = tauriFs): P
     if (info.status === 'rejected' || !info.value.isFile) {
       return []
     }
-    const name = path.slice(path.lastIndexOf('/') + 1)
-    const extension = /\.([^.]+)$/.exec(name)?.[1].toLowerCase() ?? ''
-    const type = binaryTypes.get(extension) ?? ''
-    const read = async () => {
-      try {
-        return new File([await fs.readFile(path)], name, { type })
-      } catch (error) {
-        console.error(`Failed to read ${path}:`, error)
-        return null
-      }
-    }
-    return [{ name, type, size: info.value.size, read }]
+    return [pathFile(path, path.slice(path.lastIndexOf('/') + 1), info.value.size, fs.readFile)]
   })
 }
 
-/** The files a file manager copied, found through the OS clipboard (`copied_files` in `platform_utils.rs`). */
-export const readCopiedFiles = async (): Promise<PathFile[]> =>
-  filesAtPaths(await invoke<string[]>('plugin:platform-utils|copied_files'))
+/** A file at `path`, typed from its name, whose bytes come from `readBytes` only when the caller reads it. */
+const pathFile = (
+  path: string,
+  name: string,
+  size: number,
+  readBytes: (path: string) => Promise<Uint8Array<ArrayBuffer> | ArrayBuffer>,
+): PathFile => {
+  const extension = /\.([^.]+)$/.exec(name)?.[1].toLowerCase() ?? ''
+  const type = binaryTypes.get(extension) ?? ''
+  const read = async () => {
+    try {
+      return new File([await readBytes(path)], name, { type })
+    } catch (error) {
+      console.error(`Failed to read ${path}:`, error)
+      return null
+    }
+  }
+  return { name, type, size, read }
+}
+
+/** A regular file a file manager copied, as `copied_files` in `platform_utils.rs` lists it. */
+type CopiedFile = { path: string; name: string; size: number }
+
+/** The two `platform_utils.rs` commands behind a file manager copy, so a test can supply them. */
+export type CopiedFilesNative = {
+  list: () => Promise<CopiedFile[]>
+  read: (path: string) => Promise<ArrayBuffer>
+}
+
+const tauriCopiedFiles: CopiedFilesNative = {
+  list: () => invoke<CopiedFile[]>('plugin:platform-utils|copied_files'),
+  read: (path) => invoke<ArrayBuffer>('plugin:platform-utils|read_copied_file', { path }),
+}
+
+/**
+ * The files a file manager copied, found through the OS clipboard. Listing them grants nothing: each file's bytes
+ * come from `read_copied_file` when the composer reads it, which refuses any path the listing did not name and any
+ * file over the composer's size cap.
+ */
+export const readCopiedFiles = async (native: CopiedFilesNative = tauriCopiedFiles): Promise<PathFile[]> =>
+  (await native.list()).map(({ path, name, size }) => pathFile(path, name, size, native.read))

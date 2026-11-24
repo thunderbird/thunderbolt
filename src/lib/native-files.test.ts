@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it, mock } from 'bun:test'
-import { filesAtPaths, httpLinks } from './native-files'
+import { describe, expect, it, mock, spyOn } from 'bun:test'
+import { filesAtPaths, httpLinks, readCopiedFiles } from './native-files'
 
 const files = new Map([
   ['/home/ana/Q3 deck.pptx', 'deck'],
@@ -65,6 +65,43 @@ describe('filesAtPaths', () => {
 
     expect(locked.name).toBe('locked.docx')
     expect(await locked.read()).toBeNull()
+  })
+})
+
+describe('readCopiedFiles', () => {
+  const fakeCopied = () => ({
+    list: mock(async () => [
+      { path: '/home/ana/Photo.JPG', name: 'Photo.JPG', size: 5 },
+      { path: '/home/ana/locked.docx', name: 'locked.docx', size: 6 },
+    ]),
+    read: mock(async (path: string) => {
+      if (path === '/home/ana/locked.docx') {
+        throw new Error(`Permission denied: ${path}`)
+      }
+      return new TextEncoder().encode('photo').buffer
+    }),
+  })
+
+  it('lists the copied files without reading any', async () => {
+    const native = fakeCopied()
+    const copied = await readCopiedFiles(native)
+
+    expect(copied.map(({ name, type, size }) => ({ name, type, size }))).toEqual([
+      { name: 'Photo.JPG', type: 'image/jpeg', size: 5 },
+      { name: 'locked.docx', type: '', size: 6 },
+    ])
+    expect(native.read).not.toHaveBeenCalled()
+  })
+
+  it('reads one file by its listed path when asked, and null when the read is refused', async () => {
+    const native = fakeCopied()
+    const [photo, locked] = await readCopiedFiles(native)
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+
+    expect(await (await photo.read())?.text()).toBe('photo')
+    expect(native.read).toHaveBeenCalledWith('/home/ana/Photo.JPG')
+    expect(await locked.read()).toBeNull()
+    consoleError.mockRestore()
   })
 })
 

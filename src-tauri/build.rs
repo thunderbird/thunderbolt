@@ -12,6 +12,7 @@ fn main() {
                     "set_bar_color",
                     "save_to_downloads",
                     "copied_files",
+                    "read_copied_file",
                 ])
                 .default_permission(tauri_build::DefaultPermissionRule::AllowAllCommands),
         ),

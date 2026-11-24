@@ -314,7 +314,7 @@ manager. It asks with `ui/download-file`, MCP Apps' method and params (one embed
 | Parse     | `src/mini-apps/mini-app-download.ts`        | `Invalid content: …`                                 |
 | Policy    | same: type allowlist, 50 MB, safe name      | `Policy violation: …`                                |
 | Confirm   | `mini-app-download-prompt.tsx`, 2 min limit | `Download denied by user`, `expired`, or `cancelled` |
-| Save      | `src/lib/download.ts`                       | the platform's own message                           |
+| Save      | `src/lib/download.ts`                       | a plain reason from `saveErrorMessage`               |
 
 - One prompt at a time, and after a declined or expired prompt the app cannot ask again for 5 s (the prompt is modal).
 - A prompt still open when the frame loads a new document is cancelled, so approving it cannot save the previous

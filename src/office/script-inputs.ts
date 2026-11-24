@@ -15,7 +15,7 @@ export type ResolvedInputs = { ok: true; inputs: SandboxInput[]; filenames: stri
 /**
  * A file of a chat thread, as its messages describe it. A `blob` means the bytes are at hand; without one they are
  * read from the attachment store when a script names the file. For a file this tool made, `savedAs` is the name the
- * script gave it, and `size` is absent from a result stored before results carried one.
+ * script gave it and `size` its size in bytes.
  */
 export type ThreadFile = Pick<StoredFile, 'id' | 'filename'> &
   Partial<Pick<StoredFile, 'size' | 'createdAt' | 'blob'>> & { savedAs?: string }

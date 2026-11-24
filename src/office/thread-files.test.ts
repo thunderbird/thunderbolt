@@ -7,7 +7,7 @@ import type { UIMessage } from 'ai'
 import { docxMime } from '@/files/transformers'
 import { threadFileRefs } from './thread-files'
 
-const created = (ids: string[], size?: number) => ({
+const created = (ids: string[], size = 10) => ({
   ok: true,
   files: ids.map((id) => ({
     id,
@@ -61,8 +61,7 @@ describe('threadFileRefs', () => {
       { id: 'notes', filename: 'notes.docx' },
       { id: 'upload', filename: 'upload.docx', savedAs: 'upload.docx', size: 40 },
       { id: 'first', filename: 'first.docx', savedAs: 'first.docx', size: 40 },
-      // A result stored before results carried a size.
-      { id: 'second', filename: 'second.docx', savedAs: 'second.docx' },
+      { id: 'second', filename: 'second.docx', savedAs: 'second.docx', size: 10 },
     ])
   })
 
@@ -81,6 +80,14 @@ describe('threadFileRefs', () => {
           },
           { type: 'tool-run_office_script', toolCallId: 'c2', state: 'input-available', input: {} },
           { type: 'tool-render_html', toolCallId: 'c3', state: 'output-available', input: {}, output: created(['x']) },
+          // A result missing a field every result carries.
+          {
+            type: 'tool-run_office_script',
+            toolCallId: 'c4',
+            state: 'output-available',
+            input: {},
+            output: { ok: true, files: [{ id: 'y', filename: 'y.docx', mimeType: docxMime }], logs: '' },
+          },
         ],
       },
     ]

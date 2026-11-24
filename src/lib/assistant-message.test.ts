@@ -203,7 +203,16 @@ describe('assistant-message utilities', () => {
           }
     const createdReport = {
       ok: true,
-      files: [{ id: 'f1', filename: 'report.docx', mimeType: 'application/docx', edited: false }],
+      files: [
+        {
+          id: 'f1',
+          filename: 'report.docx',
+          mimeType: 'application/docx',
+          size: 3,
+          edited: false,
+          savedAs: 'report.docx',
+        },
+      ],
       logs: '',
     }
 

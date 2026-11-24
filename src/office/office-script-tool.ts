@@ -23,10 +23,9 @@ export type CreatedFile = {
   id: string
   filename: string
   mimeType: string
-  /** Absent from results stored before they carried it. */
-  size?: number
+  size: number
   edited: boolean
-  savedAs?: string
+  savedAs: string
 }
 
 /** `notes` flag saved files that are new even though the run read a file of their type, or a run that saved none. */
@@ -43,14 +42,13 @@ export const isOfficeScriptPart = (part: UIMessage['parts'][number]): part is Of
 const createdFilesSchema = z.object({
   ok: z.literal(true),
   files: z.array(
-    // Results stored before the tool could edit files have no `edited` or `savedAs`, and older ones no `size`.
     z.object({
       id: z.string(),
       filename: z.string(),
       mimeType: z.string(),
-      size: z.number().optional(),
-      edited: z.boolean().default(false),
-      savedAs: z.string().optional(),
+      size: z.number(),
+      edited: z.boolean(),
+      savedAs: z.string(),
     }),
   ),
 })
@@ -94,8 +92,11 @@ const newFileNote = (filename: string, inputFilenames: string[]) => {
 }
 
 /** The thread's files this tool made, once each: only those carry the name the script gave them. */
+const isMadeByTool = (file: ThreadFile): file is ThreadFile & { savedAs: string; size: number } =>
+  file.savedAs !== undefined && file.size !== undefined
+
 const madeByTool = (files: ThreadFile[]) => [
-  ...new Map(files.filter(({ savedAs }) => savedAs !== undefined).map((file) => [file.id, file])).values(),
+  ...new Map(files.filter(isMadeByTool).map((file) => [file.id, file])).values(),
 ]
 
 /**
@@ -254,7 +255,7 @@ export type OfficeScriptToolDeps = {
    * `size`. Listing reads no bytes; a file named in `inputs` is read with `readThreadFile`.
    */
   listThreadFiles?: () => Promise<ThreadFile[]>
-  /** Reads a stored file, for an input and for the size of a file whose result carries none. Defaults to the store. */
+  /** Reads a stored file named in `inputs`. Defaults to the store. */
   readThreadFile?: ReadThreadFile
   /** The built-in agent's workspace. The legacy pipeline has none. */
   readWorkspaceFile?: ReadWorkspaceFile
@@ -415,21 +416,10 @@ export const createOfficeScriptTool = ({
       if (!deliverable.ok) {
         return fail(deliverable.error, result.logs)
       }
-      // A result stored before results carried a size is read once, here, to learn it.
-      const readSizes = new Map(
-        await Promise.all(
-          madeByTool(threadFiles)
-            .filter(({ size }) => size === undefined)
-            .map(async ({ id }) => [id, (await readThreadFile(id))?.size ?? 0] as const),
-        ),
-      )
       // Counted after the script and with no await before the claim below, to include calls that finished or started
       // storing while it ran and to leave no gap for another call to claim the same room.
       const storedBytes =
-        madeByTool([...threadFiles, ...madeThisSend]).reduce(
-          (total, { id, size }) => total + (size ?? readSizes.get(id) ?? 0),
-          0,
-        ) + storingBytes
+        madeByTool([...threadFiles, ...madeThisSend]).reduce((total, { size }) => total + size, 0) + storingBytes
       const newBytes = deliverable.files.reduce((total, { bytes }) => total + bytes.byteLength, 0)
       if (storedBytes + newBytes > sandboxLimits.threadFileBytes) {
         return fail(

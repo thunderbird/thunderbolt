@@ -1337,16 +1337,6 @@ saveFile('renamed.docx', fflate.zipSync(parts))
       expect(result).toMatchObject({ ok: false, error: expect.stringContaining('one chat may hold') })
       expect(readThreadFile).not.toHaveBeenCalled()
     })
-
-    it('reads a made file whose result has no size, to learn it', async () => {
-      const earlier = listed('big.docx', zipWith('<a/>'), { savedAs: 'big.docx' })
-      const readThreadFile = readerOf({ ...earlier.file, size: sandboxLimits.threadFileBytes - 10 })
-
-      const result = await call({ listThreadFiles: async () => [earlier.entry], readThreadFile }, docxScript('b.docx'))
-
-      expect(result).toMatchObject({ ok: false, error: expect.stringContaining('one chat may hold') })
-      expect(readThreadFile.mock.calls).toEqual([[earlier.file.id]])
-    })
   })
 
   it('counts the files of a call still being stored against the limit of a call made at the same time', async () => {

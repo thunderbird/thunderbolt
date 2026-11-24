@@ -13,15 +13,25 @@ import type { DynamicToolUIPart, ToolUIPart } from 'ai'
 import { afterEach, beforeEach, describe, expect, it, type Mock, spyOn } from 'bun:test'
 import { AssistantMessage } from './assistant-message'
 
-const report = { id: 'file-1', filename: 'report.docx', mimeType: docxMime }
-const deck = { id: 'file-2', filename: 'deck.pptx', mimeType: pptxMime }
-const budget = { id: 'file-3', filename: 'budget.xlsx', mimeType: xlsxMime }
 const bytes = new Uint8Array([80, 75, 3, 4])
-const storedFiles = [report, deck, budget].map((file) => ({
-  ...file,
+const resultEntry = (id: string, filename: string, mimeType: string) => ({
+  id,
+  filename,
+  mimeType,
   size: bytes.byteLength,
+  edited: false,
+  savedAs: filename,
+})
+const report = resultEntry('file-1', 'report.docx', docxMime)
+const deck = resultEntry('file-2', 'deck.pptx', pptxMime)
+const budget = resultEntry('file-3', 'budget.xlsx', xlsxMime)
+const storedFiles = [report, deck, budget].map(({ id, filename, mimeType, size }) => ({
+  id,
+  filename,
+  mimeType,
+  size,
   createdAt: 0,
-  blob: new Blob([bytes], { type: file.mimeType }),
+  blob: new Blob([bytes], { type: mimeType }),
 }))
 
 const finishedCall = (output: ToolUIPart['output']): ToolUIPart => ({

@@ -40,6 +40,15 @@ const createReasoningGroupPart = (
     items,
   }) as ReasoningGroupUIPart
 
+const createdReport = (id: string) => ({
+  id,
+  filename: 'report.docx',
+  mimeType: 'application/docx',
+  size: 4,
+  edited: false,
+  savedAs: 'report.docx',
+})
+
 const createToolGroupPart = (tools: ToolUIPart[]): ReasoningGroupUIPart =>
   createReasoningGroupPart(tools.map((tool) => ({ type: 'tool' as const, content: tool, id: tool.toolCallId })))
 
@@ -295,7 +304,7 @@ describe('Office activity during a streaming reply', () => {
     ...running,
     toolCallId: 'saved',
     state: 'output-available',
-    output: { ok: true, files: [{ id: 'f1', filename: 'report.docx', mimeType: 'application/docx' }], logs: '' },
+    output: { ok: true, files: [createdReport('f1')], logs: '' },
   }
   it('keeps an expanded tool group focused when a later save folds a preceding chip', async () => {
     const parts = [saved, createTextPart('Checking the report.'), search]
@@ -317,7 +326,7 @@ describe('Office activity during a streaming reply', () => {
         {
           ...saved,
           toolCallId: 'resave',
-          output: { ok: true, files: [{ id: 'f2', filename: 'report.docx', mimeType: 'application/docx' }] },
+          output: { ok: true, files: [createdReport('f2')] },
         },
       ]),
     )
@@ -357,7 +366,7 @@ it('keeps a finished office run as a step, with the chips of its files after the
         toolCallId: 'office-call',
         state: 'output-available',
         input: { script: 'saveFile()' },
-        output: { ok: true, files: [{ id: 'f1', filename: 'report.docx', mimeType: 'application/docx' }], logs: '' },
+        output: { ok: true, files: [createdReport('f1')], logs: '' },
       },
       { type: 'text', text: 'Done' },
     ],

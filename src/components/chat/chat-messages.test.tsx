@@ -822,7 +822,20 @@ describe('ChatMessages', () => {
             toolCallId: 'call-1',
             state: 'output-available',
             input: { script: '' },
-            output: { ok: true, files: [{ id: 'file-1', filename: 'report.docx', mimeType: docxMime }], logs: '' },
+            output: {
+              ok: true,
+              files: [
+                {
+                  id: 'file-1',
+                  filename: 'report.docx',
+                  mimeType: docxMime,
+                  size: 4,
+                  edited: false,
+                  savedAs: 'report.docx',
+                },
+              ],
+              logs: '',
+            },
           },
           { type: 'text', text: 'Here is the report.' },
         ],

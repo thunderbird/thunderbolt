@@ -148,15 +148,21 @@ const wrappedFormula = new RegExp(`^\\s*${element('f').source}\\s*$`)
 const formulaAttributes = new RegExp(`<${prefix}(?:cfvo|cacheField|calculatedItem)${nameEnd}(${attributeToken}*)`, 'g')
 
 /**
- * The formulas in a part's XML that fetch data from outside the file, such as `WEBSERVICE(...)` or a DDE request
- * (see `isDdeFormula`), as decoded text:
- * those of cells, conditional formats, data validations, defined names, table columns and pivot fields. Comments and
- * processing instructions go and CDATA is unwrapped first, in one pass, so neither can hide the other. Any other
- * markup inside a formula makes it count, and stays in the returned text: Excel drops an element in a namespace it
- * ignores, with or without its content, so it may read a call there that the text does not show. Expects XML that
- * parses: on anything else it may find too much, never too little where Office would read a formula.
+ * A formula that fetches outside data: its decoded text, and the key that compares it with another file's. Markup
+ * is keyed as written and text as decoded, under different prefixes, so `&lt;x:y/&gt;` in a URL never matches a real
+ * `<x:y/>` element, which Excel may drop with or without its content.
  */
-export const externalDataFormulas = (xml: string) => {
+export type ExternalDataFormula = { formula: string; key: string }
+
+/**
+ * The formulas in a part's XML that fetch data from outside the file, such as `WEBSERVICE(...)` or a DDE request
+ * (see `isDdeFormula`): those of cells, conditional formats, data validations, defined names, table columns and pivot
+ * fields. Comments and processing instructions go and CDATA is unwrapped first, in one pass, so neither can hide the
+ * other. Any other markup inside a formula makes it count, and stays in its text: Excel drops an element in a
+ * namespace it ignores, with or without its content, so it may read a call there that the text does not show.
+ * Expects XML that parses: on anything else it may find too much, never too little where Office would read a formula.
+ */
+export const externalDataFormulas = (xml: string): ExternalDataFormula[] => {
   const text = xml.replace(/<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<!\[CDATA\[([\s\S]*?)\]\]>/g, (_, cdata?: string) =>
     cdata === undefined ? '' : cdata.replace(/&/g, '&amp;').replace(/</g, '&lt;'),
   )
@@ -174,9 +180,12 @@ export const externalDataFormulas = (xml: string) => {
   return [
     ...bodies.flatMap((raw) => {
       const formula = decodeXml(raw).trim()
-      return raw.includes('<') || fetches(formula) ? [formula] : []
+      if (raw.includes('<')) {
+        return [{ formula, key: `markup:${raw}` }]
+      }
+      return fetches(formula) ? [{ formula, key: `text:${formula}` }] : []
     }),
-    ...values.filter(fetches),
+    ...values.filter(fetches).map((formula) => ({ formula, key: `text:${formula}` })),
   ]
 }
 

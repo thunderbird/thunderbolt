@@ -6,7 +6,7 @@ import { partChecksums, unzipWithinLimits, ZipLimitError } from '@/files/unzip-w
 import { promptFileName, safeFileName } from '@/lib/safe-file-name'
 import { type JSValueHandle, QuickJS } from 'quickjs-wasi'
 import type { SandboxLimits } from './constants'
-import { decodeXml, externalDataFormulas, isDdeFormula } from './formula-cache'
+import { decodeXml, type ExternalDataFormula, externalDataFormulas, isDdeFormula } from './formula-cache'
 import type { SandboxInput, SandboxRuntime, SavedFile } from './sandbox'
 
 // A DOM in QuickJS takes several times the memory of its XML; a 1,000-page document.xml is about 3.5 MB.
@@ -155,7 +155,7 @@ const xmlTextOf = (data: Uint8Array) => {
   return data.subarray(utf8Mark).find((byte) => !isXmlSpace(byte)) === 0x3c ? new TextDecoder().decode(data) : undefined
 }
 
-type PartFormula = { part: string; formula: string }
+type PartFormula = ExternalDataFormula & { part: string }
 
 /**
  * Whether a package's content types make it a Word or PowerPoint file, not a workbook. Office Math writes a fraction
@@ -185,13 +185,13 @@ const fetchingFormulas = (
     if (isZip(data)) {
       return isKept(data)
         ? []
-        : fetchingFormulas(unpack(data, budget), budget, isKept).map(({ part, formula }) => ({
+        : fetchingFormulas(unpack(data, budget), budget, isKept).map(({ part, ...found }) => ({
+            ...found,
             part: `${name}: ${part}`,
-            formula,
           }))
     }
     const text = scansText ? xmlTextOf(data) : undefined
-    return text === undefined ? [] : externalDataFormulas(text).map((formula) => ({ part: name, formula }))
+    return text === undefined ? [] : externalDataFormulas(text).map((found) => ({ ...found, part: name }))
   })
 }
 
@@ -230,7 +230,7 @@ const keptFormulas = (inputs: readonly SandboxInput[], limits: SandboxLimits) =>
   new Set(
     inputs.flatMap(({ bytes }) => {
       try {
-        return fetchingFormulasOf(bytes, limits, () => false).map(({ formula }) => formula)
+        return fetchingFormulasOf(bytes, limits, () => false).map(({ key }) => key)
       } catch {
         return []
       }
@@ -251,7 +251,7 @@ const findUnpackProblem = (files: SavedFile[], inputs: readonly SandboxInput[], 
       const formulas = fetchingFormulasOf(bytes, limits, isInputPart)
       if (formulas.length > 0) {
         kept ??= keptFormulas(inputs, limits)
-        const added = formulas.find(({ formula }) => !kept?.has(formula))
+        const added = formulas.find(({ key }) => !kept?.has(key))
         if (added !== undefined) {
           return addedProblem(
             filename,

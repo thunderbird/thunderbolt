@@ -109,7 +109,6 @@ export const ChatSkillsBar = ({
 
   const { t } = useLingui()
   const [{ reorderMode, addOpen, addQuery, actionError }, dispatch] = useReducer(barReducer, initialBarState)
-  const lockedPinnedIds = new Set(pinned.filter((skill) => isWidgetSkillId(skill.id)).map((skill) => skill.id))
 
   // One shared pin/unpin path: telemetry only fires after the mutation
   // settles (so a rejection never records a phantom action), and a failure
@@ -140,7 +139,6 @@ export const ChatSkillsBar = ({
     <Suspense fallback={null}>
       <ReorderPanel
         pinned={pinned}
-        lockedIds={lockedPinnedIds}
         embedded={isMobile}
         onReorder={async (ids, move) => {
           // `move` comes from dnd-kit's `active.id` / index lookup — unambiguous
@@ -316,14 +314,10 @@ export const ChatSkillsBar = ({
             onClick={() => onAddToChat(skill)}
             onAddInstruction={() => onAddInstruction(skill.instruction)}
             onEdit={isWidgetSkillId(skill.id) ? undefined : () => openCreateItem({ kind: 'skill', skillId: skill.id })}
-            onReorder={
-              isWidgetSkillId(skill.id)
-                ? undefined
-                : () => {
-                    void loadReorderPanel()
-                    dispatch({ type: 'REORDER_OPENED' })
-                  }
-            }
+            onReorder={() => {
+              void loadReorderPanel()
+              dispatch({ type: 'REORDER_OPENED' })
+            }}
             onUnpin={isWidgetSkillId(skill.id) ? undefined : () => handleTogglePin(skill, 'unpin')}
           />
         ))}

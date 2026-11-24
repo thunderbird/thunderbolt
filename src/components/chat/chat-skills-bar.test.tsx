@@ -132,7 +132,7 @@ describe('ChatSkillsBar', () => {
     expect(screen.queryByText('Weather')).toBeNull()
   })
 
-  it('keeps pinned widget skill actions read-only', async () => {
+  it('lets a pinned widget skill be reordered but not edited or unpinned', async () => {
     renderBar({
       usePinnedSkills: fakeUsePinnedSkills({ pinned: [defaultSkillWeather] }),
       useLibrarySkills: fakeUseLibrarySkills([defaultSkillWeather]),
@@ -142,8 +142,8 @@ describe('ChatSkillsBar', () => {
     fireEvent.contextMenu(screen.getByText('Weather'))
 
     expect(await waitForElement(() => screen.queryByText('Add to chat'))).toBeTruthy()
+    expect(screen.queryByText('Reorder')).toBeTruthy()
     expect(screen.queryByText('Edit skill')).toBeNull()
-    expect(screen.queryByText('Reorder')).toBeNull()
     expect(screen.queryByText('Unpin')).toBeNull()
   })
 

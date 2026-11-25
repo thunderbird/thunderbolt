@@ -146,6 +146,10 @@ msgstr ""
 msgid "{appName} will use it across the app. You can change it later in Preferences."
 msgstr ""
 
+#: src/widgets/ask/review.tsx
+msgid "{chosen}, and Other (in your message)"
+msgstr ""
+
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+chat%7D+other+%7B%23+chats%7D%7D&pluralize_on=count
 #: src/projects/index.tsx
 #~ msgid "# chat"
@@ -2621,6 +2625,11 @@ msgstr ""
 msgid "Do not ask again"
 msgstr ""
 
+#: src/widgets/ask/display.tsx
+#: src/widgets/ask/review.tsx
+msgid "Doesn't match the answer"
+msgstr ""
+
 #: src/components/onboarding/onboarding-celebration-step.tsx
 msgid "Donate anonymous usage data"
 msgstr ""
@@ -3113,6 +3122,10 @@ msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Finish securing after revoking {deviceName}"
+msgstr ""
+
+#: src/widgets/ask/display.tsx
+msgid "Finish your answer in the message box."
 msgstr ""
 
 #: src/components/sync-setup/sync-setup-modal.tsx
@@ -3747,6 +3760,11 @@ msgstr ""
 msgid "Maps can’t be displayed here — WebGL is disabled or unavailable in this browser."
 msgstr ""
 
+#: src/widgets/ask/display.tsx
+#: src/widgets/ask/review.tsx
+msgid "Matches the answer"
+msgstr ""
+
 #: src/components/chat/attestation/attestation-details.tsx
 msgid "Matching measurements"
 msgstr ""
@@ -4005,6 +4023,14 @@ msgstr ""
 
 #: src/tasks/index.tsx
 msgid "New Task"
+msgstr ""
+
+#: src/widgets/ask/display.tsx
+msgid "Next"
+msgstr ""
+
+#: src/widgets/ask/step-control.tsx
+msgid "Next question"
 msgstr ""
 
 #: src/components/ui/agent-selector/agent-selector.tsx
@@ -4496,8 +4522,16 @@ msgstr ""
 msgid "Otari web search isn’t available. Configure a search provider in Otari to use it here."
 msgstr ""
 
+#: src/widgets/ask/review.tsx
+msgid "Other (in your message)"
+msgstr ""
+
 #: src/components/onboarding/onboarding-model-step.tsx
 msgid "Other provider"
+msgstr ""
+
+#: src/widgets/ask/display.tsx
+msgid "Other…"
 msgstr ""
 
 #: src/widgets/connect-integration/widget.tsx
@@ -4676,6 +4710,10 @@ msgstr ""
 msgid "Preview webview is only available in the desktop app"
 msgstr ""
 
+#: src/widgets/ask/step-control.tsx
+msgid "Previous question"
+msgstr ""
+
 #: src/settings/models/model-detail.tsx
 msgid "Privacy"
 msgstr ""
@@ -4738,6 +4776,10 @@ msgstr ""
 
 #: src/projects/project-form.tsx
 msgid "Q3 planning"
+msgstr ""
+
+#: src/widgets/ask/step-control.tsx
+msgid "Question {currentStep} of {totalSteps}"
 msgstr ""
 
 #: src/lib/tray.ts
@@ -5322,6 +5364,10 @@ msgstr ""
 msgid "Security notice"
 msgstr ""
 
+#: src/widgets/ask/display.tsx
+msgid "See all answers"
+msgstr ""
+
 #: src/voice/speakable.ts
 msgid "See the document on screen."
 msgstr ""
@@ -5729,7 +5775,17 @@ msgid "Skills are reusable instruction templates you summon in chat with <0>/nam
 msgstr ""
 
 #: src/components/onboarding/onboarding-action-buttons.tsx
+#: src/widgets/ask/display.tsx
 msgid "Skip"
+msgstr ""
+
+#: src/widgets/ask/use-ask-sequence-state.ts
+msgid "skipped"
+msgstr ""
+
+#: src/widgets/ask/display.tsx
+#: src/widgets/ask/review.tsx
+msgid "Skipped"
 msgstr ""
 
 #: src/skills/slash-popup.tsx
@@ -6796,6 +6852,7 @@ msgstr ""
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/content-view/viewer-load-failure.tsx
 #: src/webview-recovery/index.ts
+#: src/widgets/ask/display.tsx
 msgid "Try again"
 msgstr ""
 
@@ -7560,6 +7617,14 @@ msgstr ""
 
 #: src/components/onboarding/onboarding-name-step.tsx
 msgid "Your AI assistant will use this name to address you personally."
+msgstr ""
+
+#: src/widgets/ask/review.tsx
+msgid "Your answers"
+msgstr ""
+
+#: src/widgets/ask/display.tsx
+msgid "Your answers couldn’t be sent."
 msgstr ""
 
 #: src/settings/search/index.tsx

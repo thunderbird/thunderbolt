@@ -153,6 +153,10 @@ msgstr "{appName} souhaite se connecter à {providerName} E-mail et Agenda"
 msgid "{appName} will use it across the app. You can change it later in Preferences."
 msgstr "{appName} l'utilisera dans toute l'application. Vous pourrez la modifier plus tard dans les Préférences."
 
+#: src/widgets/ask/review.tsx
+msgid "{chosen}, and Other (in your message)"
+msgstr "{chosen}, et Autre (dans votre message)"
+
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+chat%7D+other+%7B%23+chats%7D%7D&pluralize_on=count
 #: src/projects/index.tsx
 #~ msgid "# chat"
@@ -2640,6 +2644,11 @@ msgstr "Unité de distance"
 msgid "Do not ask again"
 msgstr "Ne plus demander"
 
+#: src/widgets/ask/display.tsx
+#: src/widgets/ask/review.tsx
+msgid "Doesn't match the answer"
+msgstr "Ne correspond pas à la réponse"
+
 #: src/components/onboarding/onboarding-celebration-step.tsx
 msgid "Donate anonymous usage data"
 msgstr ""
@@ -3133,6 +3142,10 @@ msgstr ""
 #: src/settings/devices.tsx
 msgid "Finish securing after revoking {deviceName}"
 msgstr ""
+
+#: src/widgets/ask/display.tsx
+msgid "Finish your answer in the message box."
+msgstr "Terminez votre réponse dans la zone de message."
 
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "First device setup"
@@ -3766,6 +3779,11 @@ msgstr "Graphique en carte"
 msgid "Maps can’t be displayed here — WebGL is disabled or unavailable in this browser."
 msgstr "Les cartes ne peuvent pas s’afficher ici — WebGL est désactivé ou indisponible dans ce navigateur."
 
+#: src/widgets/ask/display.tsx
+#: src/widgets/ask/review.tsx
+msgid "Matches the answer"
+msgstr "Correspond à la réponse"
+
 #: src/components/chat/attestation/attestation-details.tsx
 msgid "Matching measurements"
 msgstr ""
@@ -4025,6 +4043,14 @@ msgstr "Nouvel onglet"
 #: src/tasks/index.tsx
 msgid "New Task"
 msgstr "Nouvelle tâche"
+
+#: src/widgets/ask/display.tsx
+msgid "Next"
+msgstr "Suivant"
+
+#: src/widgets/ask/step-control.tsx
+msgid "Next question"
+msgstr "Question suivante"
 
 #: src/components/ui/agent-selector/agent-selector.tsx
 msgid "No agents found"
@@ -4515,9 +4541,17 @@ msgstr ""
 msgid "Otari web search isn’t available. Configure a search provider in Otari to use it here."
 msgstr ""
 
+#: src/widgets/ask/review.tsx
+msgid "Other (in your message)"
+msgstr "Autre (dans votre message)"
+
 #: src/components/onboarding/onboarding-model-step.tsx
 msgid "Other provider"
 msgstr ""
+
+#: src/widgets/ask/display.tsx
+msgid "Other…"
+msgstr "Autre…"
 
 #: src/widgets/connect-integration/widget.tsx
 msgid "Outlook & Calendar"
@@ -4695,6 +4729,10 @@ msgstr "Aucun aperçu disponible pour ce type de fichier. Utilisez le bouton de 
 msgid "Preview webview is only available in the desktop app"
 msgstr "L'aperçu webview est disponible uniquement dans l'application de bureau"
 
+#: src/widgets/ask/step-control.tsx
+msgid "Previous question"
+msgstr "Question précédente"
+
 #: src/settings/models/model-detail.tsx
 msgid "Privacy"
 msgstr "Confidentialité"
@@ -4758,6 +4796,10 @@ msgstr "Le proxy est nécessaire dans l'application web pour contourner les rest
 #: src/projects/project-form.tsx
 msgid "Q3 planning"
 msgstr "Planification du T3"
+
+#: src/widgets/ask/step-control.tsx
+msgid "Question {currentStep} of {totalSteps}"
+msgstr "Question {currentStep} sur {totalSteps}"
 
 #: src/lib/tray.ts
 msgid "Quit"
@@ -5341,6 +5383,10 @@ msgstr ""
 msgid "Security notice"
 msgstr ""
 
+#: src/widgets/ask/display.tsx
+msgid "See all answers"
+msgstr "Voir toutes les réponses"
+
 #: src/voice/speakable.ts
 msgid "See the document on screen."
 msgstr "Consultez le document à l'écran."
@@ -5748,8 +5794,18 @@ msgid "Skills are reusable instruction templates you summon in chat with <0>/nam
 msgstr "Les compétences sont des modèles d'instructions réutilisables que vous invoquez dans la conversation avec <0>/name</0>."
 
 #: src/components/onboarding/onboarding-action-buttons.tsx
+#: src/widgets/ask/display.tsx
 msgid "Skip"
 msgstr "Ignorer"
+
+#: src/widgets/ask/use-ask-sequence-state.ts
+msgid "skipped"
+msgstr "ignorée"
+
+#: src/widgets/ask/display.tsx
+#: src/widgets/ask/review.tsx
+msgid "Skipped"
+msgstr "Ignorée"
 
 #: src/skills/slash-popup.tsx
 msgid "Slash commands"
@@ -6815,6 +6871,7 @@ msgstr "Appareils de confiance"
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/content-view/viewer-load-failure.tsx
 #: src/webview-recovery/index.ts
+#: src/widgets/ask/display.tsx
 msgid "Try again"
 msgstr "Réessayer"
 
@@ -7580,6 +7637,14 @@ msgstr "Vos agents"
 #: src/components/onboarding/onboarding-name-step.tsx
 msgid "Your AI assistant will use this name to address you personally."
 msgstr "Votre assistant IA utilisera ce nom pour s'adresser à vous personnellement."
+
+#: src/widgets/ask/review.tsx
+msgid "Your answers"
+msgstr "Vos réponses"
+
+#: src/widgets/ask/display.tsx
+msgid "Your answers couldn’t be sent."
+msgstr "Impossible d'envoyer vos réponses."
 
 #: src/settings/search/index.tsx
 #~ msgid "Your API key"

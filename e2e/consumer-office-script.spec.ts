@@ -238,7 +238,8 @@ test('a saved reply folds three same-name files and restores their chips after r
     const groups = reply.getByRole('button', { name: /Completed 1 step in/ })
     await expect(groups).toHaveCount(3)
     const step = groups.last()
-    await step.click()
+    // Safari does not focus a button on click, so the step opens from the keyboard.
+    await step.press('Enter')
     await expect(step).toBeFocused()
     await expect(step).toHaveAttribute('aria-expanded', 'true')
     await expect(versions).toHaveAttribute('aria-expanded', 'false')

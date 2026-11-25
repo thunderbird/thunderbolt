@@ -523,9 +523,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    same tree, commits it as publish would (so `i18n:check`'s `git status` test sees a committed tree, as in CI), and
    runs the PR checks on it (`prChecks`): `bun run check` (ci.yml's type check and lint, plus the e2e type check, the
    format check and the license check), e2e.yml's `bun run e2e:check-collected`, and, when the tree touches their
-   paths, ci.yml's `bun run i18n:check`, `bun run test:5x`, `bun run test:office:5x`, the agent-core, backend and cli type checks, lints and 5x
-   suites. Each runs with ci.yml's exact command over the whole tree, never only the changed files: a test that
-   passes alone can fail there, when another file's `mock.module` leaks into it in one Bun process. The checks run as
+   paths, ci.yml's `bun run i18n:check`, `bun run test:ci`, `bun run test:office:ci`, the agent-core, backend and cli
+   type checks, lints and suites, and the 5x re-run of the changed test files. Each suite runs with ci.yml's exact
+   command over the whole tree, not only the changed files: a test that passes alone can fail there, when another file's `mock.module` leaks into it in one Bun process. The checks run as
    `qa-test` with `CI=true`, in order, and stop at the first failure. `qa-test` can write only two things in the
    checkout, both opened with `chmod o+w` after the commit: the catalog folders, which `i18n:check` rewrites, and
    every `__snapshots__/*.snap` file, which Bun opens for writing even when every snapshot in it matches. The

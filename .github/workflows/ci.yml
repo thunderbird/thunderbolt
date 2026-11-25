@@ -230,8 +230,16 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      # Pull requests run the suite once, then re-run only the test files they changed 5x:
+      # that is where a new flake comes from. Push to main runs the whole suite 5x.
       - name: Run tests
-        run: bun run test:5x
+        env:
+          RERUN_EACH: ${{ github.event_name == 'push' && 5 || 1 }}
+        run: bun run test:ci
+
+      - name: Re-run changed tests (5x)
+        if: github.event_name == 'pull_request'
+        run: bun scripts/rerun-changed-tests.ts frontend
 
       - name: Check performance harness
         run: bun run test:performance
@@ -275,8 +283,8 @@ jobs:
           key: pr-metrics-main-${{ github.sha }}
 
   # The Office script suites run real WebAssembly (QuickJS, Excelize, IronCalc) and take about
-  # two thirds of the frontend tests' time, so they run five times here, in parallel with the
-  # typescript job, which leaves them out of `test:5x`. Path-gated on pull requests like
+  # two thirds of the frontend tests' time, so they run here, in parallel with the
+  # typescript job, which leaves them out of `test:ci`. Path-gated on pull requests like
   # agent-core/cli; every push runs it, so a change the filter misses still fails on main.
   office:
     needs: detect-changes
@@ -287,6 +295,9 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The merge commit and its base parent, for the changed-test re-run.
+          fetch-depth: 2
 
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -306,8 +317,14 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Run Office script tests (5x)
-        run: bun run test:office:5x
+      - name: Run Office script tests
+        env:
+          RERUN_EACH: ${{ github.event_name == 'push' && 5 || 1 }}
+        run: bun run test:office:ci
+
+      - name: Re-run changed Office script tests (5x)
+        if: github.event_name == 'pull_request'
+        run: bun scripts/rerun-changed-tests.ts office
 
   # Localization gates (THU-806).
   #  1. Extraction check — re-runs `lingui extract` (idempotent; Lingui v6
@@ -822,6 +839,9 @@ jobs:
           --health-retries 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The merge commit and its base parent, for the changed-test re-run.
+          fetch-depth: 2
 
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -853,12 +873,20 @@ jobs:
           cd backend
           bun run lint
 
-      - name: Test backend (5x, excludes same-process WS event-delivery flakes)
+      # Once on pull requests (plus a 5x re-run of the changed test files), 5x on push to main.
+      - name: Test backend (excludes same-process WS event-delivery flakes)
         timeout-minutes: 10
         # No per-test timeout in CI (large value ≈ disabled — bun `--timeout 0` hangs async tests):
         # the 10-minute step cap above is the real ceiling, so tests that only get slow under
         # CI/PGlite contention don't spuriously fail. Local `test:backend` keeps the 5s timeout.
-        run: cd backend && bun test --timeout 3600000 --randomize --rerun-each 5 $(find src \( -name '*.test.ts' -o -name '*.test.tsx' \) -not -path '*proxy/ws-e2e.test.ts' -not -path '*haystack/routes.test.ts')
+        env:
+          RERUN_EACH: ${{ github.event_name == 'push' && 5 || 1 }}
+        run: cd backend && bun test --timeout 3600000 --randomize --rerun-each "${RERUN_EACH:-1}" $(find src \( -name '*.test.ts' -o -name '*.test.tsx' \) -not -path '*proxy/ws-e2e.test.ts' -not -path '*haystack/routes.test.ts')
+
+      - name: Re-run changed backend tests (5x)
+        if: github.event_name == 'pull_request'
+        timeout-minutes: 10
+        run: bun scripts/rerun-changed-tests.ts backend
 
       # ws-e2e.test.ts + haystack/routes.test.ts wait on Bun same-process WS close/
       # message events that Bun drops/delays under load. Systematic causes (shared

@@ -34,9 +34,9 @@ Release workflows: [RELEASE.md](../../../RELEASE.md).
 
 | Job             | Runs when                                                                                                                                   | What it does                                                                          |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `typescript`    | Always                                                                                                                                      | `tsc --noEmit`, `bun run lint`, `bun run test:5x`                                     |
-| `office`        | `src/office/**`, the files its suites load eagerly, the build and test config; every push                                                   | `bun run test:office:5x`: the Office script suites, apart from `test:5x`              |
-| `backend`       | Always                                                                                                                                      | Backend type-check, lint, tests (5x), WS suite, `./server` smoke (OTEL off and on)    |
+| `typescript`    | Always                                                                                                                                      | `tsc --noEmit`, `bun run lint`, `bun run test:ci`                                     |
+| `office`        | `src/office/**`, the files its suites load eagerly, the build and test config; every push                                                   | `bun run test:office:ci`: the Office script suites, apart from `test:ci`              |
+| `backend`       | Always                                                                                                                                      | Backend type-check, lint, tests, WS suite, `./server` smoke (OTEL off and on)         |
 | `localization`  | `src/**`, `shared/**`, i18n/build config, `backend/src/emails/**`, `bun.lock`                                                               | `bun run i18n:check`, a catalog-compiling build, the macro tripwire                   |
 | `agent-core`    | `shared/agent-core/**`, `shared/reasoning-effort*.ts`, browser-check/Chrome scripts, `vite.config.ts`, `package.json`, `bun.lock`, `ci.yml` | `bun run test:agent-core:5x` plus the Chromium/WebKit browser check                   |
 | `cli`           | `cli/**`, `shared/agent-core/**` and the shared contracts the CLI imports                                                                   | CLI type-check, tests (5x), build, and an artifact smoke test                         |
@@ -54,17 +54,21 @@ Both run only in the `husky` pre-commit hook via
 `make format`), so `--no-verify` can land unformatted code. `bun run check` runs the full
 local set (type-check, lint, format-check, license-check).
 
-## Every test job runs five times
+## Test jobs repeat runs to catch flakes
 
-| Suite        | CI command                                    | Per-test timeout in CI         |
-| ------------ | --------------------------------------------- | ------------------------------ |
-| Frontend     | `bun run test:5x`                             | Disabled (`--timeout 3600000`) |
-| Office       | `bun run test:office:5x`                      | Disabled (`--timeout 3600000`) |
-| Backend      | `bun test … --randomize --rerun-each 5`       | Disabled (`--timeout 3600000`) |
-| `agent-core` | `bun run test:agent-core:5x`                  | 5s                             |
-| CLI          | `cd cli && bun run test:5x`                   | 5s                             |
-| Backend WS   | `bun run test:backend:ws` (once, ≤5 attempts) | Disabled (`--timeout 3600000`) |
+| Suite        | CI command                                               | Per-test timeout in CI         |
+| ------------ | -------------------------------------------------------- | ------------------------------ |
+| Frontend     | `bun run test:ci` (`RERUN_EACH` = 1 on PRs, 5 on `main`) | Disabled (`--timeout 3600000`) |
+| Office       | `bun run test:office:ci` (same)                          | Disabled (`--timeout 3600000`) |
+| Backend      | `bun test … --rerun-each ${RERUN_EACH:-1}` (same)        | Disabled (`--timeout 3600000`) |
+| `agent-core` | `bun run test:agent-core:5x`                             | 5s                             |
+| CLI          | `cd cli && bun run test:5x`                              | 5s                             |
+| Backend WS   | `bun run test:backend:ws` (once, ≤5 attempts)            | Disabled (`--timeout 3600000`) |
 
+- On pull requests the frontend, Office and backend suites run once, then
+  `bun scripts/rerun-changed-tests.ts <frontend|office|backend>` re-runs only the test files the
+  PR changed, 5x. A new flake almost always lives in a changed test, and running everything 5x
+  was most of the critical path. Push to `main` still runs every suite 5x.
 - `bun run test` is not what CI runs: `--randomize` plus the 5x repeat catches
   order-dependent and one-in-fifty failures. Reproduce with the `:5x` script.
 - The disabled timeout (Bun's `--timeout 0` hangs async tests) leans on step and job caps:
@@ -146,7 +150,7 @@ which resolves from the repo root. The `cli` job asserts `@earendil-works/pi-ai`
 
 **CI's own scripts are unit-tested by the frontend suite.**
 `.github/scripts/post-pr-metrics.test.js`, `post-eval-results.test.ts` and
-`review-orchestrator.test.mjs` are listed in the `test` and `test:5x` scripts, so editing a
+`review-orchestrator.test.mjs` are listed in the `test` and `test:ci` scripts, so editing a
 CI script can break `bun run test`.
 
 **PR titles.** `lint-pr-title.yml` accepts the legacy `THU-123: …` form or Conventional

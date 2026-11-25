@@ -46,6 +46,13 @@ describe('ask schema parse', () => {
     expect(parse({ prompt: 'Pick one', mode: 'single', options: 'not-json' })).toBeNull()
   })
 
+  it('accepts the optional attribute leniently, as a raw string', () => {
+    expect(parse({ prompt: 'Pick one', mode: 'choice', options: optionsJson, optional: 'true' })?.args.optional).toBe(
+      'true',
+    )
+    expect(parse({ prompt: 'Pick one', mode: 'choice', options: optionsJson, optional: 'yes' })).not.toBeNull()
+  })
+
   it('rejects a missing prompt', () => {
     expect(parse({ mode: 'single', options: optionsJson })).toBeNull()
   })

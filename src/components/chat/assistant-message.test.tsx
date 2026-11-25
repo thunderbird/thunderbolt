@@ -80,6 +80,45 @@ describe('mountMessageParts', () => {
   })
 
   describe('text parts', () => {
+    it('gives every text part the message-wide asks and its own offset once streaming ends', () => {
+      const ask = (prompt: string) =>
+        `<widget:ask mode="single" prompt="${prompt}" options='[{"id":"a","text":"A","isCorrect":true},{"id":"b","text":"B"}]' />`
+      const toolGroup = createToolGroupPart([createToolPart('output-available')])
+      const parts: GroupedUIPart[] = [
+        createTextPart(`${ask('Q1')}\n${ask('Q2')}`),
+        toolGroup,
+        createTextPart(ask('Q3')),
+      ]
+      const textProps = (result: ReturnType<typeof mountMessageParts>) =>
+        result
+          .map(
+            (element) => (element as { props: { children: { props: Record<string, unknown> } } }).props.children.props,
+          )
+          .filter((props) => 'askOffset' in props)
+
+      const done = textProps(mountMessageParts(parts, false, testMessageId, testReasoningTime))
+      expect(done.map((props) => props.askOffset)).toEqual([0, 2])
+      expect((done[0].messageAsks as { prompt: string }[]).map((a) => a.prompt)).toEqual(['Q1', 'Q2', 'Q3'])
+      expect(done[1].messageAsks).toBe(done[0].messageAsks)
+
+      const streaming = textProps(mountMessageParts(parts, true, testMessageId, testReasoningTime))
+      expect(streaming.map((props) => props.messageAsks)).toEqual([undefined, undefined])
+      expect(done.map((props) => props.hasReply)).toEqual([false, false])
+
+      const replied = mountMessageParts(
+        parts,
+        false,
+        testMessageId,
+        testReasoningTime,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        true,
+      )
+      expect(textProps(replied).map((props) => props.hasReply)).toEqual([true, true])
+    })
+
     it('renders text part', () => {
       const parts: GroupedUIPart[] = [createTextPart('Hello world')]
       const result = mountMessageParts(parts, false, testMessageId, testReasoningTime)

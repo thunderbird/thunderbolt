@@ -18,6 +18,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock,
 import { createElement, createRef, type ReactNode, useReducer } from 'react'
 import { BrowserRouter } from 'react-router'
 import { useChatStore } from '@/chats/chat-store'
+import { setPendingPrompt, usePendingPromptStore } from '@/chats/pending-prompt-store'
 import { useAcpSessionStore } from '@/acp/session-state-store'
 import { sessionConfigKey } from '@/acp/session-config-store'
 import { useConfigStore } from '@/api/config-store'
@@ -1894,6 +1895,39 @@ describe('ChatPromptInput', () => {
 
       expect(textarea).not.toHaveFocus()
       expect(navigate).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('pending prompt', () => {
+    afterEach(() => usePendingPromptStore.setState({ promptsByThread: {} }))
+
+    const renderComposer = () => {
+      const { mockUseChat } = setupStore()
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile(true)} />, {
+        wrapper: TestWrapper,
+      })
+      return screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
+    }
+
+    it('places a focused proposal with the caret at its end', async () => {
+      const textarea = renderComposer()
+
+      act(() => setPendingPrompt('thread-1', '1. Which topics? — ', { focus: true }))
+      await act(() => getClock().tickAsync(20))
+
+      expect(textarea.value).toBe('1. Which topics? — ')
+      expect(textarea).toHaveFocus()
+      expect(textarea.selectionStart).toBe(textarea.value.length)
+    })
+
+    it('leaves focus alone for a proposal that does not ask for it', async () => {
+      const textarea = renderComposer()
+
+      act(() => setPendingPrompt('thread-1', 'explain this chart'))
+      await act(() => getClock().tickAsync(20))
+
+      expect(textarea.value).toBe('explain this chart')
+      expect(textarea).not.toHaveFocus()
     })
   })
 

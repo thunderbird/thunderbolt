@@ -99,7 +99,7 @@ describe('opening', () => {
     act(() => result.current.openChat('explain this chart'))
 
     const id = result.current.openChatId ?? ''
-    expect(usePendingPromptStore.getState().promptsByThread[id]).toBe('explain this chart')
+    expect(usePendingPromptStore.getState().promptsByThread[id]?.text).toBe('explain this chart')
   })
 
   /**
@@ -113,7 +113,7 @@ describe('opening', () => {
 
     expect(result.current.openChatId).toBe('thread-1')
     expect(result.current.chatParam).toBe('thread-1')
-    expect(usePendingPromptStore.getState().promptsByThread['thread-1']).toBe('and this one')
+    expect(usePendingPromptStore.getState().promptsByThread['thread-1']?.text).toBe('and this one')
   })
 })
 
@@ -182,7 +182,7 @@ describe('reopening after a close', () => {
     act(() => result.current.openChat('follow-up'))
 
     expect(result.current.openChatId).toBe('thread-1')
-    expect(usePendingPromptStore.getState().promptsByThread['thread-1']).toBe('follow-up')
+    expect(usePendingPromptStore.getState().promptsByThread['thread-1']?.text).toBe('follow-up')
   })
 })
 

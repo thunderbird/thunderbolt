@@ -6,12 +6,16 @@ import { describe, expect, test } from 'bun:test'
 import {
   askStorageKey,
   collectAskEntriesFromCache,
+  composerDraftForAnswers,
   evaluateAnswer,
+  hasOtherAnswer,
   formatAskResponsesNote,
   isGradedMode,
   isMultiSelectMode,
   optionLetter,
-  turnTextForAnswer,
+  initialAskStep,
+  askStorageKeys,
+  turnTextForAnswers,
   type AskCacheEntry,
   type AskData,
 } from './lib'
@@ -191,23 +195,131 @@ describe('formatAskResponsesNote', () => {
   })
 })
 
-describe('turnTextForAnswer', () => {
-  test('choice dispatches the chosen option text', () => {
-    expect(turnTextForAnswer('choice', ['Draft a reply'])).toBe('Draft a reply')
+const entry = (prompt: string, mode: AskCacheEntry['mode'], chosen: string[]): AskCacheEntry => ({
+  prompt,
+  mode,
+  selectedIds: chosen,
+  chosen,
+  matched: null,
+})
+
+describe('turnTextForAnswers', () => {
+  test('a lone ask sends its chosen option text(s), comma-joined, in any mode', () => {
+    expect(turnTextForAnswers([entry('What next?', 'choice', ['Draft a reply'])], 'skipped')).toBe('Draft a reply')
+    expect(turnTextForAnswers([entry('Like?', 'choices', ['Coffee', 'Tea'])], 'skipped')).toBe('Coffee, Tea')
+    expect(turnTextForAnswers([entry('Capital?', 'single', ['Paris'])], 'skipped')).toBe('Paris')
   })
 
-  test('choices dispatches all chosen option texts, comma-joined', () => {
-    expect(turnTextForAnswer('choices', ['Coffee', 'Tea'])).toBe('Coffee, Tea')
-    expect(turnTextForAnswer('choices', [])).toBeNull()
+  test('a sequence sends one numbered line per question', () => {
+    expect(
+      turnTextForAnswers(
+        [
+          entry('Which sends mail?', 'single', ['SMTP']),
+          entry('Pick the standards', 'multiple', ['OpenPGP', 'S/MIME']),
+        ],
+        'skipped',
+      ),
+    ).toBe('1. Which sends mail? — SMTP\n2. Pick the standards — OpenPGP, S/MIME')
   })
 
-  test('graded modes never dispatch a turn (no quiz loop)', () => {
-    expect(turnTextForAnswer('single', ['Paris'])).toBeNull()
-    expect(turnTextForAnswer('multiple', ['OpenPGP', 'S/MIME'])).toBeNull()
+  test('empty / whitespace-only answers send nothing', () => {
+    expect(turnTextForAnswers([entry('What next?', 'choice', [])], 'skipped')).toBeNull()
+    expect(turnTextForAnswers([entry('What next?', 'choice', ['   '])], 'skipped')).toBeNull()
+    expect(turnTextForAnswers([entry('A?', 'single', []), entry('B?', 'single', [' '])], 'skipped')).toBeNull()
+  })
+})
+
+const skipped = (prompt: string): AskCacheEntry => ({ ...entry(prompt, 'choice', []), skipped: true })
+const other = (prompt: string, chosen: string[] = []): AskCacheEntry => ({
+  ...entry(prompt, 'choices', chosen),
+  other: true,
+})
+
+describe('turnTextForAnswers with skipped asks', () => {
+  test('a skipped ask keeps its line and number, answered with the given word', () => {
+    expect(
+      turnTextForAnswers(
+        [entry('A?', 'choice', ['Yes']), skipped('B?'), entry('C?', 'choice', ['No'])],
+        'übersprungen',
+      ),
+    ).toBe('1. A? — Yes\n2. B? — übersprungen\n3. C? — No')
   })
 
-  test('empty / whitespace-only answers dispatch nothing', () => {
-    expect(turnTextForAnswer('choice', [])).toBeNull()
-    expect(turnTextForAnswer('choice', ['   '])).toBeNull()
+  test('a skipped last ask still gets its line', () => {
+    expect(turnTextForAnswers([entry('A?', 'choice', ['Yes']), skipped('B?')], 'skipped')).toBe(
+      '1. A? — Yes\n2. B? — skipped',
+    )
+  })
+
+  test('skipping every ask still sends, so the model hears the user declined', () => {
+    expect(turnTextForAnswers([skipped('A?'), skipped('B?')], 'skipped')).toBe('1. A? — skipped\n2. B? — skipped')
+  })
+})
+
+describe('composerDraftForAnswers', () => {
+  test('a lone "Other…" leaves the composer empty for the user to type', () => {
+    expect(composerDraftForAnswers([other('What next?')], 'skipped')).toBe('')
+  })
+
+  test('a lone "Other…" with options picked lists them, open for more', () => {
+    expect(composerDraftForAnswers([other('Like?', ['Coffee', 'Tea'])], 'skipped')).toBe('Coffee, Tea, ')
+  })
+
+  test('several asks keep every numbered line, with "Other…" lines left open', () => {
+    expect(
+      composerDraftForAnswers(
+        [entry('A?', 'choice', ['Yes']), other('B?'), skipped('C?'), other('D?', ['Tea'])],
+        'skipped',
+      ),
+    ).toBe('1. A? — Yes\n2. B? — \n3. C? — skipped\n4. D? — Tea, ')
+  })
+
+  test('hasOtherAnswer spots an "Other…" answer', () => {
+    expect(hasOtherAnswer([entry('A?', 'choice', ['Yes']), other('B?')])).toBe(true)
+    expect(hasOtherAnswer([entry('A?', 'choice', ['Yes']), skipped('B?')])).toBe(false)
+  })
+})
+
+describe('formatAskResponsesNote with skipped and "Other…" answers', () => {
+  test('reports a skip and an answer the user typed in their reply', () => {
+    const note = formatAskResponsesNote([skipped('A?'), other('B?'), other('C?', ['Tea'])])
+    expect(note).toContain('"A?" — skipped')
+    expect(note).toContain('"B?" — answered in their own words in their reply')
+    expect(note).toContain('"C?" — chose "Tea" and answered in their own words in their reply')
+  })
+})
+
+describe('initialAskStep', () => {
+  test('opens on the first unanswered step', () => {
+    expect(initialAskStep([false, false])).toBe(0)
+    expect(initialAskStep([true, false, false])).toBe(1)
+  })
+
+  test('opens on the last step once every step is answered', () => {
+    expect(initialAskStep([true, true, true])).toBe(2)
+  })
+})
+
+describe('askStorageKeys', () => {
+  const choice = (prompt: string): AskData => ({ prompt, mode: 'choice', options: [{ id: 'a', text: 'A' }] })
+
+  test('distinct asks keep their askStorageKey, so saved answers still restore', () => {
+    const asks = [choice('One?'), choice('Two?')]
+    expect(askStorageKeys(asks)).toEqual(asks.map(askStorageKey))
+  })
+
+  test('a repeated identical ask gets its occurrence number appended', () => {
+    const base = askStorageKey(choice('Again?'))
+    expect(askStorageKeys([choice('Again?'), choice('Other?'), choice('Again?'), choice('Again?')])).toEqual([
+      base,
+      askStorageKey(choice('Other?')),
+      `${base}~2`,
+      `${base}~3`,
+    ])
+  })
+
+  test('suffixed keys are still collected as ask entries', () => {
+    const key = askStorageKeys([choice('Again?'), choice('Again?')])[1]
+    expect(collectAskEntriesFromCache({ [key]: entry('Again?', 'choice', ['A']) })).toHaveLength(1)
   })
 })

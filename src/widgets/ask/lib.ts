@@ -10,6 +10,9 @@
  * - `choices`  — no designated answer, user picks one or more (a preference/opinion
  *                question, e.g. "Which of these do you like?")
  *
+ * The ungraded modes also offer "Other…", which hands the answer to the
+ * composer for the user to type (see {@link composerDraftForAnswers}).
+ *
  * (A `free` text-response mode existed briefly and was removed — typing an
  * answer belongs in the regular composer. Historical `free` widgets still
  * parse and render read-only (see `schema.ts` / `LegacyFreeAsk`), and cached
@@ -46,6 +49,14 @@ export type AskData = {
    * designated answer it explains that answer.
    */
   explanation?: string
+  /** The user may skip this question (the `optional="true"` attribute). */
+  optional?: boolean
+  /**
+   * The mode the model wrote, when it differs from `mode`: a `single`/`multiple`
+   * with no option marked `isCorrect` is shown as `choice`/`choices` (see
+   * `askDataOf`). The storage key hashes this one, so saved answers keep their key.
+   */
+  authoredMode?: AskMode
 }
 
 /**
@@ -73,10 +84,11 @@ export const askCachePrefix = 'ask'
 /**
  * Stable djb2 hash of an ask's discriminating shape (`mode` + `options`),
  * base36-encoded. Deterministic across reloads since it's derived only from the
- * parsed widget args, so the restored cache key always matches.
+ * parsed widget args, so the restored cache key always matches. It hashes the
+ * mode the model wrote, so showing a keyless graded ask as ungraded keeps its key.
  */
-const hashAskShape = (data: { mode: AskMode | 'free'; options: AskOption[] }): string => {
-  const input = JSON.stringify({ mode: data.mode, options: data.options })
+const hashAskShape = (data: { mode: AskMode | 'free'; options: AskOption[]; authoredMode?: AskMode }): string => {
+  const input = JSON.stringify({ mode: data.authoredMode ?? data.mode, options: data.options })
   let hash = 5381
   for (let i = 0; i < input.length; i++) {
     hash = ((hash << 5) + hash + input.charCodeAt(i)) | 0
@@ -88,10 +100,30 @@ const hashAskShape = (data: { mode: AskMode | 'free'; options: AskOption[] }): s
  * Cache key for a single ask instance within a message. Keyed by prompt **plus**
  * a hash of `mode`+`options` so two widgets that share a prompt but differ in
  * their options don't collide on `ask/<prompt>` and overwrite each other's
- * answer. (Two byte-identical widgets still share a key, which is harmless.)
+ * answer. Byte-identical asks in one message share this key; see
+ * {@link askStorageKeys} for per-occurrence keys.
  */
-export const askStorageKey = (data: { prompt: string; mode: AskMode | 'free'; options: AskOption[] }): string =>
-  `${askCachePrefix}/${data.prompt}#${hashAskShape(data)}`
+export const askStorageKey = (data: {
+  prompt: string
+  mode: AskMode | 'free'
+  options: AskOption[]
+  authoredMode?: AskMode
+}): string => `${askCachePrefix}/${data.prompt}#${hashAskShape(data)}`
+
+/**
+ * Per-ask cache keys for every ask in a message, in message order. The first
+ * occurrence of a key keeps {@link askStorageKey} unchanged, so answers saved
+ * before duplicates were handled still restore; each later byte-identical ask
+ * gets its occurrence number appended (`~2`, `~3`, …) so it is answered and
+ * stored on its own.
+ */
+export const askStorageKeys = (asks: AskData[]): string[] => {
+  const baseKeys = asks.map(askStorageKey)
+  return baseKeys.map((baseKey, index) => {
+    const occurrence = baseKeys.slice(0, index).filter((earlier) => earlier === baseKey).length + 1
+    return occurrence === 1 ? baseKey : `${baseKey}~${occurrence}`
+  })
+}
 
 /**
  * Persisted record of how the user responded to one ask. Stored under
@@ -110,6 +142,10 @@ export type AskCacheEntry = {
   matched: boolean | null
   /** The typed answer of a legacy `free` entry — still reported to the model. */
   text?: string
+  /** The user picked "Other…" and types the rest of the answer in their own message; `chosen` holds only real options. */
+  other?: true
+  /** The user skipped this optional question; `selectedIds` and `chosen` are empty. */
+  skipped?: true
 }
 
 const isAskCacheEntry = (value: unknown): value is AskCacheEntry =>
@@ -141,8 +177,15 @@ export const formatAskResponsesNote = (entries: AskCacheEntry[]): string | null 
       const answer = entry.text && entry.text.length > 0 ? `"${entry.text}"` : '(no response)'
       return `- "${entry.prompt}" — answered ${answer}`
     }
-    const chosen = entry.chosen.length > 0 ? entry.chosen.map((c) => `"${c}"`).join(', ') : '(no response)'
-    return `- "${entry.prompt}" — chose ${chosen}`
+    if (entry.skipped) {
+      return `- "${entry.prompt}" — skipped`
+    }
+    const chosen = entry.chosen.map((c) => `"${c}"`).join(', ')
+    if (entry.other) {
+      const prefix = chosen ? `chose ${chosen} and ` : ''
+      return `- "${entry.prompt}" — ${prefix}answered in their own words in their reply`
+    }
+    return `- "${entry.prompt}" — chose ${chosen || '(no response)'}`
   })
 
   return [
@@ -152,21 +195,66 @@ export const formatAskResponsesNote = (entries: AskCacheEntry[]): string | null 
   ].join('\n')
 }
 
-/**
- * The user-turn text to dispatch when an ask is submitted, or `null` if none
- * should be sent. Ungraded modes (`choice` / `choices`) are conversational
- * responses the model should act on, so they produce a turn — the chosen option
- * text(s), comma-joined. Graded `single`/`multiple` reveal the answer
- * client-side and produce none (auto-sending them would goad single-prompt
- * backends into endlessly asking the next question). Empty input produces `null`.
- */
-export const turnTextForAnswer = (mode: AskMode, chosen: string[]): string | null => {
-  if (isGradedMode(mode)) {
-    return null
-  }
-  const answer = chosen
+const joinChosen = (chosen: string[]): string =>
+  chosen
     .map((c) => c.trim())
     .filter(Boolean)
     .join(', ')
-  return answer || null
+
+/**
+ * One answer per ask, as the user turn words it: a single ask is just its
+ * answer; several asks are one numbered `prompt — answer` line each, in message
+ * order, so the model can match each answer to its prompt. Blank answers are
+ * dropped unless `keep` says otherwise.
+ */
+const formatAnswers = (
+  entries: AskCacheEntry[],
+  answerOf: (entry: AskCacheEntry) => string,
+  keep: (entry: AskCacheEntry) => boolean = () => false,
+): string => {
+  if (entries.length === 1) {
+    return answerOf(entries[0])
+  }
+  return entries
+    .map((entry) => ({ entry, answer: answerOf(entry) }))
+    .filter(({ entry, answer }) => answer || keep(entry))
+    .map(({ entry, answer }, index) => `${index + 1}. ${entry.prompt} — ${answer}`)
+    .join('\n')
+}
+
+/**
+ * The user-turn text sent once every ask in a message is answered, or `null`
+ * when there is nothing to send. A skipped ask keeps its line, answered with
+ * `skippedText` (localized by the caller, since it shows in the user's bubble),
+ * so the numbers always follow the questions.
+ */
+export const turnTextForAnswers = (entries: AskCacheEntry[], skippedText: string): string | null =>
+  formatAnswers(entries, (entry) => (entry.skipped ? skippedText : joinChosen(entry.chosen))) || null
+
+/** Whether any answer is an "Other…" the user still has to type. */
+export const hasOtherAnswer = (entries: AskCacheEntry[]): boolean => entries.some((entry) => entry.other)
+
+/**
+ * The composer draft that replaces the answer turn when an answer is "Other…":
+ * the same lines as {@link turnTextForAnswers}, with each "Other…" answer left
+ * open (after any options chosen with it) for the user to finish.
+ */
+export const composerDraftForAnswers = (entries: AskCacheEntry[], skippedText: string): string => {
+  const answerOf = (entry: AskCacheEntry): string => {
+    if (entry.skipped) {
+      return skippedText
+    }
+    const chosen = joinChosen(entry.chosen)
+    return entry.other && chosen ? `${chosen}, ` : chosen
+  }
+  return formatAnswers(entries, answerOf, (entry) => entry.other === true)
+}
+
+/**
+ * The step an ask sequence opens on: the first one without a saved answer, or
+ * the last one when every step is answered.
+ */
+export const initialAskStep = (answered: boolean[]): number => {
+  const firstUnanswered = answered.indexOf(false)
+  return firstUnanswered === -1 ? answered.length - 1 : firstUnanswered
 }

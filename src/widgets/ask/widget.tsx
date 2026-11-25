@@ -2,21 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useCurrentChatSession } from '@/chats/chat-store'
-import { useDatabase } from '@/contexts'
-import { getMessageCache, updateMessageCache } from '@/dal/chat-messages'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Ask } from './display'
+import { type AskArgs, askDataOf } from './group'
+import { type AskData, type AskOption, askStorageKey } from './lib'
+import { AskReview } from './review'
+import { type SavedAskEntries, useAskSequenceState, useSavedAskEntries } from './use-ask-sequence-state'
 
-import { Ask, type AskSubmission } from './display'
-import { type AskCacheEntry, type AskData, type AskMode, type AskOption, askStorageKey, turnTextForAnswer } from './lib'
-
-type AskWidgetProps = Omit<AskData, 'mode' | 'options'> & {
-  /** `free` appears only in messages persisted before the mode was removed. */
-  mode: AskMode | 'free'
-  /** Absent on legacy `free` widgets; defaults to an empty list. */
-  options?: AskOption[]
-  messageId: string
-}
+type AskWidgetProps = AskArgs & { messageId: string }
 
 /**
  * Read-only rendering of a legacy `free` (typed-answer) ask. The mode was
@@ -25,7 +17,7 @@ type AskWidgetProps = Omit<AskData, 'mode' | 'options'> & {
  * recorded answer.
  */
 const LegacyFreeAsk = ({ prompt, savedText }: { prompt: string; savedText: string | null }) => (
-  <div className="my-4 w-full rounded-2xl border border-border bg-card px-4 py-3">
+  <div className="my-4 w-full rounded-xl border border-border bg-card px-4 py-3">
     <p className="text-[length:var(--font-size-body)]">{prompt}</p>
     {savedText !== null && (
       <p className="mt-2 text-[length:var(--font-size-sm)] text-muted-foreground">Answered: “{savedText}”</p>
@@ -33,81 +25,102 @@ const LegacyFreeAsk = ({ prompt, savedText }: { prompt: string; savedText: strin
   </div>
 )
 
+/** Streaming placeholder for an ask, also shown while its saved answers load. */
+export const Skeleton = () => <div className="my-4 h-40 w-full animate-pulse rounded-xl border border-border bg-card" />
+
+type AskSequenceProps = {
+  /** This sequence's steps. */
+  asks: AskData[]
+  /** Index of the first step within `messageAsks`. */
+  offset: number
+  /** Every non-legacy ask in the message, in order; the turn is sent once all are answered. */
+  messageAsks: AskData[]
+  messageId: string
+  /** A later message exists in the thread, so the answers have gone out and lock. */
+  hasReply?: boolean
+}
+
 /**
- * Connects the presentational {@link Ask} to the message cache: restores a
- * prior response on mount and persists the user's response on submit. Persisted
- * entries are later surfaced to the model (see `formatAskResponsesNote`).
+ * One-question-at-a-time wizard over a run of asks in a message. Each answer is
+ * persisted to the message cache as it is submitted; once every ask in the
+ * message is answered, all the answers go to the model in a single user turn
+ * (or into the composer, when one is "Other…"). Graded steps stay on screen
+ * with their feedback, and lock; the step control moves back and forth, and a
+ * finished multi-step sequence can be reviewed as a whole.
  */
-export const AskWidget = ({ prompt, mode, options = [], explanation, messageId }: AskWidgetProps) => {
-  const db = useDatabase()
-  const queryClient = useQueryClient()
-  const { chatInstance } = useCurrentChatSession()
-  const storageKey = askStorageKey({ prompt, mode, options })
-  const queryKey = ['askState', messageId, storageKey]
+export const AskSequence = (props: AskSequenceProps) => {
+  const { data: saved, isPending } = useSavedAskEntries(props.messageId)
 
-  const { data: saved, isPending } = useQuery({
-    queryKey,
-    queryFn: async () => {
-      const message = await getMessageCache(db, messageId)
-      const cache = message?.cache as Record<string, unknown> | null | undefined
-      return (cache?.[storageKey] as AskCacheEntry | undefined) ?? null
-    },
-    staleTime: Infinity,
-    gcTime: Infinity,
-  })
-
-  // Wait for the cached response before seeding the (lazy) initial state, so a
-  // restored prompt doesn't briefly flash as unanswered.
   if (isPending) {
-    return <div className="my-4 h-40 w-full animate-pulse rounded-2xl border border-border bg-card" />
+    return <Skeleton />
   }
 
-  if (mode === 'free') {
-    return <LegacyFreeAsk prompt={prompt} savedText={saved?.text ?? saved?.chosen[0] ?? null} />
+  return <AskSequenceSteps {...props} saved={saved ?? {}} />
+}
+
+const AskSequenceSteps = (props: AskSequenceProps & { saved: SavedAskEntries }) => {
+  const sequence = useAskSequenceState(props)
+
+  if (sequence.reviewOpen) {
+    return <AskReview items={sequence.reviewItems} sendStatus={sequence.sendStatus} onRetrySend={sequence.retrySend} />
   }
 
-  const handleSubmit = async ({ selectedIds, matched }: AskSubmission) => {
-    const chosen = selectedIds.map((id) => options.find((o) => o.id === id)?.text ?? id)
-    const entry: AskCacheEntry = { prompt, mode, selectedIds, chosen, matched }
-    try {
-      // Persist first so the response is recorded (and restores on reload)
-      // regardless of what follows.
-      await updateMessageCache(db, messageId, storageKey, entry)
-    } catch (error) {
-      // The Ask is invoked fire-and-forget from a click handler, so a
-      // rejection here would otherwise vanish unhandled while the UI already
-      // shows "submitted" — log it; the in-session query cache below still
-      // keeps the answer visible until reload.
-      console.error('Ask widget failed to persist the answer', error)
-    }
-    // Keep the (infinitely-cached) query in sync so an unmount/remount in the
-    // same session restores the answer instead of re-reading the stale `null`.
-    queryClient.setQueryData(queryKey, entry)
-
-    // Ungraded modes (`choice` / `choices`) dispatch the pick(s) as a normal
-    // user turn so the model acts on them; graded modes return null (see
-    // `turnTextForAnswer`).
-    const turnText = turnTextForAnswer(mode, chosen)
-    if (turnText) {
-      try {
-        await chatInstance.sendMessage({ text: turnText })
-      } catch (error) {
-        // Best-effort: the answer is already persisted, so a failed send (e.g.
-        // no model selected) loses nothing — surface it without breaking the UI.
-        console.error('Ask widget failed to dispatch answer turn', error)
-      }
-    }
-  }
-
+  const { ask } = sequence
   return (
     <Ask
-      prompt={prompt}
-      mode={mode}
-      options={options}
-      explanation={explanation}
-      initialSelectedIds={saved?.selectedIds}
-      initialSubmitted={saved !== null}
-      onSubmit={handleSubmit}
+      key={`${sequence.step}:${sequence.stepKey}`}
+      prompt={ask.prompt}
+      mode={ask.mode}
+      options={ask.options}
+      explanation={ask.explanation}
+      initialSelectedIds={sequence.savedEntry?.selectedIds}
+      initialSubmitted={sequence.savedEntry !== undefined}
+      initialOther={sequence.savedEntry?.other}
+      initialSkipped={sequence.savedEntry?.skipped}
+      readOnly={sequence.readOnly}
+      canSkip={sequence.canSkip}
+      onSubmit={sequence.submit}
+      progress={sequence.isMultiStep ? { step: sequence.step + 1, total: sequence.total } : undefined}
+      onPrevious={sequence.previous}
+      onNext={sequence.next}
+      onReview={sequence.canReview ? sequence.openReview : undefined}
+      sendStatus={sequence.sendStatus}
+      onRetrySend={sequence.retrySend}
+      focusPrompt={sequence.navigated}
+      ignoreAnswersUntil={sequence.ignoreAnswersUntil}
     />
   )
+}
+
+/** Read-only ask (legacy `free`, or one without options), with its saved answer once the message cache loads. */
+const LegacyFreeAskWidget = ({
+  prompt,
+  options,
+  messageId,
+}: {
+  prompt: string
+  options: AskOption[]
+  messageId: string
+}) => {
+  const { data: saved, isPending } = useSavedAskEntries(messageId)
+
+  if (isPending) {
+    return <Skeleton />
+  }
+  const entry = saved?.[askStorageKey({ prompt, mode: 'free', options })]
+  return <LegacyFreeAsk prompt={prompt} savedText={entry?.text ?? entry?.chosen[0] ?? null} />
+}
+
+/**
+ * Registry entry for a lone `<widget:ask>`. The chat renderer folds every ask
+ * with options into an {@link AskSequence} (which gets `hasReply`), so this
+ * entry only sees a legacy `free` ask or a malformed one without options. Both
+ * render the prompt read-only, so there is nothing for a reply to lock.
+ */
+export const AskWidget = ({ messageId, ...args }: AskWidgetProps) => {
+  const ask = askDataOf(args)
+  if (!ask) {
+    return <LegacyFreeAskWidget prompt={args.prompt} options={args.options ?? []} messageId={messageId} />
+  }
+  return <AskSequence asks={[ask]} offset={0} messageAsks={[ask]} messageId={messageId} />
 }

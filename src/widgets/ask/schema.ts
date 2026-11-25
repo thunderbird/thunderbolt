@@ -43,6 +43,9 @@ export const schema = z.object({
     // reliance on `args.shape`.)
     options: optionsAttr.optional(),
     explanation: z.string().optional(),
+    // `"true"` lets the user skip the question. Any other value reads as not
+    // optional rather than failing the widget back to raw text.
+    optional: z.string().optional(),
   }),
 })
 

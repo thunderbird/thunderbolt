@@ -14,6 +14,7 @@ import {
 import type { HaystackReferenceMeta } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import { widgetSkeletons, type WidgetName } from '@/widgets'
+import { type AskData, AskSequence, Skeleton as AskSkeleton, groupAskSequences, messageAsksOf } from '@/widgets/ask'
 import { type TextUIPart } from 'ai'
 import { memo, useMemo, useRef } from 'react'
 import { CitationPopoverProvider } from './citation-popover'
@@ -34,6 +35,12 @@ type TextPartProps = {
   isStreaming?: boolean
   sources?: SourceMetadata[]
   haystackReferences?: HaystackReferenceMeta[]
+  /** Every ask in the owning message, across all its text parts; defaults to this part's own asks. */
+  messageAsks?: AskData[]
+  /** Index in `messageAsks` of this part's first ask. */
+  askOffset?: number
+  /** A later message exists in the thread, so the message's ask answers have gone out. */
+  hasReply?: boolean
 }
 
 /**
@@ -180,7 +187,16 @@ export const buildDocumentCitationPlaceholders = (
 
 // Streaming updates clone unchanged SDK parts; compare the inputs this renderer actually reads.
 export const TextPart = memo(
-  ({ part, messageId, isStreaming = false, sources, haystackReferences }: TextPartProps) => {
+  ({
+    part,
+    messageId,
+    isStreaming = false,
+    sources,
+    haystackReferences,
+    messageAsks,
+    askOffset = 0,
+    hasReply = false,
+  }: TextPartProps) => {
     const isPartStreaming = isStreaming && part.state === 'streaming'
     const revealedText = useSmoothText(part.text, isPartStreaming)
     // The parser strips complete native citations; withhold their unfinished suffix to avoid syntax flashes.
@@ -248,7 +264,8 @@ export const TextPart = memo(
       }
     }, [text, hasNewSources, hasDocumentRefs, sources, haystackReferences])
 
-    const dedupedParts = useMemo(() => deduplicateLinkPreviews(processedParts), [processedParts])
+    const renderParts = useMemo(() => groupAskSequences(deduplicateLinkPreviews(processedParts)), [processedParts])
+    const asksInMessage = useMemo(() => messageAsks ?? messageAsksOf(renderParts), [messageAsks, renderParts])
 
     if (!text) {
       return null
@@ -258,7 +275,7 @@ export const TextPart = memo(
       return (
         <CitationPopoverProvider>
           <CitationContext.Provider value={citations}>
-            {dedupedParts.map((part, index) => {
+            {renderParts.map((part, index) => {
               if (part.type === 'text') {
                 return (
                   <div key={`text-${index}`} className="p-4 my-2">
@@ -268,6 +285,26 @@ export const TextPart = memo(
                       content={part.content}
                       components={privateSources ? privateSourceCitationMarkdownComponents : citationMarkdownComponents}
                     />
+                  </div>
+                )
+              }
+              if (part.type === 'ask-sequence') {
+                return (
+                  <div
+                    key={`widget-${index}`}
+                    className="animate-in slide-in-from-bottom-2 fade-in duration-300 ease-out"
+                  >
+                    {isStreaming ? (
+                      <AskSkeleton />
+                    ) : (
+                      <AskSequence
+                        asks={part.asks}
+                        offset={askOffset + part.offset}
+                        messageAsks={asksInMessage}
+                        messageId={messageId}
+                        hasReply={hasReply}
+                      />
+                    )}
                   </div>
                 )
               }
@@ -302,7 +339,7 @@ export const TextPart = memo(
     // Default behavior for block-level widgets or no citations
     return (
       <>
-        {dedupedParts.map((contentPart, index) => {
+        {renderParts.map((contentPart, index) => {
           if (contentPart.type === 'text') {
             return (
               <div key={`text-${index}`} className="p-4 my-2">
@@ -312,6 +349,23 @@ export const TextPart = memo(
                   content={contentPart.content}
                   components={privateSources ? privateSourceMarkdownComponents : undefined}
                 />
+              </div>
+            )
+          }
+          if (contentPart.type === 'ask-sequence') {
+            return (
+              <div key={`widget-${index}`} className="animate-in slide-in-from-bottom-2 fade-in duration-300 ease-out">
+                {isStreaming ? (
+                  <AskSkeleton />
+                ) : (
+                  <AskSequence
+                    asks={contentPart.asks}
+                    offset={askOffset + contentPart.offset}
+                    messageAsks={asksInMessage}
+                    messageId={messageId}
+                    hasReply={hasReply}
+                  />
+                )}
               </div>
             )
           }
@@ -335,10 +389,18 @@ export const TextPart = memo(
     previous.part.text === next.part.text &&
     previous.part.state === next.part.state &&
     previous.messageId === next.messageId &&
+    previous.sources === next.sources &&
     (Boolean(previous.isStreaming) && previous.part.state === 'streaming') ===
       (Boolean(next.isStreaming) && next.part.state === 'streaming') &&
-    previous.sources === next.sources &&
-    previous.haystackReferences === next.haystackReferences,
+    previous.haystackReferences === next.haystackReferences &&
+    // Asks stay placeholders until the whole message stops streaming, so a
+    // finished part holding one still re-renders when the message does.
+    // A reply locks the answers, so it re-renders them too.
+    (!next.part.text.includes('<widget:ask') ||
+      (Boolean(previous.isStreaming) === Boolean(next.isStreaming) &&
+        Boolean(previous.hasReply) === Boolean(next.hasReply))) &&
+    previous.messageAsks === next.messageAsks &&
+    previous.askOffset === next.askOffset,
 )
 
 TextPart.displayName = 'TextPart'

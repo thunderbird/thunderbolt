@@ -198,6 +198,7 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
                   holdFiles={holdFiles && isLast}
                   isLastMessage={isLast && shouldUseViewportPositioning(visibleMessages.length)}
                   isLastAssistantMessage={message.id === lastAssistantMessage?.id}
+                  hasReply={!isLast}
                   lastAssistantAction={message.id === shareActionHostId ? shareDebugTranscriptAction : undefined}
                   activity={isLast && compactionInLastMessage ? <CompactionNotice status="compacting" /> : undefined}
                 />

@@ -18,7 +18,7 @@ import {
   type SharedModel,
 } from '@shared/defaults/models'
 import { defaultSettings, defaultSettingsVersion, hashSetting, shipsWithoutValue } from '../defaults/settings'
-import { defaultSkills, defaultSkillsVersion, hashSkill, isWidgetSkillId } from '../defaults/skills'
+import { defaultSkills, defaultSkillsVersion, hashSkill, isContractSkillId } from '../defaults/skills'
 import { defaultTasks, defaultTasksVersion, hashTask } from '../defaults/tasks'
 import type { ModelsDefaults } from './pick-defaults'
 import { restampWidgetSkillDefaultHashes } from './data-migrations/restamp-widget-skill-default-hashes'
@@ -695,7 +695,7 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       versionMarkerKeys.skills,
       defaultSkillsVersion,
       hasAnySkillRow,
-      { frozenFields: (skill) => (isWidgetSkillId(skill.id) ? ['enabled', 'pinnedOrder'] : []) },
+      { frozenFields: (skill) => (isContractSkillId(skill.id) ? ['enabled', 'pinnedOrder'] : []) },
     )
     await runGatedPass(
       settingsTable,

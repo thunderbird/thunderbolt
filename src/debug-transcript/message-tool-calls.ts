@@ -44,7 +44,8 @@ export const extractDebugTranscriptToolCalls = (message: ThunderboltUIMessage): 
     if (!('toolCallId' in part)) {
       return []
     }
-    const argumentsValue = 'input' in part && part.input !== undefined ? (part.input as JsonValue) : null
+    const argumentsValue =
+      part.input ?? (part.state === 'output-error' && 'rawInput' in part ? part.rawInput : null) ?? null
     const state = 'state' in part ? part.state : undefined
     const resultValue =
       'output' in part && part.output !== undefined
@@ -57,9 +58,9 @@ export const extractDebugTranscriptToolCalls = (message: ThunderboltUIMessage): 
       {
         toolCallId: part.toolCallId,
         name: toolNameFromPart(part),
-        arguments: boundToolValue(argumentsValue),
+        arguments: boundToolValue(argumentsValue as JsonValue),
         result: boundToolValue(resultValue),
-        status: toolStatusFromState(state),
+        status: part.state === 'output-available' && part.preliminary ? 'incomplete' : toolStatusFromState(state),
         durationMs: duration.success ? duration.data : null,
       },
     ]

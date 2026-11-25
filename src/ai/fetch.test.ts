@@ -6,6 +6,7 @@ import { createWebToolBudget } from '@/ai/web-tool-budget'
 import { createModel as insertModel, updateModel } from '@/dal/models'
 import { updateSettings } from '@/dal/settings'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { stubAppServer } from '@/test-utils/app-server'
 import { getDb } from '@/db/database'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
@@ -14,13 +15,27 @@ import { createClient } from '@/lib/http'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { getClock } from '@/testing-library'
 import { assembleBuiltInModelInput, createPrompt } from '@/ai/prompt'
-import { defaultSkillResearch, defaultSkillWeather } from '@/defaults/skills'
+import {
+  defaultSkillOfficeDocx,
+  defaultSkillOfficePptx,
+  defaultSkillOfficeXlsx,
+  defaultSkillResearch,
+  defaultSkillWeather,
+} from '@/defaults/skills'
+import { officeDocxSkill } from '@/office/skills/docx'
+import { officePptxSkill } from '@/office/skills/pptx'
+import { officeXlsxSkill } from '@/office/skills/xlsx'
+import * as officeSkills from '@/office/skills'
+import * as officeWorker from '@/office/run-in-worker'
+import * as attachments from '@/lib/attachments'
+import { skillsTable } from '@/db/tables'
+import { eq } from 'drizzle-orm'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { fetch as baseFetch } from '@/lib/fetch'
 import type { MCPClient, NamedMCPClient } from '@/lib/mcp-provider'
 import { appVersionUnsupported, resetAppVersionBlockedForTesting } from '@/lib/app-version-unsupported'
 import { createProxyFetch, type FetchFn } from '@/lib/proxy-fetch'
-import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
+import { loadSkillTokenInstructions, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { selectEnabledSkillDefinitions } from '@/skills/skill-tool'
 import { useConfigStore } from '@/api/config-store'
 import type { Model, Skill } from '@/types'
@@ -39,10 +54,12 @@ import {
 } from '@/debug-transcript/recorder'
 import {
   addSkillTool,
+  aiFetchStreamingResponse,
   buildVolatileSystemNotes,
   createModel,
   mergeMcpTools,
   prepareAiRequestConfig,
+  type PreparedAiRequestConfig,
   recordLegacyEmptyResponseRetry,
   resolveManagedAnthropicConnection,
   resolveOpenAiCompatConnection,
@@ -127,12 +144,13 @@ const named = (name: string, tools: () => Promise<Record<string, Tool>>): NamedM
 describe('addSkillTool', () => {
   const skills = [
     {
+      id: 'weather',
       name: 'weather',
       description: 'Use for weather forecasts.',
       instruction: 'Emit the weather widget contract.',
     },
-    { name: 'search', description: 'Search', instruction: 'Search instructions' },
-    { name: 'research', description: 'Research', instruction: 'Research instructions' },
+    { id: 'search', name: 'search', description: 'Search', instruction: 'Search instructions' },
+    { id: 'research', name: 'research', description: 'Research', instruction: 'Research instructions' },
   ]
 
   it('registers the skill tool only for tool-capable models', () => {
@@ -1106,6 +1124,163 @@ describe('withAppVersionHeader', () => {
 
     expect(events).toHaveLength(0)
     window.removeEventListener(appVersionUnsupported, listener)
+  })
+})
+
+describe('prepareAiRequestConfig — Office skills', () => {
+  const modelId = 'office-skills-model'
+  const httpClient = createClient({ prefixUrl: 'https://backend.test' })
+  const office = [defaultSkillOfficeDocx, defaultSkillOfficeXlsx, defaultSkillOfficePptx]
+  const officeNames = office.map(({ name }) => name)
+  const headings = [officeDocxSkill, officeXlsxSkill, officePptxSkill].map((body) => body.split('\n')[0])
+  const loadSentence = 'Before writing or editing a script, load the listed Office skill'
+
+  /** One send's Office surface: the prompt, the tool description, and the Office skills `/slug` resolves. */
+  const prepare = async () => {
+    const config = await prepareAiRequestConfig({ modelId, httpClient })
+    return {
+      config,
+      prompt: config.stableSystemPrompt,
+      description: config.toolset.run_office_script?.description ?? '',
+      slashOffice: config.skills.map(({ name }) => name).filter((name) => officeNames.includes(name)),
+    }
+  }
+
+  // The test database seeds every default skill.
+  beforeEach(async () => {
+    await setupTestDatabase()
+    await insertModel(getDb(), { id: modelId, provider: 'openai', model: 'gpt-test', name: 'Test', toolUsage: 1 })
+  })
+
+  afterEach(async () => {
+    mock.restore()
+    useConfigStore.setState({ config: {} })
+    await teardownTestDatabase()
+  })
+
+  it('lists the enabled ones in the prompt and the tool description, with their bodies left to the skill tool', async () => {
+    await getDb().update(skillsTable).set({ enabled: 0 }).where(eq(skillsTable.id, defaultSkillOfficePptx.id))
+
+    const { config, prompt, description, slashOffice } = await prepare()
+
+    expect(prompt).toContain('- office-docx:')
+    expect(prompt).toContain('- office-xlsx:')
+    expect(prompt).not.toContain('office-pptx')
+    for (const heading of headings) {
+      expect(prompt).not.toContain(heading)
+    }
+    expect(description).toContain(
+      `${loadSentence} for each format you will use, unless its instructions are already in context: office-docx, office-xlsx.`,
+    )
+    expect(slashOffice).toEqual(['office-docx', 'office-xlsx'])
+    // Preparing the request leaves the manuals unloaded: each skill still carries its row's stub.
+    const xlsx = config.skills.find(({ name }) => name === 'office-xlsx')
+    expect(xlsx?.instruction).toBe(defaultSkillOfficeXlsx.instruction)
+    // The bundled manual, not the stub its synced row holds, through the tool and through a `/slug`.
+    stubAppServer()
+    expect(await config.toolset.skill?.execute?.({ name: 'office-xlsx' }, { toolCallId: 'c', messages: [] })).toBe(
+      officeXlsxSkill,
+    )
+    expect(await loadSkillTokenInstructions('/office-xlsx make a budget', config.skills)).toEqual([officeXlsxSkill])
+  })
+
+  it('asks a failed script to load the Excel skill only when the skill tool has not returned it in this send', async () => {
+    spyOn(officeWorker, 'runInSandboxWorker').mockResolvedValue({ ok: false, error: 'TypeError: x is null', logs: '' })
+    stubAppServer()
+    const options = { toolCallId: 'c', messages: [] }
+    const fail = (config: PreparedAiRequestConfig) =>
+      config.toolset.run_office_script?.execute?.({ script: 'const f = excelize.NewFile()' }, options)
+    const pointer = 'load the Office skill for this format'
+
+    expect(await fail((await prepare()).config)).toMatchObject({ error: expect.stringContaining(pointer) })
+    const { config } = await prepare()
+    await config.toolset.skill?.execute?.({ name: 'office-xlsx' }, options)
+    expect(await fail(config)).toMatchObject({ ok: false, error: 'TypeError: x is null' })
+    // The next send has not loaded it.
+    expect(await fail((await prepare()).config)).toMatchObject({ error: expect.stringContaining(pointer) })
+  })
+
+  it('offers none in minimal mode, where there is no skill tool, but keeps the Office tool', async () => {
+    useConfigStore.setState({ config: { minimalMode: true } })
+
+    const { config, prompt, description, slashOffice } = await prepare()
+
+    expect(config.toolset.skill).toBeUndefined()
+    expect(description).not.toBe('')
+    expect(description).not.toContain(loadSentence)
+    expect(slashOffice).toEqual([])
+    for (const text of [...officeNames, ...headings]) {
+      expect(prompt).not.toContain(text)
+    }
+  })
+
+  it('offers none to a model without tools, which gets no Office tool', async () => {
+    await updateModel(getDb(), modelId, { toolUsage: 0 })
+
+    const { config, prompt, slashOffice } = await prepare()
+
+    expect(config.toolset).toEqual({})
+    expect(slashOffice).toEqual([])
+    for (const text of [...officeNames, ...headings]) {
+      expect(prompt).not.toContain(text)
+    }
+  })
+})
+
+describe('aiFetchStreamingResponse — an Office skill token', () => {
+  const modelId = 'office-token-model'
+
+  beforeEach(async () => {
+    await setupTestDatabase()
+    await insertModel(getDb(), {
+      id: modelId,
+      provider: 'openai',
+      model: 'gpt-test',
+      name: 'Test',
+      apiKey: 'test-key',
+      toolUsage: 1,
+    })
+  })
+
+  afterEach(async () => {
+    mock.restore()
+    await teardownTestDatabase()
+  })
+
+  it('stops a send aborted while the manual loads, before any attachment or provider work', async () => {
+    // Held at the loader so the load is cold whatever another test already loaded: the loader keeps a manual once
+    // it has it, so a held reachability check would only be reached on a cold run.
+    const requested = Promise.withResolvers<void>()
+    const manual = Promise.withResolvers<string>()
+    spyOn(officeSkills, 'loadOfficeSkillBody').mockImplementation(() => {
+      requested.resolve()
+      return manual.promise
+    })
+    const hydrate = spyOn(attachments, 'hydrateAttachmentsAsFileParts')
+    const transport = mock(async () => new Response())
+    const controller = new AbortController()
+    const reason = new DOMException('Stopped', 'AbortError')
+
+    const response = aiFetchStreamingResponse({
+      init: {
+        method: 'POST',
+        body: JSON.stringify({
+          id: 'thread-1',
+          messages: [{ id: 'm1', role: 'user', parts: [{ type: 'text', text: '/office-xlsx make a budget' }] }],
+        }),
+        signal: controller.signal,
+      },
+      modelId,
+      httpClient: createClient({ prefixUrl: 'https://backend.test' }),
+      getProxyFetch: () => Object.assign(transport, { preconnect: () => Promise.resolve(false) }),
+    })
+    await requested.promise
+    controller.abort(reason)
+    manual.resolve(officeXlsxSkill)
+
+    await expect(response).rejects.toBe(reason)
+    expect(hydrate).not.toHaveBeenCalled()
+    expect(transport).not.toHaveBeenCalled()
   })
 })
 

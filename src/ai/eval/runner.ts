@@ -7,6 +7,7 @@ import { resolveWebToolIntent, webBudgetExhaustedMessage } from '@/ai/turn-web-b
 import { getModel } from '@/dal/models'
 import { getSkillByName } from '@/dal/skills'
 import { getModelProfile } from '@/dal/model-profiles'
+import { isRecord } from '@shared/lib/is-record'
 import { getDb } from '@/db/database'
 import type { HttpClient } from '@/lib/http'
 import { getLocalSetting } from '@/stores/local-settings-store'
@@ -207,7 +208,7 @@ const observeResearchSkill = (
   }
 }
 
-/** Classify recovered tool failures only from the tool event's evidence. */
+/** Classify recovered tool failures after excluding interrupted inputs. */
 export const recoveredToolEvents = (streams: ParsedStream[]): EvalAttempt['toolEvents'] => {
   const counts = { toolInfraError: 0, toolMisuse: 0, budgetDenial: 0 }
   const webCallIds = new Set(
@@ -219,6 +220,9 @@ export const recoveredToolEvents = (streams: ParsedStream[]): EvalAttempt['toolE
       event.type !== 'tool-output-available' &&
       event.type !== 'tool-input-error'
     ) {
+      continue
+    }
+    if (event.type === 'tool-input-error' && isRecord(event.toolMetadata) && event.toolMetadata.interrupted === true) {
       continue
     }
     const output = toolOutput(event) as Record<string, unknown> | undefined

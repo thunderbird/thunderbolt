@@ -18,6 +18,7 @@ import { describe, expect, it, mock } from 'bun:test'
 import { useChatStore, type ChatSession } from '@/chats/chat-store'
 import { resetStore } from '@/test-utils/chat-store-mocks'
 import { builtInAgent } from '@/defaults/agents'
+import { defaultSkillOfficeXlsx } from '@/defaults/skills'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
@@ -545,6 +546,44 @@ describe('createAgentRoutingFetch', () => {
     const [, ctx] = adapterFetch.mock.calls[0] as unknown as [unknown, { skillInstructions?: string[] }]
     expect(ctx.skillInstructions).toEqual(['Tell a cat joke.'])
   })
+
+  it.each(['remote-acp', 'managed-http'] as const)(
+    'keeps an Office skill token from a %s agent, which has no Office tool',
+    async (type) => {
+      resetStore()
+      const agent: Agent = { ...remoteAgent, type, isSystem: type === 'managed-http' ? 1 : 0 }
+      const sent: Array<string[] | undefined> = []
+      const adapter: AgentAdapter = {
+        ...buildFakeAdapter(agent).adapter,
+        fetch: async (_init, { skillInstructions }) => {
+          sent.push(skillInstructions)
+          return new Response('streamed')
+        },
+      }
+      const getAllSkills = mock(async () => [
+        { ...defaultSkillOfficeXlsx },
+        { id: 's1', name: 'tell-a-joke', description: 'd', instruction: 'Tell a cat joke.', enabled: 1 },
+      ])
+      hydrateSessionWith('t-office-skill', agent)
+
+      const customFetch = createAgentRoutingFetch('t-office-skill', saveMessages, httpClient, getProxyFetch, {
+        getAvailableModels: async () => useChatStore.getState().models,
+        getChatReasoningEffort: async () => undefined,
+        isAgentActive,
+        connectToAgent: mock(async () => adapter) as never,
+        getAllSkills: getAllSkills as never,
+        getDb: (() => ({})) as never,
+      })
+
+      const text = '/office-xlsx /tell-a-joke'
+      await customFetch('/chat', {
+        method: 'POST',
+        body: JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text }] }] }),
+      })
+
+      expect(sent).toEqual([['Tell a cat joke.']])
+    },
+  )
 
   it('forwards the chat’s project context to a remote-acp agent', async () => {
     // Project context was prepared only in the built-in pipeline, so switching a

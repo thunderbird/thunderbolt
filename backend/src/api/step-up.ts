@@ -30,6 +30,7 @@ export type StepUpCooldown = { status: 429; body: { error: string } }
 export const stepUpRequiredMessage: Record<StepUpAction, string> = {
   'recovery-phrase-change': 'Step-up verification required to change the recovery phrase',
   'account-deletion': 'Step-up verification required to delete your account',
+  'v1-phrase-recovery': 'Step-up verification required to recover this account with its v1 recovery phrase',
 }
 
 /** Mint a code and email it. Returns the 429 to return when the cooldown is still running. */

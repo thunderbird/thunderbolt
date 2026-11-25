@@ -2,15 +2,42 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { Page } from '@playwright/test'
 import { expect, test } from './test'
 import { defaultModelOpus55 } from '../shared/defaults/models'
 import { fakeProviderReply } from './fake-provider'
 import { collectPageErrors, loginViaEmailCode } from './helpers'
-import { performanceStreamEnd, performanceStreamPrompt, performanceStreamSections } from './streaming-fixture'
+import {
+  performanceStreamEnd,
+  performanceStreamPrompt,
+  performanceStreamReply,
+  performanceStreamSections,
+} from './streaming-fixture'
 import { prepare } from '../scripts/performance/scenarios'
 import { openLongChat } from '../scripts/performance/journeys'
 
 type Snapshot = { text: string; at: number }
+
+/**
+ * Waits until the newest reply is saved in full. The Stop button goes away before the final save commits, so a
+ * reload right after it can bring back an earlier partial save.
+ */
+const waitForSavedReply = async (page: Page, text: string) => {
+  const id = await page.locator('[data-quotable-message-id]').last().getAttribute('data-quotable-message-id')
+  await expect
+    .poll(() =>
+      page.evaluate(async (id) => {
+        const databasePath = '/src/db/database.ts'
+        const messagesPath = '/src/dal/chat-messages.ts'
+        const { getDb } = (await import(/* @vite-ignore */ databasePath)) as typeof import('../src/db/database')
+        const { getMessage } = (await import(
+          /* @vite-ignore */ messagesPath
+        )) as typeof import('../src/dal/chat-messages')
+        return (await getMessage(getDb(), id))?.content
+      }, id!),
+    )
+    .toBe(text)
+}
 
 /** Observe partial replies before the response finishes downloading. */
 test('a sent message gets a reply that streams in', async ({ page }) => {
@@ -126,6 +153,7 @@ test('a high-rate markdown stream preserves a focused draft and persists the com
   await expect(reply.locator('pre')).toHaveCount(performanceStreamSections)
   await expect(reply.locator('table')).toHaveCount(performanceStreamSections)
   const completedText = await reply.innerText()
+  await waitForSavedReply(page, performanceStreamReply)
   await page.reload()
   await expect(page.locator('[data-quotable-message-id]').last()).toHaveText(completedText, { useInnerText: true })
   expect(errors).toEqual([])
@@ -156,6 +184,7 @@ test('sending into a long chat preserves its historical messages and the complet
     elements.map((element) => element.getAttribute('data-message-id')),
   )
   expect(completeIds.slice(0, messageCount)).toEqual(originalIds)
+  await waitForSavedReply(page, fakeProviderReply)
 
   await page.reload()
 

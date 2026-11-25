@@ -42,7 +42,7 @@ const createFakeHttpClient = (routes: FakeRoutes, recorded: RecordedRequest[]): 
     throw new Error('not implemented')
   }
 
-  return { get, post: unsupported, delete: unsupported }
+  return { get, head: unsupported, post: unsupported, delete: unsupported }
 }
 
 const buildForecast = (count: number) => ({

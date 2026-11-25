@@ -4995,9 +4995,11 @@ dependencies = [
 
 [[package]]
 name = "thunderbolt"
-version = "0.1.170"
+version = "0.1.173"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
+ "gtk",
  "hex",
  "objc2-foundation",
  "objc2-ui-kit",
@@ -5021,6 +5023,7 @@ dependencies = [
  "tauri-plugin-store",
  "tauri-plugin-updater",
  "tokio",
+ "xattr",
 ]
 
 [[package]]

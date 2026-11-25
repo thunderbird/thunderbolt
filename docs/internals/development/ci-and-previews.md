@@ -5,7 +5,7 @@
 | Workflow                  | Trigger                                   | Failure mode             | Reproduce locally               |
 | ------------------------- | ----------------------------------------- | ------------------------ | ------------------------------- |
 | `ci.yml`                  | PR (any base branch) + push to `main`     | Red check                | See the job table below         |
-| `e2e.yml`                 | PR + push to `main`                       | Red check                | `bun run e2e`                   |
+| `e2e.yml`                 | PR (path-gated) + push to `main`          | Red check                | `bun run e2e`                   |
 | `security.yml`            | PR + push to `main`                       | Red check                | n/a                             |
 | `lint-pr-title.yml`       | PR opened / edited / synchronized         | Red check                | n/a                             |
 | `pr-metrics.yml`          | PR                                        | Advisory comment         | `bun run build && bun run size` |
@@ -160,6 +160,10 @@ Commits (`feat`, `fix`, `chore`, `docs`, `refactor`, `perf`, `test`, `ci`, `buil
 **Semgrep.** Diff-aware against the base SHA on PRs, full scan on pushes to `main`; any
 report uploads as SARIF. The PR comment is skipped on fork PRs (read-only token, the
 comments API would 403), and the whole job is skipped for Dependabot.
+
+**e2e is path-gated on PRs.** `e2e.yml` skips pull requests that only touch `docs/`, `web/`,
+Markdown, the Helm chart, the Pulumi stacks, Tauri Rust sources, or `.github/` other than
+`e2e.yml` itself. Push to `main` is not gated, so a wrongly excluded path still reds there.
 
 **e2e sharding.** Two Playwright shards each upload a blob report; `e2e-report` merges
 them into one HTML artifact (14-day retention). Failure screenshots upload per shard; a

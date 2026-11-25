@@ -25,6 +25,7 @@ import { useConfigStore } from '@/api/config-store'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { createMessageMetadata } from '@/ai/message-metadata'
+import { docxMime } from '@/files/transformers'
 import { ChatMessages } from './chat-messages'
 import { ExternalLinkDialogProvider } from './markdown-utils'
 import { builtInAgent } from '@/defaults/agents'
@@ -224,7 +225,7 @@ describe('ChatMessages', () => {
         wrapper: createTestWrapper(),
       })
 
-      expect(screen.getByRole('button', { name: 'View source: Earlier Page' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Earlier Page, view source' })).toBeInTheDocument()
       expect(container.querySelector('pre')?.textContent).toContain('x = arr[1]')
       expect(container.textContent).not.toContain('CITE')
     })
@@ -806,6 +807,72 @@ describe('ChatMessages', () => {
 
       // ErrorMessage should not be rendered when message has parts
       expect(screen.queryByText('Something went wrong. Please try again.')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('created-file chips', () => {
+    const officeTurn: ThunderboltUIMessage[] = [
+      createTestMessage({ id: 'user-1' }),
+      createTestMessage({
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'tool-run_office_script',
+            toolCallId: 'call-1',
+            state: 'output-available',
+            input: { script: '' },
+            output: {
+              ok: true,
+              files: [
+                {
+                  id: 'file-1',
+                  filename: 'report.docx',
+                  mimeType: docxMime,
+                  size: 4,
+                  edited: false,
+                  savedAs: 'report.docx',
+                },
+              ],
+              logs: '',
+            },
+          },
+          { type: 'text', text: 'Here is the report.' },
+        ],
+      }),
+    ]
+    const failure = new Error('Network error')
+
+    it.each([
+      ['hides them while the turn streams', 'streaming', {}, undefined, false],
+      ['hides them during the retry backoff', 'ready', { retryCount: 1 }, undefined, false],
+      ['hides them while a failed attempt waits for its retry decision', 'error', {}, failure, false],
+      ['shows them once the turn ends', 'ready', {}, undefined, true],
+      ['shows them once retries are exhausted', 'error', { retriesExhausted: true }, failure, true],
+      ['shows them once Stop cancels the retry', 'error', { stopping: true }, failure, true],
+    ] as const)('%s', async (_name, status, session, error, shown) => {
+      const readAttachment = spyOn(attachmentStorage, 'getAttachment').mockResolvedValue(null)
+      try {
+        const chatInstance = createMockChatInstance(officeTurn, status)
+        hydrateStore({
+          chatInstance,
+          chatThread: createMockChatThread(),
+          id: 'thread-1',
+          mcpClients: [],
+          models: [],
+          selectedModel: null,
+          triggerData: null,
+        })
+        useChatStore.getState().updateSession('thread-1', session)
+
+        render(<ChatMessages useChat={createMockUseChat(chatInstance, error)} />, { wrapper: createTestWrapper() })
+        await act(async () => void (await getClock().runAllAsync()))
+
+        expect(screen.getByText('Here is the report.')).toBeInTheDocument()
+        expect(screen.queryByText('report.docx') !== null).toBe(shown)
+      } finally {
+        readAttachment.mockRestore()
+      }
     })
   })
 

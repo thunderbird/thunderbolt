@@ -334,7 +334,7 @@ describe('selected connection discovery', () => {
         [],
         context({ ...available, settings: { experimentalFeatureTasks: false, integrationsProIsEnabled: true } }),
       )
-      expect(tools.map(({ name }) => name)).toEqual(['render_html'])
+      expect(tools.map(({ name }) => name)).toEqual(['render_html', 'run_office_script'])
       expect(fetch).not.toHaveBeenCalled()
       expect(useSearchProviderStore.getState()).toMatchObject({ selection: 'connection', connectionId: 'otari' })
     } finally {
@@ -362,7 +362,7 @@ describe('selected connection discovery', () => {
       [],
       context({ ...available, settings: { experimentalFeatureTasks: false, integrationsProIsEnabled: true } }),
     )
-    expect(tools.map(({ name }) => name)).toEqual(['render_html'])
+    expect(tools.map(({ name }) => name)).toEqual(['render_html', 'run_office_script'])
   })
 })
 
@@ -397,9 +397,10 @@ describe('getAvailableTools with injected availability', () => {
       expect(tools.some(({ name }) => name === 'search' || name === 'fetch_content')).toBe(false)
     },
   )
-  it('includes only render_html by default and task tools when enabled', async () => {
+  it('includes only the app tools by default and task tools when enabled', async () => {
     expect((await getAvailableTools(stubHttpClient, undefined, context())).map(({ name }) => name)).toEqual([
       'render_html',
+      'run_office_script',
     ])
     expect(
       (
@@ -463,7 +464,7 @@ describe('getAvailableTools with injected availability', () => {
       (await getAvailableTools(stubHttpClient, [], context({ searchConnectionId: 'old-account', searchApi: api }))).map(
         ({ name }) => name,
       ),
-    ).toEqual(['render_html'])
+    ).toEqual(['render_html', 'run_office_script'])
   })
   it.each(['none', 'cloud', 'auto'] as const)(
     'stops an existing private tool after selecting %s',

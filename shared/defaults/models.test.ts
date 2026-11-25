@@ -9,6 +9,7 @@ import {
   defaultModelDeepSeekV41Flash,
   defaultModelId,
   defaultModelImageSupport,
+  defaultModelKimiK31Pro,
   defaultModelOpus55,
   defaultModels,
   defaultModelsVersion,
@@ -47,9 +48,9 @@ const computeMetadataHash = () =>
     .join('|')
 
 const expected = {
-  version: 11,
-  hash: '0:019af08a-c27b-7074-8aac-95315d1ef3fd:-8jt8am|1:01a06dd7-67ee-75be-b957-2b746271c49d:-bs87m1|2:019e7580-2b0e-719c-a43f-d2b56e7f31b4:-mx717t',
-  metadataHash: '0:-5cyn16|1:-v53uf0|2:-bj1ngs',
+  version: 12,
+  hash: '0:019af08a-c27b-7074-8aac-95315d1ef3fd:-8jt8am|1:01a06dd7-67ee-75be-b957-2b746271c49d:-bs87m1|2:019e7580-2b0e-719c-a43f-d2b56e7f31b4:-mx717t|3:01a20a11-f788-72b9-910e-f1bbdf4d5e93:-jz4q51',
+  metadataHash: '0:-5cyn16|1:-v53uf0|2:-bj1ngs|3:-2spwy8',
 }
 
 describe('defaultModels version snapshot', () => {
@@ -132,6 +133,7 @@ describe('staticImageSupport', () => {
     expect(staticImageSupport(defaultModelOpus55, bundled)).toBe('supported')
     expect(staticImageSupport(defaultModelDeepSeekV41Flash, bundled)).toBe('supported')
     expect(staticImageSupport(defaultModelGlm53, bundled)).toBe('unsupported')
+    expect(staticImageSupport(defaultModelKimiK31Pro, bundled)).toBe('supported')
   })
 
   test('falls through to the other rules for a lineup row without a declaration', () => {

@@ -330,6 +330,13 @@
       "when": 1794431147484,
       "tag": "0046_passkey-continuity",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1795465460491,
+      "tag": "0047_seed-tinfoil-kimi-k3-1-pro-price",
+      "breakpoints": true
     }
   ]
 }

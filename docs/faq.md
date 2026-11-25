@@ -100,7 +100,7 @@ Tinfoil is a confidential inference provider. Confidential means the model runs 
 
 ### Which models does a fresh install ship with?
 
-Three system-managed models: DeepSeek V4.1 Flash (the default on a new install), GLM 5.3, and Opus 5.5. The first two run in confidential enclaves; Opus 5.5 is routed to Anthropic.
+Four system-managed models: DeepSeek V4.1 Flash (the default on a new install), GLM 5.3, Kimi K3.1 Pro, and Opus 5.5. The first three run in confidential enclaves; Opus 5.5 is routed to Anthropic.
 
 A backend you host serves these only if you give it the matching keys.
 
@@ -109,7 +109,7 @@ ANTHROPIC_API_KEY=...
 TINFOIL_API_KEY=...
 ```
 
-Without them, the three entries still appear in the model list but every request to them fails. Add your own provider key or a local model instead.
+Without them, the four entries still appear in the model list but every request to them fails. Add your own provider key or a local model instead.
 
 ### Are there usage limits on system-managed models?
 
@@ -160,7 +160,7 @@ We don't test air-gapped operation today, so treat it as a pilot.
 
 ### How many devices can one account use?
 
-Ten active devices. Devices awaiting approval do not count against the limit.
+Ten active devices. Devices awaiting approval do not count against the limit, and recovering with your recovery phrase or a passkey is never blocked by it.
 
 ### What happens if a device is lost or stolen?
 

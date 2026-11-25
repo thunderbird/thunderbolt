@@ -9,10 +9,17 @@ import { useCurrentChatSession } from '@/chats/chat-store'
 import { usePendingQuotes, usePendingQuotesStore } from '@/chats/pending-quotes-store'
 import { mergeIntoDraft, useConsumePendingPrompt } from '@/chats/pending-prompt-store'
 import { useCreateItem } from '@/components/create-item/context'
-import { estimateTokensForText } from '@/ai/tokenizers'
+import { estimateTokensForLength, estimateTokensForText } from '@/ai/tokenizers'
 import { useContextTracking as useContextTracking_default } from '@/hooks/use-context-tracking'
 import { useIsMobile as useIsMobile_default } from '@/hooks/use-mobile'
 import { isMobile as isPlatformMobile } from '@/lib/platform'
+import {
+  filesAtPaths,
+  httpLinks,
+  readCopiedFiles as readCopiedFiles_default,
+  readsFilesByPath as readsFilesByPath_default,
+  type PathFile,
+} from '@/lib/native-files'
 import { trackEvent as trackEvent_default } from '@/lib/posthog'
 import { appendSlashToken } from '@/skills/compose-chat-input'
 import { buildDisplayNameToSlug, tokenForSkill } from '@/skills/display'
@@ -23,7 +30,7 @@ import {
   foldPendingSigils,
   normalizeSkillTokensToSlugs,
 } from '@/skills/parse-skill-tokens'
-import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
+import { resolveSkillTokenSkills } from '@/skills/resolve-skill-system-messages'
 import { SlashPopup } from '@/skills/slash-popup'
 import { trackSkillEvent } from '@/skills/telemetry'
 import { useSlashCommand } from '@/skills/use-slash-command'
@@ -74,14 +81,16 @@ import { hasAssistantContent } from '@/lib/message-utils'
 import { buildQuotePart } from '@/lib/quotes'
 import { QuoteChip } from './quote-chip'
 import { deleteAttachment, putAttachment } from '@/lib/file-blob-storage'
-import { resolveTextMimeType } from '@/files/transformers'
+import { docxMime, pptxMime, resolveTextMimeType, xlsxMime } from '@/files/transformers'
 import { maybeCompressAttachment } from '@/files/compress/compress-attachment'
 import { VoiceModeButton } from '@/voice/ui/voice-mode-button'
 import { VoiceModeComposer } from '@/voice/ui/voice-mode-composer'
 import { useVoiceSession } from '@/voice/ui/use-voice-session'
 import { FileCard } from './file-card'
+import { useNativeFileDrop as useNativeFileDrop_default } from './use-native-file-drop'
 import { preloadChatMessageList } from './chat-messages-loader'
 import { isBuiltInAgent } from '@/defaults/agents'
+import { selectOfferedSkillRows, skillInstructionLength } from '@/defaults/skills'
 import { useAppName } from '@/lib/branding-selectors'
 import { selectBuiltInAgentEnabled, selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
@@ -95,16 +104,17 @@ const maxAttachmentBytes = 25 * 1024 * 1024
 const maxAttachmentCount = 10
 
 /** Mime types accepted as attachments. PDFs and images deliver natively to
- *  capable models; plain-text types (txt / md / csv / json) and xlsx deliver as
- *  text; docx (and a native file a model rejects) auto-remediate to text/images. */
+ *  capable models; plain-text types (txt / md / csv / json), xlsx and pptx deliver
+ *  as text; docx (and a native file a model rejects) auto-remediate to text/images. */
 const acceptedAttachmentMimeTypes = new Set([
   'application/pdf',
   'image/png',
   'image/jpeg',
   'image/webp',
   'image/gif',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  docxMime,
+  xlsxMime,
+  pptxMime,
   'text/markdown',
   'text/plain',
   'text/csv',
@@ -122,6 +132,7 @@ const acceptedAttachmentExtensions = [
   '.gif',
   '.docx',
   '.xlsx',
+  '.pptx',
   '.md',
   '.markdown',
   '.txt',
@@ -155,7 +166,7 @@ const caretPastChipMarker = (e: KeyboardEvent<HTMLTextAreaElement>, ta: HTMLText
   return e.key === 'ArrowLeft' && ta.value[caret - 1] === chipMarker ? Math.max(0, caret - 2) : null
 }
 
-const isAcceptedAttachment = (file: File): boolean =>
+const isAcceptedAttachment = (file: Pick<File, 'name' | 'type'>): boolean =>
   acceptedAttachmentMimeTypes.has(file.type) ||
   acceptedAttachmentExtensions.some((ext) => file.name.toLowerCase().endsWith(ext))
 
@@ -177,6 +188,16 @@ const withClipboardFilename = (file: File, index: number): File => {
   }
   const ext = file.type.split('/')[1] ?? 'png'
   return new File([file], `pasted-image-${Date.now()}-${index}.${ext}`, { type: file.type })
+}
+
+/** The files a file manager copied, or none when the clipboard cannot be read. */
+const copiedFilesOrNone = async (readCopiedFiles: typeof readCopiedFiles_default) => {
+  try {
+    return await readCopiedFiles()
+  } catch (error) {
+    console.error('Failed to read the files a file manager copied:', error)
+    return []
+  }
 }
 
 const connectionFailed = msg`Connection failed`
@@ -227,6 +248,10 @@ type ChatPromptInputProps = {
   useImageSupportCheck?: typeof useImageSupportCheck_default
   /** Inject for tests that select a non-built-in agent, so the warm-up never dials it. */
   useWarmAcpCommands?: typeof useWarmAcpCommands_default
+  /** Inject for tests of the Linux path, where files dragged or copied from the OS arrive by path. */
+  readsFilesByPath?: typeof readsFilesByPath_default
+  readCopiedFiles?: typeof readCopiedFiles_default
+  useNativeFileDrop?: typeof useNativeFileDrop_default
 }
 
 const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputProps>(
@@ -243,6 +268,9 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
       isAgentAvailable = isAgentAvailable_default,
       useImageSupportCheck = useImageSupportCheck_default,
       useWarmAcpCommands = useWarmAcpCommands_default,
+      readsFilesByPath = readsFilesByPath_default,
+      readCopiedFiles = readCopiedFiles_default,
+      useNativeFileDrop = useNativeFileDrop_default,
     },
     ref,
   ) => {
@@ -284,7 +312,16 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
     })
     const summaryView = useCompactionSummaryState(messages)
 
-    const { skills: library } = useLibrarySkills()
+    const { skills: storedSkills } = useLibrarySkills()
+    // The Office skills teach the built-in agent's `run_office_script`, which a model without tools and every other
+    // agent lack. The send paths leave them out there, so the menu, the highlight, the token estimate and the pinned
+    // chips do too. Where they are offered, an Office row owns its name, as it does on the send path.
+    const officeSkillsUsable = isBuiltInAgent(selectedAgent) && selectedModel.toolUsage !== 0
+    const library = useMemo(
+      () => selectOfferedSkillRows(storedSkills, officeSkillsUsable),
+      [officeSkillsUsable, storedSkills],
+    )
+    const librarySkillIds = useMemo(() => new Set(library.map(({ id }) => id)), [library])
     const { isEnabled } = useEnabledSkills()
     // Minimal mode treats `/` as ordinary text: no popup, token resolution,
     // highlighting or token-aware editing (resolution is gated in
@@ -380,6 +417,7 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
     const imageSupportBlocksSend = imageSupport.notice !== undefined
     const [isDragging, setIsDragging] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
+    const dropZoneRef = useRef<HTMLDivElement>(null)
     const acceptsAttachments = agentAcceptsAttachments(selectedAgent)
     // Files queued before the chat landed on an agent that takes none (discovery moved
     // it, or the user switched) stay visible so they can be removed, but hold the send.
@@ -508,8 +546,10 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
 
     const insertInstructionText = useCallback(
       (text: string) => {
+        // Read the draft and caret now, not at the render that made this callback: an Office manual loads before the
+        // chip calls it, and the user may type meanwhile.
         const ta = getTextarea()
-        const current = foldPendingSigils(input)
+        const current = foldPendingSigils(inputRef.current)
         const start = ta?.selectionStart ?? current.length
         const end = ta?.selectionEnd ?? current.length
         const needsSpace = start > 0 && current[start - 1] !== ' '
@@ -529,7 +569,7 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
           focused?.setSelectionRange(pos, pos)
         })
       },
-      [input, setInput, setCursorPos],
+      [setInput, setCursorPos],
     )
 
     // Run-in-chat router-state nav (Skills v1 §5). Same consume-once shape as
@@ -583,19 +623,11 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
       return () => cancelAnimationFrame(frame)
     }, [focusRequested, navigate, location.pathname, location.search])
 
-    // Map of enabled-skill slug → instruction. Shared by the overflow
-    // estimate below and the send-time resolver in `ai/fetch.ts` (via
-    // `resolveSkillTokenInstructions`), so a future change to resolution
-    // semantics moves both surfaces together.
-    const enabledInstructionBySlug = useMemo(() => {
-      const map = new Map<string, string>()
-      for (const skill of library) {
-        if (isEnabled(skill.id)) {
-          map.set(skill.name, skill.instruction)
-        }
-      }
-      return map
-    }, [library, isEnabled])
+    // The enabled skills a `/slug` can resolve to. The overflow estimate below
+    // and the send-time resolver in `ai/fetch.ts` resolve tokens through the
+    // same helper (`resolveSkillTokenSkills`), so a future change to
+    // resolution semantics moves both surfaces together.
+    const enabledSkills = useMemo(() => library.filter((skill) => isEnabled(skill.id)), [library, isEnabled])
 
     // Estimate the token cost of resolved skill instructions and pending
     // quote passages so the overflow modal fires correctly when /name tokens
@@ -614,16 +646,16 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
 
     const additionalInputTokens = useMemo(() => {
       // The resolver (shared with the send path in ai/fetch.ts) only speaks slugs.
-      const instructions = resolveSkillTokenInstructions(normalizedInput, enabledInstructionBySlug)
+      // Sized by length, so an Office manual is measured without loading it.
       let total = 0
-      for (const instruction of instructions) {
-        total += estimateTokensForText(instruction)
+      for (const skill of resolveSkillTokenSkills(normalizedInput, enabledSkills)) {
+        total += estimateTokensForLength(skillInstructionLength(skill))
       }
       for (const quote of quotes) {
         total += estimateTokensForText(quote.data.text)
       }
       return total
-    }, [normalizedInput, enabledInstructionBySlug, quotes])
+    }, [normalizedInput, enabledSkills, quotes])
 
     const builtInContext = useContextTracking({
       model: selectedModel,
@@ -650,7 +682,7 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
     // Store dropped/picked PDFs locally (IndexedDB) and add reference-only
     // attachments. Bytes never enter a message part — only the localFileId ref.
     const addFiles = useCallback(
-      async (files: File[]) => {
+      async (files: (File | PathFile)[]) => {
         setAttachError(null)
         // `count` tracks the running total as we add through the loop, since
         // `setAttachments` won't have flushed mid-iteration.
@@ -665,11 +697,20 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
             setAttachError(t`"${filename}" isn't a supported file type.`)
             continue
           }
+          // A file that arrives by path is read into memory, so files are read one at a time and only under the cap.
+          // A file over the cap is refused unread, so it is never shrunk. If Linux users need it, photos and PDFs over
+          // the cap could be read anyway.
+          const loaded = file instanceof File || file.size > maxAttachmentBytes ? file : await file.read()
+          if (!loaded) {
+            const filename = file.name
+            setAttachError(t`Couldn't read "${filename}".`)
+            continue
+          }
           // Shrink large images/PDFs before the cap check, so a compressible
           // photo over the limit can slip under it instead of being rejected
           // (THU-671). Falls back to the original when it can't help.
-          const prepared = await maybeCompressAttachment(file)
-          if (prepared.size > maxAttachmentBytes) {
+          const prepared = loaded instanceof File ? await maybeCompressAttachment(loaded) : loaded
+          if (!(prepared instanceof File) || prepared.size > maxAttachmentBytes) {
             const maxMegabytes = maxAttachmentBytes / 1024 / 1024
             const filename = prepared.name
             setAttachError(t`"${filename}" is too large (max ${maxMegabytes}MB).`)
@@ -705,25 +746,73 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
       [attachments.length, t],
     )
 
+    const pasteCopiedFiles = useCallback(
+      async (field: HTMLTextAreaElement, text: string) => {
+        // The paste is already prevented, so a clipboard that cannot be read falls back to pasting the text.
+        const files = await copiedFilesOrNone(readCopiedFiles)
+        if (files.length > 0) {
+          await addFiles(files)
+          return
+        }
+        // No file manager copy behind the `text/uri-list`: paste its text as the browser would have.
+        // `insertText` types into whatever has focus, so text is dropped once focus has left the field.
+        if (text && document.activeElement === field) {
+          document.execCommand('insertText', false, text)
+        }
+      },
+      [addFiles, readCopiedFiles],
+    )
+
     // Intercept clipboard paste (Cmd/Ctrl+V) so copied files and pasted images
     // become attachments — the same path as drag-drop and the paperclip. Only
     // preventDefault when the clipboard actually carries files, so a normal text
     // paste falls through untouched.
     const handlePaste = useCallback(
       (e: ClipboardEvent<HTMLTextAreaElement>) => {
+        // An agent that takes no attachments lets the paste fall through untouched.
+        if (!acceptsAttachments) {
+          return
+        }
         const files = Array.from(e.clipboardData?.items ?? [])
           .filter((item) => item.kind === 'file')
           .map((item) => item.getAsFile())
           .filter((file): file is File => file != null)
-        // An agent that takes no attachments lets the paste fall through untouched.
-        if (!acceptsAttachments || files.length === 0) {
+        if (files.length > 0) {
+          e.preventDefault()
+          void addFiles(files.map(withClipboardFilename))
           return
         }
-        e.preventDefault()
-        void addFiles(files.map(withClipboardFilename))
+        // WebKitGTK shows a file manager copy only as `text/uri-list` and pastes
+        // no text when that type is present, so the files come from the OS clipboard.
+        if (readsFilesByPath() && e.clipboardData.types.includes('text/uri-list')) {
+          e.preventDefault()
+          // GTK reads text from `UTF8_STRING` and the like, never bare `text/plain`, so a link offered only that
+          // way reads empty here; its `text/uri-list` still holds it.
+          const text =
+            e.clipboardData.getData('text/plain') ||
+            httpLinks(e.clipboardData.getData('text/uri-list').split(/\r?\n/)).join('\n')
+          void pasteCopiedFiles(e.currentTarget, text)
+        }
       },
-      [acceptsAttachments, addFiles],
+      [acceptsAttachments, addFiles, pasteCopiedFiles, readsFilesByPath],
     )
+
+    // Listens for every agent: the native handler takes a dragged link from the page even where files are refused.
+    useNativeFileDrop({
+      zoneRef: dropZoneRef,
+      enabled: readsFilesByPath(),
+      onHoverChange: (hovering) => setIsDragging(hovering && acceptsAttachments),
+      onDrop: async (paths, links) => {
+        const field = getTextarea()
+        if (field && links.length > 0) {
+          field.focus()
+          document.execCommand('insertText', false, links.join('\n'))
+        }
+        if (acceptsAttachments && paths.length > 0) {
+          await addFiles(await filesAtPaths(paths))
+        }
+      },
+    })
 
     const removeAttachment = useCallback((localFileId: string) => {
       setAttachments((prev) => prev.filter((a) => a.localFileId !== localFileId))
@@ -940,6 +1029,7 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
     return (
       <>
         <div
+          ref={dropZoneRef}
           className="relative flex w-full flex-col rounded-3xl"
           // Default is still prevented for an agent that takes no attachments,
           // so a dropped file is ignored rather than opened by the browser in
@@ -994,7 +1084,11 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
                 thread starts; the composer owns ongoing skill insertion. */}
             {messages.length === 0 && (
               <div className="pointer-events-auto pb-2">
-                <ChatSkillsBar onAddToChat={handleAddChipFromBar} onAddInstruction={insertInstructionText} />
+                <ChatSkillsBar
+                  onAddToChat={handleAddChipFromBar}
+                  onAddInstruction={insertInstructionText}
+                  canInsertSkill={(skillId) => librarySkillIds.has(skillId)}
+                />
               </div>
             )}
             <AnimatePresence initial={false}>

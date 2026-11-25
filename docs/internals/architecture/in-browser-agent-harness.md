@@ -332,6 +332,7 @@ shows up there and nowhere else.
 | `shared/agent-core/openai-compat-model.ts` | OpenAI-wire model; the synchronous global-`fetch` swap                               |
 | `shared/agent-core/confidential-model.ts`  | Tinfoil/confidential model, attestation normalization                                |
 | `shared/agent-core/pi-to-aisdk-stream.ts`  | Pi harness events → AI SDK v5 UI message stream                                      |
+| `shared/agent-core/output-limit.ts`        | One hidden follow-up when the output limit cuts a reply off before it answers        |
 | `shared/agent-core/seed-history.ts`        | Prior turns → Pi messages (text only; tool calls deliberately dropped)               |
 | `shared/agent-core/mcp-tools.ts`           | AI-SDK tools → Pi `AgentTool`s (schema and result bridging)                          |
 | `shared/agent-core/environment-prompt.ts`  | The browser-execution constraints disclosed to the model                             |

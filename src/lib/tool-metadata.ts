@@ -154,6 +154,8 @@ const categoryMessage = (category: ToolCategory, name: string): MessageDescripto
   }
 }
 
+const creatingFileMessage = msg`Creating file…`
+
 const generateLoadingMessage = (
   toolName: string,
   category: ToolCategory,
@@ -278,7 +280,8 @@ export const getToolMetadataSync = (toolName: string, input?: unknown): ToolMeta
   const metadata: ToolMetadata = {
     displayName,
     initials: getDisplayNameInitials(displayName),
-    loadingMessage: generateLoadingMessage(toolName, category, input),
+    loadingMessage:
+      toolName === 'run_office_script' ? creatingFileMessage : generateLoadingMessage(toolName, category, input),
     category,
     icon: getToolIcon(toolName),
   }

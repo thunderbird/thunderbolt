@@ -53,6 +53,7 @@ const judgeModelAssignments: Readonly<Partial<Record<string, JudgeModelName>>> =
   opus: 'opus',
   flash: 'opus',
   glm: 'opus',
+  kimi: 'opus',
 }
 
 type SemanticAssertion = {

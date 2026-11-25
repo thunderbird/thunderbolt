@@ -30,6 +30,7 @@ import { isModelReady, matchesThreadConfidentiality } from '@/settings/models/mo
 import { loadProjectContextForThread as defaultLoadProjectContext } from '@/projects/load-project-context'
 import { buildProjectPromptSection } from '@/projects/project-prompt'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
+import { selectEnabledSkillDefinitions } from '@/skills/skill-tool'
 import { getDb as defaultGetDb } from '@/db/database'
 import {
   beginDebugTranscriptTurn,
@@ -57,7 +58,7 @@ import {
   isToolSupportRejectionError,
 } from '@/lib/error-utils'
 import type { HttpClient } from '@/lib/http'
-import { hasAssistantContent } from '@/lib/message-utils'
+import { hasAssistantContent, withoutPendingPiHeaders } from '@/lib/message-utils'
 import { trackEvent as defaultTrackEvent } from '@/lib/posthog'
 import { collectThreadSources } from '@/lib/source-utils'
 import type { FetchFn } from '@/lib/proxy-fetch'
@@ -342,6 +343,8 @@ export const createAgentRoutingFetch = (
   /** Resolve user-skill (`/slug`) instructions from the latest user message, so
    *  ACP agents can receive them in the prompt (the built-in pipeline injects
    *  these itself in `ai/fetch.ts`, so this only runs for non-built-in agents).
+   *  The Office skills are left out by default: they teach the app's
+   *  `run_office_script`, which neither an ACP agent nor the hosted agent has.
    *  Cheap-exits before touching the DB when there's no message or no `/` token. */
   const resolveAcpSkillInstructions = async (messages: ThunderboltUIMessage[] | undefined): Promise<string[]> => {
     if (!messages?.length) {
@@ -351,12 +354,9 @@ export const createAgentRoutingFetch = (
     if (!lastUserText.includes('/')) {
       return []
     }
-    const instructionBySlug = new Map<string, string>()
-    for (const skill of await getAllSkills(getDb())) {
-      if (skill.enabled === 1 && skill.name && skill.instruction) {
-        instructionBySlug.set(skill.name, skill.instruction)
-      }
-    }
+    const instructionBySlug = new Map(
+      selectEnabledSkillDefinitions(await getAllSkills(getDb())).map(({ name, instruction }) => [name, instruction]),
+    )
     return resolveSkillTokenInstructions(lastUserText, instructionBySlug)
   }
 
@@ -443,7 +443,7 @@ export const createAgentRoutingFetch = (
       // Hydration supplies a durable prefix, and historical edits save themselves.
       // Keep the predecessor too: the SDK does not await the previous onFinish,
       // so its assistant row may still need inserting before the new user's parent is set.
-      await saveMessages({ id, messages: requestMessages.slice(-2) })
+      await saveMessages({ id, messages: requestMessages.slice(-2).map(withoutPendingPiHeaders) })
       telemetry?.endPhase('persist_user_message')
     }
 

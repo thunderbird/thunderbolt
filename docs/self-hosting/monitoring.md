@@ -77,7 +77,7 @@ The email probe asks the provider for your verified sending domains, so it needs
 
 ### The models probe
 
-`GET /v1/health/models` sends one small request to every model Thunderbolt ships preconfigured, three at a time, with a 20 second deadline each and no retries. Don't poll it more than a few times an hour: it is the only probe that spends money. We recommend every 15 minutes.
+`GET /v1/health/models` sends one small request to every model Thunderbolt ships preconfigured, all at once, with a 30 second deadline each and no retries. Don't poll it more than a few times an hour: it is the only probe that spends money. We recommend every 15 minutes.
 
 Add `?model=` to probe one model instead of the whole catalog. An unknown name returns `404`.
 
@@ -93,7 +93,7 @@ curl -H "Authorization: Bearer $MONITORING_TOKEN" \
 | Reason           | What it means                                                            |
 | ---------------- | ------------------------------------------------------------------------ |
 | `no-text`        | The model answered with an empty response.                               |
-| `timeout`        | No answer within 20 seconds.                                             |
+| `timeout`        | No answer within 30 seconds.                                             |
 | `upstream-error` | The provider returned an error. Usually a bad or exhausted key.          |
 | `missing-price`  | The model has no price on record, so the server refuses requests for it. |
 | `not-configured` | No provider key is set on the server for that model.                     |

@@ -9,10 +9,12 @@
  * non-UUID-shaped id loudly.
  */
 
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
 import * as fsp from '@zenfs/core/promises'
+import { BrowserExecutionEnv } from './browser-env/browser-execution-env.ts'
 import {
   buildAppHarness,
+  readAgentWorkspaceFile,
   removeAgentWorkspace,
   workspaceDirFor,
   writeAgentWorkspaceFiles,
@@ -39,6 +41,45 @@ describe('workspaceDirFor', () => {
     ['is empty', ''],
   ])('throws when the threadId %s', (_why, threadId) => {
     expect(() => workspaceDirFor(threadId)).toThrow(/unsafe threadId/)
+  })
+})
+
+describe('readAgentWorkspaceFile', () => {
+  it('reads the bytes of a file at a workspace-relative path', async () => {
+    const threadId = crypto.randomUUID()
+    await writeAgentWorkspaceFiles(threadId, [{ path: 'data/sales.json', content: '{"q1":10}' }])
+    const read = await readAgentWorkspaceFile(threadId, 'data/sales.json', 9)
+    expect(read.status === 'read' && new TextDecoder().decode(read.bytes)).toBe('{"q1":10}')
+    await removeAgentWorkspace(threadId)
+  })
+
+  it('refuses a file over the size limit without reading it', async () => {
+    const threadId = crypto.randomUUID()
+    await writeAgentWorkspaceFiles(threadId, [{ path: 'big.txt', content: '0123456789' }])
+    const read = spyOn(BrowserExecutionEnv.prototype, 'readBinaryFile')
+
+    expect(await readAgentWorkspaceFile(threadId, 'big.txt', 9)).toEqual({ status: 'too-large' })
+    expect(read).not.toHaveBeenCalled()
+    read.mockRestore()
+    await removeAgentWorkspace(threadId)
+  })
+
+  it('finds nothing for a missing file, a folder, or a path outside the workspace', async () => {
+    const threadId = crypto.randomUUID()
+    const otherThread = crypto.randomUUID()
+    await writeAgentWorkspaceFiles(threadId, [{ path: 'data/a.txt', content: 'a' }])
+    await writeAgentWorkspaceFiles(otherThread, [{ path: 'secret.txt', content: 'other chat' }])
+
+    for (const path of [
+      'missing.txt',
+      'data',
+      `../${otherThread}/secret.txt`,
+      `${workspaceDirFor(otherThread)}/secret.txt`,
+    ]) {
+      expect(await readAgentWorkspaceFile(threadId, path, 1024)).toEqual({ status: 'missing' })
+    }
+    await removeAgentWorkspace(threadId)
+    await removeAgentWorkspace(otherThread)
   })
 })
 

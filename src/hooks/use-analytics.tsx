@@ -14,14 +14,15 @@ export const usePageTracking = () => {
   const location = useLocation()
   const posthog = usePostHogClient()
   const previousUrl = useRef<string | null>(null)
+  const origin = isTauri() ? 'tauri://' : window.location.origin
+  // Keyed on the URL. A history step that keeps it, such as a closed view popping its entry, still makes a new
+  // location, but it is not a new page.
+  const fullUrl = origin + location.pathname + location.search
 
   useEffect(() => {
     if (!posthog) {
       return
     }
-
-    const origin = isTauri() ? 'tauri://' : window.location.origin
-    const fullUrl = origin + location.pathname + location.search
 
     if (previousUrl.current) {
       posthog.capture('$pageleave', { $current_url: previousUrl.current })
@@ -29,7 +30,7 @@ export const usePageTracking = () => {
 
     posthog.capture('$pageview', { $current_url: fullUrl })
     previousUrl.current = fullUrl
-  }, [location, posthog])
+  }, [fullUrl, posthog])
 
   // Track page leave when component unmounts (app closing)
   useEffect(() => {

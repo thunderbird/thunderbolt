@@ -1,6 +1,11 @@
 package net.thunderbird.thunderbolt
 
 import android.app.Activity
+import android.content.ContentValues
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import android.util.Base64
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -9,6 +14,7 @@ import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
+import java.io.IOException
 
 @TauriPlugin
 class PlatformUtilsPlugin(private val activity: Activity) : Plugin(activity) {
@@ -55,5 +61,62 @@ class PlatformUtilsPlugin(private val activity: Activity) : Plugin(activity) {
 
             invoke.resolve()
         }
+    }
+
+    /**
+     * Saves base64 `data` into the public Downloads folder through MediaStore and
+     * resolves with `{ name }`, the display name MediaStore actually used (it
+     * suffixes a taken name). plugin-fs cannot do this: its `Download` is the
+     * app-private getExternalFilesDir. Called from `src/lib/download.ts`, which
+     * maps the stable reject codes (`needs_android_10`, `write_failed`) to the
+     * words the user sees; the message carries the OS text for the console.
+     */
+    @Command
+    fun saveToDownloads(invoke: Invoke) {
+        // MediaStore.Downloads needs API 29, so Android 7-9 (minSdk 24) cannot save files.
+        // To support them, write to Environment.getExternalStoragePublicDirectory with
+        // WRITE_EXTERNAL_STORAGE.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            invoke.reject("Saving files needs Android 10 or later", "needs_android_10")
+            return
+        }
+        // Tauri delivers plugin commands on the main thread, where decoding and writing a large
+        // file would freeze the app long enough for Android to report it as not responding.
+        Thread {
+            try {
+                invoke.resolve(writeToDownloads(invoke.getArgs()))
+            } catch (error: Throwable) {
+                // Throwable, so an OutOfMemoryError on a large file rejects instead of crashing the app.
+                invoke.reject(error.message ?: error.toString(), "write_failed")
+            }
+        }.start()
+    }
+
+    private fun writeToDownloads(args: JSObject): JSObject {
+        val bytes = Base64.decode(args.getString("data"), Base64.DEFAULT)
+        val resolver = activity.contentResolver
+        val pending = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, args.getString("name"))
+            put(MediaStore.MediaColumns.MIME_TYPE, args.getString("mimeType"))
+            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, pending)
+            ?: throw IOException("Could not create ${args.getString("name")} in Downloads")
+        try {
+            resolver.openOutputStream(uri)!!.use { it.write(bytes) }
+            resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+        } catch (error: Throwable) {
+            // Don't leave a half-written file behind in the user's Downloads.
+            resolver.delete(uri, null, null)
+            throw error
+        }
+        val name = resolver.query(uri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)!!.use {
+            it.moveToFirst()
+            it.getString(0)
+        }
+        val result = JSObject()
+        result.put("name", name)
+        return result
     }
 }

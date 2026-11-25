@@ -249,10 +249,12 @@ export const postRotate = async (httpClient: HttpClient, body: RotateRequest): P
 /**
  * Ask the server to email a step-up code for a recovery-phrase change
  * (THU-875). The server picks the address from the session and the code is
- * consumed by the next `postRotate` that re-anchors the recovery slot.
+ * consumed by the next `postRotate` that re-anchors the recovery slot. A pending
+ * device recovering a v1 account passes its possession proof as `body`; that
+ * code is consumed by `postUpgrade`.
  */
-export const postStepUpRequest = async (httpClient: HttpClient): Promise<void> => {
-  await httpClient.post('encryption/step-up/request')
+export const postStepUpRequest = async (httpClient: HttpClient, body?: { possessionProof: string }): Promise<void> => {
+  await httpClient.post('encryption/step-up/request', body ? { json: body } : undefined)
 }
 
 /**

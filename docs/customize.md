@@ -136,9 +136,10 @@ and none doubled.
 The model sees one line per enabled skill and fetches the body only when it decides that skill
 applies. A vague description means the skill is never used.
 
-Skills can be enabled, disabled, and pinned as chips above the composer, up to ten of them. Five
-built-in skills define how Thunderbolt renders things like weather and maps in a reply: those can be
-switched off but not edited or deleted, and once unpinned cannot be pinned again. The other four it
+Skills can be enabled, disabled, and pinned as chips above the composer, up to ten of them. Eight
+built-in skills can be switched off but not edited or deleted, and once unpinned cannot be pinned
+again: five define how Thunderbolt renders things like weather and maps in a reply, and three teach
+the built-in agent to make Word, Excel and PowerPoint files. The other four it
 ships with, Search, Research, Daily Brief and Important Emails, you can edit or delete like your own. Your
 edits to a built-in skill are preserved when Thunderbolt updates its own copies. Worked examples:
 [Skills](using/skills.md).

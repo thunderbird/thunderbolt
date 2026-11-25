@@ -8,7 +8,7 @@ Type `/name` in the composer and those instructions are attached to that one mes
 
 Up front it normally sees only a short list of skill names and descriptions. Full instructions are pulled in when a skill is used, so a large library does not slow down or inflate every message.
 
-That holds only on a model with tool support. Without it the assistant is given the built-in display contracts and nothing else, so your own skills are never offered to it. Typing a skill's token still works.
+That holds only on a model with tool support. Without it the assistant is given the built-in display contracts and nothing else, so your own skills are never offered to it. Typing a skill's token still works, except for the three Office skills: they teach a tool such a model does not get.
 
 ## Using a skill in chat
 
@@ -45,19 +45,22 @@ Changing a slug does not rewrite tokens you have already typed into a draft, so 
 
 ## What ships by default
 
-Every account starts with nine skills.
+Every account starts with twelve skills.
 
-| Skill               | On by default | Pinned | You can edit it |
-| ------------------- | ------------- | ------ | --------------- |
-| Search              | Yes           | 1st    | Yes             |
-| Research            | Yes           | 2nd    | Yes             |
-| Weather             | Yes           | 3rd    | No              |
-| Daily Brief         | Yes           | No     | Yes             |
-| Important Emails    | No            | No     | Yes             |
-| Link Preview        | Yes           | No     | No              |
-| Map                 | Yes           | No     | No              |
-| Ask                 | Yes           | No     | No              |
-| Connect Integration | Yes           | No     | No              |
+| Skill                    | On by default | Pinned | You can edit it |
+| ------------------------ | ------------- | ------ | --------------- |
+| Search                   | Yes           | 1st    | Yes             |
+| Research                 | Yes           | 2nd    | Yes             |
+| Weather                  | Yes           | 3rd    | No              |
+| Daily Brief              | Yes           | No     | Yes             |
+| Important Emails         | No            | No     | Yes             |
+| Link Preview             | Yes           | No     | No              |
+| Map                      | Yes           | No     | No              |
+| Ask                      | Yes           | No     | No              |
+| Connect Integration      | Yes           | No     | No              |
+| Word documents           | Yes           | No     | No              |
+| Excel workbooks          | Yes           | No     | No              |
+| PowerPoint presentations | Yes           | No     | No              |
 
 - **Search** returns web results as a list of link previews rather than a written answer.
 - **Research** runs a multi-source investigation and reports findings with citations.
@@ -70,9 +73,11 @@ Editable defaults behave like your own skills once you change them: your edit is
 
 The other five, Weather, Link Preview, Map, Ask and Connect Integration, are display contracts: wording that tells the assistant how to render a particular kind of answer such as a weather card or a map. You can turn them off, but not rename, edit or delete them, because that wording is what makes the matching card render correctly.
 
+The last three, Word documents, Excel workbooks and PowerPoint presentations, teach the built-in agent how to make and edit those files. You can turn them off, but not edit or delete them. With one turned off the assistant can still make that kind of file, but without the instructions it makes more mistakes. They are offered only to the built-in agent on a model with tool support.
+
 ## Skills and external agents
 
-When you connect an external agent, Thunderbolt hands it the full text of every enabled skill at session setup rather than a catalog it fetches from. An agent that does not support that is given the instructions directly in the session instead.
+When you connect an external agent, Thunderbolt hands it the full text of every enabled skill at session setup rather than a catalog it fetches from. An agent that does not support that is given the instructions directly in the session instead. The three Office skills are left out, because they teach a tool only the built-in agent has.
 
 ## Privacy and portability
 

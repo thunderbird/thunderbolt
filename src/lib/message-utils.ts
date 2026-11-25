@@ -2,7 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { UIMessage } from 'ai'
+import { isToolUIPart, type UIMessage } from 'ai'
+import type { ThunderboltUIMessage } from '@/types'
+
+/** Omit Pi's display-only tool headers from saved snapshots until their inputs arrive. */
+export const withoutPendingPiHeaders = (message: ThunderboltUIMessage): ThunderboltUIMessage => {
+  if (message.role !== 'assistant') {
+    return message
+  }
+  const parts = message.parts.filter(
+    (part) => !(isToolUIPart(part) && part.state === 'input-streaming' && part.toolMetadata?.piInputHeader === true),
+  )
+  return parts.length === message.parts.length ? message : { ...message, parts }
+}
 
 type TextPart = Extract<UIMessage['parts'][number], { type: 'text' }>
 

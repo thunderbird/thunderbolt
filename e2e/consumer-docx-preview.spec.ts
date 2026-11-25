@@ -160,7 +160,10 @@ test("a table's thin borders still draw where its pages are drawn smaller, on th
   expect(await tableLines(page, table, preview)).toEqual(twoByTwo)
 })
 
-test('a DOCX card opens from the keyboard, and Escape on the Close button closes the preview', async ({ page }) => {
+test('a DOCX card opens from the keyboard, and Escape on the Close button closes the preview', async ({
+  page,
+  browserName,
+}) => {
   const errors = collectPageErrors(page)
   const name = 'e2e-keyboard.docx'
   await sendDocument(page, name, await sampleBuffer(), sampleDocxText.title)
@@ -170,7 +173,8 @@ test('a DOCX card opens from the keyboard, and Escape on the Close button closes
   // from there would land inside the frame instead of on the card.
   const focusCardFromBelow = async () => {
     await page.getByRole('button', { name: 'Copy message', exact: true }).first().focus()
-    await page.keyboard.press('Shift+Tab')
+    // macOS WebKit uses Option-Tab to include buttons in keyboard navigation.
+    await page.keyboard.press(browserName === 'webkit' && process.platform === 'darwin' ? 'Shift+Alt+Tab' : 'Shift+Tab')
     await expect(card).toBeFocused()
   }
   await expect(card.locator('iframe')).toBeAttached()

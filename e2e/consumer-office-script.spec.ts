@@ -138,6 +138,8 @@ test('a failed Office step and its edit survive reload with one downloadable doc
     const input = page.getByTestId('object-view-input')
     const output = page.getByTestId('object-view-output')
     await steps.first().click()
+    // The side panel starts at zero width, and WebKit returns an empty innerText until it widens.
+    await expect(input).toBeVisible()
     expect(JSON.parse(await input.innerText())).toEqual({ script: officeRetryScript })
     const failure = z.object({ ok: z.literal(false), scriptId: z.string() })
     const { scriptId } = z
@@ -145,6 +147,7 @@ test('a failed Office step and its edit survive reload with one downloadable doc
       .parse(JSON.parse(await output.innerText()))
     await contentView(page).getByRole('button', { name: 'Close', exact: true }).click()
     await steps.last().click()
+    await expect(input).toBeVisible()
     expect(JSON.parse(await input.innerText())).toEqual({
       edit: { scriptId, replacements: [{ find: officeRetryFind, replace: '' }] },
     })

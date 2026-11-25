@@ -201,7 +201,8 @@ Runs the `thunder-deep-review` skill read-only and posts an inline review.
   reds the job instead of recording a fake clean review.
 - Hard-gated to same-repo, non-draft, non-Dependabot PRs: fork code must never run with
   the API key.
-- Sleeps 60 seconds so rapid pushes cancel at zero model cost, sequences behind the
+- Waits 60 seconds on the `review-debounce` environment's wait timer (before a runner is
+  assigned, `deployment: false`) so rapid pushes cancel at zero model cost, sequences behind the
   external review bots, and skips findings they already reported.
 - Escalates to a deeper fan-out at ≥600 changed lines, ≥40 files, or the `review:deep`
   label.

@@ -256,11 +256,11 @@ The Playwright suite in [`e2e/`](../../../e2e) covers what a unit test cannot: b
 
 [`playwright.config.ts`](../../../playwright.config.ts) splits the suite into four projects, and **a spec's filename decides which one it joins**, along with its servers and `baseURL`. Run one with `bunx playwright test --project=oidc`.
 
-| Project            | `testMatch`                             | `baseURL`               | Backing servers                                            |
-| ------------------ | --------------------------------------- | ----------------------- | ---------------------------------------------------------- |
-| `oidc`             | `/(?:oidc\|acp-\|proxy-).*\.spec\.ts$/` | `http://localhost:1421` | OIDC frontend + backend, mock OIDC IdP                     |
-| `saml`             | `/saml.*\.spec\.ts$/`                   | `http://localhost:1422` | SAML frontend + backend, mock SAML IdP                     |
-| `min-version-gate` | `/min-version-gate\.spec\.ts$/`         | `http://localhost:1421` | Both the ungated OIDC pair and the gated pair on 1423/8004 |
+| Project            | `testMatch`                             | `baseURL`               | Backing servers                                                  |
+| ------------------ | --------------------------------------- | ----------------------- | ---------------------------------------------------------------- |
+| `oidc`             | `/(?:oidc\|acp-\|proxy-).*\.spec\.ts$/` | `http://localhost:1421` | OIDC frontend + backend, mock OIDC IdP                           |
+| `saml`             | `/saml.*\.spec\.ts$/`                   | `http://localhost:1422` | SAML frontend + backend, mock SAML IdP                           |
+| `min-version-gate` | `/min-version-gate\.spec\.ts$/`         | `http://localhost:1421` | Both the ungated OIDC pair and the gated pair on 1423/8004       |
 | `artifact`         | `/\/artifact-[^/]*\.spec\.ts$/`         | none                    | Playwright serves the host page at `https://artifact-host.test/` |
 
 Each anchor records a breakage:
@@ -430,7 +430,7 @@ These errors in CI while tests pass locally mean a new test file mocked a shared
 
 ## Helm chart tests
 
-The chart in `deploy/k8s/` has [helm-unittest](https://github.com/helm-unittest/helm-unittest) suites in `deploy/k8s/tests/`. They render the templates and assert on the output, so they need Helm but no cluster. CI runs them, plus `helm lint`, in the `helm` job of [`ci.yml`](../../../.github/workflows/ci.yml) whenever `deploy/k8s/**` changes.
+The chart in `deploy/k8s/` has [helm-unittest](https://github.com/helm-unittest/helm-unittest) suites in `deploy/k8s/tests/`. They render the templates and assert on the output, so they need Helm but no cluster. CI runs them, plus `helm lint`, in the `small-checks` job of [`ci.yml`](../../../.github/workflows/ci.yml) whenever `deploy/k8s/**` changes.
 
 ### Install the plugin
 

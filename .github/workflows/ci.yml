@@ -398,31 +398,21 @@ jobs:
           fi
           echo "No untransformed Lingui macros in the bundle."
 
-  pulumi:
+  # The Pulumi program, the Helm chart and the miniapps workspace each take well under a
+  # minute to check, so they share one runner instead of queueing for three. Each step is
+  # gated on its own path filter.
+  small-checks:
     needs: detect-changes
-    if: needs.detect-changes.outputs.pulumi == 'true'
+    if: needs.detect-changes.outputs.pulumi == 'true' || needs.detect-changes.outputs.helm == 'true' || needs.detect-changes.outputs.miniapps == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
-        with:
-          bun-version: 1.4.4
-      - run: bun install --frozen-lockfile
-        working-directory: deploy/pulumi
-      - run: bun run typecheck && bun run test
-        working-directory: deploy/pulumi
-
-  # Chart unit tests (helm-unittest). Runs only when the chart or this workflow
-  # changes. helm-unittest is installed from its release tarball, pinned by
-  # version and sha256, rather than with `helm plugin install`: on Helm 4 that
-  # needs `--verify=false` and runs the plugin repo's install script.
-  helm:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.helm == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     env:
+      PULUMI: ${{ needs.detect-changes.outputs.pulumi }}
+      HELM: ${{ needs.detect-changes.outputs.helm }}
+      MINIAPPS: ${{ needs.detect-changes.outputs.miniapps }}
+      # helm-unittest is installed from its release tarball, pinned by version and sha256,
+      # rather than with `helm plugin install`: on Helm 4 that needs `--verify=false` and
+      # runs the plugin repo's install script.
       HELM_UNITTEST_VERSION: 1.2.1
       # sha256 of helm-unittest-linux-amd64-<version>.tgz, from the release's
       # helm-unittest-checksum.sha. When bumping, first verify that file's GPG
@@ -432,7 +422,24 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Install Bun
+        if: env.PULUMI == 'true' || env.MINIAPPS == 'true'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Install Pulumi dependencies
+        if: env.PULUMI == 'true'
+        run: bun install --frozen-lockfile
+        working-directory: deploy/pulumi
+
+      - name: Type check and test Pulumi
+        if: env.PULUMI == 'true'
+        run: bun run typecheck && bun run test
+        working-directory: deploy/pulumi
+
       - name: Install helm-unittest
+        if: env.HELM == 'true'
         run: |
           archive="helm-unittest-linux-amd64-${HELM_UNITTEST_VERSION}.tgz"
           curl -fsSLO "https://github.com/helm-unittest/helm-unittest/releases/download/v${HELM_UNITTEST_VERSION}/${archive}"
@@ -442,10 +449,59 @@ jobs:
           tar -xzf "${archive}" -C "${plugin_dir}"
 
       - name: Lint chart
+        if: env.HELM == 'true'
         run: helm lint deploy/k8s --set backend.betterAuthSecretBase64=dGVzdA==
 
       - name: Test chart
+        if: env.HELM == 'true'
         run: helm unittest deploy/k8s
+
+      - name: Cache Bun dependencies (miniapps)
+        if: env.MINIAPPS == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.bun/install/cache
+            miniapps/node_modules
+            miniapps/sdk/node_modules
+            miniapps/template/node_modules
+            miniapps/samples/finance/node_modules
+          key: miniapps-bun-${{ hashFiles('miniapps/bun.lock') }}
+          restore-keys: |
+            miniapps-bun-
+
+      # Lint and format live at miniapps/; each package installs and typechecks on
+      # its own, matching how cli/ and backend/ are set up. Without these steps the
+      # root `eslint src shared` never sees these files and nothing enforces them.
+      - name: Install miniapps tooling
+        if: env.MINIAPPS == 'true'
+        run: cd miniapps && bun install --frozen-lockfile
+
+      - name: Lint miniapps
+        if: env.MINIAPPS == 'true'
+        run: cd miniapps && bun run lint
+
+      - name: Check miniapps formatting
+        if: env.MINIAPPS == 'true'
+        run: cd miniapps && bun run format-check
+
+      # One install at the workspace root covers every package (THU-906), so the
+      # per-package `bun install` this loop used to run is gone.
+      - name: Type check each miniapps package
+        if: env.MINIAPPS == 'true'
+        run: |
+          for pkg in sdk template samples/finance; do
+            echo "== $pkg"
+            (cd "miniapps/$pkg" && bunx tsc --noEmit)
+          done
+
+      # The guest SDK bridge is 480 lines of postMessage protocol and had no
+      # tests, so guest origin filtering, request/reply disambiguation and
+      # disconnect settlement were covered by nothing. The host-side suite does
+      # not stand in for it: that exercises Thunderbolt's half.
+      - name: Test miniapps
+        if: env.MINIAPPS == 'true'
+        run: cd miniapps && bun run test
 
   # shared/agent-core is an isolated module (also consumed by cli/). Its unit tests
   # are NOT part of the default `bun run test`. Include dependency/build changes:
@@ -493,60 +549,6 @@ jobs:
 
       - name: Check production agent-core in browsers
         run: bun run test:agent-core:browser
-
-  miniapps:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.miniapps == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Install Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: 1.4.4
-
-      - name: Cache Bun dependencies (miniapps)
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.bun/install/cache
-            miniapps/node_modules
-            miniapps/sdk/node_modules
-            miniapps/template/node_modules
-            miniapps/samples/finance/node_modules
-          key: miniapps-bun-${{ hashFiles('miniapps/bun.lock') }}
-          restore-keys: |
-            miniapps-bun-
-
-      # Lint and format live at miniapps/; each package installs and typechecks on
-      # its own, matching how cli/ and backend/ are set up. Without this job the
-      # root `eslint src shared` never sees these files and nothing enforces them.
-      - name: Install miniapps tooling
-        run: cd miniapps && bun install --frozen-lockfile
-
-      - name: Lint miniapps
-        run: cd miniapps && bun run lint
-
-      - name: Check miniapps formatting
-        run: cd miniapps && bun run format-check
-
-      # One install at the workspace root covers every package (THU-906), so the
-      # per-package `bun install` this loop used to run is gone.
-      - name: Type check each package
-        run: |
-          for pkg in sdk template samples/finance; do
-            echo "== $pkg"
-            (cd "miniapps/$pkg" && bunx tsc --noEmit)
-          done
-
-      # The guest SDK bridge is 480 lines of postMessage protocol and had no
-      # tests, so guest origin filtering, request/reply disambiguation and
-      # disconnect settlement were covered by nothing. The host-side suite does
-      # not stand in for it: that exercises Thunderbolt's half.
-      - name: Test miniapps
-        run: cd miniapps && bun run test
 
   # The weekly QA agent's tests and type check sit outside `bun run test` and the
   # root tsconfig, so they run here when it or a file it depends on changes.

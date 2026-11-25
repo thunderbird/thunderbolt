@@ -147,7 +147,7 @@ jobs:
   macos:
     if: github.ref == 'refs/heads/main'
     runs-on: macos-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
     environment: preview
     env:
       E2E_EXTENDED_UNIQUE_USERS: 'true'

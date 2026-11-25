@@ -284,15 +284,15 @@ of the same file.
 Seven widgets are registered in `src/widgets/index.ts`. Five are model-facing: each one's `instructions.ts` is
 seeded as a skill in `src/defaults/skills.ts`, so the model only loads the contract when it needs it.
 
-| Widget                | Tag args                                    | Seeded skill        | Notes                                                |
-| --------------------- | ------------------------------------------- | ------------------- | ---------------------------------------------------- |
-| `weather-forecast`    | `location`, `region`, `country`             | Weather (pinned)    | Fetches Open-Meteo directly from the client          |
-| `link-preview`        | `url`, `source`                             | Link Preview        | Metadata via `POST /v1/preview`                      |
-| `map`                 | `data` (GeoJSON), `title`                   | Map                 | The only widget exporting a streaming `Skeleton`     |
-| `ask`                 | `mode`, `prompt`, `options`, `explanation`  | Ask                 | Writes the user's answer back into the message cache |
-| `connect-integration` | `provider`, `service`, `reason`, `override` | Connect Integration | Caches `isHidden` so it disappears once connected    |
-| `citation`            | `sources`                                   | None                | The prompt forbids the model from emitting the tag   |
-| `document-result`     | `name`, `fileId`, `snippet`, `score`        | None                | Reserved for a future document-search mode           |
+| Widget                | Tag args                                               | Seeded skill        | Notes                                                |
+| --------------------- | ------------------------------------------------------ | ------------------- | ---------------------------------------------------- |
+| `weather-forecast`    | `location`, `region`, `country`                        | Weather (pinned)    | Fetches Open-Meteo directly from the client          |
+| `link-preview`        | `url`, `source`                                        | Link Preview        | Metadata via `POST /v1/preview`                      |
+| `map`                 | `data` (GeoJSON), `title`                              | Map                 | Exports a streaming `Skeleton` (so does `ask`)       |
+| `ask`                 | `mode`, `prompt`, `options`, `explanation`, `optional` | Ask                 | Writes the user's answer back into the message cache |
+| `connect-integration` | `provider`, `service`, `reason`, `override`            | Connect Integration | Caches `isHidden` so it disappears once connected    |
+| `citation`            | `sources`                                              | None                | The prompt forbids the model from emitting the tag   |
+| `document-result`     | `name`, `fileId`, `snippet`, `score`                   | None                | Reserved for a future document-search mode           |
 
 **`weather-forecast`** geocodes with Open-Meteo, then fetches the daily forecast, both from the browser
 (`fetch-forecast.ts`). Geocoding always asks in English: the `region`/`country` the model supplies are usually
@@ -306,10 +306,18 @@ fetches metadata otherwise.
 `parseFeatureCollection` so a malformed collection fails validation instead of rendering an empty map. Points,
 lines and polygons (plus `Multi*` variants) are styled per the simplestyle-spec.
 
-**`ask`** has four modes. `single`/`multiple` designate a correct answer and are graded client-side;
-`choice`/`choices` have none and are conversational, so submitting one dispatches the chosen text as a user
-turn (`turnTextForAnswer`). Legacy `free` is still parsed for historical messages but no longer authored. See
-[Interactive Widgets](#interactive-widgets).
+**`ask`** has four modes, which the instructions tell the model to pick by intent. `single`/`multiple` are for
+teaching or testing: they designate a correct answer and are graded client-side. `choice`/`choices` are for a
+decision or input: they have no correct answer and always offer "Other…". `optional="true"` makes a question
+skippable; any other value reads as not optional. Legacy `free` is still parsed for historical messages but no
+longer authored. See [Interactive Widgets](#interactive-widgets).
+
+A `single`/`multiple` with no option marked `isCorrect` has nothing to grade against: grading it would mark every
+pick wrong. `askDataOf` (`src/widgets/ask/group.ts`) therefore shows it as `choice`/`choices`, so rendering,
+"Other…", the button labels, the review and the model note all treat it as ungraded, and a pick saves with
+`matched: null`. It keeps the authored mode as `authoredMode`, which `askStorageKey` hashes, so answers saved
+before the rule still restore. The instructions also tell the model that every graded question must mark its
+right option(s), and to use `choice`/`choices` when it cannot say which is right.
 
 **`connect-integration`** shows only when the user asks for email or calendar and the matching Google or
 Microsoft tools are unavailable; its instructions list the tool names to check first.
@@ -442,18 +450,154 @@ setting so the first fetch already knows which unit to request, rather than firi
 Most widgets are one-way: parse a tag, fetch, display. `ask` is the exception; copy its pattern for any
 widget the user answers.
 
-On submit, `AskWidget` writes an `AskCacheEntry` into the owning message's cache under `askStorageKey`:
-`ask/<prompt>#<hash of mode+options>`, hashed so two asks sharing a prompt but differing in options do not
-overwrite each other's answer. The same key restores state on reload, so the hash must derive only from the
-parsed widget args, never from anything session-scoped.
+Asks that sit back to back in one message (only whitespace between them) render as one wizard:
+`groupAskSequences` (`src/widgets/ask/group.ts`, called from `text-part.tsx`) folds the run into an
+`AskSequence`, which shows one question at a time under a `‹ Question N of M ›` step control. ‹ goes back; ›
+moves on once the current step is answered.
 
-Answers re-enter the conversation as a **volatile system note**, not stable prompt text. On each send,
-`src/ai/fetch.ts` collects entries with `collectAskEntriesFromCache`, renders them with
-`formatAskResponsesNote`, and passes the result to `buildVolatileSystemNotes`.
+A graded `single` is graded on the tap. A double tap still grades once. Every other mode shows the pick first,
+highlighted and changeable, and commits it on the card's action button. A graded `multiple` is picked, then
+graded on Submit. An ungraded `choice` or `choices` step's button reads Next when the step has a step after it,
+and one press saves the answer and moves on; on the last step, or a lone ask, it reads Submit. In `choice`,
+"Other…" is one of the choices, so picking it replaces the option pick, and the other way round.
 
-A tag scan guards that collection before any database read:
-`messages.some(… part.text.includes('<widget:ask'))`, so conversations without an ask widget pay nothing.
-Keep that guard shape if you add another cache-read-on-send widget.
+For 400 ms after a step is reached by navigating (`navigatedAt` in the sequence reducer, taken in the click
+handler), its card ignores taps, Submit and Skip. Without that window, the second click of a double click on Next
+could land on the new card and grade a `single` or press its Skip. `useAskState` compares `Date.now()` with
+`ignoreAnswersUntil` in its handlers, so no effect or timer is involved.
+
+Every card has one action row at the bottom, after the explanation and the live region, so the button stays put
+as feedback appears above it. The row holds Skip (when offered) and a single primary button: Submit or Next
+while there is something to commit, otherwise Next, which navigates, once the step is answered and has a step
+after it. "See all answers" is a separate button below it.
+
+A graded step keeps its feedback on screen until the user moves on, and never auto-advances. The colours of a
+wrong answer show the right one, which is the point, and a timer would take them away at a pace the user does
+not set. Either way, focus moves to the new prompt, which is described by its step label. The wizard opens on
+the first unanswered step. While the message is still streaming it shows a skeleton, so the user cannot finish
+before every question has arrived. A lone ask is a one-step sequence, with no step control.
+
+Going back shows a graded step read-only, its result still showing. On a revisited ungraded step, › is disabled
+while the selection differs from the saved answer: it would move on and drop the edit. The button under the
+options saves it and moves on; ‹ still discards it. An ungraded step stays editable while
+another ask in the message is still open, and an edit overwrites the step's cache entry. Once every ask in the
+message is answered, every answer locks, ungraded ones included, and stays locked after a reload. By then the
+answers have gone out, gone into the composer, or failed to send (Try again resends them), so a change would
+never reach the model. Answered asks also lock once a later message exists in the thread (`hasReply`, from
+`chat-messages.tsx` through `AssistantMessage` and `TextPart`), even if some of the message's asks are still
+open. Those open asks stay answerable, but the submit that completes such a message saves the answer and
+does not send, and shows no send note. A send would start a new turn over a reply that may still be
+streaming, and post a stale turn at the bottom of the thread. The model learns the answer from the ask note
+on the user's next send. An "Other…" answer is still handed to the composer, since filling it sends nothing:
+the user finishes the answer and sends it themselves. A message's own quiz cannot be answered while that message
+streams, since it shows a placeholder until then. A locked card always shows the saved answer, not a selection
+left pending when it locked. A question the
+model marked `optional` offers Skip when the message holds more than one ask. A skip counts as an answer, and a
+skipped graded question can still be answered while another ask is open. Going back to a skipped question
+doesn't block moving on: it counts as edited only once something is picked, and that pick then replaces the
+skip.
+
+A graded answer is announced through a polite live region ("Matches the answer" / "Doesn't match the answer"),
+and each option row exposes its selected state with `aria-pressed`. Answering locks the options, which would
+drop focus to the page, so focus moves to the Next button under the answer (or to the prompt on the last step,
+from where Tab reaches "See all answers"). The keyboard then carries on forward, with no tabbing back to the
+header.
+
+Once the answers lock (every ask in the message answered), a multi-step sequence offers a "See all answers"
+button that opens a review: each prompt, the answer given (or "Skipped", or a pointer to the message for
+"Other…"), a match marker for graded steps, and the explanation. A locked sequence opens straight on the review
+on mount (reload, history). The review has no way back, so it waits for the message rather than the sequence: a
+finished group in a message whose other questions are still open keeps its ‹ › steps, so its answers stay
+reachable.
+
+Text between asks, or a tool call that splits the message into several text parts, makes separate sequences,
+but the send rule is per message (`collectMessageAsks` in `src/widgets/ask/message-asks.ts` gathers the
+asks of every text part): the submit that leaves every ask in the message answered sends one user turn with all of them (`turnTextForAnswers`), in message
+order. That is the chosen text for a message with one ask, and one numbered `prompt — answer` line per
+question otherwise. A skipped question keeps its line, answered "skipped", so the numbers always follow the
+questions. The word is English because the turn is model-facing; the "Other…" draft in the composer, which
+the user sends as their own message, uses the localized word. Earlier submits send nothing. Once every
+ask is answered, further clicks change nothing either. The sequence checks the query cache synchronously, so a second click in the
+same frame, say on another option of the last `choice`, changes nothing.
+
+That turn is a **hidden user message**: `sendMessage({ text, metadata: { askAnswers: true } })`. The model gets
+a turn and replies with feedback as usual, but the transcript never renders it (`isAskAnswersMessage`,
+checked in `chat-messages.tsx`). The user should not see their answers come back as text they typed; the card
+(its sent note and its review) is the visible record. The flag rides in `chat_messages.metadata`, which is
+already synced and end-to-end encrypted, so it needs no schema or sync change. The message still counts as the
+thread's last message, so the card locks (`hasReply`) and the reply shows as pending. A few readers treat it
+differently:
+
+- It hosts no share action.
+- Sending it scrolls to the bottom, where the card is, instead of pinning a bubble that does not exist.
+- `/skill` tokens are not resolved from it.
+- Search leaves it out (`hiddenWhen` on the message entity in `src/search/registry.ts`).
+- Debug transcripts keep it, flagged `askAnswers: true` on the turn.
+
+The model-facing history keeps it unchanged. An older app version on another device renders it as an ordinary
+bubble; that is accepted. Chat export (`src/dal/export.ts`) keeps the flag, since `shareableMetadata` strips only debug and MCP URL detail, so an imported chat hides the turn too; any new reader of exported messages must honour it.
+
+When any answer is "Other…", that submit sends nothing. It hands the same lines to the composer instead
+(`composerDraftForAnswers`), with each "Other…" line left open. It goes through `setPendingPrompt(threadId,
+draft, { focus: true })`, which merges it into the draft and puts the caret at the end, and the user types the
+rest and sends it as their own message. The widget then says "Finish your answer in the message box." An
+"Other…" picked mid-sequence waits for the last answer, so the turn still carries every answer.
+
+Graded answers used to stay client-side because sending each one goaded the model into asking the next
+question in a loop; with one turn per finished message, and the instructions telling the model to wait for it,
+there is nothing to race ahead of.
+
+The "Got it, working on that next." note shows only once `sendMessage` resolves with no `chatInstance.error`.
+A send can fail in two ways:
+
+- **It throws before the request** (no model selected, say). The turn never left, so the step shows "Your
+  answers couldn't be sent." with a Try again button that rebuilds the turn from the saved answers. A reload
+  after this kind of failure does not resend.
+- **The request fails.** `Chat.sendMessage` catches that itself and resolves with the chat in error. The user
+  turn is already in the thread and the chat shows its own error and retry, so the step (status
+  `failed-in-chat`) shows no note and no Try again: a widget retry would post the turn twice. The answers stay
+  locked.
+
+The sequence's state and the send live in `useAskSequenceState` (`src/widgets/ask/use-ask-sequence-state.ts`).
+One card's answer rules (selection, commit on click or Submit, the double-click latch, the saved answer on a
+locked card, "Other…" and Skip) live in `useAskState` (`src/widgets/ask/use-ask-state.ts`); `Ask`
+(`display.tsx`) only renders, plus the two focus effects that need its DOM refs.
+
+On each submit, `AskSequence` writes an `AskCacheEntry` into the owning message's cache under its key from
+`askStorageKeys`. That is `askStorageKey`, `ask/<prompt>#<hash of mode+options>`, hashed so two asks sharing a
+prompt but differing in options do not overwrite each other's answer. A byte-identical ask repeated in the same
+message gets `~2`, `~3`, … appended to the key, so each occurrence is answered on its own; the first occurrence
+keeps the plain key, so answers saved before that rule still restore. An entry may also carry `other: true`
+(its `chosen` holds only real options) or `skipped: true` (empty `selectedIds` and `chosen`); older entries
+have neither, and `formatAskResponsesNote` reports both to the model. The same key restores state on reload, so
+it must derive only from the parsed widget args and their order, never from anything session-scoped. Writes are
+read-modify-write on one cache blob, so every sequence in a message chains them on one per-message queue.
+
+Every ask's state also re-enters later turns as a **volatile system note**, not stable prompt text. On each
+send, `askResponsesNoteFor` (`src/widgets/ask/message-asks.ts`) calls `collectConversationAskStates`. It takes
+each assistant message's asks from its text (`collectMessageAsks`) and pairs them with the answers in its cache
+(`askMessageStateOf`, by `askStorageKeys`). `formatAskResponsesNote` renders the result.
+
+Both engines add it on every send:
+
+- **The legacy pipeline** (`src/ai/fetch.ts`) passes it to `buildVolatileSystemNotes`.
+- **The in-browser agent harness** (`src/acp/built-in-adapter.ts`, which Tinfoil models always use) appends it
+  to the per-send part of the harness system prompt, after the timestamp. It also gets the voice-mode note there,
+  through the same `composeAppHarnessSystemPrompt(config, notes)` path.
+
+Skill instructions are not part of that list: each engine places them itself. The note is authoritative and model-facing English. It has one set per asking
+message, in order, and each question shows one of these states:
+
+- its answer, plus whether a graded answer matched
+- "skipped"
+- "answered in their own words in their reply"
+- "not answered yet", so the model knows where a quiz stands mid-way
+
+Legacy `free` answers still appear.
+
+A tag scan guards each message's cache read: only an assistant message whose text includes `<widget:ask` is
+read, so conversations without an ask widget pay nothing. Keep that guard shape if you add another
+cache-read-on-send widget.
 
 ## Privacy & Security Via Proxy
 

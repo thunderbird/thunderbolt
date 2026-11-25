@@ -126,6 +126,8 @@ for (const id of widgetIds) {
       const message = page.locator('[data-quotable-message-id]').last()
       await expectWidget(page, message.getByText(/Choose one|Your call|Select all that apply/), id, requests)
       await expect.poll(() => message.getByRole('button').count()).toBeGreaterThanOrEqual(2)
+      // Several asks in one message render as a wizard: one question, so at most one Submit, on screen.
+      expect(await message.getByRole('button', { name: 'Submit' }).count()).toBeLessThanOrEqual(1)
     } else if (id === 'WIDGET_LINK_PREVIEW') {
       const title = page.locator(`a[href="${linkUrl}"] .line-clamp-1`)
       await expectWidget(page, title, id, requests)

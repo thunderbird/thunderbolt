@@ -11,12 +11,13 @@ const pinnedChips = (page: Page) => page.getByRole('button', { name: /^Pinned sk
 /** A pinned widget skill can move past other pins, and the new order survives a reload. */
 test('a pinned widget skill can be reordered', async ({ page }) => {
   const errors = collectPageErrors(page)
+  const mobile = (page.viewportSize()?.width ?? 1280) < 768
   await loginViaEmailCode(page)
 
   await expect(pinnedChips(page)).toHaveText(['Search', 'Research', 'Weather'], { timeout: 30_000 })
 
   await page.getByRole('button', { name: 'Pinned skill Weather', exact: true }).click({ button: 'right' })
-  await page.getByRole('menuitem', { name: 'Reorder', exact: true }).click()
+  await page.getByRole(mobile ? 'button' : 'menuitem', { name: 'Reorder', exact: true }).click()
 
   // Drag the Weather row above Search. Moving a few pixels first crosses the pointer
   // sensor's activation distance; the stepped move lets dnd-kit track the pointer.
@@ -31,7 +32,10 @@ test('a pinned widget skill can be reordered', async ({ page }) => {
   await page.mouse.up()
   await expect(rows).toHaveText(['Weather', 'Search', 'Research'])
 
-  await page.getByRole('button', { name: 'Close reorder', exact: true }).click()
+  // On a phone the list sits in a drawer with no close button, so Escape dismisses it.
+  await (mobile
+    ? page.keyboard.press('Escape')
+    : page.getByRole('button', { name: 'Close reorder', exact: true }).click())
   await expect(pinnedChips(page)).toHaveText(['Weather', 'Search', 'Research'])
 
   await page.reload()

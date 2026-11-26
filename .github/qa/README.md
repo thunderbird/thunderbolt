@@ -958,7 +958,8 @@ It signs in, then checks, each on its own row of the run summary:
 - a resize to 400px stops at the window's 500px minimum, `<html>` keeps `force-desktop`, and the layout probe finds
   nothing on the chat;
 - the app's own quit (`plugin:process|exit`, as the tray's Quit) and a new launch on the same profile keep the
-  account and list the chat in Recents.
+  account: the app shows the account menu again and holds the same session token. The chat is not checked. WebKitGTK
+  has no OPFS, so the Linux app keeps its database in memory and loses it on relaunch.
 
 A failed check fails the job, which `notify` sees, and leaves a screenshot in `qa-desktop-shell` with the
 driver and stack logs. Nothing is filed. Run it on Linux with the services up and the app built as in the job:
@@ -1318,7 +1319,9 @@ Never run on GitHub (only locally, or read in the action's code):
   Storybook's cache sat under `node_modules/.cache`, so the `qa` job in `ci.yml` now checks the start as `qa-dev`;
 - the `desktop-shell` job. `desktop.ts` ran in an Ubuntu 24.04 container on aarch64 with the job's packages and
   build. On main the preview check and the quit-and-reopen check failed and the other five passed. With `blob:` added
-  to `img-src` and the database kept out of memory, all seven passed.
+  to `img-src` and the database kept out of memory, all seven passed. #1486 has since added `blob:` on main. The
+  database is still in memory there, so the quit-and-reopen check no longer looks for the chat. No run so far has gone
+  through the setup wizard, which is how the lane now signs in.
 
 Also:
 

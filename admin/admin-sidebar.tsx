@@ -24,8 +24,8 @@ export const adminNavGroups: SectionNavGroup[] = [
     id: 'security',
     label: msg`Security`,
     items: [
-      { path: '/admin/sign-in-methods', label: msg`Sign-in methods`, icon: KeyRound },
-      { path: '/admin/audit-log', label: msg`Audit log`, icon: ScrollText },
+      { path: '/admin/sign-in-methods', label: msg`Sign In`, icon: KeyRound },
+      { path: '/admin/audit-log', label: msg`Audit Log`, icon: ScrollText },
     ],
   },
 ]

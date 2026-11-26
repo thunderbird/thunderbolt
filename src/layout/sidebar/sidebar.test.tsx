@@ -258,7 +258,7 @@ describe('Sidebar reactivity', () => {
         wrapper: createSidebarWrapper({ path: '/admin/members', session: adminSession }),
       })
 
-      expect(await waitForElement(() => screen.queryByRole('button', { name: 'Audit log' }))).toBeInTheDocument()
+      expect(await waitForElement(() => screen.queryByRole('button', { name: 'Audit Log' }))).toBeInTheDocument()
       expect(screen.getByLabelText('Admin')).toBeInTheDocument()
       expect(screen.queryByLabelText('Settings')).not.toBeInTheDocument()
     })

@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 dist-isolation
+dist-e2e
 __pycache__
 # thunderbot team-orchestration scratch (see .agents/skills/thunderbot/references/team-orchestration.md)
 .team/

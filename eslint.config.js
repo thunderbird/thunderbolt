@@ -22,7 +22,7 @@ export default [
   prettier,
   {
     files: ['src/**/*.{ts,tsx}'],
-    ignores: ['node_modules', 'dist', 'dist-isolation', 'src-tauri', 'thunderbird-*', 'backend'],
+    ignores: ['node_modules', 'dist', 'dist-isolation', 'dist-e2e', 'src-tauri', 'thunderbird-*', 'backend'],
     languageOptions: {
       parser: typescriptParser,
       parserOptions: {

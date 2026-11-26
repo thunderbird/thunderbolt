@@ -5,6 +5,7 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { SettingsNoResults } from '@/components/settings/settings-empty-state'
 import { EmptyState } from '@/components/ui/empty-state'
 import { PageCreateAction, pageCreateActionClearanceClass } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
@@ -747,9 +748,9 @@ const TasksPage = () => {
                     </SortableContext>
 
                     {visibleTasks.length === 0 && searchQuery && (
-                      <div className="text-center py-12 text-muted-foreground">
+                      <SettingsNoResults>
                         <Trans>No tasks found matching "{searchQuery}"</Trans>
-                      </div>
+                      </SettingsNoResults>
                     )}
 
                     {totalCount > 50 && (

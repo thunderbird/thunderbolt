@@ -7,8 +7,8 @@
 # The native apps for the QA agent, locally and in CI: build one against the stack `stack.sh serve native` runs, boot
 # a device, install the app and stream the WebView's console. <platform> is ios or android.
 #
-#   native.sh config <platform> <out-json> [control]            Tauri config for a QA build (injects
-#                                                               layout-probe.js)
+#   native.sh config <platform> <out-json> [control]            Tauri config for a QA build (injects axe-core
+#                                                               and layout-probe.js)
 #   native.sh build <platform> <out-dir> [onboarding] [control] build the app into <out-dir> (onboarding is off
 #                                                               unless asked; control also injects control/cover.js)
 #   native.sh system-image                                      Android only: install the emulator and the AVD's
@@ -70,7 +70,7 @@ config() {
   local filter='.app.security.csp["connect-src"] = $real[0].app.security.csp["connect-src"] + " " + $extra'
   [ "$1" = android ] && filter="$filter | del(.identifier)"
   # Runs from the repo root, like the `bun run build` it replaces.
-  local inject='bun run build && bun -e '\''const f = "dist/index.html"; const html = await Bun.file(f).text(); if (!html.includes("</head>")) throw new Error("no </head>"); const scripts = await Promise.all(process.argv.slice(1).map((s) => Bun.file(s).text())); await Bun.write(f, html.replace("</head>", () => scripts.map((js) => "<script>" + js + "</script>").join("") + "</head>"))'\'' .github/qa/layout-probe.js'
+  local inject='bun run build && bun -e '\''const f = "dist/index.html"; const html = await Bun.file(f).text(); if (!html.includes("</head>")) throw new Error("no </head>"); const scripts = await Promise.all(process.argv.slice(1).map((s) => Bun.file(s).text())); await Bun.write(f, html.replace("</head>", () => scripts.map((js) => "<script>" + js + "</script>").join("") + "</head>"))'\'' node_modules/axe-core/axe.min.js .github/qa/layout-probe.js'
   [ "${3:-}" = control ] && inject="$inject .github/qa/control/cover.js"
   filter="$filter | .build.beforeBuildCommand = \$cmd"
   jq --slurpfile real src-tauri/tauri.conf.json --arg extra "$backend_url $fake_google_url http://$powersync ws://$powersync" --arg cmd "$inject" \

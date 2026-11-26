@@ -113,8 +113,9 @@ status, or the text on screen):
   `offscreen` (a control you cannot scroll into view), `covered` (something sits over a control's center),
   `behind-keyboard` (the on-screen keyboard hides the focused field or a button of the dialog), `focus-covered`
   (a fixed or sticky box hides part of the focused text field), `focused-clipped` (with the keyboard open, a
-  scroll box or the screen edge cuts off part of the focused text field) or `unnamed-control` (a button, link,
-  checkbox, switch, radio, text field or combobox a screen reader cannot name, even when a label shows beside it;
+  scroll box or the screen edge cuts off part of the focused text field) or `unnamed-control` (a control without an
+  accessible name, such as a button, link, menu item, option, checkbox, switch, radio, text field or combobox, even
+  when a label shows beside it;
   with no name, the quote says which control it is: its `#id`, `[data-testid=…]` or `[name=…]`, or its icon and the
   text before it, as in `button "arrow-left icon after Connect Google"`). For an `unnamed-control` line, say in
   `actual` which control it is: what it looks like,

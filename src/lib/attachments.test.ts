@@ -6,15 +6,33 @@ import type { StoredFile } from '@/lib/file-blob-storage'
 import type { ThunderboltUIMessage } from '@/types'
 import { describe, expect, test } from 'bun:test'
 import {
+  attachmentLabel,
   attachmentPartType,
   buildAttachmentPart,
   getAttachments,
   hydrateAttachmentsAsFileParts,
   type HydrationDeps,
   isAttachmentPart,
+  undeliverableAttachmentsNote,
+  unreadableAttachmentNote,
 } from './attachments'
 
 const data = { localFileId: 'f1', filename: 'doc.pdf', mimeType: 'application/pdf' }
+
+describe('attachment labels', () => {
+  test('labels attachments with the quoted name', () => {
+    expect(attachmentLabel('doc.pdf')).toBe('[Attachment: "doc.pdf"]')
+    expect(undeliverableAttachmentsNote(['a.png'])).toBe('[Attachment "a.png" could not be delivered to this agent]')
+  })
+
+  test('keeps a short reason whole and only the start of a reason that quotes megabytes of the file', () => {
+    expect(unreadableAttachmentNote('a.docx', new Error('Too big.'))).toBe(
+      '[Attachment "a.docx" could not be read: Too big.]',
+    )
+    const note = unreadableAttachmentNote('a.docx', new Error(`parse error: ${'a'.repeat(4 * 1024 * 1024)}`))
+    expect(note).toBe(`[Attachment "a.docx" could not be read: parse error: ${'a'.repeat(287)}…]`)
+  })
+})
 
 describe('attachments', () => {
   test('buildAttachmentPart wraps the reference in a data-attachment part', () => {
@@ -84,10 +102,10 @@ describe('hydrateAttachmentsAsFileParts — history reduction', () => {
     // No native `file` parts replayed from history — this is what prevents thread poisoning.
     expect(partTypes(u1).filter((t) => t === 'file')).toHaveLength(0)
     // PDF (text-extractable) → its text; image (no transformer) → a bare reference.
-    expect(texts(u1)).toEqual(['summarize', '[Attachment: doc.pdf]\n\nEXTRACTED', '[Attachment: pic.png]'])
+    expect(texts(u1)).toEqual(['summarize', '[Attachment: "doc.pdf"]\n\nEXTRACTED', '[Attachment: "pic.png"]'])
   })
 
-  test('an unreadable attachment is skipped instead of failing the turn', async () => {
+  test('an unreadable attachment becomes a note instead of failing the turn', async () => {
     // The reported bug: a file stored as a reference to a path on disk (rather
     // than a copy of its bytes) throws once the source is edited. Because every
     // send re-reads the whole history, letting that propagate failed the turn,
@@ -101,9 +119,16 @@ describe('hydrateAttachmentsAsFileParts — history reduction', () => {
 
     const result = await hydrateAttachmentsAsFileParts(conversation(), unreadable)
 
-    // The turn survives, carrying the user's text and the attachment reference.
-    expect(texts(result[0])).toContain('summarize')
-    expect(result).toHaveLength(3)
+    // The turn survives, carrying the user's text and a note the model can relay.
+    expect(texts(result[0])).toEqual([
+      'summarize',
+      '[Attachment "doc.pdf" could not be read: The requested file could not be read]',
+      '[Attachment "pic.png" could not be read: The requested file could not be read]',
+    ])
+    expect(texts(result[2])).toEqual([
+      'and this',
+      '[Attachment "data.csv" could not be read: The requested file could not be read]',
+    ])
   })
 
   test('one unreadable attachment does not take the readable ones with it', async () => {
@@ -120,14 +145,19 @@ describe('hydrateAttachmentsAsFileParts — history reduction', () => {
     const result = await hydrateAttachmentsAsFileParts(conversation(), oneBadFile)
 
     // f3 (csv, latest turn) still extracts even though f1 could not be read.
-    expect(texts(result[2])).toEqual(['and this', '[Attachment: data.csv]\n\nEXTRACTED'])
+    expect(texts(result[0])).toEqual([
+      'summarize',
+      '[Attachment "doc.pdf" could not be read: gone]',
+      '[Attachment: "pic.png"]',
+    ])
+    expect(texts(result[2])).toEqual(['and this', '[Attachment: "data.csv"]\n\nEXTRACTED'])
   })
 
   test('the latest turn still delivers its attachment in full (here: csv as text)', async () => {
     const result = await hydrateAttachmentsAsFileParts(conversation(), deps)
     const u2 = result[2]
 
-    expect(texts(u2)).toEqual(['and this', '[Attachment: data.csv]\n\nEXTRACTED'])
+    expect(texts(u2)).toEqual(['and this', '[Attachment: "data.csv"]\n\nEXTRACTED'])
   })
 
   test('an image on the latest turn would NOT be reduced (kept for full native delivery)', async () => {

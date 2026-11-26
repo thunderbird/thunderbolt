@@ -131,6 +131,26 @@ export const defaultModelGlm53: SharedModel = {
   userId: null,
 }
 
+export const defaultModelKimiK31Pro: SharedModel = {
+  id: '01a20a11-f788-72b9-910e-f1bbdf4d5e93',
+  name: 'Kimi K3.1 Pro',
+  provider: 'tinfoil',
+  model: 'kimi-k3-1-pro',
+  isSystem: 1,
+  enabled: 1,
+  isConfidential: 1,
+  contextWindow: 262_144,
+  toolUsage: 1,
+  startWithReasoning: 0,
+  supportsParallelToolCalls: 0,
+  deletedAt: null,
+  url: null,
+  defaultHash: null,
+  vendor: 'moonshotai',
+  description: 'Confidential coding and agentic work with image support',
+  userId: null,
+}
+
 /**
  * Array of all default models for iteration. Order = display order in the
  * "Provided" group of the model picker. Reorder freely — but bump
@@ -145,6 +165,7 @@ export const defaultModels: ReadonlyArray<SharedModel> = [
   defaultModelOpus55,
   defaultModelDeepSeekV41Flash,
   defaultModelGlm53,
+  defaultModelKimiK31Pro,
 ] as const
 
 /** Whether a model reads image attachments. */
@@ -172,6 +193,7 @@ export const defaultModelImageSupport: Readonly<Record<string, ImageSupport>> = 
   [defaultModelOpus55.id]: 'supported',
   [defaultModelDeepSeekV41Flash.id]: 'supported',
   [defaultModelGlm53.id]: 'unsupported',
+  [defaultModelKimiK31Pro.id]: 'supported',
 }
 
 /** Vendors whose Thunderbolt-hosted models all accept images. */
@@ -219,4 +241,4 @@ export const isKnownToReadImages = (model: ImageSupportModel, lineup: ImageSuppo
  * The paired snapshot test in `models.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultModelsVersion = 11
+export const defaultModelsVersion = 12

@@ -34,6 +34,8 @@ import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { getTransformer } from '@/files/transformers'
 import { defaultSkillResearch } from '@/defaults/skills'
+import * as officeWorker from '@/office/run-in-worker'
+import { stubAppServer } from '@/test-utils/app-server'
 import * as realAgentCore from '@shared/agent-core'
 import { tool } from 'ai'
 import { z } from 'zod'
@@ -200,7 +202,15 @@ describe('composeAppHarnessSystemPrompt', () => {
       supportsTools,
     })
 
-    for (const text of ['# Environment', '`bash`', '`read`', '`write`', '`edit`', '`render_html`']) {
+    for (const text of [
+      '# Environment',
+      '`bash`',
+      '`read`',
+      '`write`',
+      '`edit`',
+      '`render_html`',
+      '`run_office_script`',
+    ]) {
       expect(composed.includes(text)).toBe(supportsTools)
     }
     expect(composed.startsWith('Stable instructions\n\n')).toBe(true)
@@ -967,6 +977,7 @@ describe('createBuiltInAdapter persistent harness', () => {
         toolset,
         skills: [
           {
+            id: 'review',
             name: 'review',
             description: 'Use for reviews.',
             instruction: 'Follow project style.',
@@ -1114,7 +1125,7 @@ describe('createBuiltInAdapter persistent harness', () => {
 
 type ProviderToolCall = { name: string; args: Record<string, unknown> }
 type ProviderRequest = {
-  tools?: Array<{ function: { name: string } }>
+  tools?: Array<{ function: { name: string; description?: string } }>
   messages: Array<{
     role: string
     content: unknown
@@ -1198,11 +1209,25 @@ const createBudgetAdapter = (
           },
         }),
       },
-      [{ name: 'research', description: 'Research', instruction: 'Research within the current web budget.' }],
+      [
+        {
+          id: 'research',
+          name: 'research',
+          description: 'Research',
+          instruction: 'Research within the current web budget.',
+        },
+      ],
       true,
       webToolBudget,
     ),
-    skills: [{ name: 'research', description: 'Research', instruction: 'Research within the current web budget.' }],
+    skills: [
+      {
+        id: 'research',
+        name: 'research',
+        description: 'Research',
+        instruction: 'Research within the current web budget.',
+      },
+    ],
     mcpToolsMetadata: undefined,
     stableSystemPrompt: 'Complete the report.',
     volatileSystemPrompt: 'Now.',
@@ -1477,11 +1502,45 @@ it.each([
     expect(system.includes('### weather')).toBe(!offered)
     expect(system.includes('- research:')).toBe(offered)
     expect(system.includes('### research')).toBe(false)
+    // The Office skills ride the same rule, and the Office tool names them only when they can be loaded.
+    const officeTool = request.tools?.find(({ function: { name } }) => name === 'run_office_script')
+    expect(officeTool).toBeDefined()
+    expect(officeTool?.function.description?.includes('load the listed Office skill')).toBe(offered)
+    expect(system.includes('- office-xlsx:')).toBe(offered)
+    expect(system.includes('# Excel workbooks with run_office_script')).toBe(false)
   } finally {
     run.adapter.disconnect()
     await teardownTestDatabase()
   }
 })
+
+it.each([
+  [true, false],
+  [false, true],
+])(
+  'through Pi, a failed Excel script after the skill tool loaded office-xlsx (%s) asks to load it: %s',
+  async (loads, asks) => {
+    await setupTestDatabase()
+    spyOn(officeWorker, 'runInSandboxWorker').mockResolvedValue({ ok: false, error: 'TypeError: x is null', logs: '' })
+    stubAppServer()
+    const script = [{ name: 'run_office_script', args: { script: 'const f = excelize.NewFile()' } }]
+    const run = createBudgetAdapter(
+      [...(loads ? [[{ name: 'skill', args: { name: 'office-xlsx' } }]] : []), script, 'Done.'],
+      prepareAiRequestConfig,
+    )
+    try {
+      await insertModel(getDb(), { ...run.context.selectedModel, enabled: 1 })
+      await run.send()
+      const results = JSON.stringify(run.requests.at(-1)?.messages.filter(({ role }) => role === 'tool'))
+      expect(results).toContain('TypeError: x is null')
+      expect(results.includes('load the Office skill for this format')).toBe(asks)
+    } finally {
+      mock.restore()
+      run.adapter.disconnect()
+      await teardownTestDatabase()
+    }
+  },
+)
 
 it('keeps real adapter citation metadata across a below-cap harness rebuild', async () => {
   await setupTestDatabase()
@@ -2015,14 +2074,14 @@ describe('attachments in the harness workspace', () => {
         },
       ],
     ])
-    expect(prompts[0]).toContain(`[Attachment: spend.csv — saved as attachments/${localFileId}/spend.tsv]`)
+    expect(prompts[0]).toContain(`[Attachment: "spend.csv" — saved as attachments/${localFileId}/spend.tsv]`)
   })
 
   it('inlines the attachment whole and writes nothing when tools are inactive', async () => {
     const { written, prompts } = await runWithCsvAttachment(0)
 
     expect(written).toEqual([[]])
-    expect(prompts[0]).toBe(`[Attachment: spend.csv]\n\n${csv}\ntotal?`)
+    expect(prompts[0]).toBe(`[Attachment: "spend.csv"]\n\n${csv}\ntotal?`)
   })
 
   it('still prompts, naming and logging the failed path, when a workspace write fails', async () => {

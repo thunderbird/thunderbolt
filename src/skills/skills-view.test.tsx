@@ -20,7 +20,9 @@ import '@/test-utils/framer-motion-mock'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { skillsTable } from '@/db/tables'
-import { defaultSkillWeather } from '@/defaults/skills'
+import { defaultSkillOfficeXlsx, defaultSkillWeather } from '@/defaults/skills'
+import { officeXlsxSkill } from '@/office/skills/xlsx'
+import { stubAppServer } from '@/test-utils/app-server'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 import { SkillsView } from './skills-view'
@@ -94,6 +96,25 @@ describe('SkillsView state machine', () => {
       await flush()
       const disabledWeather = await getSkill(getDb(), defaultSkillWeather.id)
       expect(disabledWeather?.enabled).toBe(0)
+    })
+
+    it('shows the manual this build serves for an Office skill, not the stub its row holds', async () => {
+      await getDb().insert(skillsTable).values(defaultSkillOfficeXlsx)
+
+      renderWithReactivity(<SkillsView />, { tables: ['skills'], wrapper: Wrapper })
+
+      const row = await waitForElement(() => screen.queryByText('Excel workbooks'))
+      const server = stubAppServer()
+      try {
+        // The manual loads from its own chunk once the detail opens; an async act lets the suspended panel retry.
+        await act(async () => {
+          fireEvent.click(row)
+        })
+        expect(screen.getByText((text) => text.startsWith(officeXlsxSkill.split('\n')[0]))).toBeInTheDocument()
+        expect(screen.queryByText(defaultSkillOfficeXlsx.instruction)).not.toBeInTheDocument()
+      } finally {
+        server.mockRestore()
+      }
     })
   })
 

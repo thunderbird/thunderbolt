@@ -34,6 +34,7 @@ export {
 } from './openai-compat-model.ts'
 export {
   buildAppHarness,
+  readAgentWorkspaceFile,
   removeAgentWorkspace,
   workspaceDirFor,
   writeAgentWorkspaceFiles,
@@ -41,6 +42,7 @@ export {
   type PiModelDescriptor,
   type AppHarness,
   type WorkspaceFile,
+  type WorkspaceFileRead,
   type WorkspaceWriteFailure,
 } from './build-app-harness.ts'
 export type { CompactionCheckpoint, CompactionStatus, HarnessCompaction } from './compaction.ts'

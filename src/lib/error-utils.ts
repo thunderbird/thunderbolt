@@ -15,6 +15,7 @@ const chatErrorKinds = [
   'connection-lost',
   'tools-unsupported',
   'agent-unavailable',
+  'output-limit',
 ] as const
 export type ChatErrorKind = (typeof chatErrorKinds)[number]
 const inferenceQuotaWindowSchema = z.enum(['5h', '7d'])

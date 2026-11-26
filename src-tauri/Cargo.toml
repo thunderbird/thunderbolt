@@ -1,6 +1,6 @@
 [package]
 name = "thunderbolt"
-version = "0.1.168"
+version = "0.1.174"
 description = "Privacy-respecting AI assistant."
 authors = ["Chris Roth <chris@cjroth.com>"]
 license = "MPL-2.0"
@@ -66,6 +66,16 @@ rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs"] 
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-single-instance = "2"
+# Decodes the bytes platform_utils::save_to_downloads receives. Already in the lock via tauri.
+base64 = "0.22.1"
+
+# Sets com.apple.quarantine on downloads (platform_utils::save_to_downloads). Already in the lock via tar.
+[target.'cfg(target_os = "macos")'.dependencies]
+xattr = "1.6.1"
+
+# Reads the file manager's clipboard entry (platform_utils::copied_files). Already in the lock via tauri.
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18.2"
 
 [target.'cfg(target_os = "ios")'.dependencies]
 objc2-ui-kit = { version = "0.3.2", features = ["UIApplication", "UIWindow", "UIView", "UIInterface", "UIScene", "UIWindowScene"] }

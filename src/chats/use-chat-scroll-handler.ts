@@ -4,7 +4,7 @@
 
 import { useAutoScroll as useAutoScroll_default } from '@/hooks/use-auto-scroll'
 import type { ThunderboltUIMessage } from '@/types'
-import { useCallback, useEffect, useEffectEvent, useRef } from 'react'
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useCurrentChatSession as useCurrentChatSession_default } from './chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { messageBookkeepingThrottleMs } from './chat-throttle'
@@ -88,6 +88,40 @@ export const useChatScrollHandler = ({
     isStreaming,
     rootMargin: '0px 0px 20px 0px',
   })
+
+  // Kept as state so callers (and the resize observer below) re-run when the container attaches.
+  const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null)
+  const trackScrollContainer = useCallback(
+    (el: HTMLDivElement | null) => {
+      setScrollContainer(el)
+      scrollContainerRef(el)
+    },
+    [scrollContainerRef],
+  )
+
+  const onContainerResize = useEffectEvent(() => {
+    if (isAtBottom) {
+      rawScrollToBottom(false, true)
+    }
+  })
+
+  // Rotation, a side panel or the keyboard resizes the conversation; one resting at the end stays there.
+  // Only the container is observed, so growing content never drags down a view the user scrolled up.
+  useEffect(() => {
+    if (!scrollContainer) {
+      return
+    }
+    let isFirstObservation = true
+    const observer = new ResizeObserver(() => {
+      if (isFirstObservation) {
+        isFirstObservation = false
+        return
+      }
+      onContainerResize()
+    })
+    observer.observe(scrollContainer)
+    return () => observer.disconnect()
+  }, [scrollContainer])
 
   const onSubmitScroll = useEffectEvent(() => {
     hasScrolledForFirstTokenRef.current = false
@@ -177,7 +211,8 @@ export const useChatScrollHandler = ({
 
   return {
     isAtBottom,
-    scrollContainerRef,
+    scrollContainer,
+    scrollContainerRef: trackScrollContainer,
     scrollHandlers,
     scrollTargetRef,
     scrollToBottom: rawScrollToBottom,

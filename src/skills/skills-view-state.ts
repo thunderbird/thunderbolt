@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { isWidgetSkillId } from '@/defaults/skills'
+import { isContractSkillId } from '@/defaults/skills'
 import type { Skill } from '@/types'
 import type { DependentsAction } from './dependents-dialog'
 
@@ -62,8 +62,8 @@ export const initialSkillsViewState: SkillsViewState = {
   submitError: null,
 }
 
-/** Resolve an edit request without exposing widget rendering contracts to forms. */
-const modeForSkillEdit = (id: string): Mode => (isWidgetSkillId(id) ? 'detail' : 'edit')
+/** Resolve an edit request without exposing contract skills to forms. */
+const modeForSkillEdit = (id: string): Mode => (isContractSkillId(id) ? 'detail' : 'edit')
 
 /**
  * Action type for the SkillsView state machine. Each action describes a
@@ -77,7 +77,7 @@ export type SkillsViewAction =
   | { type: 'SELECT_SKILL'; id: string }
   /** User opened the create form. Side effect: panel slides in on mobile. */
   | { type: 'START_CREATE' }
-  /** User requested editing a skill. Widget contracts stay in read-only detail. */
+  /** User requested editing a skill. Contract skills stay in read-only detail. */
   | { type: 'START_EDIT'; id: string }
   /** Leave the form (confirmed) and apply the parked intent. */
   | { type: 'PERFORM_LEAVE'; leave: LeaveIntent }

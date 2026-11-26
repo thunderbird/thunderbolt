@@ -175,6 +175,8 @@ describe('ReasoningGroup', () => {
       )
 
       expect(screen.getByRole('button', { name: 'Thinking' })).toBeInTheDocument()
+      // Shown, not only announced: a reasoning phase can last half a minute before any tool starts.
+      expect(screen.getByText('Thinking')).not.toHaveClass('sr-only')
     })
 
     it('should not expose the active tool status once streaming completes', () => {

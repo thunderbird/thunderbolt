@@ -7,7 +7,7 @@ import { m } from 'framer-motion'
 
 import { SettingsSelectableRow } from '@/components/settings/settings-list'
 import { Switch } from '@/components/ui/switch'
-import { isWidgetSkillId } from '@/defaults/skills'
+import { isContractSkillId } from '@/defaults/skills'
 import type { Skill } from '@/types'
 import { skillDisplayName } from './display'
 
@@ -54,7 +54,7 @@ export const LibraryRow = ({
   const row = (
     <SettingsSelectableRow
       contextMenu={
-        isWidgetSkillId(skill.id) ? {} : { onEdit: () => onEdit(skill.id), onRemove: () => onDelete(skill.id) }
+        isContractSkillId(skill.id) ? {} : { onEdit: () => onEdit(skill.id), onRemove: () => onDelete(skill.id) }
       }
       title={skillDisplayName(skill)}
       subtitle={skill.description}

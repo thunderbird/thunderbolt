@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Trans } from '@lingui/react/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { ResponsiveModal, ResponsiveModalContent, ResponsiveModalTitle } from '@/components/ui/responsive-modal'
 import { Button } from '@/components/ui/button'
 import { useSyncSetup } from '@/hooks/use-sync-setup'
@@ -18,6 +18,7 @@ import { dispatchE2eeProvisioningSettled } from '@/hooks/use-e2ee-ready'
 import { usePasskeyAvailable } from '@/lib/passkey'
 import { GradientCircleCheck } from '@/components/ui/gradient-circle-check'
 import { IconCircle } from '@/components/onboarding/icon-circle'
+import { StepUpCodeDialog } from '@/components/step-up-code-dialog'
 import { useYieldToMigration } from '@/hooks/use-yield-to-migration'
 import { ArrowLeft, Loader2, Lock, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
@@ -36,6 +37,7 @@ type SyncSetupModalProps = {
  * → passkey-enroll (optional, only while the account has no passkey slot)
  */
 export const SyncSetupModal = ({ open, onOpenChange, onComplete, onCloseAutoFocus }: SyncSetupModalProps) => {
+  const { t } = useLingui()
   const setup = useSyncSetup()
   const httpClient = useHttpClient()
   const passkeyAvailable = usePasskeyAvailable()
@@ -141,7 +143,13 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete, onCloseAutoFocu
     setup.deviceDenied()
   }
 
-  const stepsAfterRegistration: readonly string[] = ['detecting', 'approval-waiting', 'recovery-key-entry', 'denied']
+  const stepsAfterRegistration: readonly string[] = [
+    'detecting',
+    'approval-waiting',
+    'recovery-key-entry',
+    'recovery-step-up',
+    'denied',
+  ]
 
   const handleClose = () => {
     // Cancel pending state on server when closing after device was registered
@@ -167,8 +175,8 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete, onCloseAutoFocu
   })
 
   const handleRecoveryKeySubmit = async () => {
-    const success = await setup.submitRecoveryKey()
-    if (!success) {
+    // A v1 phrase moves on to the code step or the new-phrase step instead.
+    if ((await setup.submitRecoveryKey()) !== 'recovered') {
       return
     }
     // A phrase minted before the continuity seal leaves this device unverified,
@@ -210,7 +218,7 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete, onCloseAutoFocu
       <ResponsiveModalTitle className="sr-only">
         <Trans>Set up encrypted sync</Trans>
       </ResponsiveModalTitle>
-      {setup.step === 'recovery-key-entry' && (
+      {(setup.step === 'recovery-key-entry' || setup.step === 'recovery-step-up') && (
         <button
           type="button"
           onClick={setup.chooseAdditionalDevice}
@@ -240,7 +248,16 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete, onCloseAutoFocu
         )}
 
         {setup.step === 'recovery-key-display' && (
-          <RecoveryKeyDisplayStep recoveryKey={setup.recoveryKey} onDone={handleFirstDeviceDone} />
+          <RecoveryKeyDisplayStep
+            recoveryKey={setup.recoveryKey}
+            onDone={handleFirstDeviceDone}
+            title={setup.migratedRecoveryKey ? t`Save your new recovery phrase` : undefined}
+            description={
+              setup.migratedRecoveryKey
+                ? t`Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again.`
+                : undefined
+            }
+          />
         )}
 
         {setup.step === 'approval-waiting' && (
@@ -258,7 +275,7 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete, onCloseAutoFocu
           <PasskeyEnrollStep unlocksSync onDone={handlePasskeyStepDone} onBusyChange={setIsPasskeyEnrolling} />
         )}
 
-        {setup.step === 'recovery-key-entry' && (
+        {(setup.step === 'recovery-key-entry' || setup.step === 'recovery-step-up') && (
           <RecoveryKeyEntryStep
             value={setup.recoveryKeyInput}
             error={setup.recoveryKeyError}
@@ -268,6 +285,23 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete, onCloseAutoFocu
             legacyPhraseWarning={setup.legacyRecoveryPhrase}
           />
         )}
+
+        {/* A v1 phrase upgrades the account from this untrusted device, which
+            the server allows only with the code emailed to the account. */}
+        <StepUpCodeDialog
+          open={setup.step === 'recovery-step-up'}
+          otp={setup.stepUpOtp}
+          isBusy={setup.isLoading}
+          error={setup.stepUpError}
+          description={t`We sent an 8-digit code to your account email. Enter it to generate your new recovery phrase.`}
+          submitLabel={t`Generate new phrase`}
+          submitLoadingLabel={t`Generating…`}
+          submitOnComplete
+          onOtpChange={setup.setStepUpOtp}
+          onResend={setup.resendRecoveryStepUp}
+          onSubmit={setup.submitRecoveryStepUp}
+          onCancel={setup.cancelRecoveryStepUp}
+        />
 
         {setup.step === 'denied' && <DeniedStep onRetry={setup.reset} />}
 

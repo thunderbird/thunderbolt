@@ -54,27 +54,12 @@
     "store:default",
     "fs:default",
     "fs:allow-app-write-recursive",
+    "fs:allow-stat",
     {
       "identifier": "fs:allow-exists",
       "allow": [
         {
           "path": "$APPDATA/*"
-        }
-      ]
-    },
-    {
-      "identifier": "fs:allow-write-text-file",
-      "allow": [
-        {
-          "path": "$DOWNLOAD/*"
-        }
-      ]
-    },
-    {
-      "identifier": "fs:allow-write-file",
-      "allow": [
-        {
-          "path": "$DOWNLOAD/*"
         }
       ]
     }

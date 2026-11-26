@@ -110,7 +110,7 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
   // `showSubmittedLoading`: `submitted` with no assistant message yet to host the
   // loading indicator, so render it inline here. Shared with the composer's Stop
   // button via getTurnActivity so the two never disagree (THU-791).
-  const { isStreaming, showSubmittedLoading, pendingEmptyTurnRecovery, hasError } = getTurnActivity({
+  const { isStreaming, isActive, showSubmittedLoading, pendingEmptyTurnRecovery, hasError } = getTurnActivity({
     status,
     lastMessage,
     hasChatError: chatError != null,
@@ -118,6 +118,9 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
     retryCount,
     stopRequested: stopping,
   })
+  // An error stays held until onFinish settles it, because it saves the failed reply before it publishes a retry.
+  // Stop during the backoff clears the retry state but leaves the error, so `stopping` releases the hold.
+  const holdFiles = isActive || (hasError && !retriesExhausted && !stopping)
 
   const wasStreaming = useRef(false)
   useEffect(() => {
@@ -192,6 +195,7 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
                   message={message}
                   sources={threadSources.get(message.id)}
                   isStreaming={isStreaming && isLast}
+                  holdFiles={holdFiles && isLast}
                   isLastMessage={isLast && shouldUseViewportPositioning(visibleMessages.length)}
                   isLastAssistantMessage={message.id === lastAssistantMessage?.id}
                   lastAssistantAction={message.id === shareActionHostId ? shareDebugTranscriptAction : undefined}

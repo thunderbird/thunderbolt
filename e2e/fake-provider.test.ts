@@ -9,6 +9,25 @@ import { generateText, streamText } from 'ai'
 import { z } from 'zod'
 import { createFakeProvider, fakeOpenAiModelId, fakeProviderReply } from './fake-provider'
 import { miniAppToolsetName, miniAppTransferPrompt, protectedEmailBody, protectedEmailId } from './mini-app-fixture'
+import {
+  officeDeckEditFilename,
+  officeDeckEditPrompt,
+  officeDeckEditScript,
+  officeEditFilename,
+  officeEditPrompt,
+  officeEditScript,
+  officeRetryFind,
+  officeRetryPrompt,
+  officeRetryScript,
+  officeScript,
+  officeScriptPrompt,
+  officeSkillHeading,
+  officeSkillLoadPrompt,
+  officeSkillName,
+  officeSkillWorkbookPrompt,
+  officeWorkbookPrompt,
+  officeWorkbookScript,
+} from './office-script-fixture'
 import { performanceStreamPrompt, performanceStreamReply } from './streaming-fixture'
 
 test('streams a complete reply over IPv4 loopback', async () => {
@@ -127,6 +146,177 @@ test('plays a model that reads an email and passes its body to the open Mini App
     }
     const unrelated = await send([ask, otherCall, toolResult('{"count":1}')])
     expect(unrelated.content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('plays a model that builds a Word document with run_office_script, then replies', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: `http://127.0.0.1:${port}`, maxRetries: 0 })
+    const send = (messages: Anthropic.MessageParam[]) =>
+      client.messages.stream({ model: 'test-model', max_tokens: 100, messages }).finalMessage()
+    const ask: Anthropic.MessageParam = { role: 'user', content: officeScriptPrompt }
+
+    const call = await send([ask])
+    expect(call.content).toMatchObject([
+      { type: 'tool_use', name: 'run_office_script', input: { script: officeScript } },
+    ])
+
+    const reply = await send([
+      ask,
+      { role: 'assistant', content: call.content },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_test', content: '{"ok":true}' }] },
+    ])
+    expect(reply.content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('retries the failed Office call with its returned handle, then replies in text', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: `http://127.0.0.1:${port}` })
+    const messages: Anthropic.MessageParam[] = [{ role: 'user', content: officeRetryPrompt }]
+    const send = () => client.messages.stream({ model: 'test-model', max_tokens: 100, messages }).finalMessage()
+    const answer = (message: Anthropic.Message, result: { ok: true } | { ok: false; scriptId: string }) => {
+      const block = message.content[0]
+      if (block.type !== 'tool_use') {
+        throw new Error('Expected Office tool call')
+      }
+      messages.push(
+        { role: 'assistant', content: message.content },
+        {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: block.id, content: [{ type: 'text', text: JSON.stringify(result) }] },
+          ],
+        },
+      )
+      return block.input
+    }
+    const scriptId = crypto.randomUUID()
+    expect(answer(await send(), { ok: false, scriptId })).toEqual({ script: officeRetryScript })
+    expect(answer(await send(), { ok: true })).toEqual({
+      edit: { scriptId, replacements: [{ find: officeRetryFind, replace: '' }] },
+    })
+    expect((await send()).content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('plays a model that builds a workbook with run_office_script', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: `http://127.0.0.1:${port}`, maxRetries: 0 })
+    const ask: Anthropic.MessageParam = { role: 'user', content: officeWorkbookPrompt }
+
+    const call = await client.messages.stream({ model: 'test-model', max_tokens: 100, messages: [ask] }).finalMessage()
+    expect(call.content).toMatchObject([
+      { type: 'tool_use', name: 'run_office_script', input: { script: officeWorkbookScript } },
+    ])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('plays a model that loads the Excel skill and builds the workbook only once its body arrives', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: `http://127.0.0.1:${port}`, maxRetries: 0 })
+    const send = (messages: Anthropic.MessageParam[]) =>
+      client.messages.stream({ model: 'test-model', max_tokens: 100, messages }).finalMessage()
+    /** The turn so far once the skill call returns `body`. */
+    const afterSkill = async (prompt: string, body: string): Promise<Anthropic.MessageParam[]> => {
+      const ask: Anthropic.MessageParam = { role: 'user', content: prompt }
+      const call = await send([ask])
+      expect(call.content).toMatchObject([{ type: 'tool_use', name: 'skill', input: { name: officeSkillName } }])
+      return [
+        ask,
+        { role: 'assistant', content: call.content },
+        { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_test', content: body }] },
+      ]
+    }
+    const body = `${officeSkillHeading}\n\nThe rest of the skill.`
+
+    expect((await send(await afterSkill(officeSkillWorkbookPrompt, body))).content).toMatchObject([
+      { type: 'tool_use', name: 'run_office_script', input: { script: officeWorkbookScript } },
+    ])
+    for (const [prompt, result] of [
+      [officeSkillLoadPrompt, body],
+      [officeSkillWorkbookPrompt, 'Skill "office-xlsx" was not found or is disabled.'],
+    ]) {
+      expect((await send(await afterSkill(prompt, result))).content).toMatchObject([
+        { type: 'text', text: fakeProviderReply },
+      ])
+    }
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('plays a model that edits the attached document with run_office_script', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: `http://127.0.0.1:${port}`, maxRetries: 0 })
+    const ask: Anthropic.MessageParam = {
+      role: 'user',
+      content: [
+        { type: 'text', text: `${officeEditPrompt}\n\n[Attached: ${officeEditFilename}]` },
+        { type: 'text', text: 'Status: {{status}}' },
+      ],
+    }
+
+    const call = await client.messages.stream({ model: 'test-model', max_tokens: 100, messages: [ask] }).finalMessage()
+    expect(call.content).toMatchObject([
+      {
+        type: 'tool_use',
+        name: 'run_office_script',
+        input: { script: officeEditScript, inputs: [officeEditFilename] },
+      },
+    ])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('plays a model that edits the attached deck with run_office_script', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: `http://127.0.0.1:${port}`, maxRetries: 0 })
+    const ask: Anthropic.MessageParam = {
+      role: 'user',
+      content: [
+        {
+          type: 'text',
+          text: `[Attachment: "${officeDeckEditFilename}"]\n\n## Slide 1\nStatus: {{status}}\n${officeDeckEditPrompt}`,
+        },
+      ],
+    }
+
+    const call = await client.messages.stream({ model: 'test-model', max_tokens: 100, messages: [ask] }).finalMessage()
+    expect(call.content).toMatchObject([
+      {
+        type: 'tool_use',
+        name: 'run_office_script',
+        input: { script: officeDeckEditScript, inputs: [officeDeckEditFilename] },
+      },
+    ])
   } finally {
     server.close()
     server.closeAllConnections()

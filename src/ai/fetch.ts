@@ -35,10 +35,10 @@ import {
 } from '@/ai/step-logic'
 import { getAllSkills, getIntegrationStatus, getModel, getModelProfile, getSettings } from '@/dal'
 import { getMessageCache } from '@/dal/chat-messages'
-import { isWidgetSkillId } from '@/defaults/skills'
+import { isOfficeSkillId, isWidgetSkillId } from '@/defaults/skills'
 import { getActiveLocale } from '@/i18n/active-locale'
-import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
-import { createSkillTool, selectEnabledSkillDefinitions } from '@/skills/skill-tool'
+import { extractLastUserText, loadSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
+import { createSkillTool, selectEnabledSkillDefinitions, type RequestSkillDefinition } from '@/skills/skill-tool'
 import { isVoiceModeActive, voiceModeSystemNote } from '@/voice/voice-mode'
 import { collectAskEntriesFromCache, formatAskResponsesNote } from '@/widgets/ask/lib'
 import { getDb } from '@/db/database'
@@ -65,6 +65,7 @@ import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { HttpClient } from '@/lib/http'
+import type { ReadWorkspaceFile } from '@/office/script-inputs'
 import { v7 as uuidv7 } from 'uuid'
 
 // Currently @openrouter/ai-sdk-provider is NOT compatible with Vercel AI SDK v5. If you enable this, you will get the following error:
@@ -561,7 +562,7 @@ export type PreparedAiRequestConfig = {
   readonly supportsTools: boolean
   readonly sourceCollector: SourceMetadata[]
   readonly toolset: Record<string, Tool>
-  readonly skills: readonly SkillDefinition[]
+  readonly skills: readonly RequestSkillDefinition[]
   readonly mcpToolsMetadata: UIMessageMetadata['mcpTools']
   readonly stableSystemPrompt: string
   /** Per-send tail of the system prompt: the date/time, plus the open Mini App's
@@ -580,20 +581,28 @@ export type PrepareAiRequestConfigOptions = {
   /** Thread being sent to. Resolves the owning project's instructions into the
    *  stable system prompt; omit for non-thread callers. */
   readonly chatThreadId?: string
+  /** The built-in agent's workspace, where the Office tool looks for an input after the thread's files. The
+   *  legacy pipeline has no workspace and passes none. */
+  readonly readWorkspaceFile?: ReadWorkspaceFile
   readonly telemetry?: TurnTelemetry
 }
 
-/** Register progressive skill loading only for models that support tools. */
+/** Register progressive skill loading only for models that support tools. `loadedSkills` collects what it returned. */
 export const addSkillTool = (
   toolset: Record<string, Tool>,
-  skills: readonly SkillDefinition[],
+  skills: readonly RequestSkillDefinition[],
   supportsTools: boolean,
   webToolBudget?: WebToolBudget,
+  loadedSkills?: Set<string>,
 ): Record<string, Tool> => {
   if (supportsTools) {
-    toolset.skill = createSkillTool(skills, (name) => {
-      webToolBudget?.promote(resolveSkillWebToolIntent(name))
-    })
+    toolset.skill = createSkillTool(
+      skills,
+      (name) => {
+        webToolBudget?.promote(resolveSkillWebToolIntent(name))
+      },
+      loadedSkills,
+    )
   }
   return toolset
 }
@@ -601,11 +610,19 @@ export const addSkillTool = (
 /**
  * Select skills disclosed in the built-in model's system prompt.
  *
- * Tool-capable models receive every enabled skill, while non-tool models only
- * receive widget rendering contracts inline.
+ * Tool-capable models receive every enabled skill, the Office skills only with
+ * `offersOfficeSkills`, while non-tool models only receive widget rendering
+ * contracts inline.
  */
-export const selectPromptSkillDefinitions = (skills: readonly Skill[], supportsTools: boolean): SkillDefinition[] =>
-  selectEnabledSkillDefinitions(supportsTools ? skills : skills.filter(({ id }) => isWidgetSkillId(id)))
+export const selectPromptSkillDefinitions = (
+  skills: readonly Skill[],
+  supportsTools: boolean,
+  offersOfficeSkills = false,
+): SkillDefinition[] =>
+  selectEnabledSkillDefinitions(
+    supportsTools ? skills : skills.filter(({ id }) => isWidgetSkillId(id)),
+    offersOfficeSkills,
+  )
 
 /** Load model/profile/settings and build one send's app + MCP tools and prompt. */
 export const prepareAiRequestConfig = async ({
@@ -615,6 +632,7 @@ export const prepareAiRequestConfig = async ({
   httpClient,
   webToolBudget,
   chatThreadId,
+  readWorkspaceFile,
   telemetry,
 }: PrepareAiRequestConfigOptions): Promise<PreparedAiRequestConfig> => {
   telemetry?.startPhase('request_config')
@@ -640,11 +658,16 @@ export const prepareAiRequestConfig = async ({
   const profile = await getModelProfile(db, modelId)
   const storedSkills = await getAllSkills(db)
   telemetry?.endPhase('request_config')
-  const skills = selectEnabledSkillDefinitions(storedSkills)
   const supportsTools = model.toolUsage !== 0
   // Minimal mode offers no `skill` tool, so the widget contracts it keeps are
   // inlined into the prompt (as for non-tool models) instead of loaded on demand.
   const loadsSkillsByTool = supportsTools && !selectMinimalMode(useConfigStore.getState().config)
+  // The Office skills teach `run_office_script`, which only tool-capable models get, and arrive through the `skill`
+  // tool. Without both, the prompt, the tool and a `/office-…` token must not offer them.
+  const skills = selectEnabledSkillDefinitions(storedSkills, loadsSkillsByTool)
+  const officeSkills = skills.filter(({ id }) => isOfficeSkillId(id)).map(({ name }) => name)
+  // Skills the `skill` tool returned in this send, so a failed Office script does not ask for one again.
+  const loadedSkills = new Set<string>()
   // Loaded before the toolset so the cross-chat search tool can be registered
   // conditionally alongside the other app tools.
   const projectContext = await loadProjectContextForThread(db, chatThreadId)
@@ -656,6 +679,7 @@ export const prepareAiRequestConfig = async ({
         sourceCollector,
         { settings, integrationStatus, ...(await loadConnectedSearchApis(db)) },
         webToolBudget?.priorSources,
+        { chatThreadId, readWorkspaceFile, skills: officeSkills, loadedSkills },
       )
     : []
   const appToolset = addSkillTool(
@@ -663,6 +687,7 @@ export const prepareAiRequestConfig = async ({
     skills,
     loadsSkillsByTool,
     webToolBudget,
+    loadedSkills,
   )
   // Cross-chat recall is a tool, not an injection: it costs nothing when unused
   // and leaves the cacheable stable prompt untouched. Only registered when there
@@ -782,7 +807,7 @@ export const prepareAiRequestConfig = async ({
     integrationStatus: integrationStatuses.length > 0 ? integrationStatuses.join(', ') : 'READY',
     availableToolNames: Object.keys(merged.toolset),
     mcpServersSummary: merged.summary,
-    skills: selectPromptSkillDefinitions(storedSkills, supportsTools),
+    skills: selectPromptSkillDefinitions(storedSkills, supportsTools, loadsSkillsByTool),
     supportsTools: loadsSkillsByTool,
     // The resolved locale rather than a `language` settings read: it is synchronous, so
     // it cannot lag behind the watched-query hydration, and it already folds in browser
@@ -1034,8 +1059,9 @@ export const aiFetchStreamingResponse = async ({
     // the context-overflow estimate so the budget and the actual injection
     // stay in lockstep.
     const lastUserText = extractLastUserText(messages)
-    const instructionBySlug = new Map(skills.map(({ name, instruction }) => [name, instruction]))
-    const skillSystemMessages = resolveSkillTokenInstructions(lastUserText, instructionBySlug)
+    const skillSystemMessages = await loadSkillTokenInstructions(lastUserText, skills)
+    // An Office manual can take a network round trip to load; a send stopped meanwhile must not reach the provider.
+    abortSignal?.throwIfAborted()
 
     // Preserve the upstream status (and detail) when surfacing an API error to
     // the client. The SDK otherwise flattens an APICallError to a bare "Bad
@@ -1221,6 +1247,10 @@ export const aiFetchStreamingResponse = async ({
 
     return createUIMessageStreamResponse({ stream })
   } catch (error) {
+    // A stopped send is not a failure, so the caller gets its abort back rather than an error response.
+    if (abortSignal?.aborted) {
+      throw error
+    }
     console.error('aiFetchStreamingResponse error', error)
     const status =
       (error as { status?: number }).status ?? (error as { response?: { status?: number } }).response?.status

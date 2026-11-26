@@ -66,16 +66,17 @@ export const getCurrentOtp = async (email: string): Promise<string | null> => {
 }
 
 /**
- * Step-up code for a recovery-phrase change (THU-875). Dev/e2e sends no email,
- * so specs read the code where the inbox would — the verification table. The
- * row is the app's own, not better-auth's: the `-step-up-otp-` infix is
- * unreachable from better-auth's closed OTP-type enum, which is what keeps the
- * unauthenticated `/email-otp/check-verification-otp` away from it. `value` is
- * stored as `otp:attempts` (see `backend/src/lib/step-up-otp.ts`).
+ * Step-up code for an action (default: a recovery-phrase change). Dev/e2e
+ * sends no email, so specs read the code where the inbox would — the
+ * verification table. The row is the app's own, not better-auth's: the
+ * `-step-up-otp-` infix is unreachable from better-auth's closed OTP-type enum,
+ * which is what keeps the unauthenticated `/email-otp/check-verification-otp`
+ * away from it. `value` is stored as `otp:attempts` (see
+ * `backend/src/lib/step-up-otp.ts`).
  */
 export const waitForStepUpOtp = async (
   email: string,
-  action: 'recovery-phrase-change' | 'account-deletion' = 'recovery-phrase-change',
+  action: 'recovery-phrase-change' | 'account-deletion' | 'v1-phrase-recovery' = 'recovery-phrase-change',
 ): Promise<string> =>
   poll(async () => {
     const rows = await sql<{ value: string }[]>`

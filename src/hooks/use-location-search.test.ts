@@ -232,6 +232,9 @@ describe('useLocationSearch', () => {
           promise.text = async () => '[]'
           return promise
         },
+        head: () => {
+          throw new Error('not implemented')
+        },
         post: () => {
           throw new Error('not implemented')
         },

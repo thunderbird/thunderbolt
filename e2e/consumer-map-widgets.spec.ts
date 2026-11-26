@@ -42,8 +42,11 @@ test('history maps initialize near the viewport and retain their instance after 
   // An unchanged canvas identity proves scrolling did not replace the map and reset its pan/zoom.
   await canvas.evaluate((element) => element.setAttribute('data-retained-map', 'original'))
   await first.getByRole('button', { name: 'Zoom in', exact: true }).click()
-  await canvas.click({ position: { x: after.width / 2, y: 160 } })
-  await expect(first.locator('.maplibregl-popup')).toContainText('Seattle')
+  // The widget drops its skeleton on map load, before the point can be clicked, so the first click may hit nothing.
+  await expect(async () => {
+    await canvas.click({ position: { x: after.width / 2, y: 160 }, timeout: 2_000 })
+    await expect(first.locator('.maplibregl-popup')).toContainText('Seattle', { timeout: 1_000 })
+  }).toPass({ timeout: 15_000 })
 
   await page.locator('[data-message-id]').last().scrollIntoViewIfNeeded()
   await expect(first).not.toBeInViewport()

@@ -4,7 +4,7 @@
 
 /**
  * Lightweight HTTP client replacing ky.
- * Provides .get()/.post()/.delete() with auto JSON parsing,
+ * Provides .get()/.head()/.post()/.delete() with auto JSON parsing,
  * error throwing on non-2xx, prefixUrl, and beforeRequest hooks.
  */
 
@@ -40,6 +40,7 @@ export type RequestOptions = {
   body?: BodyInit
   credentials?: RequestCredentials
   redirect?: RequestRedirect
+  cache?: RequestCache
   signal?: AbortSignal
   fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 }
@@ -51,6 +52,7 @@ export type ResponsePromise = Promise<Response> & {
 
 export type HttpClient = {
   get: (url: string, options?: RequestOptions) => ResponsePromise
+  head: (url: string, options?: RequestOptions) => ResponsePromise
   post: (url: string, options?: RequestOptions) => ResponsePromise
   delete: (url: string, options?: RequestOptions) => ResponsePromise
 }
@@ -154,6 +156,7 @@ export const createClient = (config: HttpClientConfig = {}): HttpClient => {
       body,
       credentials: options.credentials ?? config.credentials,
       redirect: options.redirect,
+      cache: options.cache,
       signal,
     })
 
@@ -178,6 +181,7 @@ export const createClient = (config: HttpClientConfig = {}): HttpClient => {
 
   return {
     get: (url, options) => request('GET', url, options),
+    head: (url, options) => request('HEAD', url, options),
     post: (url, options) => request('POST', url, options),
     delete: (url, options) => request('DELETE', url, options),
   }
@@ -300,6 +304,7 @@ export const createStandaloneClient = (config: Pick<HttpClientConfig, 'fetch'> =
   }
   return {
     get: (url, options) => request('get', url, options),
+    head: (url, options) => request('head', url, options),
     post: (url, options) => request('post', url, options),
     delete: (url, options) => request('delete', url, options),
   }

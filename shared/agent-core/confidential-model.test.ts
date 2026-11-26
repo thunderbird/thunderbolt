@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import type { AssistantMessageEvent, Context } from '@earendil-works/pi-ai'
+import { defaultModelKimiK31Pro, defaultModels } from '../defaults/models.ts'
 import { buildConfidentialModel, type BuildConfidentialModelOptions } from './index.ts'
 
 const context: Context = { messages: [{ role: 'user', content: 'hi', timestamp: 0 }] }
@@ -119,6 +120,43 @@ describe('buildConfidentialModel compatibility', () => {
       expect(payloads[0]).not.toHaveProperty('reasoning_effort')
     },
   )
+
+  // Tinfoil's supported_efforts for Kimi K3.1 Pro are low, high and max; every
+  // Pi level lands on one of them as a top-level reasoning_effort, and an
+  // omitted level leaves the provider default.
+  it.each([
+    ['omitted', undefined, undefined],
+    ['minimal', 'minimal', 'low'],
+    ['low', 'low', 'low'],
+    ['medium', 'medium', 'high'],
+    ['high', 'high', 'high'],
+    ['xhigh', 'xhigh', 'max'],
+    ['max', 'max', 'max'],
+  ] as const)('sends Kimi K3.1 Pro reasoning %s as Tinfoil effort %s', async (_name, reasoning, effort) => {
+    const payloads: Array<Record<string, unknown>> = []
+    const built = build({
+      modelId: defaultModelKimiK31Pro.model,
+      vendor: defaultModelKimiK31Pro.vendor,
+      fetch: async (_input, init) => {
+        payloads.push(await new Response(init?.body).json())
+        return sseResponse(defaultModelKimiK31Pro.model)
+      },
+    })
+
+    await providerFor(built).streamSimple(built.model, context, { reasoning }).result()
+
+    expect(payloads).toHaveLength(1)
+    expect(payloads[0]).toMatchObject({ model: defaultModelKimiK31Pro.model })
+    expect(payloads[0].reasoning_effort).toBe(effort)
+    expect(payloads[0]).not.toHaveProperty('thinking')
+    expect(payloads[0]).not.toHaveProperty('chat_template_kwargs')
+  })
+
+  it.each(
+    defaultModels.filter(({ isConfidential }) => isConfidential === 1).map((model) => [model.name, model] as const),
+  )('resolves Pi compatibility for the shipped confidential model %s', (_name, model) => {
+    expect(() => build({ modelId: model.model, vendor: model.vendor })).not.toThrow()
+  })
 
   it.each([
     ['unknown vendor', 'unknown'],

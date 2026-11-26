@@ -72,8 +72,9 @@ parses back out:
 { "error": "<responseBody or message>", "status": 400, "isRetryable": false, "kind": "provider" }
 ```
 
-`ChatErrorKind` ([`src/lib/error-utils.ts:9`](../../../src/lib/error-utils.ts)) is closed at seven values:
-`attestation`, `timeout`, `rate-limit`, `provider`, `network`, `connection-lost`, `tools-unsupported`. It needs an
+`ChatErrorKind` ([`src/lib/error-utils.ts:9`](../../../src/lib/error-utils.ts)) is closed at nine values:
+`attestation`, `timeout`, `rate-limit`, `provider`, `network`, `connection-lost`, `tools-unsupported`,
+`agent-unavailable`, `output-limit`. It needs an
 envelope because the AI SDK's `onError` returns a string, flattening an `APICallError` to a bare
 `"Bad Request"` and losing the status the retry and attachment-remediation layers need.
 
@@ -90,8 +91,9 @@ envelope because the AI SDK's `onError` returns a string, flattening an `APICall
    **trusts** a valid `kind` rather than re-deriving; older payloads predate the field, so it falls
    back to re-classifying from the embedded status and message.
 
-That trust is load-bearing: `connection-lost` is the one kind `classifyErrorKind` never produces, so
-the ACP adapter mints it pre-serialized when a transport dies
+That trust is load-bearing: `classifyErrorKind` never produces `connection-lost`, `agent-unavailable` or
+`output-limit`, so their senders mint them pre-serialized. The built-in agent mints `output-limit` in
+`shared/agent-core/pi-to-aisdk-stream.ts`, and the ACP adapter mints `connection-lost` when a transport dies
 ([`src/acp/acp-adapter.ts:407`](../../../src/acp/acp-adapter.ts)). No HTTP status marks a dropped agent
 socket, and the agent may already have performed side effects.
 

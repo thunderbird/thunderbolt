@@ -20,12 +20,13 @@ import { buildOpenAiCompatModel, type OpenAiCompatFetch } from './openai-compat-
 import type { ReasoningEffort } from '../reasoning-effort.ts'
 
 const vendorAliases = { zhipu: 'zai' } as const
-// pi-ai 0.82.1 has no glm-5.3 and no deepseek-v4-1-flash; swap each alias for the real catalog id when upgrading Pi
+// pi-ai 0.82.1 has no glm-5.3, deepseek-v4-1-flash or kimi-k3.1-pro; swap each alias for the real catalog id when upgrading Pi
 const modelAliases = {
   'glm-5-2': 'glm-5.2',
   'glm-5-3': 'glm-5.2',
   'glm-5-3-flash': 'glm-5.2',
   'deepseek-v4-1-flash': 'deepseek-v4-flash',
+  'kimi-k3-1-pro': 'kimi-k3',
 } as const
 
 /** Stable structural codes surfaced by confidential model construction and transport. */
@@ -85,6 +86,21 @@ export const resolveConfidentialModelCompatibility = (
     return {
       ...resolved,
       thinkingLevelMap: { ...resolved.thinkingLevelMap, low: 'low', medium: 'high', high: 'high', max: 'max' },
+    }
+  }
+  // Tinfoil serves Kimi K3.1 Pro with low, high and max only; map every Pi level onto them.
+  if (model.modelId === 'kimi-k3-1-pro') {
+    return {
+      ...resolved,
+      thinkingLevelMap: {
+        ...resolved.thinkingLevelMap,
+        minimal: 'low',
+        low: 'low',
+        medium: 'high',
+        high: 'high',
+        xhigh: 'max',
+        max: 'max',
+      },
     }
   }
   // Legacy inherited Pi levels use the chat-template compatibility mapping.
@@ -208,6 +224,11 @@ const createAttestationNormalizingProvider = (
   })
 }
 
+/** Output budget for confidential models, which serve long outputs. It must hold
+ *  the reasoning plus a long tool call: DeepSeek reasons ~8k tokens and writes an
+ *  ~8k office script on one step, which the 8k default cut off. */
+const confidentialMaxTokens = 32_768
+
 /** Build a catalog-driven confidential model over an already-attested fetch. */
 export const buildConfidentialModel = (
   options: BuildConfidentialModelOptions,
@@ -234,6 +255,7 @@ export const buildConfidentialModel = (
     fetch,
     reasoning: options.reasoning,
     contextWindow: options.contextWindow,
+    maxTokens: confidentialMaxTokens,
     supportsImages: options.supportsImages,
     getReasoningEffort: options.getReasoningEffort,
     effortFormat: 'tinfoil',

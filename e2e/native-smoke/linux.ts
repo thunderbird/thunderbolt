@@ -3,8 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import assert from 'node:assert/strict'
-import { resolve } from 'node:path'
-import { Key, remote } from 'webdriverio'
+import { execFileSync } from 'node:child_process'
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
+import { Key, remote, type ChainablePromiseElement } from 'webdriverio'
 import { z } from 'zod'
 import { fakeProviderReply } from '../fake-provider'
 import { clickButton, completeSetup } from './setup-wizard'
@@ -34,6 +37,97 @@ const invokeNative = async (command: string, args: Record<string, NativeValue> =
   nativeValueSchema.parse(
     await browser.execute('return window.__TAURI__.core.invoke(arguments[0], arguments[1])', command, args),
   )
+
+/** Drive the X pointer and keyboard as a person would. */
+const xdotool = (...args: string[]) => execFileSync('xdotool', args)
+
+/** Offer `path` the way a file manager does, or a link the way a browser does (see file-source.py), while `act` runs. */
+const whileOffering = async (
+  mode: 'drag' | 'copy' | 'drag-link' | 'copy-link',
+  path: string,
+  act: () => Promise<void>,
+) => {
+  const source = Bun.spawn(['python3', 'e2e/native-smoke/file-source.py', mode, path])
+  try {
+    assert.equal((await source.stdout.getReader().read()).done, false, `file-source.py ${mode} exited early`)
+    await act()
+  } finally {
+    source.kill()
+    await source.exited
+  }
+}
+
+/** Drag the offered file from file-source.py's window onto the composer with real X pointer input. */
+const dragOnto = async (composer: ChainablePromiseElement) => {
+  const frame = await browser.getWindowRect()
+  const box = await browser.getElementRect(await composer.elementId)
+  // Under Xvfb the window has no frame, so the page starts at the window's corner.
+  const to = { x: frame.x + box.x + box.width / 2, y: frame.y + box.y + box.height / 2 }
+  // file-source.py puts its 120-pixel window at the screen's top-left corner. GTK starts a drag only once the
+  // pointer moves, and the app follows it only while it keeps moving, so the pointer travels in steps.
+  const steps = Array.from({ length: 20 }, (_, step) => {
+    const at = (from: number, end: number) => String(Math.round(from + ((end - from) * (step + 1)) / 20))
+    return ['mousemove', at(60, to.x), at(60, to.y), 'sleep', '0.05']
+  })
+  xdotool('mousemove', '60', '60', 'mousedown', '1', 'sleep', '0.3', ...steps.flat(), 'sleep', '0.5', 'mouseup', '1')
+}
+
+/** Wait for the chip of an attached file, then remove it so the next check starts from an empty composer. */
+const removeAttachment = async (name: string) => {
+  const remove = await browser.$(`button[aria-label="Remove ${name}"]`)
+  await remove.waitForClickable({ timeout: 30_000 })
+  await remove.click()
+  await remove.waitForExist({ reverse: true })
+}
+
+/** Attach files in the two ways WebKitGTK hides from the page: a drag and a paste from a file manager. */
+const attachFromFileManager = async (composer: ChainablePromiseElement) => {
+  const folder = mkdtempSync(join(tmpdir(), 'native-smoke-'))
+  const file = (name: string) => {
+    const path = join(folder, name)
+    writeFileSync(path, 'Native smoke attachment.\n')
+    return path
+  }
+  await whileOffering('drag', file('dragged.txt'), async () => {
+    await dragOnto(composer)
+    await removeAttachment('dragged.txt')
+  })
+  await whileOffering('copy', file('pasted.txt'), async () => {
+    await composer.click()
+    xdotool('key', 'ctrl+v')
+    await removeAttachment('pasted.txt')
+  })
+  // The native drop handler takes a dragged link from the page, and GTK reads a link offered as bare text/plain as
+  // empty, so the composer types both links itself.
+  const link = 'https://example.com/native-smoke?x=1'
+  for (const mode of ['drag-link', 'copy-link'] as const) {
+    await whileOffering(mode, link, async () => {
+      await composer.click()
+      if (mode === 'drag-link') {
+        await dragOnto(composer)
+      } else {
+        xdotool('key', 'ctrl+v')
+      }
+      await browser.waitUntil(async () => (await composer.getValue()) !== '', {
+        timeout: 30_000,
+        timeoutMsg: `A link from ${mode} was not typed into the composer`,
+      })
+      await browser.pause(500) // A second insertion would land right after the first.
+      assert.equal(await composer.getValue(), link, `A link from ${mode} should be typed once, unchanged`)
+      xdotool('key', 'ctrl+a', 'BackSpace')
+    })
+  }
+  const locked = file('locked.txt')
+  chmodSync(locked, 0)
+  assert.throws(() => readFileSync(locked), 'Run the smoke as a user that file permissions apply to')
+  await whileOffering('drag', locked, async () => {
+    await dragOnto(composer)
+    await browser.waitUntil(
+      async () => (await (await browser.$('body')).getText()).includes(`Couldn't read "locked.txt".`),
+      { timeout: 30_000, timeoutMsg: 'An unreadable file was not reported' },
+    )
+  })
+}
 
 try {
   // A fresh install opens the setup wizard. Reload it here: under tauri-driver a reload drops the app's
@@ -90,6 +184,10 @@ try {
   await browser.pause(1000) // Keep the complete reply visible in the recording.
   await browser.waitUntil(() => Date.now() - appReadyAt >= 6000, { timeout: 10_000 })
   assert.equal((await (await browser.$('body')).getText()).includes('Update failed'), false)
+  if (setup === 'local') {
+    // Attaching does not depend on the setup choice, so one pass covers it.
+    await attachFromFileManager(composer)
+  }
 
   // Linux must never put an external page in a native sidebar webview (THU-1042).
   await (await browser.$(`a[href="${previewUrl}"]`)).click()

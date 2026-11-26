@@ -27,6 +27,12 @@ declare module '*.po' {
   export const messages: Messages
 }
 
+// A module bundled into one classic script, as text (scripts/office-sandbox-script.ts).
+declare module '*?sandbox-script' {
+  const script: string
+  export default script
+}
+
 // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
 interface ImportMeta {
   readonly env: ImportMetaEnv

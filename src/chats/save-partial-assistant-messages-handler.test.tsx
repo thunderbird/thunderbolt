@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { getMessage, saveStreamingAssistantMessage } from '@/dal/chat-messages'
+import { getDb } from '@/db/database'
+import { chatThreadsTable } from '@/db/tables'
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
 import { createMockChatInstance, createMockUseChat, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
@@ -148,6 +151,58 @@ describe('SavePartialAssistantMessagesHandler', () => {
     ])
   })
 
+  it('persists legacy render_html when it is the only recoverable part', async () => {
+    const legacy = {
+      type: 'tool-render_html',
+      toolCallId: 'html',
+      state: 'input-streaming',
+      input: { html: '<p>Partial' },
+    } as const
+    const message: ThunderboltUIMessage = { id: 'm1', role: 'assistant', parts: [legacy] }
+    const chatInstance = new StreamingChat({ messages: [message] })
+    chatInstance.transition('streaming')
+    hydrateStore({ chatInstance, chatThread: null, id: 'thread-1', selectedModel: null, triggerData: null })
+    const db = getDb()
+    await db.insert(chatThreadsTable).values({ id: 'thread-1', title: 'Test', isEncrypted: 0 })
+    const saveStreamingMessage = mock(({ threadId, message, parentId }: StreamingSaveParams) =>
+      saveStreamingAssistantMessage(db, threadId, message, parentId),
+    )
+    render(<SavePartialAssistantMessagesHandler saveStreamingMessage={saveStreamingMessage} />, {
+      wrapper: createQueryTestWrapper(),
+    })
+
+    await saveStreamingMessage.mock.results[0]?.value
+    expect((await getMessage(db, message.id))?.parts).toEqual([legacy])
+  })
+
+  it('keeps a marked tool once its input is available', () => {
+    const writing = {
+      type: 'tool-run_office_script',
+      toolCallId: 'office',
+      state: 'input-streaming',
+      input: undefined,
+      toolMetadata: { piInputHeader: true },
+    } as const
+    const dynamic = { ...writing, type: 'dynamic-tool', toolName: 'custom', toolCallId: 'custom' } as const
+    const ready = {
+      ...writing,
+      toolCallId: 'ready',
+      state: 'input-available',
+      input: { script: 'saveFile()' },
+    } as const
+    const message: ThunderboltUIMessage = { id: 'm1', role: 'assistant', parts: [writing, ready, dynamic] }
+    const chatInstance = new StreamingChat({ messages: [message] })
+    chatInstance.transition('streaming')
+    hydrateStore({ chatInstance, chatThread: null, id: 'thread-1', selectedModel: null, triggerData: null })
+    const saveStreamingMessage = mock((_params: StreamingSaveParams) => Promise.resolve())
+    render(<SavePartialAssistantMessagesHandler saveStreamingMessage={saveStreamingMessage} />, {
+      wrapper: createQueryTestWrapper(),
+    })
+
+    expect(saveStreamingMessage.mock.calls[0][0].message.parts).toEqual([ready])
+    expect(chatInstance.messages[0].parts).toEqual([writing, ready, dynamic])
+  })
+
   it('should render children without modification', () => {
     const mockSaveStreamingMessage = mock(() => Promise.resolve())
     const mockChatInstance = createMockChatInstance()
@@ -246,7 +301,22 @@ describe('SavePartialAssistantMessagesHandler', () => {
     expect(mockSaveStreamingMessage).not.toHaveBeenCalled()
   })
 
-  it.each([{ parts: [] }, { parts: [{ type: 'step-start' }] }] satisfies { parts: ThunderboltUIMessage['parts'] }[])(
+  it.each([
+    { parts: [] },
+    { parts: [{ type: 'step-start' }] },
+    {
+      parts: [
+        { type: 'step-start' },
+        {
+          type: 'tool-run_office_script',
+          toolCallId: 'office',
+          state: 'input-streaming',
+          input: undefined,
+          toolMetadata: { piInputHeader: true },
+        },
+      ],
+    },
+  ] satisfies { parts: ThunderboltUIMessage['parts'] }[])(
     'does not persist stream framing without assistant content (%j)',
     async ({ parts }) => {
       const mockSaveStreamingMessage = mock(() => Promise.resolve())

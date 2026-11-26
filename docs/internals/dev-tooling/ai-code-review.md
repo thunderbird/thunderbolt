@@ -4,17 +4,17 @@ Every non-draft pull request from a branch in this repository (Dependabot except
 `thunder-deep-review`: inline comments by `github-actions[bot]` under a review body headed
 "🔭 thunder-deep-review (advisory)".
 
-| Aspect        | Behaviour                                                                                                                                   |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Trigger       | `pull_request`: `opened, synchronize, reopened, ready_for_review`; `labeled` only for `review:full` (`thunder-deep-review.yml:30`)            |
-| Gated off     | fork PRs, Dependabot, drafts (`thunder-deep-review.yml:46-50`)                                                                                 |
-| Posts         | one PR review with `event: 'COMMENT'`, max 50 inline comments                                                                               |
-| Never does    | approve, request changes, or merge; it never gates anything                                                                                 |
-| On error      | logs and exits 0 without posting (`review-orchestrator.mjs`); the next push retries                                                     |
-| Cost guards   | 60s debounce `sleep` (`thunder-deep-review.yml:102`), `cancel-in-progress` keyed on the PR number (`:52-55`), `timeout-minutes: 30` (`:66`) |
-| Permissions   | `contents: read`, `pull-requests: write` (`thunder-deep-review.yml:37-40`)                                                  |
-| Secret        | `ANTHROPIC_API_KEY` only                                                                                                                    |
-| Run it myself | `/thunder-deep-review` (Claude Code) or `$thunder-deep-review` (Codex) in this working tree                                                 |
+| Aspect        | Behaviour                                                                                                                                                                  |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Trigger       | `pull_request`: `opened, synchronize, reopened, ready_for_review`; `labeled` only for `review:full` (`thunder-deep-review.yml:30`)                                         |
+| Gated off     | fork PRs, Dependabot, drafts (`thunder-deep-review.yml:46-50`)                                                                                                             |
+| Posts         | one PR review with `event: 'COMMENT'`, max 50 inline comments                                                                                                              |
+| Never does    | approve, request changes, or merge; it never gates anything                                                                                                                |
+| On error      | logs and exits 0 without posting (`review-orchestrator.mjs`); the next push retries                                                                                        |
+| Cost guards   | 1-minute `review-debounce` environment wait timer (`thunder-deep-review.yml:66-68`), `cancel-in-progress` keyed on the PR number (`:52-55`), `timeout-minutes: 30` (`:74`) |
+| Permissions   | `contents: read`, `pull-requests: write` (`thunder-deep-review.yml:37-40`)                                                                                                 |
+| Secret        | `ANTHROPIC_API_KEY` only                                                                                                                                                   |
+| Run it myself | `/thunder-deep-review` (Claude Code) or `$thunder-deep-review` (Codex) in this working tree                                                                                |
 
 ## Can it block my merge? No
 
@@ -35,15 +35,15 @@ The job `if:` hard-gates on three conditions:
 - **Not Dependabot.**
 - **Not a draft**; `ready_for_review` is in the trigger list, so un-drafting starts a review.
 
-Rapid pushes cancel each other during the 60-second debounce at zero model cost; `timeout-minutes: 30` guards a hung
+Rapid pushes cancel each other during the 60-second wait, before a runner is assigned, at zero model cost; `timeout-minutes: 30` guards a hung
 model call.
 
 ## Two model steps: recall, then a precision gate
 
-| Step                    | Configuration                                           | Job                                                                     |
-| ----------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Recall (`:197`)         | `thunder-deep-review` skill, `--effort high`, $45 budget | Over-generates _candidate_ findings, including unsure ones              |
-| Precision gate (`:403`) | `--effort medium`, $3 budget                            | Decides which candidates a senior engineer would leave in a real review |
+| Step                    | Configuration                                            | Job                                                                     |
+| ----------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Recall (`:222`)         | `thunder-deep-review` skill, `--effort high`, $45 budget | Over-generates _candidate_ findings, including unsure ones              |
+| Precision gate (`:439`) | `--effort medium`, $3 budget                             | Decides which candidates a senior engineer would leave in a real review |
 
 The split fixes the "always finds something" failure mode of single-pass review bots: high recall alone buries real
 bugs in noise, one precision-tuned pass misses things.
@@ -53,8 +53,8 @@ bugs in noise, one precision-tuned pass misses things.
   byte-for-byte verbatim.
 - It is skipped when recall returns zero candidates; empty in can only yield empty out, so the call would be pure
   spend.
-- Read-only tools only: `Read,Grep,Glob,Skill,Task,Agent` for recall (`:252`), `Read,Grep,Glob` for the gate
-  (`:426`).
+- Read-only tools only: `Read,Grep,Glob,Skill,Task,Agent` for recall (`:274`), `Read,Grep,Glob` for the gate
+  (`:460`).
 - Recall cannot write files, so it returns `structured_output` against a `--json-schema` and a shell step persists it
   to disk.
 - That step **fails loudly** on an empty `structured_output`: a cancelled or errored model step must be a red check,
@@ -65,11 +65,11 @@ bugs in noise, one precision-tuned pass misses things.
 The model does **no** GitHub I/O. All of it lives in `.github/scripts/review-orchestrator.mjs` (zero npm
 dependencies, built-in `fetch`). Two phases surround the model steps; a telemetry phase runs after each model step.
 
-| Phase  | Step                                                                                | What it does                                                                                                     |
-| ------ | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `pre`  | [`thunder-deep-review.yml`](../../../.github/workflows/thunder-deep-review.yml) | Chooses the review scope; writes the model patch, the PR patch for anchors, the previous-findings file and the mode flags |
-| `post` | [`thunder-deep-review.yml`](../../../.github/workflows/thunder-deep-review.yml) | Validates the model JSON, anchors findings to diff lines, dedups and posts one PR review |
-| `telemetry` | After recall and gate | Logs cost, turns, per-model tokens/cache usage and Agent/Task call counts; warns if metrics are unavailable |
+| Phase       | Step                                                                            | What it does                                                                                                              |
+| ----------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `pre`       | [`thunder-deep-review.yml`](../../../.github/workflows/thunder-deep-review.yml) | Chooses the review scope; writes the model patch, the PR patch for anchors, the previous-findings file and the mode flags |
+| `post`      | [`thunder-deep-review.yml`](../../../.github/workflows/thunder-deep-review.yml) | Validates the model JSON, anchors findings to diff lines, dedups and posts one PR review                                  |
+| `telemetry` | After recall and gate                                                           | Logs cost, turns, per-model tokens/cache usage and Agent/Task call counts; warns if metrics are unavailable               |
 
 - **The incremental review patch comes from the commits Compare API.** The paginated `/pulls/{n}/files` API supplies
   the full review scope and the separate merge-base..head patch used to anchor `POST /pulls/{n}/reviews` comments.
@@ -94,12 +94,12 @@ so the next delta starts at that head without retrying the missing patches. Only
 
 Spend is decided by code, not by the model (`computeDeepMode`, `review-orchestrator.mjs`).
 
-| Flag          | Trigger                                                                | Effect                                                             |
-| ------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `deepMode`    | ≥ 600 changed lines or ≥ 40 files in the reviewed scope (the delta on incremental runs), or a `review:deep` label | The skill adds a narrow micro-specialist for each routed lane |
-| `boundedMode` | The PR exceeds GitHub's 3000-file listing cap                          | The diff handed to the model is clipped to the first 200 files     |
-| `securityMode` | A changed path matches `SECURITY_PATH_MATCHERS` | The skill adds the threat-model security dimension |
-| `lanes`, `domainReviewers` | Always set, from the changed paths (`selectLanes`) | The skill spawns only these lanes and domain reviewers |
+| Flag                       | Trigger                                                                                                           | Effect                                                         |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `deepMode`                 | ≥ 600 changed lines or ≥ 40 files in the reviewed scope (the delta on incremental runs), or a `review:deep` label | The skill adds a narrow micro-specialist for each routed lane  |
+| `boundedMode`              | The PR exceeds GitHub's 3000-file listing cap                                                                     | The diff handed to the model is clipped to the first 200 files |
+| `securityMode`             | A changed path matches `SECURITY_PATH_MATCHERS`                                                                   | The skill adds the threat-model security dimension             |
+| `lanes`, `domainReviewers` | Always set, from the changed paths (`selectLanes`)                                                                | The skill spawns only these lanes and domain reviewers         |
 
 Deep and security mode exclude ordinary Markdown/MDX, the `docs/` tree, lockfiles and locale catalogs
 (`.po` and compiled `locales/**/messages.ts`). Markdown prompts under `.claude/` and `.agents/` and `AGENTS.md`/`CLAUDE.md`
@@ -221,13 +221,13 @@ skill and can then apply the fixes and re-run the checks; `thunder-deep-review` 
 
 ## Where the code lives
 
-| Path                                             | Role                                                        |
-| ------------------------------------------------ | ----------------------------------------------------------- |
-| `.github/workflows/thunder-deep-review.yml`      | Triggers, gates, the two model steps, file handoff          |
-| `.github/scripts/review-orchestrator.mjs`        | GitHub I/O: diff, dedup, post; model telemetry |
-| `.github/scripts/review-orchestrator.test.mjs`   | Unit tests for the pure orchestration logic                 |
-| `.agents/skills/thunder-deep-review/SKILL.md`    | The reviewer itself: lanes, routing table, both output contracts |
+| Path                                             | Role                                                                            |
+| ------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `.github/workflows/thunder-deep-review.yml`      | Triggers, gates, the two model steps, file handoff                              |
+| `.github/scripts/review-orchestrator.mjs`        | GitHub I/O: diff, dedup, post; model telemetry                                  |
+| `.github/scripts/review-orchestrator.test.mjs`   | Unit tests for the pure orchestration logic                                     |
+| `.agents/skills/thunder-deep-review/SKILL.md`    | The reviewer itself: lanes, routing table, both output contracts                |
 | `.agents/skills/thunder-deep-review/references/` | `R-*` house rules, `INV-*` invariants, heuristics, severity, the two lens files |
-| `.claude/skills/thunder-deep-review`             | Symlink to the skill, for Claude Code                       |
-| `.claude/agents/powersync-sync-reviewer.md`      | Claude Code name for the synced-table lens                  |
-| `.claude/agents/react-effect-reviewer.md`        | Claude Code name for the React lens                         |
+| `.claude/skills/thunder-deep-review`             | Symlink to the skill, for Claude Code                                           |
+| `.claude/agents/powersync-sync-reviewer.md`      | Claude Code name for the synced-table lens                                      |
+| `.claude/agents/react-effect-reviewer.md`        | Claude Code name for the React lens                                             |

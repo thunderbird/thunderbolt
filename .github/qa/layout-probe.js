@@ -353,7 +353,7 @@
       .map((el) => ({ kind: 'unnamed-control', target: `${roleOf(el)} "${whereOf(el).slice(0, 80)}"` }))
   /**
    * The unnamed-control problems, or none when axe fails. A failure leaves the geometry problems in place and is logged
-   * once per page load, never as a `[qa-layout]` line, which would count as a finding.
+   * once per page load, never as a `[qa-layout]` line, which would count as a finding. noise.txt matches its text, so change both together.
    */
   const unnamedControls = async () => {
     try {

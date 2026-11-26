@@ -299,6 +299,37 @@ describe('renderReport', () => {
     expect(report.split('## Coverage')[1]).not.toContain('fix-ab12cd34')
   })
 
+  it('calibrates the reviews of a fix apart from the fix and its correction pass, which share its caps', () => {
+    const report = renderReport({
+      sessions: [
+        session({ charter: 'fix-ab12cd34', cost_usd: 8 }),
+        session({ charter: 'fix-ab12cd34-correct', cost_usd: 4 }),
+        session({ charter: 'fix-ab12cd34-review', cost_usd: 1 }),
+        session({ charter: 'fix-ab12cd34-review-again', cost_usd: 2 }),
+      ],
+      coverage: new Map(),
+      found: [],
+    })
+    expect(report).toContain('| fix | cost | 2 | $8.00 | $12.00 |')
+    expect(report).toContain('| review | cost | 2 | $2.00 | $3.00 |')
+    expect(report).not.toContain('| explore |')
+  })
+
+  it('notes that a cut review gave no verdict, and a cut correction pass may leave a partial patch', () => {
+    const report = renderReport({
+      sessions: [
+        session({ charter: 'fix-ab12cd34-review', turns: 40, cost_usd: 5, stop: 'timeout' }),
+        session({ charter: 'fix-ab12cd34-correct', turns: 90, cost_usd: 8, stop: 'max_turns' }),
+      ],
+      coverage: new Map(),
+      found: [],
+    })
+    expect(report).toContain(
+      '**fix-ab12cd34-review**: TIMEOUT after 40 turns, $5.00; it gave no verdict, so the patch counts as rejected',
+    )
+    expect(report).toContain('**fix-ab12cd34-correct**: TURN CAP after 90 turns, $8.00; its patch may be partial')
+  })
+
   it('shows free sessions apart from the charters: case, platform, what was tried and their own findings', () => {
     const free = (charterDir: string, id: string) => ({ ...verifiedFinding('chat', 'assert-failed', id), charterDir })
     const desktop = 'free-trip-planner-desktop'

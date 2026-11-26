@@ -67,7 +67,10 @@ type Proof = { kind: 'spec'; spec: string } | { kind: 'spec' | 'visual'; flow: s
 /**
  * One fix-job matrix entry. `finding` holds the only ticket fields the fix agent sees. `real` marks a session on the
  * real AI providers, where the workflow verifies the fix on them too. `branch` is the branch route checked, which
- * publish pushes to. `unitTest` asks the patch for a unit test that fails without the fix (see `needsUnitTest`).
+ * publish pushes to. `unitTest` asks the patch for a unit test that fails without the fix, when any finding of the
+ * bug needs one (see `needsUnitTest`), and `unitTestFor` is that finding when it is not the task's own.
+ * `specs` and `realSpecs` are the web repro specs of every finding of the bug, its own `spec` included, on the fake
+ * and the real AI: a group can hold findings that report part of the bug each, and the patch must pass them all.
  */
 export type FixTask = Ticket &
   Proof & {
@@ -76,9 +79,13 @@ export type FixTask = Ticket &
     platform: string
     real: boolean
     unitTest: boolean
+    unitTestFor?: FindingView
+    specs: string[]
+    realSpecs: string[]
     screenshot?: string
-    finding: Pick<Finding, 'title' | 'area' | 'viewport' | 'oracle' | 'steps' | 'expected' | 'actual'>
+    finding: FindingView
   }
+type FindingView = Pick<Finding, 'title' | 'area' | 'viewport' | 'oracle' | 'steps' | 'expected' | 'actual'>
 /**
  * A flow the native verification runs on its platform with the patched app: a native task's flow, or the repro flow of
  * the same bug found on another platform. `unpatched` asks for a run without the patch too, where the flow must fail:
@@ -209,6 +216,10 @@ const leadRank = (session: string) => {
   return realAiCharters.has(session) && !nativePlatformIds.includes(parseSession(session).platform) ? 1 : 2
 }
 
+/** A web finding seen in a screenshot. The fix agent writes its check only when it is the task's own finding. */
+const webVisual = (finding: { oracle: { type: string }; viewport: string }) =>
+  finding.oracle.type === 'visual' && !nativePlatformIds.includes(finding.viewport)
+
 const proofOf = async (
   outDir: string,
   charterDir: string,
@@ -250,10 +261,19 @@ export const route = async ({
   const filed: Filed[] = await Bun.file(join(outDir, 'filed.json')).json()
   const { confirmed }: Verified = await Bun.file(join(outDir, 'verified.json')).json()
   const plan: FixPlan = { fixes: [], verifyNative: [] }
-  const routed = new Set<string>()
   const tickets = filed.filter((f) => ticketActions.has(f.action === 'dry-run' && !live ? f.would : f.action))
   // Every finding of one bug files with the bug's severity, so `leadRank` decides which of them leads its fix task.
-  tickets.sort((a, b) => priority[a.severity] - priority[b.severity] || leadRank(a.charterDir) - leadRank(b.charterDir))
+  // Among equals a web visual finding leads, so its check gets written and the others join through their specs.
+  const visualFirst = (t: Filed) => {
+    const finding = confirmed.find((v) => v.charterDir === t.charterDir && v.id === t.id)?.finding
+    return finding && webVisual(finding) ? 0 : 1
+  }
+  tickets.sort(
+    (a, b) =>
+      priority[a.severity] - priority[b.severity] ||
+      leadRank(a.charterDir) - leadRank(b.charterDir) ||
+      visualFirst(a) - visualFirst(b),
+  )
   const issueIds = [...new Set(tickets.flatMap((t) => (t.issueId ? [t.issueId] : [])))]
   const [linearById, heads, openPrs] = await Promise.all([
     linearTickets({ fetchFn, key: key ?? '' }, issueIds),
@@ -307,10 +327,10 @@ export const route = async ({
     return branch
   }
 
-  // Every finding of one bug shares its ticket and area, so the first one decides the bug's branch.
+  // Every finding of one bug shares its ticket, and security never shares a group, so the first decides the branch.
   const branches = new Map<string, string | undefined>()
+  const declined = new Set<string>()
   for (const { fp, severity, issueId, identifier, charterDir, id } of tickets) {
-    const fresh = !routed.has(fp)
     const verified = confirmed.find((v) => v.charterDir === charterDir && v.id === id)
     if (!verified) continue
     const finding = findingSchema.parse(verified.finding)
@@ -319,20 +339,34 @@ export const route = async ({
     if (!branch) continue
     const proof = await proofOf(outDir, charterDir, fp, finding)
     if (!proof) {
+      // Every finding's check must pass, so one without its repro holds back the whole bug.
       log(`fix: ${fp} has no repro on disk, so it is not routed`)
+      declined.add(fp)
       continue
     }
     const platform = finding.viewport
+    const lead = plan.fixes.find((t) => t.fp === fp)
     // One fix job per bug (same fp): a second one would fight over its branch, and `leadRank` picks which finding
-    // it gets. Only the other platforms' repro flows join it, since the fix agent writes a visual check for its own
-    // task alone.
-    const flow = 'flow' in proof && (fresh || proof.kind === 'spec') ? proof.flow : undefined
-    if (flow && !plan.verifyNative.some((v) => v.fp === fp && v.platform === platform)) {
+    // it gets. The other findings' repros join it, since a group can hold findings that report part of the bug each.
+    // The fix agent writes a visual check for its own task alone, so any other web visual finding, outranked or a
+    // second one, would go unchecked. It holds back the bug instead.
+    if (lead && webVisual(finding)) {
+      log(
+        `fix: ${identifier ?? fp} has a visual finding that another finding leads, and only the lead gets a visual check, so it is not routed`,
+      )
+      declined.add(fp)
+    }
+    const flow = 'flow' in proof && (!lead || proof.kind === 'spec') ? proof.flow : undefined
+    if (flow && plan.verifyNative.some((v) => v.fp === fp && v.platform === platform)) {
+      // A native pass is named by platform, so a second flow there would go unchecked and could hide a half fix.
+      log(
+        `fix: ${identifier ?? fp} has two findings on ${platform}, and only one flow per platform is checked, so it is not routed`,
+      )
+      declined.add(fp)
+    } else if (flow) {
       const unpatched = proof.kind === 'visual' || realAiCharters.has(charterDir)
       plan.verifyNative.push({ fp, platform, session: charterDir, flow, unpatched })
     }
-    if (!fresh) continue
-    routed.add(fp)
     const task = {
       fp,
       severity,
@@ -346,8 +380,28 @@ export const route = async ({
       screenshot: finding.screenshot ? join(outDir, charterDir, finding.screenshot) : undefined,
       finding: ticketView(finding),
     }
-    plan.fixes.push({ ...task, unitTest: needsUnitTest(task) })
+    if (lead) {
+      if ('spec' in proof) {
+        const specs = task.real ? lead.realSpecs : lead.specs
+        if (!specs.includes(proof.spec)) specs.push(proof.spec)
+      }
+      // The fixer sees only the lead's finding, so it is told which other finding asks for the unit test.
+      if (!lead.unitTest && needsUnitTest(task)) {
+        lead.unitTest = true
+        lead.unitTestFor = task.finding
+      }
+      continue
+    }
+    const own = 'spec' in proof ? [proof.spec] : []
+    plan.fixes.push({
+      ...task,
+      unitTest: needsUnitTest(task),
+      specs: task.real ? [] : own,
+      realSpecs: task.real ? own : [],
+    })
   }
+  plan.fixes = plan.fixes.filter((t) => !declined.has(t.fp))
+  plan.verifyNative = plan.verifyNative.filter((v) => !declined.has(v.fp))
   await writeFile(join(outDir, 'fix-plan.json'), JSON.stringify(plan, null, 2))
   log(`fix: ${plan.fixes.map((t) => t.fp).join(', ') || 'none'}`)
   return plan
@@ -361,7 +415,7 @@ export const route = async ({
  * default guard only for a task marked `unitTest` (see `needsUnitTest`). A security fix, a native one, one from the
  * onboarding build and a real-AI one never add a spec.
  */
-export const whyNoSpec = (task: Omit<FixTask, 'unitTest'>) => {
+export const whyNoSpec = (task: Omit<FixTask, 'unitTest' | 'specs' | 'realSpecs'>) => {
   if (task.finding.area === 'security') return 'security'
   if ('flow' in task) return 'native'
   if (onboardingSession(task.charterDir)) return 'onboarding'
@@ -380,7 +434,7 @@ export const whyNoSpec = (task: Omit<FixTask, 'unitTest'>) => {
  * passed with it, which happy-dom cannot match for geometry, so it is the proof. Data lost on a reload gets the spec
  * and keeps the unit test, since persistence is logic. A native task keeps its Maestro check.
  */
-export const needsUnitTest = (task: Omit<FixTask, 'unitTest'>) =>
+export const needsUnitTest = (task: Omit<FixTask, 'unitTest' | 'specs' | 'realSpecs'>) =>
   !('flow' in task) && (whyNoSpec(task) !== undefined || task.finding.oracle.type === 'lost-on-reload')
 
 /** Named exports of `e2e/test.ts`; a spec importing only these can switch to the repo fixture. */
@@ -948,9 +1002,10 @@ const missingPasses = ({ task, verifyNative, unitTests, artifacts, attempt, unch
   const web = !('flow' in task)
   const checks = [
     { check: 'session', needed: true, reason: 'the fix session did not finish' },
+    { check: 'review', needed: true, reason: 'the independent review did not approve the patch' },
     {
       check: 'replay',
-      needed: 'spec' in task && !task.real,
+      needed: task.specs.length > 0,
       reason: 'the repro spec did not pass three times on the patched code',
     },
     {
@@ -967,7 +1022,7 @@ const missingPasses = ({ task, verifyNative, unitTests, artifacts, attempt, unch
     },
     {
       check: 'real',
-      needed: task.real && 'spec' in task,
+      needed: task.realSpecs.length > 0,
       reason:
         'the repro spec still fails on the real AI providers. That run used the patched frontend and the backend from before the patch',
     },
@@ -1007,7 +1062,8 @@ export const checkPatch = async (run: Run, outDir: string, task: FixTask, verify
   const files = await patchedFiles(run, patch)
   // verify-native-run and verify-real start the backend from the checkout without the patch; only the fix job runs
   // it patched, and only for a fake-AI web spec.
-  const baseBackend = task.real || 'flow' in task || verifyNative.some((v) => v.fp === task.fp)
+  const baseBackend =
+    task.real || task.realSpecs.length > 0 || 'flow' in task || verifyNative.some((v) => v.fp === task.fp)
   return {
     reasons: [
       ...reasons,

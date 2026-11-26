@@ -578,22 +578,20 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    Before any check runs, a fresh session reviews the patch (`review.md`): it gets the task, reads the patch with
    `git diff HEAD` and `git status --short`, the callers of what it changes and the code the finding's steps run, and
    tries to show the fix is wrong (wrong owner or layer, a broken caller, a test off the real path or a proxy, a
-   fake-provider artifact, a missed sibling, one adjacent case). It has `Read`, `Glob`, `Grep`, those two git commands
-   and the unit test runs (`bun run test`, `bun run test:backend`, with the runner's `CI=true`, so Bun writes no
-   snapshot), no edit tool, and answers `approved`, `problems` and
-   `resolved` as structured output. It sits in the fix job, with
+   fake-provider artifact, a missed sibling, one adjacent case). It has `Read`, `Glob`, `Grep` and those two git
+   commands, no edit tool and no test runs (`verify-tests` and `verify-checks` run the tests), and answers
+   `approved`, `problems` and `resolved` as structured output. It sits in the fix job, with
    Fix's QA Anthropic key and read-only token and nothing else, and before the key scan, since after that scan code
    the agent wrote runs outside its sandbox. A rejection runs the fix session once more (`Correct the fix`, the same
    tools and caps) on the fix prompt with the problems appended, then a second review, whose prompt carries the first
    review's problems, numbered: it must find each one fixed, or shown wrong by the code, before it approves, and
-   show it. `Decide the review` counts a second approval only when `resolved` names every earlier problem with the
-   `file:line` that settles it, the command the reviewer says it ran and its result; otherwise it is a rejection,
-   and the diagnosis lists the first review's problems. A local run showed why: a second review approved after three
-   tool calls in 16 seconds. That evidence is the reviewer's own account, which nothing checks against the commands
-   it actually ran: it stops a review that skips the evidence, not one that makes it up. Before each review a step
+   show where. `Decide the review` counts a second approval only when `resolved` names every earlier problem with the
+   `file:line` that settles it; otherwise it is a rejection, and the diagnosis lists the first review's problems. A
+   local run showed why: a second review approved after three tool calls in 16 seconds. Before each review a step
    records the hash and executable bit of every file in the checkout, and `Collect the patch` turns an approval into
-   a rejection when a file git would publish changed after the approving review read it, so a test the reviewer ran
-   cannot add to the patch unreviewed. A patch still rejected, or a
+   a rejection when a file git would publish changed after the approving review read it, so the steps after the
+   review that run the agent's code (the replay, the visual check, the real-AI build) cannot add to the patch
+   unreviewed. A patch still rejected, or a
    review that never answered, gets a diagnosis with the problems, so a person takes the ticket and no PR opens.
    `Decide the review` writes `approved=true` only on an approval, and the `review` pass rests on that output, like
    every other pass. Both prompts are read in "Build the prompt", before Fix, whose commands could rewrite them, and

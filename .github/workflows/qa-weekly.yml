@@ -1441,7 +1441,8 @@ jobs:
           echo "end=$(/bin/date +%s)" >> "$GITHUB_OUTPUT"
       # The tree each review reads, as a list of every file's hash (git's ignore rules apply later, in "Collect the
       # patch", since git may not run between the sessions). The list's own hash is the step output, which the runner
-      # keeps and no process of the job can change, so a test the reviewer runs cannot rewrite the list unseen.
+      # keeps and no process of the job can change, so the steps after the review that run the agent's code (the
+      # replay, the visual check, the real-AI build) cannot rewrite the list unseen.
       - name: Record the tree the review reads
         id: review-tree
         if: >-
@@ -1481,9 +1482,9 @@ jobs:
             --setting-sources user
             --permission-mode dontAsk
             --tools "Read,Glob,Grep,Bash"
-            --allowedTools "Read,Glob,Grep,Bash(git diff HEAD),Bash(git status --short),Bash(bun run test),Bash(bun run test:backend)"
+            --allowedTools "Read,Glob,Grep,Bash(git diff HEAD),Bash(git status --short)"
             --disallowedTools WebFetch WebSearch
-            --json-schema '{"type":"object","properties":{"approved":{"type":"boolean"},"problems":{"type":"array","items":{"type":"string"}},"resolved":{"type":"array","items":{"type":"object","properties":{"problem":{"type":"integer"},"where":{"type":"string"},"command":{"type":"string"},"result":{"type":"string"}},"required":["problem","where","command","result"],"additionalProperties":false}}},"required":["approved","problems","resolved"],"additionalProperties":false}'
+            --json-schema '{"type":"object","properties":{"approved":{"type":"boolean"},"problems":{"type":"array","items":{"type":"string"}},"resolved":{"type":"array","items":{"type":"object","properties":{"problem":{"type":"integer"},"where":{"type":"string"}},"required":["problem","where"],"additionalProperties":false}}},"required":["approved","problems","resolved"],"additionalProperties":false}'
             --max-budget-usd ${{ env.QA_REVIEW_MAX_BUDGET_USD }}
             --max-turns ${{ env.QA_REVIEW_MAX_TURNS }}
       - name: Keep the review session's execution file
@@ -1553,11 +1554,8 @@ jobs:
         uses: anthropics/claude-code-action@fd1c128679612beff4ca259c78021c506e8aa7a7 # v1.0.237
         with: *review-session
       # The verdict publish needs as the `review` pass: the second review's when it ran, else the first's. A second
-      # approval counts only with evidence for every problem of the first review: an entry in `resolved` naming the
-      # problem's number, where the patch fixes it (`file:line`) and how the reviewer checked it (the command it ran
-      # and its result). Without it the approval is a rejection. The entry is the reviewer's own account: nothing
-      # here checks that the command ran or printed that result, so this stops a review that skips the evidence,
-      # not one that makes it up.
+      # approval counts only when `resolved` names every problem of the first review by its number, with the
+      # `file:line` that fixes it or shows it was wrong. Without that the approval is a rejection.
       - name: Decide the review
         id: review-verdict
         if: always()
@@ -1583,10 +1581,9 @@ jobs:
           fi
           # shellcheck disable=SC2016 # jq variables
           if /usr/bin/jq -e --argjson earlier "$earlier" '.approved == true and
-            ([range(1; $earlier + 1)] - [(.resolved // [])[] | select(
-              (.where | type == "string" and test("^[^\\s:]+:[1-9][0-9]*(-[1-9][0-9]*)?$")) and
-              (.command | type == "string" and test("\\S")) and
-              (.result | type == "string" and test("\\S"))) | .problem]) == []' <<< "$verdict" > /dev/null 2>&1; then
+            ([range(1; $earlier + 1)] - [(.resolved // [])[] |
+              select(.where | type == "string" and test("^[^\\s:]+:[1-9][0-9]*(-[1-9][0-9]*)?$")) | .problem]) == []
+            ' <<< "$verdict" > /dev/null 2>&1; then
             echo 'approved=true' >> "$GITHUB_OUTPUT"
           fi
 
@@ -1758,8 +1755,8 @@ jobs:
           elif [ -n "$NEEDS_REAL_BUILD" ] && [ "$REAL_BUILD" != success ]; then
             diagnose "The patched frontend for the real-AI check did not build (step outcome: ${REAL_BUILD:-none})"
           fi
-          # The patch must be the tree the approving review read: a file that a test the reviewer ran, or a later step,
-          # changed since was never reviewed. Only a change git would publish counts, not one in an ignored path.
+          # The patch must be the tree the approving review read: a file that a later step changed since was never
+          # reviewed. Only a change git would publish counts, not one in an ignored path.
           if [ "$REVIEWED" = true ]; then
             reviewed="$RUNNER_TEMP/qa-tree-$REVIEWED_TREE.txt"
             sum=$(sha256sum < "$reviewed" 2> /dev/null) || sum=

@@ -446,7 +446,7 @@ describe('fix job', () => {
         output: existsSync(join(dir, 'output')) ? readFileSync(join(dir, 'output'), 'utf8') : '',
       }
     }
-    type Resolved = { problem: number; where: string; command: string; result: string }
+    type Resolved = { problem: number; where: string }
     const verdict = (approved: boolean, problems: string[] = [], resolved: Resolved[] = []) =>
       JSON.stringify({ approved, problems, resolved })
 
@@ -454,12 +454,10 @@ describe('fix job', () => {
       const review = step('fix', 'Review the fix')
       const args = review.with?.claude_args ?? ''
       expect(args).toContain('--tools "Read,Glob,Grep,Bash"')
-      expect(args).toContain(
-        '--allowedTools "Read,Glob,Grep,Bash(git diff HEAD),Bash(git status --short),Bash(bun run test),Bash(bun run test:backend)"',
-      )
+      expect(args).toContain('--allowedTools "Read,Glob,Grep,Bash(git diff HEAD),Bash(git status --short)"')
       const schema = JSON.parse(/--json-schema '([^']+)'/.exec(args)?.[1] ?? '{}')
       expect(schema.required).toEqual(['approved', 'problems', 'resolved'])
-      expect(schema.properties.resolved.items.required).toEqual(['problem', 'where', 'command', 'result'])
+      expect(schema.properties.resolved.items.required).toEqual(['problem', 'where'])
       expect(review.with?.prompt).toBe('${{ env.QA_REVIEW_PROMPT }}')
       expect(review.env).toEqual({
         CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1',
@@ -506,22 +504,17 @@ describe('fix job', () => {
       expect(decide('')).toBe('')
     })
 
-    test('a second approval counts only with evidence of where and how each earlier problem was fixed', () => {
+    test('a second approval counts only when it names where each earlier problem was settled', () => {
       const decide = (second: string) =>
         runPlain('Decide the review', {
           FIRST: verdict(false, ['Wrong path in the test.', 'The Close button too.']),
           SECOND: second,
           SECOND_OUTCOME: 'success',
         }).output
-      const shown = (problem: number): Resolved => ({
-        problem,
-        where: 'src/content-view/sideview.test.tsx:42',
-        command: 'bun run test',
-        result: 'local-file sideview > renders a PNG stored as an attachment: pass',
-      })
+      const shown = (problem: number): Resolved => ({ problem, where: 'src/content-view/sideview.test.tsx:42' })
       expect(decide(verdict(true, [], [shown(1), { ...shown(2), where: 'src/a.tsx:3-9' }]))).toBe('approved=true\n')
-      // An approval that barely read anything, one that skips a problem, and one whose evidence lacks a place
-      // (prose, a time of day, line 0), a command or a result.
+      // An approval that barely read anything, one that skips a problem, and one whose place is no `file:line`
+      // (prose, a time of day, line 0).
       expect(decide(verdict(true))).toBe('')
       expect(decide(verdict(true, [], [shown(1)]))).toBe('')
       for (const where of ['the sideview test', 'I checked it at 12:30 today', 'src/a.ts:0'])
@@ -529,8 +522,6 @@ describe('fix job', () => {
           where,
           approved: '',
         })
-      expect(decide(verdict(true, [], [shown(1), { ...shown(2), command: '  ' }]))).toBe('')
-      expect(decide(verdict(true, [], [shown(1), { ...shown(2), result: '' }]))).toBe('')
     })
 
     test("a patch the review did not approve becomes a diagnosis with the review's problems", () => {
@@ -550,7 +541,7 @@ describe('fix job', () => {
     test('a file git would publish that changed, appeared or went away since rejects the approval', () => {
       const tree = checkout({ 'src/a.ts': 'reviewed', 'src/gone.ts': 'reviewed' })
       const reviewed = recordTree(tree)
-      writeFileSync(join(tree.dir, 'src/a.ts'), 'written by a test the reviewer ran')
+      writeFileSync(join(tree.dir, 'src/a.ts'), 'written by a step after the review')
       writeFileSync(join(tree.dir, 'src/new.ts'), 'new')
       rmSync(join(tree.dir, 'src/gone.ts'))
       expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toBe(
@@ -594,7 +585,7 @@ describe('fix job', () => {
       const before = carrier('y', 'reviewed')
       chmodSync(after, 0o755)
       const reviewed = recordTree(tree)
-      // A test the reviewer runs rewrites the file and swaps the bits, so the forged and real lines trade places.
+      // A step after the review rewrites the file and swaps the bits, so the forged and real lines trade places.
       writeFileSync(join(tree.dir, 'src/bar.ts'), 'rewritten')
       chmodSync(after, 0o644)
       chmodSync(before, 0o755)

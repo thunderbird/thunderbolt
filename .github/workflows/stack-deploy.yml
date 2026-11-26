@@ -132,6 +132,11 @@ jobs:
   deploy:
     if: inputs.action == 'deploy'
     runs-on: ubuntu-26.04
+    # One Pulumi operation per stack: a close-time destroy, the hourly cleanup and a
+    # deploy still running would otherwise collide on the stack lock (409 Conflict).
+    concurrency:
+      group: pulumi-stack-${{ inputs.stack_name }}
+      cancel-in-progress: false
     # Tag deploys with the `preview` environment so env-scoped secrets (EXA_API_KEY)
     # flow through alongside repo-level secrets. No required reviewers configured,
     # so enterprise workflow_dispatch deploys are unaffected. The dynamic lookup
@@ -280,6 +285,11 @@ jobs:
   destroy:
     if: inputs.action == 'destroy'
     runs-on: ubuntu-26.04
+    # One Pulumi operation per stack: a close-time destroy, the hourly cleanup and a
+    # deploy still running would otherwise collide on the stack lock (409 Conflict).
+    concurrency:
+      group: pulumi-stack-${{ inputs.stack_name }}
+      cancel-in-progress: false
     permissions:
       id-token: write
       contents: read

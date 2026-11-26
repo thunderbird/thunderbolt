@@ -3,11 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterAll, describe, expect, it } from 'bun:test'
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
-type Step = { uses?: string; run?: string }
+type Step = { uses?: string; run?: string; with?: { only_update?: boolean; message?: string } }
+
+type Concurrency = { group: string; 'cancel-in-progress': boolean }
 
 type Job = {
   name?: string
@@ -16,18 +18,23 @@ type Job = {
   environment?: string
   uses?: string
   with?: { ref?: string; tag_override?: string }
+  concurrency?: Concurrency
   steps?: Step[]
 }
 
 type Workflow = {
-  on: { [event: string]: { types?: string[] } | null }
-  concurrency: { group: string; 'cancel-in-progress': boolean }
+  on: { [event: string]: { types?: string[]; paths?: string[]; inputs?: object } | null }
+  concurrency: Concurrency
   jobs: { [name: string]: Job | undefined }
 }
 
-const workflow = Bun.YAML.parse(
-  readFileSync(join(import.meta.dir, '../.github/workflows/preview-deploy.yml'), 'utf8'),
-) as Workflow
+const repoRoot = join(import.meta.dir, '..')
+
+/** Parses a workflow file from `.github/workflows/`. */
+const loadWorkflow = (file: string) =>
+  Bun.YAML.parse(readFileSync(join(repoRoot, '.github/workflows', file), 'utf8')) as Workflow
+
+const workflow = loadWorkflow('preview-deploy.yml')
 const { jobs } = workflow
 const approveFork = jobs['approve-fork']
 
@@ -250,5 +257,98 @@ describe('fork approval environment check', () => {
     ['does not exist', { message: 'Not Found' }, 1],
   ])('fails closed when the environment %s', (_, body, status) => {
     expect(runCheck(body, status).exitCode).not.toBe(0)
+  })
+})
+
+/** GitHub's `paths` filter for one file: patterns apply in order, `!` excludes, the last match wins. */
+const matchesPaths = (patterns: string[], file: string) =>
+  patterns.reduce(
+    (included, pattern) =>
+      pattern.startsWith('!')
+        ? included && !new Bun.Glob(pattern.slice(1)).match(file)
+        : included || new Bun.Glob(pattern).match(file),
+    false,
+  )
+
+/**
+ * The preview Dockerfiles and every build-context source they copy in. Reads single-line `COPY`
+ * only, so an `ADD` or a `RUN --mount=type=bind` source would need adding here.
+ */
+const dockerfileInputs = () => {
+  const dockerfiles = readdirSync(join(repoRoot, 'deploy/docker'))
+    .filter((name) => name.endsWith('.Dockerfile'))
+    .map((name) => `deploy/docker/${name}`)
+  const sources = dockerfiles.flatMap((dockerfile) =>
+    readFileSync(join(repoRoot, dockerfile), 'utf8')
+      .split('\n')
+      .filter((line) => /^COPY\s/.test(line) && !line.includes('--from='))
+      .flatMap((line) =>
+        line
+          .split(/\s+/)
+          .slice(1, -1)
+          .filter((arg) => !arg.startsWith('--')),
+      ),
+  )
+  return [...dockerfiles, ...sources]
+}
+
+describe('preview deploy path gate', () => {
+  const paths = workflow.on.pull_request?.paths ?? []
+
+  it('gates both PR events on the same inputs and keeps dispatch as the override', () => {
+    expect(paths.length).toBeGreaterThan(0)
+    expect(workflow.on.pull_request_target?.paths).toEqual(paths)
+    expect(workflow.on.workflow_dispatch?.inputs).toHaveProperty('pr_number')
+  })
+
+  it.each(dockerfileInputs())('deploys when %s changes', (source) => {
+    const file = statSync(join(repoRoot, source)).isDirectory() ? `${source}/x` : source
+    expect(matchesPaths(paths, file)).toBe(true)
+  })
+
+  it.each([
+    ['src/a.ts', true],
+    ['backend/drizzle/0001.sql', true],
+    ['docs/x.md', true],
+    ['web/src/a.astro', true],
+    ['deploy/pulumi/index.ts', true],
+    ['.github/workflows/stack-deploy.yml', true],
+    ['e2e/preview-smoke.spec.ts', true],
+    ['src/a.test.ts', false],
+    ['src/x/__snapshots__/a.test.ts.snap', false],
+    ['backend/src/a.test.ts', false],
+    ['e2e/a.spec.ts', false],
+    ['.github/workflows/ci.yml', false],
+    ['cli/src/a.ts', false],
+    ['src-tauri/src/main.rs', false],
+    ['deploy/k8s/values.yaml', false],
+    ['README.md', false],
+    ['.claude/x', false],
+  ])('a change to %s deploys a preview: %p', (file, deploys) => {
+    expect(matchesPaths(paths, file)).toBe(deploys)
+  })
+})
+
+describe('preview teardown', () => {
+  it('only rewrites an existing preview comment', () => {
+    const comment = loadWorkflow('preview-destroy.yml').jobs.comment?.steps?.find((step) =>
+      step.uses?.startsWith('marocchino/sticky-pull-request-comment@'),
+    )
+    expect(comment?.with?.only_update).toBe(true)
+  })
+
+  it('says the cleanup took over when a newer destroy of the same stack supersedes this one', () => {
+    const comment = loadWorkflow('preview-destroy.yml').jobs.comment
+    expect(comment?.if).not.toContain('needs.destroy.result')
+    expect(comment?.steps?.[0]?.with?.message).toContain(
+      "needs.destroy.result == 'cancelled' && '**Preview teardown handed to the hourly cleanup**",
+    )
+  })
+
+  it('queues deploys and destroys of the same stack instead of racing them', () => {
+    const { deploy, destroy } = loadWorkflow('stack-deploy.yml').jobs
+    const perStack = { group: 'pulumi-stack-${{ inputs.stack_name }}', 'cancel-in-progress': false }
+    expect(deploy?.concurrency).toEqual(perStack)
+    expect(destroy?.concurrency).toEqual(perStack)
   })
 })

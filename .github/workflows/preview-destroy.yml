@@ -73,7 +73,9 @@ jobs:
         uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
         with:
           header: preview-env
+          # Path-gated PRs never had a preview, so leave them without a teardown note.
+          only_update: true
           message: |
-            ${{ needs.destroy.result == 'success' && '**Preview environment destroyed** 🧹' || '**Preview teardown failed** ⚠️' }}
+            ${{ needs.destroy.result == 'success' && '**Preview environment destroyed** 🧹' || needs.destroy.result == 'cancelled' && '**Preview teardown handed to the hourly cleanup** 🧹' || '**Preview teardown failed** ⚠️' }}
 
             ${{ needs.destroy.result == 'success' && format('Stack `preview-pr-{0}` and its Cloudflare subdomain have been cleaned up.', needs.resolve-pr.outputs.pr_number) || format('Stack `preview-pr-{0}`, its databases or its PowerSync slot may be left behind. See the [run]({1}/{2}/actions/runs/{3}).', needs.resolve-pr.outputs.pr_number, github.server_url, github.repository, github.run_id) }}

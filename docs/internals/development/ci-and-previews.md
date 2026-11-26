@@ -2,16 +2,16 @@
 
 ## What runs on a pull request
 
-| Workflow                  | Trigger                                   | Failure mode             | Reproduce locally               |
-| ------------------------- | ----------------------------------------- | ------------------------ | ------------------------------- |
-| `ci.yml`                  | PR (any base branch) + push to `main`     | Red check                | See the job table below         |
-| `e2e.yml`                 | PR (path-gated) + push to `main`          | Red check                | `bun run e2e`                   |
-| `security.yml`            | PR + push to `main`                       | Red check                | n/a                             |
-| `lint-pr-title.yml`       | PR opened / edited / synchronized         | Red check                | n/a                             |
-| `pr-metrics.yml`          | PR                                        | Advisory comment         | `bun run build && bun run size` |
-| `thunder-deep-review.yml` | PR, same-repo, non-draft, non-Dependabot  | Advisory comment         | n/a                             |
-| `preview-deploy.yml`      | PR against `main` (+ `workflow_dispatch`) | No preview comment       | n/a                             |
-| `preview-destroy.yml`     | PR closed (+ `workflow_dispatch`)         | Cleanup cron picks it up | n/a                             |
+| Workflow                  | Trigger                                                            | Failure mode             | Reproduce locally               |
+| ------------------------- | ------------------------------------------------------------------ | ------------------------ | ------------------------------- |
+| `ci.yml`                  | PR (any base branch) + push to `main`                              | Red check                | See the job table below         |
+| `e2e.yml`                 | PR (path-gated) + push to `main`                                   | Red check                | `bun run e2e`                   |
+| `security.yml`            | PR + push to `main`                                                | Red check                | n/a                             |
+| `lint-pr-title.yml`       | PR opened / edited / synchronized                                  | Red check                | n/a                             |
+| `pr-metrics.yml`          | PR                                                                 | Advisory comment         | `bun run build && bun run size` |
+| `thunder-deep-review.yml` | PR, same-repo, non-draft, non-Dependabot                           | Advisory comment         | n/a                             |
+| `preview-deploy.yml`      | PR against `main` touching a preview input (+ `workflow_dispatch`) | No preview comment       | n/a                             |
+| `preview-destroy.yml`     | PR closed (+ `workflow_dispatch`)                                  | Cleanup cron picks it up | n/a                             |
 
 Also part of the same machinery:
 
@@ -162,6 +162,16 @@ Commits (`feat`, `fix`, `chore`, `docs`, `refactor`, `perf`, `test`, `ci`, `buil
 report uploads as SARIF. The PR comment is skipped on fork PRs (read-only token, the
 comments API would 403), and the whole job is skipped for Dependabot.
 
+**Previews are path-gated.** `preview-deploy.yml` runs only when a PR changes what the
+preview images or stack are built from: the Dockerfiles and the sources they copy in,
+`deploy/pulumi/`, the preview, image and stack workflows, and the preview smoke spec. Test
+files never count. The
+filter looks at the whole PR diff, not the latest push, so once a PR touches an input every
+later push redeploys. GitHub only checks the first 300 changed files, so a larger PR whose
+inputs fall outside them gets no preview. Dispatch `preview-deploy.yml` with the PR number
+to force a preview. When a PR has no Preview Deploy run and nothing is serving at its URL,
+`pr-metrics.yml` skips Lighthouse instead of waiting for it.
+
 **e2e is path-gated on PRs.** `e2e.yml` skips pull requests that only touch `docs/`, `web/`,
 Markdown, the Helm chart, the Pulumi stacks, Tauri Rust sources, or `.github/` other than
 `e2e.yml` itself. Push to `main` is not gated, so a wrongly excluded path still reds there.
@@ -214,7 +224,8 @@ Runs the `thunder-deep-review` skill read-only and posts an inline review.
 
 ## Where your PR gets deployed
 
-A PR against `main` gets two previews, and they are not equivalent.
+A PR against `main` gets up to two previews, and they are not equivalent. The Pulumi one
+only deploys for PRs that change a preview input ([Previews are path-gated](#gates-that-surprise-people)).
 
 | Preview                 | URL                                                                           | What it is                                                                                      | Use it for                                                                                                                                               |
 | ----------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -248,6 +259,12 @@ are per-PR: [per-pr-stack.ts](../../../deploy/pulumi/src/per-pr-stack.ts) create
 rules and Cloudflare CNAMEs for those, while Keycloak and PowerSync belong to the shared
 stack on `*.shared.preview.thunderbolt.io`. Sign in to the shared Keycloak realm with
 `demo@thunderbolt.io` / `demo`.
+
+Image builds reuse layers from a per-image `:buildcache` tag in GHCR. Only the runs that
+publish `:latest` (push to `main`, nightly, plain dispatch) write it; previews only read it,
+so a fork's build never feeds layers into `main`'s images. The nightly build ignores the
+cache and rebuilds every layer, which picks up base-image and package upgrades and refreshes
+the cache.
 
 ## Preview lifecycle
 
@@ -284,7 +301,11 @@ secrets and backend task definition the stack owns; destroy runs even if the dro
 so a flaky drop cannot orphan an ALB and leak cost. A failed drop then fails the job, and
 the databases and slot it left need dropping by hand. The hourly cleanup sends a failure
 notification; on PR close the failure shows only in that run and in the PR's preview
-comment, because `notify-on-failure.yml` alerts only for runs on `main`.
+comment, because `notify-on-failure.yml` alerts only for runs on `main`. One operation
+runs on a stack at a time, and a newer queued operation replaces one still waiting, so a
+close-time destroy superseded by the hourly cleanup says so in the preview comment and the
+cleanup finishes the teardown. A PR that never had a preview gets no teardown
+comment.
 
 Pulumi does not remove the logical database that `deploy/docker/backend-entrypoint.sh`
 creates per PR at backend startup on the shared Postgres instance (when

@@ -1,8 +1,8 @@
 name: Preview Deploy
 
-# Creates an ephemeral preview stack on AWS Fargate for each pull request opened
-# from a branch in this repo. Five Cloudflare subdomains are created per PR,
-# mirroring prod's subdomain structure:
+# Creates an ephemeral preview stack on AWS Fargate for each pull request that
+# changes what the preview images or stack are built from. Five Cloudflare
+# subdomains are created per PR, mirroring prod's subdomain structure:
 #   thunderbolt-pr-{N}.preview.thunderbolt.io  → marketing
 #   app-pr-{N}.preview.thunderbolt.io           → app frontend
 #   api-pr-{N}.preview.thunderbolt.io           → backend API
@@ -28,9 +28,58 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
     branches: [main]
+    # Only PRs that change what the preview images or stack are built from.
+    # Test-only changes never trigger one. workflow_dispatch forces one for any PR.
+    paths: &preview-inputs
+      - 'deploy/docker/*.Dockerfile'
+      - 'deploy/docker/backend-entrypoint.sh'
+      - 'deploy/docker/postgres-init/**'
+      - 'deploy/config/keycloak-realm.json'
+      - 'deploy/config/marketing-nginx.conf.template'
+      - 'deploy/config/nginx.conf.template'
+      - 'deploy/config/powersync-config.yaml'
+      - 'deploy/config/security-headers.conf'
+      - 'deploy/pulumi/**'
+      - '.github/workflows/preview-deploy.yml'
+      - '.github/workflows/images-publish.yml'
+      - '.github/workflows/stack-deploy.yml'
+      - 'package.json'
+      - 'bun.lock'
+      - 'index.html'
+      - 'webview-recovery.html'
+      - 'vite.config.ts'
+      - 'lingui.config.ts'
+      - 'tsconfig.json'
+      - 'tsconfig.node.json'
+      - 'components.json'
+      - '.storybook/**'
+      - 'scripts/copy-powersync-assets.ts'
+      - 'scripts/webkit-compat.ts'
+      - 'scripts/tinfoil-search-relay.ts'
+      - 'scripts/exa-relay.ts'
+      - 'scripts/office-sandbox-script.ts'
+      - 'scripts/strip-dangling-source-maps.ts'
+      - 'scripts/e2e-source-modules.ts'
+      - 'scripts/prune-unreachable-deps.ts'
+      - 'src/**'
+      - 'public/**'
+      - 'shared/**'
+      - 'backend/package.json'
+      - 'backend/bun.lock'
+      - 'backend/tsconfig.json'
+      - 'backend/src/**'
+      - 'backend/drizzle/**'
+      - 'web/**'
+      - 'docs/**'
+      # The smoke job's own spec, config and browser launcher.
+      - 'playwright.preview.config.ts'
+      - 'e2e/preview-smoke.spec.ts'
+      - 'scripts/chrome.ts'
+      - '!**/*.test.*'
   pull_request_target:
     types: [opened, synchronize, reopened]
     branches: [main]
+    paths: *preview-inputs
   workflow_dispatch:
     inputs:
       pr_number:

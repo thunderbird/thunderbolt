@@ -3,10 +3,11 @@
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
 import { Plural, Trans, useLingui } from '@lingui/react/macro'
-import { Users } from 'lucide-react'
-import { IconTile } from '@/components/settings/icon-tile'
+import { Boxes, Plus } from 'lucide-react'
 import { SettingsNoResults } from '@/components/settings/settings-empty-state'
 import { SettingsSelectableRow } from '@/components/settings/settings-list'
+import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { PageCreateAction } from '@/components/ui/page-create-action'
 import { adminRole } from '@shared/admin-api'
 import { AdminPage } from '../../components/admin-page'
@@ -16,75 +17,81 @@ import { LoadMoreFooter } from '../../components/load-more-footer'
 import { ResourcePageDialogs } from '../../components/resource-page-dialogs'
 import { StatusBadge } from '../../components/status-badge'
 import { InlineError } from '../../components/inline-error'
+import { itemContextMenuItems } from '../../components/item-actions'
+import { groupActions } from './group-actions'
 import { GroupPanel } from './group-panel'
 import { useGroupsPageState } from './use-groups-page-state'
 
 export const GroupsPage = () => {
   const { t } = useLingui()
-  const { page, list, breakGlassWarning, remove } = useGroupsPageState()
+  const { page, list, groups, setSearch, isSearching, breakGlassWarning, removingName, remove } = useGroupsPageState()
   const selectedId = page.selectedId
 
   return (
     <>
       <AdminPage
         title={t`Groups`}
-        action={<PageCreateAction label={t`New group`} onClick={() => page.requestSelect('new')} />}
+        search={{ placeholder: t`Search groups`, onSearch: setSearch }}
+        isEmpty={list.isEmpty}
+        action={<PageCreateAction label={t`New Group`} onClick={() => page.requestSelect('new')} />}
         onClose={page.close}
         panel={
           selectedId && (
-            <GroupPanel
-              key={selectedId}
-              groupId={selectedId === 'new' ? null : selectedId}
-              onClose={page.close}
-              onCreated={page.select}
-              onDirtyChange={(dirty) => page.patch({ dirty })}
-              onRequestDelete={() => page.patch({ removeId: selectedId })}
-            />
+            // A fresh draft each time the form opens, and a fresh view after a save.
+            <GroupPanel key={`${selectedId}:${page.isEditing}`} page={page} />
           )
         }
       >
-        <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
-          <Trans>
-            Group members to manage them together. A group mapped to the admin role makes its members admins.
-          </Trans>
-        </p>
         {breakGlassWarning && <BreakGlassBanner />}
         {list.isLoading && <ListSkeleton />}
         <InlineError error={list.error} />
-        {list.items.map((group) => (
-          <SettingsSelectableRow
-            key={group.id}
-            ariaLabel={group.name}
-            isSelected={selectedId === group.id}
-            onSelect={() => page.requestSelect(selectedId === group.id ? null : group.id)}
-            leading={
-              <IconTile>
-                <Users className="size-5 text-muted-foreground" />
-              </IconTile>
-            }
-            title={group.name}
-            subtitle={<Plural value={group.memberCount} one="# member" other="# members" />}
-            trailing={
-              group.roles.includes(adminRole) && (
-                <StatusBadge tone="info">
-                  <Trans>Admin</Trans>
-                </StatusBadge>
-              )
+        {groups.length > 0 && (
+          <ul className="flex flex-col gap-4">
+            {groups.map((group) => (
+              <li key={group.id}>
+                <SettingsSelectableRow
+                  ariaLabel={t`Open ${group.name}`}
+                  isSelected={selectedId === group.id && !page.isEditing}
+                  onSelect={() => page.requestSelect(group.id)}
+                  contextMenuItems={itemContextMenuItems(groupActions(page, group.id))}
+                  title={group.name}
+                  subtitle={<Plural value={group.memberCount} one="# member" other="# members" />}
+                  trailingIcon={
+                    group.roles.includes(adminRole) && (
+                      <StatusBadge tone="info">
+                        <Trans>Admin</Trans>
+                      </StatusBadge>
+                    )
+                  }
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+        {isSearching && groups.length === 0 && list.items.length > 0 && (
+          <SettingsNoResults>
+            <Trans>No matching groups.</Trans>
+          </SettingsNoResults>
+        )}
+        {list.isEmpty && (
+          <EmptyState
+            icon={Boxes}
+            title={t`No groups yet`}
+            action={
+              <Button size="sm" variant="outline" onClick={() => page.requestSelect('new')}>
+                <Plus />
+                <Trans>Create your first group</Trans>
+              </Button>
             }
           />
-        ))}
-        {list.isEmpty && (
-          <SettingsNoResults>
-            <Trans>No groups yet.</Trans>
-          </SettingsNoResults>
         )}
         <LoadMoreFooter hasMore={list.hasMore} isLoading={list.isLoadingMore} onLoadMore={list.loadMore} />
       </AdminPage>
       <ResourcePageDialogs
         page={page}
         remove={{
-          title: t`Delete this group?`,
-          description: t`Its members lose any role the group gives them. Their other access stays the same.`,
+          title: removingName ? t`Delete ${removingName}?` : t`Delete this group?`,
+          description: t`Its members lose any role this group gives them.`,
           confirmLabel: t`Delete group`,
           onConfirm: remove,
         }}

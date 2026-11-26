@@ -18,11 +18,11 @@ export type FakeReply = { status?: number; body?: unknown }
 
 /**
  * A wrapper for admin component tests: a signed-in admin, a router at `initialEntries`, and a fake
- * backend that records each request and answers through `respond`. `queryClient` is exposed to
- * inspect the caches.
+ * backend that records each request and answers through `respond`, which may hold a reply back.
+ * `queryClient` is exposed to inspect the caches.
  */
 export const createAdminTestHarness = (
-  respond: (request: FakeRequest) => FakeReply = () => ({}),
+  respond: (request: FakeRequest) => FakeReply | Promise<FakeReply> = () => ({}),
   { initialEntries }: { initialEntries?: ComponentProps<typeof MemoryRouter>['initialEntries'] } = {},
 ) => {
   const requests: FakeRequest[] = []
@@ -39,7 +39,7 @@ export const createAdminTestHarness = (
         body: text ? JSON.parse(text) : undefined,
       }
       requests.push(fake)
-      const { status = 200, body = {} } = respond(fake)
+      const { status = 200, body = {} } = await respond(fake)
       return new Response(status === 204 ? null : JSON.stringify(body), { status })
     },
   })

@@ -693,8 +693,18 @@ export const prChecks: PrCheck[] = [
       'backend/lingui.config.ts',
     ],
   },
-  { name: 'typescript: Run tests', run: 'bun run test:5x', paths: ['src/', 'shared/', 'scripts/'] },
-  { name: 'office: Run Office script tests (5x)', run: 'bun run test:office:5x', paths: officePaths },
+  { name: 'typescript: Run tests', run: 'bun run test:ci', paths: ['src/', 'shared/', 'scripts/'] },
+  {
+    name: 'typescript: Re-run changed tests (5x)',
+    run: 'bun scripts/rerun-changed-tests.ts frontend',
+    paths: ['src/', 'shared/', 'scripts/'],
+  },
+  { name: 'office: Run Office script tests', run: 'bun run test:office:ci', paths: officePaths },
+  {
+    name: 'office: Re-run changed Office script tests (5x)',
+    run: 'bun scripts/rerun-changed-tests.ts office',
+    paths: officePaths,
+  },
   {
     name: 'agent-core: Run agent-core tests (5x)',
     run: 'bun run test:agent-core:5x',
@@ -703,8 +713,13 @@ export const prChecks: PrCheck[] = [
   { name: 'backend: Type check backend', run: 'cd backend\nbun run type-check\n', paths: backendPaths },
   { name: 'backend: Lint backend', run: 'cd backend\nbun run lint\n', paths: backendPaths },
   {
-    name: 'backend: Test backend (5x, excludes same-process WS event-delivery flakes)',
-    run: "cd backend && bun test --timeout 3600000 --randomize --rerun-each 5 $(find src \\( -name '*.test.ts' -o -name '*.test.tsx' \\) -not -path '*proxy/ws-e2e.test.ts' -not -path '*haystack/routes.test.ts')",
+    name: 'backend: Test backend (excludes same-process WS event-delivery flakes)',
+    run: "cd backend && bun test --timeout 3600000 --randomize --rerun-each \"${RERUN_EACH:-1}\" $(find src \\( -name '*.test.ts' -o -name '*.test.tsx' \\) -not -path '*proxy/ws-e2e.test.ts' -not -path '*haystack/routes.test.ts')",
+    paths: backendPaths,
+  },
+  {
+    name: 'backend: Re-run changed backend tests (5x)',
+    run: 'bun scripts/rerun-changed-tests.ts backend',
     paths: backendPaths,
   },
   { name: 'cli: Type check cli', run: 'cd cli && bun run typecheck', paths: cliPaths },

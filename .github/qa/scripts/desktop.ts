@@ -12,8 +12,9 @@ import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import { remote } from 'webdriverio'
+import { Key, remote } from 'webdriverio'
 import { fakeProviderReply } from '../../../e2e/fake-provider'
+import { completeSetup } from '../../../e2e/native-smoke/setup-wizard'
 import type { LayoutProblem } from '../layout'
 
 declare global {
@@ -113,17 +114,6 @@ const waitForText = (browser: Browser, text: string, timeout: number) =>
     timeoutMsg: `"${text}" did not show`,
   })
 
-const signIn = async (browser: Browser) => {
-  const email = await browser.$('input[placeholder="Email"]')
-  await email.waitForDisplayed({ timeout: 60_000 })
-  await email.setValue(`desktop-${crypto.randomUUID()}@thunderbolt.test`)
-  await (await browser.$('//button[normalize-space()="Continue"]')).click()
-  const otp = await browser.$('input[autocomplete="one-time-code"]')
-  await otp.waitForDisplayed({ timeout: 30_000 })
-  await otp.setValue('12345678')
-  await (await browser.$('textarea')).waitForDisplayed({ timeout: 60_000 })
-}
-
 /** The layout probe's confirmed problems on the current screen. */
 const layoutProblems = async (browser: Browser): Promise<LayoutProblem[]> => {
   await browser.execute(axe)
@@ -145,12 +135,16 @@ const checks = async (out: string, downloads: string): Promise<CheckResult[]> =>
     }
   }
   try {
-    await check('sign in', () => signIn(browser))
+    await check('sign in', () => completeSetup(browser, 'cloud'))
     if (results[0].error) return results
 
     await check('copy a reply to the X clipboard', async () => {
       await (await browser.$('[data-testid="model-selector-trigger"]')).click()
-      await (await browser.$('//button[normalize-space()="Opus 5.5"]')).click()
+      // As in the native smoke: the Thunderbolt mark sets apart the managed model, which reaches the fake provider.
+      const standardModel = await browser.$('//button[normalize-space()="Opus 5.5"]')
+      await (await standardModel.$('[role="img"][aria-label="Thunderbolt"]')).waitForDisplayed()
+      await standardModel.click()
+      await browser.keys(Key.Escape)
       await (await browser.$('textarea')).setValue(prompt)
       await (await browser.$('button[aria-label="Send message"]')).click()
       await waitForText(browser, fakeProviderReply, 60_000)

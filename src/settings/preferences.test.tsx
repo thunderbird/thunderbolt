@@ -6,7 +6,7 @@ import { unitDefaultsForRegion } from '@/i18n/region-units'
 import { getSettingsRecords, updateSettings } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
-import { agentsTable } from '@/db/tables'
+import { agentsTable, chatThreadsTable } from '@/db/tables'
 import { exportFormat, exportSchemaVersion } from '@/dal/export'
 import { customRowToAgent } from '@/dal/agents'
 import { canManageAgent } from '@/components/settings/agents/agent-permissions'
@@ -165,6 +165,75 @@ describe('PreferencesSettingsPage — sync toggle gating', () => {
     expect(restored?.userId).toBeNull()
     expect(canManageAgent(customRowToAgent(restored!), null)).toBe(true)
     expect(container.querySelector('#import-data-success')).toBeInTheDocument()
+  })
+
+  const chatFile = (user: { id: string; email: string | null }) =>
+    new File(
+      [
+        JSON.stringify({
+          format: exportFormat,
+          schemaVersion: exportSchemaVersion,
+          kind: 'chat',
+          user,
+          tables: {
+            chat_threads: [{ id: 'thread-1', title: 'Trip plan', deletedAt: null }],
+            chat_messages: [
+              { id: 'm1', chatThreadId: 'thread-1', role: 'user', parentId: null, deletedAt: null },
+              { id: 'm2', chatThreadId: 'thread-1', role: 'assistant', parentId: 'm1', deletedAt: null },
+            ],
+          },
+        }),
+      ],
+      'chat.json',
+      { type: 'application/json' },
+    )
+
+  const pickAndImport = async (container: HTMLElement, file: File) => {
+    await act(async () => {
+      fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [file] } })
+    })
+    expect(screen.getByText('Import this chat?')).toBeInTheDocument()
+    expect(screen.getByText(/This file contains the chat “Trip plan” with 2 messages\./)).toBeInTheDocument()
+  }
+
+  it('replaces a chat exported by this account, in one sentence', async () => {
+    const { container } = renderPage(createMockAuthClient({ session: authedSession }))
+    await pickAndImport(container, chatFile({ id: authedSession.user.id, email: authedSession.user.email }))
+
+    expect(
+      screen.getByText(/it's updated with the file's version and synced to your other devices\./),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/adds a copy/)).not.toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Import' }))
+    })
+    expect(await screen.findByText('Imported the chat “Trip plan”.')).toBeInTheDocument()
+    expect((await getDb().select().from(chatThreadsTable)).map((row) => row.id)).toEqual(['thread-1'])
+  })
+
+  it('copies a chat from another account and says only that', async () => {
+    const { container } = renderPage(createMockAuthClient({ session: authedSession }))
+    await pickAndImport(container, chatFile({ id: 'other-user', email: 'other@example.com' }))
+
+    expect(screen.getByText(/Importing it adds a copy of this chat\./)).toBeInTheDocument()
+    expect(screen.getByText('This chat was exported by a different account (other@example.com).')).toBeInTheDocument()
+    expect(screen.queryByText(/it's updated/)).not.toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Import' }))
+    })
+    expect(await screen.findByText('Imported a copy of the chat “Trip plan”.')).toBeInTheDocument()
+    expect((await getDb().select().from(chatThreadsTable)).map((row) => row.id)).not.toContain('thread-1')
+  })
+
+  it('copies a chat imported while signed out, even one exported signed out', async () => {
+    const { container } = renderPage(createMockAuthClient({ session: null }))
+    await pickAndImport(container, chatFile({ id: '', email: null }))
+
+    expect(screen.getByText(/Importing it adds a copy of this chat\./)).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Import' }))
+    })
+    expect(await screen.findByText('Imported a copy of the chat “Trip plan”.')).toBeInTheDocument()
   })
 
   it('asks for a server when enabling cloud proxy in standalone mode', async () => {

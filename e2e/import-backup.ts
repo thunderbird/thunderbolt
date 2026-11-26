@@ -13,7 +13,8 @@ export const importBackup = async (page: Page, backup: Record<string, unknown>, 
     buffer: Buffer.from(JSON.stringify(backup)),
   })
   await page
-    .getByRole('alertdialog', { name: 'Import this backup?' })
+    // A fixture holding one chat gets the single-chat dialog.
+    .getByRole('alertdialog', { name: /^Import this (backup|chat)\?$/ })
     .getByRole('button', { name: 'Import', exact: true })
     .click()
   await expect(page.locator('#import-data-success')).toBeVisible({ timeout })

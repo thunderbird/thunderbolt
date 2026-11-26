@@ -11,7 +11,9 @@ import { exportUserData, importUserData, summarizeExportEnvelope, type ExportSum
 import { downloadJson, exportFilenameFor } from '@/lib/export-download'
 import { saveErrorMessage } from '@/lib/download'
 import { i18n } from '@/i18n'
+import { chatTitleLabel } from '@/lib/title-generator'
 import { readJsonFile } from '@/lib/import-upload'
+import { getDeviceId } from '@/lib/auth-token'
 import { useLocalStorage } from '@/hooks/use-local-storage'
 import { useLocationNameDisplay } from '@/hooks/use-location-name-display'
 import { fetchEnglishLocationName, type LocationData } from '@/lib/locations'
@@ -198,6 +200,24 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
   const { data: session } = authClient.useSession()
   const isAuthenticated = !!session?.user
   const isAnonymous = session?.user?.isAnonymous === true
+  const accountIdentity = { id: session?.user?.id ?? null, email: session?.user?.email ?? null }
+  const pendingChat = pendingImport?.chat ?? null
+  const pendingChatTitle = pendingChat ? chatTitleLabel(i18n, pendingChat.title) : ''
+  const isAccountMismatch = pendingImport?.accountMismatch === true
+
+  /** What a finished import says: the chat it added or updated, or how many rows a backup wrote. */
+  const importSuccessMessage = (total: number): string => {
+    if (!pendingChat) {
+      return plural(total, {
+        one: 'Imported # row. The app may take a moment to reflect new chats.',
+        other: 'Imported # rows. The app may take a moment to reflect new chats.',
+      })
+    }
+    if (pendingChat.isCopy) {
+      return t`Imported a copy of the chat “${pendingChatTitle}”.`
+    }
+    return t`Imported the chat “${pendingChatTitle}”.`
+  }
   const isFullUser = isAuthenticated && !isAnonymous
   const backendAuthenticated = useServerAuthentication()
   const { openSignInModal } = useSignInModal()
@@ -439,7 +459,7 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
     dispatch({ type: 'CLEAR_IMPORT_FEEDBACK' })
     try {
       const payload = await readJsonFile(file)
-      const summary = summarizeExportEnvelope(payload, session?.user?.email ?? null)
+      const summary = summarizeExportEnvelope(payload, accountIdentity)
       if (!summary) {
         dispatch({ type: 'SET_IMPORT_ERROR', payload: t`This file doesn't look like a ${appName} export.` })
         return
@@ -461,19 +481,12 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
     if (!pendingImport) {
       return
     }
-    const userId = session?.user?.id ?? null
     dispatch({ type: 'SET_IS_IMPORTING', payload: true })
     dispatch({ type: 'SET_IMPORT_ERROR', payload: null })
     try {
-      const result = await importUserData(db, pendingImport.payload, { id: userId })
+      const result = await importUserData(db, pendingImport.payload, { ...accountIdentity, deviceId: getDeviceId() })
       const total = Object.values(result.tables).reduce((sum, t) => sum + (t?.upserted ?? 0), 0)
-      dispatch({
-        type: 'SET_IMPORT_SUCCESS',
-        payload: plural(total, {
-          one: 'Imported # row. The app may take a moment to reflect new chats.',
-          other: 'Imported # rows. The app may take a moment to reflect new chats.',
-        }),
-      })
+      dispatch({ type: 'SET_IMPORT_SUCCESS', payload: importSuccessMessage(total) })
       trackEvent('settings_data_import')
       dispatch({ type: 'SET_PENDING_IMPORT', payload: null })
     } catch (error) {
@@ -593,7 +606,6 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
   // Bound so the catalog placeholders are named rather than positional.
   const importSourceEmail = pendingImport?.sourceEmail ?? ''
   const importExportedAt = pendingImport?.exportedAtLabel ?? ''
-
   /**
    * One whole sentence per provenance combination rather than appending optional
    * clauses: a translator needs to place "exported by X" and "on Y" in their own
@@ -1249,10 +1261,27 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              <Trans>Import this backup?</Trans>
+              {pendingChat ? <Trans>Import this chat?</Trans> : <Trans>Import this backup?</Trans>}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {pendingImport && (
+              {pendingChat && (
+                <>
+                  {plural(pendingChat.messageCount, {
+                    one: `This file contains the chat “${pendingChatTitle}” with # message.`,
+                    other: `This file contains the chat “${pendingChatTitle}” with # messages.`,
+                  })}{' '}
+                  {/* Signed out, a chat is always a copy, so the update sentence can mention sync. */}
+                  {pendingChat.isCopy ? (
+                    <Trans>Importing it adds a copy of this chat.</Trans>
+                  ) : (
+                    <Trans>
+                      If this chat is already here, it's updated with the file's version and synced to your other
+                      devices.
+                    </Trans>
+                  )}
+                </>
+              )}
+              {pendingImport && !pendingChat && (
                 <>
                   {importSummary(pendingImport.totalRows)}{' '}
                   <Trans>
@@ -1263,7 +1292,12 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {pendingImport?.accountMismatch && (
+          {isAccountMismatch && pendingChat && (
+            <p className="text-sm text-muted-foreground" role="note">
+              <Trans>This chat was exported by a different account ({importSourceEmail}).</Trans>
+            </p>
+          )}
+          {isAccountMismatch && !pendingChat && (
             <p className="text-sm text-destructive font-medium" role="alert">
               <Trans>
                 ⚠ This export was made by a different account ({importSourceEmail}). Importing it here will mix that
@@ -1284,7 +1318,7 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
               onClick={handleConfirmImport}
               disabled={isImporting}
               aria-busy={isImporting}
-              variant="destructive"
+              variant={pendingChat ? 'default' : 'destructive'}
             >
               {isImporting ? t`Importing…` : t`Import`}
             </AlertDialogAction>

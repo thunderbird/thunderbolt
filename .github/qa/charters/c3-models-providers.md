@@ -11,10 +11,11 @@ every reply: a model that says it cannot answer is a finding.
    stop the reply mid-stream, then send a new question: its reply answers only the new question, and neither
    repeats nor finishes the stopped answer. Functions: `picker-lists`, `models-reply`, `multi-turn-opus-5-5`,
    `multi-turn-deepseek-v4-1-flash`, `multi-turn-glm-5-3`, `multi-turn-kimi-k3-1-pro`.
-2. Switch the model in the middle of a thread while a reply streams: ask "Opus 5.5" for a long answer, switch the
-   picker to "GLM 5.3" before it ends, then send a follow-up. The streaming reply ends once (finished or stopped,
-   never doubled), and the follow-up's reply comes from "GLM 5.3" and follows the thread. Reload and check which model
-   is selected. Functions: `switch-mid-thread`, `switch-while-streaming`, `model-persists`.
+2. Switch the model in the middle of a thread while a reply streams: ask "DeepSeek V4.1 Flash" for a long answer,
+   switch the picker to "GLM 5.3" before it ends, then send a follow-up. The streaming reply ends once (finished or
+   stopped, never doubled), and the follow-up's reply comes from "GLM 5.3" and follows the thread. Reload and check
+   which model is selected. An "Opus 5.5" chat cannot switch to the other three models, which are confidential: the
+   picker greys them out, and that is not a finding. Functions: `switch-mid-thread`, `model-persists`.
 3. Settings → Models: open each model, disable one and check it leaves the picker, enable it again.
    Function: `model-disable`.
 4. Add a custom model with an unreachable endpoint (for example `http://localhost:9`): run its connection test if the

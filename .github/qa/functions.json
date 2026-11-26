@@ -85,13 +85,9 @@
     { "id": "models-reply", "outcome": "Each of those models answers a short prompt with a relevant reply" },
     {
       "id": "switch-mid-thread",
-      "outcome": "After switching the model in the middle of a thread, the new model's reply follows the earlier turns"
+      "outcome": "After switching the model in the middle of a thread while a reply streams, that reply ends once, never doubled, and the follow-up's reply comes from the new model and follows the earlier turns"
     },
     { "id": "model-persists", "outcome": "The model selected in a thread is still the selected one", "reload": true },
-    {
-      "id": "switch-while-streaming",
-      "outcome": "Switching the model while a reply streams ends that reply once, never doubled, and the follow-up's reply comes from the new model and follows the thread"
-    },
     {
       "id": "multi-turn-opus-5-5",
       "outcome": "In three turns with \"Opus 5.5\" each reply follows the earlier turns, and after a stopped reply the next message gets a full reply to it alone, without repeating the stopped answer"

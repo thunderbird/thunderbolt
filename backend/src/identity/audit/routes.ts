@@ -10,7 +10,7 @@ import { t } from 'elysia'
 import { createAdminRoutes } from '../admin-macro'
 import { decodeCursor, defaultAdminPageSize, pageQuery, toPage } from '../admin/pagination'
 import { getCurrentOrganizationId } from '../current-organization'
-import { labelAuditEvents } from './labels'
+import { auditLabelMatches, labelAuditEvents } from './labels'
 
 type Cursor = { occurredAt: Date; id: string }
 
@@ -30,49 +30,71 @@ const auditQuery = t.Object({
   connectionId: t.Optional(t.String()),
   from: t.Optional(t.Date()),
   to: t.Optional(t.Date()),
+  /** Part of the actor's or target's name, as the list shows it. */
+  q: t.Optional(t.String({ minLength: 1, maxLength: 200 })),
 })
 
 /**
- * The org's audit log for admins, newest first, one page at a time. Viewing a page is not itself
- * audited. There is no export: reading the log in bulk is not offered.
+ * The org's audit log for admins, newest first, one page at a time, and one event by id. Viewing
+ * them is not itself audited. There is no export: reading the log in bulk is not offered.
  */
 export const createAuditRoutes = (auth: Auth, database: typeof DbType) =>
-  createAdminRoutes('audit-routes', auth, database).get(
-    '/admin/audit-events',
-    async ({ query, set }) => {
-      const cursor = query.cursor ? decodeAuditCursor(query.cursor) : null
-      if (query.cursor && !cursor) {
-        set.status = 400
-        return { code: 'INVALID_CURSOR' }
-      }
+  createAdminRoutes('audit-routes', auth, database)
+    .get(
+      '/admin/audit-events',
+      async ({ query, set }) => {
+        const cursor = query.cursor ? decodeAuditCursor(query.cursor) : null
+        if (query.cursor && !cursor) {
+          set.status = 400
+          return { code: 'INVALID_CURSOR' }
+        }
 
-      const filters: (SQL | undefined)[] = [
-        eq(auditEvent.orgId, getCurrentOrganizationId()),
-        query.action ? eq(auditEvent.action, query.action) : undefined,
-        query.outcome ? eq(auditEvent.outcome, query.outcome) : undefined,
-        query.actorId ? eq(auditEvent.actorId, query.actorId) : undefined,
-        query.targetType ? eq(auditEvent.targetType, query.targetType) : undefined,
-        query.targetId ? eq(auditEvent.targetId, query.targetId) : undefined,
-        query.connectionId ? eq(auditEvent.connectionId, query.connectionId) : undefined,
-        query.from ? gte(auditEvent.occurredAt, query.from) : undefined,
-        query.to ? lte(auditEvent.occurredAt, query.to) : undefined,
-        cursor
-          ? or(
-              lt(auditEvent.occurredAt, cursor.occurredAt),
-              and(eq(auditEvent.occurredAt, cursor.occurredAt), lt(auditEvent.id, cursor.id)),
-            )
-          : undefined,
-      ]
-      const limit = query.limit ?? defaultAdminPageSize
-      const rows = await database
-        .select()
-        .from(auditEvent)
-        .where(and(...filters))
-        .orderBy(desc(auditEvent.occurredAt), desc(auditEvent.id))
-        .limit(limit + 1)
+        const orgId = getCurrentOrganizationId()
+        const filters: (SQL | undefined)[] = [
+          eq(auditEvent.orgId, orgId),
+          query.action ? eq(auditEvent.action, query.action) : undefined,
+          query.outcome ? eq(auditEvent.outcome, query.outcome) : undefined,
+          query.actorId ? eq(auditEvent.actorId, query.actorId) : undefined,
+          query.targetType ? eq(auditEvent.targetType, query.targetType) : undefined,
+          query.targetId ? eq(auditEvent.targetId, query.targetId) : undefined,
+          query.connectionId ? eq(auditEvent.connectionId, query.connectionId) : undefined,
+          query.from ? gte(auditEvent.occurredAt, query.from) : undefined,
+          query.to ? lte(auditEvent.occurredAt, query.to) : undefined,
+          query.q ? auditLabelMatches(database, orgId, query.q) : undefined,
+          cursor
+            ? or(
+                lt(auditEvent.occurredAt, cursor.occurredAt),
+                and(eq(auditEvent.occurredAt, cursor.occurredAt), lt(auditEvent.id, cursor.id)),
+              )
+            : undefined,
+        ]
+        const limit = query.limit ?? defaultAdminPageSize
+        const rows = await database
+          .select()
+          .from(auditEvent)
+          .where(and(...filters))
+          .orderBy(desc(auditEvent.occurredAt), desc(auditEvent.id))
+          .limit(limit + 1)
 
-      const { items, nextCursor } = toPage(rows, limit, (event) => [event.occurredAt.toISOString(), event.id])
-      return { events: await labelAuditEvents(database, getCurrentOrganizationId(), items), nextCursor }
-    },
-    { query: auditQuery },
-  )
+        const { items, nextCursor } = toPage(rows, limit, (event) => [event.occurredAt.toISOString(), event.id])
+        return { events: await labelAuditEvents(database, orgId, items), nextCursor }
+      },
+      { query: auditQuery },
+    )
+    .get(
+      '/admin/audit-events/:eventId',
+      async ({ params, set }) => {
+        const orgId = getCurrentOrganizationId()
+        const [event] = await database
+          .select()
+          .from(auditEvent)
+          .where(and(eq(auditEvent.orgId, orgId), eq(auditEvent.id, params.eventId)))
+        if (!event) {
+          set.status = 404
+          return { code: 'AUDIT_EVENT_NOT_FOUND' }
+        }
+        const [labelled] = await labelAuditEvents(database, orgId, [event])
+        return labelled
+      },
+      { params: t.Object({ eventId: t.String() }) },
+    )

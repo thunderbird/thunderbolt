@@ -3,8 +3,18 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { db as DbType } from '@/db/client'
-import { apikey, identityConnection, invitation, localGroup, orgDomain, orgMembership, user } from '@/db/schema'
-import { and, eq, inArray } from 'drizzle-orm'
+import {
+  apikey,
+  auditEvent,
+  identityConnection,
+  invitation,
+  localGroup,
+  orgDomain,
+  orgMembership,
+  user,
+} from '@/db/schema'
+import { and, eq, ilike, inArray, or, type SQL, type SQLWrapper } from 'drizzle-orm'
+import { escapeLike } from '../admin/members'
 
 /** The actor and target types that have something readable to show. */
 const labelKinds = [
@@ -72,6 +82,63 @@ const lookups: Record<LabelKind, Lookup> = {
       .select({ id: invitation.id, label: invitation.email })
       .from(invitation)
       .where(and(eq(invitation.orgId, orgId), inArray(invitation.id, ids))),
+}
+
+type Matches = (database: typeof DbType, orgId: string, pattern: string) => SQLWrapper
+
+/** The ids whose label matches `pattern`, as a subquery: the same rows, and the same scoping, as `lookups`. */
+const matches: Record<LabelKind, Matches> = {
+  user: (database, orgId, pattern) =>
+    database
+      .select({ id: user.id })
+      .from(user)
+      .innerJoin(orgMembership, and(eq(orgMembership.userId, user.id), eq(orgMembership.orgId, orgId)))
+      .where(or(ilike(user.name, pattern), ilike(user.email, pattern))),
+  api_key: (database, orgId, pattern) =>
+    database
+      .select({ id: apikey.id })
+      .from(apikey)
+      .innerJoin(orgMembership, and(eq(orgMembership.userId, apikey.referenceId), eq(orgMembership.orgId, orgId)))
+      .where(ilike(apikey.name, pattern)),
+  scim_connection: (database, orgId, pattern) => matches.identity_connection(database, orgId, pattern),
+  identity_connection: (database, orgId, pattern) =>
+    database
+      .select({ id: identityConnection.id })
+      .from(identityConnection)
+      .where(and(eq(identityConnection.orgId, orgId), ilike(identityConnection.name, pattern))),
+  local_group: (database, orgId, pattern) =>
+    database
+      .select({ id: localGroup.id })
+      .from(localGroup)
+      .where(and(eq(localGroup.orgId, orgId), ilike(localGroup.name, pattern))),
+  org_domain: (database, orgId, pattern) =>
+    database
+      .select({ id: orgDomain.id })
+      .from(orgDomain)
+      .where(and(eq(orgDomain.orgId, orgId), ilike(orgDomain.domain, pattern))),
+  invitation: (database, orgId, pattern) =>
+    database
+      .select({ id: invitation.id })
+      .from(invitation)
+      .where(and(eq(invitation.orgId, orgId), ilike(invitation.email, pattern))),
+}
+
+const actorKinds = ['user', 'api_key', 'scim_connection'] as const
+
+/**
+ * Events whose actor or target label contains `q`, case-insensitively, as a filter on `auditEvent`. It
+ * matches what `labelAuditEvents` shows, and a person's email as well as their name.
+ */
+export const auditLabelMatches = (database: typeof DbType, orgId: string, q: string): SQL | undefined => {
+  const pattern = `%${escapeLike(q)}%`
+  return or(
+    ...actorKinds.map((kind) =>
+      and(eq(auditEvent.actorType, kind), inArray(auditEvent.actorId, matches[kind](database, orgId, pattern))),
+    ),
+    ...labelKinds.map((kind) =>
+      and(eq(auditEvent.targetType, kind), inArray(auditEvent.targetId, matches[kind](database, orgId, pattern))),
+    ),
+  )
 }
 
 type LabelledEvent = { actorType: string; actorId: string | null; targetType: string | null; targetId: string | null }

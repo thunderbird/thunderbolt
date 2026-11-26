@@ -41,6 +41,7 @@ const oidcBody = (providerId: string) => ({
  */
 const adminRoutes: { method: string; path: string; body?: unknown }[] = [
   { method: 'GET', path: '/v1/admin/audit-events' },
+  { method: 'GET', path: '/v1/admin/audit-events/:eventId' },
   { method: 'GET', path: '/v1/admin/members' },
   { method: 'GET', path: '/v1/admin/members/:userId' },
   { method: 'PATCH', path: '/v1/admin/members/:userId', body: { name: 'New name' } },

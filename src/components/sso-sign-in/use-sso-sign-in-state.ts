@@ -36,6 +36,7 @@ type Action =
 
 const initialState: State = { status: 'waiting-for-session', email: '', connections: [], attempt: 0 }
 
+/** The SSO sign-in flow's steps, from waiting for the session to the redirect. */
 const reducer = (state: State, action: Action): State => {
   switch (action.type) {
     case 'discovering':

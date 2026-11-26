@@ -30,6 +30,7 @@ export type ProjectTreeProps = Pick<
   | 'onChatClick'
   | 'onRename'
   | 'onMoveToProject'
+  | 'onExport'
 > & {
   isDragging: boolean
   draggingFromProjectId: string | null
@@ -105,6 +106,7 @@ export const ProjectTree = (props: ProjectTreeProps) => {
                   onChatClick={props.onChatClick}
                   onRename={props.onRename}
                   onMoveToProject={props.onMoveToProject}
+                  onExport={props.onExport}
                   draggingFromProjectId={props.draggingFromProjectId}
                   actions={getProjectActions(project)}
                   project={project}

@@ -59,6 +59,7 @@ const tree = (isDragging: boolean, isMobile = false, overrides: Partial<ProjectT
     onChatClick={() => {}}
     onRename={() => {}}
     onMoveToProject={() => {}}
+    onExport={() => {}}
     {...overrides}
   />
 )

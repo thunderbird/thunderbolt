@@ -78,6 +78,7 @@ const Fixture = ({
             onChatClick={onChatClick}
             onRename={() => {}}
             onMoveToProject={() => {}}
+            onExport={() => {}}
           />
         </div>
       </SidebarProvider>

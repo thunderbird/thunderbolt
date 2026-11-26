@@ -71,6 +71,7 @@ export const Expanded: Story = {
     onChatClick: () => console.log('Chat clicked'),
     onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
     onMoveToProject: (threadId: string) => console.log('Move to project', threadId),
+    onExport: (threadId: string) => console.log('Export', threadId),
   },
   parameters: {
     docs: {
@@ -97,6 +98,7 @@ export const ExpandedActive: Story = {
     onChatClick: () => console.log('Chat clicked'),
     onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
     onMoveToProject: (threadId: string) => console.log('Move to project', threadId),
+    onExport: (threadId: string) => console.log('Export', threadId),
   },
   parameters: {
     docs: {
@@ -123,6 +125,7 @@ export const ExpandedEncrypted: Story = {
     onChatClick: () => console.log('Chat clicked'),
     onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
     onMoveToProject: (threadId: string) => console.log('Move to project', threadId),
+    onExport: (threadId: string) => console.log('Export', threadId),
   },
   parameters: {
     docs: {
@@ -149,6 +152,7 @@ export const Deleting: Story = {
     onChatClick: () => console.log('Chat clicked'),
     onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
     onMoveToProject: (threadId: string) => console.log('Move to project', threadId),
+    onExport: (threadId: string) => console.log('Export', threadId),
   },
   parameters: {
     docs: {

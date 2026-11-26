@@ -42,6 +42,7 @@ const createProps = (overrides?: Partial<ChatListItemProps>): ChatListItemProps 
   onChatClick: mock(),
   onRename: mock(),
   onMoveToProject: mock(),
+  onExport: mock(),
   ...overrides,
 })
 
@@ -103,6 +104,31 @@ describe('ChatListItem', () => {
     fireEvent.contextMenu(screen.getByText('My Chat'))
     expect(await waitForElement(() => screen.queryByText('Rename'))).toBeInTheDocument()
     expect(screen.getByText('Delete')).toBeInTheDocument()
+  })
+
+  it('exports the chat from the overflow menu', async () => {
+    const onExport = mock()
+    renderWithProviders(createProps({ onExport }))
+    fireEvent.keyDown(screen.getByRole('button', { name: 'More' }), { key: 'Enter' })
+    fireEvent.click(await waitForElement(() => screen.queryByText('Export')))
+    expect(onExport).toHaveBeenCalledWith('thread-1')
+  })
+
+  it('exports the chat from the right-click context menu', async () => {
+    const onExport = mock()
+    renderWithProviders(createProps({ onExport }))
+    fireEvent.contextMenu(screen.getByText('My Chat'))
+    fireEvent.click(await waitForElement(() => screen.queryByText('Export')))
+    expect(onExport).toHaveBeenCalledWith('thread-1')
+  })
+
+  it('exports the chat from the mobile action sheet', async () => {
+    forceMobileViewport()
+    const onExport = mock()
+    renderWithProviders(createProps({ isMobile: true, onExport }))
+    fireEvent.contextMenu(screen.getByText('My Chat'))
+    fireEvent.click(await waitForElement(() => screen.queryByText('Export')))
+    expect(onExport).toHaveBeenCalledWith('thread-1')
   })
 
   it('keeps the rename input focused after the mobile context menu closes', async () => {

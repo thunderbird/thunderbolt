@@ -52,6 +52,7 @@ export const ChatList = ({
   onChatClick,
   onRename,
   onMoveToProject,
+  onExport,
   scrollRef,
 }: ChatListProps & { scrollRef: RefObject<HTMLDivElement | null> }) => {
   const { t } = useLingui()
@@ -149,6 +150,7 @@ export const ChatList = ({
                     onChatClick={onChatClick}
                     onRename={onRename}
                     onMoveToProject={onMoveToProject}
+                    onExport={onExport}
                   />
                 ))}
               </Virtualizer>

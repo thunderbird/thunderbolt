@@ -72,6 +72,7 @@ type ChatSidebarContentProps = {
   onMiniAppClick: (appId: string) => void
   onChatClick: (threadId: string, miniAppId: string | null) => void
   onRename: (threadId: string, title: string) => void
+  onExport: (threadId: string) => void
   onSearchClick: () => void
 }
 
@@ -139,6 +140,7 @@ export const ChatSidebarContent = ({
   onMiniAppClick,
   onChatClick,
   onRename,
+  onExport,
   onSearchClick,
 }: ChatSidebarContentProps) => {
   const { i18n, t } = useLingui()
@@ -220,6 +222,7 @@ export const ChatSidebarContent = ({
         threadIdRef={threadIdRef}
         onChatClick={onChatClick}
         onRename={onRename}
+        onExport={onExport}
         onMoveToProject={(chatThreadId, projectId) => setMoveTarget({ chatThreadId, projectId })}
         isDragging={draggingChat !== null}
         draggingFromProjectId={draggingChat?.projectId ?? null}
@@ -311,6 +314,7 @@ export const ChatSidebarContent = ({
               }
               onChatClick={onChatClick}
               onRename={onRename}
+              onExport={onExport}
               onMoveToProject={(chatThreadId, projectId) => setMoveTarget({ chatThreadId, projectId })}
             />
           </div>

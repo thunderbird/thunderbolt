@@ -29,6 +29,7 @@ type ProjectTreeRowProps = Pick<
   | 'onChatClick'
   | 'onRename'
   | 'onMoveToProject'
+  | 'onExport'
 > & {
   project: Project
   chats: ChatThread[]
@@ -89,6 +90,7 @@ export const ProjectTreeRow = ({ project, chats, expanded, active, onToggle, ...
                   onChatClick={props.onChatClick}
                   onRename={props.onRename}
                   onMoveToProject={props.onMoveToProject}
+                  onExport={props.onExport}
                 />
               </SidebarMenuItem>
             ))}

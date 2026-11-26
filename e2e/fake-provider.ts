@@ -35,6 +35,12 @@ import { performanceStreamOptions, performanceStreamPrompt } from './streaming-f
 
 export const fakeProviderReply = 'Hello from the fake provider, one word at a time.'
 
+/**
+ * Starts the line the fake logs, followed by an ISO time, for a request it does not implement. The QA replay reads it
+ * from the stack log and shows it to the judge, so a failure the fake causes is not filed as an app bug.
+ */
+export const unsupportedRequestMarker = '[fake-provider] unsupported'
+
 type FakeProviderOptions = { delayMs?: number }
 
 const textPartSchema = z.object({ type: z.string(), text: z.string().optional() })
@@ -148,11 +154,16 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 }
-const openAiRequestSchema = z.object({ model: z.string(), stream: z.boolean().optional() })
+const openAiRequestSchema = z.object({
+  model: z.string(),
+  stream: z.boolean().optional(),
+  stream_options: z.object({ include_usage: z.boolean().optional() }).optional(),
+})
 
 /**
  * Answer the OpenAI-compatible routes a Local "Other provider" setup uses: the model list, and the reply in one piece
- * or streamed word by word. Returns false for any other route.
+ * or streamed word by word. A stream ends with a usage chunk when the request asks for one, as OpenAI's does. Returns
+ * false for any other route.
  */
 const serveOpenAiCompatible = async (
   req: IncomingMessage,
@@ -177,7 +188,7 @@ const serveOpenAiCompatible = async (
     res.writeHead(400, corsHeaders).end('Invalid chat completions request')
     return true
   }
-  const { model, stream } = parsed.data
+  const { model, stream, stream_options: streamOptions } = parsed.data
   const base = { id: `chatcmpl-${crypto.randomUUID()}`, created: Math.floor(Date.now() / 1000), model }
   const usage = { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18 }
   if (!stream) {
@@ -206,13 +217,17 @@ const serveOpenAiCompatible = async (
     writeChunk({ content }, null)
   }
   writeChunk({}, 'stop')
+  if (streamOptions?.include_usage === true) {
+    res.write(`data: ${JSON.stringify({ ...base, object: 'chat.completion.chunk', choices: [], usage })}\n\n`)
+  }
   res.end('data: [DONE]\n\n')
   return true
 }
 
 /**
  * Start a local provider with a deterministic streamed reply: Anthropic Messages for the backend, plus the
- * OpenAI-compatible routes a Local setup connects to directly.
+ * OpenAI-compatible routes a Local setup connects to directly. Any other request gets a 404 and an
+ * `unsupportedRequestMarker` line on stderr.
  */
 export const createFakeProvider = async (port: number, options: FakeProviderOptions = {}): Promise<Server> => {
   const server = createServer(async (req, res) => {
@@ -221,8 +236,10 @@ export const createFakeProvider = async (port: number, options: FakeProviderOpti
       return
     }
     if (req.method !== 'POST' || !url.pathname.endsWith('/v1/messages')) {
-      res.writeHead(404)
-      res.end('Not found')
+      const route = `${req.method} ${url.pathname}`
+      console.warn(`${unsupportedRequestMarker} ${new Date().toISOString()} ${route}`)
+      res.writeHead(404, { 'Content-Type': 'text/plain' })
+      res.end(`The fake provider does not implement ${route}`)
       return
     }
 

@@ -2,12 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { expect, test } from 'bun:test'
+import { expect, spyOn, test } from 'bun:test'
 import Anthropic from '@anthropic-ai/sdk'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { generateText, streamText } from 'ai'
 import { z } from 'zod'
-import { createFakeProvider, fakeOpenAiModelId, fakeProviderReply } from './fake-provider'
+import { createFakeProvider, fakeOpenAiModelId, fakeProviderReply, unsupportedRequestMarker } from './fake-provider'
 import { miniAppToolsetName, miniAppTransferPrompt, protectedEmailBody, protectedEmailId } from './mini-app-fixture'
 import {
   officeDeckEditFilename,
@@ -350,6 +350,49 @@ test('serves a Local OpenAI-compatible setup: CORS, the model list, and whole or
     const malformed = await fetch(`${baseURL}/chat/completions`, { method: 'POST', body: 'not json' })
     expect(malformed.status).toBe(400)
   } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('ends a streamed chat completion with a usage chunk only when the request asks for one', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    /** The stream's SSE events for a streamed request with `extra` in its body. */
+    const events = async (extra: { stream_options?: { include_usage: boolean } }) => {
+      const body = JSON.stringify({ model: fakeOpenAiModelId, stream: true, ...extra })
+      const response = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, { method: 'POST', body })
+      return (await response.text()).trim().split('\n\n')
+    }
+
+    const withUsage = await events({ stream_options: { include_usage: true } })
+    expect(withUsage.at(-1)).toBe('data: [DONE]')
+    expect(JSON.parse(withUsage.at(-2)!.slice('data: '.length))).toMatchObject({
+      choices: [],
+      usage: { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18 },
+    })
+    const withoutUsage = await events({})
+    expect(withoutUsage.at(-1)).toBe('data: [DONE]')
+    expect(withoutUsage.filter((event) => event.includes('"usage"'))).toEqual([])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('answers a request it does not implement with a 404 and logs it as unsupported', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  const warn = spyOn(console, 'warn').mockImplementation(() => {})
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const response = await fetch(`http://127.0.0.1:${port}/v1/responses`, { method: 'POST', body: '{}' })
+    expect(response.status).toBe(404)
+    expect(await response.text()).toBe('The fake provider does not implement POST /v1/responses')
+    const marker = RegExp.escape(unsupportedRequestMarker)
+    expect(warn.mock.calls).toEqual([[expect.stringMatching(new RegExp(`^${marker} \\S+Z POST /v1/responses$`))]])
+  } finally {
+    warn.mockRestore()
     server.close()
     server.closeAllConnections()
   }

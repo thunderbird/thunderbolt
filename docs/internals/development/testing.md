@@ -391,7 +391,9 @@ The fake provider binds to IPv4 loopback (`127.0.0.1`). Binding to `localhost`
 can select `::1` on Linux while the Bun backend connects over IPv4. The scoped
 `fake-provider.test.ts` opens a real socket and consumes the complete Messages
 stream through the Anthropic SDK; `bun run test` runs it without the frontend's
-DOM or timer mocks. A passing native smoke checks runtime compatibility; it does
+DOM or timer mocks. A request the fake cannot answer gets a 404 and a
+`[fake-provider] unsupported` line in the runner output. A passing native smoke
+checks runtime compatibility; it does
 not exercise or fix RUSTSEC-2024-0429.
 
 The Linux glib risk check and its negative fixtures run with:

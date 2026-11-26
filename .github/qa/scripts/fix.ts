@@ -348,9 +348,9 @@ export const route = async ({
     const lead = plan.fixes.find((t) => t.fp === fp)
     // One fix job per bug (same fp): a second one would fight over its branch, and `leadRank` picks which finding
     // it gets. The other findings' repros join it, since a group can hold findings that report part of the bug each.
-    // The fix agent writes a visual check for its own task alone: a web visual finding leads among equals, and one
-    // that a sync or real-AI web finding outranks would go unchecked, so it holds back the bug.
-    if (lead && webVisual(finding) && !webVisual(lead.finding)) {
+    // The fix agent writes a visual check for its own task alone, so any other web visual finding, outranked or a
+    // second one, would go unchecked. It holds back the bug instead.
+    if (lead && webVisual(finding)) {
       log(
         `fix: ${identifier ?? fp} has a visual finding that another finding leads, and only the lead gets a visual check, so it is not routed`,
       )

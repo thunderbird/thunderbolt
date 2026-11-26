@@ -412,13 +412,14 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    first. A bug found on several platforms is one ticket, so it gets one job. That job keeps every finding's check:
    the task's `specs` and `realSpecs` list the web repro spec of each finding of the ticket, the task's own included,
    on the fake and the real AI, and the replay after the fix (and the one before it in a fix-only run) runs all of
-   `specs`, while `verify-real` runs all of `realSpecs`. So a finding that reports only part of a grouped bug still
-   checks the patch. Native flows join `verifyNative`, one per platform, since a native pass is named by platform: a
-   ticket with two findings on one native platform is not routed, with a log line, rather than checked on one of
-   them. The fix agent writes a visual check for its own task only, so among findings of equal `leadRank` a web
-   visual one leads. A ticket whose web visual finding is outranked (by a sync or real-AI web finding) is not
-   routed, with a log line, and neither is one where any finding's repro is missing from disk. A native visual
-   finding other than the task's own still has no check. The fix goes on the ticket's Linear
+   `specs`, while `verify-real` runs all of `realSpecs`. So a finding with its own repro still checks the patch when
+   it reports only part of a grouped bug. Native flows join `verifyNative`, one per platform, since a native pass is
+   named by platform: a ticket with two findings on one native platform is not routed, with a log line, rather than
+   checked on one of them. The fix agent writes a visual check for its own task only, so among findings of equal
+   `leadRank` a web visual one leads. A ticket is not routed, with a log line, when any finding's repro is missing
+   from disk, or when a web visual finding other than the task's own would go unchecked: one outranked by a sync or
+   real-AI web finding, or a second web visual finding. A native visual finding other than the task's own still has
+   no check. The fix goes on the ticket's Linear
    branch name (`branchName`), so merging the PR closes the ticket. `route` takes that name only when it has the
    shape `<prefix>/<identifier>` with an optional `-<slug>`, in lowercase, with at most 100 characters, and
    `git check-ref-format` accepts it; otherwise the branch is `qa-fix/<identifier lowercased>`, which still links

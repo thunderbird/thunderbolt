@@ -458,6 +458,21 @@ describe('route', () => {
     )
   })
 
+  test('a second web visual finding holds back its bug, since its viewport would go unchecked', async () => {
+    const visualPhone = {
+      fp: 'fp-same',
+      charterDir: 'c6-settings-data-phone',
+      raw: visual('settings', { viewport: 'phone' }),
+    }
+    await fileTickets([visualWeb, visualPhone])
+    const lines: string[] = []
+    const plan = await route({ outDir, live: false, run: fakeRun([]), log: (line) => lines.push(line) })
+    expect(plan).toEqual({ fixes: [], verifyNative: [] })
+    expect(lines).toContain(
+      'fix: fp-same has a visual finding that another finding leads, and only the lead gets a visual check, so it is not routed',
+    )
+  })
+
   test("a finding whose repro is missing holds back its whole bug, since every finding's check must pass", async () => {
     await fileTickets([fakeWeb, { fp: 'fp-same', charterDir: 'c6-settings-data-desktop', raw: finding('settings') }])
     await rm(join(outDir, 'c6-settings-data-desktop', 'repro', '1.spec.ts'))

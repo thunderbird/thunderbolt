@@ -396,7 +396,7 @@ describe('fix job', () => {
     const run = (step('fix', 'Record the tree the review reads').run ?? '').replaceAll('/usr/bin/sha256sum', sha256sum)
     const proc = Bun.spawnSync(['bash', '-e', '-c', run], {
       cwd: dir,
-      env: { PATH: '/usr/bin:/bin', RUNNER_TEMP: temp, GITHUB_OUTPUT: join(temp, 'output') },
+      env: { PATH: '/usr/bin:/bin', RUNNER_TEMP: temp, GITHUB_OUTPUT: join(temp, 'output'), QA_FP: 'fp1' },
     })
     expect(proc.exitCode).toBe(0)
     return readFileSync(join(temp, 'output'), 'utf8').replace(/^sha=/, '').trim()
@@ -557,6 +557,19 @@ describe('fix job', () => {
       expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toBeUndefined()
       writeFileSync(join(tree.dir, 'dist/index.js'), 'rebuilt')
       expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toContain('(dist/index.js)')
+    })
+
+    test('the visual check, which becomes the e2e spec, rejects the approval when it changed, though qa-out/ is ignored', () => {
+      const tree = checkout({ '.gitignore': 'qa-out*/\n' })
+      const check = join(tree.dir, 'qa-out/fix-fp1/repro/check.spec.ts')
+      mkdirSync(dirname(check), { recursive: true })
+      writeFileSync(check, 'reviewed')
+      const reviewed = recordTree(tree)
+      expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toBeUndefined()
+      writeFileSync(check, 'rewritten by the visual check run')
+      expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toBe(
+        'Files changed after the review read them (qa-out/fix-fp1/repro/check.spec.ts), so the patch is not published.\n',
+      )
     })
 
     test('an executable bit set or cleared since rejects the approval, as git publishes it; one left alone does not', () => {

@@ -1455,10 +1455,13 @@ jobs:
               -type f "$@" -print0
           }
           # Git keeps a file's owner-executable bit besides its content, so the list holds that bit too, as an `x` line.
-          # Both go through sha256sum, which writes a name with a newline in it escaped, on one line.
+          # Both go through sha256sum, which writes a name with a newline in it escaped, on one line. The visual check
+          # sits in ignored qa-out/ but is the proof and becomes the PR's e2e spec, so it gets a line of its own.
+          check="./qa-out/fix-$QA_FP/repro/check.spec.ts"
           {
             files | /usr/bin/xargs -0r /usr/bin/sha256sum
             files -perm -100 | /usr/bin/xargs -0r /usr/bin/sha256sum | /usr/bin/sed 's/^/x/'
+            if [ -e "$check" ]; then /usr/bin/sha256sum "$check"; fi
           } > "$RUNNER_TEMP/qa-tree.txt"
           sum=$(/usr/bin/sha256sum < "$RUNNER_TEMP/qa-tree.txt")
           /bin/mv "$RUNNER_TEMP/qa-tree.txt" "$RUNNER_TEMP/qa-tree-${sum%% *}.txt"
@@ -1764,6 +1767,7 @@ jobs:
               find . \( -path ./.git -o -name node_modules -o -name 'qa-out*' -o -name 'qa-dist*' \) -prune -o \
                 -type f "$@" -print0
             }
+            check="./qa-out/fix-$QA_FP/repro/check.spec.ts"
             if [ -z "$REVIEWED_TREE" ] || [ "${sum%% *}" != "$REVIEWED_TREE" ]; then
               diagnose "The record of the tree the review read is missing or changed"
             # A sha256sum that writes such a path raw (macOS's does) would let it forge a line of the list.
@@ -1771,11 +1775,16 @@ jobs:
               diagnose "A path in the checkout holds a newline"
             else
               changed=$(LC_ALL=C comm -3 <(LC_ALL=C sort "$reviewed") <(
-                { files | xargs -0r sha256sum; files -perm -100 | xargs -0r sha256sum | sed 's/^/x/'; } | LC_ALL=C sort
+                {
+                  files | xargs -0r sha256sum
+                  files -perm -100 | xargs -0r sha256sum | sed 's/^/x/'
+                  if [ -e "$check" ]; then sha256sum "$check"; fi
+                } | LC_ALL=C sort
               ) | sed -E 's/^\t?x?[0-9a-f]{64}  \.\///' | LC_ALL=C sort -u)
               if [ -n "$changed" ]; then
-                # check-ignore never names a tracked file, so a tracked file under an ignored path still counts.
-                ignored=$(git check-ignore --stdin <<< "$changed" | LC_ALL=C sort -u) || true
+                # check-ignore never names a tracked file, so a tracked file under an ignored path still counts. The
+                # visual check counts too, though qa-out/ is ignored.
+                ignored=$(git check-ignore --stdin <<< "$changed" | grep -vxF "${check#./}" | LC_ALL=C sort -u) || true
                 published=$(LC_ALL=C comm -23 <(echo "$changed") <(echo "$ignored") | paste -sd ' ' -)
                 if [ -n "$published" ]; then diagnose "Files changed after the review read them ($published)"; fi
               fi

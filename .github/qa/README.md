@@ -588,8 +588,10 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    show where. `Decide the review` counts a second approval only when `resolved` names every earlier problem with the
    `file:line` that settles it; otherwise it is a rejection, and the diagnosis lists the first review's problems. A
    local run showed why: a second review approved after three tool calls in 16 seconds. Before each review a step
-   records the hash and executable bit of every file in the checkout, and `Collect the patch` turns an approval into
-   a rejection when a file git would publish changed after the approving review read it, so the steps after the
+   records the hash and executable bit of every file in the checkout, plus the hash of a web visual task's check
+   (`qa-out/` is ignored, but the check is the proof and becomes the PR's e2e spec, so the review reads it too), and
+   `Collect the patch` turns an approval into a rejection when that check, or a file git would publish, changed
+   after the approving review read it, so the steps after the
    review that run the agent's code (the replay, the visual check, the real-AI build) cannot add to the patch
    unreviewed. A patch still rejected, or a
    review that never answered, gets a diagnosis with the problems, so a person takes the ticket and no PR opens.

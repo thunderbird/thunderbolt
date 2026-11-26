@@ -8,7 +8,6 @@ import type { db as DbType } from '@/db/client'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia } from 'elysia'
 import { adminErrorHandler } from './admin/route-helpers'
-import { sessionActor } from './audit/actor'
 import { createAuditBudget, recordFailedAttempt } from './audit/write'
 import { adminRole, getMemberAuthorization } from './roles'
 
@@ -40,13 +39,12 @@ export const createAdminMacro = (auth: Auth, database: typeof DbType) => {
         const { roles } = await getMemberAuthorization({ adapter, database }, session.user.id)
         if (!roles.has(adminRole)) {
           if (!session.user.isAnonymous && (await mayRecordDenial(`user:${session.user.id}`))) {
-            const { actor, metadata } = sessionActor(session, request.headers)
             await recordFailedAttempt(database, {
               action: 'admin.access_denied',
               outcome: 'denied',
               reason: 'ADMIN_REQUIRED',
-              actor,
-              metadata: { ...metadata, method: request.method, path: new URL(request.url).pathname },
+              actor: { type: 'user', id: session.user.id },
+              metadata: { method: request.method, path: new URL(request.url).pathname },
             })
           }
           return status(403, { code: 'ADMIN_REQUIRED' })

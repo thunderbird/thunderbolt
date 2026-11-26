@@ -60,6 +60,27 @@ describe('POST /v1/audit/client-events', () => {
     ])
   })
 
+  it("records a report sent with an API key as its owner's, with the key", async () => {
+    const created = await harness.app.handle(
+      new Request('http://localhost/v1/api/auth/api-key/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders(harness.bearerToken) },
+        body: JSON.stringify({ name: 'Deploy bot' }),
+      }),
+    )
+    const { id, key } = (await created.json()) as { id: string; key: string }
+
+    expect((await report(mcpAdded, { 'x-api-key': key })).status).toBe(204)
+    expect(await reported()).toMatchObject([{ actorType: 'user', metadata: { provider: 'custom', apiKeyId: id } }])
+  })
+
+  it('records no key for a report sent without one', async () => {
+    await report(mcpAdded)
+
+    const [event] = await reported()
+    expect(event.metadata).not.toHaveProperty('apiKeyId')
+  })
+
   it('refuses anything but the listed actions, targets and id-shaped values', async () => {
     const refused = [
       { ...mcpAdded, action: 'member.role_granted' },

@@ -10,7 +10,7 @@ import { getCurrentAdapter, runWithTransaction } from '@better-auth/core/context
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { getCurrentOrganizationId } from '../current-organization'
-import { runWithAuditRequestId } from './request-context'
+import { runWithAuditRequestId, setAuditApiKey } from './request-context'
 import {
   type AuditEventInput,
   createAuditBudget,
@@ -118,6 +118,56 @@ describe('audit writers', () => {
 
     expect((await eventsFor(inRequest)).map((row) => row.requestId)).toEqual(['request-1', 'request-1'])
     expect(await eventsFor(outside)).toMatchObject([{ requestId: null }])
+  })
+
+  it("adds the request's API key to the events its owner acts in, through both writers", async () => {
+    const groupId = crypto.randomUUID()
+    await runWithAuditRequestId(async () => {
+      setAuditApiKey({ id: 'key-1', userId: 'admin-1' })
+      await insertAuditEvent(db, groupCreated(groupId))
+      await createAuditEvent((await createAuth(db).$context).adapter, {
+        ...groupCreated(groupId),
+        metadata: { kind: 'local' },
+      })
+    })
+
+    expect((await eventsFor(groupId)).map((row) => row.metadata)).toEqual(
+      expect.arrayContaining([{ apiKeyId: 'key-1' }, { kind: 'local', apiKeyId: 'key-1' }]),
+    )
+  })
+
+  it("leaves the API key off an event whose actor isn't the key's owner", async () => {
+    const [someoneElse, system] = [crypto.randomUUID(), crypto.randomUUID()]
+    await runWithAuditRequestId(async () => {
+      setAuditApiKey({ id: 'key-1', userId: 'admin-1' })
+      await insertAuditEvent(db, { ...groupCreated(someoneElse), actor: { type: 'user', id: 'member-2' } })
+      await insertAuditEvent(db, { ...groupCreated(system), actor: { type: 'system' } })
+    })
+
+    expect(await eventsFor(someoneElse)).toMatchObject([{ metadata: null }])
+    expect(await eventsFor(system)).toMatchObject([{ metadata: null }])
+  })
+
+  it("keeps each request's API key to itself, and ignores one set outside a request", async () => {
+    const [withKey, withoutKey, outside] = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()]
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 5))
+    setAuditApiKey({ id: 'stray', userId: 'admin-1' })
+    await Promise.all([
+      runWithAuditRequestId(async () => {
+        setAuditApiKey({ id: 'key-1', userId: 'admin-1' })
+        await tick()
+        await insertAuditEvent(db, groupCreated(withKey))
+      }),
+      runWithAuditRequestId(async () => {
+        await tick()
+        await insertAuditEvent(db, groupCreated(withoutKey))
+      }),
+    ])
+    await insertAuditEvent(db, groupCreated(outside))
+
+    expect(await eventsFor(withKey)).toMatchObject([{ metadata: { apiKeyId: 'key-1' } }])
+    expect(await eventsFor(withoutKey)).toMatchObject([{ metadata: null }])
+    expect(await eventsFor(outside)).toMatchObject([{ metadata: null }])
   })
 
   it('lets a key write up to its budget, then refuses it alone', async () => {

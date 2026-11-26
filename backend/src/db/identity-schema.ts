@@ -368,7 +368,7 @@ export const auditEvent = pgTable(
     action: text('action').notNull(),
     outcome: text('outcome', { enum: ['success', 'failure', 'denied'] }).notNull(),
     reason: text('reason'),
-    actorType: text('actor_type', { enum: ['user', 'scim_connection', 'api_key', 'system'] }).notNull(),
+    actorType: text('actor_type', { enum: ['user', 'scim_connection', 'system'] }).notNull(),
     actorId: text('actor_id'),
     targetType: text('target_type'),
     targetId: text('target_id'),

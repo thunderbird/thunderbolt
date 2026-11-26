@@ -42,6 +42,9 @@ const defaultExpiry = () => new Date(Date.now() + defaultScimCredentialLifetimeM
 const notFound = () =>
   new APIError('NOT_FOUND', { message: 'SCIM connection not found', code: 'SCIM_CONNECTION_NOT_FOUND' })
 
+const unavailable = () =>
+  new APIError('CONFLICT', { message: 'This connection cannot take a SCIM side', code: 'SCIM_CONNECTION_UNAVAILABLE' })
+
 const findConnection = (adapter: AuthAdapter, identityConnectionId: string) =>
   adapter.findOne<IdentityConnectionRow>({
     model: 'identityConnection',
@@ -86,10 +89,7 @@ export const createScimConnection = (auth: Auth, input: CreateScimConnectionInpu
         throw notFound()
       }
       if (existing.status !== 'active' || existing.scimConnectionId !== null) {
-        throw new APIError('CONFLICT', {
-          message: 'This connection cannot take a SCIM side',
-          code: 'SCIM_CONNECTION_UNAVAILABLE',
-        })
+        throw unavailable()
       }
     }
     const identityConnectionId = existing?.id ?? crypto.randomUUID()
@@ -103,10 +103,15 @@ export const createScimConnection = (auth: Auth, input: CreateScimConnectionInpu
       },
     })
     const scimConnectionId = created.connection.connectionId
+    // Conditional, so it waits on an SSO retirement holding the row and then re-checks it.
     const connection = existing
       ? await tx.update<IdentityConnectionRow>({
           model: 'identityConnection',
-          where: [{ field: 'id', value: existing.id }],
+          where: [
+            { field: 'id', value: existing.id },
+            { field: 'status', value: 'active' },
+            { field: 'scimConnectionId', value: null },
+          ],
           update: { scimConnectionId },
         })
       : await tx.create<Record<string, unknown>, IdentityConnectionRow>({
@@ -114,6 +119,9 @@ export const createScimConnection = (auth: Auth, input: CreateScimConnectionInpu
           data: { id: identityConnectionId, orgId, name: input.name, scimConnectionId, createdBy: input.actorId },
           forceAllowId: true,
         })
+    if (!connection) {
+      throw unavailable()
+    }
     const audit = {
       outcome: 'success',
       actor: { type: 'user', id: input.actorId },

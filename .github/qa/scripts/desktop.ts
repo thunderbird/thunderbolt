@@ -78,6 +78,9 @@ const run = async (out: string) => {
   try {
     await waitForDriver()
     return await checks(out, downloads)
+  } catch (error) {
+    // Only the driver's start and the first launch get here: each check catches its own error.
+    return [{ name: 'startup', error: error instanceof Error ? error.message : String(error) }]
   } finally {
     driver.kill()
   }

@@ -28,7 +28,8 @@ import { resolveEmailLocale } from '@/emails/i18n'
 import { verifyChallengeSignature } from '@/lib/canary'
 import { securityNotifications, type SecurityNotifications } from '@/lib/security-notifications'
 import type { StepUpAction } from '@/lib/step-up-otp'
-import { hasAccess, isIdpManagedUser } from '@/identity/access'
+import { hasAccess, isIdpManaged, isIdpManagedUser } from '@/identity/access'
+import { lockAccessState } from '@/identity/lock-access-state'
 import { insertAuditEvent } from '@/identity/audit/write'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { challengeOperations } from '@shared/e2ee-types'
@@ -435,11 +436,13 @@ export const createAccountRoutes = (
           set.status = anonymousRefusal.status
           return anonymousRefusal.body
         }
-        if (await isIdpManagedUser(auth, user.id)) {
-          set.status = idpManagedRefusal.status
-          return idpManagedRefusal.body
-        }
         const refusal = await database.transaction(async (tx) => {
+          // Locked so a SCIM link or provision either commits first and refuses this, or waits
+          // and finds the account gone.
+          const locked = await lockAccessState(tx, user.id)
+          if (locked && isIdpManaged(locked.state)) {
+            return idpManagedRefusal
+          }
           const refusal = await requireStepUpCode(tx, stepUpAction, user.email, body?.stepUpOtp)
           if (refusal) {
             return refusal

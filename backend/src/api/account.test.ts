@@ -6,19 +6,30 @@ import { insertTestUsers } from '@/test-utils/identity'
 import { createAuth } from '@/auth/auth'
 import { session as sessionTable, user } from '@/db/auth-schema'
 import { challengeNoncesTable, encryptionMetadataTable, envelopesTable } from '@/db/encryption-schema'
-import { auditEvent, chatThreadsTable, devicesTable, orgMembership, settingsTable, tasksTable } from '@/db/schema'
+import {
+  auditEvent,
+  chatThreadsTable,
+  devicesTable,
+  identityConnection,
+  membershipSource,
+  orgMembership,
+  settingsTable,
+  tasksTable,
+} from '@/db/schema'
+import { getCurrentOrganizationId } from '@/identity/current-organization'
 import { linkCliSessionToDevice } from '@/dal/sessions'
 import { verification } from '@/db/auth-schema'
 import type { SecurityNotifications } from '@/lib/security-notifications'
 import { mintStepUpOtp, stepUpIdentifier } from '@/lib/step-up-otp'
 import { createTestDb } from '@/test-utils/db'
+import { createPostgresTestDb, postgresTestUrl, waitForLockWaiters } from '@/test-utils/postgres'
 import { registerCliDevice } from '@/test-utils/cli-device'
 import { createTestSettings } from '@/test-utils/settings'
 import { exportSigningPublicKey, generateSigningKeypair, signChallenge } from '@/test-utils/e2ee'
 import type { ChallengeProof } from '@shared/e2ee-types'
 import { createHmac } from 'crypto'
 import { and, eq } from 'drizzle-orm'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createAccountRoutes } from './account'
 
@@ -1741,5 +1752,77 @@ describe('Account API', () => {
       const [device] = await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
       expect(device.revokedAt).not.toBeNull()
     })
+  })
+})
+
+// PGlite runs one query at a time, so only a real Postgres shows the delete and a SCIM link interleaving.
+describe.skipIf(!postgresTestUrl)('DELETE /v1/account on Postgres', () => {
+  let postgresDb: Awaited<ReturnType<typeof createPostgresTestDb>>
+  let app: { handle: (request: Request) => Promise<Response> }
+
+  beforeAll(async () => {
+    postgresDb = await createPostgresTestDb()
+    const routes = createAccountRoutes(
+      createAuth(postgresDb.db),
+      createTestSettings({ betterAuthSecret }),
+      postgresDb.db,
+      { notifications: {} as SecurityNotifications },
+    )
+    const elysia = new Elysia({ prefix: '/v1' }).use(routes)
+    app = { handle: (request) => elysia.handle(request) }
+  })
+  afterAll(() => postgresDb.close())
+
+  it('refuses an account a SCIM link attaches while the delete waits for it', async () => {
+    const { db } = postgresDb
+    const userId = crypto.randomUUID()
+    const email = `${userId}@example.com`
+    const token = crypto.randomUUID()
+    await insertTestUsers(db, { id: userId, name: 'Linked', email, emailVerified: true })
+    await db.insert(sessionTable).values({
+      id: crypto.randomUUID(),
+      expiresAt: new Date(Date.now() + 3600 * 1000),
+      token,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      userId,
+    })
+    const [connection] = await db
+      .insert(identityConnection)
+      .values({ id: crypto.randomUUID(), orgId: getCurrentOrganizationId(), name: userId, scimConnectionId: userId })
+      .returning()
+    const [membership] = await db.select().from(orgMembership).where(eq(orgMembership.userId, userId))
+    const code = await mintStepUpOtp(db, 'account-deletion', email)
+
+    const { promise: linked, resolve: link } = Promise.withResolvers<void>()
+    const { promise: held, resolve: release } = Promise.withResolvers<void>()
+    // A SCIM create's reconcile, holding the source it added until it commits.
+    const linking = db.transaction(async (tx) => {
+      await tx.insert(membershipSource).values({
+        id: crypto.randomUUID(),
+        orgId: getCurrentOrganizationId(),
+        membershipId: membership.id,
+        kind: 'scim',
+        identityConnectionId: connection.id,
+      })
+      link()
+      await held
+    })
+    await linked
+    const deleting = app.handle(
+      new Request('http://localhost/v1/account', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${signToken(token)}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stepUpOtp: code }),
+      }),
+    )
+    await waitForLockWaiters(db, 1)
+    release()
+    await linking
+
+    const response = await deleting
+    expect(response.status).toBe(403)
+    expect(await response.json()).toMatchObject({ code: 'ACCOUNT_IDP_MANAGED' })
+    expect(await db.$count(user, eq(user.id, userId))).toBe(1)
   })
 })

@@ -88,12 +88,12 @@ const run = async (out: string) => {
 
 const waitForDriver = async () => {
   for (let i = 0; i < 30; i++) {
-    // nosemgrep: typescript.react.security.react-insecure-request.react-insecure-request -- loopback WebDriver status
-    const ok = await fetch('http://127.0.0.1:4444/status').then(
-      (r) => r.ok,
-      () => false,
-    )
-    if (ok) return
+    try {
+      // nosemgrep: typescript.react.security.react-insecure-request.react-insecure-request -- loopback WebDriver status
+      if ((await fetch('http://127.0.0.1:4444/status')).ok) return
+    } catch {
+      // Not listening yet.
+    }
     await Bun.sleep(1000)
   }
   throw new Error('tauri-driver did not start')

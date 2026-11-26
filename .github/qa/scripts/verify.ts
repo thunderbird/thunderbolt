@@ -1036,9 +1036,9 @@ the keyboard hides is \`behind-keyboard\` on Android and \`focused-clipped\` on 
 Findings can also overlap on one platform. One finding can report two defects that two other findings report one
 each: "the PDF viewer's Download and Close buttons have no name", "the Download button has no name" and "the Close
 button has no name" are one panel, and one fix names both buttons, so all three go in one group. Compare the steps,
-expected and actual, not only the titles: findings that reach the same controls on the same screen describe one
-defect, even when two sessions filed them under different areas. A \`security\` finding shares a group only with other
-\`security\` findings.
+expected and actual, not only the titles: findings that reach the same controls on the same screen may be one
+defect, even when two sessions filed them under different areas. Group them when one common fix covers them all. A
+\`security\` finding shares a group only with other \`security\` findings.
 
 Put findings in one group only when one fix in the app would fix them all. When in doubt, leave a finding in a group
 of its own. Every finding id goes in exactly one group.

@@ -25,8 +25,8 @@ verdict.
 1. Root cause and owner. Follow the finding's steps through the code that really runs to the code that owns the broken
    contract. The patch must fix it there. A special case in a shared component for one caller, or a new default every
    caller inherits, is the wrong place.
-2. Callers. For every shared component, hook or helper the patch changes, check each caller keeps its behaviour. Name
-   one that breaks.
+2. Callers. For every shared component, hook or helper the patch changes, check each caller keeps its behaviour.
+   Report each caller that breaks.
 3. The real path. The patch and its test must go through the code the app runs for this bug. For what the model sees
    on a later turn, the built-in agent (`src/acp/built-in-adapter.ts`) keeps one Pi harness per chat
    (`shared/agent-core/build-app-harness.ts`): a test that uses a fake adapter, or filters a request body the harness

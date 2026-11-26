@@ -142,6 +142,7 @@ export const minimalModeHiddenEntityTypes: ReadonlySet<SearchEntityType> = new S
  * one. (Started at 1; bumped to 2 for the soft-delete guard + the snake_case
  * message-parent fix, which changed the triggers and backfill; 3 adds projects;
  * 4 changes the tokenizer to `unicode61 remove_diacritics 2` and drops porter;
- * 5 skips FTS updates when indexed values and soft-delete visibility are unchanged.)
+ * 5 skips FTS updates when indexed values and soft-delete visibility are unchanged;
+ * 6 adds the `search_index_keys` rowid map the triggers delete through.)
  */
-export const searchIndexVersion = 5
+export const searchIndexVersion = 6

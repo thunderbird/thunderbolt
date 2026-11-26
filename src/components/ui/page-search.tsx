@@ -33,6 +33,8 @@ const usePageSearchContext = () => {
 
 type PageSearchProps = {
   onSearch: (value: string) => void
+  /** A search the page starts with, e.g. one read from the URL; the input opens holding it. */
+  defaultValue?: string
   children: ReactNode
 }
 
@@ -46,9 +48,9 @@ type PageSearchProps = {
  *     <PageSearch.Input placeholder="Search…" />
  *   </PageSearch>
  */
-export const PageSearch = ({ onSearch, children }: PageSearchProps) => {
-  const [open, setOpen] = useState(false)
-  const [searchValue, setSearchValue] = useState('')
+export const PageSearch = ({ onSearch, defaultValue = '', children }: PageSearchProps) => {
+  const [open, setOpen] = useState(defaultValue !== '')
+  const [searchValue, setSearchValue] = useState(defaultValue)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const toggle = () => {

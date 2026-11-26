@@ -58,4 +58,22 @@ describe('PageSearch', () => {
     expect(screen.getByPlaceholderText('Search items')).not.toHaveAttribute('tabindex')
     expect(screen.getByPlaceholderText('Search items')).toHaveFocus()
   })
+
+  it('opens holding a search it starts with, and clears it on close', () => {
+    const onSearch = mock((_value: string) => {})
+    render(
+      <PageSearch onSearch={onSearch} defaultValue="ada">
+        <PageSearch.Button />
+        <PageSearch.Input placeholder="Search items" onSearch={onSearch} />
+      </PageSearch>,
+    )
+
+    const input = screen.getByPlaceholderText('Search items')
+    expect(input).toHaveValue('ada')
+    expect(input.parentElement?.parentElement).toHaveAttribute('aria-hidden', 'false')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+    expect(onSearch).toHaveBeenLastCalledWith('')
+    expect(input).toHaveValue('')
+  })
 })

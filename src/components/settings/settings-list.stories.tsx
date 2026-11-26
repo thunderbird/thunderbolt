@@ -8,7 +8,8 @@ import { fn } from 'storybook/test'
 
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
-import { SettingsEmptyState, SettingsNoResults } from './settings-empty-state'
+import { SettingsNoResults } from './settings-empty-state'
+import { EmptyState as EmptyStateView } from '@/components/ui/empty-state'
 import { SettingsListBody, SettingsListPane, SettingsSectionLabel, SettingsSelectableRow } from './settings-list'
 
 const meta = {
@@ -73,8 +74,8 @@ export const EmptyState: Story = {
   render: () => (
     <SettingsListPane>
       <SettingsSectionLabel>Connections</SettingsSectionLabel>
-      <SettingsEmptyState
-        icon={<Zap className="size-8 text-muted-foreground" />}
+      <EmptyStateView
+        icon={Zap}
         title="No connections yet"
         description="Connect a service to make it available to your agents."
         action={

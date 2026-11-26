@@ -4,7 +4,7 @@
 
 import type { ComponentProps, ReactNode } from 'react'
 
-import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
+import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { EditDeleteContextMenuContent } from './edit-delete-context-menu'
 import { Card } from '@/components/ui/card'
 import { pageCreateActionClearanceClass } from '@/components/ui/page-create-action'
@@ -60,7 +60,10 @@ export const SettingsSectionLabel = ({ className, ...props }: ComponentProps<'h2
 )
 
 type SettingsSelectableRowProps = Omit<ComponentProps<typeof Card>, 'onSelect' | 'title' | 'contextMenu'> & {
+  /** The standard right-click Edit/Remove menu. */
   contextMenu?: { onEdit?: () => void; onRemove?: () => void }
+  /** A right-click menu of the row's own items (`ContextMenuItem`s), for rows whose actions aren't Edit/Remove. */
+  contextMenuItems?: ReactNode
   title: ReactNode
   subtitle?: ReactNode
   leading?: ReactNode
@@ -77,6 +80,7 @@ type SettingsSelectableRowProps = Omit<ComponentProps<typeof Card>, 'onSelect' |
 /** Shared settings row with a full-height trailing-control lane. */
 export const SettingsSelectableRow = ({
   contextMenu,
+  contextMenuItems,
   title,
   subtitle,
   leading,
@@ -122,14 +126,19 @@ export const SettingsSelectableRow = ({
       {trailing && <div className="flex shrink-0 items-center rounded-r-[inherit] pr-4">{trailing}</div>}
     </Card>
   )
-  return contextMenu ? (
+  if (!contextMenu && !contextMenuItems) {
+    return row
+  }
+  return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div>{row}</div>
       </ContextMenuTrigger>
-      <EditDeleteContextMenuContent onEdit={contextMenu.onEdit} onDelete={contextMenu.onRemove} />
+      {contextMenuItems ? (
+        <ContextMenuContent className="min-w-56">{contextMenuItems}</ContextMenuContent>
+      ) : (
+        <EditDeleteContextMenuContent onEdit={contextMenu?.onEdit} onDelete={contextMenu?.onRemove} />
+      )}
     </ContextMenu>
-  ) : (
-    row
   )
 }

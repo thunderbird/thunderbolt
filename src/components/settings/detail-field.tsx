@@ -13,7 +13,7 @@ type DetailFieldProps = ComponentProps<'section'> & {
 
 /** A labeled value block for detail panels, using the shared section-title style. */
 export const DetailField = ({ label, className, children, ...props }: DetailFieldProps) => (
-  <section className={cn('flex flex-col gap-1', className)} {...props}>
+  <section className={cn('flex flex-col gap-2', className)} {...props}>
     <DetailSectionTitle>{label}</DetailSectionTitle>
     {children}
   </section>

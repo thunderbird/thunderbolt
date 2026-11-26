@@ -603,7 +603,8 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    honest mistakes, not against a patch built to cheat: the reviewer reads code the agent wrote, and a process that
    outlived the sandbox (see "Passes") could read the key from a review step's environment as it could from the key
    scan's. Each session's metrics go in the report as `fix-<fp>`, `fix-<fp>-review`, `fix-<fp>-correct` and
-   `fix-<fp>-review-again`.
+   `fix-<fp>-review-again`. A session that ran to its step cap shows as a timeout, and the report notes that a cut
+   review gave no verdict.
 
    The fix session's tools are `Read`, `Glob`, `Grep`, `Edit`, `Write`, `Bash` and `Skill`, with no `Agent`, `Task`,
    web tool or git. `Skill` is there so the agent can run the bundled `simplify` skill on its own changes before it

@@ -565,6 +565,7 @@ const metricCells = (s: Session) =>
   `${usd(s.cost_usd)} | ${s.turns} | ${minutes(s.duration_ms)} | ${tokens(s)} | ${s.stop === 'done' ? 'done' : `**${stopLabel[s.stop]}**`}`
 
 const cutNote = (s: Session) => {
+  if (isReview(s)) return 'it gave no verdict, so the patch counts as rejected'
   if (isFix(s)) return 'its patch may be partial'
   return isFree(s.charter) ? 'the case was not fully played' : 'the charter was not fully explored'
 }

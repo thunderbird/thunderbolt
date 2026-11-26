@@ -187,6 +187,7 @@ describe('secrets', () => {
       "Keep the correction session's execution file",
       'Record the tree the second review reads',
       'Review the corrected fix',
+      "Keep the second review session's execution file",
       'Decide the review',
     ])
     for (const plain of between.filter((s) => s.run)) {
@@ -650,7 +651,7 @@ describe('fix job', () => {
     })
   })
 
-  test('the metrics list each review or correction session that ran, also one that left no execution file', () => {
+  test('the metrics list each review or correction session that ran, also one cut at its step cap', () => {
     const dir = mkdtempSync(join(work, 'metrics-'))
     writeFileSync(join(dir, 'bun'), `#!/bin/sh\nprintf '%s\\n' "$*" >> "${dir}/bun.log"\n`, { mode: 0o755 })
     const proc = Bun.spawnSync(['bash', '-e', '-c', step('fix', 'Record the session metrics').run ?? ''], {
@@ -660,17 +661,26 @@ describe('fix job', () => {
         RUNNER_TEMP: '/runner',
         QA_FP: 'fp1',
         QA_FIX_TIMEOUT_MINUTES: '60',
-        SESSIONS: 'review=failure correct=skipped review-again=',
+        QA_REVIEW_TIMEOUT_MINUTES: '20',
+        START: '1000',
+        END: '1600',
+        // The review ran its whole 20 minutes; the correction pass, 59 of its 60.
+        SESSIONS: 'review=failure:1600:2800 correct=failure:2800:6340 review-again=skipped::',
       },
     })
     expect(proc.exitCode).toBe(0)
+    const session = (name: string, charter: string) =>
+      `.github/qa/scripts/report.ts session --execution-file /runner/qa-execution-${name}.json --charter ${charter} ` +
+      '--out qa-out'
     expect(readFileSync(join(dir, 'bun.log'), 'utf8')).toBe(
-      '.github/qa/scripts/report.ts session --execution-file /runner/qa-execution-fix.json --charter fix-fp1 --out qa-out\n' +
-        '.github/qa/scripts/report.ts session --execution-file /runner/qa-execution-review.json --charter fix-fp1-review --out qa-out\n',
+      `${session('fix', 'fix-fp1')}\n${session('review', 'fix-fp1-review')} --timed-out\n` +
+        `${session('correct', 'fix-fp1-correct')}\n`,
     )
     expect(step('fix', 'Record the session metrics').env?.SESSIONS).toBe(
-      'review=${{ steps.review.outcome }} correct=${{ steps.correct.outcome }} ' +
-        'review-again=${{ steps.review-again.outcome }}',
+      'review=${{ steps.review.outcome }}:${{ steps.keep-fix.outputs.end }}:${{ steps.keep-review.outputs.end }} ' +
+        'correct=${{ steps.correct.outcome }}:${{ steps.keep-review.outputs.end }}:${{ steps.keep-correct.outputs.end }} ' +
+        'review-again=${{ steps.review-again.outcome }}:${{ steps.keep-correct.outputs.end }}:' +
+        '${{ steps.keep-review-again.outputs.end }}',
     )
   })
 

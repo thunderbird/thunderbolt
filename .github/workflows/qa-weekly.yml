@@ -1486,7 +1486,7 @@ jobs:
             --setting-sources user
             --permission-mode dontAsk
             --tools "Read,Glob,Grep,Bash"
-            --allowedTools "Read,Glob,Grep,Bash(git diff HEAD),Bash(git status --short)"
+            --allowedTools "Read,Glob,Grep,Bash(git diff HEAD),Bash(git status --short --untracked-files=all)"
             --disallowedTools WebFetch WebSearch
             --json-schema '{"type":"object","properties":{"approved":{"type":"boolean"},"problems":{"type":"array","items":{"type":"string"}},"resolved":{"type":"array","items":{"type":"object","properties":{"problem":{"type":"integer"},"where":{"type":"string"}},"required":["problem","where"],"additionalProperties":false}}},"required":["approved","problems","resolved"],"additionalProperties":false}'
             --max-budget-usd ${{ env.QA_REVIEW_MAX_BUDGET_USD }}

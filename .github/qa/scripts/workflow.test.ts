@@ -454,7 +454,9 @@ describe('fix job', () => {
       const review = step('fix', 'Review the fix')
       const args = review.with?.claude_args ?? ''
       expect(args).toContain('--tools "Read,Glob,Grep,Bash"')
-      expect(args).toContain('--allowedTools "Read,Glob,Grep,Bash(git diff HEAD),Bash(git status --short)"')
+      expect(args).toContain(
+        '--allowedTools "Read,Glob,Grep,Bash(git diff HEAD),Bash(git status --short --untracked-files=all)"',
+      )
       const schema = JSON.parse(/--json-schema '([^']+)'/.exec(args)?.[1] ?? '{}')
       expect(schema.required).toEqual(['approved', 'problems', 'resolved'])
       expect(schema.properties.resolved.items.required).toEqual(['problem', 'where'])

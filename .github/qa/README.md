@@ -576,7 +576,8 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    passed checks showed and that an AI wrote the change, and the commit body wraps that text at 100 columns.
 
    Before any check runs, a fresh session reviews the patch (`review.md`): it gets the task, reads the patch with
-   `git diff HEAD` and `git status --short`, the callers of what it changes and the code the finding's steps run, and
+   `git diff HEAD` and `git status --short --untracked-files=all` (each added file, also inside a new folder), the
+   callers of what it changes and the code the finding's steps run, and
    tries to show the fix is wrong (wrong owner or layer, a broken caller, a test off the real path or a proxy, a
    fake-provider artifact, a missed sibling, one adjacent case). It has `Read`, `Glob`, `Grep` and those two git
    commands, no edit tool and no test runs (`verify-tests` and `verify-checks` run the tests), and answers

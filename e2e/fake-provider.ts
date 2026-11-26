@@ -41,6 +41,18 @@ export const fakeProviderReply = 'Hello from the fake provider, one word at a ti
  */
 export const unsupportedRequestMarker = '[fake-provider] unsupported'
 
+/**
+ * In the last user turn: the reply streams one word every 3 s instead of every 150 ms, so the QA agent has time to stop
+ * it or switch the model while it streams.
+ */
+export const slowReplyTrigger = 'qa:slow'
+
+/**
+ * In the last user turn: the first request with that exact text loses its connection after three words, and the same
+ * text again (a retry) gets the whole reply.
+ */
+export const cutReplyTrigger = 'qa:cut'
+
 type FakeProviderOptions = { delayMs?: number }
 
 const textPartSchema = z.object({ type: z.string(), text: z.string().optional() })
@@ -66,11 +78,55 @@ const requestSchema = z.object({ messages: z.array(z.object({ role: z.string(), 
 
 type FakeRequest = z.infer<typeof requestSchema>
 
-const lastUserContent = (request: FakeRequest) =>
-  request.messages.findLast((message) => message.role === 'user')?.content
+const lastUserContent = <Content>({ messages }: { messages: { role: string; content?: Content }[] }) =>
+  messages.findLast((message) => message.role === 'user')?.content
 
-/** Only the last user turn can opt into the expensive fixture; ordinary replies retain their original timing. */
-const requestsPerformanceStream = (request: FakeRequest) => lastUserContent(request)?.text === performanceStreamPrompt
+type ReplyPlan = { reply: string; chunkSize?: number; delayMs: number; cut: boolean }
+
+/**
+ * How the reply streams when the last user turn reads `text`. Only that turn can opt into the expensive fixture or a
+ * trigger; ordinary replies retain their original timing. The triggers match in any case, since a phone keyboard
+ * capitalizes the first letter. `cutTexts` holds the texts already cut, so a retry of one gets the whole reply.
+ */
+export const selectReply = (text: string, cutTexts: Set<string>): ReplyPlan => {
+  if (text === performanceStreamPrompt) {
+    return { ...performanceStreamOptions, cut: false }
+  }
+  const lower = text.toLowerCase()
+  const cut = lower.includes(cutReplyTrigger) && !cutTexts.has(text)
+  if (cut) {
+    cutTexts.add(text)
+  }
+  return { reply: fakeProviderReply, delayMs: lower.includes(slowReplyTrigger) ? 3000 : 150, cut }
+}
+
+/**
+ * Writes the plan's reply in fixed-size chunks, or word by word, each after the plan's pause. Returns false once the
+ * client has gone (a stopped reply) or at a cut, which drops the connection after the third chunk and its pause, so
+ * that chunk reaches the client.
+ */
+const streamReply = async (
+  res: ServerResponse,
+  { reply, chunkSize, delayMs, cut }: ReplyPlan,
+  write: (text: string) => void,
+) => {
+  const chunks = chunkSize
+    ? Array.from({ length: Math.ceil(reply.length / chunkSize) }, (_, index) =>
+        reply.slice(index * chunkSize, (index + 1) * chunkSize),
+      )
+    : reply.match(/\S+\s*/g)!
+  for (const [index, text] of chunks.entries()) {
+    await setTimeout(delayMs)
+    if (cut && index === 3) {
+      res.destroy()
+    }
+    if (res.destroyed) {
+      return false
+    }
+    write(text)
+  }
+  return true
+}
 
 const emailResultSchema = z.object({ body_text: z.string() })
 
@@ -158,6 +214,8 @@ const openAiRequestSchema = z.object({
   model: z.string(),
   stream: z.boolean().optional(),
   stream_options: z.object({ include_usage: z.boolean().optional() }).optional(),
+  // An assistant turn that calls a tool may have null or no content.
+  messages: z.array(z.object({ role: z.string(), content: contentSchema.nullish() })).default([]),
 })
 
 /**
@@ -169,7 +227,7 @@ const serveOpenAiCompatible = async (
   req: IncomingMessage,
   res: ServerResponse,
   pathname: string,
-  delayMs: number,
+  planFor: (text?: string) => ReplyPlan,
 ): Promise<boolean> => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, corsHeaders).end()
@@ -188,7 +246,7 @@ const serveOpenAiCompatible = async (
     res.writeHead(400, corsHeaders).end('Invalid chat completions request')
     return true
   }
-  const { model, stream, stream_options: streamOptions } = parsed.data
+  const { model, stream, stream_options: streamOptions, messages } = parsed.data
   const base = { id: `chatcmpl-${crypto.randomUUID()}`, created: Math.floor(Date.now() / 1000), model }
   const usage = { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18 }
   if (!stream) {
@@ -209,12 +267,11 @@ const serveOpenAiCompatible = async (
       `data: ${JSON.stringify({ ...base, object: 'chat.completion.chunk', choices: [{ index: 0, delta, finish_reason: finishReason }] })}\n\n`,
     )
   writeChunk({ role: 'assistant' }, null)
-  for (const content of fakeProviderReply.match(/\S+\s*/g)!) {
-    await setTimeout(delayMs)
-    if (res.destroyed) {
-      return true
-    }
-    writeChunk({ content }, null)
+  const finished = await streamReply(res, planFor(lastUserContent({ messages })?.text), (content) =>
+    writeChunk({ content }, null),
+  )
+  if (!finished) {
+    return true
   }
   writeChunk({}, 'stop')
   if (streamOptions?.include_usage === true) {
@@ -230,9 +287,15 @@ const serveOpenAiCompatible = async (
  * `unsupportedRequestMarker` line on stderr.
  */
 export const createFakeProvider = async (port: number, options: FakeProviderOptions = {}): Promise<Server> => {
+  const cutTexts = new Set<string>()
+  // A caller's fixed `delayMs` (a fast test) wins over the pace the fixture or a trigger asks for.
+  const planFor = (text = '') => {
+    const plan = selectReply(text, cutTexts)
+    return { ...plan, delayMs: options.delayMs ?? plan.delayMs }
+  }
   const server = createServer(async (req, res) => {
     const url = new URL(req.url!, `http://localhost:${port}`)
-    if (await serveOpenAiCompatible(req, res, url.pathname, options.delayMs ?? 150)) {
+    if (await serveOpenAiCompatible(req, res, url.pathname, planFor)) {
       return
     }
     if (req.method !== 'POST' || !url.pathname.endsWith('/v1/messages')) {
@@ -251,16 +314,6 @@ export const createFakeProvider = async (port: number, options: FakeProviderOpti
       res.end('Invalid Messages request')
       return
     }
-    const selected = requestsPerformanceStream(request)
-      ? performanceStreamOptions
-      : { reply: fakeProviderReply, chunkSize: undefined, delayMs: 150 }
-    const { reply, chunkSize } = selected
-    const chunks = chunkSize
-      ? Array.from({ length: Math.ceil(reply.length / chunkSize) }, (_, index) =>
-          reply.slice(index * chunkSize, (index + 1) * chunkSize),
-        )
-      : reply.match(/\S+\s*/g)!
-
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' })
     /** Write a native Messages event with its SSE event name. */
     const writeEvent = (event: RawMessageStreamEvent) => {
@@ -320,12 +373,11 @@ export const createFakeProvider = async (port: number, options: FakeProviderOpti
       return
     }
     writeEvent({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '', citations: [] } })
-    for (const text of chunks) {
-      await setTimeout(options.delayMs ?? selected.delayMs)
-      if (res.destroyed) {
-        return
-      }
-      writeEvent({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } })
+    const finished = await streamReply(res, planFor(lastUserContent(request)?.text), (text) =>
+      writeEvent({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } }),
+    )
+    if (!finished) {
+      return
     }
     writeEvent({ type: 'content_block_stop', index: 0 })
     writeEvent({

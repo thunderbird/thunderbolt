@@ -159,6 +159,8 @@ jobs:
       - &install
         name: Install dependencies
         run: |
+          # These jobs need only Ubuntu packages, and a broken Microsoft apt source fails every apt-get update.
+          if [ "$RUNNER_OS" = Linux ]; then sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list; fi
           bun install --frozen-lockfile
           cd backend && bun install --frozen-lockfile
 

@@ -16,6 +16,12 @@ import pkg from './package.json' with { type: 'json' }
 import { exaRelayPlugin, exaRelayProxies } from './scripts/exa-relay'
 import { tinfoilSearchRelayPlugin, tinfoilSearchProxy } from './scripts/tinfoil-search-relay'
 import { copyPowerSyncAssets } from './scripts/copy-powersync-assets'
+import {
+  e2eSourceEntries,
+  e2eSourceModulesPlugin,
+  findE2eSourceModules,
+  isE2eSourceEntry,
+} from './scripts/e2e-source-modules'
 import { officeSandboxScriptPlugin } from './scripts/office-sandbox-script'
 import { stripDanglingSourceMapsPlugin } from './scripts/strip-dangling-source-maps'
 import {
@@ -40,6 +46,10 @@ const shouldAnalyze = process.env.ANALYZE?.toLowerCase() === 'true' || process.a
 // Source maps are disabled by default so forks don't accidentally expose proprietary code.
 // Enable with ENABLE_SOURCEMAP=true (e.g. in CI) to upload maps to PostHog for error tracking.
 const sourcemap = process.env.ENABLE_SOURCEMAP?.toLowerCase() === 'true' ? 'hidden' : false
+
+// Set by playwright.config.ts for its prebuilt app servers, so specs that import app modules by dev-server URL
+// still reach the running app's instances.
+const e2eSourceModules = process.env.E2E_SOURCE_MODULES === 'true' ? findE2eSourceModules(dirname) : []
 
 /** Response headers for the dev and preview servers, matching deploy/config/security-headers.conf. */
 const setResponseHeaders: Connect.NextHandleFunction = (req, res, next) => {
@@ -74,7 +84,10 @@ export default defineConfig({
       input: {
         app: path.resolve(dirname, 'index.html'),
         recovery: path.resolve(dirname, 'webview-recovery.html'),
+        ...e2eSourceEntries(dirname, e2eSourceModules),
       },
+      // Vite drops entry exports nothing else imports; the e2e source entries need theirs under their own names.
+      preserveEntrySignatures: e2eSourceModules.length > 0 ? 'allow-extension' : undefined,
       external: ['bun:sqlite'],
       treeshake: {
         moduleSideEffects: [
@@ -93,7 +106,10 @@ export default defineConfig({
         assetFileNames: webkitCompatAssetFileNames,
         // Distinct prefix for the entry chunk so size-limit can track the
         // FCP-blocking bytes separately from on-demand route chunks.
-        entryFileNames: (chunk) => (chunk.name === 'recovery' ? 'assets/recovery-[hash].js' : 'assets/entry-[hash].js'),
+        entryFileNames: (chunk) => {
+          if (isE2eSourceEntry(chunk.name)) return '[name].js'
+          return chunk.name === 'recovery' ? 'assets/recovery-[hash].js' : 'assets/entry-[hash].js'
+        },
       },
     },
   },
@@ -103,6 +119,7 @@ export default defineConfig({
     officeSandboxScriptPlugin(),
     tinfoilSearchRelayPlugin(),
     exaRelayPlugin(),
+    e2eSourceModulesPlugin(e2eSourceModules),
     {
       name: 'copy-powersync-assets',
       // `vite preview` serves the built dist/, so it has no reason to touch public/.
@@ -263,8 +280,8 @@ export default defineConfig({
         }
       : undefined,
     watch: {
-      // 3. tell vite to ignore watching `src-tauri`, and the QA agent's output (Playwright traces would reload the page)
-      ignored: ['**/src-tauri/**', '**/qa-out*/**'],
+      // 3. tell vite to ignore watching `src-tauri`, the e2e builds, and the QA agent's output (Playwright traces would reload the page)
+      ignored: ['**/src-tauri/**', '**/qa-out*/**', '**/dist-e2e/**'],
     },
     fs: {
       strict: true,

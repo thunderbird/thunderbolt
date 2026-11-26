@@ -1,6 +1,7 @@
 node_modules
 dist
 dist-isolation
+dist-e2e
 src-tauri/target
 src-tauri/gen
 *.min.js

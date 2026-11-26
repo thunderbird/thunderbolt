@@ -325,7 +325,8 @@ test.describe('minimum app-version gate', () => {
     // for the external upstream (`skipHeaders` in src/lib/proxy-fetch.ts).
     const proxyHeaders = await page.evaluate(
       async ({ cloudUrl, target }) => {
-        // Vite dev serves app source under `/src/...`; the module is already in the
+        // The app serves source under `/src/...` (Vite dev, or the e2e source entries of a
+        // prebuilt run, see scripts/e2e-source-modules.ts); the module is already in the
         // running app's graph, so this resolves the real `createProxyFetch`. Cast via
         // a string so TS types the runtime URL import as the app module.
         const modulePath = '/src/lib/proxy-fetch.ts'

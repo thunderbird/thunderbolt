@@ -15,7 +15,7 @@ import { parseArgs } from 'node:util'
 import { Key, remote } from 'webdriverio'
 import { fakeProviderReply } from '../../../e2e/fake-provider'
 import { completeSetup } from '../../../e2e/native-smoke/setup-wizard'
-import type { LayoutProblem } from '../layout'
+import { axePath, type LayoutProblem } from '../layout'
 
 declare global {
   // Declaration merging needs an interface. `withGlobalTauri` in src-tauri/tauri.conf.json sets it.
@@ -42,9 +42,6 @@ export const summarize = (results: CheckResult[]) => ({
 })
 
 const prompt = 'Please greet me briefly.'
-const probe = await readFile(resolve(import.meta.dir, '../layout-probe.js'), 'utf8')
-// The axe-core version of the probe throws unless axe-core loads first; the older probe ignores it.
-const axe = await readFile(resolve(import.meta.dir, '../../../node_modules/axe-core/axe.min.js'), 'utf8')
 // A variable, as in e2e/native-smoke/linux.ts: webdriverio's type has no `tauri:options`.
 const capabilities = {
   browserName: 'wry',
@@ -119,8 +116,8 @@ const waitForText = (browser: Browser, text: string, timeout: number) =>
 
 /** The layout probe's confirmed problems on the current screen. */
 const layoutProblems = async (browser: Browser): Promise<LayoutProblem[]> => {
-  await browser.execute(axe)
-  await browser.execute(probe)
+  await browser.execute(await readFile(axePath, 'utf8'))
+  await browser.execute(await readFile(resolve(import.meta.dir, '../layout-probe.js'), 'utf8'))
   await browser.pause(1500)
   return browser.execute(() => window.__qaLayout.problems())
 }

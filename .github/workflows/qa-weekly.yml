@@ -1453,9 +1453,9 @@ jobs:
         env: *plain-shell
         run: &record-tree |
           files() {
-            # Only directories, as .gitignore ignores them: a file like src/qa-output.ts is published.
-            /usr/bin/find . \( -path ./.git -o -name node_modules -o -type d \( -name 'qa-out*' -o -name 'qa-dist*' \) \) \
-              -prune -o -type f "$@" -print0
+            # qa-out* and qa-dist* only as directories, as .gitignore ignores them, so src/qa-output.ts is recorded.
+            /usr/bin/find . \( -path ./.git -o -name node_modules -o \
+              -type d \( -name 'qa-out*' -o -name 'qa-dist*' \) \) -prune -o -type f "$@" -print0
           }
           # Git keeps a file's owner-executable bit besides its content, so the list holds that bit too, as an `x` line.
           # Both go through sha256sum, which writes a name with a newline in it escaped, on one line. The visual check
@@ -1575,8 +1575,9 @@ jobs:
           /bin/mv "$RUNNER_TEMP/claude-execution-output.json" "$RUNNER_TEMP/qa-execution-review-again.json" || true
           echo "end=$(/bin/date +%s)" >> "$GITHUB_OUTPUT"
       # The verdict publish needs as the `review` pass: the second review's when it ran, else the first's. A review
-      # approves only with `approved` true and no problems. A second approval also counts only when `resolved` names every problem of the first review by its number, with the
-      # `file:line` that fixes it or shows it was wrong. Without that the approval is a rejection.
+      # approves only with `approved` true and no problems. A second approval also counts only when `resolved` names
+      # every problem of the first review by its number, with the `file:line` that fixes it or shows it was wrong.
+      # Without that the approval is a rejection.
       - name: Decide the review
         id: review-verdict
         if: always()
@@ -1690,7 +1691,7 @@ jobs:
           SPECS: ${{ toJSON(matrix.task.specs) }}
         run: |
           mapfile -t specs < <(jq -r '.[] | "qa-out-verify/" + ltrimstr("qa-out/")' <<< "$SPECS")
-          # Playwright skips a missing spec when another one exists, so this fails on one first.
+          # Playwright skips a missing spec when another one exists, so `ls` fails the step on it first.
           ls -- "${specs[@]}" > /dev/null
           bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 "${specs[@]}"
 
@@ -1781,8 +1782,8 @@ jobs:
             reviewed="$RUNNER_TEMP/qa-tree-$REVIEWED_TREE.txt"
             sum=$(sha256sum < "$reviewed" 2> /dev/null) || sum=
             files() {
-              find . \( -path ./.git -o -name node_modules -o -type d \( -name 'qa-out*' -o -name 'qa-dist*' \) \) \
-                -prune -o -type f "$@" -print0
+              find . \( -path ./.git -o -name node_modules -o \
+                -type d \( -name 'qa-out*' -o -name 'qa-dist*' \) \) -prune -o -type f "$@" -print0
             }
             check="./qa-out/fix-$QA_FP/repro/check.spec.ts"
             if [ -z "$REVIEWED_TREE" ] || [ "${sum%% *}" != "$REVIEWED_TREE" ]; then
@@ -1828,8 +1829,8 @@ jobs:
           record() {
             timed_out=()
             if [ $(( ${4:-$(date +%s)} - ${3:-$(date +%s)} )) -ge $(( $5 * 60 )) ]; then timed_out=(--timed-out); fi
-            bun .github/qa/scripts/report.ts session --execution-file "$RUNNER_TEMP/qa-execution-$1.json" --charter "$2" \
-              --out qa-out "${timed_out[@]}"
+            bun .github/qa/scripts/report.ts session --execution-file "$RUNNER_TEMP/qa-execution-$1.json" \
+              --charter "$2" --out qa-out "${timed_out[@]}"
           }
           record fix "fix-$QA_FP" "$START" "$END" "$QA_FIX_TIMEOUT_MINUTES"
           for entry in $SESSIONS; do
@@ -2164,7 +2165,7 @@ jobs:
           SPECS: ${{ toJSON(matrix.task.realSpecs) }}
         run: |
           mapfile -t specs < <(jq -r '.[]' <<< "$SPECS")
-          # Playwright skips a missing spec when another one exists, so this fails on one first.
+          # Playwright skips a missing spec when another one exists, so `ls` fails the step on it first.
           ls -- "${specs[@]}" > /dev/null
           bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 "${specs[@]}"
       - *pass-marker

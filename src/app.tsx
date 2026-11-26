@@ -51,6 +51,7 @@ import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { WelcomeDialog } from './components/welcome-dialog'
 import { PendingDeviceModal } from './components/pending-device-modal'
 import { UpdateNotification } from './components/update-notification'
+import { SavedFileNotice } from './components/saved-file-notice'
 import { ExternalLinkDialogProvider } from './components/chat/markdown-utils'
 import { ContentViewProvider } from './content-view/context'
 import { useAppInitialization } from './hooks/use-app-initialization'
@@ -169,6 +170,7 @@ const AppContent = ({ initData }: { initData: InitData }) => {
     <BrowserRouter>
       <AppRoutes initData={initData} />
       <UpdateNotification />
+      <SavedFileNotice />
       <PendingDeviceModal />
     </BrowserRouter>
   )

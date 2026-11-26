@@ -116,7 +116,7 @@ ${catalog}`
  * @param requestedName - name supplied to the skill tool or slash resolver
  * @returns matching skill, or null when unavailable
  */
-export const resolveSkill = (skills: readonly SkillDefinition[], requestedName: string): SkillDefinition | null => {
+export const resolveSkill = <T extends SkillDefinition>(skills: readonly T[], requestedName: string): T | null => {
   const name = requestedName.trim().replace(/^\//, '')
   return skills.find((skill) => skill.name === name) ?? null
 }

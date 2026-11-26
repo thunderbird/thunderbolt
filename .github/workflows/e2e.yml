@@ -8,6 +8,19 @@ on:
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
     branches: ['**']
+    # Skip pull requests that cannot change what E2E exercises. Push to main stays ungated, so a
+    # file this list wrongly excludes still fails there. Later patterns override earlier ones.
+    paths:
+      - '**'
+      - '!docs/**'
+      - '!web/**'
+      - '!**/*.md'
+      - '!deploy/k8s/**'
+      - '!deploy/pulumi/**'
+      - '!src-tauri/**/*.rs'
+      - '!src-tauri/**/Cargo.*'
+      - '!.github/**'
+      - '.github/workflows/e2e.yml'
 
 concurrency:
   group: e2e-${{ github.event.pull_request.number || github.ref }}

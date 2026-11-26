@@ -5,6 +5,7 @@
 export {
   defaultModelProfileDeepSeekV41Flash,
   defaultModelProfileGlm53,
+  defaultModelProfileKimiK31Pro,
   defaultModelProfileOpus55,
   defaultModelProfiles,
   hashModelProfile,

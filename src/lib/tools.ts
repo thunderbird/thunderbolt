@@ -16,6 +16,9 @@ import type { WebToolApi } from '@/integrations/thunderbolt-pro/tools'
 import { getSearchConnectionApi } from '@/integrations/standalone-search/connection'
 import { resolveSearchSelection } from '@/integrations/standalone-search/selection'
 import { hasServerAuthentication } from '@/lib/provider-mode'
+import { createOfficeScriptTool } from '@/office/office-script-tool'
+import type { ReadWorkspaceFile } from '@/office/script-inputs'
+import { loadThreadFiles } from '@/office/thread-files'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { toolCallKey } from '@/lib/stable-stringify'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
@@ -53,11 +56,24 @@ const loadToolAvailabilityContext = async (): Promise<ToolAvailabilityContext> =
   return { settings, integrationStatus, ...(await loadConnectedSearchApis(db)) }
 }
 
+/** What the Office tool gets from the send: where it finds a script's inputs (without a thread, nothing) and the
+ *  Office skills this send offers. */
+export type OfficeToolContext = {
+  chatThreadId?: string
+  /** The built-in agent's workspace; the legacy pipeline has none. */
+  readWorkspaceFile?: ReadWorkspaceFile
+  /** Names of the enabled Office skills the model can load in this send, which the tool's description lists. */
+  skills?: string[]
+  /** Names of the skills the `skill` tool returned so far in this send. */
+  loadedSkills?: ReadonlySet<string>
+}
+
 export const getAvailableTools = async (
   httpClient: HttpClient,
   sourceCollector?: SourceMetadata[],
   context?: ToolAvailabilityContext,
   priorSources?: readonly SourceMetadata[],
+  { chatThreadId, readWorkspaceFile, skills, loadedSkills }: OfficeToolContext = {},
 ): Promise<ToolConfig[]> => {
   const proEnabled = await hasProAccess()
   const {
@@ -66,7 +82,16 @@ export const getAvailableTools = async (
     searchApi,
     searchConnectionId,
   } = context ?? (await loadToolAvailabilityContext())
-  const baseTools: ToolConfig[] = [renderHtmlTool, ...(experimentalFeatureTasks ? Object.values(tasksTools) : [])]
+  const baseTools: ToolConfig[] = [
+    renderHtmlTool,
+    createOfficeScriptTool({
+      listThreadFiles: chatThreadId ? () => loadThreadFiles(chatThreadId) : undefined,
+      readWorkspaceFile,
+      skills,
+      loadedSkills,
+    }),
+    ...(experimentalFeatureTasks ? Object.values(tasksTools) : []),
+  ]
   const { selection, connectionId } = useSearchProviderStore.getState()
   const hasServer = hasServerAuthentication()
   const selected = resolveSearchSelection(selection, {

@@ -41,13 +41,11 @@ export type ProjectChatHit = {
 /**
  * One raw result row, **positional**: `[parent_id, snippet]`.
  *
- * The bun-sqlite backend goes through drizzle's `sqlite-proxy` driver (see
- * `src/db/bun-sqlite-database.ts`), which hands raw `db.all()` results back as
- * arrays, not keyed objects — a raw query carries no column metadata for
- * drizzle to map. Reading `row.parent_id` here yields `undefined` for every
- * row and silently returns zero hits.
+ * Read with `db.values()`, the one raw-query method whose row shape the drivers agree
+ * on. A raw `db.all()` returns keyed objects on PowerSync (the app) but arrays on the
+ * bun-sqlite test driver, so no single way of reading its rows works in both.
  */
-type SearchRow = readonly [parentId: string | null, snippet: string | null]
+type SearchRow = [parentId: string | null, snippet: string | null]
 
 const maxHits = 8
 
@@ -95,7 +93,7 @@ export const searchProjectChats = async (
     plan.match !== null
       ? sql.raw(`snippet(search_index, ${bodyColumnIndex}, '', '', '…', 30)`)
       : sql`substr(body, max(1, instr(body, ${plan.substrings[0]}) - ${excerptLead}), ${excerptLength})`
-  const rows = (await db.all(sql`
+  const rows = await db.values<SearchRow>(sql`
     SELECT parent_id, ${excerpt} AS snippet
     FROM search_index
     WHERE ${filter}
@@ -103,7 +101,7 @@ export const searchProjectChats = async (
       AND parent_id IN (${threadList})
     ORDER BY ${plan.match !== null ? sql.raw(bm25Sql) : sql`id DESC`}
     LIMIT ${maxHits}
-  `)) as SearchRow[]
+  `)
   return rows.flatMap(([parentId, snippet]) =>
     parentId
       ? [

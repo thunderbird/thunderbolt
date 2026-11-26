@@ -6,6 +6,7 @@ import { isPiModelCandidate } from '@/acp/built-in-model-support'
 import {
   defaultModelDeepSeekV41Flash,
   defaultModelGlm53,
+  defaultModelKimiK31Pro,
   defaultModelOpus55,
   defaultModels,
   type SharedModel,
@@ -23,6 +24,7 @@ export const evalModelSlugs: Readonly<Record<string, string>> = {
   [defaultModelOpus55.id]: 'opus',
   [defaultModelDeepSeekV41Flash.id]: 'flash',
   [defaultModelGlm53.id]: 'glm',
+  [defaultModelKimiK31Pro.id]: 'kimi',
 }
 
 /** Build the eval matrix from shipped defaults, requiring a stable CLI slug for every model. */

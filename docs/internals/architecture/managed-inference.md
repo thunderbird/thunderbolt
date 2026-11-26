@@ -11,15 +11,16 @@ Both tiers share one admission check, one price table, and one usage ledger: [`b
 
 ## The shipped catalog
 
-Three models ship as reconciled defaults in [`shared/defaults/models.ts`](../../../shared/defaults/models.ts):
+Four models ship as reconciled defaults in [`shared/defaults/models.ts`](../../../shared/defaults/models.ts):
 
 | Model               | Default row (`models.ts`)      | `provider`    | Public slug           | Upstream identity                 | Route           |
 | ------------------- | ------------------------------ | ------------- | --------------------- | --------------------------------- | --------------- |
 | Opus 5.5            | `defaultModelOpus55`           | `thunderbolt` | `opus-5-5`            | `anthropic` / `claude-opus-5-5`   | `/v1/chat/*`    |
 | DeepSeek V4.1 Flash | `defaultModelDeepSeekV41Flash` | `tinfoil`     | `deepseek-v4-1-flash` | `tinfoil` / `deepseek-v4-1-flash` | `/v1/tinfoil/*` |
 | GLM 5.3             | `defaultModelGlm53`            | `tinfoil`     | `glm-5-3`             | `tinfoil` / `glm-5-3`             | `/v1/tinfoil/*` |
+| Kimi K3.1 Pro       | `defaultModelKimiK31Pro`       | `tinfoil`     | `kimi-k3-1-pro`       | `tinfoil` / `kimi-k3-1-pro`       | `/v1/tinfoil/*` |
 
-- **The default model is confidential.** `defaultModelId` is DeepSeek V4.1 Flash, also the cheapest: 600 / 1450 nano-USD against GLM 5.3's 1800 / 5750 and Opus 5.5's 5000 / 25000 (migrations `0034`, `0035`, `0040`).
+- **The default model is confidential.** `defaultModelId` is DeepSeek V4.1 Flash, also the cheapest: 600 / 1450 nano-USD against GLM 5.3's 1800 / 5750, Kimi K3.1 Pro's 4000 / 20000 and Opus 5.5's 5000 / 25000 (migrations `0034`, `0035`, `0040`, `0047`).
 - **`provider` is transport, not branding.** The UI shows system-managed Tinfoil rows as Thunderbolt so the vendor does not leak into the product (`models.ts:130-131`); `provider: 'tinfoil'` does not mean the user configured Tinfoil.
 - **Slug and upstream identity differ on the direct tier.** `managedDirectRuntimes` ([`managed-models.ts`](../../../backend/src/inference/managed-models.ts)) maps `opus-5-5` to `internalName: 'claude-opus-5-5'`, using `Object.hasOwn` so a slug like `constructor` cannot resolve through the prototype. Pricing, usage and telemetry key on the resolved identity, hence the Opus price row `('anthropic', 'claude-opus-5-5')` against GLM's public slugs. Direct slugs have no legacy map: a client still sending `opus-5` gets `Model not found`.
 - **The confidential catalog is derived.** `resolveConfidentialManagedModel` (`managed-models.ts:32-44`) filters `defaultModels` for `provider === 'tinfoil' && isConfidential === 1`, plus legacy ids `glm-5-2`, `deepseek-v4-flash` and `glm-5-3-flash` that older clients still send. A new confidential model needs no backend edit but 503s until it has a price row.
@@ -40,13 +41,13 @@ Bodies come from [`usage-responses.ts`](../../../backend/src/inference/usage-res
 ### Prices are data, not code
 
 - `inference_prices` ([`inference-usage-schema.ts:9`](../../../backend/src/db/inference-usage-schema.ts)) is keyed `(provider, model)`, nano-USD per token as `bigint` with non-negative checks. No fallback, no default: a model with no row is unbuyable.
-- Rows come from [`0028_seed-inference-prices.sql`](../../../backend/drizzle/0028_seed-inference-prices.sql), [`0029_seed-glm-5-3-prices.sql`](../../../backend/drizzle/0029_seed-glm-5-3-prices.sql) and [`0033_seed-fireworks-prices.sql`](../../../backend/drizzle/0033_seed-fireworks-prices.sql).
+- Rows come from [`0028_seed-inference-prices.sql`](../../../backend/drizzle/0028_seed-inference-prices.sql), [`0029_seed-glm-5-3-prices.sql`](../../../backend/drizzle/0029_seed-glm-5-3-prices.sql), [`0033_seed-fireworks-prices.sql`](../../../backend/drizzle/0033_seed-fireworks-prices.sql) and [`0047_seed-tinfoil-kimi-k3-1-pro-price.sql`](../../../backend/drizzle/0047_seed-tinfoil-kimi-k3-1-pro-price.sql).
 - **A new managed model needs a price migration** and its `backend/drizzle/meta/_journal.json` entry. Drizzle finds migrations through the journal; an unlisted SQL file never runs.
 - Catalog in TypeScript, prices in Postgres, so drift runs one way: the model ships, the price does not, every request 503s.
-- The live Tinfoil rows are Tinfoil's list prices. `0029` and `0034` first seeded GLM 5.3 and DeepSeek V4.1 Flash with the weights of the models they replaced; `0040` moves them to Tinfoil's list prices (`1800 / 5750` and `600 / 1450`) and sets their cached-input rates (`450` and `10`), so the quota counts what Tinfoil charges. It changes a row only while it still holds the seeded weight. The retired `glm-5-2`, `deepseek-v4-flash` and `glm-5-3-flash` rows keep their weights.
+- The live Tinfoil rows are Tinfoil's list prices. `0029` and `0034` first seeded GLM 5.3 and DeepSeek V4.1 Flash with the weights of the models they replaced; `0040` moves them to Tinfoil's list prices (`1800 / 5750` and `600 / 1450`) and sets their cached-input rates (`450` and `10`), so the quota counts what Tinfoil charges. It changes a row only while it still holds the seeded weight. The retired `glm-5-2`, `deepseek-v4-flash` and `glm-5-3-flash` rows keep their weights. `0047` seeds Kimi K3.1 Pro straight at Tinfoil's list price (`4000 / 20000`, cached input `400`).
 - The Fireworks rows (0033, 0037) are Fireworks' Standard list prices. With `AGENT_FIREWORKS_SERVICE_TIER=priority`, the hosted agent records each reply at the stored price times the model's Priority surcharge (1.25x GLM 5.3, 1.5x MiniMax M3; [`pricing.ts`](../../../backend/src/hosted-agent/pricing.ts)), so the 5 h and 7 d limits bound real spend. All managed models draw on the same limits.
 - The tier is a multiplier rather than its own row because `inference_prices` is keyed `(provider, model)` and the tier is a deployment setting, not a property of the model.
-- `calculateInferenceCost` ([`usage-ledger.ts`](../../../backend/src/inference/usage-ledger.ts)) applies Anthropic's cache-write multipliers (5-minute ×1.25, 1-hour ×2) only when `provider === 'anthropic'`. Cache reads bill at the row's nullable `cache_read_nano_usd_per_token` when it is set, for any provider; a null rate falls back to ×0.1 of input for Anthropic and to the full input rate for everyone else. Migration `0037` sets it for the two Fireworks rows and `0040` for the two Tinfoil rows; the Anthropic rows leave it null.
+- `calculateInferenceCost` ([`usage-ledger.ts`](../../../backend/src/inference/usage-ledger.ts)) applies Anthropic's cache-write multipliers (5-minute ×1.25, 1-hour ×2) only when `provider === 'anthropic'`. Cache reads bill at the row's nullable `cache_read_nano_usd_per_token` when it is set, for any provider; a null rate falls back to ×0.1 of input for Anthropic and to the full input rate for everyone else. Migration `0037` sets it for the two Fireworks rows, `0040` for GLM 5.3 and DeepSeek V4.1 Flash, and `0047` for Kimi K3.1 Pro; the Anthropic rows leave it null.
 - Cache tokens above the prompt-token total, or a cost above Postgres `bigint` max, throw (`InferenceTokenCountOutOfRangeError` / `InferenceCostOverflowError`).
 
 ### The two rolling windows
@@ -180,9 +181,9 @@ Retiring a model is a one-way door. `cleanupRemovedDefaults` soft-deletes every 
 | `CONFIDENTIAL_API_KEYS_ENABLED` | lets a PAT reach the confidential routes                        |
 | `INFERENCE_QUOTA_*`             | the four rolling-window budgets                                 |
 
-Full descriptions: [configuration.md](../../self-hosting/configuration.md#ai-provider-keys). With neither key set the three catalog rows still appear (they are client-side defaults) but every managed request fails; the deployment is BYOK-only.
+Full descriptions: [configuration.md](../../self-hosting/configuration.md#ai-provider-keys). With neither key set the four catalog rows still appear (they are client-side defaults) but every managed request fails; the deployment is BYOK-only.
 
-`GET /v1/health/models` (token-gated, `backend/src/api/health.ts:131`) probes every `defaultModels` entry against its real upstream: one non-streaming completion, 20 s per model, three at a time, confidential ones through a freshly attested enclave. Failures report as `not-configured`, `missing-price`, `timeout`, `upstream-error` or `no-text` ([`model-probe.ts`](../../../backend/src/inference/model-probe.ts)), so the two silent failure modes above are distinguishable without reading logs.
+`GET /v1/health/models` (token-gated, `backend/src/api/health.ts:131`) probes every `defaultModels` entry against its real upstream: one non-streaming completion, 30 s per model, all at once, confidential ones through a freshly attested enclave. Failures report as `not-configured`, `missing-price`, `timeout`, `upstream-error` or `no-text` ([`model-probe.ts`](../../../backend/src/inference/model-probe.ts)), so the two silent failure modes above are distinguishable without reading logs.
 
 ## File map
 

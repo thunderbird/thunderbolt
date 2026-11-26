@@ -23,6 +23,10 @@ import {
   unlockWithPasskey as unlockWithPasskeySlot,
   ensureV2Encryption,
   PasskeyContinuityError,
+  requestV1RecoveryCode,
+  StepUpVerificationError,
+  V1UpgradeRaceError,
+  type RecoverResult,
 } from '@/services/encryption'
 import { kdfSaltRequiresContinuity } from '@/crypto/kdf-salt'
 import { getPasskeyPrfOutput, isPasskeyCancellation } from '@/lib/passkey'
@@ -36,6 +40,7 @@ type SyncSetupStep =
   | 'recovery-key-display'
   | 'approval-waiting'
   | 'recovery-key-entry'
+  | 'recovery-step-up'
   | 'denied'
   | 'passkey-enroll'
   | 'setup-complete'
@@ -53,8 +58,12 @@ type SyncSetupState = {
   legacyRecoveryPhrase: boolean
   afterPasskey: AfterPasskey
   recoveryKey: string
+  /** The shown phrase came from upgrading the account, so the old one stopped working. */
+  migratedRecoveryKey: boolean
   recoveryKeyInput: string
   recoveryKeyError: string | null
+  stepUpOtp: string
+  stepUpError: string | null
   approvalError: string | null
   approvalFingerprint: string
   isLoading: boolean
@@ -68,6 +77,12 @@ type SyncSetupAction =
   | { type: 'DETECTED_ADDITIONAL_DEVICE' }
   | { type: 'RETURN_TO_APPROVAL' }
   | { type: 'SET_RECOVERY_KEY'; payload: string }
+  | { type: 'SET_MIGRATED_RECOVERY_KEY'; payload: string }
+  | { type: 'GO_TO_RECOVERY_STEP_UP' }
+  | { type: 'SET_STEP_UP_OTP'; payload: string }
+  | { type: 'SET_STEP_UP_ERROR'; payload: string }
+  | { type: 'STEP_UP_CODE_REJECTED'; payload: string }
+  | { type: 'CANCEL_RECOVERY_STEP_UP' }
   | { type: 'GO_TO_RECOVERY_KEY_ENTRY' }
   | { type: 'SET_RECOVERY_KEY_INPUT'; payload: string }
   | { type: 'SET_RECOVERY_KEY_ERROR'; payload: string | null }
@@ -90,8 +105,11 @@ export const initialState: SyncSetupState = {
   legacyRecoveryPhrase: false,
   afterPasskey: 'complete',
   recoveryKey: '',
+  migratedRecoveryKey: false,
   recoveryKeyInput: '',
   recoveryKeyError: null,
+  stepUpOtp: '',
+  stepUpError: null,
   approvalError: null,
   approvalFingerprint: '',
   isLoading: false,
@@ -112,6 +130,25 @@ export const reducer = (state: SyncSetupState, action: SyncSetupAction): SyncSet
       return state.isLoading ? state : { ...state, step: 'approval-waiting' }
     case 'SET_RECOVERY_KEY':
       return { ...state, recoveryKey: action.payload, step: 'recovery-key-display', isLoading: false }
+    case 'SET_MIGRATED_RECOVERY_KEY':
+      return {
+        ...state,
+        recoveryKey: action.payload,
+        migratedRecoveryKey: true,
+        step: 'recovery-key-display',
+        isLoading: false,
+      }
+    case 'GO_TO_RECOVERY_STEP_UP':
+      return { ...state, step: 'recovery-step-up', stepUpOtp: '', stepUpError: null, isLoading: false }
+    case 'SET_STEP_UP_OTP':
+      return { ...state, stepUpOtp: action.payload, stepUpError: null }
+    case 'SET_STEP_UP_ERROR':
+      return { ...state, stepUpError: action.payload, isLoading: false }
+    // Clear the code so the next click cannot spend another attempt on it.
+    case 'STEP_UP_CODE_REJECTED':
+      return { ...state, stepUpOtp: '', stepUpError: action.payload, isLoading: false }
+    case 'CANCEL_RECOVERY_STEP_UP':
+      return state.isLoading ? state : { ...state, step: 'recovery-key-entry' }
     case 'GO_TO_RECOVERY_KEY_ENTRY':
       if (state.isLoading) {
         return state
@@ -165,6 +202,58 @@ export const classifyEncryptionMetadata = (metadata: EncryptionMetadataResponse 
     return 'none'
   }
   return metadata.scheme_version === 1 ? 'v1' : 'v2'
+}
+
+const stepUpCodeRejectedMessage = msg`That code is invalid or expired. Check your email and try again.`
+const stepUpCodeRequestFailedMessage = msg`Failed to send the verification code`
+const stepUpCodeThrottledMessage = msg`A code was just sent. Wait a moment and try again.`
+const stepUpCodeResendFailedMessage = msg`Couldn’t send a new code. Your previous code may no longer work — request another.`
+
+/** The code request answers 429 while a code it sent moments ago is still valid. */
+const isStepUpThrottled = (err: unknown): boolean => err instanceof HttpError && err.response.status === 429
+
+/** What a recovery attempt led to: done, the new-phrase step, the code step, or an error on screen. */
+type RecoverySubmitOutcome = 'recovered' | 'migrated' | 'step-up' | 'failed'
+
+/** Collapse a typed phrase to lowercase words separated by single spaces. */
+const normalizeRecoveryPhrase = (input: string): string => input.trim().toLowerCase().replace(/\s+/g, ' ')
+
+/** Log failures the user can't fix by retyping; a wrong phrase, code or lost race is expected. */
+const logUnexpectedRecoveryFailure = (err: unknown): void => {
+  if (err instanceof ValidationError || err instanceof StepUpVerificationError || err instanceof V1UpgradeRaceError) {
+    return
+  }
+  console.error('Recovery failed:', err)
+}
+
+/** Localized copy for a failed recovery; never an internal error message for a refused request. */
+const describeRecoveryFailure = (err: unknown): string => {
+  if (err instanceof ValidationError) {
+    return i18n._(msg`Invalid recovery phrase. Please check that all words are correct and in the right order.`)
+  }
+  if (err instanceof V1UpgradeRaceError) {
+    return i18n._(
+      msg`This account was just upgraded on another device, so this recovery phrase no longer works. Approve this device from that device or use its new recovery phrase.`,
+    )
+  }
+  if (err instanceof HttpError) {
+    return i18n._(msg`Recovery failed`)
+  }
+  return getEncryptionErrorMessage(err, i18n._(msg`Recovery failed`))
+}
+
+/** Route a finished recovery: an upgrade shows the new phrase; anything else carries on. */
+const settleRecovery = (result: RecoverResult, update: (action: SyncSetupAction) => void): RecoverySubmitOutcome => {
+  switch (result.outcome) {
+    case 'migrated':
+      update({ type: 'SET_MIGRATED_RECOVERY_KEY', payload: result.recoveryKey })
+      return 'migrated'
+    case 'recovered':
+      return 'recovered'
+    case 'step-up-required':
+      update({ type: 'GO_TO_RECOVERY_STEP_UP' })
+      return 'step-up'
+  }
 }
 
 const approvalUnverifiedMessage = msg`Couldn't verify this device's approval. Select Check now to try again, or choose another option below.`
@@ -281,15 +370,6 @@ export const useSyncSetup = () => {
               return done('additional-device')
           }
         } catch (err) {
-          if (err instanceof HttpError && err.response.status === 422) {
-            update({
-              type: 'SET_ERROR',
-              payload: i18n._(
-                msg`You have reached the maximum number of devices. Revoke an existing device to add a new one.`,
-              ),
-            })
-            return { outcome: 'error', passkeySlotCredentialId: null }
-          }
           const message = getEncryptionErrorMessage(err, t`Failed to register device`)
           update({ type: 'SET_ERROR', payload: message })
           return { outcome: 'error', passkeySlotCredentialId: null }
@@ -331,8 +411,8 @@ export const useSyncSetup = () => {
   const setRecoveryKeyInput = (value: string) => dispatch({ type: 'SET_RECOVERY_KEY_INPUT', payload: value })
 
   const submitRecoveryKey = () =>
-    runOperation(false, async (update) => {
-      const normalized = state.recoveryKeyInput.trim().toLowerCase().replace(/\s+/g, ' ')
+    runOperation<RecoverySubmitOutcome>('failed', async (update, isCurrent) => {
+      const normalized = normalizeRecoveryPhrase(state.recoveryKeyInput)
       const wordCount = normalized ? normalized.split(' ').length : 0
 
       if (wordCount !== 24) {
@@ -340,29 +420,84 @@ export const useSyncSetup = () => {
           type: 'SET_RECOVERY_KEY_ERROR',
           payload: i18n._(msg`Recovery phrase must be 24 words (you entered ${wordCount}).`),
         })
-        return false
+        return 'failed'
       }
 
       update({ type: 'START_LOADING' })
 
       try {
-        await recoverWithKey(httpClient, normalized)
-        return true
-      } catch (err) {
-        if (err instanceof ValidationError) {
-          update({
-            type: 'SET_RECOVERY_KEY_ERROR',
-            payload: i18n._(
-              msg`Invalid recovery phrase. Please check that all words are correct and in the right order.`,
-            ),
-          })
-        } else {
-          const message = getEncryptionErrorMessage(err, i18n._(msg`Recovery failed`))
-          update({ type: 'SET_RECOVERY_KEY_ERROR', payload: message })
+        const result = await recoverWithKey(httpClient, normalized)
+        if (result.outcome !== 'step-up-required') {
+          return settleRecovery(result, update)
         }
-        return false
+      } catch (err) {
+        logUnexpectedRecoveryFailure(err)
+        update({ type: 'SET_RECOVERY_KEY_ERROR', payload: describeRecoveryFailure(err) })
+        return 'failed'
+      }
+      // A v1 phrase checked out locally; upgrading the account from this
+      // untrusted device also needs the code emailed to the account.
+      // The wizard may have closed meanwhile; don't email a code nobody will enter.
+      if (!isCurrent()) {
+        return 'failed'
+      }
+      // On a 429 a code sent moments ago is still in the inbox, so go enter it.
+      try {
+        await requestV1RecoveryCode(httpClient, normalized)
+      } catch (err) {
+        if (!isStepUpThrottled(err)) {
+          logUnexpectedRecoveryFailure(err)
+          const message =
+            err instanceof V1UpgradeRaceError ? describeRecoveryFailure(err) : i18n._(stepUpCodeRequestFailedMessage)
+          update({ type: 'SET_RECOVERY_KEY_ERROR', payload: message })
+          return 'failed'
+        }
+      }
+      update({ type: 'GO_TO_RECOVERY_STEP_UP' })
+      return 'step-up'
+    })
+
+  /** Finish a v1-phrase recovery with the emailed code, upgrading the account from this device. */
+  const submitRecoveryStepUp = () =>
+    runOperation<RecoverySubmitOutcome>('failed', async (update) => {
+      update({ type: 'START_LOADING' })
+      try {
+        const result = await recoverWithKey(httpClient, normalizeRecoveryPhrase(state.recoveryKeyInput), {
+          stepUpOtp: state.stepUpOtp,
+        })
+        return settleRecovery(result, update)
+      } catch (err) {
+        if (err instanceof StepUpVerificationError) {
+          update({ type: 'STEP_UP_CODE_REJECTED', payload: i18n._(stepUpCodeRejectedMessage) })
+          return 'failed'
+        }
+        logUnexpectedRecoveryFailure(err)
+        update({ type: 'SET_STEP_UP_ERROR', payload: describeRecoveryFailure(err) })
+        return 'failed'
       }
     })
+
+  /** Email a fresh step-up code, which replaces the old one, so the box starts empty. */
+  const resendRecoveryStepUp = () =>
+    runOperation<void>(undefined, async (update) => {
+      update({ type: 'START_LOADING' })
+      try {
+        await requestV1RecoveryCode(httpClient, normalizeRecoveryPhrase(state.recoveryKeyInput))
+        update({ type: 'GO_TO_RECOVERY_STEP_UP' })
+      } catch (err) {
+        if (isStepUpThrottled(err)) {
+          update({ type: 'SET_STEP_UP_ERROR', payload: i18n._(stepUpCodeThrottledMessage) })
+          return
+        }
+        logUnexpectedRecoveryFailure(err)
+        const message =
+          err instanceof V1UpgradeRaceError ? describeRecoveryFailure(err) : i18n._(stepUpCodeResendFailedMessage)
+        update({ type: 'SET_STEP_UP_ERROR', payload: message })
+      }
+    })
+
+  const setStepUpOtp = (otp: string) => dispatch({ type: 'SET_STEP_UP_OTP', payload: otp })
+  const cancelRecoveryStepUp = () => dispatch({ type: 'CANCEL_RECOVERY_STEP_UP' })
 
   const approvalVerificationFailed = (update: (action: SyncSetupAction) => void = updateWhileIdle) =>
     update({ type: 'SET_APPROVAL_ERROR', payload: i18n._(approvalUnverifiedMessage) })
@@ -463,6 +598,10 @@ export const useSyncSetup = () => {
     chooseAdditionalDevice,
     setRecoveryKeyInput,
     submitRecoveryKey,
+    submitRecoveryStepUp,
+    resendRecoveryStepUp,
+    setStepUpOtp,
+    cancelRecoveryStepUp,
     confirmApproval,
     approvalVerificationFailed,
     approvalCheckFailed,

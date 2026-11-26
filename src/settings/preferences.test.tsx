@@ -17,7 +17,7 @@ import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { type ReactNode } from 'react'
 
 // Per docs/internals/development/testing.md: do NOT mock shared modules. All app-internal hooks
@@ -77,6 +77,26 @@ describe('PreferencesSettingsPage — sync toggle gating', () => {
     expect(screen.getByRole('button', { name: 'Import Your Data' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Reset Database' })).toBeInTheDocument()
     expect(screen.getByPlaceholderText('City or region')).toBeInTheDocument()
+  })
+
+  it('says why the export file could not be saved, in plain words', async () => {
+    const objectUrls = spyOn(URL, 'createObjectURL').mockImplementation(() => {
+      throw new Error('No space left on device (os error 28)')
+    })
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      renderPage(createMockAuthClient({ session: null }))
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Export Your Data' }))
+        await getClock().runAllAsync()
+      })
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('There is not enough free space on this device.')
+    } finally {
+      objectUrls.mockRestore()
+      consoleError.mockRestore()
+    }
   })
 
   it('offers Otari as a default-off preview feature that can be toggled and reset', async () => {

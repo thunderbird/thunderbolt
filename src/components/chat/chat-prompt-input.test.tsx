@@ -25,12 +25,18 @@ import { CreateItemProvider } from '@/components/create-item/context'
 import { ContentViewProvider } from '@/content-view/context'
 import { ActiveContentView } from '@/content-view/active-content-view'
 import { getClock } from '@/testing-library'
+import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { builtInAgent } from '@/defaults/agents'
-import { defaultSkillWeather } from '@/defaults/skills'
+import { defaultSkillOfficeXlsx, defaultSkillWeather } from '@/defaults/skills'
+import { estimateTokensForText } from '@/ai/tokenizers'
+import { officeXlsxSkill } from '@/office/skills/xlsx'
 import * as skillHooks from '@/skills/use-skills'
+import * as officeSkills from '@/office/skills'
 import * as adapterCache from '@/acp/adapter-cache'
+import * as attachmentStorage from '@/lib/file-blob-storage'
 import * as chatMessagesLoader from './chat-messages-loader'
 import type { Agent } from '@/types/acp'
+import type { PathFile } from '@/lib/native-files'
 import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
 import type { ImageSupportCheck } from './use-image-support-check'
 // The fake clock cannot wait for cold module I/O; browser coverage exercises the first lazy load.
@@ -38,16 +44,23 @@ import '@/components/context-usage/compaction-summary-content'
 
 // The real blob store uses IndexedDB, which isn't available in the test env.
 // Back it with an in-memory Map so the attach path (put → chip render) works.
-const attachmentStore = new Map<string, unknown>()
-mock.module('@/lib/file-blob-storage', () => ({
-  putAttachment: async (file: { id: string }) => {
-    attachmentStore.set(file.id, file)
-  },
-  getAttachment: async (id: string) => attachmentStore.get(id) ?? null,
-  deleteAttachment: async (id: string) => {
-    attachmentStore.delete(id)
-  },
-}))
+// Spies rather than a module mock, so other test files still get the real store.
+const attachmentStore = new Map<string, attachmentStorage.StoredFile>()
+const attachmentSpies: { mockRestore: () => void }[] = []
+beforeEach(() => {
+  attachmentSpies.push(
+    spyOn(attachmentStorage, 'putAttachment').mockImplementation(async (file) => {
+      attachmentStore.set(file.id, file)
+    }),
+    spyOn(attachmentStorage, 'getAttachment').mockImplementation(async (id) => attachmentStore.get(id) ?? null),
+    spyOn(attachmentStorage, 'deleteAttachment').mockImplementation(async (id) => {
+      attachmentStore.delete(id)
+    }),
+  )
+})
+afterEach(() => {
+  attachmentSpies.splice(0).forEach((spy) => spy.mockRestore())
+})
 
 const createMockUseContextTracking =
   (
@@ -883,6 +896,197 @@ describe('ChatPromptInput', () => {
     })
   })
 
+  describe('Office skills in the slash menu', () => {
+    const fakeUseLibrarySkills: typeof import('@/skills/use-skills').useLibrarySkills = () => ({
+      skills: [defaultSkillOfficeXlsx],
+      isLoading: false,
+      createSkill: async () => defaultSkillOfficeXlsx,
+      updateSkill: async () => undefined,
+      softDeleteSkill: async () => undefined,
+    })
+    const fakeUseEnabledSkills: typeof import('@/skills/use-skills').useEnabledSkills = () => ({
+      isEnabled: () => true,
+      setEnabled: async () => undefined,
+    })
+
+    it.each([
+      ['the built-in agent with a model that uses tools', {}, true],
+      ['a model without tools', { selectedModel: createMockModel({ toolUsage: 0 }) }, false],
+      ['an external agent', { selectedAgent: remoteAcpAgent }, false],
+    ] as const)('offers them for %s: %p', (_, session, offered) => {
+      const { mockUseChat } = setupStore()
+      useChatStore.getState().updateSession('thread-1', session)
+      const ref = createRef<ChatPromptInputRef>()
+      render(
+        <ChatPromptInput
+          ref={ref}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          useLibrarySkills={fakeUseLibrarySkills}
+          useEnabledSkills={fakeUseEnabledSkills}
+        />,
+        { wrapper: TestWrapper },
+      )
+      act(() => {
+        ref.current?.setInput('/')
+      })
+      const textarea = screen.getByRole('textbox')
+      if (!(textarea instanceof HTMLTextAreaElement)) {
+        throw new Error('Expected the composer textarea')
+      }
+      textarea.setSelectionRange(1, 1)
+      fireEvent.select(textarea)
+
+      expect(screen.queryByText('Excel workbooks') !== null).toBe(offered)
+    })
+
+    it('counts the manual this build serves, not the row stub, toward the context estimate', () => {
+      const { mockUseChat } = setupStore()
+      const extraTokens: number[] = []
+      const useContextTracking: typeof import('@/hooks/use-context-tracking').useContextTracking = (options) => {
+        extraTokens.push(options.additionalInputTokens ?? 0)
+        return createMockUseContextTracking()()
+      }
+      const ref = createRef<ChatPromptInputRef>()
+      render(
+        <ChatPromptInput
+          ref={ref}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          useLibrarySkills={fakeUseLibrarySkills}
+          useEnabledSkills={fakeUseEnabledSkills}
+          useContextTracking={useContextTracking}
+        />,
+        { wrapper: TestWrapper },
+      )
+      act(() => {
+        ref.current?.setInput('/office-xlsx make a budget')
+      })
+
+      expect(extraTokens.at(-1)).toBe(estimateTokensForText(officeXlsxSkill))
+    })
+
+    it.each([
+      ['an external agent', { selectedAgent: remoteAcpAgent }, false],
+      ['the built-in agent with a model that uses tools', {}, true],
+    ] as const)(
+      'lets a pinned Office chip add itself to the chat only where the menu offers it: %s',
+      async (_, session, offered) => {
+        const { mockUseChat } = setupStore()
+        useChatStore.getState().updateSession('thread-1', session)
+        const previousConfig = useConfigStore.getState()
+        useConfigStore.setState({ config: {}, configLoaded: true })
+        const pinnedQuery = spyOn(skillHooks, 'usePinnedSkills').mockReturnValue({
+          pinned: [defaultSkillOfficeXlsx],
+          pinnedSet: new Set([defaultSkillOfficeXlsx.id]),
+          togglePin: async () => undefined,
+          reorderPins: async () => undefined,
+        })
+        try {
+          render(
+            <ChatPromptInput
+              useChat={mockUseChat}
+              useIsMobile={createMockUseIsMobile()}
+              useLibrarySkills={fakeUseLibrarySkills}
+              useEnabledSkills={fakeUseEnabledSkills}
+              useWarmAcpCommands={noWarmUp}
+            />,
+            { wrapper: TestWrapper },
+          )
+          fireEvent.contextMenu(screen.getByText('Excel workbooks'))
+          await waitForElement(() => screen.queryByText('Unpin'))
+
+          expect(screen.queryByText('Add to chat') !== null).toBe(offered)
+          expect(screen.queryByText('Add instructions to chat') !== null).toBe(offered)
+        } finally {
+          cleanup()
+          pinnedQuery.mockRestore()
+          useConfigStore.setState(previousConfig)
+        }
+      },
+    )
+
+    describe("adding a pinned chip's instructions while its manual loads", () => {
+      let previousConfig: ReturnType<typeof useConfigStore.getState>
+
+      beforeEach(() => {
+        previousConfig = useConfigStore.getState()
+        useConfigStore.setState({ config: {}, configLoaded: true })
+        spyOn(skillHooks, 'usePinnedSkills').mockReturnValue({
+          pinned: [defaultSkillOfficeXlsx],
+          pinnedSet: new Set([defaultSkillOfficeXlsx.id]),
+          togglePin: async () => undefined,
+          reorderPins: async () => undefined,
+        })
+      })
+
+      afterEach(() => {
+        cleanup()
+        mock.restore()
+        useConfigStore.setState(previousConfig)
+      })
+
+      /** Renders an empty chat whose pinned Excel chip the built-in agent offers, and returns its composer. */
+      const renderComposer = () => {
+        const { mockUseChat } = setupStore()
+        render(
+          <ChatPromptInput
+            useChat={mockUseChat}
+            useIsMobile={createMockUseIsMobile()}
+            useLibrarySkills={fakeUseLibrarySkills}
+            useEnabledSkills={fakeUseEnabledSkills}
+            useWarmAcpCommands={noWarmUp}
+          />,
+          { wrapper: TestWrapper },
+        )
+        const textarea = screen.getByRole('textbox')
+        if (!(textarea instanceof HTMLTextAreaElement)) {
+          throw new Error('Expected the composer textarea')
+        }
+        return textarea
+      }
+
+      const addInstructions = async () => {
+        fireEvent.contextMenu(screen.getByText('Excel workbooks'))
+        const add = await waitForElement(() => screen.queryByText('Add instructions to chat'))
+        await act(async () => fireEvent.click(add))
+      }
+
+      it('inserts the manual at the caret the user left, keeping what they typed during the load', async () => {
+        // Held so the load is cold whatever another test already loaded: the loader keeps a manual once it has it.
+        const manual = Promise.withResolvers<string>()
+        const load = spyOn(officeSkills, 'loadOfficeSkillBody').mockReturnValue(manual.promise)
+        const textarea = renderComposer()
+
+        await addInstructions()
+        expect(load).toHaveBeenCalledWith('xlsx')
+        fireEvent.change(textarea, { target: { value: 'hello world' } })
+        textarea.setSelectionRange(5, 5)
+        fireEvent.select(textarea)
+        await act(async () => manual.resolve('MANUAL'))
+
+        expect(textarea.value).toBe('hello MANUAL world')
+      })
+
+      it('says the load failed once and leaves the draft alone', async () => {
+        const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+        spyOn(officeSkills, 'loadOfficeSkillBody').mockImplementation(async () => {
+          throw new TypeError('Load failed')
+        })
+        const textarea = renderComposer()
+        fireEvent.change(textarea, { target: { value: 'keep me' } })
+
+        await addInstructions()
+
+        expect(screen.getAllByRole('alert').map((alert) => alert.textContent)).toEqual([
+          'Something went wrong. Please try again.',
+        ])
+        expect(textarea.value).toBe('keep me')
+        expect(consoleError).toHaveBeenCalled()
+      })
+    })
+  })
+
   describe('agent availability', () => {
     it('renders a read-only fallback when the agent is unavailable on this platform', () => {
       const { mockUseChat } = setupStore()
@@ -1235,6 +1439,185 @@ describe('ChatPromptInput', () => {
       expect(preventDefaultSpy).not.toHaveBeenCalled()
     })
 
+    describe('on Linux, where files copied in a file manager arrive by path', () => {
+      const execCommand = mock(() => true)
+
+      beforeEach(() => {
+        Object.defineProperty(document, 'execCommand', { value: execCommand, configurable: true })
+      })
+
+      afterEach(() => {
+        Reflect.deleteProperty(document, 'execCommand')
+        execCommand.mockClear()
+      })
+
+      const pathFile = (name: string, size: number, read: () => Promise<File | null>) => ({
+        name,
+        type: '',
+        size,
+        read: mock(read),
+      })
+
+      /** Renders the composer as on Linux, with `copied` standing in for the OS clipboard's file manager entry. */
+      const renderOnLinux = (
+        copied: PathFile[],
+        readCopiedFiles = async () => copied,
+        useNativeFileDrop: (options: { onDrop: (paths: string[], links: string[]) => void }) => void = () => {},
+      ) => {
+        const { mockUseChat } = setupStore()
+        render(
+          <ChatPromptInput
+            useChat={mockUseChat}
+            useIsMobile={createMockUseIsMobile()}
+            readsFilesByPath={() => true}
+            readCopiedFiles={readCopiedFiles}
+            useNativeFileDrop={useNativeFileDrop}
+          />,
+          { wrapper: TestWrapper },
+        )
+        return screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
+      }
+
+      /** Pastes what WebKitGTK shows for a file manager copy or a copied link: `text/uri-list`, no file items. */
+      const pasteUriList = (textarea: HTMLTextAreaElement, text: string, uriList = '') => {
+        const pasteEvent = createEvent.paste(textarea, {
+          clipboardData: {
+            items: [],
+            files: [],
+            types: ['text/uri-list', 'text/plain'],
+            getData: (type: string) => ({ 'text/plain': text, 'text/uri-list': uriList })[type] ?? '',
+          },
+        })
+        const preventDefaultSpy = mock(() => {})
+        Object.defineProperty(pasteEvent, 'preventDefault', { value: preventDefaultSpy })
+        act(() => {
+          textarea.focus()
+          fireEvent(textarea, pasteEvent)
+        })
+        return preventDefaultSpy
+      }
+
+      it('pastes the text when no file manager copied files', async () => {
+        const textarea = renderOnLinux([])
+        const preventDefaultSpy = pasteUriList(textarea, 'https://example.com/report')
+        await flushAttachments()
+
+        expect(preventDefaultSpy).toHaveBeenCalled()
+        expect(execCommand).toHaveBeenCalledWith('insertText', false, 'https://example.com/report')
+      })
+
+      it('pastes the text when the clipboard cannot be read for copied files', async () => {
+        const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+        const textarea = renderOnLinux([], async () => {
+          throw new Error('no clipboard')
+        })
+        pasteUriList(textarea, 'https://example.com/report')
+        await flushAttachments()
+
+        expect(execCommand).toHaveBeenCalledWith('insertText', false, 'https://example.com/report')
+        expect(consoleError).toHaveBeenCalled()
+        consoleError.mockRestore()
+      })
+
+      it('pastes the links of the uri-list when the plain text reads empty', async () => {
+        const textarea = renderOnLinux([])
+        pasteUriList(
+          textarea,
+          '',
+          '# copied links\r\nhttps://example.com/a?x=1\r\nfile:///etc/passwd\r\nhttps://b.example\r\n',
+        )
+        await flushAttachments()
+
+        expect(execCommand).toHaveBeenCalledWith('insertText', false, 'https://example.com/a?x=1\nhttps://b.example')
+      })
+
+      it('pastes nothing for a uri-list of local files that no file manager copied', async () => {
+        const textarea = renderOnLinux([])
+        pasteUriList(textarea, '', 'file:///etc/passwd\r\n')
+        await flushAttachments()
+
+        expect(execCommand).not.toHaveBeenCalled()
+        expect(screen.queryByLabelText(/^Remove /)).not.toBeInTheDocument()
+      })
+
+      it('types a dragged link into the composer', async () => {
+        const drop = Promise.withResolvers<(paths: string[], links: string[]) => void>()
+        const textarea = renderOnLinux([], undefined, ({ onDrop }) => drop.resolve(onDrop))
+        const onDrop = await drop.promise
+        await act(async () => onDrop([], ['https://example.com/a?x=1']))
+
+        expect(document.activeElement).toBe(textarea)
+        expect(execCommand).toHaveBeenCalledWith('insertText', false, 'https://example.com/a?x=1')
+      })
+
+      it('drops the text when focus left the composer before the clipboard answered', async () => {
+        const clipboard = Promise.withResolvers<PathFile[]>()
+        const textarea = renderOnLinux([], () => clipboard.promise)
+        pasteUriList(textarea, 'https://example.com/report')
+        const search = document.body.appendChild(document.createElement('input'))
+        search.focus()
+
+        clipboard.resolve([])
+        await flushAttachments()
+
+        expect(execCommand).not.toHaveBeenCalled()
+        search.remove()
+      })
+
+      it('attaches the copied files instead of their text', async () => {
+        const textarea = renderOnLinux([pathFile('deck.pptx', 2, async () => new File(['PK'], 'deck.pptx'))])
+        pasteUriList(textarea, '/home/ana/deck.pptx')
+        await flushAttachments()
+
+        expect(screen.getByLabelText('Remove deck.pptx')).toBeInTheDocument()
+        expect(execCommand).not.toHaveBeenCalled()
+      })
+
+      it('refuses a copied file over the size cap without reading it', async () => {
+        const huge = pathFile('huge.pptx', 26 * 1024 * 1024, async () => new File(['PK'], 'huge.pptx'))
+        const textarea = renderOnLinux([huge])
+        pasteUriList(textarea, '')
+        await flushAttachments()
+
+        expect(screen.getByText('"huge.pptx" is too large (max 25MB).')).toBeInTheDocument()
+        expect(huge.read).not.toHaveBeenCalled()
+      })
+
+      it('never reads a copied file of a type it refuses', async () => {
+        const page = pathFile('page.html', 6, async () => new File(['<html>'], 'page.html'))
+        const textarea = renderOnLinux([page])
+        pasteUriList(textarea, '')
+        await flushAttachments()
+
+        expect(screen.getByText('"page.html" isn\'t a supported file type.')).toBeInTheDocument()
+        expect(page.read).not.toHaveBeenCalled()
+      })
+
+      it('names a copied file it cannot read and still attaches the rest', async () => {
+        const textarea = renderOnLinux([
+          pathFile('locked.docx', 4, async () => null),
+          pathFile('deck.pptx', 2, async () => new File(['PK'], 'deck.pptx')),
+        ])
+        pasteUriList(textarea, '')
+        await flushAttachments()
+
+        expect(screen.getByText('Couldn\'t read "locked.docx".')).toBeInTheDocument()
+        expect(screen.getByLabelText('Remove deck.pptx')).toBeInTheDocument()
+      })
+
+      it('reads no file past the attachment limit', async () => {
+        const files = Array.from({ length: 11 }, (_, index) =>
+          pathFile(`deck-${index}.pptx`, 2, async () => new File(['PK'], `deck-${index}.pptx`)),
+        )
+        const textarea = renderOnLinux(files)
+        pasteUriList(textarea, '')
+        await flushAttachments()
+
+        expect(screen.getByText('You can attach up to 10 files.')).toBeInTheDocument()
+        expect(files[10].read).not.toHaveBeenCalled()
+      })
+    })
+
     it('rejects an unsupported pasted file type with an error banner', async () => {
       const { mockUseChat } = setupStore()
       render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
@@ -1248,6 +1631,42 @@ describe('ChatPromptInput', () => {
 
       expect(screen.getByText(/isn't a supported file type/)).toBeInTheDocument()
     })
+
+    // The Office script tool tells the model a user cannot attach .xlsm (`describeTool` in
+    // src/office/office-script-tool.ts). Update that sentence if this test changes.
+    it.each([['application/vnd.ms-excel.sheet.macroEnabled.12'], ['']])(
+      'rejects a macro workbook pasted as %p',
+      async (type) => {
+        const { mockUseChat } = setupStore()
+        render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+          wrapper: TestWrapper,
+        })
+
+        const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
+        const file = new File(['PK'], 'macros.xlsm', { type })
+        pasteItems(textarea, [{ kind: 'file', type, getAsFile: () => file }])
+        await flushAttachments()
+
+        expect(screen.getByText(/isn't a supported file type/)).toBeInTheDocument()
+      },
+    )
+
+    it.each([['application/vnd.openxmlformats-officedocument.presentationml.presentation'], ['']])(
+      'attaches a presentation pasted as %p',
+      async (type) => {
+        const { mockUseChat } = setupStore()
+        render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+          wrapper: TestWrapper,
+        })
+
+        const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
+        const file = new File(['PK'], 'deck.pptx', { type })
+        pasteItems(textarea, [{ kind: 'file', type, getAsFile: () => file }])
+        await flushAttachments()
+
+        expect(screen.getByLabelText('Remove deck.pptx')).toBeInTheDocument()
+      },
+    )
 
     it('lets a file paste fall through untouched for the hosted agent', async () => {
       const { mockUseChat } = setupStore()

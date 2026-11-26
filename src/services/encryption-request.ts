@@ -61,5 +61,10 @@ export const createEncryptionOperationClient = (
       result.text = () => bounded(result.then((value) => value.text()))
       return result
     }
-  return { get: scoped(client.get), post: scoped(client.post), delete: scoped(client.delete) }
+  return {
+    get: scoped(client.get),
+    head: scoped(client.head),
+    post: scoped(client.post),
+    delete: scoped(client.delete),
+  }
 }

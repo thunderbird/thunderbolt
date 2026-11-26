@@ -3,8 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { StoredFile } from '@/lib/file-blob-storage'
-import { describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import * as pdfjs from 'pdfjs-dist'
+import { stubAppServer } from '@/test-utils/app-server'
 import { pdfToImages } from './pdf-to-images'
 
 const file: StoredFile = {
@@ -17,6 +18,12 @@ const file: StoredFile = {
 }
 
 describe('pdfToImages resource lifecycle', () => {
+  // The app's server answers the check made before pdfjs is imported.
+  beforeAll(() => {
+    stubAppServer()
+  })
+  afterAll(() => mock.restore())
+
   it('releases the loading task even when the browser cannot create a canvas context', async () => {
     const destroy = mock(async () => {})
     const render = mock()

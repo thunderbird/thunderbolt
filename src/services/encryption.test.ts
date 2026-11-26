@@ -199,6 +199,7 @@ const {
   stageKeyring,
   checkApprovalAndUnwrap,
   recoverWithKey,
+  requestV1RecoveryCode,
   unlockWithPasskey,
   enrollPasskey,
   removePasskeySlot,
@@ -217,6 +218,8 @@ const {
   migratePasskeyContinuity,
   MissingRecoverySlotError,
   RotationStaleError,
+  StepUpVerificationError,
+  V1UpgradeRaceError,
   AKAnchorError,
   refreshAK,
   migrateToV2,
@@ -294,6 +297,8 @@ type FakeServer = {
   boundDeviceId: string | null
   /** Nonce the last bind-challenge sealed, so a test can assert it never leaked. */
   lastBindNonce: string | null
+  /** `possessionProof` the last step-up code request carried, if any. */
+  lastStepUpProof?: string
   /** Status GET /devices/me/envelope answers with, instead of serving the envelope. */
   failEnvelopeFetchWith?: number
   /** Status an envelope POST answers with AFTER committing it: a lost response. */
@@ -577,6 +582,10 @@ const createFakeServer = (): FakeServer => {
       }
       return jsonResponse({ key_version: server.metadata.keyVersion })
     }
+    if (path === '/encryption/step-up/request' && method === 'POST') {
+      server.lastStepUpProof = body?.possessionProof as string | undefined
+      return jsonResponse({ ok: true })
+    }
     if (path === '/encryption/upgrade' && method === 'POST') {
       if (server.upgradeConflict) {
         if (server.winner) {
@@ -585,6 +594,14 @@ const createFakeServer = (): FakeServer => {
           server.wrappedKeys = server.winner.wrappedKeys
         }
         return jsonResponse({ error: 'already migrated' }, 409)
+      }
+      // Like the backend: an untrusted caller needs the emailed code, and is
+      // trusted by the same commit.
+      if (!server.deviceTrusted.get(callerDeviceId)) {
+        if (body!.stepUpOtp !== validStepUpOtp) {
+          return jsonResponse({ error: 'step-up', code: body!.stepUpOtp ? 'step_up_invalid' : 'step_up_required' }, 403)
+        }
+        server.deviceTrusted.set(callerDeviceId, true)
       }
       server.lastOrgEnvelope = (body!.orgEnvelope as string | undefined) ?? null
       for (const entry of body!.wrappedKeys as Array<{ keyId: KeyId; wrappedKey: string }>) {
@@ -625,6 +642,8 @@ const clientFor = (server: FakeServer): HttpClient =>
 // ---------------------------------------------------------------------------
 
 const testUserId = 'test-user'
+/** The code the fake server accepts for a step-up-gated upgrade. */
+const validStepUpOtp = '12345678'
 const deviceIdKey = 'thunderbolt_device_id'
 const authTokenKey = 'thunderbolt_auth_token'
 
@@ -2349,6 +2368,145 @@ describe('encryption service (v2)', () => {
       await stageKeyring(clientFor(server))
       expect(storedPrimaryKeyId).toBe('1')
       expect(await unwrapDEK(storedDEKs.get('1')!, storedAK!, '1').then(() => true)).toBe(true)
+    })
+  })
+
+  describe('recoverWithKey — v1 phrase on an account still on scheme 1', () => {
+    /** A v1 account whose only CK holder is gone; this device is fresh and pending. */
+    const lostV1Account = async () => {
+      // Recovery binds the session, and the binding is remembered per token, so
+      // use one no other test expects to find unbound.
+      localStorage.setItem(authTokenKey, `v1-recovery-${crypto.randomUUID()}`)
+      const server = createFakeServer()
+      const { legacyCK } = await seedV1Account(server, await generateFullKeyPair())
+      server.envelopes.delete('test-device-id')
+      server.deviceTrusted.set('test-device-id', false)
+      const v1Phrase = encodeRecoverySeed(new Uint8Array(await crypto.subtle.exportKey('raw', legacyCK)))
+      return { server, legacyCK, v1Phrase }
+    }
+
+    it('checks the phrase locally and asks for a step-up code before any write', async () => {
+      const { server, v1Phrase } = await lostV1Account()
+
+      expect(await recoverWithKey(clientFor(server), v1Phrase)).toEqual({ outcome: 'step-up-required' })
+
+      expect(server.requests).toEqual(['GET /encryption/canary'])
+      expect(storedKeyPair).toBeNull()
+    })
+
+    it('migrates the account from this device with the code, and legacy data still decrypts', async () => {
+      const { server, legacyCK, v1Phrase } = await lostV1Account()
+      const legacyValue = await encrypt('hello legacy', legacyCK)
+      // A previous account's leftover witness must not survive the migration.
+      const leftoverAnchor = await mintKeyringAnchor(await generateDEK(true))
+      storedKeyringAnchor = leftoverAnchor
+
+      const result = await recoverWithKey(clientFor(server), v1Phrase, { stepUpOtp: validStepUpOtp })
+
+      if (result.outcome !== 'migrated') {
+        throw new Error(`expected migrated, got ${result.outcome}`)
+      }
+      expect(result.recoveryKey.split(' ')).toHaveLength(24)
+      expect(server.metadata?.schemeVersion).toBe(2)
+      expect(server.deviceTrusted.get('test-device-id')).toBe(true)
+      expect(isRecoveryPhrasePending()).toBe(true)
+      const v1Dek = await unwrapDEK(storedDEKs.get('v1')!, storedAK!, 'v1')
+      expect(await decrypt(legacyValue, v1Dek)).toBe('hello legacy')
+      const dek0 = await unwrapDEK(server.wrappedKeys.get('0')!, storedAK!, '0')
+      expect(storedKeyringAnchor).not.toEqual(leftoverAnchor)
+      expect(await keyringAnchorOpens(storedKeyringAnchor!, dek0)).toBe(true)
+    })
+
+    it('refuses a phrase that does not open the v1 canary, before any further request', async () => {
+      const { server } = await lostV1Account()
+
+      await expect(
+        recoverWithKey(clientFor(server), encodeRecoverySeed(generateRecoverySeed()), { stepUpOtp: validStepUpOtp }),
+      ).rejects.toThrow('Invalid recovery key')
+
+      expect(server.requests).toEqual(['GET /encryption/canary'])
+      expect(server.metadata?.schemeVersion).toBe(1)
+    })
+
+    it('surfaces a refused code and owes no phrase', async () => {
+      const { server, v1Phrase } = await lostV1Account()
+
+      await expect(recoverWithKey(clientFor(server), v1Phrase, { stepUpOtp: '00000000' })).rejects.toBeInstanceOf(
+        StepUpVerificationError,
+      )
+
+      expect(server.metadata?.schemeVersion).toBe(1)
+      expect(storedAK).toBeNull()
+      expect(isRecoveryPhrasePending()).toBe(false)
+    })
+
+    it('does not follow a winner when another device migrated first', async () => {
+      const { server, legacyCK, v1Phrase } = await lostV1Account()
+      const winnerState = createFakeServer()
+      await seedV2Account(winnerState, await generateFullKeyPair(), legacyCK)
+      server.winner = {
+        metadata: winnerState.metadata!,
+        envelopes: winnerState.envelopes,
+        wrappedKeys: winnerState.wrappedKeys,
+      }
+      server.upgradeConflict = true
+
+      await expect(recoverWithKey(clientFor(server), v1Phrase, { stepUpOtp: validStepUpOtp })).rejects.toBeInstanceOf(
+        V1UpgradeRaceError,
+      )
+
+      expect(storedAK).toBeNull()
+      expect(storedDEKs.size).toBe(0)
+      expect(isRecoveryPhrasePending()).toBe(false)
+    })
+
+    it('never takes the v1 path on a device that already holds an account key', async () => {
+      const { server, v1Phrase } = await lostV1Account()
+      storedAK = await generateAK()
+
+      await expect(recoverWithKey(clientFor(server), v1Phrase, { stepUpOtp: validStepUpOtp })).rejects.toThrow(
+        'already holds an account key',
+      )
+
+      expect(server.requests).toEqual(['GET /encryption/canary'])
+    })
+
+    it('reports the lost race when the account was upgraded while this device waited for the code', async () => {
+      const { server, legacyCK, v1Phrase } = await lostV1Account()
+      await seedV2Account(server, await generateFullKeyPair(), legacyCK)
+
+      await expect(recoverWithKey(clientFor(server), v1Phrase, { stepUpOtp: validStepUpOtp })).rejects.toBeInstanceOf(
+        V1UpgradeRaceError,
+      )
+    })
+
+    describe('requestV1RecoveryCode', () => {
+      it('asks for the code with the possession proof the phrase opens', async () => {
+        const { server, v1Phrase } = await lostV1Account()
+
+        await requestV1RecoveryCode(clientFor(server), v1Phrase)
+
+        expect(server.requests).toEqual(['GET /encryption/canary', 'POST /encryption/step-up/request'])
+        expect(server.lastStepUpProof).toBe('legacy-secret-abc')
+      })
+
+      it('sends nothing for a phrase that does not open the v1 canary', async () => {
+        const { server } = await lostV1Account()
+
+        await expect(
+          requestV1RecoveryCode(clientFor(server), encodeRecoverySeed(generateRecoverySeed())),
+        ).rejects.toThrow('Invalid recovery key')
+
+        expect(server.requests).toEqual(['GET /encryption/canary'])
+      })
+
+      it('reports the lost race once the account is on scheme 2', async () => {
+        const { server, legacyCK, v1Phrase } = await lostV1Account()
+        await seedV2Account(server, await generateFullKeyPair(), legacyCK)
+
+        await expect(requestV1RecoveryCode(clientFor(server), v1Phrase)).rejects.toBeInstanceOf(V1UpgradeRaceError)
+        expect(server.requests).toEqual(['GET /encryption/canary'])
+      })
     })
   })
 

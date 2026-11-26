@@ -129,6 +129,29 @@ describe('prompt persistence', () => {
     }
   })
 
+  it('saves the streaming predecessor of an Ask follow-up without its pending Pi header', async () => {
+    const [user, assistant, answer] = historyFor('ask', 3)
+    const harness = await createRoutingHarness('ask', [user])
+    await harness.send([
+      user,
+      {
+        ...assistant,
+        parts: [
+          ...assistant.parts,
+          {
+            type: 'tool-search',
+            toolCallId: 'pending',
+            state: 'input-streaming',
+            toolMetadata: { piInputHeader: true },
+          },
+        ],
+      },
+      answer,
+    ])
+    expect((await getMessage(getDb(), assistant.id))?.parts).toEqual(assistant.parts)
+    expect((await getMessage(getDb(), answer.id))?.parentId).toBe(assistant.id)
+  })
+
   it('inserts the previous pending assistant before the user and keeps both parents when its final save catches up', async () => {
     const transcript = historyFor('pending', 3)
     const harness = await createRoutingHarness('pending', transcript.slice(0, 1))

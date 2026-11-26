@@ -1,0 +1,16 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": [
+      {
+        "title": "Thunderbolt",
+        "width": 1400,
+        "height": 1000,
+        "minHeight": 600,
+        "minWidth": 500,
+        "visible": false,
+        "dragDropEnabled": true
+      }
+    ]
+  }
+}

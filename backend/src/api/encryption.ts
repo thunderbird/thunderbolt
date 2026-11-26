@@ -7,6 +7,7 @@ import { type Auth, createAuthMacro } from '@/auth/elysia-plugin'
 import {
   bridgeDeviceId,
   cliDeviceIdPrefix,
+  isPendingRegularAppDevice,
   isTrustedAppDevice,
   maxActiveDevicesPerUser,
   countActiveDevices,
@@ -71,7 +72,12 @@ import { sql } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
 
 /** Hardcoded at module scope so a client can never pick what its step-up code buys. */
-const stepUpAction = 'recovery-phrase-change' satisfies StepUpAction
+const phraseChangeStepUpAction = 'recovery-phrase-change' satisfies StepUpAction
+const v1RecoveryStepUpAction = 'v1-phrase-recovery' satisfies StepUpAction
+const stepUpCallerRefusedMessage =
+  'Only trusted devices, or a pending device recovering a v1 account, can request a step-up code'
+const upgradeCallerRefusedMessage =
+  'Only trusted devices, or a pending device recovering a v1 account, can upgrade encryption'
 
 /**
  * Upper bound on keyring rows carried in one request. The keyring grows by one
@@ -192,6 +198,24 @@ export const getCallerDevice = async (
     return { status: 403, error: 'Device has been revoked' }
   }
   return { deviceId, device }
+}
+
+/**
+ * Whether an untrusted device may be sent a v1-recovery code: a pending regular
+ * app device on an account still on scheme 1 that presents the possession proof.
+ * The upgrade then checks the proof again, followed by the code.
+ */
+const canRecoverWithV1Phrase = async (
+  database: QueryableDatabase,
+  device: Parameters<typeof isPendingRegularAppDevice>[0],
+  userId: string,
+  possessionProof: string | undefined,
+): Promise<boolean> => {
+  if (!isPendingRegularAppDevice(device, userId) || !possessionProof) {
+    return false
+  }
+  const metadata = await getEncryptionMetadata(database, userId)
+  return metadata?.schemeVersion === 1 && (await verifyPossessionProof(database, userId, possessionProof))
 }
 
 /**
@@ -529,19 +553,26 @@ export const createEncryptionRoutes = (
     .use(createAuthMacro(auth))
     .post(
       '/encryption/step-up/request',
-      async ({ request, set, user: sessionUser, session }) => {
+      async ({ body, request, set, user: sessionUser, session }) => {
         const userId = sessionUser!.id
         const caller = await getCallerDevice(database, userId, request, session)
         if ('error' in caller) {
           set.status = caller.status
           return { error: caller.error }
         }
-        if (!caller.device.trusted) {
+        // A pending device can only be recovering a v1 account. It must show the
+        // possession proof first, so a session alone cannot email the owner or
+        // replace the code they are about to type.
+        if (
+          !caller.device.trusted &&
+          !(await canRecoverWithV1Phrase(database, caller.device, userId, body?.possessionProof))
+        ) {
           set.status = 403
-          return { error: 'Only trusted devices can request a step-up code' }
+          return { error: stepUpCallerRefusedMessage }
         }
+        const action: StepUpAction = caller.device.trusted ? phraseChangeStepUpAction : v1RecoveryStepUpAction
         try {
-          const cooldown = await sendStepUpCode(database, notifications, stepUpAction, {
+          const cooldown = await sendStepUpCode(database, notifications, action, {
             email: sessionUser!.email,
             deviceName: caller.device.name ?? 'Unknown device',
             locale: resolveEmailLocale(request.headers.get('X-App-Language')),
@@ -555,7 +586,10 @@ export const createEncryptionRoutes = (
           return mapEncryptionError(err, set)
         }
       },
-      { auth: true },
+      {
+        auth: true,
+        body: t.Optional(t.Object({ possessionProof: t.Optional(t.String({ maxLength: 500 })) })),
+      },
     )
     .post(
       '/devices',
@@ -580,11 +614,8 @@ export const createEncryptionRoutes = (
         // `setWhere isNull(revoked_at)` matching nothing, which surfaces as 409
         // "Device ID already taken" instead of 403 "Device has been revoked".
         //
-        // The transaction alone does NOT make the limit check atomic — under
-        // READ COMMITTED two concurrent registrations both read a count below
-        // the cap and both insert. The advisory lock is what serializes them,
-        // and it is the same lock `/devices/bridge` and `/encryption/rotate`
-        // take, so a registration cannot interleave with a rotation either.
+        // It is the same lock `/devices/bridge` and `/encryption/rotate` take,
+        // so a registration cannot interleave with a rotation either.
         const deviceName = name || 'Unknown device'
         const result = await database
           .transaction((tx) =>
@@ -621,12 +652,9 @@ export const createEncryptionRoutes = (
                 // Otherwise fall through to `registerDevice`: a non-trusted device
                 // reopening the modal after deny/cancel, or a pre-encryption device
                 // with no `publicKey` yet.
-              } else {
-                const activeCount = await countActiveDevices(txDb, userId)
-                if (activeCount >= maxActiveDevicesPerUser) {
-                  return { limitReached: true as const }
-                }
               }
+              // A new device is not capped: pending grants nothing, and recovery
+              // must reach phrase entry while lost devices still fill the cap.
 
               // Bind the session to this device BEFORE creating the row, so a session
               // already bound to a different device (e.g. a CLI device-grant session)
@@ -670,11 +698,6 @@ export const createEncryptionRoutes = (
 
         if ('alreadyTrusted' in result) {
           return { trusted: true as const, envelope: result.envelope }
-        }
-
-        if ('limitReached' in result) {
-          set.status = 422
-          return { error: 'Device limit reached' }
         }
 
         if ('revoked' in result) {
@@ -910,8 +933,9 @@ export const createEncryptionRoutes = (
             // transitioning untrusted → trusted. For re-key (already-trusted devices rotating
             // envelopes), the upsertEnvelope above is the only state change needed.
             if (!targetDevice.trusted) {
-              const activeCount = await countActiveDevices(txDb, userId)
-              if (activeCount >= maxActiveDevicesPerUser) {
+              // Self-recovery is exempt: the lost devices still count, and only a
+              // trusted device can revoke them.
+              if (callerDeviceId !== deviceId && (await countActiveDevices(txDb, userId)) >= maxActiveDevicesPerUser) {
                 throw new ForbiddenError('Device limit reached — revoke an existing device first')
               }
               // Check rows returned to detect a concurrent revoke between the in-tx read and this UPDATE.
@@ -1270,7 +1294,12 @@ export const createEncryptionRoutes = (
               (metadata.recoveryEcdhPublicKey !== body.recoveryEcdhPublicKey ||
                 metadata.recoveryMlkemPublicKey !== body.recoveryMlkemPublicKey)
             if (recoveryChanged) {
-              const refusal = await requireStepUpCode(txDb, stepUpAction, sessionUser!.email, body.stepUpOtp)
+              const refusal = await requireStepUpCode(
+                txDb,
+                phraseChangeStepUpAction,
+                sessionUser!.email,
+                body.stepUpOtp,
+              )
               if (refusal) {
                 return { refusal }
               }
@@ -1355,7 +1384,7 @@ export const createEncryptionRoutes = (
               throw new BadRequestError('Encryption not set up')
             }
             if (recoveryChanged) {
-              await consumeStepUpOtp(txDb, stepUpAction, sessionUser!.email)
+              await consumeStepUpOtp(txDb, phraseChangeStepUpAction, sessionUser!.email)
             }
             return { keyVersion: newVersion, recoveryChanged }
           })
@@ -1384,7 +1413,10 @@ export const createEncryptionRoutes = (
         auth: true,
         body: t.Object({
           proof: proofSchema,
-          envelopes: t.Array(envelopeEntrySchema, { minItems: 1, maxItems: maxActiveDevicesPerUser }),
+          // No maxItems: `assertEnvelopeCoverage` requires exactly one envelope per
+          // capable device, a count self-recovery can grow past any constant, so a
+          // fixed bound could only block rotation, including the one after a revoke.
+          envelopes: t.Array(envelopeEntrySchema, { minItems: 1 }),
           wrappedKeys: t.Array(wrappedKeyEntrySchema, { minItems: 1, maxItems: maxKeyringKeys }),
           newPrimaryKey: t.Optional(newPrimaryKeySchema),
           stepUpOtp: t.Optional(t.String({ minLength: 1, maxLength: 64 })),
@@ -1417,10 +1449,17 @@ export const createEncryptionRoutes = (
     // scheme_version 1→2 atomically (CAS) as the LAST step — one all-or-nothing
     // transaction under the per-user advisory lock.
     //
-    // Gated ONLY by the D1 CK-possession proof (the signing key does not exist
+    // Gated by the D1 CK-possession proof (the signing key does not exist
     // pre-flip, so this is the bootstrap op and is NOT signature-gated); an
     // 'upgrade' nonce is consumed for replay protection. A second concurrent
     // migrator loses the CAS and gets a 409.
+    //
+    // A pending device may migrate too: that is recovery with the v1 phrase,
+    // which is the raw CK. The possession proof cannot carry that alone — the
+    // canary secret is static and v1 clients sent it in plain — so this path
+    // also needs an emailed step-up code, and it trusts the caller in the same
+    // transaction. Its regular siblings end untrusted and not pending, so the
+    // recovered device is not prompted to approve the one that was lost.
     .post(
       '/encryption/upgrade',
       async ({ body, request, set, user: sessionUser, session }) => {
@@ -1442,8 +1481,26 @@ export const createEncryptionRoutes = (
               throw new SchemeConflictError('Account already migrated to scheme v2')
             }
             const lockedCaller = await getDeviceById(txDb, caller.deviceId)
-            if (!isTrustedAppDevice(lockedCaller, userId) || lockedCaller?.revokedAt != null) {
-              throw new ForbiddenError('Only trusted devices can upgrade encryption')
+            const recoveringWithPhrase = isPendingRegularAppDevice(lockedCaller, userId)
+            if (
+              lockedCaller?.revokedAt != null ||
+              !(isTrustedAppDevice(lockedCaller, userId) || recoveringWithPhrase)
+            ) {
+              throw new ForbiddenError(upgradeCallerRefusedMessage)
+            }
+
+            // Read-only, so it runs first: only a holder of the canary secret can
+            // reach (and spend attempts on) the step-up code below.
+            if (!(await verifyPossessionProof(txDb, userId, body.possessionProof))) {
+              throw new ForbiddenError('Invalid CK-possession proof')
+            }
+            // Before the nonce and every write: a refusal is returned, so the
+            // transaction commits to charge the attempt and nothing else.
+            if (recoveringWithPhrase) {
+              const refusal = await requireStepUpCode(txDb, v1RecoveryStepUpAction, sessionUser!.email, body.stepUpOtp)
+              if (refusal) {
+                return { refusal }
+              }
             }
 
             // Replay protection only (bootstrap op — NOT signature-verified).
@@ -1457,17 +1514,25 @@ export const createEncryptionRoutes = (
               throw new ForbiddenError('Invalid or expired upgrade nonce')
             }
 
-            // D1 possession proof: only a device holding the v1 CK can produce the
-            // canarySecret that hashes to the retained canary_secret_hash.
-            if (!(await verifyPossessionProof(txDb, userId, body.possessionProof))) {
-              throw new ForbiddenError('Invalid CK-possession proof')
-            }
-
             assertUpgradeKeyCoverage(body.wrappedKeys, body.primaryKeyId)
             assertEnvelopeCoverage([caller.deviceId], body.envelopes)
             assertRecoveryCoverage(body)
 
-            await requireMigrationSiblingApproval(txDb, userId, caller.deviceId)
+            await requireMigrationSiblingApproval(
+              txDb,
+              userId,
+              caller.deviceId,
+              recoveringWithPhrase ? 'untrusted' : 'pending',
+            )
+
+            // The self-recovery tail of the envelope route.
+            if (recoveringWithPhrase) {
+              // 0 rows: a deny, cancel or revoke landed after the read above.
+              const trusted = await markDeviceTrusted(txDb, caller.deviceId, userId)
+              if (trusted.length === 0) {
+                throw new ForbiddenError('Device is no longer waiting for approval')
+              }
+            }
 
             for (const entry of body.wrappedKeys) {
               const inserted = await insertWrappedKey(txDb, {
@@ -1508,18 +1573,33 @@ export const createEncryptionRoutes = (
             }
             // The org envelope wraps the NEW AK minted by this migration.
             await persistOrgEnvelope(txDb, settings, userId, body.orgEnvelope)
-            return { keyVersion: flipped.keyVersion, schemeVersion: flipped.schemeVersion }
+            if (recoveringWithPhrase) {
+              await consumeStepUpOtp(txDb, v1RecoveryStepUpAction, sessionUser!.email)
+            }
+            return {
+              keyVersion: flipped.keyVersion,
+              schemeVersion: flipped.schemeVersion,
+              recoveringWithPhrase,
+            }
           })
 
+          if (result.refusal) {
+            set.status = result.refusal.status
+            return result.refusal.body
+          }
+
+          const locale = resolveEmailLocale(request.headers.get('X-App-Language'))
+          const deviceName = caller.device.name ?? 'Unknown device'
           notifyBestEffort(
             'encryption-upgraded',
-            notifications.sendEncryptionSetUp({
-              email: sessionUser!.email,
-              deviceName: caller.device.name ?? 'Unknown device',
-              upgraded: true,
-              locale: resolveEmailLocale(request.headers.get('X-App-Language')),
-            }),
+            notifications.sendEncryptionSetUp({ email: sessionUser!.email, deviceName, upgraded: true, locale }),
           )
+          if (result.recoveringWithPhrase) {
+            notifyBestEffort(
+              'recovery-phrase-used',
+              notifications.sendRecoveryPhraseUsed({ email: sessionUser!.email, deviceName, locale }),
+            )
+          }
 
           return { key_version: result.keyVersion, scheme_version: result.schemeVersion }
         } catch (err) {
@@ -1531,6 +1611,7 @@ export const createEncryptionRoutes = (
         body: t.Object({
           nonce: t.String({ maxLength: 128 }),
           possessionProof: t.String({ maxLength: 500 }),
+          stepUpOtp: t.Optional(t.String({ minLength: 1, maxLength: 64 })),
           envelopes: t.Array(envelopeEntrySchema, { minItems: 1, maxItems: maxActiveDevicesPerUser }),
           wrappedKeys: t.Array(wrappedKeyEntrySchema, { minItems: 2, maxItems: maxKeyringKeys }),
           primaryKeyId: t.String({ minLength: 1, maxLength: 64, pattern: '^[^:]+$' }),

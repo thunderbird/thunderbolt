@@ -47,4 +47,10 @@ describe('ContentViewHeader', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(onClose).toHaveBeenCalledTimes(1)
   })
+
+  it('shows a file name without the bidirectional controls that would disguise its extension', () => {
+    render(<ContentViewHeader title={`annual${String.fromCharCode(0x202e)}xcod.xlsx`} onClose={mock()} />)
+
+    expect(screen.getByRole('heading').textContent).toBe('annualxcod.xlsx')
+  })
 })

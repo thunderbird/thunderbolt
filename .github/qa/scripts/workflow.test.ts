@@ -543,9 +543,12 @@ describe('fix job', () => {
       const reviewed = recordTree(tree)
       writeFileSync(join(tree.dir, 'src/a.ts'), 'written by a step after the review')
       writeFileSync(join(tree.dir, 'src/new.ts'), 'new')
+      // Named like the ignored qa-out*/ directories, but a file, so git publishes it.
+      writeFileSync(join(tree.dir, 'src/qa-output.ts'), 'new')
       rmSync(join(tree.dir, 'src/gone.ts'))
       expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toBe(
-        'Files changed after the review read them (src/a.ts src/gone.ts src/new.ts), so the patch is not published.\n',
+        'Files changed after the review read them (src/a.ts src/gone.ts src/new.ts src/qa-output.ts), so the patch ' +
+          'is not published.\n',
       )
     })
 

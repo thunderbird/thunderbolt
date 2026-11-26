@@ -1451,8 +1451,9 @@ jobs:
         env: *plain-shell
         run: &record-tree |
           files() {
-            /usr/bin/find . \( -path ./.git -o -name node_modules -o -name 'qa-out*' -o -name 'qa-dist*' \) -prune -o \
-              -type f "$@" -print0
+            # Only directories, as .gitignore ignores them: a file like src/qa-output.ts is published.
+            /usr/bin/find . \( -path ./.git -o -name node_modules -o -type d \( -name 'qa-out*' -o -name 'qa-dist*' \) \) \
+              -prune -o -type f "$@" -print0
           }
           # Git keeps a file's owner-executable bit besides its content, so the list holds that bit too, as an `x` line.
           # Both go through sha256sum, which writes a name with a newline in it escaped, on one line. The visual check
@@ -1764,8 +1765,8 @@ jobs:
             reviewed="$RUNNER_TEMP/qa-tree-$REVIEWED_TREE.txt"
             sum=$(sha256sum < "$reviewed" 2> /dev/null) || sum=
             files() {
-              find . \( -path ./.git -o -name node_modules -o -name 'qa-out*' -o -name 'qa-dist*' \) -prune -o \
-                -type f "$@" -print0
+              find . \( -path ./.git -o -name node_modules -o -type d \( -name 'qa-out*' -o -name 'qa-dist*' \) \) \
+                -prune -o -type f "$@" -print0
             }
             check="./qa-out/fix-$QA_FP/repro/check.spec.ts"
             if [ -z "$REVIEWED_TREE" ] || [ "${sum%% *}" != "$REVIEWED_TREE" ]; then

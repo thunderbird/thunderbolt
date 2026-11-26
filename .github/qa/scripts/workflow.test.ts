@@ -9,7 +9,8 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import platforms from '../platforms.json'
-import { isDenied, prChecks } from './fix'
+import { conventionalTitle, isDenied, prChecks } from './fix'
+import { bugStep } from './findings'
 import {
   nativeDriverStartupMinutes,
   nativeJobMinutes,
@@ -454,8 +455,20 @@ describe('fix job', () => {
     expect(at('Build the patched frontend for the real-AI check')).toBeLessThan(at('Collect the patch'))
   })
 
-  // By default the check always fails, as it should without the patch.
-  const baseline = ({ edits = true, failStart = false, stashed = false, checkPasses = false } = {}) => {
+  type RunStep = { title: string; duration: number; error?: { message: string } }
+  const failedInBugCheck: RunStep[] = [
+    { title: 'sign in', duration: 900 },
+    { title: bugStep, duration: 40, error: { message: 'expected no layout problems' } },
+  ]
+  // By default the check always fails in its bug check step, as it should without the patch. `ran` holds the steps of
+  // each failed run in the check's JSON report.
+  const baseline = ({
+    edits = true,
+    failStart = false,
+    stashed = false,
+    checkPasses = false,
+    ran = failedInBugCheck,
+  } = {}) => {
     const dir = mkdtempSync(join(work, 'baseline-'))
     const bin = mkdtempSync(join(work, 'bin-'))
     const git = (...args: string[]) =>
@@ -477,7 +490,10 @@ describe('fix job', () => {
       writeFileSync(join(dir, 'backend/index.ts'), 'patched')
       writeFileSync(join(dir, 'backend/new.ts'), 'new')
     }
-    writeFileSync(join(bin, 'bunx'), `#!/bin/sh\nexit ${checkPasses ? 0 : 1}\n`, { mode: 0o755 })
+    const report = { suites: [{ specs: [{ tests: [{ results: [{ status: 'failed', steps: ran }] }] }] }], errors: [] }
+    writeFileSync(join(bin, 'report.json'), JSON.stringify(report))
+    const bunx = `#!/bin/sh\ncp '${join(bin, 'report.json')}' "$PLAYWRIGHT_JSON_OUTPUT_FILE"\nexit ${checkPasses ? 0 : 1}\n`
+    writeFileSync(join(bin, 'bunx'), bunx, { mode: 0o755 })
     const proc = Bun.spawnSync(['bash', '-e', '-c', step('fix', 'Run the visual check without the patch').run ?? ''], {
       cwd: dir,
       env: { PATH: `${bin}:${process.env.PATH}`, QA_FP: 'fp1', HOME: dir },
@@ -506,6 +522,17 @@ describe('fix job', () => {
     for (const check of [withRun, step('fix', 'Run the visual check without the patch')])
       expect(check['continue-on-error']).toBe(true)
     expect(step('fix', 'Run the visual check without the patch').if).toBe("steps.visual-with.outcome == 'success'")
+    expect(step('fix', 'Run the visual check without the patch').run).toContain('--reporter=list,json')
+  })
+
+  test('a run that failed outside its bug check step shows no bug, so the baseline fails', () => {
+    const signIn = baseline({ ran: [{ title: 'sign in', duration: 900, error: { message: 'no code arrived' } }] })
+    expect(signIn.code).not.toBe(0)
+    expect(signIn.read('backend/index.ts')).toBe('patched')
+    // A check that never loaded ran no step.
+    expect(baseline({ ran: [] }).code).not.toBe(0)
+    // A run that timed out while the step still ran (duration -1) did reach the bug.
+    expect(baseline({ ran: [{ title: bugStep, duration: -1 }] }).code).toBe(0)
   })
 
   test('a failed baseline still puts the patch back, and an agent that edited nothing pops no older stash', () => {
@@ -829,18 +856,20 @@ describe('verify-tests', () => {
     expect(stopTests(1000)).toMatchObject({ code: 1, kills: 50 })
   })
 
-  test("checks every web task of the plan and no native one, from route's output", () => {
+  test("checks every task of the plan that needs a unit test, from route's output", () => {
     const route = step('file', 'Route fixable tickets').run ?? ''
     const filter = /tests=\$\(jq --compact-output '([^']+)' qa-out\/fix-plan\.json\)/.exec(route)?.[1] ?? ''
     const plan = {
       fixes: [
-        { fp: 'web', kind: 'spec', spec: 'x' },
-        { fp: 'visual', kind: 'visual' },
-        { fp: 'ios', flow: 'f' },
+        { fp: 'web', kind: 'spec', spec: 'x', unitTest: true },
+        { fp: 'layout', kind: 'spec', spec: 'y', unitTest: false },
+        { fp: 'visual', kind: 'visual', unitTest: false },
+        { fp: 'onboarding-visual', kind: 'visual', unitTest: true },
+        { fp: 'ios', flow: 'f', unitTest: false },
       ],
     }
     const proc = Bun.spawnSync(['jq', '--compact-output', filter], { stdin: Buffer.from(JSON.stringify(plan)) })
-    expect(JSON.parse(proc.stdout.toString()).map((t: { fp: string }) => t.fp)).toEqual(['web', 'visual'])
+    expect(JSON.parse(proc.stdout.toString()).map((t: { fp: string }) => t.fp)).toEqual(['web', 'onboarding-visual'])
     expect(jobs['verify-tests'].strategy).toEqual({
       'fail-fast': false,
       matrix: { task: '${{ fromJSON(needs.file.outputs.tests) }}' },
@@ -1108,6 +1137,18 @@ describe('publish', () => {
       'Replay the spec on the patched frontend',
     ])
       expect(step('verify-real', name).if).toBe(present)
+  })
+
+  test("a fix agent's PR title may use exactly the types Title Lint accepts", () => {
+    const lint = Bun.YAML.parse(readFileSync(join(import.meta.dir, '../../workflows/lint-pr-title.yml'), 'utf8')) as {
+      jobs: Record<string, Job>
+    }
+    const types = lint.jobs.lint.steps?.find((s) => s.uses?.startsWith('amannn/action-semantic-pull-request@'))?.with
+      ?.types
+    const accepted = (types ?? '').split('\n').filter(Boolean)
+    const alternatives = /^\^\(([^)]+)\)/.exec(conventionalTitle.source)?.[1].split('|') ?? []
+    expect(accepted).toContain('fix')
+    expect(alternatives.sort()).toEqual(accepted.sort())
   })
 })
 
@@ -1637,6 +1678,8 @@ test('every job but the reusable notify call has a timeout and read-only permiss
     if (name === 'file') return { actions: 'read', contents: 'read', 'pull-requests': 'read' }
     // Publish lists the run's artifacts, whose names carry the checks' passes.
     if (name === 'publish') return { actions: 'read', contents: 'read' }
+    // Report reads how the bot's recent fix PRs ended.
+    if (name === 'report') return { contents: 'read', 'pull-requests': 'read' }
     return { contents: 'read' }
   }
   for (const [name, job] of Object.entries(jobs).filter(([, job]) => !job.uses)) {

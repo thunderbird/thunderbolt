@@ -81,7 +81,8 @@ step succeeded), `replay`, `visual`, `tests`, `real`, one per native platform of
 which the runner keeps too (see the fix stage below). The artifact holds a marker file whose content nobody reads.
 `publish` lists the run's artifact names with the GitHub API (`actions: read`, into `qa-out/artifacts.txt`) and
 needs a pass of its own run attempt for every check the task needs: `session` always, `replay` for a fake-AI web
-spec, `visual` for a web visual check, `tests` for every web task, `real` for a real-AI web spec, each platform in
+spec, `visual` for a web visual check, `tests` for every web task but a layout or visual one proven by its browser check
+(`unitTest` in the plan), `real` for a real-AI web spec, each platform in
 `verifyNative` for the fingerprint, and `checks` for every task. A missing pass is a failure, and the ticket gets
 `Human Required` with the reason, except a native platform's. That one goes to a person only when its patch built no
 app or its run step uploaded the failure marker (`qa-native-failed-<fp>-<platform>-<run attempt>`, see the fix stage
@@ -433,21 +434,33 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `bug check` step, keeps the patch unpublished, since a patch that breaks the way to the bug proves no fix.
    A `visual` task has no spec, so the agent first writes `qa-out/fix-<fp>/repro/check.spec.ts` (the depth and
    `repro/` dir of a repro spec, so its imports and the Playwright config work), a check that fails because of the
-   defect. The fix job runs that check three times on the patched dev stack, where every run must pass, then three
-   times on the builds without the patch, with the patch stashed so the backend runs without it too, where every
-   run must fail. A real-AI web
+   defect. Like a repro spec, it asserts the bug inside `test.step('bug check', …)`, and `publish` refuses a check
+   without that step. The fix job runs that check three times on the patched dev stack, where every run must pass,
+   then three times on the builds without the patch, with the patch stashed so the backend runs without it too, where
+   every run must fail inside that step. These runs without the patch (the baseline) read each verdict from
+   Playwright's JSON report, as replay does: a run that fails before the step, in its sign-in for example, shows no
+   bug, and the baseline fails. A real-AI web
    task (`real`) is fixed on the fake AI, and `verify-real` runs its spec three times on the real providers against
    the patched frontend; all three must pass. A real-AI web visual task has no spec for `verify-real` to run, so
    `publish` never opens a PR for it: the ticket gets `Human Required`, like a fix that failed its checks.
-   Every web task (one without a `flow`, real-AI, visual and security tasks included) must also add or change a unit
-   test file, `*.test.ts` or `*.test.tsx` under `src/`, `shared/`, `backend/` or `cli/`, that fails without the fix.
+   For a web task with `unitTest` false, the browser check is the proof. These are the layout and visual tasks whose
+   PR adds that check as its regression spec (see `whyNoSpec` below: a layout problem other than a missing name, or a
+   visual defect). The check failed without the patch and passed with it, and happy-dom, which the unit tests run on,
+   computes no layout. Every other web task (one without a `flow`) must add or change a unit test file, `*.test.ts` or
+   `*.test.tsx` under `src/`, `shared/`, `backend/` or `cli/`, that fails without the fix. They cover a missing name,
+   logic and data lost on a reload (which also gets the spec), plus the c1, real-AI and security tasks, whose check
+   never becomes a spec. `route` marks them `unitTest` in the plan (`needsUnitTest`), and only they get a
+   `verify-tests` job.
    `verify-tests` (keyless, see "Trust zones") checks it on a fresh checkout with `fix.ts tests`: `testRuns` picks
    the test files the patch adds or changes (a deleted one is left out, a renamed one counts under its new name) and
    runs `bun test --timeout 5000` over them from each tree's own directory (`src/`, `backend/`, `cli/`,
    `shared/agent-core/`, and the root for the rest of `shared/`), as the repo's test scripts do. A run must fail
    with only the hunks for those files and for every file the patch adds applied (`git apply --include`), and with
    the whole patch every run must pass, all in one process. The added files keep a test from failing only because a
-   helper, fixture or snapshot it imports is missing. A renamed source file counts as added, so a patch that moves
+   helper, fixture or snapshot it imports is missing. The run without the fix counts only when Bun's output names a
+   failed test (`testFailed`): a file that fails to import or compile, such as a test of an export only the fix adds,
+   names none, and a failed `beforeAll` or `afterAll` hook shows as `(unnamed)`. A failed `beforeEach` still shows as
+   its test's failure, so it counts. A renamed source file counts as added, so a patch that moves
    the buggy file and fixes it on the way has its fix in the run without it, and a person takes the ticket.
    `git apply` runs as the job's user, each `bun test` as `qa-test` (`QA_TEST_USER`, through `sudo --user`, with only `PATH` from the job's environment), so a test cannot
    write the checkout either. Each run gets `CI=true`, as in CI, and after each `git apply` the snapshot files are
@@ -505,14 +518,14 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    the run began and never gave a verdict (the job timed out, the runner died, or `native.sh` failed on its own). A
    stream that died or a flow that cannot reach the screen never earns `Human Required`. The job also keeps the
    WebView log and Maestro's per-step output (`~/.maestro/tests`, a screen tree and screenshot per step) beside the
-   verdict in `qa-verify-<fp>-<platform>`, so a dead stream or a system dialog over the app shows there. The unit
-   test is a web fix's regression guard. A rule in code (`whyNoSpec` in `fix.ts`) adds the repro spec, or a visual
-   task's check, to `e2e/` only for a bug a unit test cannot show. happy-dom computes no layout, so a `visual` finding and a `layout` one
+   verdict in `qa-verify-<fp>-<platform>`, so a dead stream or a system dialog over the app shows there. A web fix's
+   regression guard is its unit test, or the spec below. A rule in code (`whyNoSpec` in `fix.ts`) adds the repro spec,
+   or a visual task's check, to `e2e/` only for a bug a unit test cannot show. happy-dom computes no layout, so a `visual` finding and a `layout` one
    qualify, except an `unnamed-control` line: a missing accessible name shows in a unit test. A `lost-on-reload` finding
    qualifies too, since the testing guide (`docs/internals/development/testing.md`) sends browser storage, redirects and
    Better Auth callbacks to `e2e/`.
    Every other oracle (a page or console error, a 5xx, a stuck control, a failed assertion, an AI-reported failure)
-   gets no spec, and the PR and commit say the unit test in the patch guards the fix. A native fix PR adds no
+   gets no spec, and the PR and commit say the patch's unit tests fail without the fix. A native fix PR adds no
    regression spec. Neither does a fix PR from a c1 session, because the root `playwright.config.ts` does not serve
    the onboarding build, nor a real-AI web fix PR, because that config runs the consumer project on the fake
    provider, nor a security fix PR. `regressionSpec` cleans a spec it adds: TypeScript's organize-imports drops the
@@ -541,12 +554,15 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    pipeline's: the job's summary names the ticket and the check, no PR opens, the ticket gets no write, and
    publish's summary says it was left for a later run. `publish` needs a pass from every platform in `verifyNative`
    for the fingerprint, web tasks included, from `verify-real` for a real-AI web task, from `verify-tests` for every
-   web task and from `verify-checks` for every task (see "Passes"). Only then does it open a draft PR on the task's
+   `unitTest` task and from `verify-checks` for every task (see "Passes"). Only then does it open a draft PR on the task's
    branch. Otherwise the ticket gets `Human Required` with the reason (for a native platform, "the patch did not build
    on the native platform, or the flow still fails there"). A fix from a session whose charter has `postgres` in `legs.ts` (today c7), on any
    platform, never gets a PR either: the fix job and `verify-native-run` start no Postgres or PowerSync, so they
    cannot verify it, and its ticket gets `Human Required`. A fix PR gets an automatic preview deploy like any other
-   PR.
+   PR. Its title is the fix agent's `fix/<fp>.title`, a short description of the change, when that is a Conventional
+   Commits title with a type Title Lint accepts (`lint-pr-title.yml`); otherwise it is `fix: <finding title>`. Either
+   is cut at a word to 100 characters, and a security fix keeps its fixed title. The description says what the
+   passed checks showed and that an AI wrote the change, and the commit body wraps that text at 100 columns.
 
    The fix session's tools are `Read`, `Glob`, `Grep`, `Edit`, `Write`, `Bash` and `Skill`, with no `Agent`, `Task`,
    web tool or git. `Skill` is there so the agent can run the bundled `simplify` skill on its own changes before it
@@ -560,7 +576,13 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    session's init message names them) and extend the denies. After the merge, the first fix session's transcript
    should show the `simplify` load, with no other skill.
 
-7. **report** (`report.ts summary`): the job summary.
+7. **report** (`report.ts summary`): the job summary. `report.ts fix-prs` adds a "Recent QA fix PRs" section, read
+   from GitHub alone (`pull-requests: read`). It covers the fix PRs among the newest 100 PRs of the app
+   `thunderbolt-automation-agent`, this run's included. A PR whose first commit is the bot's is right first time when
+   it merged with only the bot's commits (merge commits aside), needed edits when it merged with any other commit,
+   discarded when it closed unmerged, and waits for a person while open. A merged PR with more than 100 commits is
+   unknown, since the query reads only the first 100. The factory bot opens PRs as the same app, but a person writes
+   their first commit, so they are left out. A failed GitHub call loses only that section.
 
 Output goes to `qa-out*/` (gitignored). `fixtures/` holds the files the charters upload.
 

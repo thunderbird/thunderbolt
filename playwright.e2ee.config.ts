@@ -25,7 +25,8 @@ const isCI = !!process.env.CI
 //     tests within a file still run in order). Each test uses a unique account,
 //     so data is isolated; the ceiling is CPU/RAM — several wa-sqlite contexts
 //     thrash a constrained runner and produce FALSE failures, so raise this
-//     deliberately (2–3 on a capable box) and keep it at 1 on CI. Default: 1.
+//     deliberately (2–3 on a capable box). CI's 4-vCPU runners use 2 (e2e.yml).
+//     Default: 1.
 const skipBuild = !!process.env.E2EE_SKIP_BUILD
 const workers = process.env.E2EE_WORKERS ? Number(process.env.E2EE_WORKERS) : 1
 const frontendPort = 1423

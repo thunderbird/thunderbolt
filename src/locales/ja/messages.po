@@ -86,6 +86,14 @@ msgstr[0] "# 個のツール"
 #~ msgstr[0] ""
 #~ msgstr[1] ""
 
+#. placeholder {0}: pendingChat.messageCount
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7BThis+file+contains+the+chat+%E2%80%9C%7BpendingChatTitle%7D%E2%80%9D+with+%23+message.%7D+other+%7BThis+file+contains+the+chat+%E2%80%9C%7BpendingChatTitle%7D%E2%80%9D+with+%23+messages.%7D%7D&pluralize_on=0
+#: src/settings/preferences.tsx
+msgid "This file contains the chat “{pendingChatTitle}” with # message."
+msgid_plural "This file contains the chat “{pendingChatTitle}” with # messages."
+msgstr[0] ""
+msgstr[1] ""
+
 #. placeholder {0}: app.name
 #: src/mini-apps/mini-app-page.tsx
 msgid "{0} is only available on desktop"
@@ -2012,6 +2020,10 @@ msgstr "更新をダウンロードできませんでした: {error}"
 msgid "Couldn't download the update."
 msgstr "更新をダウンロードできませんでした。"
 
+#: src/layout/sidebar/export-chat-error-notice.tsx
+msgid "Couldn't export the chat: {reason}"
+msgstr ""
+
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Couldn't get a code."
 msgstr "コードを取得できませんでした。"
@@ -2932,6 +2944,10 @@ msgstr "音声モードを終了"
 msgid "Expand Sidebar"
 msgstr "サイドバーを展開"
 
+#: src/layout/sidebar/chat-list-item.tsx
+msgid "Export"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Export all of your data as JSON."
 msgstr "すべてのデータを JSON としてエクスポートします。"
@@ -3290,6 +3306,10 @@ msgstr "<0>プライバシーポリシー</0>と<1>利用規約</1>に同意し�
 msgid "I have saved my recovery phrase"
 msgstr "リカバリーフレーズを保存しました"
 
+#: src/settings/preferences.tsx
+msgid "If this chat is already here, it's updated with the file's version and synced to your other devices."
+msgstr ""
+
 #: src/components/provider-authorization-result.tsx
 #~ msgid "If this window stays open, you can safely close the tab."
 #~ msgstr ""
@@ -3335,12 +3355,28 @@ msgid "Import this backup?"
 msgstr "このバックアップをインポートしますか？"
 
 #: src/settings/preferences.tsx
+msgid "Import this chat?"
+msgstr ""
+
+#: src/settings/preferences.tsx
 msgid "Import Your Data"
 msgstr "データをインポート"
 
 #: src/settings/preferences.tsx
 msgid "Import your data from previously exported JSON."
 msgstr "以前にエクスポートした JSON からデータをインポートします。"
+
+#: src/settings/preferences.tsx
+msgid "Imported a copy of the chat “{pendingChatTitle}”."
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Imported the chat “{pendingChatTitle}”."
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Importing it adds a copy of this chat."
+msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/preferences.tsx
@@ -5990,6 +6026,10 @@ msgstr "AI プロバイダーの応答に時間がかかりすぎました。も
 msgid "The app's web content stopped unexpectedly more than once. Automatic reloads have been paused."
 msgstr ""
 
+#: src/layout/sidebar/use-export-chat.ts
+msgid "The chat could not be read on this device."
+msgstr ""
+
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "The chat will be retained by the {recipient} team."
 msgstr ""
@@ -6203,6 +6243,10 @@ msgstr ""
 #: src/components/chat/chat-prompt-input.tsx
 msgid "This chat uses {agentName}, which is not available on this platform."
 msgstr "このチャットは {agentName} を使用していますが、このプラットフォームでは利用できません。"
+
+#: src/settings/preferences.tsx
+msgid "This chat was exported by a different account ({importSourceEmail})."
+msgstr ""
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "This code expired."

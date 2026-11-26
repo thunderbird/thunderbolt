@@ -968,7 +968,6 @@ msgstr "Anyone with a verified email on this domain can join as a member."
 msgid "Anything else you'd like to share?"
 msgstr "Anything else you'd like to share?"
 
-#: admin/components/audit-event-labels.ts
 #: src/components/search-provider-setup/search-provider-setup.tsx
 #: src/settings/connections/provider-connection-form.tsx
 #: src/settings/voice.tsx
@@ -9244,8 +9243,8 @@ msgid "This sign-in did not start from {appName}. Open {appName} and sign in fro
 msgstr "This sign-in did not start from {appName}. Open {appName} and sign in from there."
 
 #: src/lib/sso-error-messages.ts
-msgid "This sign-in is already linked to another {appName} account. Ask your administrator for help."
-msgstr "This sign-in is already linked to another {appName} account. Ask your administrator for help."
+#~ msgid "This sign-in is already linked to another {appName} account. Ask your administrator for help."
+#~ msgstr "This sign-in is already linked to another {appName} account. Ask your administrator for help."
 
 #: src/lib/sso-error-messages.ts
 msgid "This sign-in option is no longer available. Try again, or ask your administrator."
@@ -9339,6 +9338,10 @@ msgstr "This workbook is too large to preview"
 #: src/components/chat/reasoning-group-title.tsx
 msgid "Thought for {duration}"
 msgstr "Thought for {duration}"
+
+#: admin/screens/audit-log/audit-event-panel.tsx
+msgid "Through API key {apiKeyName}"
+msgstr "Through API key {apiKeyName}"
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Thunderbolt CLI"

@@ -968,7 +968,6 @@ msgstr ""
 msgid "Anything else you'd like to share?"
 msgstr ""
 
-#: admin/components/audit-event-labels.ts
 #: src/components/search-provider-setup/search-provider-setup.tsx
 #: src/settings/connections/provider-connection-form.tsx
 #: src/settings/voice.tsx
@@ -9232,8 +9231,8 @@ msgid "This sign-in did not start from {appName}. Open {appName} and sign in fro
 msgstr ""
 
 #: src/lib/sso-error-messages.ts
-msgid "This sign-in is already linked to another {appName} account. Ask your administrator for help."
-msgstr ""
+#~ msgid "This sign-in is already linked to another {appName} account. Ask your administrator for help."
+#~ msgstr ""
 
 #: src/lib/sso-error-messages.ts
 msgid "This sign-in option is no longer available. Try again, or ask your administrator."
@@ -9326,6 +9325,10 @@ msgstr ""
 
 #: src/components/chat/reasoning-group-title.tsx
 msgid "Thought for {duration}"
+msgstr ""
+
+#: admin/screens/audit-log/audit-event-panel.tsx
+msgid "Through API key {apiKeyName}"
 msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx

@@ -14,8 +14,9 @@ verdict.
 - `git diff HEAD` shows what the patch changes in tracked files, and `git status --short --untracked-files=all`
   lists each file it adds (`??`), also inside a new folder. Read every added file.
 - In a web visual task (`kind` is `visual` and the task has no `flow`), the fix agent's browser check,
-  `qa-out/fix-<fp>/repro/check.spec.ts` with the task's `fp`. It is the proof, and the PR adds it as its e2e spec, but
-  `git status` does not list it because `qa-out/` is ignored.
+  `qa-out/fix-<fp>/repro/check.spec.ts` with the task's `fp`. It is the proof. The PR also adds it as its e2e spec,
+  except in a security, real-AI (`real`) or c1 (onboarding) task. `git status` does not list it because `qa-out/` is
+  ignored.
 - The code around each change, the callers of every function, hook or component the patch changes (search for its
   imports), and the code the finding's steps really run.
 - `AGENTS.md` and `docs/internals/development/testing.md` for what the repo expects of a fix and its tests.

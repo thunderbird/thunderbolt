@@ -467,7 +467,7 @@ export type AuditAction = (typeof auditActions)[number]
 
 export type AuditOutcome = 'success' | 'failure' | 'denied'
 
-export type AuditActorType = 'user' | 'scim_connection' | 'api_key' | 'system'
+export type AuditActorType = 'user' | 'scim_connection' | 'system'
 
 export type AuditEvent = {
   id: string
@@ -489,10 +489,12 @@ export type AuditEvent = {
   /** Sign-in events only. */
   ipAddress: string | null
   userAgent: string | null
-  /** The actor's name (a person's name or email, a connection or API key's name), or null when none is known. */
+  /** The actor's name (a person's name or email, or a connection's name), or null when none is known. */
   actorLabel: string | null
   /** The target's name (a person, connection, group, domain or invitation), or null when none is known. */
   targetLabel: string | null
+  /** The name of the API key the actor acted through (`metadata.apiKeyId`), or null when none, or it's gone. */
+  apiKeyLabel: string | null
 }
 
 /** The wire shape of `GET /admin/audit-events`; the admin client returns it as a `Page`. */
@@ -507,6 +509,9 @@ export type AuditEventQuery = PageQuery & {
   connectionId?: string
   from?: Timestamp
   to?: Timestamp
-  /** Part of the actor's or target's name: a person's name or email, a connection, group, domain or API key. */
+  /**
+   * Part of the actor's or target's name, or of the API key the actor acted through: a person's name or email, a
+   * connection, group, domain or API key.
+   */
   q?: string
 }

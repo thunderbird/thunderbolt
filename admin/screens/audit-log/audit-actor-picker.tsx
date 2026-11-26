@@ -18,8 +18,8 @@ type AuditActorPickerProps = {
 }
 
 /**
- * Picks a member as the audit actor. Other actors (an API key, a SCIM connection) only arrive by a
- * link, and show by their raw id.
+ * Picks a member as the audit actor. Other actors (a SCIM connection) only arrive by a link, and
+ * show by their raw id.
  */
 export const AuditActorPicker = ({ id, actorId, onChange }: AuditActorPickerProps) => {
   const { t } = useLingui()

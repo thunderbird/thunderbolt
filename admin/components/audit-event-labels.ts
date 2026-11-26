@@ -11,7 +11,6 @@ import type { StatusTone } from './status-badge'
 
 export const actorTypeLabels: Record<AuditActorType, MessageDescriptor> = {
   user: msg`Person`,
-  api_key: msg`API key`,
   scim_connection: msg`SCIM connection`,
   system: msg`System`,
 }

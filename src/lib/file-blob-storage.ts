@@ -12,9 +12,13 @@
  * sending to an agent hydrates the bytes on demand at request time.
  *
  * Mirrors the IndexedDB pattern in `src/crypto/key-storage.ts`.
+ *
+ * Each slot has its own attachment database next to its database file
+ * (`attachmentDatabaseName`), so an account never reads another account's files.
  */
 
-const dbName = 'thunderbolt-files'
+import { attachmentDatabaseName } from './local-data-owner'
+
 const storeName = 'attachments'
 const dbVersion = 1
 
@@ -33,7 +37,7 @@ export type StoredFile = {
 
 const openDB = (): Promise<IDBDatabase> =>
   new Promise((resolve, reject) => {
-    const request = indexedDB.open(dbName, dbVersion)
+    const request = indexedDB.open(attachmentDatabaseName(), dbVersion)
     request.onupgradeneeded = () => {
       const db = request.result
       if (!db.objectStoreNames.contains(storeName)) {
@@ -104,23 +108,6 @@ export const deleteAttachment = async (id: string): Promise<void> => {
     tx.onerror = () => {
       db.close()
       reject(new Error(`Failed to delete attachment: ${id}`, { cause: tx.error }))
-    }
-  })
-}
-
-/** Delete every locally-stored attachment, e.g. when the device's data is wiped. */
-export const clearAllAttachments = async (): Promise<void> => {
-  const db = await openDB()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite')
-    tx.objectStore(storeName).clear()
-    tx.oncomplete = () => {
-      db.close()
-      resolve()
-    }
-    tx.onerror = () => {
-      db.close()
-      reject(new Error('Failed to clear attachments', { cause: tx.error }))
     }
   })
 }

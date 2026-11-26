@@ -2,7 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { defaultModelId, defaultModels, defaultModelsVersion, type SharedModel } from '../../../shared/defaults/models.ts'
+import {
+  defaultModelId,
+  defaultModelImageSupport,
+  defaultModels,
+  defaultModelsVersion,
+  type ImageSupport,
+  type SharedModel,
+  staticImageSupport,
+} from '../../../shared/defaults/models.ts'
 import { backendHeaders, isSecureCloudUrl } from '../auth/config.ts'
 import { abortable, settleBestEffort } from '../lib/abort.ts'
 import { isNonblankString, isRecord } from '../lib/json.ts'
@@ -21,7 +29,25 @@ export const bundledManagedCatalog = {
   version: defaultModelsVersion,
   defaultModelId,
   data: [...defaultModels],
+  imageSupport: defaultModelImageSupport,
 } satisfies ManagedCatalog
+
+/** Whether a payload value is an image-support map keyed by model id. */
+const isImageSupportMap = (value: unknown): value is Record<string, ImageSupport> =>
+  isRecord(value) && Object.values(value).every((support) => support === 'supported' || support === 'unsupported')
+
+/**
+ * Image support for a backend that predates the map: what the bundled lineup says
+ * about each row, matched by provider and model slug rather than id, since a row
+ * can keep its id while the backend still serves the model it replaced.
+ */
+const bundledImageSupport = (data: readonly SharedModel[]): Record<string, ImageSupport> =>
+  Object.fromEntries(
+    data.flatMap((model): [string, ImageSupport][] => {
+      const support = staticImageSupport(model, bundledManagedCatalog)
+      return support ? [[model.id, support]] : []
+    }),
+  )
 
 /** Builds the fixed public config URL after enforcing the secure-origin policy. */
 const catalogUrl = (backendUrl: string): string => {
@@ -70,6 +96,7 @@ export const fetchManagedCatalog: ManagedCatalogLoader = async (backendUrl, fetc
     const models = parsed.defaults.models
     if (!Array.isArray(models.data)) throw invalidCatalogError()
     const data = models.data
+    const imageSupport = models.imageSupport
     const dataIsValid = data.every(
       (model): model is SharedModel =>
         isRecord(model) &&
@@ -86,11 +113,17 @@ export const fetchManagedCatalog: ManagedCatalogLoader = async (backendUrl, fetc
       Number(models.version) <= 0 ||
       !isNonblankString(models.defaultModelId) ||
       !dataIsValid ||
-      !data.some(({ id }) => id === models.defaultModelId)
+      !data.some(({ id }) => id === models.defaultModelId) ||
+      (imageSupport !== undefined && !isImageSupportMap(imageSupport))
     ) {
       throw invalidCatalogError()
     }
-    return { version: Number(models.version), defaultModelId: models.defaultModelId, data }
+    return {
+      version: Number(models.version),
+      defaultModelId: models.defaultModelId,
+      data,
+      imageSupport: imageSupport ?? bundledImageSupport(data),
+    }
   } catch (error) {
     if (error instanceof SyntaxError) throw invalidCatalogError()
     throw error

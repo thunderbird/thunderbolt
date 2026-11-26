@@ -27,7 +27,9 @@ const collapseAutoFocusedTextSelection = (event: Event) => {
     return
   }
   const content = event.currentTarget
-  requestAnimationFrame(() => {
+  // Radix focuses synchronously after this event. Finish in the same task so
+  // a later input interaction cannot have its selection overwritten.
+  queueMicrotask(() => {
     if (content instanceof HTMLElement && content.contains(document.activeElement)) {
       collapseTextSelectionToEnd(document.activeElement)
     }

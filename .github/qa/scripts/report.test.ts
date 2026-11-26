@@ -1027,13 +1027,13 @@ describe('canaries', () => {
   })
 })
 
-describe('fix PRs of earlier runs', () => {
+describe('recent QA fix PRs', () => {
   const bot = 'thunderbolt-automation-agent[bot]'
   const commit = (name: string, parents = 1) => ({ commit: { author: { name }, parents: { totalCount: parents } } })
   const pr = (number: number, state: 'OPEN' | 'CLOSED' | 'MERGED', ...nodes: ReturnType<typeof commit>[]) => ({
     number,
     state,
-    commits: { nodes },
+    commits: { totalCount: nodes.length, nodes },
   })
   const prs = [
     pr(1, 'MERGED', commit(bot)),
@@ -1053,11 +1053,24 @@ describe('fix PRs of earlier runs', () => {
         '- needed edits: 1 (#3)',
         '- discarded: 1 (#4)',
         '- open: 1 (#5)',
+        '- unknown: 0',
         '',
         'Right first time: 2 of 4 decided.',
       ].join('\n'),
     )
-    expect(fixPrSection([])).toContain('- open: 0\n\nRight first time: 0 of 0 decided.')
+    expect(fixPrSection(prs)).toStartWith('## Recent QA fix PRs\n')
+    expect(fixPrSection([])).toContain('- unknown: 0\n\nRight first time: 0 of 0 decided.')
+  })
+
+  it('leaves a merged PR whose commits the query cut short undecided, and says when it read only the newest 100', () => {
+    const cut = pr(7, 'MERGED', commit(bot))
+    const long = { ...cut, commits: { ...cut.commits, totalCount: 101 } }
+    const hundred = [long, ...Array.from({ length: 99 }, (_, i) => pr(100 + i, 'CLOSED', commit(bot)))]
+    const section = fixPrSection(hundred)
+    expect(section).toStartWith('## Recent QA fix PRs (newest 100)\n')
+    expect(section).toContain('- right first time: 0\n')
+    expect(section).toContain('- unknown: 1 (#7)\n')
+    expect(section).toContain('Right first time: 0 of 99 decided.')
   })
 
   it("asks GitHub for the app's PRs in the run's repository and appends the section to the summary", async () => {

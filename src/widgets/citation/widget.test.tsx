@@ -4,11 +4,12 @@
 
 import '@/testing-library'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import { render } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { ExternalLinkDialogProvider } from '@/components/chat/markdown-utils'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { CitationWidgetComponent } from './widget'
+import { WidgetRenderer } from '@/components/chat/widget-renderer'
 import type { ReactElement } from 'react'
 
 beforeAll(async () => {
@@ -38,6 +39,45 @@ describe('CitationWidgetComponent', () => {
   afterAll(async () => {
     await teardownTestDatabase()
   })
+  it.each([undefined, false])(
+    'keeps citation JSON separate from message provenance (private: %s)',
+    (allowRemoteImages) => {
+      const sourcesJson = JSON.stringify([
+        {
+          id: '1',
+          title: 'Article',
+          url: 'https://example.com/article',
+          siteName: 'Example',
+          favicon: 'https://example.com/icon.png',
+          allowRemoteImages: true,
+        },
+      ])
+      const { getByRole } = renderWithProviders(
+        <WidgetRenderer
+          widget={{ widget: 'citation', args: { sources: sourcesJson } }}
+          messageId="legacy-citation"
+          sources={[
+            {
+              index: 1,
+              title: 'Original evidence',
+              url: 'https://different.example',
+              toolName: 'search',
+              allowRemoteImages,
+            },
+          ]}
+        />,
+      )
+      fireEvent.click(getByRole('button'))
+      const card = screen.getByRole('listitem')
+      expect(card).toHaveTextContent('Article')
+      if (allowRemoteImages === false) {
+        expect(card.querySelector('img')).toBeNull()
+      } else {
+        expect(card.querySelector('img')).toHaveAttribute('src', 'https://example.com/icon.png')
+      }
+    },
+  )
+
   describe('rendering', () => {
     it('renders CitationBadge with raw JSON sources', () => {
       const sources = JSON.stringify([

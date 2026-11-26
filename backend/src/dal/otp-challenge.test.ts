@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { otpChallenge } from '@/db/schema'
 import { createTestDb } from '@/test-utils/db'
-import { getOrCreateOtpChallenge, validateOtpChallenge, deleteOtpChallengesForEmail } from './otp-challenge'
+import { getOrCreateOtpChallenge, validateOtpChallenge, consumeOtpChallenge } from './otp-challenge'
 
 describe('getOrCreateOtpChallenge', () => {
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
@@ -155,7 +155,7 @@ describe('validateOtpChallenge', () => {
   })
 })
 
-describe('deleteOtpChallengesForEmail', () => {
+describe('consumeOtpChallenge', () => {
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
 
@@ -171,7 +171,25 @@ describe('deleteOtpChallengesForEmail', () => {
     }
   })
 
-  it('should delete all challenges for the given email', async () => {
+  it('preserves a replacement challenge when an older sign-in finishes late', async () => {
+    const email = 'replacement@example.com'
+    await getOrCreateOtpChallenge(db, {
+      id: crypto.randomUUID(),
+      email,
+      challengeToken: 'old',
+      expiresAt: new Date(Date.now() - 1),
+    })
+    await getOrCreateOtpChallenge(db, {
+      id: crypto.randomUUID(),
+      email,
+      challengeToken: 'replacement',
+      expiresAt: new Date(Date.now() + 600_000),
+    })
+    await consumeOtpChallenge(db, email, 'old')
+    expect(await validateOtpChallenge(db, email, 'replacement')).toBe(true)
+  })
+
+  it('consumes the matching challenge', async () => {
     await getOrCreateOtpChallenge(db, {
       id: crypto.randomUUID(),
       email: 'delete@example.com',
@@ -179,7 +197,7 @@ describe('deleteOtpChallengesForEmail', () => {
       expiresAt: new Date(Date.now() + 600_000),
     })
 
-    await deleteOtpChallengesForEmail(db, 'delete@example.com')
+    await consumeOtpChallenge(db, 'delete@example.com', 'token')
 
     const rows = await db.select().from(otpChallenge).where(eq(otpChallenge.email, 'delete@example.com'))
     expect(rows).toHaveLength(0)
@@ -199,7 +217,7 @@ describe('deleteOtpChallengesForEmail', () => {
       expiresAt: new Date(Date.now() + 600_000),
     })
 
-    await deleteOtpChallengesForEmail(db, 'remove@example.com')
+    await consumeOtpChallenge(db, 'remove@example.com', 'remove-token')
 
     const remaining = await db.select().from(otpChallenge)
     expect(remaining).toHaveLength(1)

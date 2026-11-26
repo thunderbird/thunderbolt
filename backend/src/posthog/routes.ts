@@ -4,7 +4,7 @@
 
 import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
-import { buildQueryString, defaultRequestDenylist, extractResponseHeaders, filterHeaders } from '@/utils/request'
+import { buildQueryString, extractResponseHeaders } from '@/utils/request'
 import cors from '@elysiajs/cors'
 import { Elysia } from 'elysia'
 
@@ -40,7 +40,14 @@ export const createPostHogRoutes = (fetchFn: typeof fetch = globalThis.fetch) =>
         const posthogHost = settings.posthogHost || 'https://us.i.posthog.com'
 
         const baseUrl = `${posthogHost}/${path}`
-        const headers = filterHeaders(ctx.headers, defaultRequestDenylist)
+        // Analytics never needs account, device, client IP, or browser cookie headers.
+        const headers = new Headers()
+        for (const name of ['content-type', 'content-encoding']) {
+          const value = ctx.request.headers.get(name)
+          if (value) {
+            headers.set(name, value)
+          }
+        }
         const queryString = buildQueryString(ctx.query)
         const url = `${baseUrl}${queryString}`
 

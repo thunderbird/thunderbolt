@@ -4,6 +4,7 @@
 
 import '@/testing-library'
 import { getClock } from '@/testing-library'
+import { setOAuthState } from '@/lib/oauth-state'
 import { setMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
 import '@testing-library/jest-dom'
 import { act, render, screen } from '@testing-library/react'
@@ -11,14 +12,22 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import OAuthCallback from './oauth-callback'
 
-type OAuthNavState = { oauth?: { error?: string | null } }
+type OAuthNavState = { connectionOAuthReturn?: string; oauth?: { error?: string | null } }
 
 // Renders the navigation payload's error so tests can assert both the route
 // taken and the error the destination page receives.
 const PageProbe = ({ testId }: { testId: string }) => {
   const location = useLocation()
   const oauth = (location.state as OAuthNavState | null)?.oauth
-  return <div data-testid={testId}>{oauth?.error}</div>
+  return (
+    <div
+      data-testid={testId}
+      data-return={location.state?.connectionOAuthReturn}
+      data-path={`${location.pathname}${location.search}${location.hash}`}
+    >
+      {oauth?.error}
+    </div>
+  )
 }
 
 // Both the MCP and integrations flows land on the combined Connections page —
@@ -27,6 +36,7 @@ const renderCallback = () =>
   render(
     <MemoryRouter initialEntries={['/oauth/callback']}>
       <Routes>
+        <Route path="/chats/new" element={<PageProbe testId="chat-page" />} />
         <Route path="/oauth/callback" element={<OAuthCallback />} />
         <Route path="/settings/connections" element={<PageProbe testId="connections-page" />} />
       </Routes>
@@ -56,10 +66,56 @@ const settleDeferredRedirect = async () => {
 describe('OAuthCallback routing', () => {
   beforeEach(() => {
     localStorage.clear()
+    sessionStorage.removeItem('thunderbolt-provider-authorization-draft')
   })
 
   afterEach(() => {
+    sessionStorage.removeItem('thunderbolt-provider-authorization-draft')
     Object.defineProperty(window, 'location', { value: originalLocation, writable: true, configurable: true })
+  })
+
+  it('returns search authorization to onboarding without opening a connection aside', async () => {
+    sessionStorage.setItem(
+      'thunderbolt-provider-authorization-draft',
+      JSON.stringify({ purpose: 'onboarding-search', provider: 'exa' }),
+    )
+    setMcpOAuthState({ serverId: 'oauth:exa', stateNonce: 'matching', returnTo: '/chats/new', startedAt: Date.now() })
+    setCallbackUrl('?code=test-code&state=matching')
+    renderCallback()
+    await settleDeferredRedirect()
+    expect(screen.getByTestId('chat-page')).not.toHaveAttribute('data-return')
+    expect(screen.getByTestId('chat-page')).toHaveAttribute('data-path', '/chats/new')
+    expect(screen.queryByTestId('connections-page')).toBeNull()
+  })
+
+  it.each(['custom-mcp-server', 'oauth:tavily'])(
+    'ignores an old onboarding draft when returning from a different MCP connection (%s)',
+    async (serverId) => {
+      sessionStorage.setItem(
+        'thunderbolt-provider-authorization-draft',
+        JSON.stringify({ purpose: 'onboarding-search', provider: 'exa' }),
+      )
+      setMcpOAuthState({ serverId, stateNonce: 'matching', returnTo: '/chats/new', startedAt: Date.now() })
+      setCallbackUrl('?code=test-code&state=matching')
+      renderCallback()
+      await settleDeferredRedirect()
+      expect(screen.getByTestId('chat-page')).toHaveAttribute('data-return', 'matching')
+    },
+  )
+
+  it.each(['mcp', 'integration'] as const)('restores %s callbacks over their original chat route', async (flow) => {
+    const returnTo = '/chats/new?project=work#composer'
+    if (flow === 'mcp') {
+      setMcpOAuthState({ serverId: 'oauth:exa', stateNonce: 'matching', returnTo, startedAt: Date.now() })
+    } else {
+      setOAuthState({ provider: 'google', state: 'matching', returnContext: returnTo })
+    }
+    setCallbackUrl('?code=test-code&state=matching')
+    renderCallback()
+    await settleDeferredRedirect()
+    expect(screen.getByTestId('chat-page')).toHaveAttribute('data-return', 'matching')
+    expect(screen.getByTestId('chat-page')).toHaveAttribute('data-path', returnTo)
+    expect(screen.queryByTestId('connections-page')).toBeNull()
   })
 
   it('claims a description-only error callback for the pending MCP handshake', async () => {

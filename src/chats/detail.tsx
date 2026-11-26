@@ -8,6 +8,7 @@ import { useChatDestination } from '@/mini-apps/use-chat-destination'
 import { useMiniApps } from '@/mini-apps/use-mini-apps'
 import { useCurrentChatSession } from './chat-store'
 import { useHydrateChatStore } from './use-hydrate-chat-store'
+import { useLiveChatModels } from './use-live-chat-models'
 import { type PropsWithChildren, useEffect, useState } from 'react'
 import { SavePartialAssistantMessagesHandler } from './save-partial-assistant-messages-handler'
 import { Navigate, useLocation, useParams, useSearchParams } from 'react-router'
@@ -15,6 +16,8 @@ import { v7 as uuidv7 } from 'uuid'
 import { useHandleIntegrationCompletion } from '@/hooks/use-handle-integration-completion'
 import { preloadChatMessageList } from '@/components/chat/chat-messages-loader'
 import { PageFallback } from '@/loading'
+import { useLocalProviders } from '@/hooks/use-local-providers'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 
 type ChatHydrateHandlerProps = PropsWithChildren<{
   /** The thread from the route, or null for a chat that doesn't exist yet. */
@@ -59,6 +62,9 @@ export const ChatHydrateHandler = ({
   // not change under a chat the user is mid-way through composing. A genuinely
   // different chat arrives as a different key and remounts this.
   const [id] = useState(() => existingId ?? newChatId)
+  const needsOwnModel = useLocalProviders()
+  const cloudUrl = useLocalSettingsStore((state) => state.cloudUrl)
+  useLiveChatModels()
 
   const { hydrateChatStore, isReady, saveMessages, saveStreamingMessage } = useHydrateChatStore({
     id,
@@ -71,9 +77,11 @@ export const ChatHydrateHandler = ({
   useHandleIntegrationCompletion({ saveMessages })
 
   useEffect(() => {
-    hydrateChatStore()
+    const controller = new AbortController()
+    void hydrateChatStore(controller.signal)
+    return () => controller.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id])
+  }, [id, cloudUrl, needsOwnModel])
 
   // Visible feedback while an existing thread hydrates (message load +
   // session setup): sidebar taps navigate here immediately, so this spinner —

@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { afterEach, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import { createApp } from '@/index'
-import { wsCloseUnauthorized } from '@/auth/ws-bearer-auth'
+import { wsCloseAuthUnavailable, wsCloseUnauthorized } from '@/auth/ws-bearer-auth'
 import { user as userTable, session as sessionTable } from '@/db/auth-schema'
 import { createTestApp, pingRoundTrip, type TestAppHandle } from '@/test-utils/e2e'
 import { getSharedIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
@@ -12,6 +12,7 @@ import { createGatedAuth } from '@/test-utils/mock-auth'
 import { encodeWsBearer } from '@shared/ws-bearer'
 import { createHmac } from 'crypto'
 import { Elysia } from 'elysia'
+import { eq } from 'drizzle-orm'
 import { createObservabilityRecorder, type ObservabilityRecorder } from './observability'
 import { createUniversalProxyWsRoutes, wsCloseCodes } from './ws'
 
@@ -87,7 +88,10 @@ const buildProtocols = (target: string, bearer: string | null, callerProtocols: 
 /** Spin up an authenticated test app on a real port and return both the proxy
  *  and the test handle. */
 const startProxy = async (
-  options: { upstreamWsFactory?: (url: string, protocols?: string[]) => WebSocket } = {},
+  options: {
+    upstreamWsFactory?: (url: string, protocols?: string[]) => WebSocket
+    database?: IsolatedTestDb['db']
+  } = {},
 ): Promise<{ handle: TestAppHandle; proxyPort: number }> => {
   const handle = await createTestApp(options)
   // Bind to ephemeral port — Elysia's listen() resolves once the server is up.
@@ -217,6 +221,56 @@ describe('Universal proxy WebSocket relay /v1/proxy/ws — e2e', () => {
     const ev = await echo
     expect(ev.data).toBe('echo: hello')
     client.close()
+  }, 15_000)
+
+  it('closes an active relay within five seconds of session revocation', async () => {
+    const upstream = await startUpstreamServer({ message: (ws, msg) => ws.send(`echo: ${msg}`) })
+    upstreams.push(upstream)
+    const { handle, proxyPort } = await startProxy({
+      upstreamWsFactory: localUpstreamWsFactory(upstream.port),
+      database: iso.db,
+    })
+    handles.push(handle)
+
+    const client = new WebSocket(
+      `ws://127.0.0.1:${proxyPort}/v1/proxy/ws`,
+      buildProtocols('wss://upstream.test/', handle.bearerToken),
+    )
+    await new Promise<void>((resolve) => client.addEventListener('open', () => resolve()))
+    const echo = nextMessageEvent(client)
+    client.send('before')
+    expect((await echo).data).toBe('echo: before')
+
+    await handle.db.delete(sessionTable).where(eq(sessionTable.token, handle.bearerToken.split('.')[0]))
+    const closed = waitForClose(client)
+    client.send('after')
+    expect((await closed).code).toBe(wsCloseUnauthorized)
+  }, 15_000)
+
+  it('closes an idle relay within five seconds of revocation', async () => {
+    const upstreamSocket = Promise.withResolvers<{ send: (...args: unknown[]) => unknown }>()
+    const upstream = await startUpstreamServer({ open: (ws) => upstreamSocket.resolve(ws) })
+    upstreams.push(upstream)
+    const { handle, proxyPort } = await startProxy({
+      upstreamWsFactory: localUpstreamWsFactory(upstream.port),
+      database: iso.db,
+    })
+    handles.push(handle)
+
+    const client = new WebSocket(
+      `ws://127.0.0.1:${proxyPort}/v1/proxy/ws`,
+      buildProtocols('wss://upstream.test/', handle.bearerToken),
+    )
+    await new Promise<void>((resolve) => client.addEventListener('open', () => resolve()))
+    const sender = await upstreamSocket.promise
+    await handle.db.delete(sessionTable).where(eq(sessionTable.token, handle.bearerToken.split('.')[0]))
+    const closed = waitForClose(client)
+    const startedAt = Date.now()
+    const output = nextMessageEvent(client)
+    sender.send('output during cutoff window')
+    expect((await output).data).toBe('output during cutoff window')
+    expect((await closed).code).toBe(wsCloseUnauthorized)
+    expect(Date.now() - startedAt).toBeLessThan(5_500)
   }, 15_000)
 
   it('upstream close code propagates through the relay (server-side observation)', async () => {
@@ -621,8 +675,8 @@ describe('Universal proxy WS observability — error_type per close path', () =>
   }, 15_000)
 })
 
-/** Serve only the relay plugin, with no database. Its bearer check waits for `releaseAuth()`, so a
- *  test can hold `open()` mid-auth. */
+/** Serve only the relay plugin, with no database. Its bearer check waits for `releaseAuth()`, or
+ *  throws on `failAuth()`, so a test can hold `open()` mid-auth. */
 const startRelay = async (upstreamPort: number, observability?: ObservabilityRecorder) => {
   const authGate = Promise.withResolvers<void>()
   const app = new Elysia().use(
@@ -638,6 +692,7 @@ const startRelay = async (upstreamPort: number, observability?: ObservabilityRec
   return {
     url: `ws://127.0.0.1:${app.server?.port}/proxy/ws`,
     releaseAuth: () => authGate.resolve(),
+    failAuth: () => authGate.reject(new Error('database down')),
     stop: async () => {
       await Promise.race([app.stop(true), new Promise((r) => setTimeout(r, 500))])
     },
@@ -709,10 +764,47 @@ describe('Universal proxy WS relay — frames during auth and unsendable close c
   const servers: Array<{ stop: () => Promise<void> }> = []
 
   afterEach(async () => {
+    // Here rather than at the end of a test, so a failed or timed-out test does not leave console.error muted.
+    mock.restore()
     for (const server of servers.splice(0)) {
       await server.stop()
     }
   })
+
+  it.each([false, true])(
+    'bounds JSON before serialization (upstream ready: %s)',
+    async (ready) => {
+      const upstream = await startUpstreamServer({ open: (ws) => ws.send('ready') })
+      const relay = await startRelay(upstream.port)
+      servers.push(relay, upstream)
+      const client = new WebSocket(relay.url, relayProtocols)
+      await new Promise<void>((resolve) => client.addEventListener('open', () => resolve()))
+      if (ready) {
+        const opened = nextMessageEvent(client)
+        relay.releaseAuth()
+        await opened
+      }
+      const stringify = spyOn(JSON, 'stringify')
+      const flat = '{"pad":"' + 'x'.repeat(503) + '"}'
+      client.send(flat)
+      await pingRoundTrip(client)
+      expect(stringify.mock.calls.some(([value]) => typeof value === 'object' && value?.pad)).toBe(true)
+      stringify.mockClear()
+
+      const closed = waitForClose(client)
+      client.send('['.repeat(256) + '0' + ']'.repeat(256))
+      await waitFor(
+        () => client.readyState === WebSocket.CLOSED || stringify.mock.calls.some(([v]) => Array.isArray(v)),
+        {
+          label: 'bounded JSON rejection or serialization',
+        },
+      )
+      expect(stringify.mock.calls.some(([value]) => Array.isArray(value))).toBe(false)
+      expect((await closed).code).toBe(ready ? 1009 : wsCloseCodes.queueOverflow)
+      relay.releaseAuth()
+    },
+    15000,
+  )
 
   it('forwards a frame the client sends before the bearer check finishes', async () => {
     const received: string[] = []
@@ -728,6 +820,25 @@ describe('Universal proxy WS relay — frames during auth and unsendable close c
 
     await waitFor(() => received.includes('early'), { label: 'early frame at upstream' })
     client.close()
+  }, 15_000)
+
+  it('enforces the pre-connect queue cap while the bearer check is still pending', async () => {
+    const upstream = await startUpstreamServer({})
+    const relay = await startRelay(upstream.port)
+    servers.push(relay, upstream)
+
+    const client = new WebSocket(relay.url, relayProtocols)
+    await new Promise<void>((resolve) => client.addEventListener('open', () => resolve()))
+    const closeCodes: number[] = []
+    client.addEventListener('close', (event: CloseEvent) => closeCodes.push(event.code))
+    const frame = new Uint8Array(16 * 1024)
+    for (let i = 0; i < 100; i++) {
+      client.send(frame)
+    }
+
+    await waitFor(() => closeCodes.length > 0, { timeoutMs: 3_000, label: 'overflow close during the bearer check' })
+    expect(closeCodes).toEqual([wsCloseCodes.queueOverflow])
+    relay.releaseAuth()
   }, 15_000)
 
   it('opens no upstream when the client closes before the bearer check finishes', async () => {
@@ -746,6 +857,49 @@ describe('Universal proxy WS relay — frames during auth and unsendable close c
 
     // The relay logs the close as the last step of `open()`; an upstream dial would show up instead.
     await waitFor(() => logs.length > 0 || upstreamConnections.length > 0, { label: 'relay log or upstream dial' })
+    expect(upstreamConnections).toEqual([])
+  }, 15_000)
+
+  it('closes with 1013, logs the error and dials nothing when the bearer check throws', async () => {
+    const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+    const upstreamConnections: unknown[] = []
+    const upstream = await startUpstreamServer({ open: (ws) => upstreamConnections.push(ws) })
+    const relay = await startRelay(upstream.port)
+    servers.push(relay, upstream)
+
+    const client = new WebSocket(relay.url, relayProtocols)
+    await new Promise<void>((resolve) => client.addEventListener('open', () => resolve()))
+    const closed = waitForClose(client)
+    client.send('queued')
+    await pingRoundTrip(client)
+    relay.failAuth()
+
+    expect((await closed).code).toBe(wsCloseAuthUnavailable)
+    expect(upstreamConnections).toEqual([])
+    expect(errorSpy.mock.calls.map(([line]) => line)).toContain('WebSocket bearer check failed — database down')
+  }, 15_000)
+
+  it('dials nothing for a client that closes before the bearer check throws', async () => {
+    spyOn(console, 'error').mockImplementation(() => {})
+    const upstreamConnections: unknown[] = []
+    const upstream = await startUpstreamServer({ open: (ws) => upstreamConnections.push(ws) })
+    const relay = await startRelay(upstream.port)
+    servers.push(relay, upstream)
+
+    const early = new WebSocket(relay.url, relayProtocols)
+    await new Promise<void>((resolve) => early.addEventListener('open', () => resolve()))
+    early.send('queued')
+    await pingRoundTrip(early)
+    const earlyClosed = waitForClose(early)
+    early.close()
+    await earlyClosed
+    // Both bearer checks wait on one gate and fail in order, so the late close means the early `open()` is done.
+    const late = new WebSocket(relay.url, relayProtocols)
+    await new Promise<void>((resolve) => late.addEventListener('open', () => resolve()))
+    const lateClosed = waitForClose(late)
+    relay.failAuth()
+
+    expect((await lateClosed).code).toBe(wsCloseAuthUnavailable)
     expect(upstreamConnections).toEqual([])
   }, 15_000)
 

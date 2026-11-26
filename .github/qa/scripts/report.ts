@@ -733,14 +733,21 @@ const qaApp = 'thunderbolt-automation-agent'
 type FixPr = {
   number: number
   state: 'OPEN' | 'CLOSED' | 'MERGED'
-  commits: { nodes: { commit: { author: { name: string } | null; parents: { totalCount: number } } }[] }
+  commits: {
+    totalCount: number
+    nodes: { commit: { author: { name: string } | null; parents: { totalCount: number } } }[]
+  }
 }
-const fixPrOutcomes = ['right first time', 'needed edits', 'discarded', 'open'] as const
+const fixPrOutcomes = ['right first time', 'needed edits', 'discarded', 'open', 'unknown'] as const
+
+/** How many of the app's newest PRs `runFixPrs` reads. */
+const newestPrs = 100
 
 /**
  * How one of the app's PRs ended, or undefined when publish did not open it (its first commit is not the bot's): closed
- * unmerged is discarded, merged with only the bot's commits (merges of main aside) is right first time, merged with
- * any other commit needed edits, and open waits for a person.
+ * unmerged is discarded, merged with only the bot's commits (merge commits aside) is right first time, merged with
+ * any other commit needed edits, and open waits for a person. A merged PR with more commits than the query read is
+ * unknown, since a commit left unread could be a person's.
  */
 const fixPrOutcome = ({ state, commits }: FixPr): (typeof fixPrOutcomes)[number] | undefined => {
   const bot = `${qaApp}[bot]`
@@ -751,21 +758,23 @@ const fixPrOutcome = ({ state, commits }: FixPr): (typeof fixPrOutcomes)[number]
   if (authors[0]?.name !== bot) return undefined
   if (state === 'OPEN') return 'open'
   if (state === 'CLOSED') return 'discarded'
+  if (commits.totalCount > commits.nodes.length) return 'unknown'
   return authors.every(({ name, merge }) => merge || name === bot) ? 'right first time' : 'needed edits'
 }
 
-/** The report section on the fix PRs of earlier runs, from GitHub alone. */
+/** The report section on the app's recent fix PRs, this run's included, from GitHub alone. */
 export const fixPrSection = (prs: FixPr[]) => {
   const outcomes = prs.flatMap((pr) => {
     const outcome = fixPrOutcome(pr)
     return outcome ? [{ number: pr.number, outcome }] : []
   })
-  const decided = outcomes.filter(({ outcome }) => outcome !== 'open').length
+  const decided = outcomes.filter(({ outcome }) => outcome !== 'open' && outcome !== 'unknown').length
   const right = outcomes.filter(({ outcome }) => outcome === 'right first time').length
   return [
-    '## Fix PRs of earlier runs',
-    "From GitHub: merged with only the bot's commits (merges of main aside) is right first time, merged with other " +
-      'commits needed edits, closed unmerged is discarded, and open waits for a person.',
+    `## Recent QA fix PRs${prs.length >= newestPrs ? ` (newest ${newestPrs})` : ''}`,
+    "From GitHub: merged with only the bot's commits (merge commits aside) is right first time, merged with other " +
+      'commits needed edits, closed unmerged is discarded, open waits for a person, and merged with more than 100 ' +
+      'commits is unknown.',
     '',
     ...fixPrOutcomes.map((name) => {
       const numbers = outcomes.filter(({ outcome }) => outcome === name).map(({ number }) => `#${number}`)
@@ -778,7 +787,7 @@ export const fixPrSection = (prs: FixPr[]) => {
 }
 
 /**
- * Lists the app's PRs in `repo` and writes `fixPrSection` to stdout and `stepSummary`.
+ * Lists the app's PRs in `repo`, appends `fixPrSection` to `stepSummary` and returns the section (the CLI prints it).
  * shortcut: the newest 100 PRs, 100 commits each; page through once the bot has opened more.
  */
 export const runFixPrs = async (
@@ -787,8 +796,8 @@ export const runFixPrs = async (
   stepSummary = process.env.GITHUB_STEP_SUMMARY,
 ) => {
   const query =
-    'query($q: String!) { search(query: $q, type: ISSUE, first: 100) { nodes { ... on PullRequest { number state ' +
-    'commits(first: 100) { nodes { commit { author { name } parents { totalCount } } } } } } } }'
+    `query($q: String!) { search(query: $q, type: ISSUE, first: ${newestPrs}) { nodes { ... on PullRequest { ` +
+    'number state commits(first: 100) { totalCount nodes { commit { author { name } parents { totalCount } } } } } } } }'
   const out = await run([
     'gh',
     'api',

@@ -2,168 +2,111 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test'
-import { createAnonymousPromotionAnalytics, pendingAnonIdKey } from './use-anonymous-promotion-analytics'
-import type { trackEvent as defaultTrackEvent } from '@/lib/posthog'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { createAnonymousPromotionAnalytics, pendingPromotionKey } from './use-anonymous-promotion-analytics'
+import { consumePendingSsoPromotion } from './anonymous-promotion-sso-bridge'
 import type { AuthClient } from '@/contexts'
+import type { EventType } from '@/lib/posthog'
 
-const makeAuthClient = (isAnonymous: boolean, userId = 'user-abc') =>
+const makeAuthClient = (isAnonymous?: boolean, id = 'real-account-id') =>
   ({
-    getSession: async () => ({
-      data: { user: { id: userId, isAnonymous } },
-    }),
+    getSession: mock(async () => ({ data: isAnonymous === undefined ? null : { user: { id, isAnonymous } } })),
   }) as unknown as AuthClient
 
-const makeEmptyAuthClient = () =>
-  ({
-    getSession: async () => ({ data: null }),
-  }) as unknown as AuthClient
+beforeEach(() => sessionStorage.clear())
+afterEach(() => sessionStorage.clear())
 
-const makeRef = (initial: string | null = null) => ({ current: initial })
+describe('account-independent promotion analytics', () => {
+  it('records an OTP promotion once without either account ID', async () => {
+    const trackEvent = mock((_event: EventType) => {})
+    const wasAnonymous = { current: false }
+    const analytics = createAnonymousPromotionAnalytics(wasAnonymous, trackEvent)
+    await analytics.captureAnonymousSession(makeAuthClient(true, 'anonymous-account-id'))
+    expect(wasAnonymous.current).toBe(true)
 
-describe('createAnonymousPromotionAnalytics', () => {
-  let trackEventMock: ReturnType<typeof mock>
-  let aliasMock: ReturnType<typeof mock>
-  let trackEvent: typeof defaultTrackEvent
-  let alias: (newUserId: string, anonId: string) => void
+    analytics.onPromotionSuccess()
+    analytics.onPromotionSuccess()
 
-  beforeEach(() => {
-    sessionStorage.clear()
-    trackEventMock = mock(() => {})
-    aliasMock = mock(() => {})
-    trackEvent = trackEventMock as unknown as typeof defaultTrackEvent
-    alias = aliasMock as unknown as (newUserId: string, anonId: string) => void
+    expect(trackEvent.mock.calls).toEqual([['anonymous_user_promoted']])
+    expect(wasAnonymous.current).toBe(false)
+    expect(sessionStorage.length).toBe(0)
   })
 
-  afterEach(() => {
-    sessionStorage.clear()
-    mock.restore()
-  })
-
-  it('captureAnonId stores the id when session is anonymous', async () => {
-    const ref = makeRef()
-    const analytics = createAnonymousPromotionAnalytics(ref, trackEvent, alias)
-
-    await analytics.captureAnonId(makeAuthClient(true, 'anon-123'))
-
-    expect(ref.current).toBe('anon-123')
-  })
-
-  it('captureAnonId is a no-op when session is non-anonymous', async () => {
-    const ref = makeRef()
-    const analytics = createAnonymousPromotionAnalytics(ref, trackEvent, alias)
-
-    await analytics.captureAnonId(makeAuthClient(false, 'real-user'))
-
-    expect(ref.current).toBeNull()
-  })
-
-  it('captureAnonId is a no-op when session data is null', async () => {
-    const ref = makeRef()
-    const analytics = createAnonymousPromotionAnalytics(ref, trackEvent, alias)
-
-    await analytics.captureAnonId(makeEmptyAuthClient())
-
-    expect(ref.current).toBeNull()
-  })
-
-  it('does not refetch a session already resolved as signed out', async () => {
-    const authClient = makeAuthClient(true, 'unexpected-refetch')
-    const getSession = spyOn(authClient, 'getSession')
-    const ref = makeRef()
-    const analytics = createAnonymousPromotionAnalytics(ref, trackEvent, alias)
-
-    await analytics.captureAnonId(authClient, null)
-
-    expect(getSession).not.toHaveBeenCalled()
-    expect(ref.current).toBeNull()
-  })
-
-  it('keeps the resolved anonymous identity when authentication has already changed', async () => {
-    const authClient = makeAuthClient(false, 'real-user')
-    const getSession = spyOn(authClient, 'getSession')
-    const analytics = createAnonymousPromotionAnalytics(makeRef(), trackEvent, alias)
-
-    await analytics.captureAnonId(authClient, { user: { id: 'anonymous-before-sign-in', isAnonymous: true } })
+  it.each([undefined, false])('does not record a promotion for a non-anonymous session (%s)', async (anonymous) => {
+    const trackEvent = mock((_event: EventType) => {})
+    const analytics = createAnonymousPromotionAnalytics({ current: true }, trackEvent)
+    await analytics.captureAnonymousSession(makeAuthClient(anonymous))
+    analytics.onPromotionSuccess()
     analytics.persistForSso()
-    analytics.onPromotionSuccess('real-user')
-
-    expect(getSession).not.toHaveBeenCalled()
-    expect(sessionStorage.getItem(pendingAnonIdKey)).toBe('anonymous-before-sign-in')
-    expect(aliasMock).toHaveBeenCalledWith('real-user', 'anonymous-before-sign-in')
-    expect(trackEventMock).toHaveBeenCalledWith('anonymous_user_promoted')
+    expect(trackEvent).not.toHaveBeenCalled()
+    expect(sessionStorage.getItem(pendingPromotionKey)).toBeNull()
   })
 
-  it('persistForSso writes the anon id to sessionStorage', async () => {
-    const ref = makeRef()
-    const analytics = createAnonymousPromotionAnalytics(ref, trackEvent, alias)
+  it('uses a resolved signed-out snapshot without another session fetch', async () => {
+    const authClient = makeAuthClient(true)
+    const wasAnonymous = { current: true }
+    const analytics = createAnonymousPromotionAnalytics(wasAnonymous)
+    await analytics.captureAnonymousSession(authClient, null)
+    expect(authClient.getSession).not.toHaveBeenCalled()
+    expect(wasAnonymous.current).toBe(false)
+  })
 
-    await analytics.captureAnonId(makeAuthClient(true, 'anon-123'))
+  it('does not block sign-in when the optional analytics session lookup fails', async () => {
+    const trackEvent = mock((_event: EventType) => {})
+    const wasAnonymous = { current: true }
+    const analytics = createAnonymousPromotionAnalytics(wasAnonymous, trackEvent)
+    const authClient = {
+      getSession: async () => {
+        throw new Error('offline')
+      },
+    } as unknown as AuthClient
+    await expect(analytics.captureAnonymousSession(authClient)).resolves.toBeUndefined()
+    analytics.onPromotionSuccess()
+    expect(wasAnonymous.current).toBe(false)
+    expect(trackEvent).not.toHaveBeenCalled()
+  })
+
+  it('persists only a boolean through SSO and consumes it once after sign-in', async () => {
+    const trackEvent = mock((_event: EventType) => {})
+    const analytics = createAnonymousPromotionAnalytics({ current: false }, trackEvent)
+    const anonymousSession = { user: { id: 'anonymous-account-id', isAnonymous: true } }
+    await analytics.captureAnonymousSession(makeAuthClient(false), anonymousSession)
     analytics.persistForSso()
+    expect(sessionStorage.getItem(pendingPromotionKey)).toBe('1')
+    expect(JSON.stringify(sessionStorage)).not.toContain('anonymous-account-id')
 
-    expect(sessionStorage.getItem(pendingAnonIdKey)).toBe('anon-123')
+    const authClient = makeAuthClient(false, 'signed-in-account-id')
+    await Promise.all([
+      consumePendingSsoPromotion(authClient, trackEvent),
+      consumePendingSsoPromotion(authClient, trackEvent),
+    ])
+    expect(trackEvent.mock.calls).toEqual([['anonymous_user_promoted']])
+    expect(authClient.getSession).toHaveBeenCalledTimes(1)
+    expect(sessionStorage.getItem(pendingPromotionKey)).toBeNull()
   })
 
-  it('persistForSso is a no-op when no anon id was captured', () => {
-    const analytics = createAnonymousPromotionAnalytics(makeRef(), trackEvent, alias)
+  it.each([undefined, true])('does not record a failed SSO conversion (%s)', async (anonymous) => {
+    sessionStorage.setItem(pendingPromotionKey, '1')
+    const trackEvent = mock((_event: EventType) => {})
+    await consumePendingSsoPromotion(makeAuthClient(anonymous), trackEvent)
+    expect(trackEvent).not.toHaveBeenCalled()
+    expect(sessionStorage.getItem(pendingPromotionKey)).toBeNull()
+  })
 
+  it('discards legacy account IDs without aliasing or querying the session', async () => {
+    sessionStorage.setItem('thunderbolt_pending_anon_id', 'legacy-account-id')
+    const authClient = makeAuthClient(false)
+    const trackEvent = mock((_event: EventType) => {})
+    await consumePendingSsoPromotion(authClient, trackEvent)
+    expect(sessionStorage.getItem('thunderbolt_pending_anon_id')).toBeNull()
+    expect(authClient.getSession).not.toHaveBeenCalled()
+    expect(trackEvent).not.toHaveBeenCalled()
+  })
+
+  it('clears stale SSO conversion markers when the next sign-in is not anonymous', async () => {
+    sessionStorage.setItem(pendingPromotionKey, '1')
+    const analytics = createAnonymousPromotionAnalytics({ current: false })
     analytics.persistForSso()
-
-    expect(sessionStorage.getItem(pendingAnonIdKey)).toBeNull()
-  })
-
-  it('onPromotionSuccess calls alias and fires trackEvent when anon id was captured', async () => {
-    const ref = makeRef()
-    const analytics = createAnonymousPromotionAnalytics(ref, trackEvent, alias)
-
-    await analytics.captureAnonId(makeAuthClient(true, 'anon-123'))
-    analytics.onPromotionSuccess('real-user-456')
-
-    expect(aliasMock).toHaveBeenCalledWith('real-user-456', 'anon-123')
-    expect(trackEventMock).toHaveBeenCalledWith('anonymous_user_promoted')
-  })
-
-  it('onPromotionSuccess is a no-op when no anon id was captured', () => {
-    const analytics = createAnonymousPromotionAnalytics(makeRef(), trackEvent, alias)
-
-    analytics.onPromotionSuccess('real-user-456')
-
-    expect(aliasMock).not.toHaveBeenCalled()
-    expect(trackEventMock).not.toHaveBeenCalled()
-  })
-
-  it('onPromotionSuccess is a no-op when newUserId equals captured anon id', async () => {
-    const ref = makeRef()
-    const analytics = createAnonymousPromotionAnalytics(ref, trackEvent, alias)
-
-    await analytics.captureAnonId(makeAuthClient(true, 'same-id'))
-    analytics.onPromotionSuccess('same-id')
-
-    expect(aliasMock).not.toHaveBeenCalled()
-    expect(trackEventMock).not.toHaveBeenCalled()
-  })
-
-  it('clears the captured id after promotion so second call is a no-op', async () => {
-    const ref = makeRef()
-    const analytics = createAnonymousPromotionAnalytics(ref, trackEvent, alias)
-
-    await analytics.captureAnonId(makeAuthClient(true, 'anon-123'))
-    analytics.onPromotionSuccess('real-user-456')
-    analytics.onPromotionSuccess('real-user-456')
-
-    expect(aliasMock).toHaveBeenCalledTimes(1)
-    expect(trackEventMock).toHaveBeenCalledTimes(1)
-    expect(ref.current).toBeNull()
-  })
-
-  it('captureAnonId is idempotent — same anon id captured twice yields same ref', async () => {
-    const ref = makeRef()
-    const analytics = createAnonymousPromotionAnalytics(ref, trackEvent, alias)
-    const authClient = makeAuthClient(true, 'anon-123')
-
-    await analytics.captureAnonId(authClient)
-    await analytics.captureAnonId(authClient)
-
-    expect(ref.current).toBe('anon-123')
+    expect(sessionStorage.getItem(pendingPromotionKey)).toBeNull()
   })
 })

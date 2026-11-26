@@ -15,6 +15,8 @@ type CreateSSEStreamOptions = {
   onUsage?: (snapshot: CompletionUsageSnapshot) => Promise<void>
   onUsageError?: CreateSSEStreamOptions['onError']
   onUsageMissing?: () => void
+  /** Runs once the provider stream is over, after its usage or failure, and before the client's stream ends. */
+  onEnd?: () => Promise<void>
 }
 
 /** Copies a complete, valid token usage snapshot from a provider chunk. */
@@ -49,7 +51,9 @@ export const invokeObserverSafely = (observer: (() => void) | undefined): void =
 }
 
 /**
- * Creates a ReadableStream from an OpenAI completion stream with SSE formatting
+ * Creates a ReadableStream from an OpenAI completion stream with SSE formatting. A client that leaves does not end
+ * the upstream request: the provider reports usage only in its last chunk, so the stream is read to the end and
+ * the request is charged what it used, as the Tinfoil route does.
  * @param completion - The OpenAI completion stream
  * @param options - Optional stream lifecycle callbacks
  * @returns ReadableStream formatted for Server-Sent Events
@@ -60,71 +64,57 @@ export const createSSEStreamFromCompletion = (
 ): ReadableStream<Uint8Array> => {
   const encoder = new TextEncoder()
   let isCancelled = false
-  let naturalExhaustionObserved = false
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       let latestUsage: CompletionUsageSnapshot | undefined
-
-      try {
-        for await (const chunk of completion) {
-          if (isCancelled) {
-            return
-          }
-
-          const usage = parseCompletionUsage(chunk.usage)
-          const sseChunk = `data: ${JSON.stringify(chunk)}\n\n`
-
-          try {
-            controller.enqueue(encoder.encode(sseChunk))
-          } catch {
-            return
-          }
-
-          if (usage !== undefined) {
-            latestUsage = usage
-          }
-        }
-
+      const send = (text: string) => {
         if (isCancelled) {
           return
         }
-
-        naturalExhaustionObserved = true
-
-        if (latestUsage === undefined) {
-          invokeObserverSafely(options.onUsageMissing)
-        } else {
-          try {
-            await options.onUsage?.(latestUsage)
-          } catch (error) {
-            invokeObserverSafely(() => options.onUsageError?.(error))
-          }
+        try {
+          controller.enqueue(encoder.encode(text))
+        } catch {
+          // The client is gone; keep reading for the usage.
         }
+      }
 
-        if (!isCancelled) {
-          try {
-            controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-          } catch {
-            // Ignore if controller is closed
+      try {
+        for await (const chunk of completion) {
+          const usage = parseCompletionUsage(chunk.usage)
+          if (usage !== undefined) {
+            latestUsage = usage
           }
-        }
-
-        if (controller.desiredSize !== null) {
-          controller.close()
+          send(`data: ${JSON.stringify(chunk)}\n\n`)
         }
       } catch (error) {
+        // The error is reported even after the client left: the hold stays charged, and this is the only record of why.
+        invokeObserverSafely(() => options.onError?.(error))
+        await options.onEnd?.()
         if (!isCancelled) {
-          invokeObserverSafely(() => options.onError?.(error))
           controller.error(error)
         }
+        return
+      }
+
+      if (latestUsage === undefined) {
+        invokeObserverSafely(options.onUsageMissing)
+      } else {
+        try {
+          await options.onUsage?.(latestUsage)
+        } catch (error) {
+          invokeObserverSafely(() => options.onUsageError?.(error))
+        }
+      }
+
+      await options.onEnd?.()
+      send('data: [DONE]\n\n')
+      if (!isCancelled && controller.desiredSize !== null) {
+        controller.close()
       }
     },
     cancel() {
       isCancelled = true
-      if (!naturalExhaustionObserved) {
-        completion.controller.abort()
-      }
     },
   })
 }

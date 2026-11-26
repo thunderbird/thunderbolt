@@ -36,10 +36,13 @@ export const prepareProviderBinding = async (
   selection: InvocationSelection,
   options: ProviderPreparationOptions = {},
 ): Promise<PreparedPiBinding> => {
-  const deadline = AbortSignal.timeout(options.timeoutMs ?? defaultProviderPreparationTimeoutMs)
+  const timeoutMs = options.timeoutMs ?? defaultProviderPreparationTimeoutMs
+  const deadline = AbortSignal.timeout(timeoutMs)
   const signal = options.signal === undefined ? deadline : AbortSignal.any([options.signal, deadline])
   signal.throwIfAborted()
-  const operation = runtime.prepare(selection, signal)
+  // Optional discovery may use only the first half of preparation, leaving time for the usable binding.
+  const advisorySignal = AbortSignal.any([signal, AbortSignal.timeout(Math.floor(timeoutMs / 2))])
+  const operation = runtime.prepare(selection, signal, advisorySignal)
   const awaitPrepared = async (): Promise<PreparedPiBinding> => {
     try {
       return await abortable(operation, signal)

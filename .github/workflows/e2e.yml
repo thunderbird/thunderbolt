@@ -97,6 +97,12 @@ jobs:
       fail-fast: false
       matrix:
         shard: [1/4, 2/4, 3/4, 4/4]
+        passkeys: [false]
+        # The passkey specs need PASSKEY_ENABLED, which changes every other spec's
+        # sync setup, so they run alone (playwright.e2ee.config.ts).
+        include:
+          - shard: 1/1
+            passkeys: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -127,7 +133,7 @@ jobs:
         timeout-minutes: 3
         run: bun run browsers:install
 
-      - name: Run PowerSync E2EE suite (shard ${{ matrix.shard }})
+      - name: Run PowerSync E2EE suite (shard ${{ matrix.shard }}${{ matrix.passkeys && ', passkeys' || '' }})
         # Playwright names every blob `report-<shard>.zip`, so this job's shard
         # 1/4 and the `e2e` job's shard 1/2 both produce `report-1.zip` — and
         # the report job's `merge-multiple: true` flattens one onto the other.
@@ -137,6 +143,7 @@ jobs:
         # blobs apart; job-index keeps them unique across its own shards.
         env:
           PLAYWRIGHT_BLOB_OUTPUT_NAME: e2ee-report-${{ strategy.job-index }}.zip
+          E2E_PASSKEY_ENABLED: ${{ matrix.passkeys }}
         run: bash scripts/run-e2ee-powersync.sh --shard=${{ matrix.shard }}
 
       - name: Upload PowerSync E2EE blob report

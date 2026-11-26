@@ -14,6 +14,7 @@ import {
   defaultModelsVersion,
   hashModel,
   isKnownToReadImages,
+  type ImageSupportLineup,
   type ImageSupportModel,
   staticImageSupport,
 } from './models'
@@ -35,15 +36,20 @@ const computeSnapshotHash = () =>
 
 // `hashModel` deliberately hashes only user-editable fields (it drives the
 // user-edit detection in reconciliation), so it is blind to metadata like
-// `vendor` and `description`. Hash those separately here so a metadata-only
-// defaults change still trips the snapshot and gets its version bump.
+// `vendor`, `description` and image support. Hash those separately here so a
+// metadata-only defaults change still trips the snapshot and gets its version bump.
 const computeMetadataHash = () =>
-  defaultModels.map((model, index) => `${index}:${hashValues([model.vendor, model.description])}`).join('|')
+  defaultModels
+    .map(
+      (model, index) =>
+        `${index}:${hashValues([model.vendor, model.description, defaultModelImageSupport[model.id] ?? null])}`,
+    )
+    .join('|')
 
 const expected = {
   version: 11,
   hash: '0:019af08a-c27b-7074-8aac-95315d1ef3fd:-8jt8am|1:01a06dd7-67ee-75be-b957-2b746271c49d:-bs87m1|2:019e7580-2b0e-719c-a43f-d2b56e7f31b4:-mx717t',
-  metadataHash: '0:vzhyk4|1:1sqs5u|2:-cajkcl',
+  metadataHash: '0:-5cyn16|1:-v53uf0|2:-bj1ngs',
 }
 
 describe('defaultModels version snapshot', () => {
@@ -120,35 +126,61 @@ describe('staticImageSupport', () => {
     ...overrides,
   })
 
+  const bundled: ImageSupportLineup = { data: defaultModels, imageSupport: defaultModelImageSupport }
+
   test('answers for the shipped defaults from their declarations', () => {
-    expect(staticImageSupport(defaultModelOpus55)).toBe('supported')
-    expect(staticImageSupport(defaultModelDeepSeekV41Flash)).toBe('supported')
-    expect(staticImageSupport(defaultModelGlm53)).toBe('unsupported')
+    expect(staticImageSupport(defaultModelOpus55, bundled)).toBe('supported')
+    expect(staticImageSupport(defaultModelDeepSeekV41Flash, bundled)).toBe('supported')
+    expect(staticImageSupport(defaultModelGlm53, bundled)).toBe('unsupported')
+  })
+
+  test('falls through to the other rules for a lineup row without a declaration', () => {
+    const undeclared = { ...defaultModelOpus55, id: 'undeclared-default', model: 'opus-6' }
+    const server: ImageSupportLineup = { data: [...defaultModels, undeclared], imageSupport: defaultModelImageSupport }
+    expect(staticImageSupport(undeclared, server)).toBe('supported')
+  })
+
+  test('answers for a default only a newer server lineup knows', () => {
+    const serverOnly = { ...defaultModelDeepSeekV41Flash, id: 'server-only-default', model: 'kimi-k3' }
+    const server: ImageSupportLineup = {
+      data: [...defaultModels, serverOnly],
+      imageSupport: { ...defaultModelImageSupport, [serverOnly.id]: 'supported' },
+    }
+    expect(staticImageSupport(serverOnly, server)).toBe('supported')
+    expect(staticImageSupport(serverOnly, bundled)).toBeUndefined()
   })
 
   test('applies a default’s declaration to any row on the same provider and model', () => {
     // A user-added Tinfoil row (personal key, no vendor) serving the same upstream model.
-    expect(staticImageSupport(model({ provider: 'tinfoil', model: 'glm-5-3', url: null }))).toBe('unsupported')
+    expect(staticImageSupport(model({ provider: 'tinfoil', model: 'glm-5-3', url: null }), bundled)).toBe('unsupported')
   })
 
   test('treats every native Anthropic model as reading images', () => {
-    expect(staticImageSupport(model({ provider: 'anthropic', model: 'claude-sonnet-5', url: null }))).toBe('supported')
+    expect(staticImageSupport(model({ provider: 'anthropic', model: 'claude-sonnet-5', url: null }), bundled)).toBe(
+      'supported',
+    )
   })
 
   test('treats other Thunderbolt-hosted models from vision vendors as reading images', () => {
-    expect(staticImageSupport(model({ provider: 'thunderbolt', model: 'gpt-5', vendor: 'openai' }))).toBe('supported')
+    expect(staticImageSupport(model({ provider: 'thunderbolt', model: 'gpt-5', vendor: 'openai' }), bundled)).toBe(
+      'supported',
+    )
   })
 
   test('isKnownToReadImages sends images only on a known "supported"', () => {
-    expect(isKnownToReadImages(defaultModelDeepSeekV41Flash)).toBe(true)
-    expect(isKnownToReadImages(defaultModelGlm53)).toBe(false)
-    expect(isKnownToReadImages(model({}))).toBe(false)
+    expect(isKnownToReadImages(defaultModelDeepSeekV41Flash, bundled)).toBe(true)
+    expect(isKnownToReadImages(defaultModelGlm53, bundled)).toBe(false)
+    expect(isKnownToReadImages(model({}), bundled)).toBe(false)
   })
 
   test('leaves everything else to detection', () => {
-    expect(staticImageSupport(model({}))).toBeUndefined()
-    expect(staticImageSupport(model({ provider: 'thunderbolt', model: 'glm', vendor: 'zhipu' }))).toBeUndefined()
+    expect(staticImageSupport(model({}), bundled)).toBeUndefined()
+    expect(
+      staticImageSupport(model({ provider: 'thunderbolt', model: 'glm', vendor: 'zhipu' }), bundled),
+    ).toBeUndefined()
     // A vendor only vouches for models Thunderbolt hosts; Tinfoil serves text-only models from vision vendors.
-    expect(staticImageSupport(model({ provider: 'tinfoil', model: 'gpt-oss-120b', vendor: 'openai' }))).toBeUndefined()
+    expect(
+      staticImageSupport(model({ provider: 'tinfoil', model: 'gpt-oss-120b', vendor: 'openai' }), bundled),
+    ).toBeUndefined()
   })
 })

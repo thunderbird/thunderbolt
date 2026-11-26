@@ -225,14 +225,14 @@ voice to speak in. The choice is per device. See [Voice](using/voice.md).
 
 ## Preferences
 
-| Section                  | Controls                                                                                                       | Scope              |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------- | ------------------ |
-| User Experience          | Theme (Light, Dark, System), where chat links open (Ask, Browser or New tab, plus Sidebar on desktop), haptics | This device        |
-| Personalization          | Preferred name                                                                                                 | Your account       |
-| Localization             | Location, language, distance, temperature, time format, currency                                               | Your account       |
-| Help Thunderbolt Improve | Preview features, anonymous usage data                                                                         | Your account       |
-| Network                  | Use cloud proxy                                                                                                | This device        |
-| Data                     | Sync this device, export, import, delete local data, and delete the whole account                              | Mostly this device |
+| Section                  | Controls                                                                                                                              | Scope              |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| User Experience          | Theme (Light, Dark, System), where chat links open (Ask, Browser or New tab, plus Sidebar on macOS and Windows desktop apps), haptics | This device        |
+| Personalization          | Preferred name                                                                                                                        | Your account       |
+| Localization             | Location, language, distance, temperature, time format, currency                                                                      | Your account       |
+| Help Thunderbolt Improve | Preview features, anonymous usage data                                                                                                | Your account       |
+| Network                  | Use cloud proxy                                                                                                                       | This device        |
+| Data                     | Sync this device, export, import, delete local data, and delete the whole account                                                     | Mostly this device |
 
 Most preferences show a revert control next to them once changed from their shipped value.
 

@@ -124,7 +124,7 @@ const initialState: SlashUiState = {
 const reducer = (state: SlashUiState, action: SlashAction): SlashUiState => {
   switch (action.type) {
     case 'SET_CURSOR':
-      return { ...state, cursorPos: action.pos }
+      return state.cursorPos === action.pos ? state : { ...state, cursorPos: action.pos }
     case 'SET_HIGHLIGHT':
       return { ...state, highlightedIdx: action.idx }
     case 'RESET_HIGHLIGHT':
@@ -295,6 +295,9 @@ export const useSlashCommand = ({
         return
       }
       setValue(next)
+      // Browsers emit a separate select event after input. Commit the caret
+      // with the text so that event neither renders twice nor opens a stale query.
+      dispatch({ type: 'SET_CURSOR', pos: caret })
     },
     [enabled, itemsFor, writeEdit, setValue],
   )
@@ -307,9 +310,11 @@ export const useSlashCommand = ({
         writeEdit(foldPendingSigils(live), start, end)
         return
       }
-      dispatch({ type: 'SET_CURSOR', pos: start })
+      if (start !== cursorPos) {
+        dispatch({ type: 'SET_CURSOR', pos: start })
+      }
     },
-    [enabled, inputRef, value, writeEdit],
+    [enabled, inputRef, value, writeEdit, cursorPos],
   )
 
   /** Close the picker for the token at the caret; a pending sigil becomes the typed character. */

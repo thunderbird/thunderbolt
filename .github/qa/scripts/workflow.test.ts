@@ -20,7 +20,8 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import platforms from '../platforms.json'
-import { isDenied, prChecks } from './fix'
+import { conventionalTitle, isDenied, prChecks } from './fix'
+import { bugStep } from './findings'
 import {
   nativeDriverStartupMinutes,
   nativeJobMinutes,
@@ -769,8 +770,20 @@ describe('fix job', () => {
     expect(at('Build the patched frontend for the real-AI check')).toBeLessThan(at('Collect the patch'))
   })
 
-  // By default the check always fails, as it should without the patch.
-  const baseline = ({ edits = true, failStart = false, stashed = false, checkPasses = false } = {}) => {
+  type RunStep = { title: string; duration: number; error?: { message: string } }
+  const failedInBugCheck: RunStep[] = [
+    { title: 'sign in', duration: 900 },
+    { title: bugStep, duration: 40, error: { message: 'expected no layout problems' } },
+  ]
+  // By default the check always fails in its bug check step, as it should without the patch. `ran` holds the steps of
+  // each failed run in the check's JSON report.
+  const baseline = ({
+    edits = true,
+    failStart = false,
+    stashed = false,
+    checkPasses = false,
+    ran = failedInBugCheck,
+  } = {}) => {
     const dir = mkdtempSync(join(work, 'baseline-'))
     const bin = mkdtempSync(join(work, 'bin-'))
     const git = (...args: string[]) =>
@@ -792,7 +805,10 @@ describe('fix job', () => {
       writeFileSync(join(dir, 'backend/index.ts'), 'patched')
       writeFileSync(join(dir, 'backend/new.ts'), 'new')
     }
-    writeFileSync(join(bin, 'bunx'), `#!/bin/sh\nexit ${checkPasses ? 0 : 1}\n`, { mode: 0o755 })
+    const report = { suites: [{ specs: [{ tests: [{ results: [{ status: 'failed', steps: ran }] }] }] }], errors: [] }
+    writeFileSync(join(bin, 'report.json'), JSON.stringify(report))
+    const bunx = `#!/bin/sh\ncp '${join(bin, 'report.json')}' "$PLAYWRIGHT_JSON_OUTPUT_FILE"\nexit ${checkPasses ? 0 : 1}\n`
+    writeFileSync(join(bin, 'bunx'), bunx, { mode: 0o755 })
     const proc = Bun.spawnSync(['bash', '-e', '-c', step('fix', 'Run the visual check without the patch').run ?? ''], {
       cwd: dir,
       env: { PATH: `${bin}:${process.env.PATH}`, QA_FP: 'fp1', HOME: dir },
@@ -821,6 +837,17 @@ describe('fix job', () => {
     for (const check of [withRun, step('fix', 'Run the visual check without the patch')])
       expect(check['continue-on-error']).toBe(true)
     expect(step('fix', 'Run the visual check without the patch').if).toBe("steps.visual-with.outcome == 'success'")
+    expect(step('fix', 'Run the visual check without the patch').run).toContain('--reporter=list,json')
+  })
+
+  test('a run that failed outside its bug check step shows no bug, so the baseline fails', () => {
+    const signIn = baseline({ ran: [{ title: 'sign in', duration: 900, error: { message: 'no code arrived' } }] })
+    expect(signIn.code).not.toBe(0)
+    expect(signIn.read('backend/index.ts')).toBe('patched')
+    // A check that never loaded ran no step.
+    expect(baseline({ ran: [] }).code).not.toBe(0)
+    // A run that timed out while the step still ran (duration -1) did reach the bug.
+    expect(baseline({ ran: [{ title: bugStep, duration: -1 }] }).code).toBe(0)
   })
 
   test('a failed baseline still puts the patch back, and an agent that edited nothing pops no older stash', () => {
@@ -1430,6 +1457,18 @@ describe('publish', () => {
     ])
       expect(step('verify-real', name).if).toBe(present)
   })
+
+  test("a fix agent's PR title may use exactly the types Title Lint accepts", () => {
+    const lint = Bun.YAML.parse(readFileSync(join(import.meta.dir, '../../workflows/lint-pr-title.yml'), 'utf8')) as {
+      jobs: Record<string, Job>
+    }
+    const types = lint.jobs.lint.steps?.find((s) => s.uses?.startsWith('amannn/action-semantic-pull-request@'))?.with
+      ?.types
+    const accepted = (types ?? '').split('\n').filter(Boolean)
+    const alternatives = /^\^\(([^)]+)\)/.exec(conventionalTitle.source)?.[1].split('|') ?? []
+    expect(accepted).toContain('fix')
+    expect(alternatives.sort()).toEqual(accepted.sort())
+  })
 })
 
 test("a native replay leg's base runs fit its timeout, since a timeout loses every finding of the leg", () => {
@@ -1548,6 +1587,7 @@ describe('native jobs', () => {
 
   /** Runs the fix check's run step with `native.sh` replaced by `script`, the job having started `startedAgo` s ago. */
   const runStepWith = (script: string, startedAgo = 0) => {
+    const now = 1_700_000_000
     const temp = mkdtempSync(join(work, 'verify-run-'))
     mkdirSync(join(temp, '.github/qa/scripts'), { recursive: true })
     // A real run takes minutes, so the deadline is asleep, and dies whole, by the time the run ends.
@@ -1555,6 +1595,11 @@ describe('native jobs', () => {
     // GNU sleep rejects a negative duration, where macOS treats it as zero.
     mkdirSync(join(temp, 'bin'))
     writeFileSync(join(temp, 'bin/sleep'), '#!/bin/bash\n[[ $1 == -* ]] && exit 1\nexec /bin/sleep "$@"\n', {
+      mode: 0o755,
+    })
+    // The test's Date.now is frozen; the shell must use the same clock when calculating its remaining budget.
+    // Keep sleep and process-group termination real so the descendant cleanup assertion still exercises the workflow.
+    writeFileSync(join(temp, 'bin/date'), `#!/bin/bash\n[[ "$*" == '+%s' ]] || exit 2\nprintf '%s\\n' '${now}'\n`, {
       mode: 0o755,
     })
     const output = join(temp, 'output')
@@ -1568,7 +1613,7 @@ describe('native jobs', () => {
           RUNNER_TEMP: temp,
           GITHUB_OUTPUT: output,
           QA_FP: 'fp1',
-          QA_LEG_START: String(Math.floor(Date.now() / 1000) - startedAgo),
+          QA_LEG_START: String(now - startedAgo),
         },
       },
     )
@@ -1952,7 +1997,7 @@ test('every job but the reusable notify call has a timeout and read-only permiss
     if (name === 'file') return { actions: 'read', contents: 'read', 'pull-requests': 'read' }
     // Publish lists the run's artifacts, whose names carry the checks' passes.
     if (name === 'publish') return { actions: 'read', contents: 'read' }
-    // Report reads how the bot's earlier fix PRs ended.
+    // Report reads how the bot's recent fix PRs ended.
     if (name === 'report') return { contents: 'read', 'pull-requests': 'read' }
     return { contents: 'read' }
   }

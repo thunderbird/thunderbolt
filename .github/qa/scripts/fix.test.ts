@@ -26,6 +26,7 @@ import {
   needsUnitTest,
   noLinks,
   runGate,
+  runTestsCapturing,
   testFailed,
   testRuns,
   whyNoSpec,
@@ -38,7 +39,9 @@ import { loginViaEmailCode } from '../../../e2e/helpers'
 
 test('rename keeps the title', async ({ page }) => {
   await loginViaEmailCode(page)
-  await expect(page.getByText('Renamed')).toBeVisible()
+  await test.step('bug check', async () => {
+    await expect(page.getByText('Renamed')).toBeVisible()
+  })
 })
 `
 
@@ -1149,13 +1152,19 @@ describe('checkPatch', () => {
       expect((await checkPatch(git, outDir, visualTask(), [])).reasons).toEqual([])
     })
 
-    test('is rejected without a check, and with a check that fails the lint', async () => {
+    test('is rejected without a check, and with a check that fails the lint or has no bug check step', async () => {
       await patchFrom(fixed)
       expect((await checkPatch(git, outDir, visualTask(), [])).reasons).toEqual(['the visual check is missing'])
 
       await put(check(), `${spec}process.exit(0)\n`)
       expect((await checkPatch(git, outDir, visualTask(), [])).reasons).toEqual([
-        'visual check: line 8: "process" is not allowed',
+        'visual check: line 10: "process" is not allowed',
+      ])
+
+      // The baseline counts a run without the patch only when it failed in that step, not in its sign-in.
+      await put(check(), spec.replace("test.step('bug check'", "test.step('check'"))
+      expect((await checkPatch(git, outDir, visualTask(), [])).reasons).toEqual([
+        "visual check: no test.step('bug check', …) holds the assertion",
       ])
     })
   })
@@ -1264,7 +1273,7 @@ describe('checkPatch', () => {
     await put(reproSpec(), `${spec}process.exit(0)\n`)
     const { reasons } = await checkPatch(git, outDir, task(), [])
     expect(reasons).toContain('the repro spec was edited')
-    expect(reasons).toContain('repro spec: line 8: "process" is not allowed')
+    expect(reasons).toContain('repro spec: line 10: "process" is not allowed')
   })
 })
 
@@ -1306,16 +1315,23 @@ describe('testRuns', () => {
 })
 
 describe('testFailed', () => {
-  test('counts a named test, a test in a suite and a colored line, never a hook or a file that did not load', () => {
+  test('counts a named test, a colored line and a failed beforeEach, never beforeAll, afterAll or a load error', () => {
     expect(testFailed('(fail) title [0.12ms]\n 0 pass\n 1 fail\n')).toBe(true)
     expect(testFailed('(fail) suite > keeps the title [0.13ms]\n')).toBe(true)
     expect(testFailed('\u001b[31m(fail)\u001b[0m title \u001b[2m[0.12ms]\u001b[0m\n')).toBe(true)
+    // A beforeEach that threw: Bun fails the test it ran before, by name (output of Bun 1.4.4).
+    expect(testFailed('error: setup broke\n(fail) suite > keeps the title [7.54ms]\n 0 pass\n 1 fail\n')).toBe(true)
     // A beforeAll or afterAll hook that threw, at the top or in a suite.
     expect(testFailed('error: not fixed\n(fail) (unnamed) [0.20ms]\n 0 pass\n 1 fail\n')).toBe(false)
     expect(testFailed('(fail) suite > (unnamed) [0.23ms]\n')).toBe(false)
     // An import, compile or top-level error: Bun counts a failure but names no test.
     expect(testFailed("SyntaxError: Export named 'clean' not found\n 0 pass\n 1 fail\n 1 error\n")).toBe(false)
   })
+})
+
+test('the test runner returns when its command exits, though a process the command left behind holds its output', async () => {
+  const result = await runTestsCapturing(['sh', '-c', 'echo out; echo err >&2; sleep 30 & exit 3'], dir)
+  expect(result).toEqual({ code: 3, output: 'out\nerr\n' })
 })
 
 describe('checkTests', () => {

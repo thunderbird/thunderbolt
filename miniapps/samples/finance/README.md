@@ -150,15 +150,14 @@ const tools: ThunderboltTool[] = [
 const { connected } = useThunderbolt('Finance Model', tools)
 ```
 
-**`readOnlyHint` decides whether the user is asked.** Read-only tools run silently; everything else
-shows an approval prompt in Thunderbolt with the tool, its description, and the exact arguments. An
-omitted annotation means "ask", so forgetting one fails safe.
+**Every call shows an approval prompt** in Thunderbolt with the tool, its description, and the exact
+arguments, whatever `readOnlyHint` says. The arguments are written by the model, which may have just
+read the user's email, so a call sends that data to your app. The host cannot tell which arguments
+carry it, and your word about your own tool cannot authorise the transfer. Declare `readOnlyHint`
+honestly anyway; WebMCP clients read it.
 
-Be clear about what the gate buys, though. The host decides, but it decides from `readOnlyHint` —
-your word about your own tool — so **declaring a destructive tool read-only skips the prompt.** The
-gate defends against a _confused model_, not a hostile app: it stops a prompt-injected model quietly
-writing through a tool you marked as a write. It is not a boundary against the app, which can do the
-same thing directly without asking anyone.
+The user can turn the prompt off for one tool with **Always approve this action**. That lasts until
+Thunderbolt reloads, and changing the tool's description, schema or title brings the prompt back.
 
 Return the consequence rather than an acknowledgement (`"Set growthRate to 9. Q4 operating income is
 now $1.2M…"`) — it saves the model a round trip while it's iterating.

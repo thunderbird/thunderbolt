@@ -361,15 +361,15 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    first, so a leg that runs out of time leaves the least severe without runs. The control's
    other two runs are timed before any finding's. An extra run must also leave room for the 3 runs each later finding
    is owed. A finding left with fewer than 3 counted runs is flaky, and `replay.reason` says why. A flow that waits
-   for the first screen after sign-in (`Welcome to Thunderbolt!` on the c1 build, `Ask me anything…` otherwise; three
+   for the first screen after sign-in (`Connect Google` on the c1 build, `Ask me anything…` otherwise; three
    dots count as the ellipsis) but never types the code `12345678` is signed in by the harness.
    `control/sign-in.yaml` and a wait for that screen run first as their own `maestro test`, in the same launch, and
    the flow then goes on from its own wait. A run whose sign-in failed never runs the flow and is inconclusive,
    whatever the oracle, so it can never prove a bug. Without that rule, a replay whose iOS flows never typed the
    code would have every run inconclusive. A flow for a bug on the sign-in screen waits for no later screen, so it runs as written.
    `drivers/maestro.md` gives the model the same sign-in block to copy, and each build's landing wait.
-   A c1 flow that stops at the welcome wait or next waits for a text gets `control/consent.yaml` at the end of its
-   sign-in step: it ticks the privacy checkbox and skips Connect Google, but only while the checkbox shows and that
+   A c1 flow that stops at the Connect Google wait or next waits for a text gets `control/consent.yaml` at the end of its
+   sign-in step: it skips the optional Google connection, but only while Connect Google shows and that
    text (for a stopping layout flow, the quoted element) does not.
 4. **judge** (`verify.ts judge`): one Opus call per confirmed finding with `judge.md` and `known-issues.md`; a
    `visual` finding is judged on its screenshot, a native one on the flow replay ran (the allow list's own
@@ -445,19 +445,23 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `bug check` step, keeps the patch unpublished, since a patch that breaks the way to the bug proves no fix.
    A `visual` task has no spec, so the agent first writes `qa-out/fix-<fp>/repro/check.spec.ts` (the depth and
    `repro/` dir of a repro spec, so its imports and the Playwright config work), a check that fails because of the
-   defect. The fix job runs that check three times on the patched dev stack, where every run must pass, then three
-   times on the builds without the patch, with the patch stashed so the backend runs without it too, where every
-   run must fail. A real-AI web
+   defect. Like a repro spec, it asserts the bug inside `test.step('bug check', …)`, and `publish` refuses a check
+   without that step. The fix job runs that check three times on the patched dev stack, where every run must pass,
+   then three times on the builds without the patch, with the patch stashed so the backend runs without it too, where
+   every run must fail inside that step. These runs without the patch (the baseline) read each verdict from
+   Playwright's JSON report, as replay does: a run that fails before the step, in its sign-in for example, shows no
+   bug, and the baseline fails. A real-AI web
    task (`real`) is fixed on the fake AI, and `verify-real` runs its spec three times on the real providers against
    the patched frontend; all three must pass. A real-AI web visual task has no spec for `verify-real` to run, so
    `publish` never opens a PR for it: the ticket gets `Human Required`, like a fix that failed its checks.
-   The proof follows the defect. A layout or visual web task whose PR adds the browser check as its regression spec
-   (see `whyNoSpec` below: a layout problem other than a missing name, a visual defect) is proven by that check, which
-   failed without the patch and passed with it, since happy-dom computes no layout. Every other web task (one without
-   a `flow`: a missing name, logic, data lost on a reload, which also gets the spec, and the c1, real-AI and security
-   tasks, whose check never becomes a spec) must also add or change a unit test file, `*.test.ts` or `*.test.tsx` under `src/`, `shared/`, `backend/` or
-   `cli/`, that fails without the fix. `route` marks these tasks `unitTest` in the plan (`needsUnitTest`), and only
-   they get a `verify-tests` job.
+   For a web task with `unitTest` false, the browser check is the proof. These are the layout and visual tasks whose
+   PR adds that check as its regression spec (see `whyNoSpec` below: a layout problem other than a missing name, or a
+   visual defect). The check failed without the patch and passed with it, and happy-dom, which the unit tests run on,
+   computes no layout. Every other web task (one without a `flow`) must add or change a unit test file, `*.test.ts` or
+   `*.test.tsx` under `src/`, `shared/`, `backend/` or `cli/`, that fails without the fix. They cover a missing name,
+   logic and data lost on a reload (which also gets the spec), plus the c1, real-AI and security tasks, whose check
+   never becomes a spec. `route` marks them `unitTest` in the plan (`needsUnitTest`), and only they get a
+   `verify-tests` job.
    `verify-tests` (keyless, see "Trust zones") checks it on a fresh checkout with `fix.ts tests`: `testRuns` picks
    the test files the patch adds or changes (a deleted one is left out, a renamed one counts under its new name) and
    runs `bun test --timeout 5000` over them from each tree's own directory (`src/`, `backend/`, `cli/`,
@@ -611,12 +615,13 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    session's init message names them) and extend the denies. After the merge, the first fix session's transcript
    should show the `simplify` load, with no other skill.
 
-7. **report** (`report.ts summary`): the job summary. `report.ts fix-prs` adds how the bot's earlier fix PRs ended,
-   read from GitHub alone (`pull-requests: read`): a PR of the app `thunderbolt-automation-agent` whose first commit is
-   the bot's is right first time when it merged with only the bot's commits (merges of main aside), needed edits when
-   it merged with any other commit, discarded when it closed unmerged, and waits for a person while open. The
-   factory bot opens PRs as the same app, but a person writes their first commit, so they are left out. A failed
-   GitHub call loses only that section.
+7. **report** (`report.ts summary`): the job summary. `report.ts fix-prs` adds a "Recent QA fix PRs" section, read
+   from GitHub alone (`pull-requests: read`). It covers the fix PRs among the newest 100 PRs of the app
+   `thunderbolt-automation-agent`, this run's included. A PR whose first commit is the bot's is right first time when
+   it merged with only the bot's commits (merge commits aside), needed edits when it merged with any other commit,
+   discarded when it closed unmerged, and waits for a person while open. A merged PR with more than 100 commits is
+   unknown, since the query reads only the first 100. The factory bot opens PRs as the same app, but a person writes
+   their first commit, so they are left out. A failed GitHub call loses only that section.
 
 Output goes to `qa-out*/` (gitignored). `fixtures/` holds the files the charters upload.
 

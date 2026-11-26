@@ -4,8 +4,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { existsSync } from 'node:fs'
-import { appendFile, readFile, rm, writeFile } from 'node:fs/promises'
+import { closeSync, existsSync, openSync } from 'node:fs'
+import { appendFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join, relative, resolve } from 'node:path'
 import { parseArgs, stripVTControlCharacters } from 'node:util'
 import { format, resolveConfig } from 'prettier'
@@ -15,6 +16,7 @@ import { linear } from '../../../scripts/notify-on-failure'
 import { type Action, addComment, type Filed, type LinearAuth, priority, qaLabels, ticketView } from './file-findings'
 import { sanitize, secretPattern } from './sanitize'
 import {
+  bugStepProblems,
   type Finding,
   findingSchema,
   lintReproSpec,
@@ -377,11 +379,11 @@ export const route = async ({
 
 /**
  * Why a fix PR adds no regression spec to `e2e/`, or undefined when it adds the repro spec (the agent's check in a
- * visual task). The unit test every web fix carries is the default guard, so a spec is added only for a bug a unit
- * test cannot show: happy-dom computes no layout, so a visual finding or a layout one qualifies, except an
- * `unnamed-control` (a missing accessible name shows in a unit test), and data lost on a reload qualifies, since the
- * repo's testing guide sends browser storage to `e2e/`. A security fix, a native one, one from the onboarding build
- * and a real-AI one never add a spec.
+ * visual task). A spec is added only for a bug a unit test cannot show: happy-dom computes no layout, so a visual
+ * finding or a layout one qualifies, except an `unnamed-control` (a missing accessible name shows in a unit test), and
+ * data lost on a reload qualifies, since the repo's testing guide sends browser storage to `e2e/`. The unit test is the
+ * default guard only for a task marked `unitTest` (see `needsUnitTest`). A security fix, a native one, one from the
+ * onboarding build and a real-AI one never add a spec.
  */
 export const whyNoSpec = (task: Omit<FixTask, 'unitTest' | 'specs' | 'realSpecs'>) => {
   if (task.finding.area === 'security') return 'security'
@@ -570,17 +572,24 @@ const runTests = (cmd: string[], cwd: string) =>
 /** A finished test run: its exit code and everything it printed. */
 export type TestResult = { code: number; output: string }
 
-/** Runs a command, copies its output to the job log when it ends, and returns its exit code and output. */
-const runTestsCapturing = async (cmd: string[], cwd: string): Promise<TestResult> => {
-  const proc = Bun.spawn(cmd, { cwd, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' })
-  const [stdout, stderr, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  process.stdout.write(stdout)
-  process.stderr.write(stderr)
-  return { code, output: stdout + stderr }
+/**
+ * Runs a command, copies its output to the job log when it ends, and returns its exit code and output. The output goes
+ * to a file rather than a pipe: a process a test leaves behind inherits the pipe, and reading a pipe to its end waits
+ * for every process holding it, so one leftover would stall the check until the job's timeout.
+ */
+export const runTestsCapturing = async (cmd: string[], cwd: string): Promise<TestResult> => {
+  const dir = await mkdtemp(join(tmpdir(), 'qa-tests-'))
+  const path = join(dir, 'output')
+  const fd = openSync(path, 'w')
+  try {
+    const code = await Bun.spawn(cmd, { cwd, stdin: 'ignore', stdout: fd, stderr: fd }).exited
+    const output = await readFile(path, 'utf8')
+    process.stdout.write(output)
+    return { code, output }
+  } finally {
+    closeSync(fd)
+    await rm(dir, { recursive: true, force: true })
+  }
 }
 
 /**
@@ -835,8 +844,8 @@ const flowProblems = (platform: string, flow: string) => {
 }
 
 /**
- * Problems with what the patch must make pass: an edited repro spec or flow, or a visual check that is missing or
- * fails the lint. Whether the checks passed comes from `missingPasses`.
+ * Problems with what the patch must make pass: an edited repro spec or flow, or a visual check that is missing, fails
+ * the lint or, on the web, has no `bug check` step. Whether the checks passed comes from `missingPasses`.
  */
 const proofProblems = async (outDir: string, task: FixTask) => {
   if (task.kind === 'spec') {
@@ -853,7 +862,8 @@ const proofProblems = async (outDir: string, task: FixTask) => {
   const check = Bun.file('flow' in task ? task.flow : checkPath(outDir, task.fp))
   if (!(await check.exists())) return ['the visual check is missing']
   const text = await check.text()
-  const problems = 'flow' in task ? flowProblems(task.platform, text) : lintReproSpec(text)
+  const problems =
+    'flow' in task ? flowProblems(task.platform, text) : [...lintReproSpec(text), ...bugStepProblems(text)]
   return problems.map((problem) => `visual check: ${problem}`)
 }
 
@@ -1050,7 +1060,7 @@ export const wrap = (text: string, width = maxLine) =>
     .join('\n')
 
 /** The Conventional Commits types `.github/workflows/lint-pr-title.yml` accepts, with an optional scope. */
-const conventionalTitle = /^(feat|fix|chore|docs|refactor|perf|test|ci|build|style)(\([\w-]+\))?: \S/
+export const conventionalTitle = /^(feat|fix|chore|docs|refactor|perf|test|ci|build|style)(\([\w-]+\))?: \S/
 
 /**
  * The PR title: the fix agent's `fix/<fp>.title`, a Conventional Commits title of the change, when it has that shape,

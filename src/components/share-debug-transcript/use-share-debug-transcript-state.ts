@@ -5,14 +5,15 @@
 import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
-import { useCallback, useReducer, useRef, useTransition } from 'react'
+import { useCallback, useMemo, useReducer, useRef, useTransition } from 'react'
 import { z } from 'zod'
 
 import type { ChatSession } from '@/chats/chat-store'
 import { useAuth } from '@/contexts/auth-context'
 import { useHttpClient } from '@/contexts/http-client-context'
-import { submitDebugTranscript } from '@/debug-transcript/api'
+import { buildDebugTranscriptRequest, submitDebugTranscript } from '@/debug-transcript/api'
 import { buildDebugTranscriptPayload } from '@/debug-transcript/build-payload'
+import type { DebugTranscriptPayloadV1 } from '@/debug-transcript/types'
 import { HttpError } from '@/lib/http'
 import {
   debugTranscriptUpstreamFailedCode,
@@ -30,6 +31,7 @@ const debugTranscriptErrorBodySchema = z.object({
 const debugTranscriptUploadTimeoutMs = 30_000
 
 export type ShareDebugTranscriptState = {
+  payload: DebugTranscriptPayloadV1 | null
   consentAccepted: boolean
   dialogOpen: boolean
   errorMessage: string | null
@@ -38,7 +40,7 @@ export type ShareDebugTranscriptState = {
 }
 
 export type ShareDebugTranscriptEvent =
-  | { type: 'DIALOG_OPENED' }
+  | { type: 'DIALOG_OPENED'; payload: DebugTranscriptPayloadV1 | null }
   | { type: 'DIALOG_CLOSED' }
   | { type: 'NOTE_CHANGED'; note: string }
   | { type: 'CONSENT_CHANGED'; accepted: boolean }
@@ -53,6 +55,7 @@ type UseShareDebugTranscriptStateOptions = {
 }
 
 const initialState: ShareDebugTranscriptState = {
+  payload: null,
   consentAccepted: false,
   dialogOpen: false,
   errorMessage: null,
@@ -67,9 +70,16 @@ export const shareDebugTranscriptReducer = (
 ): ShareDebugTranscriptState => {
   switch (action.type) {
     case 'DIALOG_OPENED':
-      return { ...state, dialogOpen: true, errorMessage: null, successToastOpen: false }
+      return {
+        ...state,
+        payload: action.payload,
+        consentAccepted: false,
+        dialogOpen: true,
+        errorMessage: null,
+        successToastOpen: false,
+      }
     case 'DIALOG_CLOSED':
-      return { ...state, consentAccepted: false, dialogOpen: false, errorMessage: null, userNote: '' }
+      return { ...state, payload: null, consentAccepted: false, dialogOpen: false, errorMessage: null, userNote: '' }
     case 'NOTE_CHANGED':
       return { ...state, userNote: action.note }
     case 'CONSENT_CHANGED':
@@ -79,6 +89,7 @@ export const shareDebugTranscriptReducer = (
     case 'SUBMIT_SUCCEEDED':
       return {
         ...state,
+        payload: null,
         consentAccepted: false,
         dialogOpen: false,
         errorMessage: null,
@@ -132,6 +143,34 @@ export const useShareDebugTranscriptState = ({ chatInstance, threadId }: UseShar
   const [isPending, startTransition] = useTransition()
   const activeRequestRef = useRef<AbortController | null>(null)
 
+  const request = useMemo(
+    () =>
+      state.payload
+        ? buildDebugTranscriptRequest({
+            threadId: state.payload.thread.threadId,
+            payload: state.payload,
+            userNote: state.userNote,
+            clientVersion: state.payload.capture.appVersion,
+          })
+        : null,
+    [state.payload, state.userNote],
+  )
+  const preview = useMemo(() => (request ? JSON.stringify(request, null, 2) : null), [request])
+
+  const openDialog = () => {
+    try {
+      const payload = buildDebugTranscriptPayload({
+        threadId,
+        messages: chatInstance.messages,
+        authSession: authSession ?? null,
+      })
+      dispatch({ type: 'DIALOG_OPENED', payload })
+    } catch {
+      dispatch({ type: 'DIALOG_OPENED', payload: null })
+      dispatch({ type: 'SUBMIT_FAILED', message: i18n._(getDebugTranscriptErrorMessage()) })
+    }
+  }
+
   const closeDialog = () => {
     activeRequestRef.current?.abort()
     activeRequestRef.current = null
@@ -140,14 +179,14 @@ export const useShareDebugTranscriptState = ({ chatInstance, threadId }: UseShar
 
   const handleDialogOpenChange = (open: boolean) => {
     if (open) {
-      dispatch({ type: 'DIALOG_OPENED' })
+      openDialog()
       return
     }
     closeDialog()
   }
 
   const submit = () => {
-    if (!state.consentAccepted) {
+    if (!state.consentAccepted || !request || isPending) {
       return
     }
 
@@ -157,20 +196,12 @@ export const useShareDebugTranscriptState = ({ chatInstance, threadId }: UseShar
 
     startTransition(async () => {
       dispatch({ type: 'SUBMIT_STARTED' })
-      const clientVersion = import.meta.env.VITE_APP_VERSION ?? 'unknown'
 
       try {
-        const payload = buildDebugTranscriptPayload({
-          threadId,
-          messages: chatInstance.messages,
-          authSession: authSession ?? null,
-          appVersion: clientVersion,
-        })
         await submitDebugTranscript(httpClient, {
-          threadId,
-          payload,
+          ...request,
+          // Rebuild from the raw note so a truncated escape cannot change the previewed body.
           userNote: state.userNote,
-          clientVersion,
           signal: controller.signal,
           timeout: debugTranscriptUploadTimeoutMs,
         })
@@ -204,10 +235,11 @@ export const useShareDebugTranscriptState = ({ chatInstance, threadId }: UseShar
   return {
     action: {
       disabledReason: isPending ? t`Sending…` : null,
-      onShare: () => dispatch({ type: 'DIALOG_OPENED' }),
+      onShare: openDialog,
     },
     dialog: {
       open: state.dialogOpen,
+      preview,
       userNote: state.userNote,
       consentAccepted: state.consentAccepted,
       errorMessage: state.errorMessage,

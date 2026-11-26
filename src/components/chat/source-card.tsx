@@ -7,6 +7,8 @@ import { buildDocumentSideviewId, type CitationSource, isDocumentCitation } from
 import { useOpenExternalLink } from '@/components/chat/markdown-utils'
 import { useShowSideview } from '@/content-view/context'
 import { deriveFaviconUrl, isSafeUrl } from '@/lib/url-utils'
+import { publicWebMediaUrl } from '@/integrations/standalone-search/url-policy'
+import { usePrivateSources } from './private-sources-context'
 import { cn } from '@/lib/utils'
 
 type SourceCardProps = {
@@ -31,6 +33,7 @@ const getBadgeColor = (siteName: string = '') => {
  * Matches Figma design: simple layout with circular initial badge
  */
 export const SourceCard = ({ source, className, onSelect }: SourceCardProps) => {
+  const privateSources = usePrivateSources()
   const [faviconError, setFaviconError] = useState(false)
   const openExternalLink = useOpenExternalLink()
   // Optional on purpose: the sideview only exists inside the chat surface.
@@ -41,9 +44,9 @@ export const SourceCard = ({ source, className, onSelect }: SourceCardProps) => 
   const displayTitle = source.title || source.url
   const displaySiteName = source.siteName || 'Unknown'
   const safeUrl = !isDocument && isSafeUrl(source.url) ? source.url : '#'
-  const explicitFavicon = source.favicon && isSafeUrl(source.favicon) ? source.favicon : null
-  const faviconUrl = explicitFavicon || (!isDocument ? deriveFaviconUrl(source.url) : null)
-  const showFavicon = faviconUrl && !faviconError
+  const faviconUrl =
+    publicWebMediaUrl(source.favicon) || (!isDocument ? publicWebMediaUrl(deriveFaviconUrl(source.url)) : null)
+  const showFavicon = !privateSources && source.allowRemoteImages !== false && faviconUrl && !faviconError
   const initial = displaySiteName.charAt(0).toUpperCase()
   const badgeColor = getBadgeColor(displaySiteName)
 
@@ -73,6 +76,7 @@ export const SourceCard = ({ source, className, onSelect }: SourceCardProps) => 
         {showFavicon ? (
           <img
             src={faviconUrl}
+            referrerPolicy="no-referrer"
             alt=""
             className="w-4 h-4 rounded-full flex-shrink-0"
             onError={() => setFaviconError(true)}

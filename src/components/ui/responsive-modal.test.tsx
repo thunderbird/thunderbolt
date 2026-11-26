@@ -195,7 +195,7 @@ describe('ResponsiveModal', () => {
       expect(surface).toHaveClass('dark:[&_[data-slot=input]]:!bg-input')
     })
 
-    it('collapses the default autofocus selection at the end of text inputs', () => {
+    it('collapses the default autofocus selection at the end of text inputs', async () => {
       render(
         <Dialog open>
           <DialogContent>
@@ -205,7 +205,7 @@ describe('ResponsiveModal', () => {
         </Dialog>,
       )
 
-      act(() => getClock().tick(16))
+      await act(async () => {})
 
       const input = screen.getByRole('textbox', { name: 'Existing value' }) as HTMLInputElement
       expect(input).toHaveFocus()
@@ -213,7 +213,7 @@ describe('ResponsiveModal', () => {
       expect(input.selectionEnd).toBe(input.value.length)
     })
 
-    it('collapses autofocus selection in the responsive modal shell', () => {
+    it('preserves a new text selection after responsive modal autofocus', async () => {
       render(
         <Dialog open>
           <ResponsiveModalContentComposable>
@@ -224,11 +224,43 @@ describe('ResponsiveModal', () => {
         { wrapper: createTestProvider() },
       )
 
-      act(() => getClock().tick(16))
+      await act(async () => {})
 
       const input = screen.getByRole('textbox', { name: 'Responsive value' }) as HTMLInputElement
       expect(input).toHaveFocus()
       expect(input.selectionStart).toBe(input.value.length)
+      expect(input.selectionEnd).toBe(input.value.length)
+
+      input.select()
+      act(() => getClock().tick(16))
+
+      expect(input.selectionStart).toBe(0)
+      expect(input.selectionEnd).toBe(input.value.length)
+    })
+
+    it('preserves an explicit autofocus selection', async () => {
+      render(
+        <Dialog open>
+          <DialogContent
+            onOpenAutoFocus={(event) => {
+              event.preventDefault()
+              const input = screen.getByRole('textbox', { name: 'Rename' }) as HTMLInputElement
+              input.focus()
+              input.select()
+            }}
+          >
+            <DialogTitle>Rename Dialog</DialogTitle>
+            <input aria-label="Rename" defaultValue="Existing name" />
+          </DialogContent>
+        </Dialog>,
+      )
+
+      await act(async () => {})
+      act(() => getClock().tick(16))
+
+      const input = screen.getByRole('textbox', { name: 'Rename' }) as HTMLInputElement
+      expect(input).toHaveFocus()
+      expect(input.selectionStart).toBe(0)
       expect(input.selectionEnd).toBe(input.value.length)
     })
   })

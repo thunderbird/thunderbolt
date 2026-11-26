@@ -9,7 +9,7 @@ import { bundledEmailLogoUrl } from '@/branding/email-logo'
 import { isPasskeyEnabled, type Settings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { toPublicBranding } from '@shared/branding'
-import { defaultModelId, defaultModels, defaultModelsVersion } from '@shared/defaults/models'
+import { defaultModelId, defaultModelImageSupport, defaultModels, defaultModelsVersion } from '@shared/defaults/models'
 import { Elysia } from 'elysia'
 
 // Sandboxed and never sniffed: an SVG logo opened directly from the API origin
@@ -66,6 +66,9 @@ export const createConfigRoutes = (settings: Settings, brandingAssets: BrandingA
       // Safe to delete once MIN_APP_VERSION is at or above the first release that
       // shipped always-on E2EE, which 426s every client that still reads this.
       e2eeEnabled: true,
+      authMode: settings.authMode,
+      authAllowAnonymous: settings.authAllowAnonymous,
+      captchaProvider: settings.captchaProvider,
       orgEscrowEnabled: settings.orgEscrowEnabled,
       debugTranscriptsEnabled: settings.debugTranscriptsEnabled,
       passkeyEnabled: isPasskeyEnabled(settings),
@@ -92,6 +95,7 @@ export const createConfigRoutes = (settings: Settings, brandingAssets: BrandingA
           version: defaultModelsVersion,
           defaultModelId,
           data: defaultModels,
+          imageSupport: defaultModelImageSupport,
         },
       },
     }))

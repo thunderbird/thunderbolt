@@ -12,6 +12,9 @@ storage:
 port: 8080
 
 sync_config:
+  # PowerSync rebuilds its storage, and every device downloads its data again, whenever this
+  # label or the content changes. Bump PS_SYNC_CONFIG_VERSION to force that rebuild.
+  version_label: !env PS_SYNC_CONFIG_VERSION
   content: |
     config:
       edition: 3
@@ -46,6 +49,7 @@ sync_config:
         queries:
           - SELECT * FROM powersync.settings WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
           - SELECT * FROM powersync.models WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
+          - SELECT * FROM powersync.provider_connections WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
           - SELECT * FROM powersync.model_profiles WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
           - SELECT * FROM powersync.devices WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
           - SELECT * FROM powersync.chat_threads WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)

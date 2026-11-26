@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import 'fake-indexeddb/auto'
+import { clearAllKeys, markAKUnverified } from '@/crypto'
 import { SignInModalProvider } from '@/contexts'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockAuthClient } from '@/test-utils/auth-client'
@@ -16,7 +18,7 @@ import { takeDeviceApprovalReturn } from '@/lib/device-approval-return'
 import { DeviceApproval } from './device-approval'
 
 type FetchResult = { data: unknown; error: unknown }
-type Handlers = Partial<Record<string, () => FetchResult>>
+type Handlers = Partial<Record<string, () => FetchResult | Promise<FetchResult>>>
 
 const NavigationSpy = ({ onLocationChange }: { onLocationChange: (location: string) => void }) => {
   const location = useLocation()
@@ -47,6 +49,7 @@ describe('DeviceApproval', () => {
 
   afterEach(async () => {
     await resetTestDatabase()
+    await clearAllKeys()
     cleanup()
     localStorage.clear()
   })
@@ -91,6 +94,57 @@ describe('DeviceApproval', () => {
       await getClock().runAllAsync()
     })
   }
+
+  it('admits only one approve-or-deny action before the disabled state renders', async () => {
+    const approval = Promise.withResolvers<FetchResult>()
+    const { fetch } = renderPage({
+      code: 'ABCD1234',
+      handlers: {
+        ...pendingVerify,
+        '/device/approve': () => approval.promise,
+        '/device/deny': () => ({ data: { success: true }, error: null }),
+      },
+    })
+    await flush()
+    const approve = screen.getByRole('button', { name: 'Approve' })
+    const deny = screen.getByRole('button', { name: 'Deny' })
+    act(() => {
+      fireEvent.click(approve)
+      fireEvent.click(deny)
+    })
+    // The approve call first reads this device's key-trust marker. Fake IndexedDB
+    // runs on real setImmediate ticks, which the fake clock does not drive.
+    await act(async () => {
+      for (let tick = 0; tick < 50 && !fetch.mock.calls.some(([path]) => path === '/device/approve'); tick++) {
+        await new Promise((resolve) => setImmediate(resolve))
+      }
+    })
+    expect(fetch.mock.calls.filter(([path]) => path === '/device/approve')).toHaveLength(1)
+    expect(fetch.mock.calls.filter(([path]) => path === '/device/deny')).toHaveLength(0)
+    await act(async () => {
+      approval.resolve({ data: { success: true }, error: null })
+      await getClock().runAllAsync()
+    })
+    expect(screen.getByText('Sign-in approved')).toBeInTheDocument()
+  })
+
+  it('admits only one manual verification before the form rerenders', async () => {
+    const verification = Promise.withResolvers<FetchResult>()
+    const { fetch } = renderPage({ handlers: { '/device': () => verification.promise } })
+    await flush()
+    fireEvent.change(screen.getByLabelText('Code'), { target: { value: 'ABCD1234' } })
+    const form = screen.getByLabelText('Code').closest('form')!
+    act(() => {
+      fireEvent.submit(form)
+      fireEvent.submit(form)
+    })
+    expect(fetch.mock.calls.filter(([path]) => path === '/device')).toHaveLength(1)
+    await act(async () => {
+      verification.resolve({ data: { status: 'pending' }, error: null })
+      await getClock().runAllAsync()
+    })
+    expect(screen.getByText('Approve CLI sign-in?')).toBeInTheDocument()
+  })
 
   describe('authentication gate', () => {
     it('redirects unauthenticated visitors into the auth flow', () => {
@@ -169,6 +223,32 @@ describe('DeviceApproval', () => {
   })
 
   describe('approve', () => {
+    it('disables Approve on an unverified device', async () => {
+      await markAKUnverified()
+      const { fetch } = renderPage({ code: 'ABCD1234', handlers: pendingVerify })
+      await act(async () => {
+        for (
+          let tick = 0;
+          tick < 50 &&
+          !screen.queryByText(
+            "This device can't approve sign-ins because its encryption keys couldn't be verified. Approve from a device that was trusted before.",
+          );
+          tick++
+        ) {
+          await new Promise((resolve) => setImmediate(resolve))
+          await getClock().runAllAsync()
+        }
+      })
+
+      const approve = screen.getByRole('button', { name: 'Approve' })
+      expect(approve).toBeDisabled()
+      expect(approve).toHaveAccessibleDescription(
+        "This device can't approve sign-ins because its encryption keys couldn't be verified. Approve from a device that was trusted before.",
+      )
+      expect(screen.getByRole('button', { name: 'Deny' })).toBeEnabled()
+      expect(fetch.mock.calls.some(([path]) => path === '/device/approve')).toBe(false)
+    })
+
     it('approves and tells the user to return to their terminal', async () => {
       const { fetch } = renderPage({
         code: 'ABCD1234',

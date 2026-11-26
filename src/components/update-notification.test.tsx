@@ -15,6 +15,7 @@ const checkForUpdates = mock(async () => {})
 const primaryAction = mock(async () => {})
 const createUpdateState = (status: UpdateStatus, error: string | null = null): DesktopUpdateState => ({
   status,
+  enabled: true,
   update: null,
   error,
   errorPhase: error ? 'check' : null,
@@ -28,14 +29,15 @@ const createUpdateState = (status: UpdateStatus, error: string | null = null): D
 afterEach(cleanup)
 
 describe('UpdateNotification', () => {
-  it('renders nothing off desktop', () => {
-    render(<UpdateNotificationContent desktop={false} updateState={createUpdateState('ready')} />)
-
-    expect(screen.queryByText('Update ready! Restart to apply.')).toBeNull()
+  it.each(['ready', 'error'] as const)('renders nothing when updates are disabled (%s)', (status) => {
+    const { container } = render(
+      <UpdateNotificationContent updateState={{ ...createUpdateState(status), enabled: false }} />,
+    )
+    expect(container).toBeEmptyDOMElement()
   })
 
   it('shows ready actions in the original corner position and dismisses from the close button', () => {
-    render(<UpdateNotificationContent desktop updateState={createUpdateState('ready')} />)
+    render(<UpdateNotificationContent updateState={createUpdateState('ready')} />)
 
     expect(screen.getByRole('button', { name: 'Restart Now' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Later' })).toBeInTheDocument()
@@ -46,7 +48,7 @@ describe('UpdateNotification', () => {
   })
 
   it('offers retry without Later after an error', () => {
-    render(<UpdateNotificationContent desktop updateState={createUpdateState('error', 'Network unavailable')} />)
+    render(<UpdateNotificationContent updateState={createUpdateState('error', 'Network unavailable')} />)
 
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Later' })).toBeNull()

@@ -5,10 +5,7 @@
 import { getSharedIsolatedTestDb } from '@/test-utils/db'
 import type { db as DbType } from '@/db/client'
 import { rateLimits } from '@/db/rate-limit-schema'
-import { createInferenceUsageReceiptRoutes } from '@/inference/usage-receipt-routes'
 import { beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { mockAuth } from '@/test-utils/mock-auth'
-import { inferenceUsageReceiptPath } from '@shared/inference-usage'
 import { Elysia } from 'elysia'
 import {
   createAuthIpRateLimit,
@@ -48,13 +45,13 @@ const requestWithIp = (ip: string) => new Request('http://localhost/v1/test', { 
 describe('Rate Limiting', () => {
   let database: typeof DbType
 
-  // RateLimiterDrizzle issues its own `client.transaction()` calls, which open a
-  // nested raw BEGIN on the connection. On the shared `createTestDb` singleton
-  // (which is mid-BEGIN/ROLLBACK and serializes every test file through one WASM
-  // mutex) that breaks transaction isolation and, under CI CPU starvation, stalls
-  // the setup hook on the shared lock. Reuse the suite-wide isolated connection:
-  // creating a fresh PGlite for every `--rerun-each` pass accumulates WASM runtimes
-  // until initialization stalls. Each test still clears the table in beforeEach.
+  // RateLimiterDrizzle opens its own transactions. On the shared `createTestDb`
+  // singleton they would run as savepoints of the test's transaction, behind the
+  // one WASM mutex that every test file shares. This suite therefore uses the
+  // suite-wide isolated connection. It does not open a connection of its own,
+  // because a fresh PGlite for every `--rerun-each` pass accumulates WASM
+  // runtimes until initialization stalls. Each test still clears the table in
+  // beforeEach.
   beforeAll(async () => {
     const isolatedDb = await getSharedIsolatedTestDb()
     database = isolatedDb.db
@@ -65,6 +62,32 @@ describe('Rate Limiting', () => {
   })
 
   const enabledSettings: RateLimitSettings = { enabled: true }
+
+  it('limits public integration OAuth to 30 requests per minute, independently of app sessions', async () => {
+    const app = new Elysia()
+      .use(createIpTierRateLimit(database, { enabled: true, trustedProxy: 'cloudflare' }, 'integration-oauth'))
+      .get('/v1/test', () => ({ ok: true }))
+    for (let count = 0; count < 30; count++) {
+      expect((await app.handle(requestWithIp('203.0.113.10'))).status).toBe(200)
+    }
+    const limited = await app.handle(requestWithIp('203.0.113.10'))
+    expect(limited.status).toBe(429)
+    expect(limited.headers.get('Retry-After')).toBeTruthy()
+    expect((await app.handle(requestWithIp('203.0.113.11'))).status).toBe(200)
+  })
+
+  it('keys on the trusted hop of a fixed proxy chain and ignores forged leading hops', async () => {
+    const app = new Elysia()
+      .use(createIpTierRateLimit(database, { enabled: true, trustedProxy: 1 }, 'integration-oauth'))
+      .get('/v1/test', () => ({ ok: true }))
+    const requestThroughProxy = (forwarded: string) =>
+      app.handle(new Request('http://localhost/v1/test', { headers: { 'x-forwarded-for': forwarded } }))
+    for (let count = 0; count < 30; count++) {
+      expect((await requestThroughProxy(`192.0.2.${count}, 203.0.113.1`)).status).toBe(200)
+    }
+    expect((await requestThroughProxy('192.0.2.99, 203.0.113.1')).status).toBe(429)
+    expect((await requestThroughProxy('192.0.2.99, 203.0.113.2')).status).toBe(200)
+  })
 
   describe('user-based rate limiting', () => {
     it('should allow requests under the limit for an authenticated user', async () => {
@@ -136,62 +159,6 @@ describe('Rate Limiting', () => {
       // User B should still be allowed
       const allowedResponse = await appB.handle(new Request('http://localhost/v1/test'))
       expect(allowedResponse.status).toBe(200)
-    })
-  })
-
-  describe('inference receipt rate limiting', () => {
-    it('allows full receipt and pro throughput independently before rate limiting each bucket', async () => {
-      const userId = 'receipt-pro-shared-user'
-      const receiptApp = createTestApp(database, enabledSettings, 'receipt', userId)
-      const proApp = createTestApp(database, enabledSettings, 'pro', userId)
-
-      for (let i = 0; i < 100; i++) {
-        expect((await receiptApp.handle(new Request('http://localhost/v1/test'))).status).toBe(200)
-        expect((await proApp.handle(new Request('http://localhost/v1/test'))).status).toBe(200)
-      }
-
-      expect((await receiptApp.handle(new Request('http://localhost/v1/test'))).status).toBe(429)
-      expect((await proApp.handle(new Request('http://localhost/v1/test'))).status).toBe(429)
-    })
-
-    it('does not consume the inference request bucket', async () => {
-      const userId = 'receipt-inference-shared-user'
-      const receiptApp = createTestApp(database, enabledSettings, 'receipt', userId)
-      const inferenceApp = createTestApp(database, enabledSettings, 'inference', userId)
-
-      const receiptResponse = await receiptApp.handle(new Request('http://localhost/v1/test'))
-      const inferenceResponse = await inferenceApp.handle(new Request('http://localhost/v1/test'))
-
-      expect(receiptResponse.headers.get('ratelimit-remaining')).toBe('99')
-      expect(inferenceResponse.headers.get('ratelimit-remaining')).toBe('59')
-    })
-
-    it('enforces the authenticated receipt route without rate-limiting a sibling route', async () => {
-      const app = new Elysia()
-        .use(
-          createInferenceUsageReceiptRoutes({
-            auth: mockAuth,
-            database,
-            secret: 'rate-limit-test-secret',
-            rateLimit: createUserTierRateLimit(database, enabledSettings, 'receipt'),
-          }),
-        )
-        .get('/unrelated', () => 'ok')
-      const createReceiptRequest = () =>
-        new Request(`http://localhost/${inferenceUsageReceiptPath}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: '{}',
-        })
-
-      for (let i = 0; i < 100; i++) {
-        expect((await app.handle(createReceiptRequest())).status).toBe(400)
-      }
-
-      expect((await app.handle(createReceiptRequest())).status).toBe(429)
-      const unrelatedResponse = await app.handle(new Request('http://localhost/unrelated'))
-      expect(unrelatedResponse.status).toBe(200)
-      expect(unrelatedResponse.headers.get('ratelimit-limit')).toBeNull()
     })
   })
 

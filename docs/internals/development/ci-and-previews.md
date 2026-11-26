@@ -21,21 +21,26 @@ Also part of the same machinery:
 | `previews-shared-deploy.yml`  | Manual, plus Mondays 07:00 UTC                                    |
 | `nightly-images.yml`          | 05:00 UTC                                                         |
 | `images-publish.yml`          | Push to `main` under a path filter, or called by `preview-deploy` |
+| `image-scan.yml`              | After `images-publish` or `nightly-images` succeeds, plus manual  |
 | `evals.yml`, `test-build.yml` | Manual only                                                       |
+
+`image-scan.yml` runs Trivy over the six published `:latest` images and reports HIGH and CRITICAL
+findings that have a fix to code scanning, one category per image. Findings never fail the job. It covers
+what Dependabot's security alerts can't see: the packages inside container images.
 
 Release workflows: [RELEASE.md](../../../RELEASE.md).
 
 ## The `ci.yml` jobs
 
-| Job             | Runs when                                                                      | What it does                                                                          |
-| --------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| `typescript`    | Always                                                                         | `tsc --noEmit`, `bun run lint`, `bun run test:5x`                                     |
-| `backend`       | Always                                                                         | Backend type-check, lint, tests (5x), WS suite, `./server` smoke (OTEL off and on)    |
-| `localization`  | `src/**`, `shared/**`, i18n/build config, `backend/src/emails/**`, `bun.lock`  | `bun run i18n:check`, a catalog-compiling build, the macro tripwire                   |
-| `agent-core`    | `shared/agent-core/**`, `vite.config.ts`, `package.json`, `bun.lock`, `ci.yml` | `bun run test:agent-core:5x` plus the Chromium/WebKit browser check                   |
-| `cli`           | `cli/**`, `shared/agent-core/**` and the shared contracts the CLI imports      | CLI type-check, tests (5x), build, and an artifact smoke test                         |
-| `wasm-artifact` | `src/acp/iroh/pkg/**`, crate inputs, source-manifest tests, or `ci.yml`        | Staleness gate, source-manifest tests, `SOURCES.txt` and `CHECKSUMS.txt` verification |
-| `rust`          | `src-tauri/**` Rust sources/manifests or `crates/**`                           | The RUSTSEC tripwire, then `cargo build`/`clippy -D warnings`/`test`                  |
+| Job             | Runs when                                                                                                                                   | What it does                                                                          |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `typescript`    | Always                                                                                                                                      | `tsc --noEmit`, `bun run lint`, `bun run test:5x`                                     |
+| `backend`       | Always                                                                                                                                      | Backend type-check, lint, tests (5x), WS suite, `./server` smoke (OTEL off and on)    |
+| `localization`  | `src/**`, `shared/**`, i18n/build config, `backend/src/emails/**`, `bun.lock`                                                               | `bun run i18n:check`, a catalog-compiling build, the macro tripwire                   |
+| `agent-core`    | `shared/agent-core/**`, `shared/reasoning-effort*.ts`, browser-check/Chrome scripts, `vite.config.ts`, `package.json`, `bun.lock`, `ci.yml` | `bun run test:agent-core:5x` plus the Chromium/WebKit browser check                   |
+| `cli`           | `cli/**`, `shared/agent-core/**` and the shared contracts the CLI imports                                                                   | CLI type-check, tests (5x), build, and an artifact smoke test                         |
+| `wasm-artifact` | `src/acp/iroh/pkg/**`, crate inputs, source-manifest tests, or `ci.yml`                                                                     | Staleness gate, source-manifest tests, `SOURCES.txt` and `CHECKSUMS.txt` verification |
+| `rust`          | `src-tauri/**` Rust sources/manifests or `crates/**`                                                                                        | The RUSTSEC tripwire, then `cargo build`/`clippy -D warnings`/`test`                  |
 
 Only `typescript` and `backend` run on every PR; the rest are gated by `detect-changes`
 (`dorny/paths-filter`), so **"CI passed" can mean "your job never ran"**. `agent-core` runs
@@ -74,7 +79,7 @@ build.
 ## One Bun version everywhere
 
 Every `setup-bun` step, every `oven/bun` image in `deploy/docker/` and
-`.thunderbot/Dockerfile.dev`, and the `BUN_VERSION` of both services in
+`scripts/thunderbot/Dockerfile.dev`, and the `BUN_VERSION` of both services in
 `deploy/render/public-agent.yaml` pin Bun 1.4.4. Bump them together, along with `BUN_VERSION`
 on the production backend, which is set in the Render dashboard. A `setup-bun` step without
 `bun-version` reads `packageManager`, then `engines.bun`, from `package.json`, and installs the
@@ -171,8 +176,9 @@ gzipped bundle size, test coverage, Lighthouse scores.
   with a `pr-metrics-main-` prefix fallback, so a base commit with no entry is compared
   against an earlier `main` build.
 - Lighthouse is advisory: [`lighthouserc.js`](../../../lighthouserc.js) sets every assertion
-  to `warn` and reports the median of three runs. It scores the **Render** preview, not the
-  Pulumi stack.
+  to `warn` and reports the median of three runs. It scores the **Pulumi app preview's
+  signed-out entry**, which may follow SSO redirects to the identity provider. Use the
+  [performance harness](performance.md) for authenticated chat and interaction measurements.
 
 ### `thunder-deep-review.yml`
 
@@ -195,10 +201,10 @@ Runs the `thunder-deep-review` skill read-only and posts an inline review.
 
 A PR against `main` gets two previews, and they are not equivalent.
 
-| Preview                 | URL                                                                           | What it is                                                                                      | Use it for                                                         |
-| ----------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Render (auto)           | `https://thunderbolt-pr-<n>.onrender.com`                                     | The web app, deployed by Render                                                                 | Quick UI checks; it is what Lighthouse scores                      |
-| Pulumi stack on Fargate | `app-pr-<n>.preview.thunderbolt.io` (plus `api-pr-<n>`, `thunderbolt-pr-<n>`) | The PR's own backend, frontend and marketing services, with their own logical Postgres database | Anything touching sync, SSO, migrations, or cross-device behaviour |
+| Preview                 | URL                                                                           | What it is                                                                                      | Use it for                                                                                                                                               |
+| ----------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Render (auto)           | `https://thunderbolt-pr-<n>.onrender.com`                                     | The web app, deployed by Render                                                                 | Quick UI checks                                                                                                                                          |
+| Pulumi stack on Fargate | `app-pr-<n>.preview.thunderbolt.io` (plus `api-pr-<n>`, `thunderbolt-pr-<n>`) | The PR's own backend, frontend and marketing services, with their own logical Postgres database | Sync, SSO, migrations, cross-device behaviour and signed-out Lighthouse scores; use the [performance harness](performance.md) for signed-in measurements |
 
 Fork PRs get the Pulumi preview only after a maintainer approves the run (see
 [Preview lifecycle](#preview-lifecycle)).
@@ -246,7 +252,13 @@ realm config or different PowerSync sync rules must fall back to a monolithic de
 They deploy through `pull_request_target` behind the `fork-preview-approval` environment,
 so a maintainer approves **every push**, not every PR; that is why a fork preview sits
 pending. Under that trigger the workflow file and the Pulumi program come from `main`, so
-a fork can change image contents but never the infrastructure code.
+a fork can change image contents but never the infrastructure code. The approval job's
+name shows the commit SHA the run will build.
+
+The approval job fails unless the environment has required reviewers. GitHub creates a
+missing environment with no rules, and an environment without reviewers would let the job
+start unapproved. Same-repo PRs skip this gate: only collaborators with write access can
+push a branch here, and their previews deploy automatically.
 
 ### Teardown: on close, hourly, and by hand
 
@@ -279,18 +291,21 @@ a teardown.
 
 ## Scripts the pipeline depends on
 
-| Script                                                  | Invoked by                                           | Notes                                                                 |
-| ------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------------------------------- |
-| `scripts/check-glib-variantstriter.sh`                  | `ci.yml` `rust` job                                  | RUSTSEC-2024-0429 tripwire; runs before the build because it is cheap |
-| `scripts/agent-core-browser-check.ts`                   | `bun run test:agent-core:browser` (`agent-core` job) | Chromium + WebKit check of the production agent chunk                 |
-| `crates/thunderbolt-acp-client/build.sh`                | You, by hand                                         | Regenerates `src/acp/iroh/pkg`; `--verify` reproduces the checksums   |
-| `crates/thunderbolt-acp-client/source-manifest.sh`      | `build.sh` and `ci.yml` `wasm-artifact` job          | Hashes current crate inputs for `SOURCES.txt`                         |
-| `crates/thunderbolt-acp-client/source-manifest.test.sh` | `ci.yml` `wasm-artifact` job                         | Tests source drift and build failures without a wasm toolchain        |
-| `scripts/drop-preview-db.sh`                            | `stack-deploy.yml` `destroy` job                     | Drops the per-PR logical database before `pulumi destroy`; idempotent |
-| `.github/scripts/review-orchestrator.mjs`               | `thunder-deep-review.yml`                            | All GitHub I/O for the review bot; unit-tested by `bun run test`      |
-| `.github/scripts/post-pr-metrics.cjs`                   | `pr-metrics.yml`                                     | Renders the metrics comment; unit-tested by `bun run test`            |
-| `.github/scripts/post-eval-results.ts`                  | `evals.yml`                                          | Unit-tested by `bun run test`                                         |
-| `scripts/lingui-macro-bun-shim.ts`                      | `--preload` on every `eval*` script                  | See below                                                             |
+| Script                                                  | Invoked by                                           | Notes                                                                           |
+| ------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `scripts/check-glib-variantstriter.sh`                  | `ci.yml` `rust` job                                  | RUSTSEC-2024-0429 tripwire; runs before the build because it is cheap           |
+| `scripts/agent-core-browser-check.ts`                   | `bun run test:agent-core:browser` (`agent-core` job) | Chromium + WebKit check of the production agent chunk                           |
+| `crates/thunderbolt-acp-client/build.sh`                | You, by hand                                         | Regenerates `src/acp/iroh/pkg`; `--verify` reproduces the checksums             |
+| `crates/thunderbolt-acp-client/source-manifest.sh`      | `build.sh` and `ci.yml` `wasm-artifact` job          | Hashes current crate inputs for `SOURCES.txt`                                   |
+| `crates/thunderbolt-acp-client/source-manifest.test.sh` | `ci.yml` `wasm-artifact` job                         | Tests source drift and build failures without a wasm toolchain                  |
+| `scripts/drop-preview-db.sh`                            | `stack-deploy.yml` `destroy` job                     | Drops the per-PR logical database before `pulumi destroy`; idempotent           |
+| `.github/scripts/review-orchestrator.mjs`               | `thunder-deep-review.yml`                            | All GitHub I/O for the review bot; unit-tested by `bun run test`                |
+| `.github/scripts/post-pr-metrics.cjs`                   | `pr-metrics.yml`                                     | Renders the metrics comment; unit-tested by `bun run test`                      |
+| `.github/scripts/post-eval-results.ts`                  | `evals.yml`                                          | Unit-tested by `bun run test`                                                   |
+| `.github/scripts/docs-audit-select.ts`                  | `docs-audit.yml`                                     | Picks the commits and docs for the weekly audit; tested by `bun run test`       |
+| `.github/scripts/docs-audit-check-patch.ts`             | `docs-audit.yml` `publish` job                       | Refuses an audit patch that touches anything but docs; tested by `bun run test` |
+| `scripts/lingui-macro-bun-shim.ts`                      | `--preload` on every `eval*` script                  | See below                                                                       |
+| `scripts/prune-unreachable-deps.ts`                     | `deploy/docker/backend.Dockerfile`                   | Works around `--production` installing dev-only optional peers                  |
 
 Bun has no Babel pass, so a Lingui macro imported under plain `bun run` resolves to a stub
 that throws, and the eval CLIs reach UI modules transitively. Every `eval*` script in

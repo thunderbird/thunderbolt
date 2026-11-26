@@ -99,6 +99,52 @@ test.describe('minimum app-version gate', () => {
     // wholesale — so it must never mount.
     await expect(page.locator('textarea')).toHaveCount(0)
 
+    // The macOS webview is transparent. The blocker must paint its own opaque
+    // surface in both themes so native vibrancy cannot wash out the copy.
+    for (const dark of [false, true]) {
+      await page.evaluate((dark) => {
+        document.documentElement.classList.add('mac-vibrancy')
+        document.documentElement.classList.toggle('dark', dark)
+      }, dark)
+      const contrast = await page.getByRole('main').evaluate((main) => {
+        const canvas = document.createElement('canvas')
+        canvas.width = canvas.height = 1
+        const context = canvas.getContext('2d')!
+        const background = getComputedStyle(main).backgroundColor
+        context.fillStyle = background
+        context.fillRect(0, 0, 1, 1)
+        const backgroundPixel = context.getImageData(0, 0, 1, 1).data
+        /** WCAG relative luminance of an sRGB pixel. */
+        const luminance = (pixel: Uint8ClampedArray) => {
+          const linear = Array.from(pixel.slice(0, 3), (channel) => {
+            const srgb = channel / 255
+            return srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4
+          })
+          return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722
+        }
+        const backgroundLuminance = luminance(backgroundPixel)
+        const ratios = Array.from(main.querySelectorAll('h1, p, span'), (element) => {
+          context.fillStyle = background
+          context.fillRect(0, 0, 1, 1)
+          context.fillStyle = getComputedStyle(element).color
+          context.fillRect(0, 0, 1, 1)
+          const textLuminance = luminance(context.getImageData(0, 0, 1, 1).data)
+          return (
+            (Math.max(textLuminance, backgroundLuminance) + 0.05) /
+            (Math.min(textLuminance, backgroundLuminance) + 0.05)
+          )
+        })
+        return { backgroundAlpha: backgroundPixel[3], ratios }
+      })
+      expect(contrast.backgroundAlpha).toBe(255)
+      expect(contrast.ratios.length).toBeGreaterThanOrEqual(4)
+      for (const ratio of contrast.ratios) {
+        expect(ratio).toBeGreaterThanOrEqual(4.5)
+      }
+      await expect(page.getByRole('heading', { name: 'Update required' })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeVisible()
+    }
+
     // "Sync cannot start" — on this fresh profile `isSyncEnabled()` is false, so
     // connect is never attempted. The returning-user case (sync already enabled)
     // is the one that matters and is covered separately below.

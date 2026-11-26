@@ -2,15 +2,27 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { requireEncryptedSyncSupport } from '@/lib/encrypted-sync-support'
 import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
-import { getAuthenticatedHeaders, getAuthToken } from '@/lib/auth-token'
+import {
+  captureAuthRequestLifetime,
+  getAuthenticatedHeaders,
+  getAuthToken,
+  getDeviceId,
+  isCurrentAuthRequest,
+} from '@/lib/auth-token'
 import { isSsoMode } from '@/lib/auth-mode'
+import { isLocalDataOwnedBy } from '@/lib/local-data-owner'
+import { getCachedSession } from '@/lib/session-cache'
 import { normalizeBackendUrl } from '@/lib/url-utils'
 import type { CommonPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
 import { encodeForUpload, postKeysSyncMessage } from '@/db/encryption'
 import { getAK, getPrimaryKeyId } from '@/crypto'
 import { initialKeyId } from '@shared/e2ee-types'
+import { decodeBase64Url } from '@shared/base64url'
 import { sanitizeErrorForTracking, trackSyncEvent } from './sync-tracker'
+import { z } from 'zod'
+import { modelConnectionMigrationMetadataPrefix, providerConnectionMigrationMetadata } from './crud-metadata'
 
 /**
  * Dispatched when the backend rejects credentials. The detail.reason discriminates handling:
@@ -64,6 +76,21 @@ const getCredentialsInvalidReason = (status: number, body: ErrorBody): Credentia
   return null
 }
 
+const powerSyncTokenPayloadSchema = z.object({ sub: z.string() })
+
+/**
+ * The account a PowerSync token names, or undefined (logged) for a malformed token. The claim is
+ * read without verification; the sync service verifies it.
+ */
+const powerSyncTokenSubject = (token: string): string | undefined => {
+  try {
+    return powerSyncTokenPayloadSchema.parse(JSON.parse(decodeBase64Url(token.split('.')[1] ?? '') ?? '')).sub
+  } catch (error) {
+    console.error('[PowerSync] The sync token names no account:', error)
+    return undefined
+  }
+}
+
 export const handleCredentialsInvalidIfNeeded = (status: number, body: ErrorBody): boolean => {
   const reason = getCredentialsInvalidReason(status, body)
   if (reason) {
@@ -75,7 +102,8 @@ export const handleCredentialsInvalidIfNeeded = (status: number, body: ErrorBody
 
 /**
  * Whether a queued write may create a row but must never overwrite one: a PUT
- * uploaded before this device has ever seen the account's state (GH #1299).
+ * uploaded before this device has ever seen the account's state (GH #1299), or
+ * a provider migration insert explicitly marked when it was queued.
  *
  * Scoped to PUT because PowerSync emits PUT from INSERT and PATCH from UPDATE,
  * so a PUT is a row the device invented while a PATCH is a deliberate edit.
@@ -83,8 +111,13 @@ export const handleCredentialsInvalidIfNeeded = (status: number, body: ErrorBody
  * Full rationale, the safety properties, and the known gaps:
  * docs/internals/architecture/powersync-account-devices.md — "Create-only writes".
  */
-export const isCreateOnlyWrite = (op: 'PUT' | 'PATCH' | 'DELETE', hasSynced: boolean): boolean =>
-  op === 'PUT' && !hasSynced
+export const isCreateOnlyWrite = (
+  op: 'PUT' | 'PATCH' | 'DELETE',
+  hasSynced: boolean,
+  source?: { table: string; metadata?: string },
+): boolean =>
+  op === 'PUT' &&
+  (!hasSynced || (source?.table === 'provider_connections' && source.metadata === providerConnectionMigrationMetadata))
 
 /**
  * PowerSync connector that handles authentication and data upload.
@@ -102,13 +135,17 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
   }
 
   /** Read auth immediately before a request: signing out can happen during async encryption work. */
-  private getRequestAuth(): { headers: Record<string, string>; credentials: RequestCredentials | undefined } {
+  private getRequestAuth(): {
+    headers: Record<string, string>
+    credentials: RequestCredentials | undefined
+    isCurrent: () => boolean
+  } {
     const headers = getAuthenticatedHeaders()
     const ssoMode = isSsoMode()
     if (!headers.Authorization && !ssoMode) {
       throw new Error('Not signed in — deferring sync')
     }
-    return { headers, credentials: ssoMode ? 'include' : undefined }
+    return { headers, credentials: ssoMode ? 'include' : undefined, isCurrent: captureAuthRequestLifetime() }
   }
 
   /**
@@ -124,14 +161,18 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
         return null
       }
 
+      const auth = this.getRequestAuth()
       if (!(await this.canDecryptAccountData())) {
         console.info('[PowerSync] Encryption keys not on this device yet — deferring sync')
         trackSyncEvent('sync_credentials_error', { error_code: 'KEYRING_MISSING', had_token: hadToken })
         return null
       }
 
+      if (!isCurrentSyncRequest(auth)) {
+        return null
+      }
       const tokenRequestStartedAt = performance.now()
-      const response = await this.fetchFn(`${this.backendUrl}/powersync/token`, this.getRequestAuth())
+      const response = await this.fetchFn(`${this.backendUrl}/powersync/token`, auth)
       console.info(`[PowerSync] /powersync/token: ${Math.round(performance.now() - tokenRequestStartedAt)}ms`)
 
       if (!response.ok) {
@@ -141,6 +182,9 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
           body = (await response.json()) as ErrorBody
         } catch {
           // ignore
+        }
+        if (!isCurrentSyncRequest(auth)) {
+          return null
         }
         handleCredentialsInvalidIfNeeded(status, body)
         handleAppVersionUnsupported(status, body)
@@ -173,6 +217,14 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
       }
 
       const data: TokenResponse = (await response.json()) as TokenResponse
+      if (!isCurrentSyncRequest(auth)) {
+        return null
+      }
+      // The local database, its queued uploads included, syncs only as the account that owns it.
+      if (!isLocalDataOwnedBy(powerSyncTokenSubject(data.token))) {
+        console.warn('[PowerSync] Not syncing: the local database is not open for the account the credentials name')
+        return null
+      }
       const expiresAt = new Date(data.expiresAt)
       trackSyncEvent('sync_credentials_fetch', {
         expires_in_ms: expiresAt.getTime() - Date.now(),
@@ -211,12 +263,16 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
    */
   private async canDecryptAccountData(): Promise<boolean> {
     if (await getAK()) {
+      requireEncryptedSyncSupport()
       return true
     }
     const account = await this.probeAccountEncryption()
     // 'absent' = the account never enabled E2EE, so its rows are plaintext and
     // readable. 'unknown' withholds the stream: an unprovable state must not be
     // treated as "nothing to decrypt".
+    if (account.status === 'set-up') {
+      requireEncryptedSyncSupport()
+    }
     return account.status === 'absent'
   }
 
@@ -244,6 +300,9 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
     const auth = this.getRequestAuth()
     try {
       const response = await this.fetchFn(`${this.backendUrl}/encryption/canary`, auth)
+      if (!isCurrentSyncRequest(auth)) {
+        return { status: 'unknown' }
+      }
       if (response.status === 404) {
         return { status: 'absent' }
       }
@@ -254,7 +313,9 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
         return { status: 'set-up' }
       }
       const body = (await response.json().catch(() => ({}))) as ErrorBody
-      handleCredentialsInvalidIfNeeded(response.status, body)
+      if (isCurrentSyncRequest(auth)) {
+        handleCredentialsInvalidIfNeeded(response.status, body)
+      }
       return { status: 'unknown' }
     } catch {
       return { status: 'unknown' }
@@ -282,6 +343,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
    */
   private async ensureUploadEncryptionReady(): Promise<void> {
     if ((await getPrimaryKeyId()) !== null) {
+      requireEncryptedSyncSupport()
       return
     }
     const account = await this.probeAccountEncryption()
@@ -291,6 +353,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
     if (account.status === 'unknown') {
       throw new Error('Cannot confirm account encryption state — deferring upload instead of risking plaintext')
     }
+    requireEncryptedSyncSupport()
     if (!(await getAK())) {
       throw new Error('Account is E2EE but this device holds no access key — deferring upload instead of plaintext')
     }
@@ -324,6 +387,14 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
    * This is called by PowerSync when there are pending changes in the upload queue.
    */
   async uploadData(database: CommonPowerSyncDatabase): Promise<void> {
+    // PowerSync uploads on connect, before any credentials check. This reads the account from the
+    // cached session while the request carries the current token or cookie, so the two can briefly
+    // disagree. The server refuses a queue sent from a device the session is not bound to
+    // (`DEVICE_NOT_BOUND`). This check only holds the queue back once another tab signs in another account.
+    if (!isLocalDataOwnedBy(getCachedSession()?.user?.id)) {
+      throw new Error('Local data belongs to another account — deferring upload')
+    }
+    const auth = this.getRequestAuth()
     // Get the next batch of changes from the upload queue
     const transaction = await database.getNextCrudTransaction()
 
@@ -343,26 +414,35 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
       const operations = await Promise.all(
         transaction.crud.map((op) => {
           const opName = op.op.toUpperCase() as 'PUT' | 'PATCH' | 'DELETE'
+          const migrationProvider =
+            opName === 'PATCH' &&
+            op.table === 'models' &&
+            op.metadata?.startsWith(modelConnectionMigrationMetadataPrefix)
+              ? op.metadata.slice(modelConnectionMigrationMetadataPrefix.length)
+              : undefined
           return encodeForUpload({
             op: opName,
             type: op.table,
             id: op.id,
             data: op.opData,
-            // Omitted rather than sent as `false` so post-first-sync uploads —
-            // every write by an established device — stay byte-identical to
-            // what previous builds sent.
+            // Migration metadata belongs to the queued operation, so retries remain
+            // create-only even if this device completed a sync before uploading it.
+            // Ordinary writes after first sync retain their existing semantics.
             //
             // Operational trap, kept here rather than in the doc: deploy the
             // backend before this client. Elysia drops body fields it does not
             // declare, so an older backend silently ignores the flag.
-            ...(isCreateOnlyWrite(opName, hasSynced) && { ifAbsent: true }),
+            ...(isCreateOnlyWrite(opName, hasSynced, op) && { ifAbsent: true }),
+            ...(migrationProvider && { ifProviderConnectionUnset: { provider: migrationProvider } }),
           })
         }),
       )
 
       console.info(`Uploading ${operations.length} operations to backend`)
 
-      const auth = this.getRequestAuth()
+      if (!isCurrentSyncRequest(auth)) {
+        throw new Error('Session changed while preparing sync upload')
+      }
       const response = await this.fetchFn(`${this.backendUrl}/powersync/upload`, {
         ...auth,
         method: 'PUT',
@@ -372,11 +452,16 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
 
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as ErrorBody
-        handleCredentialsInvalidIfNeeded(response.status, body)
-        handleAppVersionUnsupported(response.status, body)
+        if (isCurrentSyncRequest(auth)) {
+          handleCredentialsInvalidIfNeeded(response.status, body)
+          handleAppVersionUnsupported(response.status, body)
+        }
         throw new Error(`Upload failed: ${response.status} ${JSON.stringify(body)}`)
       }
 
+      if (!isCurrentSyncRequest(auth)) {
+        throw new Error('Session changed during sync upload')
+      }
       await transaction.complete()
       console.info('PowerSync upload completed successfully')
       trackSyncEvent('sync_upload', { operation_count: operations.length })
@@ -391,3 +476,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
     }
   }
 }
+
+/** Reject completions for a session or device that was replaced while the request was pending. */
+const isCurrentSyncRequest = (auth: { headers: Record<string, string>; isCurrent: () => boolean }): boolean =>
+  auth.isCurrent() && isCurrentAuthRequest(new Headers(auth.headers)) && auth.headers['X-Device-ID'] === getDeviceId()

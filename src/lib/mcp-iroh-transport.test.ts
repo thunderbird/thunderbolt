@@ -81,6 +81,38 @@ afterEach(() => {
 })
 
 describe('createMcpIrohTransport', () => {
+  it('rejects sending before startup without implicitly opening a connection', async () => {
+    const loadClient = mock(async () => makeFakeClient(makeFakeConnection().connection, []))
+    const transport = createMcpIrohTransport({ target: 't', loadClient })
+    await expect(transport.send(initialize)).rejects.toThrow('has not started')
+    expect(loadClient).not.toHaveBeenCalled()
+  })
+
+  it('closes promptly during a pending dial and releases the late connection without notifications', async () => {
+    const fake = makeFakeConnection()
+    const connecting = Promise.withResolvers<IrohConnectionLike>()
+    const connect = mock(() => connecting.promise)
+    const transport = createMcpIrohTransport({
+      target: 't',
+      loadClient: async () => ({ nodeId: () => 'test', connect }),
+    })
+    const onclose = mock(() => {})
+    const onerror = mock(() => {})
+    const onmessage = mock(() => {})
+    Object.assign(transport, { onclose, onerror, onmessage })
+    const starting = transport.start()
+    await flush()
+    expect(connect).toHaveBeenCalledTimes(1)
+    await transport.close()
+    await expect(starting).rejects.toMatchObject({ name: 'AbortError' })
+    connecting.resolve(fake.connection)
+    await flush()
+    expect(fake.closed()).toBe(true)
+    expect(onclose).toHaveBeenCalledTimes(1)
+    expect(onerror).not.toHaveBeenCalled()
+    expect(onmessage).not.toHaveBeenCalled()
+  })
+
   it('warns and still dials when transparent enrollment fails', async () => {
     const fake = makeFakeConnection()
     const captured: CapturedConnect[] = []
@@ -305,10 +337,19 @@ describe('createMcpIrohTransport', () => {
     const received: JSONRPCMessage[] = []
     transport.onmessage = (m) => received.push(m)
     await transport.start()
-    await transport.close()
-    // A late frame from the wire must not throw or deliver after close.
+    // Queue a frame before closing; its pending read settles after close.
     fake.pushBytes(enc('{"late":true}\n'))
+    await transport.close()
     await flush()
     expect(received).toEqual([])
   })
+})
+
+it('rejects sends after close without writing to the underlying connection', async () => {
+  const fake = makeFakeConnection()
+  const transport = createMcpIrohTransport({ target: 't', loadClient: async () => makeFakeClient(fake.connection, []) })
+  await transport.start()
+  await transport.close()
+  await expect(transport.send(initialize)).rejects.toMatchObject({ reason: 'remote-close' })
+  expect(fake.sent()).toEqual([])
 })

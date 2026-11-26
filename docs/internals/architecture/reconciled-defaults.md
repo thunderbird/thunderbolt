@@ -66,12 +66,12 @@ now ships, a value the user chose before it became the default: reconcile takes 
 
 Each table with a version constant records the highest defaults version ever applied to this account
 under a `defaults_version.*` key in `settings`: four keys (models, tasks, skills, settings) in
-`versionMarkerKeys` ([`src/lib/reconcile-defaults.ts:34`](../../../src/lib/reconcile-defaults.ts)).
+`versionMarkerKeys` ([`src/lib/reconcile-defaults.ts:44`](../../../src/lib/reconcile-defaults.ts)).
 Profiles have none. The markers are settings rows, so they sync; they are the ordering signal that
 stops two devices on different builds taking turns rewriting the same rows (THU-637, extended to
 every reconciled table in THU-677).
 
-`computeCanOverwrite` (`src/lib/reconcile-defaults.ts:86`) collapses two concerns into one boolean:
+`computeCanOverwrite` (`src/lib/reconcile-defaults.ts:96`) collapses two concerns into one boolean:
 
 ```ts
 const rawCanOverwrite = pickedVersion > (stored.version ?? Number.NEGATIVE_INFINITY)
@@ -164,14 +164,17 @@ guaranteed to survive anyway.
 ## The OTA channel (models only)
 
 `GET /config` ships the backend's own copy of the shared defaults as `defaults.models`,
-`{ version, defaultModelId, data }` at
+`{ version, defaultModelId, data, imageSupport }` at
 [`backend/src/api/config.ts:30`](../../../backend/src/api/config.ts). The client caches the whole config
 in a `persist`-backed zustand store ([`src/api/config-store.ts:47`](../../../src/api/config-store.ts)),
-so later boots read the last-known payload synchronously; only `version` and `data` are consumed, and
-nothing reads `defaultModelId` today. Both sides import `shared/defaults/models.ts`, so a defaults
-change can reach users on a backend deploy without a client release.
+so later boots read the last-known payload synchronously; the app consumes only `version`, `data` and
+`imageSupport`, and never reads `defaultModelId`. `imageSupport` maps each row id to whether it reads
+images and is picked together with `data`, so the app skips the probe for a re-slugged default and the
+CLI sends images to a new catalog model without a client release; changing an entry needs a
+`defaultModelsVersion` bump. Both sides import `shared/defaults/models.ts`, so a defaults change can
+reach users on a backend deploy without a client release.
 
-`pickModelsDefaults` ([`src/lib/pick-defaults.ts:35`](../../../src/lib/pick-defaults.ts)) takes the
+`pickModelsDefaults` ([`src/lib/pick-defaults.ts:42`](../../../src/lib/pick-defaults.ts)) takes the
 server payload only if all three guards hold. Trip one and the bundle wins:
 
 1. `version` is finite and **strictly** higher than `defaultModelsVersion`.

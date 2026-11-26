@@ -21,7 +21,7 @@ pulumi up
 | Platform  | Creates                          | Persistence  | Best For         |
 | --------- | -------------------------------- | ------------ | ---------------- |
 | `fargate` | VPC, ECS, ALB, EFS, Cloud Map    | EFS          | Serverless       |
-| `k8s`     | VPC, EKS, EBS CSI, nginx-ingress | EBS gp3 PVCs | Kubernetes teams |
+| `k8s`     | VPC, EKS, EBS CSI, Traefik       | EBS gp3 PVCs | Kubernetes teams |
 
 ## Project Structure
 
@@ -40,7 +40,7 @@ src/
   shared.ts           # `previews-shared` stack — long-lived VPC/ALB/postgres/keycloak
   per-pr-stack.ts     # Slim `preview-pr-<n>` stack — app services only, shared infra via StackReference
   # EKS
-  eks.ts              # EKS cluster, EBS CSI, Helm chart, nginx-ingress
+  eks.ts              # EKS cluster, EBS CSI, Helm chart, Traefik
 ```
 
 `index.ts` picks one of three shapes: the shared preview stack, a per-PR stack that
@@ -57,3 +57,22 @@ stack every other stack name still uses.
 
 Stack config and state are encrypted by Pulumi Cloud, which `PULUMI_ACCESS_TOKEN`
 authenticates against — there is no local secrets provider and no passphrase to set.
+
+## Transactional email (Fargate and PR previews)
+
+Set these on the stack that runs the backend to enable transactional email such as
+sign-in messages. Marketing inquiries use the independent [contact Worker](../../web/contact-worker/README.md).
+
+```bash
+pulumi config set emailFrom hello@example.com
+pulumi config set --secret resendApiKey
+pulumi up
+```
+
+Use a bare sender address from a domain verified in Resend. The secret command
+prompts for the key without placing it in shell history. Pulumi stores the key as a
+secret and provisions it in AWS Secrets Manager; ECS receives a secret reference,
+with read access scoped to that secret. The task reference includes the version ID,
+so changing the key with Pulumi rolls out new backend tasks. The sender is ordinary configuration. Preview stacks do not inherit production email credentials.
+
+For Kubernetes deployments, configure `backend.email` in the Helm values instead.

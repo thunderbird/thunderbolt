@@ -51,7 +51,7 @@ describe('OnboardingActionButtons', () => {
     it('should give the icon-only back button an accessible name', () => {
       renderComponent()
 
-      expect(screen.getByRole('button', { name: 'Go back' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
     })
   })
 

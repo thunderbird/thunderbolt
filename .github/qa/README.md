@@ -81,8 +81,8 @@ step succeeded), `review` (the independent review approved the patch, see the fi
 which the runner keeps too (see the fix stage below). The artifact holds a marker file whose content nobody reads.
 `publish` lists the run's artifact names with the GitHub API (`actions: read`, into `qa-out/artifacts.txt`) and
 needs a pass of its own run attempt for every check the task needs: `session` and `review` always, `replay` when the bug has a
-fake-AI web spec (`specs`), `visual` for a web visual check, `tests` for every web task but a layout or visual one
-proven by its browser check (`unitTest` in the plan), `real` when it has a real-AI web spec (`realSpecs`), each
+fake-AI web spec (`specs`), `visual` for a web visual check, `tests` when any finding of the bug needs a unit test
+(`unitTest` in the plan, see the fix stage below), `real` when it has a real-AI web spec (`realSpecs`), each
 platform in
 `verifyNative` for the fingerprint, and `checks` for every task. A missing pass is a failure, and the ticket gets
 `Human Required` with the reason, except a native platform's. That one goes to a person only when its patch built no

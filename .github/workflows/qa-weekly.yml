@@ -1218,8 +1218,8 @@ jobs:
             # Tasks with a real-AI web repro in their group, checked again on the real providers by verify-real.
             # Android's run in verify-native.
             echo "real=$(jq --compact-output '[.fixes[] | select(.realSpecs | length > 0)]' qa-out/fix-plan.json)"
-            # Web tasks no browser check proves (`unitTest`), whose patch must carry a unit test that verify-tests
-            # sees fail without the fix.
+            # Tasks where any finding of the bug needs a unit test (`unitTest`): the patch must carry one that
+            # verify-tests sees fail without the fix.
             echo "tests=$(jq --compact-output '[.fixes[] | select(.unitTest)]' qa-out/fix-plan.json)"
           } >> "$GITHUB_OUTPUT"
       # Also when filing failed: filed.json then lists the tickets that did reach Linear and the attachments lost.

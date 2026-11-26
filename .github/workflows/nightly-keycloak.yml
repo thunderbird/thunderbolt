@@ -1,0 +1,130 @@
+name: Nightly Keycloak
+
+# The real-Keycloak SSO and SCIM suite (docs/internals/development/keycloak-validation.md), every
+# night and on pull requests that change it. It gates nothing: the release waits only on Nightly E2E.
+
+on:
+  schedule:
+    - cron: '30 5 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/nightly-keycloak.yml'
+      - 'e2e/keycloak/**'
+
+concurrency:
+  group: nightly-keycloak-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  COMPOSE: docker compose -f e2e/keycloak/docker-compose.yml --env-file e2e/keycloak/extension.lock
+  KEYCLOAK_IMAGE_TAR: /tmp/keycloak-image.tar
+
+jobs:
+  keycloak:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-
+
+      - name: Install dependencies
+        run: |
+          bun install --frozen-lockfile
+          cd backend && bun install --frozen-lockfile
+
+      # The image bakes in the extension build and the realms, so both key the cache.
+      - name: Restore the Keycloak image
+        id: keycloak-image
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.KEYCLOAK_IMAGE_TAR }}
+          key: keycloak-image-${{ hashFiles('e2e/keycloak/extension.lock', 'e2e/keycloak/keycloak.Dockerfile', 'e2e/keycloak/realms/**') }}
+
+      - name: Build the Keycloak image
+        if: steps.keycloak-image.outputs.cache-hit != 'true'
+        run: |
+          $COMPOSE build keycloak
+          docker save -o "$KEYCLOAK_IMAGE_TAR" tb-keycloak-validation-keycloak
+
+      # Saved straight away, so a failing suite still keeps the build for the next run.
+      - name: Save the Keycloak image
+        if: steps.keycloak-image.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.KEYCLOAK_IMAGE_TAR }}
+          key: ${{ steps.keycloak-image.outputs.cache-primary-key }}
+
+      - name: Load the Keycloak image
+        if: steps.keycloak-image.outputs.cache-hit == 'true'
+        run: docker load -i "$KEYCLOAK_IMAGE_TAR"
+
+      - name: Start the stack
+        timeout-minutes: 10
+        run: $COMPOSE up -d --no-build --wait
+
+      # On Linux, host.docker.internal (host-gateway) is the bridge gateway, not the host's
+      # loopback, so scim-loopback reaches the backend only if it listens on every interface.
+      - name: Start the backend
+        run: |
+          cd backend
+          HOST=0.0.0.0 nohup bun --env-file=../e2e/keycloak/backend.env src/index.ts > ../keycloak-backend.log 2>&1 &
+          curl --fail --silent --show-error --retry 60 --retry-delay 2 --retry-all-errors http://localhost:8000/v1/health
+
+      - name: Connect the realms
+        run: bun e2e/keycloak/setup.ts
+
+      - name: Run the Keycloak suite
+        run: bun run test:keycloak
+
+      - name: Collect logs
+        if: failure()
+        run: $COMPOSE logs --no-color > keycloak-stack.log 2>&1
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: keycloak-logs
+          path: |
+            keycloak-backend.log
+            keycloak-stack.log
+          retention-days: 7
+
+      - name: Stop the stack
+        if: always()
+        run: $COMPOSE down -v
+
+  notify:
+    needs: keycloak
+    if: >-
+      always() && !cancelled() && github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/main' &&
+      (needs.keycloak.result == 'success' || needs.keycloak.result == 'failure')
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/notify-on-failure.yml
+    with:
+      conclusion: ${{ needs.keycloak.result }}
+    secrets:
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}

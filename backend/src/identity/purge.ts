@@ -3,12 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { db as DbType } from '@/db/client'
-import { identityConnection, membershipSource, orgMembership, user } from '@/db/schema'
+import { user } from '@/db/schema'
 import { APIError } from 'better-auth'
-import { and, eq, inArray } from 'drizzle-orm'
-import { type AccessState, computeAccess, idpManagingSources } from './access'
+import { eq } from 'drizzle-orm'
+import { computeAccess, idpManagingSources } from './access'
 import { insertAuditEvent } from './audit/write'
-import { getCurrentOrganizationId } from './current-organization'
+import { lockAccessState } from './lock-access-state'
 
 const refuse = (message: string, code: string) => new APIError('CONFLICT', { message, code })
 
@@ -22,8 +22,7 @@ const memberNotFound = () => new APIError('NOT_FOUND', { message: 'Member not fo
  * admin blocked, or a local member with no live source. The audit event has no foreign key, so it
  * outlives the user.
  *
- * The membership and its sources are locked before access is checked: a SCIM restore, an unblock or
- * a new source either commits first and is seen, or waits for the purge and finds the member gone.
+ * The user, their membership and its sources are locked before access is checked (`lockAccessState`).
  */
 export const purgeMember = async (
   database: typeof DbType,
@@ -33,60 +32,11 @@ export const purgeMember = async (
     throw new APIError('BAD_REQUEST', { message: 'Admins cannot purge themselves', code: 'PURGE_SELF' })
   }
   await database.transaction(async (tx) => {
-    const [target] = await tx.select({ isAnonymous: user.isAnonymous }).from(user).where(eq(user.id, userId))
-    if (!target || target.isAnonymous) {
+    const locked = await lockAccessState(tx, userId)
+    if (!locked || locked.isAnonymous) {
       throw memberNotFound()
     }
-    const orgId = getCurrentOrganizationId()
-    const [membership] = await tx
-      .select({
-        id: orgMembership.id,
-        orgId: orgMembership.orgId,
-        userId: orgMembership.userId,
-        blockedAt: orgMembership.blockedAt,
-      })
-      .from(orgMembership)
-      .where(and(eq(orgMembership.orgId, orgId), eq(orgMembership.userId, userId)))
-      .for('update')
-    const sources = membership
-      ? await tx
-          .select({
-            id: membershipSource.id,
-            kind: membershipSource.kind,
-            status: membershipSource.status,
-            identityConnectionId: membershipSource.identityConnectionId,
-            ref: membershipSource.ref,
-          })
-          .from(membershipSource)
-          .where(eq(membershipSource.membershipId, membership.id))
-          .for('update')
-      : []
-    // As `loadAccessState` reads it: only a `scim` or `sso` source's connection decides access.
-    const connectionIds = [
-      ...new Set(
-        sources.flatMap(
-          (source) => ((source.kind === 'scim' || source.kind === 'sso') && source.identityConnectionId) || [],
-        ),
-      ),
-    ]
-    const connections =
-      connectionIds.length === 0
-        ? []
-        : await tx
-            .select({
-              id: identityConnection.id,
-              status: identityConnection.status,
-              ssoProviderId: identityConnection.ssoProviderId,
-            })
-            .from(identityConnection)
-            .where(inArray(identityConnection.id, connectionIds))
-    const state: AccessState = {
-      membership: membership ?? null,
-      sources,
-      connectionStatusById: new Map(connections.map((connection) => [connection.id, connection.status])),
-      ssoConnectionIds: new Set(connections.flatMap((connection) => (connection.ssoProviderId ? connection.id : []))),
-    }
-
+    const { state } = locked
     const access = computeAccess(state)
     if (access.allowed) {
       throw refuse('This member still has access', 'MEMBER_HAS_ACCESS')

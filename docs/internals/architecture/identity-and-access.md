@@ -75,7 +75,9 @@ a connection with only a SCIM side keep email code and passkeys, as they have no
 
 IdP-managed members can't delete their own account (`DELETE /v1/account` and its step-up code answer
 403 `ACCOUNT_IDP_MANAGED`): the account goes when the IdP removes it, and a self-delete would drop the
-SCIM tombstone the IdP reprovisions through.
+SCIM tombstone the IdP reprovisions through. The delete re-checks this in its transaction, holding the
+user, membership and source rows a SCIM link writes (`lockAccessState`), so a link either commits first
+and refuses it or waits and finds the account gone.
 
 ## Admission at sign-in
 
@@ -218,8 +220,10 @@ change a mapping with its audit event, then replay the projection for the whole 
 member who has lost access: the user row cascades to their data, devices, `org_envelopes` and SCIM
 records, the tombstone included. It is allowed for a member an IdP removed with `DELETE`, one an admin
 blocked, or a local member with no live source. It is refused while the member has access, while an
-IdP has only suspended them (`active:false` can be reversed), and for the admin themselves. The
-`member.purged` event has no foreign key, so it outlives the user.
+IdP has only suspended them (`active:false` can be reversed), and for the admin themselves. Access is
+checked under `lockAccessState`, as account deletion does, so a concurrent SCIM restore or link is
+either seen or finds the member gone. The `member.purged` event has no foreign key, so it outlives the
+user.
 
 ## Bootstrap admin
 

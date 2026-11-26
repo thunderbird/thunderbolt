@@ -20,14 +20,14 @@ import {
   user,
 } from '@/db/schema'
 import { getSharedIsolatedTestDb } from '@/test-utils/db'
-import { createPostgresTestDb, postgresTestUrl } from '@/test-utils/postgres'
+import { createPostgresTestDb, postgresTestUrl, waitForLockWaiters } from '@/test-utils/postgres'
 import { createFakeOidcIdps, type FakeOidcIdps, fakeOidcClientId } from '@/test-utils/fake-oidc'
 import { insertTestUsers } from '@/test-utils/identity'
 import { createTestChallenge } from '@/test-utils/otp-challenge'
 import { createScimClient, keycloakUser, type ScimClient, scimGroupSchema, uniqueSuffix } from '@/test-utils/scim'
 import { createTestSettings } from '@/test-utils/settings'
 import { afterAll, beforeAll, describe, expect, it, spyOn } from 'bun:test'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { Elysia } from 'elysia'
 import { getAccess } from './access'
 import { detachMemberLink } from './admin/members'
@@ -433,20 +433,7 @@ describe.each(databases)('several connections in one org on $name', ({ name, ski
       expect(await sessionUserOf((await signIn(acme, externalId, email)).cookie)).toBe(userId)
     })
 
-    /** Resolve once `count` backends of this database are blocked on a lock. */
-    const lockWaiters = async (count: number) => {
-      for (let attempt = 0; attempt < 500; attempt++) {
-        // postgres.js returns the rows themselves.
-        const [{ waiting }] = (await db.execute(
-          sql`select count(*)::int as waiting from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'`,
-        )) as unknown as { waiting: number }[]
-        if (waiting >= count) {
-          return
-        }
-        await Bun.sleep(10)
-      }
-      throw new Error(`Fewer than ${count} backends ever waited on a lock`)
-    }
+    const lockWaiters = (count: number) => waitForLockWaiters(db, count)
 
     it.if(name === 'Postgres')(
       'refuses when a SCIM write reactivates the source while the detach waits for it',

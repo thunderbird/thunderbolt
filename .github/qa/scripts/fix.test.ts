@@ -1276,10 +1276,12 @@ describe('testRuns', () => {
 })
 
 describe('testFailed', () => {
-  test('counts a named test, a test in a suite and a colored line, never a hook or a file that did not load', () => {
+  test('counts a named test, a colored line and a failed beforeEach, never beforeAll, afterAll or a load error', () => {
     expect(testFailed('(fail) title [0.12ms]\n 0 pass\n 1 fail\n')).toBe(true)
     expect(testFailed('(fail) suite > keeps the title [0.13ms]\n')).toBe(true)
     expect(testFailed('\u001b[31m(fail)\u001b[0m title \u001b[2m[0.12ms]\u001b[0m\n')).toBe(true)
+    // A beforeEach that threw: Bun fails the test it ran before, by name (output of Bun 1.4.4).
+    expect(testFailed('error: setup broke\n(fail) suite > keeps the title [7.54ms]\n 0 pass\n 1 fail\n')).toBe(true)
     // A beforeAll or afterAll hook that threw, at the top or in a suite.
     expect(testFailed('error: not fixed\n(fail) (unnamed) [0.20ms]\n 0 pass\n 1 fail\n')).toBe(false)
     expect(testFailed('(fail) suite > (unnamed) [0.23ms]\n')).toBe(false)

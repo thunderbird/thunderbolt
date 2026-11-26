@@ -355,11 +355,11 @@ export const route = async ({
 
 /**
  * Why a fix PR adds no regression spec to `e2e/`, or undefined when it adds the repro spec (the agent's check in a
- * visual task). The unit test every web fix carries is the default guard, so a spec is added only for a bug a unit
- * test cannot show: happy-dom computes no layout, so a visual finding or a layout one qualifies, except an
- * `unnamed-control` (a missing accessible name shows in a unit test), and data lost on a reload qualifies, since the
- * repo's testing guide sends browser storage to `e2e/`. A security fix, a native one, one from the onboarding build
- * and a real-AI one never add a spec.
+ * visual task). A spec is added only for a bug a unit test cannot show: happy-dom computes no layout, so a visual
+ * finding or a layout one qualifies, except an `unnamed-control` (a missing accessible name shows in a unit test), and
+ * data lost on a reload qualifies, since the repo's testing guide sends browser storage to `e2e/`. The unit test is the
+ * default guard only for a task marked `unitTest` (see `needsUnitTest`). A security fix, a native one, one from the
+ * onboarding build and a real-AI one never add a spec.
  */
 export const whyNoSpec = (task: Omit<FixTask, 'unitTest'>) => {
   if (task.finding.area === 'security') return 'security'

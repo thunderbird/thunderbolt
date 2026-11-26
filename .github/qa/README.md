@@ -443,13 +443,14 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    task (`real`) is fixed on the fake AI, and `verify-real` runs its spec three times on the real providers against
    the patched frontend; all three must pass. A real-AI web visual task has no spec for `verify-real` to run, so
    `publish` never opens a PR for it: the ticket gets `Human Required`, like a fix that failed its checks.
-   The proof follows the defect. A layout or visual web task whose PR adds the browser check as its regression spec
-   (see `whyNoSpec` below: a layout problem other than a missing name, a visual defect) is proven by that check, which
-   failed without the patch and passed with it, since happy-dom computes no layout. Every other web task (one without
-   a `flow`: a missing name, logic, data lost on a reload, which also gets the spec, and the c1, real-AI and security
-   tasks, whose check never becomes a spec) must also add or change a unit test file, `*.test.ts` or `*.test.tsx` under `src/`, `shared/`, `backend/` or
-   `cli/`, that fails without the fix. `route` marks these tasks `unitTest` in the plan (`needsUnitTest`), and only
-   they get a `verify-tests` job.
+   For a web task with `unitTest` false, the browser check is the proof. These are the layout and visual tasks whose
+   PR adds that check as its regression spec (see `whyNoSpec` below: a layout problem other than a missing name, or a
+   visual defect). The check failed without the patch and passed with it, and happy-dom, which the unit tests run on,
+   computes no layout. Every other web task (one without a `flow`) must add or change a unit test file, `*.test.ts` or
+   `*.test.tsx` under `src/`, `shared/`, `backend/` or `cli/`, that fails without the fix. They cover a missing name,
+   logic and data lost on a reload (which also gets the spec), plus the c1, real-AI and security tasks, whose check
+   never becomes a spec. `route` marks them `unitTest` in the plan (`needsUnitTest`), and only they get a
+   `verify-tests` job.
    `verify-tests` (keyless, see "Trust zones") checks it on a fresh checkout with `fix.ts tests`: `testRuns` picks
    the test files the patch adds or changes (a deleted one is left out, a renamed one counts under its new name) and
    runs `bun test --timeout 5000` over them from each tree's own directory (`src/`, `backend/`, `cli/`,

@@ -119,7 +119,7 @@ test.describe('Short-code approval under a key-substituting server', () => {
       const shownCode = device.page.getByLabel('Approval code', { exact: true })
       await expect(shownCode).toHaveText(/^\d{2}$/, { timeout: 30_000 })
       const pendingCode = (await shownCode.textContent())!
-      // The genuine reveal must land before A2 overwrites the row below, or the late upload would clobber it.
+      // The genuine device finishes its side, its reveal recorded, before A2 answers the trusted device below.
       await waitForApprovalSession(deviceId, (row) => row.reveal !== null)
 
       // Answer the trusted device with A2's own reveal, on the session it froze.

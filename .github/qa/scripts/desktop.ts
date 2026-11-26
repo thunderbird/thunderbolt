@@ -48,10 +48,15 @@ const capabilities = {
   'tauri:options': { application: resolve('src-tauri/target/debug/thunderbolt') },
 }
 
+/** Opens a WebDriver session on tauri-driver, which starts a new instance of the debug app. */
 const launch = () => remote({ hostname: '127.0.0.1', port: 4444, logLevel: 'warn', capabilities })
 
 type Browser = Awaited<ReturnType<typeof launch>>
 
+/**
+ * Starts tauri-driver with a fresh profile in a temporary home, runs the checks and stops the driver. The driver's
+ * log and the screenshots of failed checks go to `out`.
+ */
 const run = async (out: string) => {
   const home = await mkdtemp(join(tmpdir(), 'qa-desktop-'))
   const downloads = join(home, 'Downloads')
@@ -82,6 +87,7 @@ const run = async (out: string) => {
   }
 }
 
+/** Polls tauri-driver's `/status` once a second for up to 30 seconds: `Bun.spawn` returns before the driver listens. */
 const waitForDriver = async () => {
   for (let i = 0; i < 30; i++) {
     try {
@@ -107,6 +113,7 @@ const sh = async (cmd: string[]) => {
   return stdout
 }
 
+/** Waits until the visible text of the page contains `text`. */
 const waitForText = (browser: Browser, text: string, timeout: number) =>
   browser.waitUntil(async () => (await (await browser.$('body')).getText()).includes(text), {
     timeout,
@@ -121,6 +128,10 @@ const layoutProblems = async (browser: Browser): Promise<LayoutProblem[]> => {
   return browser.execute(() => window.__qaLayout.problems())
 }
 
+/**
+ * Runs the checks in order. Each one records its own result and saves a screenshot when it fails. A failed sign-in
+ * ends the run, because every later check needs the account.
+ */
 const checks = async (out: string, downloads: string): Promise<CheckResult[]> => {
   const results: CheckResult[] = []
   let browser = await launch()

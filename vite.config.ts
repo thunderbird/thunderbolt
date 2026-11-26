@@ -17,6 +17,7 @@ import { exaRelayPlugin, exaRelayProxies } from './scripts/exa-relay'
 import { tinfoilSearchRelayPlugin, tinfoilSearchProxy } from './scripts/tinfoil-search-relay'
 import { copyPowerSyncAssets } from './scripts/copy-powersync-assets'
 import { officeSandboxScriptPlugin } from './scripts/office-sandbox-script'
+import { stripDanglingSourceMapsPlugin } from './scripts/strip-dangling-source-maps'
 import {
   addWebKitCompatToAsset,
   resolvePreloadDependencies,
@@ -297,7 +298,9 @@ export default defineConfig({
   },
   worker: {
     format: 'es',
-    plugins: () => [officeSandboxScriptPlugin()],
+    // The worker's `?url` import of pptxgenjs copies a script naming a map the build never emits, and PostHog's
+    // source map upload fails on it.
+    plugins: () => [officeSandboxScriptPlugin(), stripDanglingSourceMapsPlugin()],
     // Workers have their own intrinsics; a page polyfill does not protect them.
     rolldownOptions: { output: { banner: webkitCompatScript } },
   },

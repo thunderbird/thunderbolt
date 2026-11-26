@@ -47,15 +47,15 @@ describe('AdminSidebar', () => {
     const onNavigate = mock((_path: string) => {})
     renderSidebar('/admin/members', onNavigate)
 
-    for (const label of ['Members', 'Groups', 'Sign-in methods', 'Audit log']) {
+    for (const label of ['Members', 'Groups', 'Sign In', 'Audit Log']) {
       expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
     }
-    fireEvent.click(screen.getByRole('button', { name: 'Audit log' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Audit Log' }))
     expect(onNavigate).toHaveBeenCalledWith('/admin/audit-log')
   })
 
   it('marks the current screen', () => {
     renderSidebar('/admin/sign-in-methods')
-    expect(screen.getByRole('button', { name: 'Sign-in methods' })).toHaveAttribute('data-active', 'true')
+    expect(screen.getByRole('button', { name: 'Sign In' })).toHaveAttribute('data-active', 'true')
   })
 })

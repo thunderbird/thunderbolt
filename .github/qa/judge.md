@@ -48,12 +48,12 @@ Drop it when any of these hold:
 - You cannot tell from the evidence which of the above applies.
 
 `<replay_provider>` says what answered the app's AI requests during the replay: `real` for the real providers, `fake`
-for a local fake AI provider behind the app's backend. The fake has only Opus 5.5 configured, so on `fake` a failure
-of any other model is an environment artifact. How the app handles that failure (its message, whether the chat
-recovers) is still judged.
+for a local fake AI provider behind the app's backend. The fake accepts any model id, but on `fake` the backend has no
+key for the Tinfoil models, so only Opus 5.5 reaches the fake. A failure of any other model there is an environment
+artifact. How the app handles that failure (its message, whether the chat recovers) is still judged.
 
 The fake answers Anthropic Messages (`/v1/messages`) and OpenAI-compatible chat completions (`/v1/chat/completions`)
-with one scripted reply, lists one model at `/v1/models`, and gives a malformed body a 400. It answers every other
+with a canned reply, lists one model at `/v1/models`, and gives a malformed body a 400. It answers every other
 request with a 404 and logs it. `<fake_provider>`, when present, lists the requests it logged during this finding's
 replay runs. A request to another endpoint of the Anthropic or OpenAI-compatible API, such as `/v1/responses`, is one
 the fake lacks: drop the finding when its failure follows from one, such as a reply that never comes or errors, a model
@@ -61,7 +61,7 @@ that fails, or a 4xx or 5xx on a chat or model request. A request no provider wo
 `/v1/`, points at the app instead and is evidence for the finding. Specs replay in parallel, so a line marked
 `(also during another spec's run)` may come from another finding's run, and that line alone does not justify dropping
 an AI failure. A failure that does not involve the AI (a layout, a label, a settings form) is judged on its own.
-Without `<fake_provider>`, a failing chat request is evidence like any other, not a sign of the fake.
+Without `<fake_provider>`, a failing chat request counts as evidence like any other.
 A message containing `qa:slow` or `qa:cut` makes the fake stream slowly or drop the connection on purpose: the delay
 or the cut is not a finding, and how the app then stops, retries and recovers is judged as usual.
 

@@ -927,7 +927,7 @@ describe("CI's check of the fix job's dev stack", () => {
   const check = ci.jobs.qa.steps.find((s) => s.name === 'Start the dev stack as another user')
   const ports = JSON.parse(readFileSync(join(import.meta.dir, '../ports.json'), 'utf8')) as Record<string, number>
 
-  const runCheck = (log: string, fail: { page?: boolean; stop?: boolean } = {}) => {
+  const runCheck = (log: string, fail: { page?: boolean; control?: boolean; stop?: boolean } = {}) => {
     const dir = mkdtempSync(join(work, 'dev-check-'))
     mkdirSync(join(dir, '.github/qa/scripts'), { recursive: true })
     const stack = `echo "stack $*" >> "$RUNNER_TEMP/calls"\n[ "$1" = start ] && cat "$RUNNER_TEMP/log" > "$RUNNER_TEMP/qa-stack.log"\n[ "$1" = stop ] && [ -n "$FAIL_STOP" ] && exit 1\nexit 0\n`
@@ -938,6 +938,11 @@ describe("CI's check of the fix job's dev stack", () => {
       '#!/bin/sh\nfor arg; do url=$arg; done\necho "load $url" >> "$RUNNER_TEMP/calls"\n[ -n "$FAIL_PAGE" ] && exit 1\nexit 0\n',
       { mode: 0o755 },
     )
+    writeFileSync(
+      join(dir, 'bunx'),
+      '#!/bin/sh\necho "bunx $*" >> "$RUNNER_TEMP/calls"\n[ -n "$FAIL_CONTROL" ] && exit 1\nexit 0\n',
+      { mode: 0o755 },
+    )
     writeFileSync(join(dir, 'log'), log)
     const proc = Bun.spawnSync(['bash', '-e', '-c', check?.run ?? 'exit 99'], {
       cwd: dir,
@@ -945,6 +950,7 @@ describe("CI's check of the fix job's dev stack", () => {
         PATH: `${dir}:${process.env.PATH}`,
         RUNNER_TEMP: dir,
         FAIL_PAGE: fail.page ? '1' : '',
+        FAIL_CONTROL: fail.control ? '1' : '',
         FAIL_STOP: fail.stop ? '1' : '',
       },
     })
@@ -963,6 +969,8 @@ describe("CI's check of the fix job's dev stack", () => {
     expect(calls.at(-1)).toBe('stack stop')
     for (const name of ['QA_FRONTEND_PORT', 'QA_ONBOARDING_PORT'])
       expect(calls).toContain(`load http://localhost:${ports[name]}`)
+    // The weekly guard runs before the stack stops. It records video, so a missing FFmpeg fails the PR.
+    expect(calls.at(-2)).toBe('bunx playwright test --config .github/qa/playwright.config.ts --project control')
     // The job installs only Chrome for Testing, not Playwright's bundled Chromium.
     expect(check?.run).toContain('chromium.launch(getChromeLaunchOptions())')
   })
@@ -979,8 +987,8 @@ describe("CI's check of the fix job's dev stack", () => {
     }
   })
 
-  test('fails when a page does not load or the stack does not stop, still stops it and prints the log', () => {
-    for (const fail of [{ page: true }, { stop: true }]) {
+  test('fails when a page does not load, the guard fails or the stack does not stop, still stops it and prints the log', () => {
+    for (const fail of [{ page: true }, { control: true }, { stop: true }]) {
       const { code, calls, out } = runCheck('VITE ready\nstack ready\n', fail)
       expect(code).not.toBe(0)
       expect(calls.at(-1)).toBe('stack stop')

@@ -46,7 +46,7 @@ In the fix job the dev servers reload the agent's edits outside its sandbox, so 
 (`QA_BACKEND_USER` with `stack.sh start dev`). That user cannot write to the checkout: `stack.sh start` makes it
 the owner of `node_modules/.vite` and `public/@powersync`, and every server it runs gets `CACHE_DIR` in its own
 home, where Storybook's Vite plugin keeps its cache. The `qa` job in `ci.yml` starts this dev stack as another user,
-loads both pages, stops it and fails on any `EACCES`, `EPERM` or "permission denied" in the stack log. It also runs
+loads both pages, runs the guard against it, stops it and fails on any `EACCES`, `EPERM` or "permission denied" in the stack log. It also runs
 when `vite.config.ts`, `scripts/copy-powersync-assets.ts`, `package.json` or `bun.lock` change, since a new plugin
 or version can write somewhere new. A step right after the start fails the job if a process of the job's
 user listens on 8005, 1424 or 1425 (`ss` names the owner only of the caller's own sockets), and `stack.sh lock` then

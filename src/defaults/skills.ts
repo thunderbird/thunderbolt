@@ -239,7 +239,7 @@ export const defaultSkillMap: Skill = {
   name: 'map',
   label: 'Map',
   description:
-    'Use this skill when the user asks to see locations, routes, regions, or other geographic results on an interactive map.',
+    'Use this skill when the user asks to see locations, routes, regions, or other geographic results on an interactive map. Load it instead of drawing a map with render_html.',
   instruction: mapWidgetInstruction,
   enabled: 1,
   pinnedOrder: null,
@@ -395,4 +395,4 @@ export const defaultSkills: ReadonlyArray<Skill> = [
  * The paired snapshot test in `skills.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultSkillsVersion = 10
+export const defaultSkillsVersion = 11

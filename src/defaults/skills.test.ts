@@ -54,8 +54,8 @@ const computeSnapshotHash = () =>
   defaultSkills.map((skill, index) => `${index}:${skill.id}:${hashSkill(skill)}`).join('|')
 
 const expectedSnapshot = {
-  version: 10,
-  hash: '0:01996330-0000-7000-8000-000000000001:mfmi05|1:01996330-0000-7000-8000-000000000002:-669lkj|2:01996330-0000-7000-8000-000000000003:-30vmih|3:01996330-0000-7000-8000-000000000004:-ypyizk|4:01996330-0000-7000-8000-000000000005:-hc6mv3|5:01996330-0000-7000-8000-000000000006:-o0c0ul|6:01996330-0000-7000-8000-000000000007:atrnpq|7:01996330-0000-7000-8000-000000000008:-ue9tpd|8:01996330-0000-7000-8000-000000000009:o1nire|9:01996330-0000-7000-8000-000000000010:oywjh5|10:01996330-0000-7000-8000-000000000011:l7i1mb|11:01996330-0000-7000-8000-000000000012:-v6vndz',
+  version: 11,
+  hash: '0:01996330-0000-7000-8000-000000000001:mfmi05|1:01996330-0000-7000-8000-000000000002:-669lkj|2:01996330-0000-7000-8000-000000000003:-30vmih|3:01996330-0000-7000-8000-000000000004:-ypyizk|4:01996330-0000-7000-8000-000000000005:-hc6mv3|5:01996330-0000-7000-8000-000000000006:-o0c0ul|6:01996330-0000-7000-8000-000000000007:atrnpq|7:01996330-0000-7000-8000-000000000008:-ue9tpd|8:01996330-0000-7000-8000-000000000009:-owct6t|9:01996330-0000-7000-8000-000000000010:oywjh5|10:01996330-0000-7000-8000-000000000011:l7i1mb|11:01996330-0000-7000-8000-000000000012:-v6vndz',
 }
 
 describe('defaultSkills version snapshot', () => {
@@ -97,7 +97,7 @@ describe('defaultSkills', () => {
       {
         skill: defaultSkillMap,
         description:
-          'Use this skill when the user asks to see locations, routes, regions, or other geographic results on an interactive map.',
+          'Use this skill when the user asks to see locations, routes, regions, or other geographic results on an interactive map. Load it instead of drawing a map with render_html.',
         instruction: mapWidgetInstruction,
       },
     ]

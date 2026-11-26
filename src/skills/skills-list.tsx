@@ -4,12 +4,13 @@
 
 import { Trans, useLingui } from '@lingui/react/macro'
 import { LayoutGroup, m } from 'framer-motion'
-import { Plus } from 'lucide-react'
+import { Plus, Zap } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-import { SettingsEmptyState, SettingsNoResults } from '@/components/settings/settings-empty-state'
+import { SettingsNoResults } from '@/components/settings/settings-empty-state'
 import { SettingsListBody, SettingsListPane, SettingsSectionLabel } from '@/components/settings/settings-list'
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSearch } from '@/components/ui/page-search'
@@ -133,7 +134,8 @@ export const SkillsList = ({
           {isLibraryEmpty && (
             // The "I deleted everything" empty state — the list is the page's
             // main surface now, so the create CTA lives here.
-            <SettingsEmptyState
+            <EmptyState
+              icon={Zap}
               title={t`No skills yet`}
               description={
                 <Trans>

@@ -5,9 +5,9 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { AlertTriangle, Cpu, Plus } from 'lucide-react'
 
-import { SettingsEmptyState } from '@/components/settings/settings-empty-state'
 import { SettingsListBody, settingsListBodyRowsClass, SettingsSelectableRow } from '@/components/settings/settings-list'
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { needsApiKey } from './model-policy'
 import { PrivateBadge } from '@/components/ui/private-badge'
 import { Switch } from '@/components/ui/switch'
@@ -79,8 +79,8 @@ export const ModelsList = ({ models, activeModelId, onSelect, onToggle, onAdd, o
         )
       })}
       {models.length === 0 && (
-        <SettingsEmptyState
-          icon={<Cpu className="size-10 text-muted-foreground" />}
+        <EmptyState
+          icon={Cpu}
           title={t`No models configured`}
           description={t`Get started by adding your first AI model.`}
           action={

@@ -6,13 +6,16 @@ import { expect, type Browser, type Page, type ViewportSize } from '@playwright/
 import type { AdminConnectionDetail, LinkReview } from '../shared/admin-api'
 import { openSidebarOnMobile } from './helpers'
 import {
-  adminAppUrl,
   type AdminApiRequest,
+  adminAppUrl,
   adminTest as test,
   retireConnection,
   routeIdpIdentity,
+  searchMembers,
   uniqueEmail,
   uniqueName,
+  choosePanelAction,
+  panelMenu,
 } from './admin/helpers'
 
 // The env connection's name (backend `ensureEnvSsoConnection`).
@@ -71,17 +74,19 @@ const expectRefused = async (
 const reviewsOn = (adminApi: AdminApiRequest, connectionId: string, status: string) =>
   adminApi.request<{ reviews: LinkReview[] }>('GET', `admin/link-reviews?status=${status}&connectionId=${connectionId}`)
 
-/**
- * Open the person's review from the section above Members, with the rejected ones listed too when
- * `rejected`. Other workers' reviews share the org, so the section's count isn't asserted.
- */
-const openReview = async (page: Page, email: string, { rejected = false } = {}) => {
-  await page.goto(rejected ? '/admin/members?rejected=1' : '/admin/members')
-  await page.getByRole('button', { name: email, exact: true }).click()
+/** The person's link review row on Members, where rejected ones are listed too, dimmed, at the end. */
+const reviewRow = (page: Page, email: string) =>
+  page.getByRole('button', { name: `Open link review for ${email}`, exact: true })
+
+/** Open the person's review on Members, searched by email: other workers share the org. */
+const openReview = async (page: Page, email: string) => {
+  await searchMembers(page, email)
+  await reviewRow(page, email).click()
 }
 
+/** Decide the open review from its ⋯ menu, through the confirm. */
 const decide = async (page: Page, decision: 'Approve' | 'Reject') => {
-  await page.getByRole('button', { name: decision, exact: true }).click()
+  await choosePanelAction(page, decision)
   const dialog = page.getByRole('alertdialog')
   await dialog.getByRole('button', { name: decision, exact: true }).click()
   await expect(dialog).toBeHidden()
@@ -113,16 +118,20 @@ test('a held SSO link waits above Members, and approving it lets the person sign
   const navItem = page.locator('[data-sidebar="menu-item"]', { hasText: 'Members' })
   await expect(navItem.locator('[data-sidebar="menu-badge"]')).toHaveText(/^\d+\+?$/)
 
+  await page.goto('/admin/members')
+  await expect(reviewRow(page, person.email)).toContainText('Review pending')
   await openReview(page, person.email)
-  const incoming = page.getByRole('region', { name: 'Incoming identity' })
-  await expect(incoming.getByText(connection.name)).toBeVisible()
-  await expect(incoming.getByText('SSO sign-in')).toBeVisible()
-  await expect(incoming.getByText(person.heldSub)).toBeVisible()
-  await expect(page.getByRole('region', { name: 'Existing account' }).getByText(person.email)).toBeVisible()
+  const panel = page.getByRole('complementary').or(page.getByRole('dialog'))
+  await expect(panel.getByText(connection.name, { exact: true })).toBeVisible()
+  await expect(panel.getByText('SSO sign-in', { exact: true })).toBeVisible()
+  await expect(panel.getByText(person.heldSub, { exact: true })).toBeVisible()
+  await expect(panel.getByText('Existing account', { exact: true })).toBeVisible()
   await decide(page, 'Approve')
 
   await expect(page.getByRole('heading', { name: person.email, exact: true })).toBeHidden()
-  await expect(page.getByRole('button', { name: person.email, exact: true })).toBeHidden()
+  // The search still holds the email, so the person's member row is what the list shows now.
+  await expect(page.getByText(person.email, { exact: true }).first()).toBeVisible()
+  await expect(reviewRow(page, person.email)).toHaveCount(0)
 
   const linked = await visitorPage(browser, viewport)
   await signInThrough(linked, connection.name, { sub: person.heldSub, email: person.email })
@@ -144,7 +153,11 @@ test('rejecting a held link keeps the person refused, and the rejected link can 
   await decide(page, 'Reject')
 
   await expectRefused(browser, viewport, connection, person)
-  await openReview(page, person.email, { rejected: true })
-  await expect(page.getByRole('button', { name: 'Approve', exact: true })).toBeEnabled()
-  await expect(page.getByRole('button', { name: 'Reject', exact: true })).toHaveCount(0)
+  // Checked before opening: on narrow screens the panel covers the list.
+  await searchMembers(page, person.email)
+  await expect(reviewRow(page, person.email)).toContainText('Rejected')
+  await reviewRow(page, person.email).click()
+  await panelMenu(page).click()
+  await expect(page.getByRole('menuitem', { name: 'Approve', exact: true })).toBeEnabled()
+  await expect(page.getByRole('menuitem', { name: 'Reject', exact: true })).toHaveCount(0)
 })

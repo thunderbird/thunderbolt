@@ -18,6 +18,8 @@ export const adminQueryKeys = {
   groups: {
     all: ['admin', 'groups'] as const,
     list: () => ['admin', 'groups', 'list'] as const,
+    /** Every group in one array, for a picker; under `list()` so refreshing the list refreshes it. */
+    listAll: () => ['admin', 'groups', 'list', 'all'] as const,
     detail: (groupId: string) => ['admin', 'groups', 'detail', groupId] as const,
     members: (groupId: string) => ['admin', 'groups', 'members', groupId] as const,
   },

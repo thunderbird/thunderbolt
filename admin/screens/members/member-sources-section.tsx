@@ -34,7 +34,7 @@ export const MemberSourcesSection = ({ member, selfId, connectionStatusById, det
   const connectionName = detaching?.name ?? ''
 
   return (
-    <DetailField label={<Trans>How they sign in</Trans>}>
+    <DetailField label={<Trans>Sign-in methods</Trans>}>
       <ul className="flex flex-col gap-3">
         {member.sources.map((source, index) => {
           const detachState = getDetachState(source, member, selfId, connectionStatusById)
@@ -43,9 +43,7 @@ export const MemberSourcesSection = ({ member, selfId, connectionStatusById, det
           return (
             <li key={`${source.kind}-${connection?.id ?? index}`} className="flex flex-col gap-1.5">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[length:var(--font-size-body)] font-medium">
-                  {i18n._(sourceKindLabels[source.kind])}
-                </span>
+                <span className="text-base leading-snug text-foreground">{i18n._(sourceKindLabels[source.kind])}</span>
                 <StatusBadge tone={statusTones[source.status]}>{i18n._(sourceStatusLabels[source.status])}</StatusBadge>
               </div>
               {connection && (
@@ -68,7 +66,7 @@ export const MemberSourcesSection = ({ member, selfId, connectionStatusById, det
       <ConfirmActionDialog
         open={detaching !== null}
         title={t`Detach from ${connectionName}?`}
-        description={t`This removes their link to this identity provider. Their other sign-in sources then decide their access.`}
+        description={t`Their other sign-in methods then decide their access.`}
         confirmLabel={t`Detach`}
         isPending={detach.isPending}
         onCancel={() => setDetaching(null)}

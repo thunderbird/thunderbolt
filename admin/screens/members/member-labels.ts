@@ -11,7 +11,7 @@ export const accessRefusalLabels: Record<AccessRefusal, MessageDescriptor> = {
   not_member: msg`Not a member of this organization`,
   blocked: msg`Blocked by an admin`,
   deprovisioned: msg`Removed by the identity provider`,
-  no_live_source: msg`Nothing admits them any more`,
+  no_live_source: msg`No active sign-in method`,
   sso_required: msg`Can only sign in through single sign-on`,
 }
 

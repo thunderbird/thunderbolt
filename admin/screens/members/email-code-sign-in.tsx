@@ -21,16 +21,11 @@ export const EmailCodeSignIn = ({ origin, ssoMode }: EmailCodeSignInProps) => {
 
   return (
     <>
-      <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
-        {ssoMode ? (
-          <Trans>
-            A local admin signs in here when the identity provider is down. With one identity provider the sign-in
-            screen goes straight to it, so keep this address somewhere that doesn't depend on it.
-          </Trans>
-        ) : (
-          <Trans>Every admin signs in with an email code from the app's sign-in page.</Trans>
-        )}
-      </p>
+      {ssoMode && (
+        <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
+          <Trans>Keep this address somewhere that doesn't depend on your identity provider.</Trans>
+        </p>
+      )}
       {url ? (
         <CopyableField label={t`Email-code sign-in address`} copyLabel={t`Copy the sign-in address`} value={url} />
       ) : (

@@ -10,9 +10,9 @@ export const isExpiredInvitation = (invitation: Invitation, now = Date.now()) =>
 
 const invitationEditPrefix = 'invite:'
 
-/** The `?edit=` value that opens an invitation's panel on Members; member ids never carry the prefix. */
+/** The selection id that opens an invitation's panel on Members; member ids never carry the prefix. */
 export const invitationEditId = (invitationId: string) => `${invitationEditPrefix}${invitationId}`
 
-/** The invitation id an `?edit=` value opens, or null for a member or the invite form. */
+/** The invitation id a selection id opens, or null for a member or the invite form. */
 export const parseInvitationEditId = (editId: string | null) =>
   editId?.startsWith(invitationEditPrefix) ? editId.slice(invitationEditPrefix.length) : null

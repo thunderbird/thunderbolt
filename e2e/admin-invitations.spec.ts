@@ -3,19 +3,29 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { expect, type Browser, type Page, type ViewportSize } from '@playwright/test'
-import { adminAppUrl, adminTest as test, e2eSignInCode, readInviteUrl, uniqueEmail } from './admin/helpers'
+import {
+  adminAppUrl,
+  adminTest as test,
+  choosePanelAction,
+  e2eSignInCode,
+  readInviteUrl,
+  searchMembers,
+  uniqueEmail,
+  closePanel,
+} from './admin/helpers'
 
 /** Invite `email` from the Members screen. */
 const invite = async (page: Page, email: string) => {
-  await page.getByRole('button', { name: 'Invite member' }).click()
+  await page.getByRole('button', { name: 'Invite Member' }).click()
   await page.getByLabel('Email', { exact: true }).fill(email)
-  await page.getByRole('button', { name: 'Send invitation' }).click()
-  await expect(page.getByText(`Invitation sent to ${email}.`)).toBeVisible()
+  await page.getByRole('button', { name: 'Invite', exact: true }).click()
+  // Sent: the new invitation's panel opens, as a new skill's does after Create.
+  await expect(page.getByRole('heading', { name: email, exact: true })).toBeVisible()
 }
 
 /** The Members row for `email`: an invitation or, once they sign in, the member. */
 const row = (page: Page, email: string) =>
-  page.locator('[data-slot="card"]', { has: page.getByRole('button', { name: email, exact: true }) })
+  page.locator('[data-slot="card"]', { has: page.getByRole('button', { name: `Open ${email}`, exact: true }) })
 
 /** A page signed in as nobody, in this project's viewport. */
 const openSignedOut = async (browser: Browser, viewport: ViewportSize | null) => {
@@ -27,7 +37,7 @@ const openSignedOut = async (browser: Browser, viewport: ViewportSize | null) =>
   return { page: await context.newPage(), close: () => context.close() }
 }
 
-test('an invitation shows in Members as pending, and its link signs the person in as a member', async ({
+test('an invitation shows in Members as invited, and its link signs the person in as a member', async ({
   page,
   browser,
   viewport,
@@ -36,7 +46,9 @@ test('an invitation shows in Members as pending, and its link signs the person i
   await page.goto('/admin/members')
   await invite(page, email)
   await expect(page).toHaveURL(/\/admin\/members$/)
-  await expect(row(page, email)).toContainText('Invitation expires')
+  await closePanel(page)
+  await expect(row(page, email)).toContainText('Invited')
+  await expect(row(page, email)).toContainText('Expires')
 
   const invitee = await openSignedOut(browser, viewport)
   await invitee.page.goto(await readInviteUrl(email))
@@ -49,7 +61,8 @@ test('an invitation shows in Members as pending, and its link signs the person i
 
   await page.reload()
   await expect(row(page, email)).toHaveCount(1)
-  await expect(row(page, email)).not.toContainText('Invitation expires')
+  await expect(row(page, email)).not.toContainText('Expires')
+  await expect(row(page, email)).not.toContainText('Invited')
 })
 
 test('a revoked invitation link is refused', async ({ page, browser, viewport }) => {
@@ -58,13 +71,12 @@ test('a revoked invitation link is refused', async ({ page, browser, viewport })
   await invite(page, email)
   const inviteUrl = await readInviteUrl(email)
 
-  await page.getByRole('button', { name: email, exact: true }).click()
-  await page.getByRole('button', { name: 'Revoke invitation' }).click()
+  // The new invitation's panel is already open.
+  await choosePanelAction(page, 'Revoke')
   await page.getByRole('alertdialog').getByRole('button', { name: 'Revoke invitation' }).click()
-  await expect(page.getByText(`Invitation to ${email} revoked.`)).toBeVisible()
-  await expect(row(page, email)).toHaveCount(0)
-  await page.getByRole('button', { name: 'More', exact: true }).click()
-  await page.getByRole('menuitem', { name: 'Show revoked invitations' }).click()
+  // Revoked invitations stay listed, dimmed, at the end of Members: past the other workers' members.
+  await closePanel(page)
+  await searchMembers(page, email)
   await expect(row(page, email)).toContainText('Revoked')
 
   const invitee = await openSignedOut(browser, viewport)
@@ -77,8 +89,8 @@ test('a revoked invitation link is refused', async ({ page, browser, viewport })
 
 test('Members opens the invite form in place', async ({ page }) => {
   await page.goto('/admin/members')
-  await page.getByRole('button', { name: 'Invite member' }).click()
+  await page.getByRole('button', { name: 'Invite Member' }).click()
 
-  await expect(page).toHaveURL(/\/admin\/members\?edit=new$/)
-  await expect(page.getByRole('button', { name: 'Send invitation' })).toBeVisible()
+  await expect(page).toHaveURL(/\/admin\/members$/)
+  await expect(page.getByRole('button', { name: 'Invite', exact: true })).toBeVisible()
 })

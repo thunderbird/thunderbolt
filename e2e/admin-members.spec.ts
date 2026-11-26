@@ -9,7 +9,10 @@ import {
   adminAppUrl,
   adminRouteStatus,
   adminTest as test,
+  choosePanelAction,
+  openMember,
   otpCooldownMs,
+  panelMenu,
   requestEmailCodeSignIn,
   retireConnection,
   uniqueName,
@@ -43,14 +46,12 @@ test('an admin finds a member by search and renames them', async ({ page, adminA
   const member = await adminApi.seedMember()
   const name = uniqueName('Renamed')
 
-  await page.goto('/admin/members')
-  // The page's search toggle; on desktop the sidebar's app-wide Search comes first.
-  await page.getByRole('button', { name: 'Search', exact: true }).last().click()
-  await page.getByRole('searchbox', { name: 'Search members' }).fill(member.email)
-  await page.getByText(member.email, { exact: true }).first().click()
+  // Search finds them; openMember searches Members by email.
+  await openMember(page, member.email)
 
+  await choosePanelAction(page, 'Edit')
   await page.getByLabel('Name', { exact: true }).fill(name)
-  await page.getByRole('button', { name: 'Save name' }).click()
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible()
 })
 
@@ -63,10 +64,7 @@ test("a local admin's panel gives the email-code sign-in address, with no warnin
   const status = await adminApi.request<BreakGlassStatus>('GET', 'admin/break-glass')
   expect(status.allAdminsIdpManaged).toBe(false)
 
-  await page.goto('/admin/members')
-  await page.getByRole('button', { name: 'Search', exact: true }).last().click()
-  await page.getByRole('searchbox', { name: 'Search members' }).fill(adminSession.email)
-  await page.getByText(adminSession.email, { exact: true }).first().click()
+  await openMember(page, adminSession.email)
 
   await expect(page.getByText('Can sign in without your identity provider', { exact: true })).toBeVisible()
   await expect(page.getByRole('textbox', { name: 'Email-code sign-in address' })).toHaveValue(
@@ -84,17 +82,17 @@ test('blocking a member refuses their next request, and unblocking lets them sig
   const member = await adminApi.seedMember()
   expect(await canaryStatus(request, member.token)).not.toBe(401)
 
-  await page.goto(`/admin/members?edit=${member.userId}`)
-  await page.getByRole('button', { name: 'Block', exact: true }).click()
+  await openMember(page, member.email)
+  await choosePanelAction(page, 'Block')
   await page.getByLabel('Reason (optional)').fill('Lost laptop')
-  await page.getByRole('button', { name: 'Block member' }).click()
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Block member' }).click()
   await expect(page.getByText('Blocked by an admin')).toBeVisible()
-  await expect(page.getByText(/Lost laptop/)).toBeVisible()
+  await expect(page.getByText(/^Blocked on .+: Lost laptop$/)).toBeVisible()
 
   expect(await canaryStatus(request, member.token)).toBe(401)
   expect(await canSignIn(request, member.email)).toBe(false)
 
-  await page.getByRole('button', { name: 'Unblock' }).click()
+  await choosePanelAction(page, 'Unblock')
   await expect(page.getByText('Can sign in')).toBeVisible()
   expect(await canSignIn(request, member.email)).toBe(true)
 })
@@ -102,24 +100,30 @@ test('blocking a member refuses their next request, and unblocking lets them sig
 test("an admin can't block themselves", async ({ page, adminApi, adminSession }) => {
   const self = await adminApi.findMember(adminSession.email)
 
-  await page.goto(`/admin/members?edit=${self.userId}`)
+  await openMember(page, self.email)
 
-  const block = page.getByRole('button', { name: 'Block', exact: true })
-  await expect(block).toBeDisabled()
-  await expect(block).toHaveAccessibleDescription("You can't block yourself.")
+  await panelMenu(page).click()
+  await expect(page.getByRole('menuitem', { name: 'Edit' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'Block' })).toHaveCount(0)
 })
 
 test('an admin grants and revokes admin', async ({ page, adminApi, request }) => {
   const member = await adminApi.seedMember()
   const adminStatus = () => adminRouteStatus(request, member.token)
 
-  await page.goto(`/admin/members?edit=${member.userId}`)
-  await page.getByRole('button', { name: 'Make admin' }).click()
+  const adminSwitch = page.getByRole('switch', { name: 'Admin', exact: true })
+  await openMember(page, member.email)
+  await choosePanelAction(page, 'Edit')
+  await adminSwitch.click()
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByText('Granted by an admin')).toBeVisible()
   expect(await adminStatus()).toBe(200)
 
-  await page.getByRole('button', { name: 'Revoke admin' }).click()
-  await expect(page.getByRole('button', { name: 'Make admin' })).toBeVisible()
+  await choosePanelAction(page, 'Edit')
+  await adminSwitch.click()
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Edit Member' })).toHaveCount(0)
+  await expect(page.getByText('Granted by an admin')).toHaveCount(0)
   expect(await adminStatus()).toBe(403)
 })
 
@@ -160,7 +164,7 @@ test('after a SCIM DELETE, detaching the link lets a local member sign in by ema
   expect((await scim('DELETE', `/Users/${scimId}`)).status()).toBe(204)
   expect(await canSignIn(request, member.email)).toBe(false)
 
-  await page.goto(`/admin/members?edit=${member.userId}`)
+  await openMember(page, member.email)
   await expect(page.getByText('Removed by the identity provider')).toBeVisible()
   await page.getByRole('button', { name: `Detach from ${connection.name}` }).click()
   await page.getByRole('alertdialog').getByRole('button', { name: 'Detach', exact: true }).click()
@@ -174,8 +178,8 @@ test('a member who lost access can be deleted permanently', async ({ page, admin
   const member = await adminApi.seedMember()
   await adminApi.request('POST', `admin/members/${member.userId}/block`, {})
 
-  await page.goto(`/admin/members?edit=${member.userId}`)
-  await page.getByRole('button', { name: 'Delete member' }).click()
+  await openMember(page, member.email)
+  await choosePanelAction(page, 'Delete')
   await page.getByRole('alertdialog').getByRole('button', { name: 'Delete member' }).click()
 
   await expect(page).toHaveURL(/\/admin\/members$/)

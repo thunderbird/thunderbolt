@@ -28,7 +28,6 @@ export const LinkReviewConfirmDialog = ({
 }: LinkReviewConfirmDialogProps) => {
   const { t } = useLingui()
   const incoming = review.incomingEmail
-  const subject = review.externalId
   const connection = review.connection.name
   const existing = review.candidate.email
   const isApprove = decision === 'approve'
@@ -36,19 +35,15 @@ export const LinkReviewConfirmDialog = ({
   return (
     <ConfirmActionDialog
       open={decision !== null}
-      title={isApprove ? t`Approve this link?` : t`Reject this link?`}
+      title={isApprove ? t`Link ${incoming} to ${existing}?` : t`Reject linking ${incoming}?`}
       description={
         <>
           {isApprove ? (
             <Trans>
-              {incoming} (subject <code>{subject}</code>) from {connection} will be linked to the existing account{' '}
-              {existing}. The next sign-in or provisioning attempt from this connection attaches to that account.
+              Their next sign-in from {connection} uses {existing}'s account.
             </Trans>
           ) : (
-            <Trans>
-              {incoming} (subject <code>{subject}</code>) from {connection} stays unlinked from {existing}, and is
-              refused until an admin approves the link.
-            </Trans>
+            <Trans>They can't sign in from {connection} until an admin approves the link.</Trans>
           )}
           <InlineError error={error} className="mt-2" />
         </>

@@ -30,9 +30,9 @@ export const MemberAdminSignIn = ({ member }: { member: AdminMember }) => {
   return (
     <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
       {connections.length === 1 ? (
-        <Trans>Signs in only through {name}. If it goes down, this admin can't get in.</Trans>
+        <Trans>Signs in only through {name}</Trans>
       ) : (
-        <Trans>Signs in only through your identity providers. If they go down, this admin can't get in.</Trans>
+        <Trans>Signs in only through your identity providers</Trans>
       )}
     </p>
   )

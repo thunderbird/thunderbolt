@@ -7,8 +7,8 @@
 # The native apps for the QA agent, locally and in CI: build one against the stack `stack.sh serve native` runs, boot
 # a device, install the app and stream the WebView's console. <platform> is ios or android.
 #
-#   native.sh config <platform> <out-json> [control]            Tauri config for a QA build (injects
-#                                                               layout-probe.js)
+#   native.sh config <platform> <out-json> [control]            Tauri config for a QA build (injects axe-core
+#                                                               and layout-probe.js)
 #   native.sh build <platform> <out-dir> [onboarding] [control] build the app into <out-dir> (onboarding is off
 #                                                               unless asked; control also injects control/cover.js)
 #   native.sh system-image                                      Android only: install the emulator and the AVD's

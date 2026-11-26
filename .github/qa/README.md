@@ -282,7 +282,7 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    logs the error once per page load with `console.error`, in a line that does not start with `[qa-layout]`, and
    still writes the geometry lines. axe checks no `contenteditable` without a role (the app has
    none), treats a closed shadow root's text and CSS-generated text as no name, and takes about 5 to 30 ms a run
-   on the app's screens. `axe-core` is a pinned dev dependency for this alone; the
+   on the app's screens. `axe-core` is a pinned root dev dependency. The
    name a geometry line quotes still comes from the probe's own approximation. The geometry kinds also skip a control that inherits
    `pointer-events: none`, as the page behind a modal does. An `unnamed-control` line has no name to quote, so it quotes which control it is: the control's own `id` as
    `#<id>`, its `data-testid` as `[data-testid=<value>]` or its `name` attribute as `[name=<value>]`. React's and

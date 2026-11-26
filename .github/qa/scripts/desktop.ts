@@ -165,7 +165,7 @@ const checks = async (out: string, downloads: string): Promise<CheckResult[]> =>
     // xdotool sends the key through X and GTK, as a keyboard does; WebDriver's keys start inside WebKit.
     await check('Ctrl+K from the X keyboard opens the search palette', async () => {
       await sh(['xdotool', 'key', 'ctrl+k'])
-      await (await browser.$('[role="dialog"]')).waitForDisplayed({ timeout: 10_000 })
+      await (await browser.$('input[placeholder^="Search chats"]')).waitForDisplayed({ timeout: 10_000 })
       await sh(['xdotool', 'key', 'Escape'])
     })
 

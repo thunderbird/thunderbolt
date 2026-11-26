@@ -61,6 +61,9 @@ export const onboardingSession = (session: string) =>
 
 export const syncSession = (session: string) => charters.some((c) => c.postgres && session.startsWith(`${c.charter}-`))
 
+/** The scripted desktop shell lane (`desktop.ts`): an empty `only` or this id selects it, never a charter id. */
+export const desktopShellId = 'desktop-shell'
+
 /**
  * Sessions the grid leaves out, with the reason. `planLegs` drops them before it reads `only`, so asking for one fails
  * as an unknown id, and it reports the ones a dispatch would have run.
@@ -180,7 +183,11 @@ const nativeVerifyLegs = (legs: Leg[]): VerifyLeg[] =>
 export const planLegs = (input: { only: string[]; journey: string; canaries: { charter: string }[] }) => {
   const skippedIds = new Set(skippedSessions.map((s) => s.session))
   const all = allLegs(input.journey, input.canaries).filter((leg) => !skippedIds.has(leg.charter))
-  const known = new Set(['free', ...all.flatMap((leg) => [leg.charter, parseSession(leg.charter).charter])])
+  const known = new Set([
+    'free',
+    desktopShellId,
+    ...all.flatMap((leg) => [leg.charter, parseSession(leg.charter).charter]),
+  ])
   const unknown = input.only.filter((id) => !known.has(id))
   if (unknown.length > 0) throw new Error(`Unknown charter ${unknown.join(' ')}`)
   const selected = all.filter((leg) => selects(input.only, leg.charter))
@@ -196,6 +203,7 @@ export const planLegs = (input: { only: string[]; journey: string; canaries: { c
     nativeVerify,
     judge: judged.filter((v) => v.name === 'weekly' || v.name === 'canary'),
     skipped: skippedSessions.filter((s) => selects(input.only, s.session)),
+    desktopShell: input.only.length === 0 || input.only.includes(desktopShellId),
   }
 }
 

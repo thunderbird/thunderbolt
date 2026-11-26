@@ -76,12 +76,14 @@ Code the agent wrote runs in the fix job after the session (the visual check, th
 leaves behind can rewrite or delete any file there before the upload. So no verdict travels in a file. Each check
 that passes uploads an artifact named `qa-pass-<fp>-<check>-<run attempt>`, under an `if:` on the outcome of the step
 that ran the check, which the runner keeps and no process of the job can change. The checks are `session` (the fix
-step succeeded), `replay`, `visual`, `tests`, `real`, one per native platform of the bug (`ios`, `android`), and
+step succeeded), `review` (the independent review approved the patch, see the fix stage), `replay`, `visual`, `tests`, `real`, one per native platform of the bug (`ios`, `android`), and
 `checks` (the PR checks). `unpatched`, a repro that passed before the session, rests on that step's output instead,
 which the runner keeps too (see the fix stage below). The artifact holds a marker file whose content nobody reads.
 `publish` lists the run's artifact names with the GitHub API (`actions: read`, into `qa-out/artifacts.txt`) and
-needs a pass of its own run attempt for every check the task needs: `session` always, `replay` for a fake-AI web
-spec, `visual` for a web visual check, `tests` for every web task, `real` for a real-AI web spec, each platform in
+needs a pass of its own run attempt for every check the task needs: `session` and `review` always, `replay` when the bug has a
+fake-AI web spec (`specs`), `visual` for a web visual check, `tests` when any finding of the bug needs a unit test
+(`unitTest` in the plan, see the fix stage below), `real` when it has a real-AI web spec (`realSpecs`), each
+platform in
 `verifyNative` for the fingerprint, and `checks` for every task. A missing pass is a failure, and the ticket gets
 `Human Required` with the reason, except a native platform's. That one goes to a person only when its patch built no
 app or its run step uploaded the failure marker (`qa-native-failed-<fp>-<platform>-<run attempt>`, see the fix stage
@@ -266,14 +268,26 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    prompt `explore.sh prompt` builds: `prompt.md`, the same for every session so they share its prompt cache, then
    the platform's driver block (`drivers/playwright.md` or `drivers/maestro.md`; a native c7 gets both), the
    session's own block, and the charter with its functions. Attempts, findings and repro specs are written as they happen, so a cut session
-   keeps its work. `mcp.json` loads `layout-probe.js` into every page (`--init-script`, a path relative to the repo
-   root, where the session runs). The probe writes `[qa-layout] ready` once per page load and one
+   keeps its work. `mcp.json` loads axe-core (`node_modules/axe-core/axe.min.js`) and then `layout-probe.js` into
+   every page (`--init-script`, paths relative to the repo root, where the session runs). Without axe-core the probe
+   throws before its ready line, so the page counts as unmeasured. The probe writes `[qa-layout] ready` once per page load and one
    `[qa-layout] <kind> <target>` line per layout problem (kinds `overflow-page`, `overflow-text`, `offscreen`,
    `covered`, `behind-keyboard`, `focus-covered`, a fixed or sticky box over part of the focused text field,
    `focused-clipped`, a scroll box or the screen edge cutting off the focused field while the keyboard is open, and
    `unnamed-control`, a control a screen reader cannot name),
    all with `console.error`, so they pass the MCP's `--console-level error`. A problem line is a `layout` finding.
-   An `unnamed-control` line has no name to quote, so it quotes which control it is: the control's own `id` as
+   The name check is axe-core's name rules (`button-name`, `link-name`, `label`, `select-name`,
+   `input-button-name` and the `aria-*-name` rules for ARIA buttons, links, menu items, fields, toggles and
+   options). They cover every control a screen reader reaches, whatever its `pointer-events` or opacity (a disabled
+   button, a hover-only action, a placeholder in a wrapper that stops clicks), and leave out a hidden, `aria-hidden`
+   or `inert` one. A control axe cannot settle (an `incomplete` result) is never a line. If axe fails, the probe
+   logs the error once per page load with `console.error`, in a line that does not start with `[qa-layout]`, and
+   still writes the geometry lines. A page where axe keeps failing still counts as measured, and that console
+   line is the only sign that the name check is missing. axe checks no `contenteditable` without a role (the app has
+   none), treats a closed shadow root's text and CSS-generated text as no name, and takes about 5 to 30 ms a run
+   on the app's screens. `axe-core` is a pinned root dev dependency. The
+   name a geometry line quotes still comes from the probe's own approximation. The geometry kinds also skip a control that inherits
+   `pointer-events: none`, as the page behind a modal does. An `unnamed-control` line has no name to quote, so it quotes which control it is: the control's own `id` as
    `#<id>`, its `data-testid` as `[data-testid=<value>]` or its `name` attribute as `[name=<value>]`. React's and
    Radix's generated ids (`:r3:`, `«r3»`, `_r_3_`, `radix-…`) change between renders and do not count. Without
    one, it quotes the lucide icon the control draws and the nearest text a screen reader reads before it
@@ -386,10 +400,13 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    ticket's priority from a four-line rubric in `judge.md`. When the kept findings carry two distinct fingerprints or more, one more
    call with the same model groups them by defect (`groupFindings`), because each platform can word one bug
    differently: Android names an icon button by the text before it where the web and iOS also name the icon, and
-   a field the keyboard hides is `behind-keyboard` on Android but `focused-clipped` on iOS. That call sees each
-   finding's title, area, platform, oracle and screenshot path, fenced as untrusted data, and counts against the
-   judge's spend ceiling and `judge_usage`. Code checks the answer: every confirmed finding in exactly one group,
-   one area per group, and findings that share a fingerprint kept together. Only an answer that passes goes into
+   a field the keyboard hides is `behind-keyboard` on Android but `focused-clipped` on iOS. Findings also overlap on
+   one platform: one can report a panel's Download and Close buttons while two others report one button each, and
+   the prompt gives that example. That call sees each finding's title, area, platform, oracle, steps, expected, actual
+   and screenshot path, fenced as untrusted data, and counts against the judge's spend ceiling and `judge_usage`.
+   Code checks the answer: every confirmed finding in exactly one group, a security finding only with security
+   findings (its ticket and PR hide the finding), and findings that share a fingerprint kept together. Other areas may
+   mix, since two sessions can file one panel under different areas; the ticket takes its most severe finding's. Only an answer that passes goes into
    `verified.json` as `groups`. A malformed answer, a failed check, an API error or too little room under the
    ceiling logs why and leaves the whole run to fingerprint grouping. Writes `verified.json`.
 5. **file** (`file-findings.ts`): grouping and dedupe, severity, secret refusal. A run files as many tickets as it
@@ -414,7 +431,17 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    has swept correct Android screens clean (see "Known limits"). It still replays and is judged, and an iOS finding
    of the same bug is filed as usual. Every other Android layout kind files like any platform.
 6. **fix** (off by default, `fix.ts` and `fix.md`): one fix job per confirmed ticket, from any area, most severe
-   first. A bug found on several platforms is one ticket, so it gets one job. The fix goes on the ticket's Linear
+   first. A bug found on several platforms is one ticket, so it gets one job. That job keeps every finding's check:
+   the task's `specs` and `realSpecs` list the web repro spec of each finding of the ticket, the task's own included,
+   on the fake and the real AI, and the replay after the fix (and the one before it in a fix-only run) runs all of
+   `specs`, while `verify-real` runs all of `realSpecs`. So a finding with its own repro still checks the patch when
+   it reports only part of a grouped bug. Native flows join `verifyNative`, one per platform, since a native pass is
+   named by platform: a ticket with two findings on one native platform is not routed, with a log line, rather than
+   checked on one of them. The fix agent writes a visual check for its own task only, so among findings of equal
+   `leadRank` a web visual one leads. A ticket is not routed, with a log line, when any finding's repro is missing
+   from disk, or when a web visual finding other than the task's own would go unchecked: one outranked by a sync or
+   real-AI web finding, or a second web visual finding. A native visual finding other than the task's own still has
+   no check. The fix goes on the ticket's Linear
    branch name (`branchName`), so merging the PR closes the ticket. `route` takes that name only when it has the
    shape `<prefix>/<identifier>` with an optional `-<slug>`, in lowercase, with at most 100 characters, and
    `git check-ref-format` accepts it; otherwise the branch is `qa-fix/<identifier lowercased>`, which still links
@@ -424,11 +451,13 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    branch counts), and a ticket whose branch exists without an open PR, since the key owner may be working there. A
    ticket Linear does not return gets the identifier-only branch and a log line. `publish` pushes only when the
    branch does not exist yet. Each stage waits for its whole matrix, so with about 20 tickets the time from `file` to the last
-   `publish` is about 70 to 80 minutes, and about two hours when one fix runs to its step timeout.
+   `publish` is about 70 to 80 minutes. It is close to four hours when one fix job runs its fix, its correction pass
+   and both reviews to their step timeouts (60, 60, 20 and 20 minutes, under the job's own cap of 200).
    In a fix-only run, before the session, the fix job replays a fake-AI web task's original spec 3 times on the dev
    stack without any patch, with the same Playwright command as the replay after the fix. It catches a ticket whose
-   twin was fixed after it was filed. A weekly run skips it: its replay has just reproduced the bug on the same
-   commit, so a pass on the dev stack there would only mean the dev stack and the build differ. The spec is
+   twin was fixed after it was filed. A group that also holds a real-AI repro or a native flow skips it too, since a
+   pass of the fake-AI specs says nothing about those. A weekly run skips it: its replay has just reproduced the bug
+   on the same commit, so a pass on the dev stack there would only mean the dev stack and the build differ. The spec is
    model-written and the fix step later holds the key, so the spec runs as `qa-test` (as in `verify-tests`), a user
    that cannot read the job user's processes, with its own output dir, and every process of that user is killed
    before the fix step. A process that survives fails the job there, and the ticket waits for a later run. When all
@@ -443,21 +472,34 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `bug check` step, keeps the patch unpublished, since a patch that breaks the way to the bug proves no fix.
    A `visual` task has no spec, so the agent first writes `qa-out/fix-<fp>/repro/check.spec.ts` (the depth and
    `repro/` dir of a repro spec, so its imports and the Playwright config work), a check that fails because of the
-   defect. The fix job runs that check three times on the patched dev stack, where every run must pass, then three
-   times on the builds without the patch, with the patch stashed so the backend runs without it too, where every
-   run must fail. A real-AI web
+   defect. Like a repro spec, it asserts the bug inside `test.step('bug check', …)`, and `publish` refuses a check
+   without that step. The fix job runs that check three times on the patched dev stack, where every run must pass,
+   then three times on the builds without the patch, with the patch stashed so the backend runs without it too, where
+   every run must fail inside that step. These runs without the patch (the baseline) read each verdict from
+   Playwright's JSON report, as replay does: a run that fails before the step, in its sign-in for example, shows no
+   bug, and the baseline fails. A real-AI web
    task (`real`) is fixed on the fake AI, and `verify-real` runs its spec three times on the real providers against
    the patched frontend; all three must pass. A real-AI web visual task has no spec for `verify-real` to run, so
    `publish` never opens a PR for it: the ticket gets `Human Required`, like a fix that failed its checks.
-   Every web task (one without a `flow`, real-AI, visual and security tasks included) must also add or change a unit
-   test file, `*.test.ts` or `*.test.tsx` under `src/`, `shared/`, `backend/` or `cli/`, that fails without the fix.
+   For a web task with `unitTest` false, the browser check is the proof. These are the layout and visual tasks whose
+   PR adds that check as its regression spec (see `whyNoSpec` below: a layout problem other than a missing name, or a
+   visual defect). The check failed without the patch and passed with it, and happy-dom, which the unit tests run on,
+   computes no layout. Every other web task (one without a `flow`) must add or change a unit test file, `*.test.ts` or
+   `*.test.tsx` under `src/`, `shared/`, `backend/` or `cli/`, that fails without the fix. They cover a missing name,
+   logic and data lost on a reload (which also gets the spec), plus the c1, real-AI and security tasks, whose check
+   never becomes a spec. `route` marks a task `unitTest` in the plan when any finding of its ticket needs a unit
+   test (`needsUnitTest`), and only those tasks get a `verify-tests` job. When that finding is not the task's own,
+   `unitTestFor` hands it to the fix agent.
    `verify-tests` (keyless, see "Trust zones") checks it on a fresh checkout with `fix.ts tests`: `testRuns` picks
    the test files the patch adds or changes (a deleted one is left out, a renamed one counts under its new name) and
    runs `bun test --timeout 5000` over them from each tree's own directory (`src/`, `backend/`, `cli/`,
    `shared/agent-core/`, and the root for the rest of `shared/`), as the repo's test scripts do. A run must fail
    with only the hunks for those files and for every file the patch adds applied (`git apply --include`), and with
    the whole patch every run must pass, all in one process. The added files keep a test from failing only because a
-   helper, fixture or snapshot it imports is missing. A renamed source file counts as added, so a patch that moves
+   helper, fixture or snapshot it imports is missing. The run without the fix counts only when Bun's output names a
+   failed test (`testFailed`): a file that fails to import or compile, such as a test of an export only the fix adds,
+   names none, and a failed `beforeAll` or `afterAll` hook shows as `(unnamed)`. A failed `beforeEach` still shows as
+   its test's failure, so it counts. A renamed source file counts as added, so a patch that moves
    the buggy file and fixes it on the way has its fix in the run without it, and a person takes the ticket.
    `git apply` runs as the job's user, each `bun test` as `qa-test` (`QA_TEST_USER`, through `sudo --user`, with only `PATH` from the job's environment), so a test cannot
    write the checkout either. Each run gets `CI=true`, as in CI, and after each `git apply` the snapshot files are
@@ -515,14 +557,14 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    the run began and never gave a verdict (the job timed out, the runner died, or `native.sh` failed on its own). A
    stream that died or a flow that cannot reach the screen never earns `Human Required`. The job also keeps the
    WebView log and Maestro's per-step output (`~/.maestro/tests`, a screen tree and screenshot per step) beside the
-   verdict in `qa-verify-<fp>-<platform>`, so a dead stream or a system dialog over the app shows there. The unit
-   test is a web fix's regression guard. A rule in code (`whyNoSpec` in `fix.ts`) adds the repro spec, or a visual
-   task's check, to `e2e/` only for a bug a unit test cannot show. happy-dom computes no layout, so a `visual` finding and a `layout` one
+   verdict in `qa-verify-<fp>-<platform>`, so a dead stream or a system dialog over the app shows there. A web fix's
+   regression guard is its unit test, or the spec below. A rule in code (`whyNoSpec` in `fix.ts`) adds the repro spec,
+   or a visual task's check, to `e2e/` only for a bug a unit test cannot show. happy-dom computes no layout, so a `visual` finding and a `layout` one
    qualify, except an `unnamed-control` line: a missing accessible name shows in a unit test. A `lost-on-reload` finding
    qualifies too, since the testing guide (`docs/internals/development/testing.md`) sends browser storage, redirects and
    Better Auth callbacks to `e2e/`.
    Every other oracle (a page or console error, a 5xx, a stuck control, a failed assertion, an AI-reported failure)
-   gets no spec, and the PR and commit say the unit test in the patch guards the fix. A native fix PR adds no
+   gets no spec, and the PR and commit say the patch's unit tests fail without the fix. A native fix PR adds no
    regression spec. Neither does a fix PR from a c1 session, because the root `playwright.config.ts` does not serve
    the onboarding build, nor a real-AI web fix PR, because that config runs the consumer project on the fake
    provider, nor a security fix PR. `regressionSpec` cleans a spec it adds: TypeScript's organize-imports drops the
@@ -550,13 +592,48 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    patch, or a visual task has no check: publish hands those tickets to a person anyway. A failed check is the
    pipeline's: the job's summary names the ticket and the check, no PR opens, the ticket gets no write, and
    publish's summary says it was left for a later run. `publish` needs a pass from every platform in `verifyNative`
-   for the fingerprint, web tasks included, from `verify-real` for a real-AI web task, from `verify-tests` for every
-   web task and from `verify-checks` for every task (see "Passes"). Only then does it open a draft PR on the task's
+   for the fingerprint, web tasks included, from `verify-real` for a task with `realSpecs`, from `verify-tests` for every
+   `unitTest` task and from `verify-checks` for every task (see "Passes"). Only then does it open a draft PR on the task's
    branch. Otherwise the ticket gets `Human Required` with the reason (for a native platform, "the patch did not build
    on the native platform, or the flow still fails there"). A fix from a session whose charter has `postgres` in `legs.ts` (today c7), on any
    platform, never gets a PR either: the fix job and `verify-native-run` start no Postgres or PowerSync, so they
    cannot verify it, and its ticket gets `Human Required`. A fix PR gets an automatic preview deploy like any other
-   PR.
+   PR. Its title is the fix agent's `fix/<fp>.title`, a short description of the change, when that is a Conventional
+   Commits title with a type Title Lint accepts (`lint-pr-title.yml`); otherwise it is `fix: <finding title>`. Either
+   is cut at a word to 100 characters, and a security fix keeps its fixed title. The description says what the
+   passed checks showed and that an AI wrote the change, and the commit body wraps that text at 100 columns.
+
+   Before any check runs, a fresh session reviews the patch (`review.md`). It gets the task and tries to show the fix
+   is wrong: the wrong owner or layer, a broken caller, a test off the real path or a proxy, a fake-provider
+   artifact, a missed sibling, or one adjacent case. It reads the patch with `git diff HEAD` and
+   `git status --short --untracked-files=all` (each added file, also inside a new folder), a web visual task's check
+   in `qa-out/fix-<fp>/repro/` (the proof, which becomes the PR's e2e spec), the callers of what the patch changes
+   and the code the finding's steps run. Its tools are `Read`, `Glob`, `Grep` and those two git commands. It has no
+   edit tool and runs no tests, since `verify-tests` and `verify-checks` run them. It answers `approved`, `problems`
+   and `resolved` as structured output. The session sits in the fix job, with Fix's QA Anthropic key and read-only
+   token and nothing else, and before the key scan, since after that scan code the agent wrote runs outside its
+   sandbox. Both prompts are read in "Build the prompt", before Fix, whose commands could rewrite them, and the steps
+   between the sessions run no agent code, with the key scan's cleared variables.
+
+   A rejection runs the fix session once more (`Correct the fix`, with the same tools and caps) on the fix prompt
+   with the problems appended. A second review follows, and its prompt carries the first review's problems,
+   numbered: before it approves, it must find each one fixed, or shown wrong by the code, and say where.
+   `Decide the review` writes `approved=true` only for an approval that lists no problems. An approval that lists
+   some is a rejection and gets the correction pass. A second approval also needs a `resolved` entry for every
+   earlier problem, with the `file:line` that settles it, or it counts as a rejection. A patch still rejected, or a
+   review that never answered, gets a diagnosis with the problems (the first review's when the second lists none),
+   so a person takes the ticket and no PR opens. The `review` pass rests on that output, like every other pass. Each
+   session's metrics go in the report as `fix-<fp>`, `fix-<fp>-review`, `fix-<fp>-correct` and
+   `fix-<fp>-review-again`. A session that ran to its step cap shows as a timeout, and the report notes that a cut
+   review gave no verdict.
+
+   Before each review a step records the hash and executable bit of every file in the checkout, plus the hash of a
+   web visual task's check, which sits in ignored `qa-out/`. `Collect the patch` turns an approval into a rejection
+   when that check, or a file git would publish, changed after the approving review read it. The replay, the visual
+   check and the real-AI build run the agent's code after the review, so none of them can add to the patch
+   unreviewed. The review catches honest mistakes. It cannot stop a patch built to cheat: the reviewer reads code the
+   agent wrote, and a process that outlived the sandbox (see "Passes") could read the key from a review step's
+   environment as it could from the key scan's.
 
    The fix session's tools are `Read`, `Glob`, `Grep`, `Edit`, `Write`, `Bash` and `Skill`, with no `Agent`, `Task`,
    web tool or git. `Skill` is there so the agent can run the bundled `simplify` skill on its own changes before it
@@ -570,7 +647,13 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    session's init message names them) and extend the denies. After the merge, the first fix session's transcript
    should show the `simplify` load, with no other skill.
 
-7. **report** (`report.ts summary`): the job summary.
+7. **report** (`report.ts summary`): the job summary. `report.ts fix-prs` adds a "Recent QA fix PRs" section, read
+   from GitHub alone (`pull-requests: read`). It covers the fix PRs among the newest 100 PRs of the app
+   `thunderbolt-automation-agent`, this run's included. A PR whose first commit is the bot's is right first time when
+   it merged with only the bot's commits (merge commits aside), needed edits when it merged with any other commit,
+   discarded when it closed unmerged, and waits for a person while open. A merged PR with more than 100 commits is
+   unknown, since the query reads only the first 100. The factory bot opens PRs as the same app, but a person writes
+   their first commit, so they are left out. A failed GitHub call loses only that section.
 
 Output goes to `qa-out*/` (gitignored). `fixtures/` holds the files the charters upload.
 
@@ -824,8 +907,9 @@ PowerSync's 18081, to the emulator.
 `config <platform> <out-json> [control]` is the Tauri config `build` uses: `tauri.dev.conf.json` with the
 stack's two extra `connect-src` origins (`http://localhost:8005` and `http://127.0.0.1:9880` by default, read from
 `stack.sh`), and without the dev `identifier` on Android, whose Gradle project has no `.dev` package directory. Its
-`beforeBuildCommand` puts `layout-probe.js` into `dist/index.html` as an inline script, so every native QA build
-logs the probe's `[qa-layout]` lines to the WebView console, where the Maestro gate reads them. The Maestro tree
+`beforeBuildCommand` puts axe-core and `layout-probe.js` into `dist/index.html` as inline scripts, so every native
+QA build logs the probe's `[qa-layout]` lines to the WebView console, where the Maestro gate reads them. axe-core
+runs under the app's `script-src`, which forbids `eval`: the name rules never need it. The Maestro tree
 cannot measure layout itself: it has no stacking order and leaves out unlabelled boxes. `build` takes the
 `VITE_*` settings from `stack.sh` too. The app ids are `net.thunderbird.thunderbolt.dev` (iOS, "Thunderbolt Dev")
 and `net.thunderbird.thunderbolt` (Android). `build` puts back the tracked files under `src-tauri/gen` that Tauri
@@ -957,6 +1041,35 @@ stack depends on its AppArmor sysctl, KVM and emulator libraries, Playwright dep
 - Every Maestro process runs with `MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED=true`, because Maestro's "Analyze with
   AI" banner filled the error a failed replay run keeps.
 
+## Desktop shell
+
+The `desktop` platform is Chromium at 1280x800, so it never runs the Tauri app. The `desktop-shell` job does, with no
+explorer: `scripts/desktop.ts` drives the Linux debug app through `tauri-driver` and WebKitWebDriver under Xvfb, the
+setup of the nightly `native-linux` smoke, against the backend and fake provider of `e2e/native-smoke/services.sh`. It
+runs every week and in any dispatch whose `charters` is empty or names `desktop-shell`, never in a fix-only run. It
+holds no secret, no environment and only `contents: read`, and runs no model, so it sits outside the zones.
+
+It signs in, then checks, each on its own row of the run summary:
+
+- the reply's Copy button puts the reply on the X clipboard (read with `xclip`);
+- Ctrl+K sent through X (`xdotool`), not WebDriver, opens the search palette;
+- an image attached through the composer's file input shows its preview;
+- Export My Data writes a JSON file to the Downloads folder (the profile's `user-dirs.dirs` points `$DOWNLOAD` at a
+  temp dir);
+- a resize to 400px stops at the window's 500px minimum, `<html>` keeps `force-desktop`, and the layout probe finds
+  nothing on the chat;
+- the app's own quit (`plugin:process|exit`, as the tray's Quit) and a new launch on the same profile keep the
+  account: the app shows the account menu again and holds the same session token. The chat is not checked. WebKitGTK
+  has no OPFS, so the Linux app keeps its database in memory and loses it on relaunch (THU-1365).
+
+A failed check fails the job, which `notify` sees, and leaves a screenshot in `qa-desktop-shell` with the
+driver and stack logs. Nothing is filed. Run it on Linux with the services up and the app built as in the job:
+`xvfb-run -a bun .github/qa/scripts/desktop.ts --out qa-out/desktop`.
+
+What it cannot see: WebKit answers the file chooser itself while a page is under automation, so the GTK dialog never
+opens and the check fills the input instead; Xvfb has no window manager; and only the Linux shell runs (macOS has no
+WKWebView driver, Windows would need its own runner and stack).
+
 ## Fake Google
 
 `scripts/fake-google.ts` stands in for Google on `127.0.0.1:9880` by default: the account chooser, the token endpoint,
@@ -1067,7 +1180,7 @@ Used by `explore`, `explore-native`, the real-AI `replay` and `replay-native` le
 | `QA_TINFOIL_API_KEY`, `QA_TINFOIL_ENCLAVE_URL` | real-AI stacks: explore, replay, verify-real | QA-only Tinfoil access for the GLM models                                                                                                              |
 | `QA_EXA_API_KEY`                               | real-AI stacks: explore, replay, verify-real | QA-only Exa key for search and link previews                                                                                                           |
 | `QA_APP_CLIENT_ID`, `QA_APP_PRIVATE_KEY`       | publish, the app check                       | the GitHub App below                                                                                                                                   |
-| `QA_HEARTBEAT_URL`                             | report                                       | optional BetterStack heartbeat, sent after a scheduled run on `main` that worked                                                                       |
+| `QA_HEARTBEAT_URL`                             | report                                       | optional BetterStack heartbeat, sent after a scheduled run on `main` whose explore/fix pipeline worked; a failed `desktop-shell` reaches only `notify` |
 
 The `QA_` names differ from nightly's on purpose. Each is a QA-only secret except the GitHub App's two, which belong to
 an app shared with other automation. If an environment secret were missing, a same-named repository secret would be
@@ -1137,7 +1250,9 @@ workspace's spend limit bounds what a leaked key can cost, and auto-fix stays of
 Caps live in one place per step type: the `env` block at the top of `qa-weekly.yml` for explore and fix (budget,
 turns, timeout), `explore.sh` for a native session's turns, and the constants at the top of
 `verify.ts` for replay and the judge. Explore: $4.01 / 552 turns (299 in a native session) / 63 min. Fix: $20 /
-200 turns / 60 min, its first values, since no fix has run on GitHub yet. Per leg, at most 30 findings are
+200 turns / 60 min, its first values, since no fix has run on GitHub yet; a correction pass gets the same. The review
+of a patch (`QA_REVIEW_*`, up to two per fix job): $5 / 100 turns / 20 min, also first values, calibrated apart from
+fix in the report's hint. Per leg, at most 30 findings are
 replayed (24 on a native leg, whose runs are slow) and 84 judged, and a judge leg spends at most $17, its grouping
 call included (a call is admitted only if its worst case fits: prompt bytes, 1,600 tokens per screenshot, plus
 `max_tokens`, at Opus prices). Replay and the judge take findings most severe first (the table in `findings.ts`),
@@ -1304,7 +1419,12 @@ Never run on GitHub (only locally, or read in the action's code):
   the gate on the seeds that order it badly, and that ticket waits for a later run;
 - the narrow `sudo` stop of the `qa-backend` backend in the real-AI legs. That copy also proved the `ss` port check, the
   lock and the stop of the fix job's dev stack as `qa-dev`. Its start failed in the first fix jobs on GitHub because
-  Storybook's cache sat under `node_modules/.cache`, so the `qa` job in `ci.yml` now checks the start as `qa-dev`.
+  Storybook's cache sat under `node_modules/.cache`, so the `qa` job in `ci.yml` now checks the start as `qa-dev`;
+- the `desktop-shell` job. `desktop.ts` ran in an Ubuntu 24.04 container on aarch64 with the job's packages and
+  build. On main the preview check and the quit-and-reopen check failed and the other five passed. With `blob:` added
+  to `img-src` and the database kept out of memory, all seven passed. #1486 has since added `blob:` on main. The
+  database is still in memory there, so the quit-and-reopen check no longer looks for the chat. No run so far has gone
+  through the setup wizard, which is how the lane now signs in.
 
 Also:
 

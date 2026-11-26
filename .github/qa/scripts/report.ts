@@ -12,6 +12,7 @@ import type { Canary } from './canaries'
 import type { Filed, Scorecard } from './file-findings'
 import { sanitize } from './sanitize'
 import { findingId, loadFindings, parseSession, realAiCharters } from './findings'
+import { type Run, runCommand } from './fix'
 import { selects } from './legs'
 import type { Verified, VerifiedFinding } from './verify'
 
@@ -440,8 +441,13 @@ const flakyLine = ({ charterDir, id, finding, replay }: VerifiedFinding) => {
   return `- ${charterDir}/${id}: ${text} (failed ${replay.failed}/${replay.runs} replays${inconclusive}${reason})`
 }
 
-/** Fix sessions record their metrics as `fix-<fp>`; every other session explored a charter. */
+/**
+ * Fix sessions record their metrics as `fix-<fp>`, its correction pass as `fix-<fp>-correct`, and the reviews of its
+ * patch as `fix-<fp>-review` and `fix-<fp>-review-again`; every other session explored a charter.
+ */
 const isFix = (s: Session) => s.charter.startsWith('fix-')
+/** A review of a fix, which has caps of its own. */
+const isReview = (s: Session) => /-review(-again)?$/.test(s.charter)
 
 /** True when explore sessions ran and every one errored or timed out (a revoked key, a retired model id). */
 export const nothingExplored = (sessions: Session[]) => {
@@ -450,6 +456,7 @@ export const nothingExplored = (sessions: Session[]) => {
 }
 
 const calibrationRows = (explore: Session[], fixes: Session[], judgeCost?: number) => {
+  const reviews = fixes.filter(isReview)
   const row = (step: string, metric: string, samples: number[], format: (n: number) => string) => {
     const cap = suggestCap(samples)
     return cap === undefined
@@ -458,7 +465,8 @@ const calibrationRows = (explore: Session[], fixes: Session[], judgeCost?: numbe
   }
   const steps = [
     ['explore', explore],
-    ['fix', fixes],
+    ['fix', fixes.filter((s) => !isReview(s))],
+    ['review', reviews],
   ] as const
   return [
     ...steps.flatMap(([step, samples]) => [
@@ -557,6 +565,7 @@ const metricCells = (s: Session) =>
   `${usd(s.cost_usd)} | ${s.turns} | ${minutes(s.duration_ms)} | ${tokens(s)} | ${s.stop === 'done' ? 'done' : `**${stopLabel[s.stop]}**`}`
 
 const cutNote = (s: Session) => {
+  if (isReview(s)) return 'it gave no verdict, so the patch counts as rejected'
   if (isFix(s)) return 'its patch may be partial'
   return isFree(s.charter) ? 'the case was not fully played' : 'the charter was not fully explored'
 }
@@ -719,6 +728,93 @@ export const runSummary = async (
   return { report, nothingExplored: nothingExplored(sessions) }
 }
 
+/** The GitHub App publish opens fix PRs as. The factory bot shares it, but a person writes its PRs' first commit. */
+const qaApp = 'thunderbolt-automation-agent'
+
+type FixPr = {
+  number: number
+  state: 'OPEN' | 'CLOSED' | 'MERGED'
+  commits: {
+    totalCount: number
+    nodes: { commit: { author: { name: string } | null; parents: { totalCount: number } } }[]
+  }
+}
+const fixPrOutcomes = ['right first time', 'needed edits', 'discarded', 'open', 'unknown'] as const
+
+/** How many of the app's newest PRs `runFixPrs` reads. */
+const newestPrs = 100
+
+/**
+ * How one of the app's PRs ended, or undefined when publish did not open it (its first commit is not the bot's): closed
+ * unmerged is discarded, merged with only the bot's commits (merge commits aside) is right first time, merged with
+ * any other commit needed edits, and open waits for a person. A merged PR with more commits than the query read is
+ * unknown, since a commit left unread could be a person's.
+ */
+const fixPrOutcome = ({ state, commits }: FixPr): (typeof fixPrOutcomes)[number] | undefined => {
+  const bot = `${qaApp}[bot]`
+  const authors = commits.nodes.map(({ commit }) => ({
+    name: commit.author?.name,
+    merge: commit.parents.totalCount > 1,
+  }))
+  if (authors[0]?.name !== bot) return undefined
+  if (state === 'OPEN') return 'open'
+  if (state === 'CLOSED') return 'discarded'
+  if (commits.totalCount > commits.nodes.length) return 'unknown'
+  return authors.every(({ name, merge }) => merge || name === bot) ? 'right first time' : 'needed edits'
+}
+
+/** The report section on the app's recent fix PRs, this run's included, from GitHub alone. */
+export const fixPrSection = (prs: FixPr[]) => {
+  const outcomes = prs.flatMap((pr) => {
+    const outcome = fixPrOutcome(pr)
+    return outcome ? [{ number: pr.number, outcome }] : []
+  })
+  const decided = outcomes.filter(({ outcome }) => outcome !== 'open' && outcome !== 'unknown').length
+  const right = outcomes.filter(({ outcome }) => outcome === 'right first time').length
+  return [
+    `## Recent QA fix PRs${prs.length >= newestPrs ? ` (newest ${newestPrs})` : ''}`,
+    "From GitHub: merged with only the bot's commits (merge commits aside) is right first time, merged with other " +
+      'commits needed edits, closed unmerged is discarded, open waits for a person, and merged with more than 100 ' +
+      'commits is unknown.',
+    '',
+    ...fixPrOutcomes.map((name) => {
+      const numbers = outcomes.filter(({ outcome }) => outcome === name).map(({ number }) => `#${number}`)
+      return `- ${name}: ${numbers.length}${numbers.length ? ` (${numbers.join(', ')})` : ''}`
+    }),
+    '',
+    `Right first time: ${right} of ${decided} decided.`,
+    '',
+  ].join('\n')
+}
+
+/**
+ * Lists the app's PRs in `repo`, appends `fixPrSection` to `stepSummary` and returns the section (the CLI prints it).
+ * shortcut: the newest 100 PRs, 100 commits each; page through once the bot has opened more.
+ */
+export const runFixPrs = async (
+  repo = process.env.GITHUB_REPOSITORY ?? 'thunderbird/thunderbolt',
+  run: Run = runCommand,
+  stepSummary = process.env.GITHUB_STEP_SUMMARY,
+) => {
+  const query =
+    `query($q: String!) { search(query: $q, type: ISSUE, first: ${newestPrs}) { nodes { ... on PullRequest { ` +
+    'number state commits(first: 100) { totalCount nodes { commit { author { name } parents { totalCount } } } } } } } }'
+  const out = await run([
+    'gh',
+    'api',
+    'graphql',
+    '-f',
+    `query=${query}`,
+    '-f',
+    // Newest first: search otherwise sorts by relevance, so the first 100 would be any 100.
+    `q=repo:${repo} is:pr author:app/${qaApp} sort:created-desc`,
+  ])
+  const { data }: { data: { search: { nodes: FixPr[] } } } = JSON.parse(out)
+  const section = fixPrSection(data.search.nodes)
+  if (stepSummary) await appendFile(stepSummary, section)
+  return section
+}
+
 /**
  * Canary leg: match its confirmed findings against the canaries and the baseline (the same findings replayed on the
  * normal build), and write `canary.json`. The filer never sees the canary leg: the file job downloads only the weekly
@@ -763,11 +859,15 @@ if (import.meta.main) {
       console.error('::error::Every explore session ended in an error or a timeout.')
       process.exitCode = 1
     }
+  } else if (positionals[0] === 'fix-prs') {
+    console.log(await runFixPrs())
   } else if (positionals[0] === 'canary') {
     if (!values.baseline || !values.canaries) throw new Error('canary needs --baseline and --canaries')
     const result = await runCanary(out, values.baseline, values.canaries, values.charters)
     console.log(`canary recall ${result.found}/${result.total}`)
   } else {
-    throw new Error('usage: report.ts session|summary|canary --out qa-out [--baseline dir --canaries manifest.json]')
+    throw new Error(
+      'usage: report.ts session|summary|canary --out qa-out [--baseline dir --canaries manifest.json] | report.ts fix-prs',
+    )
   }
 }

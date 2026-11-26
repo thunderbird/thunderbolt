@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { createHash } from 'node:crypto'
 import * as http from 'node:http'
 import * as zlib from 'node:zlib'
 import * as samlify from 'samlify'
@@ -15,6 +16,15 @@ const testUser = {
   surname: 'SAML User',
 }
 
+/** The claims for one login: the shared test user, or with `uniqueUsers` one derived from its AuthnRequest ID. */
+const userFor = (requestId: string, uniqueUsers: boolean) => {
+  if (!uniqueUsers) {
+    return testUser
+  }
+  const suffix = createHash('sha256').update(requestId).digest('hex').slice(0, 16)
+  return { ...testUser, email: `e2e-saml-${suffix}@thunderbolt.test` }
+}
+
 /**
  * Create and start a mock SAML Identity Provider.
  *
@@ -22,8 +32,10 @@ const testUser = {
  * 1. Decodes the AuthnRequest to extract the ACS URL and request ID
  * 2. Generates a signed SAMLResponse using samlify
  * 3. Returns an HTML page that auto-submits the response to the ACS URL
+ *
+ * With `uniqueUsers`, each login gets its own account so parallel specs never share one.
  */
-export const createMockSamlIdp = async (port: number) => {
+export const createMockSamlIdp = async (port: number, { uniqueUsers = false } = {}) => {
   const issuer = `http://localhost:${port}`
   const { cert, privateKey } = getTestCerts()
 
@@ -84,7 +96,7 @@ export const createMockSamlIdp = async (port: number) => {
           sp,
           { extract: { request: { id: requestId } } },
           'post',
-          testUser,
+          userFor(requestId, uniqueUsers),
         )
 
         // Return an auto-submitting HTML form (standard SAML HTTP-POST binding)

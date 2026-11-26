@@ -171,6 +171,20 @@ describe('native platforms', () => {
   })
 })
 
+describe('desktop shell lane', () => {
+  it('runs when nothing is selected or its id is, and never for a charter or free', () => {
+    expect(plan().desktopShell).toBe(true)
+    expect(plan(['desktop-shell']).desktopShell).toBe(true)
+    expect(plan(['c2-chat-power-user', 'desktop-shell']).desktopShell).toBe(true)
+    expect(plan(['c2-chat-power-user']).desktopShell).toBe(false)
+    expect(plan(['free']).desktopShell).toBe(false)
+  })
+
+  it('plans no explore, replay or judge leg when only the lane is selected', () => {
+    expect(plan(['desktop-shell'])).toMatchObject({ legs: [], nativeLegs: [], verify: [], nativeVerify: [], judge: [] })
+  })
+})
+
 describe('selects', () => {
   it('matches everything when nothing is selected', () => {
     expect(selects([], 'c2-chat-power-user-phone')).toBe(true)

@@ -44,6 +44,8 @@ jobs:
         options: --restart always
     env:
       E2E_EXTENDED_UNIQUE_USERS: 'true'
+      # The extended suite (WebKit/Firefox) keeps the dev servers; prebuilt bundles are validated on the PR suite.
+      E2E_PREBUILT: 'false'
       EXTENDED_DATABASE_URL: postgresql://postgres:postgres@localhost:15434/postgres
       EXTENDED_POWERSYNC_URL: http://localhost:18081
       DATABASE_DRIVER: postgres
@@ -151,6 +153,8 @@ jobs:
     environment: preview
     env:
       E2E_EXTENDED_UNIQUE_USERS: 'true'
+      # The extended suite (WebKit/Firefox) keeps the dev servers; prebuilt bundles are validated on the PR suite.
+      E2E_PREBUILT: 'false'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

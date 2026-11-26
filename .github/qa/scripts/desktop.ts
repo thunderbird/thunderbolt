@@ -1,0 +1,262 @@
+#!/usr/bin/env bun
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+// The desktop shell lane: scripted checks of what only the real Tauri app on Linux does. No model runs here. Run it
+// under Xvfb, with the stack of e2e/native-smoke/services.sh up and the debug app built; see "Desktop shell" in
+// .github/qa/README.md.
+
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
+import { parseArgs } from 'node:util'
+import { Key, remote } from 'webdriverio'
+import { fakeProviderReply } from '../../../e2e/fake-provider'
+import { completeSetup } from '../../../e2e/native-smoke/setup-wizard'
+import { axePath, type LayoutProblem } from '../layout'
+
+declare global {
+  // Declaration merging needs an interface. `withGlobalTauri` in src-tauri/tauri.conf.json sets it.
+  interface Window {
+    __TAURI__: { core: { invoke: (command: string, args: Record<string, number>) => Promise<void> } }
+  }
+}
+
+export type CheckResult = { name: string; error?: string }
+
+/** The job summary, and whether the lane failed. */
+export const summarize = (results: CheckResult[]) => ({
+  failed: results.some((r) => r.error !== undefined),
+  markdown: [
+    '# Desktop shell (Tauri on Linux)',
+    '',
+    '| Check | Result |',
+    '| --- | --- |',
+    ...results.map(
+      (r) =>
+        `| ${r.name} | ${r.error === undefined ? 'passed' : `failed: ${r.error.replace(/\s+/g, ' ').replaceAll('|', '\\|')}`} |`,
+    ),
+  ].join('\n'),
+})
+
+// A variable, as in e2e/native-smoke/linux.ts: webdriverio's type has no `tauri:options`.
+const capabilities = {
+  browserName: 'wry',
+  'wdio:enforceWebDriverClassic': true,
+  'tauri:options': { application: resolve('src-tauri/target/debug/thunderbolt') },
+}
+
+/** Opens a WebDriver session on tauri-driver, which starts a new instance of the debug app. */
+const launch = () => remote({ hostname: '127.0.0.1', port: 4444, logLevel: 'warn', capabilities })
+
+type Browser = Awaited<ReturnType<typeof launch>>
+
+/**
+ * Starts tauri-driver with a fresh profile in a temporary home, runs the checks and stops the driver. The driver's
+ * log and the screenshots of failed checks go to `out`.
+ */
+const run = async (out: string) => {
+  const home = await mkdtemp(join(tmpdir(), 'qa-desktop-'))
+  const downloads = join(home, 'Downloads')
+  const config = join(home, 'config')
+  await mkdir(downloads)
+  await mkdir(config)
+  // `$DOWNLOAD` resolves through the XDG user dirs file, which a fresh config dir lacks.
+  await writeFile(join(config, 'user-dirs.dirs'), `XDG_DOWNLOAD_DIR="${downloads}"\n`)
+  // tauri-driver hands its environment to the app, so every launch, the relaunch included, shares this profile.
+  const env = {
+    ...process.env,
+    XDG_CONFIG_HOME: config,
+    XDG_DATA_HOME: join(home, 'data'),
+    XDG_CACHE_HOME: join(home, 'cache'),
+    // WebKitGTK otherwise paints a blank window under Xvfb.
+    WEBKIT_DISABLE_COMPOSITING_MODE: '1',
+  }
+  const log = Bun.file(join(out, 'tauri-driver.log'))
+  const driver = Bun.spawn(['tauri-driver', '--port', '4444'], { env, stdout: log, stderr: log })
+  try {
+    await waitForDriver()
+    return await checks(out, downloads)
+  } catch (error) {
+    // Only the driver's start and the first launch get here: each check catches its own error.
+    return [{ name: 'startup', error: error instanceof Error ? error.message : String(error) }]
+  } finally {
+    driver.kill()
+  }
+}
+
+/** Polls tauri-driver's `/status` once a second for up to 30 seconds: `Bun.spawn` returns before the driver listens. */
+const waitForDriver = async () => {
+  for (let i = 0; i < 30; i++) {
+    try {
+      // nosemgrep: typescript.react.security.react-insecure-request.react-insecure-request -- loopback WebDriver status
+      if ((await fetch('http://127.0.0.1:4444/status')).ok) return
+    } catch {
+      // Not listening yet.
+    }
+    await Bun.sleep(1000)
+  }
+  throw new Error('tauri-driver did not start')
+}
+
+/** Runs a command and returns its stdout; a nonzero exit throws with its stderr. */
+const sh = async (cmd: string[]) => {
+  const proc = Bun.spawn(cmd, { stdout: 'pipe', stderr: 'pipe' })
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  if (code !== 0) throw new Error(`${cmd.join(' ')} exited ${code}: ${stderr.trim()}`)
+  return stdout
+}
+
+/** Waits until the visible text of the page contains `text`. */
+const waitForText = (browser: Browser, text: string, timeout: number) =>
+  browser.waitUntil(async () => (await (await browser.$('body')).getText()).includes(text), {
+    timeout,
+    timeoutMsg: `"${text}" did not show`,
+  })
+
+/** The layout probe's confirmed problems on the current screen. */
+const layoutProblems = async (browser: Browser): Promise<LayoutProblem[]> => {
+  await browser.execute(await readFile(axePath, 'utf8'))
+  await browser.execute(await readFile(resolve(import.meta.dir, '../layout-probe.js'), 'utf8'))
+  await browser.pause(1500)
+  return browser.execute(() => window.__qaLayout.problems())
+}
+
+/**
+ * Runs the checks in order. Each one records its own result and saves a screenshot when it fails. A failed sign-in
+ * ends the run, because every later check needs the account.
+ */
+const checks = async (out: string, downloads: string): Promise<CheckResult[]> => {
+  const results: CheckResult[] = []
+  let browser = await launch()
+  const check = async (name: string, body: () => Promise<void>) => {
+    try {
+      await body()
+      results.push({ name })
+    } catch (error) {
+      results.push({ name, error: error instanceof Error ? error.message : String(error) })
+      await browser.saveScreenshot(join(out, `${name.replaceAll(' ', '-')}.png`)).catch(() => undefined)
+    }
+  }
+  try {
+    await check('sign in', () => completeSetup(browser, 'cloud'))
+    if (results[0].error) return results
+
+    await check('copy a reply to the X clipboard', async () => {
+      const modelSelector = await browser.$('[data-testid="model-selector-trigger"]')
+      await modelSelector.waitForClickable({ timeout: 10_000 })
+      await modelSelector.click()
+      // As in the native smoke: the Thunderbolt mark sets apart the managed model, which reaches the fake provider.
+      const standardModel = await browser.$('//button[normalize-space()="Opus 5.5"]')
+      await (await standardModel.$('[role="img"][aria-label="Thunderbolt"]')).waitForDisplayed()
+      await standardModel.click()
+      await browser.keys(Key.Escape)
+      await (await browser.$('textarea')).setValue('Please greet me briefly.')
+      await (await browser.$('button[aria-label="Send message"]')).click()
+      await waitForText(browser, fakeProviderReply, 60_000)
+      // The user message has its own copy button, shown only on hover; the reply's is the last.
+      await (await browser.$('(//button[@aria-label="Copy message"])[last()]')).click()
+      await browser.waitUntil(
+        async () => (await sh(['xclip', '-o', '-selection', 'clipboard'])) === fakeProviderReply,
+        {
+          timeout: 10_000,
+          timeoutMsg: 'the reply is not on the X clipboard',
+        },
+      )
+    })
+
+    // xdotool sends the key through X and GTK, as a keyboard does; WebDriver's keys start inside WebKit.
+    await check('Ctrl+K from the X keyboard opens the search palette', async () => {
+      await sh(['xdotool', 'key', 'ctrl+k'])
+      await (await browser.$('input[placeholder^="Search chats"]')).waitForDisplayed({ timeout: 10_000 })
+      await sh(['xdotool', 'key', 'Escape'])
+    })
+
+    // Under WebDriver, WebKit answers the file chooser itself and never opens the GTK dialog, so this fills the input.
+    await check('an attached image shows its preview', async () => {
+      await (await browser.$('input[type="file"]')).addValue(resolve(import.meta.dir, '../fixtures/sample.png'))
+      try {
+        const preview = await browser.$('img[alt="sample.png"]')
+        await preview.waitForExist({ timeout: 10_000 })
+        await browser.waitUntil(async () => (await preview.getProperty('naturalWidth')) !== 0, {
+          timeout: 10_000,
+          timeoutMsg: 'the preview image did not load (img-src in the CSP of src-tauri/tauri.conf.json?)',
+        })
+      } finally {
+        // Without the chip there is nothing to remove, and clicking would replace the error above.
+        const remove = await browser.$('button[aria-label="Remove sample.png"]')
+        if (await remove.isExisting()) await remove.click()
+      }
+    })
+
+    await check('Export My Data saves to the Downloads folder', async () => {
+      await browser.execute(() => {
+        history.pushState(null, '', '/settings/preferences')
+        dispatchEvent(new PopStateEvent('popstate'))
+      })
+      try {
+        await (await browser.$('#export-data-button')).click()
+        // The app creates the file and then writes it, so wait until it parses. waitUntil retries while this throws.
+        await browser.waitUntil(
+          async () => {
+            const name = (await readdir(downloads)).find((f) => f.startsWith('thunderbolt-export-'))
+            if (!name) return false
+            JSON.parse(await readFile(join(downloads, name), 'utf8'))
+            return true
+          },
+          { timeout: 15_000, timeoutMsg: `no valid export in ${downloads}` },
+        )
+      } finally {
+        // The next check measures the chat.
+        await browser.execute(() => history.back())
+      }
+    })
+
+    await check('the window stops at its 500px minimum width and the chat fits', async () => {
+      await browser.setWindowSize(400, 800)
+      const width = await browser.execute(() => window.innerWidth)
+      if (width !== 500) throw new Error(`the window is ${width}px wide, not its 500px minimum`)
+      if (!(await browser.execute(() => document.documentElement.classList.contains('force-desktop'))))
+        throw new Error('<html> lost force-desktop')
+      await waitForText(browser, fakeProviderReply, 10_000)
+      const problems = await layoutProblems(browser)
+      if (problems.length > 0) throw new Error(problems.map((p) => `${p.kind} ${p.target}`).join('; '))
+    })
+
+    // The app's own quit (the tray's Quit), then a fresh launch on the same profile.
+    await check('quit and reopen keeps the account', async () => {
+      const sessionToken = () => browser.execute(() => localStorage.getItem('thunderbolt_auth_token'))
+      const signedIn = await sessionToken()
+      if (!signedIn) throw new Error('no session token before the quit')
+      await browser.execute(() => {
+        void window.__TAURI__.core.invoke('plugin:process|exit', { code: 0 })
+      })
+      await browser.deleteSession().catch(() => undefined)
+      browser = await launch()
+      // The chat is not checked: WebKitGTK has no OPFS, so the Linux app's database is in memory and is lost here.
+      // THU-1365 tracks that bug.
+      const account = await browser.$('button[aria-label="Account menu"]')
+      await account.waitForExist({ timeout: 60_000, timeoutMsg: 'the relaunched app is signed out' })
+      if ((await sessionToken()) !== signedIn) throw new Error('the relaunched app holds another session')
+    })
+    return results
+  } finally {
+    await browser.deleteSession().catch(() => undefined)
+  }
+}
+
+if (import.meta.main) {
+  const { values } = parseArgs({ options: { out: { type: 'string' } } })
+  if (!values.out) throw new Error('usage: desktop.ts --out <dir>')
+  await mkdir(values.out, { recursive: true })
+  const { failed, markdown } = summarize(await run(values.out))
+  console.log(markdown)
+  if (Bun.env.GITHUB_STEP_SUMMARY) await writeFile(Bun.env.GITHUB_STEP_SUMMARY, `${markdown}\n`, { flag: 'a' })
+  process.exit(failed ? 1 : 0)
+}

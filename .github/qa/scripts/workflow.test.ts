@@ -5,11 +5,23 @@
 // The workflow's trust boundaries, read from the resolved YAML, and the steps that gate a fix PR.
 
 import { afterAll, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import {
+  appendFileSync,
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import platforms from '../platforms.json'
-import { isDenied, prChecks } from './fix'
+import { conventionalTitle, isDenied, prChecks } from './fix'
+import { bugStep } from './findings'
 import {
   nativeDriverStartupMinutes,
   nativeJobMinutes,
@@ -112,7 +124,7 @@ describe('secrets', () => {
   })
 
   test('the jobs that build, check or calibrate native apps hold no secret and no environment', () => {
-    for (const job of ['build-native', 'verify-native-build', 'verify-native-run', 'native-control']) {
+    for (const job of ['build-native', 'verify-native-build', 'verify-native-run', 'native-control', 'desktop-shell']) {
       expect({ job, hits: JSON.stringify(jobs[job]).match(/secrets\./g) ?? [] }).toEqual({ job, hits: [] })
       expect(jobs[job].environment).toBeUndefined()
     }
@@ -159,10 +171,35 @@ describe('secrets', () => {
     }
   })
 
-  test("the fix job's key leaves with the scan right after the session, before any agent code runs outside it", () => {
+  test("the fix job's key leaves with the scan right after the sessions, before any agent code runs outside them", () => {
     const fix = indexOf('fix', 'Fix')
-    expect(steps('fix')[fix + 1].name).toBe("Check the agent's output for the key")
-    expect(mentions('fix', 'secrets.').filter((m) => !m.startsWith('Fix:'))).toEqual([
+    const sessions = ['Fix', 'Review the fix', 'Correct the fix', 'Review the corrected fix']
+    // Between the sessions only steps that run no code of the agent's, with the key scan's cleared variables.
+    const between = steps('fix').slice(fix, indexOf('fix', "Check the agent's output for the key"))
+    expect(between.map((s) => s.name)).toEqual([
+      'Fix',
+      "Keep the fix session's execution file",
+      'Record the tree the review reads',
+      'Review the fix',
+      "Keep the review session's execution file",
+      'Build the correction prompt',
+      'Correct the fix',
+      "Keep the correction session's execution file",
+      'Record the tree the second review reads',
+      'Review the corrected fix',
+      "Keep the second review session's execution file",
+      'Decide the review',
+    ])
+    for (const plain of between.filter((s) => s.run)) {
+      expect({ name: plain.name, shell: plain.shell }).toEqual({
+        name: plain.name,
+        shell: '/bin/bash --noprofile --norc -e {0}',
+      })
+      expect(plain.env).toMatchObject({ PATH: '/usr/bin:/bin', BASH_ENV: '', ENV: '', LD_PRELOAD: '' })
+      // A call in any command position, by name or path; a `.git` path, which the tree record skips, is no call.
+      expect(plain.run).not.toMatch(/(^|[\s;|&(/"'`])(bun|bunx|git)($|[\s;|&)"'`])/m)
+    }
+    expect(mentions('fix', 'secrets.').filter((m) => !sessions.some((name) => m.startsWith(`${name}:`)))).toEqual([
       "Check the agent's output for the key:env",
     ])
     // node_modules too: the agent can write it and the real-AI build bundles it. Only .git, which it may not edit.
@@ -335,20 +372,57 @@ describe('fix job', () => {
     expect(args).not.toContain('"Skill"')
   })
 
-  const collect = (env: Record<string, string>) => {
+  type Checkout = { dir: string; temp: string; git: (...args: string[]) => void }
+  /** A checkout with one commit and a repro spec, with `files` committed, and the runner's temp dir beside it. */
+  const checkout = (files: Record<string, string> = {}): Checkout => {
     const dir = mkdtempSync(join(work, 'collect-'))
-    const git = (...args: string[]) => Bun.spawnSync(['git', '-C', dir, ...args])
+    const git = (...args: string[]) => {
+      Bun.spawnSync(['git', '-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
+    }
     git('init', '-q')
-    git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'base')
+    for (const [path, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, path)), { recursive: true })
+      writeFileSync(join(dir, path), text)
+    }
+    git('add', '--all', '--force')
+    git('commit', '-q', '--allow-empty', '-m', 'base')
     mkdirSync(join(dir, 'qa-out/c2/repro'), { recursive: true })
     writeFileSync(join(dir, 'qa-out/c2/repro/1.spec.ts'), 'spec')
+    return { dir, temp: mkdtempSync(join(work, 'runner-')), git }
+  }
+  // The runner's sha256sum; macOS keeps it in /sbin.
+  const sha256sum = existsSync('/usr/bin/sha256sum') ? '/usr/bin/sha256sum' : '/sbin/sha256sum'
+  /** Records the tree a review reads, as the step before each review does, and returns the record's hash. */
+  const recordTree = ({ dir, temp }: Checkout) => {
+    const run = (step('fix', 'Record the tree the review reads').run ?? '').replaceAll('/usr/bin/sha256sum', sha256sum)
+    const proc = Bun.spawnSync(['bash', '-e', '-c', run], {
+      cwd: dir,
+      env: { PATH: '/usr/bin:/bin', RUNNER_TEMP: temp, GITHUB_OUTPUT: join(temp, 'output'), QA_FP: 'fp1' },
+    })
+    expect(proc.exitCode).toBe(0)
+    return readFileSync(join(temp, 'output'), 'utf8').replace(/^sha=/, '').trim()
+  }
+  /** Runs "Collect the patch" in `checkout` with `env`, and returns the diagnosis it wrote. */
+  const collectIn = ({ dir, temp }: Checkout, env: Record<string, string>) => {
     const proc = Bun.spawnSync(['bash', '-e', '-c', step('fix', 'Collect the patch').run ?? ''], {
       cwd: dir,
-      env: { PATH: process.env.PATH, QA_FP: 'fp1', FIX_OUTCOME: 'success', ...env },
+      env: {
+        PATH: `${dirname(sha256sum)}:${process.env.PATH}`,
+        RUNNER_TEMP: temp,
+        QA_FP: 'fp1',
+        FIX_OUTCOME: 'success',
+        REVIEWED: 'true',
+        ...env,
+      },
     })
     expect(proc.exitCode).toBe(0)
     const diagnosis = join(dir, 'qa-out/fix/fp1.diagnosis.md')
     return existsSync(diagnosis) ? readFileSync(diagnosis, 'utf8') : undefined
+  }
+  /** "Collect the patch" on a tree unchanged since the review read it. */
+  const collect = (env: Record<string, string>) => {
+    const tree = checkout()
+    return collectIn(tree, { REVIEWED_TREE: recordTree(tree), ...env })
   }
   const spec = { SPEC: 'qa-out/c2/repro/1.spec.ts', NEEDS_REPLAY: 'true' }
 
@@ -358,6 +432,256 @@ describe('fix job', () => {
     expect(collect({ NEEDS_VISUAL: 'true', VISUAL: 'skipped' })).toContain('The visual check did not pass')
     expect(collect({ NEEDS_REAL_BUILD: 'true', REAL_BUILD: 'failure' })).toContain('did not build')
     expect(collect({ ...spec, REPLAY: 'success', FIX_OUTCOME: 'failure' })).toContain('did not finish')
+  })
+
+  describe('the independent review', () => {
+    /** Runs a plain step of the review with `env`, and returns its exit code and what it wrote to its output. */
+    const runPlain = (name: string, env: Record<string, string>) => {
+      const dir = mkdtempSync(join(work, 'review-'))
+      const proc = Bun.spawnSync(['bash', '-e', '-c', step('fix', name).run ?? ''], {
+        cwd: dir,
+        env: { PATH: '/usr/bin:/bin', RUNNER_TEMP: dir, GITHUB_OUTPUT: join(dir, 'output'), ...env },
+      })
+      return {
+        code: proc.exitCode,
+        output: existsSync(join(dir, 'output')) ? readFileSync(join(dir, 'output'), 'utf8') : '',
+      }
+    }
+    type Resolved = { problem: number; where: string }
+    const verdict = (approved: boolean, problems: string[] = [], resolved: Resolved[] = []) =>
+      JSON.stringify({ approved, problems, resolved })
+
+    test('a fresh session that can read the patch and change nothing, before any agent code runs outside a sandbox', () => {
+      const review = step('fix', 'Review the fix')
+      const args = review.with?.claude_args ?? ''
+      expect(args).toContain('--tools "Read,Glob,Grep,Bash"')
+      expect(args).toContain(
+        '--allowedTools "Read,Glob,Grep,Bash(git diff HEAD),Bash(git status --short --untracked-files=all)"',
+      )
+      const schema = JSON.parse(/--json-schema '([^']+)'/.exec(args)?.[1] ?? '{}')
+      expect(schema.required).toEqual(['approved', 'problems', 'resolved'])
+      expect(schema.properties.resolved.items.required).toEqual(['problem', 'where'])
+      expect(review.with?.prompt).toBe('${{ env.QA_REVIEW_PROMPT }}')
+      expect(review.env).toEqual({
+        CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1',
+        QA_REVIEW_PROMPT: '${{ steps.prompt.outputs.review }}',
+      })
+      // The second review is the same session, on the review prompt the first review's problems extend.
+      const again = step('fix', 'Review the corrected fix')
+      expect(again.with).toEqual(review.with)
+      expect(again.env?.QA_REVIEW_PROMPT).toBe('${{ steps.correction-prompt.outputs.review }}')
+      // The correction is the fix session again, on the prompt the review's problems extend.
+      expect(step('fix', 'Correct the fix').with).toEqual(step('fix', 'Fix').with)
+      expect(step('fix', 'Fix').with?.prompt).toBe('${{ env.QA_FIX_PROMPT }}')
+      expect(step('fix', 'Fix').env?.QA_FIX_PROMPT).toBe('${{ steps.prompt.outputs.text }}')
+      expect(step('fix', 'Correct the fix').env?.QA_FIX_PROMPT).toBe('${{ steps.correction-prompt.outputs.text }}')
+      // review.md is read before Fix, whose commands could rewrite it.
+      expect(step('fix', 'Build the prompt').run).toContain('cat .github/qa/review.md')
+    })
+
+    test('a rejection extends the fix and review prompts with its numbered problems, one line each; nothing else does', () => {
+      const prompt = { PROMPT: '# Fix agent\n## Task', REVIEW_PROMPT: '# Fix reviewer\n## Task' }
+      const rejected = runPlain('Build the correction prompt', {
+        ...prompt,
+        REVIEW: verdict(false, ['Fix the caller,\n  not the primitive (src/a.tsx:3).', 'Also the Close button.']),
+      })
+      expect(rejected.output).toBe(
+        'text<<QA_PROMPT_EOF\n# Fix agent\n## Task\n\n<review>\n' +
+          '1. Fix the caller, not the primitive (src/a.tsx:3).\n2. Also the Close button.\n</review>\nQA_PROMPT_EOF\n' +
+          'review<<QA_PROMPT_EOF\n# Fix reviewer\n## Task\n\n<first-review>\n' +
+          '1. Fix the caller, not the primitive (src/a.tsx:3).\n2. Also the Close button.\n</first-review>\nQA_PROMPT_EOF\n',
+      )
+      for (const REVIEW of [verdict(true), verdict(false), 'not json'])
+        expect(runPlain('Build the correction prompt', { ...prompt, REVIEW })).toEqual({ code: 0, output: '' })
+      // An approval that still lists a problem is a rejection, so the fixer gets the problem.
+      const approvedWithProblem = runPlain('Build the correction prompt', {
+        ...prompt,
+        REVIEW: verdict(true, ['The Close button too.']),
+      })
+      expect(approvedWithProblem.output).toContain('<review>\n1. The Close button too.\n</review>')
+    })
+
+    test("the verdict is the second review's when it ran, else the first's, and approves only with no problems", () => {
+      const decide = (FIRST: string, SECOND = '', SECOND_OUTCOME = 'skipped') =>
+        runPlain('Decide the review', { FIRST, SECOND, SECOND_OUTCOME }).output
+      expect(decide(verdict(true))).toBe('approved=true\n')
+      expect(decide(verdict(false), verdict(true), 'success')).toBe('approved=true\n')
+      expect(decide(verdict(false), verdict(false), 'success')).toBe('')
+      // An approval that still lists a problem.
+      expect(decide(verdict(true, ['The Close button too.']))).toBe('')
+      // A second review that failed, a correction that gave up, or a first review that never answered.
+      expect(decide(verdict(false), '', 'failure')).toBe('')
+      expect(decide(verdict(false))).toBe('')
+      expect(decide('')).toBe('')
+    })
+
+    test('a second approval counts only when it names where each earlier problem was settled', () => {
+      const decide = (second: string) =>
+        runPlain('Decide the review', {
+          FIRST: verdict(false, ['Wrong path in the test.', 'The Close button too.']),
+          SECOND: second,
+          SECOND_OUTCOME: 'success',
+        }).output
+      const shown = (problem: number): Resolved => ({ problem, where: 'src/content-view/sideview.test.tsx:42' })
+      expect(decide(verdict(true, [], [shown(1), { ...shown(2), where: 'src/a.tsx:3-9' }]))).toBe('approved=true\n')
+      // An approval that barely read anything, one that skips a problem, and one whose place is no `file:line`
+      // (prose, a time of day, line 0).
+      expect(decide(verdict(true))).toBe('')
+      expect(decide(verdict(true, [], [shown(1)]))).toBe('')
+      for (const where of ['the sideview test', 'I checked it at 12:30 today', 'src/a.ts:0'])
+        expect({ where, approved: decide(verdict(true, [], [shown(1), { ...shown(2), where }])) }).toEqual({
+          where,
+          approved: '',
+        })
+    })
+
+    test("a patch the review did not approve becomes a diagnosis with the review's problems", () => {
+      const problems = verdict(false, ['Fix the caller (src/a.tsx:3).'])
+      expect(collect({ REVIEWED: '', REVIEW: problems })).toBe(
+        'The independent review did not approve the patch, after one correction pass when it found problems, so ' +
+          'the patch is not published.\n- Fix the caller (src/a.tsx:3).\n',
+      )
+      // A second approval without that evidence leaves the first review's problems standing.
+      expect(collect({ REVIEWED: '', FIRST_REVIEW: problems, REVIEW: verdict(true) })).toContain(
+        '- Fix the caller (src/a.tsx:3).',
+      )
+    })
+  })
+
+  describe('the tree the approving review read', () => {
+    test('a file git would publish that changed, appeared or went away since rejects the approval', () => {
+      const tree = checkout({ 'src/a.ts': 'reviewed', 'src/gone.ts': 'reviewed' })
+      const reviewed = recordTree(tree)
+      writeFileSync(join(tree.dir, 'src/a.ts'), 'written by a step after the review')
+      writeFileSync(join(tree.dir, 'src/new.ts'), 'new')
+      // Named like the ignored qa-out*/ directories, but a file, so git publishes it.
+      writeFileSync(join(tree.dir, 'src/qa-output.ts'), 'new')
+      rmSync(join(tree.dir, 'src/gone.ts'))
+      expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toBe(
+        'Files changed after the review read them (src/a.ts src/gone.ts src/new.ts src/qa-output.ts), so the patch ' +
+          'is not published.\n',
+      )
+    })
+
+    test('a change only in an ignored path keeps the approval, unless git tracks the file there', () => {
+      const tree = checkout({ '.gitignore': 'cache/\ndist/\n', 'dist/index.js': 'built' })
+      const reviewed = recordTree(tree)
+      mkdirSync(join(tree.dir, 'cache'))
+      writeFileSync(join(tree.dir, 'cache/run.json'), '{}')
+      expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toBeUndefined()
+      writeFileSync(join(tree.dir, 'dist/index.js'), 'rebuilt')
+      expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toContain('(dist/index.js)')
+    })
+
+    test('the visual check, which becomes the e2e spec, rejects the approval when it changed, though qa-out/ is ignored', () => {
+      const tree = checkout({ '.gitignore': 'qa-out*/\n' })
+      const check = join(tree.dir, 'qa-out/fix-fp1/repro/check.spec.ts')
+      mkdirSync(dirname(check), { recursive: true })
+      writeFileSync(check, 'reviewed')
+      const reviewed = recordTree(tree)
+      expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toBeUndefined()
+      writeFileSync(check, 'rewritten by the visual check run')
+      expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toBe(
+        'Files changed after the review read them (qa-out/fix-fp1/repro/check.spec.ts), so the patch is not published.\n',
+      )
+    })
+
+    test('an executable bit set or cleared since rejects the approval, as git publishes it; one left alone does not', () => {
+      const tree = checkout({ 'src/a.ts': 'reviewed', 'scripts/run.sh': '#!/bin/sh\n' })
+      chmodSync(join(tree.dir, 'scripts/run.sh'), 0o755)
+      tree.git('add', '--all')
+      tree.git('commit', '-q', '-m', 'executable')
+      const reviewed = recordTree(tree)
+      expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toBeUndefined()
+      chmodSync(join(tree.dir, 'src/a.ts'), 0o755)
+      chmodSync(join(tree.dir, 'scripts/run.sh'), 0o644)
+      expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toContain('(scripts/run.sh src/a.ts)')
+    })
+
+    // The job runs on Ubuntu, whose GNU sha256sum writes a name with a newline escaped. macOS's writes it raw.
+    const gnuSha256sum = Bun.spawnSync([sha256sum, '--version']).stdout.toString().includes('GNU coreutils')
+    test.skipIf(!gnuSha256sum)('a path with a newline cannot forge a line of the record, since it is escaped', () => {
+      const tree = checkout({ '.gitignore': 'dist/\n', 'src/bar.ts': 'reviewed' })
+      const sha = (text: string) => createHash('sha256').update(text).digest('hex')
+      // Two empty files in an ignored path, each named so that a raw name reads as a line for src/bar.ts.
+      const carrier = (name: string, text: string) => {
+        const path = join(tree.dir, `dist/${name}\n${sha(text)}  ./src/bar.ts`)
+        mkdirSync(dirname(path), { recursive: true })
+        writeFileSync(path, '')
+        return path
+      }
+      const after = carrier('x', 'rewritten')
+      const before = carrier('y', 'reviewed')
+      chmodSync(after, 0o755)
+      const reviewed = recordTree(tree)
+      // A step after the review rewrites the file and swaps the bits, so the forged and real lines trade places.
+      writeFileSync(join(tree.dir, 'src/bar.ts'), 'rewritten')
+      chmodSync(after, 0o644)
+      chmodSync(before, 0o755)
+      const diagnosis = collectIn(tree, { REVIEWED_TREE: reviewed })
+      expect(diagnosis).toStartWith('Files changed after the review read them (')
+      expect(diagnosis).toContain('src/bar.ts')
+    })
+
+    test('a missing or rewritten record rejects the approval, and a rejected patch needs none', () => {
+      const tree = checkout()
+      const reviewed = recordTree(tree)
+      appendFileSync(join(tree.temp, `qa-tree-${reviewed}.txt`), 'x  ./src/a.ts\n')
+      expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toContain('The record of the tree the review read')
+      expect(collectIn(checkout(), { REVIEWED_TREE: '' })).toContain('The record of the tree the review read')
+      expect(collectIn(checkout(), { REVIEWED: '', REVIEW: '{"approved":false,"problems":["x"]}' })).not.toContain(
+        'record',
+      )
+    })
+
+    test("each review's record is taken right before it, and the verdict's review picks the record", () => {
+      const first = step('fix', 'Record the tree the review reads')
+      const second = step('fix', 'Record the tree the second review reads')
+      expect(first.if).toBe(step('fix', 'Review the fix').if)
+      expect(second.if).toBe(step('fix', 'Review the corrected fix').if)
+      expect(second.run).toBe(first.run)
+      expect(indexOf('fix', 'Review the fix')).toBe(indexOf('fix', 'Record the tree the review reads') + 1)
+      expect(indexOf('fix', 'Review the corrected fix')).toBe(
+        indexOf('fix', 'Record the tree the second review reads') + 1,
+      )
+      expect(step('fix', 'Collect the patch').env?.REVIEWED_TREE).toBe(
+        "${{ steps.review-again.outcome != 'skipped' && steps.review-again-tree.outputs.sha || " +
+          'steps.review-tree.outputs.sha }}',
+      )
+    })
+  })
+
+  test('the metrics list each review or correction session that ran, also one cut at its step cap', () => {
+    const dir = mkdtempSync(join(work, 'metrics-'))
+    writeFileSync(join(dir, 'bun'), `#!/bin/sh\nprintf '%s\\n' "$*" >> "${dir}/bun.log"\n`, { mode: 0o755 })
+    const proc = Bun.spawnSync(['bash', '-e', '-c', step('fix', 'Record the session metrics').run ?? ''], {
+      cwd: dir,
+      env: {
+        PATH: `${dir}:${process.env.PATH}`,
+        RUNNER_TEMP: '/runner',
+        QA_FP: 'fp1',
+        QA_FIX_TIMEOUT_MINUTES: '60',
+        QA_REVIEW_TIMEOUT_MINUTES: '20',
+        START: '1000',
+        END: '1600',
+        // The review ran its whole 20 minutes; the correction pass, 59 of its 60.
+        SESSIONS: 'review=failure:1600:2800 correct=failure:2800:6340 review-again=skipped::',
+      },
+    })
+    expect(proc.exitCode).toBe(0)
+    const session = (name: string, charter: string) =>
+      `.github/qa/scripts/report.ts session --execution-file /runner/qa-execution-${name}.json --charter ${charter} ` +
+      '--out qa-out'
+    expect(readFileSync(join(dir, 'bun.log'), 'utf8')).toBe(
+      `${session('fix', 'fix-fp1')}\n${session('review', 'fix-fp1-review')} --timed-out\n` +
+        `${session('correct', 'fix-fp1-correct')}\n`,
+    )
+    expect(step('fix', 'Record the session metrics').env?.SESSIONS).toBe(
+      'review=${{ steps.review.outcome }}:${{ steps.keep-fix.outputs.end }}:${{ steps.keep-review.outputs.end }} ' +
+        'correct=${{ steps.correct.outcome }}:${{ steps.keep-review.outputs.end }}:${{ steps.keep-correct.outputs.end }} ' +
+        'review-again=${{ steps.review-again.outcome }}:${{ steps.keep-correct.outputs.end }}:' +
+        '${{ steps.keep-review-again.outputs.end }}',
+    )
   })
 
   test('a fix step that never started still leaves a diagnosis, which only the fix status overrides', () => {
@@ -370,14 +694,56 @@ describe('fix job', () => {
     expect(collect({ REPLAY: 'skipped', VISUAL: 'skipped' })).toBeUndefined()
   })
 
+  /** Runs a replay step with a stand-in Playwright and `present` of `specs` on disk; returns its exit code and args. */
+  const runReplay = (job: string, name: string, specs: string[], present: string[]) => {
+    const dir = mkdtempSync(join(work, 'replay-'))
+    writeFileSync(join(dir, 'bunx'), `#!/bin/sh\nprintf '%s\\n' "$@" > "${dir}/args"\n`, { mode: 0o755 })
+    for (const spec of present) {
+      mkdirSync(dirname(join(dir, spec)), { recursive: true })
+      writeFileSync(join(dir, spec), 'spec')
+    }
+    const proc = Bun.spawnSync(['bash', '-e', '-c', step(job, name).run ?? ''], {
+      cwd: dir,
+      env: { PATH: `${dir}:${process.env.PATH}`, SPECS: JSON.stringify(specs) },
+    })
+    const args = existsSync(join(dir, 'args')) ? readFileSync(join(dir, 'args'), 'utf8').trim().split('\n') : []
+    return { code: proc.exitCode, args }
+  }
+
+  test("the replay after the fix runs every fake-AI repro of the bug's group, from the fresh download", () => {
+    const specs = ['qa-out/c2/repro/1.spec.ts', 'qa-out/c6/repro/2.spec.ts']
+    const downloaded = ['qa-out-verify/c2/repro/1.spec.ts', 'qa-out-verify/c6/repro/2.spec.ts']
+    const replay = runReplay('fix', 'Replay the spec on the patched code', specs, downloaded)
+    expect(replay.code).toBe(0)
+    expect(replay.args.slice(-2)).toEqual(downloaded)
+  })
+
+  test('a replay of several specs fails before Playwright when one is missing, which Playwright would skip', () => {
+    const specs = ['qa-out/c2/repro/1.spec.ts', 'qa-out/c6/repro/2.spec.ts']
+    const patched = runReplay('fix', 'Replay the spec on the patched code', specs, ['qa-out-verify/c2/repro/1.spec.ts'])
+    expect(patched.code).not.toBe(0)
+    expect(patched.args).toEqual([])
+    const real = runReplay('verify-real', 'Replay the spec on the patched frontend', specs, [specs[0]])
+    expect(real.code).not.toBe(0)
+    expect(real.args).toEqual([])
+    expect(runReplay('verify-real', 'Replay the spec on the patched frontend', specs, specs).args.slice(-2)).toEqual(
+      specs,
+    )
+  })
+
   describe('the repro check before the session', () => {
     const before = step('fix', 'Replay the spec before the fix')
 
     test('runs only in a fix-only run, on the tasks and with the Playwright run of the replay after the fix', () => {
       const after = step('fix', 'Replay the spec on the patched code')
-      // A fake-AI web spec, so no real-AI, visual or native task; a weekly run's replay just reproduced the bug.
-      expect(before.if).toBe('inputs.fix_from_run && matrix.task.spec && !matrix.task.real')
-      expect(after.if).toBe("steps.fix.outcome == 'success' && matrix.task.spec && !matrix.task.real")
+      // A fake-AI web spec, so no real-AI, visual or native task; a weekly run's replay just reproduced the bug. A
+      // group with a real-AI repro or a native flow too, whose bug a fake-AI pass cannot show gone, runs the session.
+      expect(before.if).toBe(
+        'inputs.fix_from_run && matrix.task.spec && !matrix.task.real && !matrix.task.realSpecs[0] && ' +
+          '!contains(fromJSON(needs.file.outputs.plan).verifyNative.*.fp, matrix.task.fp)',
+      )
+      // After the fix, every fake-AI repro of the bug's group, whatever the task's own proof.
+      expect(after.if).toBe("steps.fix.outcome == 'success' && matrix.task.specs[0]")
       // Any failed run of the three fails it.
       const command = /bunx playwright test [^"]*/.exec(after.run ?? '')?.[0] ?? '?'
       expect(command).toContain('--repeat-each=3 --retries=0')
@@ -387,9 +753,14 @@ describe('fix job', () => {
     })
 
     /** The step's output, exit code and sudo calls, with stand-ins for sudo, timeout and Playwright. */
-    const replay = ({ code = 0, browsers = true } = {}) => {
+    const specs = ['qa-out/c2/repro/1.spec.ts', 'qa-out/c6/repro/1.spec.ts']
+    const replay = ({ code = 0, browsers = true, present = specs } = {}) => {
       const dir = mkdtempSync(join(work, 'unpatched-'))
       if (browsers) mkdirSync(join(dir, '.cache/ms-playwright'), { recursive: true })
+      for (const spec of present) {
+        mkdirSync(dirname(join(dir, spec)), { recursive: true })
+        writeFileSync(join(dir, spec), 'spec')
+      }
       writeFileSync(join(dir, 'sudo'), `#!/bin/sh\nprintf '%s\\n' "$*" >> "${dir}/sudo.log"\nshift 3\nexec "$@"\n`, {
         mode: 0o755,
       })
@@ -402,7 +773,7 @@ describe('fix job', () => {
           HOME: dir,
           QA_TEST_USER: 'qa-test',
           GITHUB_OUTPUT: join(dir, 'output'),
-          SPEC: 'qa-out/c2/repro/1.spec.ts',
+          SPECS: JSON.stringify(specs),
         },
       })
       const read = (name: string) => (existsSync(join(dir, name)) ? readFileSync(join(dir, name), 'utf8') : '')
@@ -414,15 +785,18 @@ describe('fix job', () => {
       expect(passed).toMatchObject({ exitCode: 0, output: 'passes=true\n' })
       const [mktemp, run] = passed.sudo.trim().split('\n')
       expect(mktemp).toBe('-n -u qa-test mktemp -d')
-      expect(run).toStartWith('-n -u qa-test timeout --kill-after=10s 5m env PATH=')
+      expect(run).toStartWith('-n -u qa-test timeout --kill-after=10s 10m env PATH=')
       expect(run).toContain('bunx playwright test')
-      expect(run).toMatch(/--output \/\S+ qa-out\/c2\/repro\/1\.spec\.ts$/)
+      // Every fake-AI repro of the bug's group must pass.
+      expect(run).toMatch(/--output \/\S+ qa-out\/c2\/repro\/1\.spec\.ts qa-out\/c6\/repro\/1\.spec\.ts$/)
     })
 
     // The usual case sets nothing and fails nothing, so a normal run shows no error annotation, and the session runs.
-    test('a failed or timed-out run, or a browser cache it cannot read, sets nothing and fails nothing', () => {
+    test('a failed or timed-out run, a missing spec or a browser cache it cannot read, sets nothing and fails nothing', () => {
       expect(replay({ code: 1 })).toMatchObject({ exitCode: 0, output: '' })
       expect(replay({ code: 124 })).toMatchObject({ exitCode: 0, output: '' })
+      // Playwright would pass on the spec that is there and skip the other.
+      expect(replay({ present: [specs[0]] })).toMatchObject({ exitCode: 0, output: '', sudo: '' })
       expect(replay({ browsers: false })).toMatchObject({ exitCode: 0, output: '', sudo: '' })
     })
 
@@ -454,8 +828,20 @@ describe('fix job', () => {
     expect(at('Build the patched frontend for the real-AI check')).toBeLessThan(at('Collect the patch'))
   })
 
-  // By default the check always fails, as it should without the patch.
-  const baseline = ({ edits = true, failStart = false, stashed = false, checkPasses = false } = {}) => {
+  type RunStep = { title: string; duration: number; error?: { message: string } }
+  const failedInBugCheck: RunStep[] = [
+    { title: 'sign in', duration: 900 },
+    { title: bugStep, duration: 40, error: { message: 'expected no layout problems' } },
+  ]
+  // By default the check always fails in its bug check step, as it should without the patch. `ran` holds the steps of
+  // each failed run in the check's JSON report.
+  const baseline = ({
+    edits = true,
+    failStart = false,
+    stashed = false,
+    checkPasses = false,
+    ran = failedInBugCheck,
+  } = {}) => {
     const dir = mkdtempSync(join(work, 'baseline-'))
     const bin = mkdtempSync(join(work, 'bin-'))
     const git = (...args: string[]) =>
@@ -477,7 +863,10 @@ describe('fix job', () => {
       writeFileSync(join(dir, 'backend/index.ts'), 'patched')
       writeFileSync(join(dir, 'backend/new.ts'), 'new')
     }
-    writeFileSync(join(bin, 'bunx'), `#!/bin/sh\nexit ${checkPasses ? 0 : 1}\n`, { mode: 0o755 })
+    const report = { suites: [{ specs: [{ tests: [{ results: [{ status: 'failed', steps: ran }] }] }] }], errors: [] }
+    writeFileSync(join(bin, 'report.json'), JSON.stringify(report))
+    const bunx = `#!/bin/sh\ncp '${join(bin, 'report.json')}' "$PLAYWRIGHT_JSON_OUTPUT_FILE"\nexit ${checkPasses ? 0 : 1}\n`
+    writeFileSync(join(bin, 'bunx'), bunx, { mode: 0o755 })
     const proc = Bun.spawnSync(['bash', '-e', '-c', step('fix', 'Run the visual check without the patch').run ?? ''], {
       cwd: dir,
       env: { PATH: `${bin}:${process.env.PATH}`, QA_FP: 'fp1', HOME: dir },
@@ -506,6 +895,17 @@ describe('fix job', () => {
     for (const check of [withRun, step('fix', 'Run the visual check without the patch')])
       expect(check['continue-on-error']).toBe(true)
     expect(step('fix', 'Run the visual check without the patch').if).toBe("steps.visual-with.outcome == 'success'")
+    expect(step('fix', 'Run the visual check without the patch').run).toContain('--reporter=list,json')
+  })
+
+  test('a run that failed outside its bug check step shows no bug, so the baseline fails', () => {
+    const signIn = baseline({ ran: [{ title: 'sign in', duration: 900, error: { message: 'no code arrived' } }] })
+    expect(signIn.code).not.toBe(0)
+    expect(signIn.read('backend/index.ts')).toBe('patched')
+    // A check that never loaded ran no step.
+    expect(baseline({ ran: [] }).code).not.toBe(0)
+    // A run that timed out while the step still ran (duration -1) did reach the bug.
+    expect(baseline({ ran: [{ title: bugStep, duration: -1 }] }).code).toBe(0)
   })
 
   test('a failed baseline still puts the patch back, and an agent that edited nothing pops no older stash', () => {
@@ -640,6 +1040,8 @@ describe('passes', () => {
       // Before Fix, and only once no process of the test user that ran the check is left.
       'fix unpatched': pass(`steps.unpatched.outputs.passes == 'true' && ${outcome('stop-tests')}`),
       'fix session': pass(fixScans + outcome('fix')),
+      // The verdict of the second review when it ran, else the first's.
+      'fix review': pass(`${fixScans}steps.review-verdict.outputs.approved == 'true'`),
       'fix replay': pass(fixScans + outcome('verify')),
       'fix visual': pass(fixScans + outcome('visual')),
       // The native platform is the matrix's, so the check is an expression.
@@ -829,18 +1231,20 @@ describe('verify-tests', () => {
     expect(stopTests(1000)).toMatchObject({ code: 1, kills: 50 })
   })
 
-  test("checks every web task of the plan and no native one, from route's output", () => {
+  test("checks every task of the plan that needs a unit test, from route's output", () => {
     const route = step('file', 'Route fixable tickets').run ?? ''
     const filter = /tests=\$\(jq --compact-output '([^']+)' qa-out\/fix-plan\.json\)/.exec(route)?.[1] ?? ''
     const plan = {
       fixes: [
-        { fp: 'web', kind: 'spec', spec: 'x' },
-        { fp: 'visual', kind: 'visual' },
-        { fp: 'ios', flow: 'f' },
+        { fp: 'web', kind: 'spec', spec: 'x', unitTest: true },
+        { fp: 'layout', kind: 'spec', spec: 'y', unitTest: false },
+        { fp: 'visual', kind: 'visual', unitTest: false },
+        { fp: 'onboarding-visual', kind: 'visual', unitTest: true },
+        { fp: 'ios', flow: 'f', unitTest: false },
       ],
     }
     const proc = Bun.spawnSync(['jq', '--compact-output', filter], { stdin: Buffer.from(JSON.stringify(plan)) })
-    expect(JSON.parse(proc.stdout.toString()).map((t: { fp: string }) => t.fp)).toEqual(['web', 'visual'])
+    expect(JSON.parse(proc.stdout.toString()).map((t: { fp: string }) => t.fp)).toEqual(['web', 'onboarding-visual'])
     expect(jobs['verify-tests'].strategy).toEqual({
       'fail-fast': false,
       matrix: { task: '${{ fromJSON(needs.file.outputs.tests) }}' },
@@ -1026,12 +1430,14 @@ describe('publish', () => {
     })
 
     test('the status goes up with every fix outcome, before agent code runs outside the sandbox', () => {
-      // Fix, then the key scan (no agent code), then these two: every later step may run code the agent wrote.
-      const fix = indexOf('fix', 'Fix')
-      expect(steps('fix')[fix + 1].id).toBe('key-scan')
-      const record = steps('fix')[fix + 2]
-      const upload = steps('fix')[fix + 3]
+      // The sessions, then the key scan (no agent code), then these two: every later step may run agent code.
+      const scan = indexOf('fix', "Check the agent's output for the key")
+      expect(steps('fix')[scan].id).toBe('key-scan')
+      const record = steps('fix')[scan + 1]
+      const upload = steps('fix')[scan + 2]
       expect(record.name).toBe('Record whether the fix session began')
+      // The fix session's own file, moved aside before a review session could write the shared one.
+      expect(record.env?.EXECUTION_FILE).toBe('${{ runner.temp }}/qa-execution-fix.json')
       expect(record.if).toBe('always()')
       expect(record.env?.PATH).toBe('/usr/bin:/bin')
       expect(upload.with?.name).toBe(`qa-fix-status-\${{ matrix.task.fp }}${attempt}`)
@@ -1108,6 +1514,18 @@ describe('publish', () => {
       'Replay the spec on the patched frontend',
     ])
       expect(step('verify-real', name).if).toBe(present)
+  })
+
+  test("a fix agent's PR title may use exactly the types Title Lint accepts", () => {
+    const lint = Bun.YAML.parse(readFileSync(join(import.meta.dir, '../../workflows/lint-pr-title.yml'), 'utf8')) as {
+      jobs: Record<string, Job>
+    }
+    const types = lint.jobs.lint.steps?.find((s) => s.uses?.startsWith('amannn/action-semantic-pull-request@'))?.with
+      ?.types
+    const accepted = (types ?? '').split('\n').filter(Boolean)
+    const alternatives = /^\^\(([^)]+)\)/.exec(conventionalTitle.source)?.[1].split('|') ?? []
+    expect(accepted).toContain('fix')
+    expect(alternatives.sort()).toEqual(accepted.sort())
   })
 })
 
@@ -1637,6 +2055,8 @@ test('every job but the reusable notify call has a timeout and read-only permiss
     if (name === 'file') return { actions: 'read', contents: 'read', 'pull-requests': 'read' }
     // Publish lists the run's artifacts, whose names carry the checks' passes.
     if (name === 'publish') return { actions: 'read', contents: 'read' }
+    // Report reads how the bot's recent fix PRs ended.
+    if (name === 'report') return { contents: 'read', 'pull-requests': 'read' }
     return { contents: 'read' }
   }
   for (const [name, job] of Object.entries(jobs).filter(([, job]) => !job.uses)) {

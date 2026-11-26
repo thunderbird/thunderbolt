@@ -177,6 +177,8 @@ jobs:
               - 'shared/defaults/models.ts'
               - 'bunfig.toml'
               - '.github/workflows/qa-weekly.yml'
+              # Its types are the ones publish accepts in a fix PR title.
+              - '.github/workflows/lint-pr-title.yml'
               # Decide what the dev servers write when they start, checked by the qa job.
               - 'vite.config.ts'
               - 'scripts/copy-powersync-assets.ts'

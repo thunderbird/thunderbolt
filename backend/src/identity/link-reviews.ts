@@ -4,9 +4,10 @@
 
 import type { db as DbType, QueryableDatabase } from '@/db/client'
 import { identityConnection, linkReview, scimUser, user } from '@/db/schema'
-import { and, desc, eq, inArray, lt, or, type SQL, sql } from 'drizzle-orm'
+import { and, desc, eq, ilike, inArray, lt, or, type SQL, sql } from 'drizzle-orm'
 import type { AuthAdapter } from './access'
 import { AdmissionError } from './admission-error'
+import { escapeLike } from './admin/members'
 import { type AuditEventInput, insertAuditEvent } from './audit/write'
 import { getCurrentOrganizationId } from './current-organization'
 
@@ -127,18 +128,28 @@ export const findApprovedLinkReview = (
 export const markLinkReviewLinked = (adapter: Pick<AuthAdapter, 'update'>, reviewId: string) =>
   adapter.update({ model: 'linkReview', where: [{ field: 'id', value: reviewId }], update: { status: 'linked' } })
 
+const searchFilter = (pattern: string) =>
+  or(
+    ilike(linkReview.incomingEmail, pattern),
+    ilike(linkReview.incomingName, pattern),
+    ilike(user.email, pattern),
+    ilike(user.name, pattern),
+  )
+
 /**
  * A page of the current org's reviews, most recently attempted first, with the candidate user and
- * the connection's name. Pass the previous page's `nextCursor` for the next one.
+ * the connection's name. `q` matches part of the incoming email or name, or the candidate's. Pass
+ * the previous page's `nextCursor` for the next one.
  */
 export const listLinkReviews = async (
   database: QueryableDatabase,
   {
     status,
     connectionId,
+    q,
     cursor,
     limit = defaultPageSize,
-  }: { status?: LinkReviewStatus; connectionId?: string; cursor?: string; limit?: number } = {},
+  }: { status?: LinkReviewStatus; connectionId?: string; q?: string; cursor?: string; limit?: number } = {},
 ) => {
   const after = cursor ? decodeCursor(cursor) : null
   if (cursor && !after) {
@@ -149,6 +160,7 @@ export const listLinkReviews = async (
     eq(linkReview.orgId, getCurrentOrganizationId()),
     status ? eq(linkReview.status, status) : undefined,
     connectionId ? eq(linkReview.identityConnectionId, connectionId) : undefined,
+    q ? searchFilter(`%${escapeLike(q)}%`) : undefined,
     after
       ? or(
           lt(linkReview.lastSeenAt, after.lastSeenAt),

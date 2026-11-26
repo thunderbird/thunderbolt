@@ -246,5 +246,24 @@ describe('link review service', () => {
       expect((await listLinkReviews(db, { connectionId: 'other' })).reviews).toEqual([])
       await expectRefused(listLinkReviews(db, { cursor: 'not-a-cursor' }), 'LINK_REVIEW_INVALID_CURSOR')
     })
+
+    it("searches the incoming email and name and the candidate's, matching % and _ literally", async () => {
+      const grace = await recordLinkReview(
+        db,
+        { ...reviewFor('g'), incomingEmail: 'grace_100%@gmail.com', incomingName: 'Grace Hopper' },
+        scimActor,
+      )
+      const ada = await recordLinkReview(db, { ...reviewFor('a'), incomingName: null }, scimActor)
+      const search = async (q: string) => (await listLinkReviews(db, { q })).reviews.map((review) => review.id).sort()
+
+      expect(await search('HOPPER')).toEqual([grace.id])
+      expect(await search('_100%')).toEqual([grace.id])
+      expect(await search('100')).toEqual([grace.id])
+      expect(await search('%')).toEqual([grace.id])
+      // Both reviews link to Ada's account, by its email and its name.
+      expect(await search('ada@corp')).toEqual([grace.id, ada.id].sort())
+      expect(await search('Ada')).toEqual([grace.id, ada.id].sort())
+      expect(await search('nobody')).toEqual([])
+    })
   })
 })

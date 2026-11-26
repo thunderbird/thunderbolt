@@ -873,6 +873,31 @@ describe('admin API', () => {
         expect((await call('GET', '/v1/admin/invitations?q=')).status).toBe(422)
       })
 
+      it('narrows pending invitations to the expired or the live ones, and lists both without the filter', async () => {
+        const values = (email: string, expiresAt: Date) => ({
+          id: crypto.randomUUID(),
+          orgId,
+          email,
+          tokenHash: crypto.randomUUID(),
+          expiresAt,
+        })
+        await harness.db
+          .insert(invitation)
+          .values([
+            values('live@example.org', new Date(Date.now() + 60_000)),
+            values('expired@example.org', new Date(Date.now() - 60_000)),
+          ])
+        const emails = async (query: string) =>
+          (await json<{ items: { email: string }[] }>(await call('GET', `/v1/admin/invitations${query}`))).items
+            .map((item) => item.email)
+            .sort()
+
+        expect(await emails('?status=pending&expired=false')).toEqual(['live@example.org'])
+        expect(await emails('?status=pending&expired=true')).toEqual(['expired@example.org'])
+        expect(await emails('?status=pending')).toEqual(['expired@example.org', 'live@example.org'])
+        expect((await call('GET', '/v1/admin/invitations?expired=maybe')).status).toBe(422)
+      })
+
       it('answers a malformed invitation cursor with 400', async () => {
         const bad = Buffer.from(JSON.stringify(['not a time', 'id'])).toString('base64url')
         for (const cursor of ['nonsense', bad]) {
@@ -962,6 +987,19 @@ describe('admin API', () => {
         ])
         const [row] = await harness.db.select().from(linkReview).where(eq(linkReview.id, review.id))
         expect(row.status).toBe('pending')
+      })
+
+      it('searches reviews by part of the incoming email, and refuses an empty search', async () => {
+        const candidate = await addMember()
+        const review = await addReview(candidate)
+        const search = async (q: string) =>
+          (await json<{ reviews: { id: string }[] }>(await call('GET', `/v1/admin/link-reviews?q=${q}`))).reviews.map(
+            (row) => row.id,
+          )
+
+        expect(await search('INCOMING')).toEqual([review.id])
+        expect(await search('nobody')).toEqual([])
+        expect((await call('GET', '/v1/admin/link-reviews?q=')).status).toBe(422)
       })
 
       it('answers a malformed cursor with 400, and records nothing', async () => {

@@ -26,6 +26,7 @@ export const createLinkReviewAdminRoutes = (auth: Auth, database: typeof DbType)
           t.Union([t.Literal('pending'), t.Literal('approved'), t.Literal('rejected'), t.Literal('linked')]),
         ),
         connectionId: t.Optional(id),
+        q: t.Optional(t.String({ minLength: 1, maxLength: 200 })),
       }),
     })
     .post(

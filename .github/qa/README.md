@@ -280,7 +280,8 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    button, a hover-only action, a placeholder in a wrapper that stops clicks), and leave out a hidden, `aria-hidden`
    or `inert` one. A control axe cannot settle (an `incomplete` result) is never a line. If axe fails, the probe
    logs the error once per page load with `console.error`, in a line that does not start with `[qa-layout]`, and
-   still writes the geometry lines. axe checks no `contenteditable` without a role (the app has
+   still writes the geometry lines. A page where axe keeps failing still counts as measured, and that console
+   line is the only sign that the name check is missing. axe checks no `contenteditable` without a role (the app has
    none), treats a closed shadow root's text and CSS-generated text as no name, and takes about 5 to 30 ms a run
    on the app's screens. `axe-core` is a pinned root dev dependency. The
    name a geometry line quotes still comes from the probe's own approximation. The geometry kinds also skip a control that inherits

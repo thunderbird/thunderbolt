@@ -10,6 +10,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { createAdminTestHarness, flush, type FakeReply, type FakeRequest } from '../../test-utils'
 import { makeDomain } from '../domains/fixtures'
 import { SignInMethodsPage } from './sign-in-methods-page'
+import { adminItemLink } from '../../components/use-resource-page-state'
+import type { ComponentProps } from 'react'
+import type { MemoryRouter } from 'react-router'
 
 const base = { matchClaim: 'sub', claimedDomains: [], createdAt: '2026-11-17T00:00:00.000Z' }
 
@@ -79,20 +82,27 @@ const backend =
     return other(request)
   }
 
-const renderPage = async (respond: (request: FakeRequest) => FakeReply, initialEntries?: string[]) => {
+const renderPage = async (
+  respond: (request: FakeRequest) => FakeReply,
+  initialEntries?: ComponentProps<typeof MemoryRouter>['initialEntries'],
+) => {
   const harness = createAdminTestHarness(respond, initialEntries ? { initialEntries } : undefined)
   render(<SignInMethodsPage />, { wrapper: harness.wrapper })
   await flush()
   return harness
 }
 
+/** Start a new sign-in method from the header, or from the empty state when nothing is listed yet. */
 const addSignInMethod = (kind: string) => {
-  fireEvent.click(screen.getByRole('button', { name: 'Add sign-in method' }))
-  fireEvent.click(screen.getByRole('button', { name: kind }))
+  fireEvent.click(
+    screen.queryByRole('button', { name: 'New Sign-in Method' }) ??
+      screen.getByRole('button', { name: 'Add your first sign-in method' }),
+  )
+  fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${kind}`) }))
 }
 
 const fillOidcForm = () => {
-  addSignInMethod('Single sign-on with OIDC')
+  addSignInMethod('OIDC single sign-on')
   for (const [label, value] of [
     ['Name', 'Okta'],
     ['Provider ID', 'okta'],
@@ -111,38 +121,57 @@ describe('SignInMethodsPage', () => {
     cleanup()
   })
 
-  it('lists connections and domains together, by name', async () => {
+  it('lists connections and domains together by name, with retired connections under their own label', async () => {
     await renderPage(backend(connections, domains))
 
     const names = screen
       .getAllByRole('button', { pressed: false })
       .map((button) => button.getAttribute('aria-label'))
       .filter(Boolean)
-    expect(names).toEqual(['Acme Entra', 'example.com', 'Old', 'open.test', 'SSO', 'sso.test'])
+    expect(names).toEqual([
+      'Open Acme Entra',
+      'Open example.com',
+      'Open open.test',
+      'Open SSO',
+      'Open sso.test',
+      'Open Old',
+    ])
+    expect(screen.getByRole('heading', { name: 'Retired' })).toBeInTheDocument()
   })
 
-  it('describes each connection by its sign-in, provisioning, status and domains', async () => {
+  it('narrows the list by name, and says when nothing matches', async () => {
+    await renderPage(backend(connections, domains))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+    fireEvent.change(screen.getByPlaceholderText('Search sign-in methods'), { target: { value: 'acme' } })
+    await flush()
+    expect(screen.getByRole('button', { name: 'Open Acme Entra' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open SSO' })).toBeNull()
+
+    fireEvent.change(screen.getByPlaceholderText('Search sign-in methods'), { target: { value: 'zzz' } })
+    await flush()
+    expect(screen.getByText('No matching sign-in methods.')).toBeInTheDocument()
+  })
+
+  it('describes each connection by its sign-in, provisioning and domains, badging only what needs a flag', async () => {
     await renderPage(backend([{ ...connections[0], claimedDomains: ['corp.test'] }, ...connections.slice(1)]))
 
-    const env = screen.getByRole('button', { name: 'SSO' })
-    expect(env).toHaveTextContent('OIDC sign-in · Set by server settings · corp.test')
-    expect(env).toHaveTextContent('Active')
-    const acme = screen.getByRole('button', { name: 'Acme Entra' })
-    expect(acme).toHaveTextContent('SAML sign-in · SCIM retiring')
+    const env = screen.getByRole('button', { name: 'Open SSO' })
+    expect(env).toHaveTextContent('OIDC · Set by server settings · corp.test')
+    expect(env).not.toHaveTextContent('Active')
+    const acme = screen.getByRole('button', { name: 'Open Acme Entra' })
+    expect(acme).toHaveTextContent('SAML · SCIM')
     expect(acme).toHaveTextContent('Retiring')
-    expect(screen.getByRole('button', { name: 'Old' })).toHaveTextContent('Retired')
   })
 
-  it('describes each domain by its status, and which provider signs its people in', async () => {
+  it('describes each domain by what it does, badging only an unverified one', async () => {
     await renderPage(backend([], domains))
 
-    const row = (name: string) => within(screen.getByRole('button', { name }))
+    const row = (name: string) => within(screen.getByRole('button', { name: `Open ${name}` }))
     expect(row('example.com').getByText('Unverified')).toBeInTheDocument()
-    expect(row('example.com').getByText('Domain · Waiting for verification')).toBeInTheDocument()
-    expect(row('open.test').getByText('Verified')).toBeInTheDocument()
-    expect(row('open.test').getByText('Domain · Open to enrollment')).toBeInTheDocument()
-    expect(row('sso.test').getByText('Claimed')).toBeInTheDocument()
-    expect(row('sso.test').getByText('Domain · Signs people in through Okta')).toBeInTheDocument()
+    expect(row('open.test').getByText('Open to enrollment')).toBeInTheDocument()
+    expect(row('open.test').queryByText('Verified')).toBeNull()
+    expect(row('sso.test').getByText('Claimed by Okta')).toBeInTheDocument()
   })
 
   it('shows the empty state', async () => {
@@ -162,7 +191,7 @@ describe('SignInMethodsPage', () => {
       /\/api\/auth\/sso\/callback\/okta$/,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Create connection' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
     await flush()
     expect(harness.requests.find((request) => request.method === 'POST')).toMatchObject({
       path: 'admin/connections/sso',
@@ -191,6 +220,39 @@ describe('SignInMethodsPage', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('A connection with this provider ID already exists.')
   })
 
+  it('keeps the provider ID to lowercase letters, digits and hyphens as it is typed', async () => {
+    await renderPage(backend([], []))
+    addSignInMethod('OIDC single sign-on')
+    fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: 'Acme Okta_1' } })
+
+    expect(screen.getByLabelText('Provider ID')).toHaveValue('acmeokta1')
+  })
+
+  it('explains the match claim behind the info icon beside its label', async () => {
+    await renderPage(backend([], []))
+    addSignInMethod('OIDC single sign-on')
+    fireEvent.focus(screen.getByRole('button', { name: 'What is this for?' }))
+
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      "Must hold the person's SCIM externalId. Locks after the first sign-in.",
+    )
+  })
+
+  it("opens a connection's edit form from its row's context menu, and Cancel goes back to its view", async () => {
+    const own: AdminConnection = { ...created, id: 'c3' }
+    await renderPage(backend([own], [], () => ({ body: created })))
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Open Okta' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }))
+    await flush()
+    expect(screen.getByRole('heading', { name: 'Edit Connection' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await flush()
+    expect(screen.queryByRole('heading', { name: 'Edit Connection' })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Okta' })).toBeInTheDocument()
+  })
+
   it('retires a connection after confirming, and offers no retire while SCIM is active', async () => {
     const own: AdminConnection = { ...created, id: 'c3' }
     const withScim: AdminConnectionDetail = { ...created, id: 'c4', name: 'Both', scim: { scimConnectionId: 's4' } }
@@ -200,17 +262,22 @@ describe('SignInMethodsPage', () => {
       ),
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Both' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open Both' }))
     await flush()
     expect(screen.getByText('To retire this connection, retire its SCIM provisioning first.')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'More' })).toBeNull()
+    await act(async () => {
+      fireEvent.pointerDown(screen.getByRole('button', { name: 'More' }), { button: 0 })
+    })
+    expect(screen.getByRole('menuitem', { name: 'Edit' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Retire' })).toBeNull()
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Okta' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open Okta' }))
     await flush()
     await act(async () => {
       fireEvent.pointerDown(screen.getByRole('button', { name: 'More' }), { button: 0 })
     })
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Retire connection' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Retire' }))
     await flush()
     expect(screen.getByText(/Nobody can sign in through it any more/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Retire connection' }))
@@ -239,9 +306,9 @@ describe('SignInMethodsPage', () => {
           : { body: created },
       ),
     )
-    addSignInMethod('SCIM provisioning only')
+    addSignInMethod('SCIM provisioning')
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Okta SCIM' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create connection' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
     await flush()
 
     expect(harness.requests.find((request) => request.path === 'admin/connections/scim')?.body).toEqual({
@@ -252,7 +319,7 @@ describe('SignInMethodsPage', () => {
     // Closing before Done asks first, so the token isn't dropped unseen.
     fireEvent.click(screen.getByRole('button', { name: 'Close details' }))
     await flush()
-    expect(screen.getByText('Discard unsaved changes?')).toBeInTheDocument()
+    expect(screen.getByText('Leave without copying the token?')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }))
     await flush()
     expect(screen.getByRole('textbox', { name: 'SCIM token' })).toHaveValue('scim-token-9')
@@ -265,7 +332,7 @@ describe('SignInMethodsPage', () => {
   it('opens a domain from its card and shows the record to publish', async () => {
     await renderPage(backend([], domains))
 
-    fireEvent.click(screen.getByRole('button', { name: 'example.com' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open example.com' }))
     await flush()
 
     expect(screen.getByRole('heading', { name: 'example.com' })).toBeInTheDocument()
@@ -285,7 +352,7 @@ describe('SignInMethodsPage', () => {
     await flush()
     const input = screen.getByRole('textbox', { name: 'Domain' })
     fireEvent.change(input, { target: { value: ' acme.test ' } })
-    fireEvent.click(within(input.closest('form')!).getByRole('button', { name: 'Add domain' }))
+    fireEvent.click(within(input.closest('form')!).getByRole('button', { name: 'Add' }))
     await flush()
 
     expect(harness.requests.find((request) => request.method === 'POST')?.body).toEqual({ domain: 'acme.test' })
@@ -294,9 +361,10 @@ describe('SignInMethodsPage', () => {
   })
 
   it('opens nothing for an id that matches no domain', async () => {
-    await renderPage(backend([], domains), ['/admin/sign-in-methods?edit=domain:gone'])
+    const link = adminItemLink('/admin/sign-in-methods', 'domain:gone')
+    await renderPage(backend([], domains), [{ pathname: link.to, state: link.state }])
 
     expect(screen.queryByRole('heading', { level: 2 })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'example.com' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Open example.com' })).toHaveAttribute('aria-pressed', 'false')
   })
 })

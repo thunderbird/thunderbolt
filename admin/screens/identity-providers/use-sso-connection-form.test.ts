@@ -7,6 +7,7 @@ import {
   buildCreateSsoBody,
   initialSsoCreateDraft,
   ssoCreateReducer,
+  toProviderId,
   type SsoCreateDraft,
 } from './use-sso-connection-form'
 
@@ -80,5 +81,28 @@ describe('ssoCreateReducer', () => {
     const typed = ssoCreateReducer(entra, { type: 'set', field: 'matchClaim', value: 'employee_id' })
     const okta = ssoCreateReducer(typed, { type: 'preset', preset: 'okta', protocol: 'oidc' })
     expect(okta).toMatchObject({ preset: 'okta', matchClaim: 'employee_id' })
+  })
+})
+
+describe('toProviderId', () => {
+  it('lowercases and keeps letters, digits and hyphens', () => {
+    expect(toProviderId('Acme-Okta-2')).toBe('acme-okta-2')
+  })
+
+  it('drops every other character', () => {
+    expect(toProviderId('acme okta_é.!')).toBe('acmeokta')
+  })
+
+  it('drops a leading hyphen, which the backend refuses', () => {
+    expect(toProviderId('--acme')).toBe('acme')
+  })
+
+  it('stops at 63 characters', () => {
+    expect(toProviderId('a'.repeat(70))).toHaveLength(63)
+  })
+
+  it('is applied to the provider id as it is typed', () => {
+    const draft = ssoCreateReducer(initialSsoCreateDraft('oidc'), { type: 'set', field: 'providerId', value: 'My IdP' })
+    expect(draft.providerId).toBe('myidp')
   })
 })

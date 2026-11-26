@@ -7,8 +7,9 @@ import { getClock } from '@/testing-library'
 import type { AdminConnectionDetail, ScimCredential } from '@shared/admin-api'
 import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { createAdminTestHarness, flush, pickDate, type FakeReply, type FakeRequest } from '../../test-utils'
+import { RetireScimDialog } from './retire-scim-dialog'
 import { ScimSection } from './scim-section'
 
 const credential: ScimCredential = {
@@ -47,7 +48,7 @@ const withScim: AdminConnectionDetail = { ...ssoOnly, scim: { scimConnectionId: 
 
 const renderSection = (detail: AdminConnectionDetail, respond: (request: FakeRequest) => FakeReply = () => ({})) => {
   const harness = createAdminTestHarness(respond)
-  const dirty: boolean[] = []
+  const dirty: (boolean | 'secret')[] = []
   render(<ScimSection detail={detail} onDirty={(value) => dirty.push(value)} />, { wrapper: harness.wrapper })
   return { ...harness, dirty }
 }
@@ -73,9 +74,9 @@ describe('ScimSection', () => {
     const harness = renderSection(ssoOnly, ({ path }) =>
       path === 'admin/connections/scim' ? { body: { connection: {}, credential, token: 'scim-token' } } : {},
     )
-    expect(screen.getByText(/makes sign-in through this connection SSO-only/)).toBeInTheDocument()
+    expect(screen.getByText('Sign-in becomes SSO-only')).toBeInTheDocument()
 
-    pickDate('Credential expires on', '2027-03-09')
+    pickDate('Expires on', '2027-03-09')
     fireEvent.click(screen.getByRole('button', { name: 'Turn on SCIM' }))
     await flush()
 
@@ -102,7 +103,7 @@ describe('ScimSection', () => {
     expect(within(row).getByText('Never used')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Revoke credential 34567890' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Revoke' }))
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Revoke credential' }))
     await flush()
     expect(harness.requests.find((request) => request.method === 'POST')).toMatchObject({
       path: 'admin/connections/c1/scim/credentials/cred-1234567890/revoke',
@@ -129,35 +130,42 @@ describe('ScimSection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Issue a new credential' }))
     await flush()
     expect(harness.requests.filter((request) => request.method === 'POST')).toHaveLength(1)
-    expect(harness.dirty).toEqual([true])
+    expect(harness.dirty).toEqual(['secret'])
 
     fireEvent.click(screen.getByRole('button', { name: 'Done' }))
     await flush()
-    expect(harness.dirty).toEqual([true, false])
+    expect(harness.dirty).toEqual(['secret', false])
     expect(screen.getByRole('button', { name: 'Issue a new credential' })).toBeEnabled()
   })
 
   it('guards the panel while a credential is being issued, and lets go if issuing fails', async () => {
     const harness = renderSection(withScim, () => ({ status: 500, body: {} }))
     fireEvent.click(screen.getByRole('button', { name: 'Issue a new credential' }))
-    expect(harness.dirty).toEqual([true])
+    expect(harness.dirty).toEqual(['secret'])
 
     await flush()
-    expect(harness.dirty).toEqual([true, false])
+    expect(harness.dirty).toEqual(['secret', false])
   })
 
-  it('retires SCIM after confirming', async () => {
-    const harness = renderSection(withScim, () => ({ status: 202, body: withScim }))
-    fireEvent.click(screen.getByRole('button', { name: 'Retire SCIM' }))
-    expect(screen.getByText(/Its tokens stop working at once/)).toBeInTheDocument()
+  it('retires SCIM after confirming, from the dialog the ⋯ menu opens', async () => {
+    const harness = createAdminTestHarness(() => ({ status: 202, body: withScim }))
+    const onClose = mock()
+    render(<RetireScimDialog connection={withScim} onClose={onClose} />, { wrapper: harness.wrapper })
+    expect(screen.getByRole('alertdialog')).toHaveTextContent(`Retire SCIM for ${withScim.name}?`)
     fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Retire SCIM' }))
     await flush()
     expect(harness.requests.find((request) => request.method === 'POST')?.path).toBe('admin/connections/c1/scim/retire')
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps Retire SCIM out of the tab body', () => {
+    renderSection(withScim)
+    expect(screen.queryByRole('button', { name: 'Retire SCIM' })).toBeNull()
   })
 
   it('shows the retirement in progress, with nothing to issue or revoke', () => {
     renderSection({ ...withScim, status: 'scim_retiring' })
-    expect(screen.getByRole('status')).toHaveTextContent('Retiring SCIM provisioning.')
+    expect(screen.getByRole('status')).toHaveTextContent('Retiring.')
     expect(screen.queryByRole('button', { name: 'Issue a new credential' })).toBeNull()
     expect(screen.queryByRole('button', { name: /Revoke credential/ })).toBeNull()
   })

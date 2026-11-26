@@ -17,12 +17,7 @@ const EnrollmentLockReason = ({ domain }: { domain: OrgDomain }) => {
     return <Trans>Verify this domain before opening it to enrollment.</Trans>
   }
   const name = domain.claimedBy?.name
-  return (
-    <Trans>
-      {name} claims this domain, so people on it sign in through that identity provider. Release the claim to open
-      enrollment.
-    </Trans>
-  )
+  return <Trans>Claimed by {name}. Release the claim to open enrollment.</Trans>
 }
 
 /** The switch that lets anyone with a verified email on the domain join, and why it's locked. */
@@ -32,17 +27,16 @@ export const DomainEnrollmentField = ({ domain }: { domain: OrgDomain }) => {
   const reasonId = useId()
   const setEnrollment = useSetDomainEnrollment(domain.id)
   const lock = getEnrollmentLock(domain)
-  const name = domain.domain
 
   return (
-    <DetailField label={<Trans>Enrollment</Trans>}>
+    <DetailField label={<Trans>Enrollment</Trans>} className="gap-2">
       <div className="flex items-center justify-between gap-4">
         <div className="flex flex-col gap-0.5">
           <Label htmlFor={switchId}>
             <Trans>Open to enrollment</Trans>
           </Label>
           <p id={descriptionId} className="text-[length:var(--font-size-sm)] text-muted-foreground">
-            <Trans>Anyone with a verified email on {name} can join as a member.</Trans>
+            <Trans>Anyone with a verified email on this domain can join as a member.</Trans>
           </p>
         </div>
         <Switch
@@ -54,11 +48,11 @@ export const DomainEnrollmentField = ({ domain }: { domain: OrgDomain }) => {
         />
       </div>
       {lock && (
-        <p id={reasonId} className="mt-2 text-[length:var(--font-size-sm)] text-muted-foreground">
+        <p id={reasonId} className="text-[length:var(--font-size-sm)] text-muted-foreground">
           <EnrollmentLockReason domain={domain} />
         </p>
       )}
-      <InlineError error={setEnrollment.error} className="mt-2" />
+      <InlineError error={setEnrollment.error} />
     </DetailField>
   )
 }

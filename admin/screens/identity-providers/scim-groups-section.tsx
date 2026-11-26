@@ -8,6 +8,7 @@ import { LoadMoreFooter } from '../../components/load-more-footer'
 import { RoleMappingControl } from '../../components/role-mapping-control'
 import { useScimGroups } from './use-connection-queries'
 import { InlineError } from '../../components/inline-error'
+import { SettingsNoResults } from '@/components/settings/settings-empty-state'
 
 /**
  * The groups the identity provider pushed over SCIM. Read-only apart from their role mapping, which
@@ -18,16 +19,16 @@ export const ScimGroupsSection = ({ connectionId, canMap }: { connectionId: stri
 
   const list = () => {
     if (groups.isLoading) {
-      return <ListSkeleton rows={3} />
+      return <ListSkeleton rows={3} variant="flat" />
     }
     if (groups.error && groups.items.length === 0) {
       return <InlineError error={groups.error} />
     }
     if (groups.isEmpty) {
       return (
-        <p className="text-muted-foreground">
-          <Trans>Your identity provider hasn't pushed any groups yet.</Trans>
-        </p>
+        <SettingsNoResults>
+          <Trans>No groups yet.</Trans>
+        </SettingsNoResults>
       )
     }
     return (
@@ -56,12 +57,6 @@ export const ScimGroupsSection = ({ connectionId, canMap }: { connectionId: stri
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-muted-foreground">
-        <Trans>
-          Your identity provider owns these groups. A mapping follows the group's ID, so renaming it there changes
-          nothing here.
-        </Trans>
-      </p>
       {list()}
       <LoadMoreFooter hasMore={groups.hasMore} isLoading={groups.isLoadingMore} onLoadMore={groups.loadMore} />
     </div>

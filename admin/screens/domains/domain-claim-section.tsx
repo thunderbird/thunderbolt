@@ -13,6 +13,7 @@ import { getConnectionKindLabel } from './domain-rules'
 import { useClaimDomain, useClaimableConnections, useReleaseDomain } from './use-domains'
 import { InlineError } from '../../components/inline-error'
 import { connectionEditId } from '../sign-in-methods/sign-in-method-ids'
+import { adminItemLink } from '../../components/use-resource-page-state'
 
 const hintClass = 'text-[length:var(--font-size-sm)] text-muted-foreground'
 
@@ -61,7 +62,9 @@ const ClaimPicker = ({ domain }: { domain: OrgDomain }) => {
         <Button
           type="button"
           variant="outline"
-          disabled={!verified || connectionId === '' || claim.isPending}
+          size="sm"
+          disabled={!verified || connectionId === ''}
+          isLoading={claim.isPending}
           onClick={() => claim.mutate(connectionId)}
         >
           <Trans>Claim</Trans>
@@ -88,15 +91,18 @@ const ClaimHolder = ({ domain, claimedBy }: { domain: OrgDomain; claimedBy: NonN
         <p className="min-w-0 text-[length:var(--font-size-sm)]">
           <Trans>
             Claimed by{' '}
-            <Link
-              to={`/admin/sign-in-methods?edit=${encodeURIComponent(connectionEditId(claimedBy.id))}`}
-              className={linkClass}
-            >
+            <Link {...adminItemLink('/admin/sign-in-methods', connectionEditId(claimedBy.id))} className={linkClass}>
               {name}
             </Link>
           </Trans>
         </p>
-        <Button type="button" variant="outline" disabled={release.isPending} onClick={() => release.mutate()}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          isLoading={release.isPending}
+          onClick={() => release.mutate()}
+        >
           <Trans>Release claim</Trans>
         </Button>
       </div>
@@ -110,26 +116,13 @@ const ClaimHolder = ({ domain, claimedBy }: { domain: OrgDomain; claimedBy: NonN
 
 /** Assign the domain to an identity provider, or release it. A claim covers this exact domain only. */
 export const DomainClaimSection = ({ domain }: { domain: OrgDomain }) => {
-  const name = domain.domain
   return (
     <DetailField label={<Trans>Identity provider claim</Trans>} className="gap-2">
-      <p className={hintClass}>
-        <Trans>
-          A claimed domain is closed to enrollment and to plain invitations: people on it sign in through the identity
-          provider.
-        </Trans>
-      </p>
       {domain.claimedBy ? (
         <ClaimHolder domain={domain} claimedBy={domain.claimedBy} />
       ) : (
         <ClaimPicker domain={domain} />
       )}
-      <p className={hintClass}>
-        <Trans>
-          A claim covers {name} only. Subdomains such as mail.{name} are never trusted automatically: add, verify and
-          claim each one on its own.
-        </Trans>
-      </p>
     </DetailField>
   )
 }

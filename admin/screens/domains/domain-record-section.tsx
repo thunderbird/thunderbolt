@@ -11,11 +11,11 @@ import { CopyableField } from '../../components/copyable-field'
 export const DomainRecordSection = ({ domain }: { domain: OrgDomain }) => {
   const { t } = useLingui()
   return (
-    <DetailField label={<Trans>DNS record</Trans>}>
+    <DetailField label={<Trans>DNS record</Trans>} className="gap-2">
       <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
-        <Trans>Add this TXT record at your DNS provider, then verify the domain.</Trans>
+        <Trans>Add this TXT record at your DNS provider.</Trans>
       </p>
-      <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 text-[length:var(--font-size-sm)]">
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 text-[length:var(--font-size-sm)]">
         <dt className="text-muted-foreground">
           <Trans>Type</Trans>
         </dt>

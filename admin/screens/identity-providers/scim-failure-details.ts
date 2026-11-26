@@ -12,6 +12,7 @@ export type ScimFailureDetails = {
   detail: string | null
 }
 
+/** A non-empty string from metadata, else null. */
 const text = (value: unknown) => (typeof value === 'string' && value !== '' ? value : null)
 
 /**

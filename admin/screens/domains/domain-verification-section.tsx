@@ -15,7 +15,7 @@ import { InlineError } from '../../components/inline-error'
 
 /** The domain's status, the last DNS check and why it failed, and the button that checks again. */
 export const DomainVerificationSection = ({ domain }: { domain: OrgDomain }) => {
-  const { i18n } = useLingui()
+  const { t, i18n } = useLingui()
   const formatters = useFormatters()
   const verify = useVerifyDomain(domain.id)
   const lastChecked = domain.lastCheckedAt && formatters.relativeTime(domain.lastCheckedAt)
@@ -23,7 +23,7 @@ export const DomainVerificationSection = ({ domain }: { domain: OrgDomain }) => 
   const reason = checkError && getDomainCheckErrorMessage(checkError)
 
   return (
-    <DetailField label={<Trans>Verification</Trans>}>
+    <DetailField label={<Trans>Verification</Trans>} className="gap-2">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <DomainStatusBadge domain={domain} />
@@ -31,25 +31,26 @@ export const DomainVerificationSection = ({ domain }: { domain: OrgDomain }) => 
             {lastChecked ? <Trans>Last checked {lastChecked}</Trans> : <Trans>Not checked yet</Trans>}
           </span>
         </div>
-        <Button type="button" variant="outline" size="sm" disabled={verify.isPending} onClick={() => verify.mutate()}>
-          {verify.isPending ? (
-            <Trans>Checking…</Trans>
-          ) : domain.verifiedAt ? (
-            <Trans>Check again</Trans>
-          ) : (
-            <Trans>Verify</Trans>
-          )}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          isLoading={verify.isPending}
+          loadingLabel={t`Checking…`}
+          onClick={() => verify.mutate()}
+        >
+          {domain.verifiedAt ? <Trans>Check again</Trans> : <Trans>Verify</Trans>}
         </Button>
       </div>
       {checkError && (
-        <Alert variant="destructive" className="mt-2">
+        <Alert variant="destructive">
           <AlertTitle>
             <Trans>The last check failed</Trans>
           </AlertTitle>
           <AlertDescription>{reason ? i18n._(reason) : <code>{checkError}</code>}</AlertDescription>
         </Alert>
       )}
-      <InlineError error={verify.error} className="mt-2" />
+      <InlineError error={verify.error} />
     </DetailField>
   )
 }

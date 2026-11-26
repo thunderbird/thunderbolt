@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { useFormatters } from '@/i18n/use-formatters'
 import type { ScimCredential } from '@shared/admin-api'
 import { StatusBadge, type StatusTone } from '../../components/status-badge'
+import { SettingsNoResults } from '@/components/settings/settings-empty-state'
 
 const statuses: Record<ScimCredential['status'], { label: MessageDescriptor; tone: StatusTone }> = {
   active: { label: msg`Active`, tone: 'success' },
@@ -35,9 +36,9 @@ export const ScimCredentialList = ({ credentials, onRevoke }: ScimCredentialList
   const formatters = useFormatters()
   if (credentials.length === 0) {
     return (
-      <p className="text-muted-foreground">
+      <SettingsNoResults>
         <Trans>No credentials.</Trans>
-      </p>
+      </SettingsNoResults>
     )
   }
   return (

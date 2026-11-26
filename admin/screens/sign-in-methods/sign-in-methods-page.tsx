@@ -3,10 +3,13 @@
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { Globe, KeyRound } from 'lucide-react'
+import { useState } from 'react'
+import { Globe, KeyRound, Plus } from 'lucide-react'
 import { IconTile } from '@/components/settings/icon-tile'
-import { SettingsEmptyState } from '@/components/settings/settings-empty-state'
-import { SettingsSelectableRow } from '@/components/settings/settings-list'
+import { SettingsNoResults } from '@/components/settings/settings-empty-state'
+import { SettingsSectionLabel, SettingsSelectableRow } from '@/components/settings/settings-list'
+import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { PageCreateAction } from '@/components/ui/page-create-action'
 import { useActiveLocale } from '@/i18n/use-active-locale'
 import type { AdminConnection, OrgDomain } from '@shared/admin-api'
@@ -22,7 +25,10 @@ import { DomainEditor } from '../domains/domain-editor'
 import { getDomainStatus } from '../domains/domain-rules'
 import { DomainStatusBadge } from '../domains/domain-status-badge'
 import { useDomains, useRemoveDomain } from '../domains/use-domains'
+import { itemContextMenuItems, type ItemAction } from '../../components/item-actions'
+import { connectionActions, domainActions } from './sign-in-method-actions'
 import { ConnectionEditor } from '../identity-providers/connection-editor'
+import { RetireScimDialog } from '../identity-providers/retire-scim-dialog'
 import { connectionBadge, envOwnedLabel, scimLabels, ssoLabels } from '../identity-providers/connection-labels'
 import { describeConnection } from '../identity-providers/connection-status'
 import { NewConnectionEditor } from '../identity-providers/new-connection-editor'
@@ -37,6 +43,7 @@ import {
 
 type SignInMethod = { kind: 'connection'; connection: AdminConnection } | { kind: 'domain'; domain: OrgDomain }
 
+/** The name a sign-in method is listed under. */
 const methodName = (method: SignInMethod) =>
   method.kind === 'connection' ? method.connection.name : method.domain.domain
 
@@ -44,12 +51,14 @@ const ConnectionCard = ({
   connection,
   isSelected,
   onSelect,
+  actions,
 }: {
   connection: AdminConnection
   isSelected: boolean
   onSelect: () => void
+  actions: ItemAction[]
 }) => {
-  const { i18n } = useLingui()
+  const { t, i18n } = useLingui()
   const summary = describeConnection(connection)
   const badge = connectionBadge(summary)
   const parts = [
@@ -67,29 +76,27 @@ const ConnectionCard = ({
           <KeyRound className="size-5 text-muted-foreground" />
         </IconTile>
       }
-      trailingIcon={<StatusBadge tone={badge.tone}>{i18n._(badge.label)}</StatusBadge>}
-      ariaLabel={connection.name}
+      trailingIcon={badge && <StatusBadge tone={badge.tone}>{i18n._(badge.label)}</StatusBadge>}
+      ariaLabel={t`Open ${connection.name}`}
       isSelected={isSelected}
       isDimmed={summary.retired}
       onSelect={onSelect}
+      contextMenuItems={itemContextMenuItems(actions)}
     />
   )
 }
 
+/** What a domain does, under its name; an unverified one says so with its badge instead. */
 const DomainSubtitle = ({ domain }: { domain: OrgDomain }) => {
   switch (getDomainStatus(domain)) {
     case 'claimed': {
       const name = domain.claimedBy?.name
-      return <Trans>Domain · Signs people in through {name}</Trans>
+      return <Trans>Claimed by {name}</Trans>
     }
     case 'verified':
-      return domain.enrollmentEnabled ? (
-        <Trans>Domain · Open to enrollment</Trans>
-      ) : (
-        <Trans>Domain · Closed to enrollment</Trans>
-      )
+      return domain.enrollmentEnabled ? <Trans>Open to enrollment</Trans> : <Trans>Closed to enrollment</Trans>
     case 'unverified':
-      return <Trans>Domain · Waiting for verification</Trans>
+      return null
   }
 }
 
@@ -97,25 +104,31 @@ const DomainCard = ({
   domain,
   isSelected,
   onSelect,
+  actions,
 }: {
   domain: OrgDomain
   isSelected: boolean
   onSelect: () => void
-}) => (
-  <SettingsSelectableRow
-    title={domain.domain}
-    subtitle={<DomainSubtitle domain={domain} />}
-    leading={
-      <IconTile>
-        <Globe className="size-5 text-muted-foreground" />
-      </IconTile>
-    }
-    trailingIcon={<DomainStatusBadge domain={domain} />}
-    ariaLabel={domain.domain}
-    isSelected={isSelected}
-    onSelect={onSelect}
-  />
-)
+  actions: ItemAction[]
+}) => {
+  const { t } = useLingui()
+  return (
+    <SettingsSelectableRow
+      title={domain.domain}
+      subtitle={<DomainSubtitle domain={domain} />}
+      leading={
+        <IconTile>
+          <Globe className="size-5 text-muted-foreground" />
+        </IconTile>
+      }
+      trailingIcon={getDomainStatus(domain) === 'unverified' && <DomainStatusBadge domain={domain} />}
+      ariaLabel={t`Open ${domain.domain}`}
+      isSelected={isSelected}
+      onSelect={onSelect}
+      contextMenuItems={itemContextMenuItems(actions)}
+    />
+  )
+}
 
 /**
  * Every way people get into the org, in one list by name: identity provider connections (sign-in and
@@ -129,18 +142,29 @@ export const SignInMethodsPage = () => {
   const domains = useDomains()
   const retire = useRetireConnection()
   const remove = useRemoveDomain()
+  const [retiringScim, setRetiringScim] = useState<AdminConnection | null>(null)
+  const [search, setSearch] = useState('')
 
   const methods: SignInMethod[] = [
     ...(connections.data ?? []).map((connection) => ({ kind: 'connection' as const, connection })),
     ...(domains.data ?? []).map((domain) => ({ kind: 'domain' as const, domain })),
   ].sort((a, b) => methodName(a).localeCompare(methodName(b), locale))
+  const query = search.trim().toLocaleLowerCase(locale)
+  const matches = methods.filter((method) => methodName(method).toLocaleLowerCase(locale).includes(query))
+  // Retired connections sit under their own heading, as disabled skills do.
+  const isRetired = (method: SignInMethod) =>
+    method.kind === 'connection' && describeConnection(method.connection).retired
+  const active = matches.filter((method) => !isRetired(method))
+  const retired = matches.filter(isRetired)
 
   const selected = parseSignInMethodId(page.selectedId)
   // A selection that no longer matches a domain (a stale link, a removed domain) opens nothing.
   const selectedDomain = selected?.kind === 'domain' ? domains.data?.find((domain) => domain.id === selected.id) : null
   const removing = parseSignInMethodId(page.removeId)
-  const removingDomain = removing?.kind === 'domain' ? domains.data?.find((domain) => domain.id === removing.id) : null
-  const removingName = removingDomain?.domain ?? ''
+  const removingName =
+    removing?.kind === 'domain'
+      ? (domains.data?.find((domain) => domain.id === removing.id)?.domain ?? '')
+      : (connections.data?.find((connection) => connection.id === removing?.id)?.name ?? '')
 
   const panel = () => {
     if (page.selectedId === newSignInMethodId) {
@@ -159,18 +183,33 @@ export const SignInMethodsPage = () => {
           onAdded={(domain) => page.select(domainEditId(domain.id))}
           onDirtyChange={(dirty) => page.patch({ dirty })}
           onClose={page.close}
+          onBack={() => page.requestSelect(newSignInMethodId)}
         />
       )
     }
     if (selected?.kind === 'connection') {
-      return <ConnectionEditor key={selected.id} connectionId={selected.id} page={page} />
+      // A fresh draft each time the edit form opens.
+      return (
+        <ConnectionEditor
+          key={`${selected.id}:${page.isEditing}`}
+          connectionId={selected.id}
+          name={connections.data?.find((connection) => connection.id === selected.id)?.name}
+          page={page}
+          onRetireScim={() => {
+            const connection = connections.data?.find((item) => item.id === selected.id)
+            if (connection) {
+              setRetiringScim(connection)
+            }
+          }}
+        />
+      )
     }
     if (selectedDomain) {
       return (
         <DomainEditor
           key={selectedDomain.id}
           domain={selectedDomain}
-          onRemove={() => page.patch({ removeId: domainEditId(selectedDomain.id) })}
+          actions={domainActions(selectedDomain, page)}
           onClose={page.close}
         />
       )
@@ -187,47 +226,79 @@ export const SignInMethodsPage = () => {
     }
     if (methods.length === 0) {
       return (
-        <SettingsEmptyState
-          description={
-            <Trans>
-              No sign-in methods yet. Connect an identity provider to sign people in, or add a domain your organization
-              owns.
-            </Trans>
+        <EmptyState
+          icon={KeyRound}
+          title={t`No sign-in methods yet`}
+          action={
+            <Button size="sm" variant="outline" onClick={() => page.requestSelect(newSignInMethodId)}>
+              <Plus />
+              <Trans>Add your first sign-in method</Trans>
+            </Button>
           }
         />
       )
     }
-    return methods.map((method) => {
+    if (matches.length === 0) {
+      return (
+        <SettingsNoResults>
+          <Trans>No matching sign-in methods.</Trans>
+        </SettingsNoResults>
+      )
+    }
+    const row = (method: SignInMethod) => {
       const editId =
         method.kind === 'connection' ? connectionEditId(method.connection.id) : domainEditId(method.domain.id)
-      const isSelected = page.selectedId === editId
-      const onSelect = () => page.requestSelect(isSelected ? null : editId)
-      return method.kind === 'connection' ? (
-        <ConnectionCard key={editId} connection={method.connection} isSelected={isSelected} onSelect={onSelect} />
-      ) : (
-        <DomainCard key={editId} domain={method.domain} isSelected={isSelected} onSelect={onSelect} />
+      const onSelect = () => page.requestSelect(editId)
+      return (
+        <li key={editId}>
+          {method.kind === 'connection' ? (
+            <ConnectionCard
+              connection={method.connection}
+              isSelected={page.selectedId === editId && !page.isEditing}
+              onSelect={onSelect}
+              actions={connectionActions(method.connection, page, () => setRetiringScim(method.connection))}
+            />
+          ) : (
+            <DomainCard
+              domain={method.domain}
+              isSelected={page.selectedId === editId && !page.isEditing}
+              onSelect={onSelect}
+              actions={domainActions(method.domain, page)}
+            />
+          )}
+        </li>
       )
-    })
+    }
+    return (
+      <>
+        {active.length > 0 && <ul className="flex flex-col gap-4">{active.map(row)}</ul>}
+        {retired.length > 0 && (
+          <div className="mt-4 flex flex-col gap-2">
+            <SettingsSectionLabel>
+              <Trans>Retired</Trans>
+            </SettingsSectionLabel>
+            <ul className="flex flex-col gap-4">{retired.map(row)}</ul>
+          </div>
+        )}
+      </>
+    )
   }
 
   return (
     <>
       <AdminPage
-        title={t`Sign-in methods`}
+        title={t`Sign In`}
+        search={{ placeholder: t`Search sign-in methods`, onSearch: setSearch }}
+        isEmpty={connections.isSuccess && domains.isSuccess && methods.length === 0}
         action={
-          <PageCreateAction label={t`Add sign-in method`} onClick={() => page.requestSelect(newSignInMethodId)} />
+          <PageCreateAction label={t`New Sign-in Method`} onClick={() => page.requestSelect(newSignInMethodId)} />
         }
         panel={panel()}
         onClose={page.close}
       >
-        <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
-          <Trans>
-            Connect your identity providers to sign people in and keep accounts in step, and verify the domains your
-            organization owns.
-          </Trans>
-        </p>
         {body()}
       </AdminPage>
+      {retiringScim && <RetireScimDialog connection={retiringScim} onClose={() => setRetiringScim(null)} />}
       <ResourcePageDialogs
         page={page}
         remove={
@@ -243,9 +314,11 @@ export const SignInMethodsPage = () => {
                 onConfirm: () => remove.mutateAsync(removing.id),
               }
             : {
-                title: t`Retire this connection?`,
+                title: t`Retire ${removingName}?`,
                 description: t`Nobody can sign in through it any more, and members only it admitted lose access. This can't be undone.`,
                 confirmLabel: t`Retire connection`,
+                // A retired connection stays listed, so its panel stays open to show it retired.
+                closesPanel: false,
                 // The dialog only opens with a connection's remove id set.
                 onConfirm: async () => {
                   await retire.mutateAsync(removing!.id)

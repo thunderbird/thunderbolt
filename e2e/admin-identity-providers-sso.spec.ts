@@ -5,14 +5,18 @@
 import { expect, type Browser, type Page, type ViewportSize } from '@playwright/test'
 import type { Page as ApiPage, AdminMember } from '../shared/admin-api'
 import {
+  type AdminApiRequest,
   adminAppUrl,
   adminIdpUrls,
   adminTest as test,
+  choosePanelAction,
+  openAdminRow,
+  panelMenu,
   retireConnection,
   routeIdpIdentity,
   uniqueEmail,
   uniqueName,
-  type AdminApiRequest,
+  closePanel,
 } from './admin/helpers'
 import { adminSpareIdpSecretPrefix } from './admin/mock-idp'
 
@@ -24,8 +28,9 @@ test.afterEach(async ({ adminApi }) => {
   }
 })
 
-const openConnection = async (page: Page, connectionId: string) => {
-  await page.goto(`/admin/sign-in-methods?edit=connection:${connectionId}`)
+const openConnection = async (page: Page, adminApi: AdminApiRequest, connectionId: string) => {
+  const { name } = await adminApi.request<{ name: string }>('GET', `admin/connections/${connectionId}`)
+  await openAdminRow(page, '/admin/sign-in-methods', name)
   await expect(page.getByRole('radio', { name: 'Sign-in' })).toBeVisible()
 }
 
@@ -66,8 +71,8 @@ test('an admin adds an OIDC connection, people sign in through it, and a new sec
   const providerId = `e2e-${crypto.randomUUID().slice(0, 8)}`
 
   await page.goto('/admin/sign-in-methods')
-  await page.getByRole('button', { name: 'Add sign-in method' }).click()
-  await page.getByRole('button', { name: 'Single sign-on with OIDC' }).click()
+  await page.getByRole('button', { name: 'New Sign-in Method' }).click()
+  await page.getByRole('button', { name: /^OIDC single sign-on/ }).click()
   await page.getByLabel('Name', { exact: true }).fill(name)
   await page.getByRole('combobox', { name: 'Identity provider' }).click()
   await page.getByRole('option', { name: 'Keycloak' }).click()
@@ -79,12 +84,11 @@ test('an admin adds an OIDC connection, people sign in through it, and a new sec
   await page.getByLabel('Client ID').fill('thunderbolt-admin-e2e')
   await page.getByLabel('Client secret').fill(`${adminSpareIdpSecretPrefix}first`)
   await expect(page.getByLabel('Match claim')).toHaveValue('sub')
-  await page.getByRole('button', { name: 'Create connection' }).click()
+  await page.getByRole('button', { name: 'Create', exact: true }).click()
 
-  await expect(page).toHaveURL(/edit=connection(:|%3A)/)
-  const connectionId = new URL(page.url()).searchParams.get('edit')!.replace(/^connection:/, '')
+  await expect(page.getByText('thunderbolt-admin-e2e', { exact: true })).toBeVisible()
+  const connectionId = await adminApi.connectionIdByName(name)
   seeded.push(connectionId)
-  await expect(page.getByLabel('Client ID')).toHaveValue('thunderbolt-admin-e2e')
   await expect(page.getByRole('textbox', { name: 'Redirect URI' })).toHaveValue(
     new RegExp(`/v1/api/auth/sso/callback/${providerId}$`),
   )
@@ -94,11 +98,12 @@ test('an admin adds an OIDC connection, people sign in through it, and a new sec
   await expect(first.page).toHaveURL(/\/chats\//)
   await first.close()
 
-  // The admin replaces the secret in the panel; the same person signs in again, with no relink.
-  await openConnection(page, connectionId)
+  // The admin replaces the secret in the edit form; the same person signs in again, with no relink.
+  await openConnection(page, adminApi, connectionId)
+  await choosePanelAction(page, 'Edit')
   await page.getByLabel('New client secret').fill(`${adminSpareIdpSecretPrefix}second`)
-  await page.getByRole('button', { name: 'Save changes' }).click()
-  await expect(page.getByRole('status').filter({ hasText: 'Saved.' })).toBeVisible()
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Edit Connection' })).toHaveCount(0)
 
   const second = await signInThroughConnection(browser, viewport, name, identity)
   await expect(second.page).toHaveURL(/\/chats\//)
@@ -111,11 +116,12 @@ test('an admin adds an OIDC connection, people sign in through it, and a new sec
   await expect(refused.page).toHaveURL(/\/sso-error/)
   await refused.close()
 
-  // Someone has signed in, so the panel shows the identity fields locked before any edit.
-  await openConnection(page, connectionId)
-  await expect(page.getByLabel('Client ID')).toHaveAttribute('readonly', '')
-  await expect(page.getByLabel('Client ID')).toHaveAccessibleDescription(/Locked because people have signed in/)
-  await expect(page.getByLabel('Match claim')).toHaveAttribute('readonly', '')
+  // Someone has signed in, so the edit form shows the identity fields locked before any edit.
+  await openConnection(page, adminApi, connectionId)
+  await choosePanelAction(page, 'Edit')
+  await expect(page.getByLabel('Client ID')).toBeDisabled()
+  await expect(page.getByLabel('Client ID')).toHaveAccessibleDescription('Locked after the first sign-in.')
+  await expect(page.getByLabel('Match claim')).toBeDisabled()
   await expect(page.getByLabel('New client secret')).toBeEditable()
 })
 
@@ -123,17 +129,21 @@ test('an admin retires an SSO connection after confirming', async ({ page, admin
   const connection = await adminApi.seedOidcConnection()
   seeded.push(connection.id)
 
-  await openConnection(page, connection.id)
-  await page.getByRole('button', { name: 'More' }).click()
-  await page.getByRole('menuitem', { name: 'Retire connection' }).click()
+  await openConnection(page, adminApi, connection.id)
+  await choosePanelAction(page, 'Retire')
   await page.getByRole('alertdialog').getByRole('button', { name: 'Retire connection' }).click()
 
-  await expect(page.getByRole('button', { name: connection.name })).toContainText('Retired')
+  // Retired: the panel stays open to show it, and the row moves under the list's Retired label.
+  await closePanel(page)
+  await expect(page.getByRole('heading', { name: 'Retired', exact: true })).toBeVisible()
+  await expect
+    .poll(async () => (await adminApi.request<{ status: string }>('GET', `admin/connections/${connection.id}`)).status)
+    .toBe('retired')
 })
 
-test("the server's own SSO connection is read-only", async ({ page }) => {
-  await openConnection(page, 'sso')
-  await expect(page.getByText("Set by this server's OIDC or SAML settings. Change them there.")).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Save changes' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'More' })).toHaveCount(0)
+test("the server's own SSO connection is read-only", async ({ page, adminApi }) => {
+  await openConnection(page, adminApi, 'sso')
+  await expect(page.getByText('Set by server settings · Read-only', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0)
+  await expect(panelMenu(page)).toHaveCount(0)
 })

@@ -19,6 +19,7 @@ export type ConnectionSummary = {
   canAddScim: boolean
 }
 
+/** The SCIM side's state, or null when the connection has none. */
 const scimState = ({ scim, status }: Pick<AdminConnection, 'scim' | 'status'>): ScimState | null => {
   if (!scim) {
     return null

@@ -4,24 +4,31 @@
 
 import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
-import { Trans, useLingui } from '@lingui/react/macro'
-import { useState } from 'react'
+import { useLingui } from '@lingui/react/macro'
+import { Globe, KeyRound, type LucideIcon } from 'lucide-react'
 import { DetailPanel } from '@/components/detail-panel'
-import { SettingsSelectableRow } from '@/components/settings/settings-list'
+import { Button } from '@/components/ui/button'
+import { DiscardCreateDialog } from '@/skills/discard-create-dialog'
 import { NewScimConnectionForm } from './new-scim-connection-form'
 import { SsoConnectionForm } from './sso-connection-form'
+import { type ConnectionKind, useNewConnectionEditorState } from './use-new-connection-editor-state'
+import type { PanelDirt } from '../../components/use-resource-page-state'
 
-type ConnectionKind = 'oidc' | 'saml' | 'scim'
-
-const kinds: { id: ConnectionKind; title: MessageDescriptor; description: MessageDescriptor }[] = [
-  { id: 'oidc', title: msg`Single sign-on with OIDC`, description: msg`Entra ID, Okta, Keycloak and most providers.` },
-  { id: 'saml', title: msg`Single sign-on with SAML`, description: msg`For providers that only offer SAML 2.0.` },
-  {
-    id: 'scim',
-    title: msg`SCIM provisioning only`,
-    description: msg`Your identity provider creates and updates people. You can add sign-in later.`,
-  },
+const kinds: { id: ConnectionKind; label: MessageDescriptor; title: MessageDescriptor }[] = [
+  { id: 'oidc', label: msg`OIDC single sign-on`, title: msg`New OIDC Connection` },
+  { id: 'saml', label: msg`SAML single sign-on`, title: msg`New SAML Connection` },
+  { id: 'scim', label: msg`SCIM provisioning`, title: msg`New SCIM Connection` },
 ]
+
+/** One choice in the picker, styled as the Connections picker's options. */
+const PickerOption = ({ icon: Icon, label, onSelect }: { icon: LucideIcon; label: string; onSelect: () => void }) => (
+  <Button type="button" variant="outline" className="justify-start whitespace-normal text-left" onClick={onSelect}>
+    <span aria-hidden="true" className="flex size-5 shrink-0 items-center justify-center">
+      <Icon className="size-4" />
+    </span>
+    <span className="flex-1 text-left">{label}</span>
+  </Button>
+)
 
 type NewConnectionEditorProps = {
   onClose: () => void
@@ -29,47 +36,44 @@ type NewConnectionEditorProps = {
   onAddDomain: () => void
   /** The connection was created: open it. */
   onCreated: (connectionId: string) => void
-  onDirty: (dirty: boolean) => void
+  onDirty: (dirty: PanelDirt) => void
 }
 
-/** The `?edit=new` panel: pick a connection's kind (or a domain), then fill in its form. */
+/**
+ * The `new` panel: pick a connection's kind (or a domain), then fill in its form. The form's Back
+ * returns to the picker, asking first when it holds unsaved input.
+ */
 export const NewConnectionEditor = ({ onClose, onAddDomain, onCreated, onDirty }: NewConnectionEditorProps) => {
   const { t, i18n } = useLingui()
-  const [kind, setKind] = useState<ConnectionKind | null>(null)
+  const { kind, confirmingBack, pick, trackDirty, requestBack, cancelBack, confirmBack } =
+    useNewConnectionEditorState(onDirty)
+  const picked = kinds.find((item) => item.id === kind)
 
   return (
-    <DetailPanel title={t`Add a sign-in method`} onClose={onClose}>
+    <DetailPanel title={picked ? i18n._(picked.title) : t`New Sign-in Method`} onClose={onClose}>
       {kind === null ? (
-        <div className="flex flex-col gap-3">
-          <p className="text-muted-foreground">
-            <Trans>Connect an identity provider, or add a domain your organization owns.</Trans>
-          </p>
+        <div className="flex flex-col gap-2">
           {kinds.map((item) => (
-            <SettingsSelectableRow
-              key={item.id}
-              title={i18n._(item.title)}
-              subtitle={i18n._(item.description)}
-              ariaLabel={i18n._(item.title)}
-              onSelect={() => setKind(item.id)}
-            />
+            <PickerOption key={item.id} icon={KeyRound} label={i18n._(item.label)} onSelect={() => pick(item.id)} />
           ))}
-          <SettingsSelectableRow
-            title={t`Domain`}
-            subtitle={t`Verify a domain you own, then let people on it join or send them to an identity provider.`}
-            ariaLabel={t`Domain`}
-            onSelect={onAddDomain}
-          />
+          <PickerOption icon={Globe} label={t`Domain`} onSelect={onAddDomain} />
         </div>
       ) : kind === 'scim' ? (
-        <NewScimConnectionForm onCreated={onCreated} onCancel={onClose} onDirty={onDirty} />
+        <NewScimConnectionForm onCreated={onCreated} onCancel={onClose} onBack={requestBack} onDirty={trackDirty} />
       ) : (
         <SsoConnectionForm
           protocol={kind}
           onCreated={(connection) => onCreated(connection.id)}
           onCancel={onClose}
-          onDirty={onDirty}
+          onBack={requestBack}
+          onDirty={trackDirty}
         />
       )}
+      <DiscardCreateDialog
+        open={confirmingBack}
+        onOpenChange={(open) => !open && cancelBack()}
+        onConfirm={confirmBack}
+      />
     </DetailPanel>
   )
 }

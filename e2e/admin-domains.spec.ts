@@ -4,7 +4,7 @@
 
 import { expect } from '@playwright/test'
 import type { OrgDomain } from '../shared/admin-api'
-import { adminTest as test } from './admin/helpers'
+import { adminTest as test, choosePanelAction } from './admin/helpers'
 
 /** The two reasons a domain with no record can fail on: which one depends on the resolver the backend reaches. */
 const missingRecordReason =
@@ -24,13 +24,13 @@ test('an admin adds a domain, sees its record, fails to verify it and removes it
   added.push(domain)
 
   await page.goto('/admin/sign-in-methods')
-  await expect(page.getByRole('heading', { name: 'Sign-in methods', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Sign In', exact: true })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Add sign-in method' }).click()
+  await page.getByRole('button', { name: 'New Sign-in Method' }).click()
   await page.getByRole('button', { name: 'Domain', exact: true }).click()
   const form = page.locator('form', { has: page.getByRole('textbox', { name: 'Domain' }) })
   await form.getByRole('textbox', { name: 'Domain' }).fill(domain)
-  await form.getByRole('button', { name: 'Add domain' }).click()
+  await form.getByRole('button', { name: 'Add', exact: true }).click()
 
   await expect(page.getByRole('heading', { name: domain, exact: true })).toBeVisible()
   await expect(page.getByRole('textbox', { name: 'Record name' })).toHaveValue(`_thunderbolt-verification.${domain}`)
@@ -44,14 +44,13 @@ test('an admin adds a domain, sees its record, fails to verify it and removes it
   await expect(enrollment).toBeDisabled()
   await expect(enrollment).toHaveAccessibleDescription(/Verify this domain before opening it to enrollment\./)
 
-  await page.getByRole('button', { name: 'More' }).click()
-  await page.getByRole('menuitem', { name: 'Remove domain' }).click()
+  await choosePanelAction(page, 'Remove')
   const confirm = page.getByRole('alertdialog')
   await expect(confirm).toContainText(`Remove ${domain}?`)
   await confirm.getByRole('button', { name: 'Remove domain' }).click()
 
   await expect(confirm).toBeHidden()
-  await expect(page.getByRole('button', { name: domain })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: `Open ${domain}` })).toHaveCount(0)
   const { items } = await adminApi.request<{ items: OrgDomain[] }>('GET', 'admin/domains')
   expect(items.map((item) => item.domain)).not.toContain(domain)
 })

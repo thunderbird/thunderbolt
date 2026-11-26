@@ -189,12 +189,16 @@ const checks = async (out: string, downloads: string): Promise<CheckResult[]> =>
       })
       try {
         await (await browser.$('#export-data-button')).click()
-        const exported = async () => (await readdir(downloads)).find((f) => f.startsWith('thunderbolt-export-'))
-        await browser.waitUntil(async () => (await exported()) !== undefined, {
-          timeout: 15_000,
-          timeoutMsg: `no export file in ${downloads}`,
-        })
-        JSON.parse(await readFile(join(downloads, (await exported()) ?? ''), 'utf8'))
+        // The app creates the file and then writes it, so wait until it parses. waitUntil retries while this throws.
+        await browser.waitUntil(
+          async () => {
+            const name = (await readdir(downloads)).find((f) => f.startsWith('thunderbolt-export-'))
+            if (!name) return false
+            JSON.parse(await readFile(join(downloads, name), 'utf8'))
+            return true
+          },
+          { timeout: 15_000, timeoutMsg: `no valid export in ${downloads}` },
+        )
       } finally {
         // The next check measures the chat.
         await browser.execute(() => history.back())

@@ -172,6 +172,7 @@ jobs:
               - 'scripts/chrome.ts'
               - 'scripts/install-chrome.ts'
               - 'e2e/helpers.ts'
+              - 'e2e/fake-provider.ts'
               - 'shared/tsconfig.base.json'
               - 'shared/defaults/models.ts'
               - 'bunfig.toml'

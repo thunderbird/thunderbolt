@@ -314,8 +314,12 @@ const failedInBugStep = (steps: ReplayStep[]): boolean =>
 
 type ProviderGap = { time: number; line: string }
 
-const providerGapLine = new RegExp(`${RegExp.escape(unsupportedRequestMarker)} (\\S+) (.{1,300})`)
+const providerGapLine = new RegExp(`^${RegExp.escape(unsupportedRequestMarker)} (\\S+) (.{1,300})`)
 const maxProviderGaps = 10
+/** Prefixes a native run's backend log line; the page can print anything on its `webview: ` lines. */
+const backendLogPrefix = 'backend: '
+/** Suffixes a gap logged while another spec's counted run also ran, so it may not be this finding's. */
+const sharedGapNote = " (also during another spec's run)"
 
 /** A log line's fake-provider gap: when it was logged, and the line without that time so repeats collapse. */
 const providerGapOf = (text: string): ProviderGap | undefined => {
@@ -337,10 +341,12 @@ const addProviderGaps = (replay: VerifiedFinding['replay'], lines: string[]) => 
  * Failed and total runs per spec file (absolute path), with the error, video and trace of the first failed run that
  * reached the bug step, or of the first failed run when none did. A run that failed outside the `bugStep` step never
  * reached the bug: it is `inconclusive` and left out of `runs`. `gaps` logged while one of the spec's counted runs ran
- * become its `provider_gaps`; replays run in parallel, so another spec's run can contribute one.
+ * become its `provider_gaps`. Replays run in parallel, so a gap logged during the counted runs of two specs or more
+ * gets `sharedGapNote`. The `control` spec makes no AI request, so its runs collect no gaps and share none.
  */
-const outcomesBySpec = (report: ReplayReport, gaps: ProviderGap[] = []) => {
+const outcomesBySpec = (report: ReplayReport, gaps: ProviderGap[] = [], control?: string) => {
   const outcomes = new Map<string, Pick<VerifiedFinding, 'replay' | 'artifacts'>>()
+  const countedRuns: { replay: VerifiedFinding['replay']; start: number; end: number }[] = []
   for (const spec of allSpecs(report.suites)) {
     const file = resolve(report.config.rootDir, spec.file)
     const outcome = outcomes.get(file) ?? { replay: { failed: 0, runs: 0 }, artifacts: {} }
@@ -351,11 +357,7 @@ const outcomesBySpec = (report: ReplayReport, gaps: ProviderGap[] = []) => {
       if (reached) {
         outcome.replay.runs++
         const start = Date.parse(result.startTime ?? '')
-        const end = start + (result.duration ?? 0)
-        addProviderGaps(
-          outcome.replay,
-          gaps.filter(({ time }) => time >= start && time <= end).map(({ line }) => line),
-        )
+        if (file !== control) countedRuns.push({ replay: outcome.replay, start, end: start + (result.duration ?? 0) })
       } else outcome.replay.inconclusive = (outcome.replay.inconclusive ?? 0) + 1
       if (!failed) continue
       if (reached) outcome.replay.failed++
@@ -375,6 +377,10 @@ const outcomesBySpec = (report: ReplayReport, gaps: ProviderGap[] = []) => {
       outcome.artifacts.trace ??= artifact('trace')
     }
     outcomes.set(file, outcome)
+  }
+  for (const { time, line } of gaps) {
+    const replays = new Set(countedRuns.filter(({ start, end }) => time >= start && time <= end).map((r) => r.replay))
+    for (const replay of replays) addProviderGaps(replay, [replays.size > 1 ? line + sharedGapNote : line])
   }
   return outcomes
 }
@@ -709,7 +715,9 @@ const threeRuns = async (
     }
     addProviderGaps(
       outcome.replay,
-      run.logs.flatMap((log) => providerGapOf(log)?.line ?? []),
+      run.logs.flatMap((log) =>
+        log.startsWith(backendLogPrefix) ? (providerGapOf(log.slice(backendLogPrefix.length))?.line ?? []) : [],
+      ),
     )
     outcome.replay.runs++
     const problem = failure(run)
@@ -1019,7 +1027,7 @@ export const replay = async (
     const broken = first.errors.length > 0 ? await loadErrors(specs, outDir, runReplay) : new Map<string, string>()
     const report =
       broken.size > 0 ? await runReplay([control, ...specs.filter((spec) => !broken.has(spec))], outDir) : first
-    const bySpec = outcomesBySpec(report, await providerGaps(stackLog))
+    const bySpec = outcomesBySpec(report, await providerGaps(stackLog), control)
     const problem = stackProblem((bySpec.get(control) ?? noRuns).replay, report)
     if (problem) stackProblems.push(problem)
     for (const file of specFiles) {
@@ -1183,8 +1191,8 @@ type Prompt = { candidate: VerifiedFinding; content: Anthropic.MessageParam['con
 
 /**
  * Verify step 2: one fresh model call per confirmed candidate, seeing only the finding (with its oracle evidence),
- * its spec or flow, its replay failure and its `provider_gaps` (a `visual` finding's screenshot instead), and
- * `.github/qa/known-issues.md`.
+ * its spec or flow, its replay failure, whether replay used the real or the fake AI, and its `provider_gaps` (a
+ * `visual` finding's screenshot instead), and `.github/qa/known-issues.md`.
  * Flaky candidates are never judged. At most `judgeCap` calls, admitted most severe first only while their worst-case
  * cost fits under `judgeCeilingUsd`; the rest are `deferred`, and so is a finding whose call fails after the SDK's
  * retries. Then `groupFindings` groups what the judge kept, within what is left of that ceiling. Writes
@@ -1220,9 +1228,11 @@ export const judge = async (
         ? ['repro_flow', await ranFlow(outDir, candidate)]
         : ['repro_spec', await Bun.file(join(outDir, specPath(candidate))).text()]
       const gaps = candidate.replay.provider_gaps ?? []
+      const provider = realAiCharters.has(candidate.charterDir) ? 'real' : 'fake'
       const user =
         `${finding}\n\n<${tag}>\n${repro}\n</${tag}>\n\n` +
-        `<replay_failure>\n${candidate.replay.error ?? '(no message recorded)'}\n</replay_failure>` +
+        `<replay_failure>\n${candidate.replay.error ?? '(no message recorded)'}\n</replay_failure>\n\n` +
+        `<replay_provider>${provider}</replay_provider>` +
         (gaps.length > 0 ? `\n\n<fake_provider>\n${gaps.join('\n')}\n</fake_provider>` : '')
       return { candidate, content: user, cost: worstJudgeCost(system, user) }
     }),

@@ -332,7 +332,7 @@ describe('replay', () => {
         '[fake-provider] unsupported 2026-11-04T10:00:30.000Z POST /v1/responses',
         '<-- POST /v1/chat/completions 404',
         '[fake-provider] unsupported 2026-11-04T10:00:40.000Z POST /v1/responses',
-        '[fake-provider] unsupported 2026-11-04T10:30:00.000Z GET /v1/models',
+        '[fake-provider] unsupported 2026-11-04T10:30:00.000Z GET /v1/files',
       ].join('\n'),
     )
 
@@ -342,6 +342,43 @@ describe('replay', () => {
     expect(replayOf('chat')?.provider_gaps).toEqual(['[fake-provider] unsupported POST /v1/responses'])
     expect(replayOf('other')).toMatchObject({ runs: 3, inconclusive: 1 })
     expect(replayOf('other')?.provider_gaps).toBeUndefined()
+  })
+
+  test("a gap logged during two specs' counted runs reaches both, marked as shared; the control's runs share none", async () => {
+    for (const title of ['chat', 'other']) await writeFinding(makeFinding(title, pageError))
+    const failing = ['failed', 'failed', 'failed']
+    const base = fakeRunner(
+      { 'c2-chat-desktop/repro/chat.spec.ts': failing, 'c2-chat-desktop/repro/other.spec.ts': failing },
+      [],
+    )
+    // The control runs alongside the chat spec; the other spec starts 20 seconds later.
+    const runner: RunReplay = async (specs, dir) => {
+      const report = await base(specs, dir)
+      for (const spec of report.suites.flatMap((suite) => suite.specs)) {
+        for (const result of spec.tests[0].results) {
+          result.startTime = spec.file.endsWith('other.spec.ts')
+            ? '2026-11-04T10:00:20.000Z'
+            : '2026-11-04T10:00:00.000Z'
+          result.duration = 60_000
+        }
+      }
+      return report
+    }
+    const stackLog = join(outDir, 'qa-stack.log')
+    await Bun.write(
+      stackLog,
+      [
+        '[fake-provider] unsupported 2026-11-04T10:00:10.000Z GET /v1/messages',
+        '[fake-provider] unsupported 2026-11-04T10:00:30.000Z POST /v1/responses',
+      ].join('\n'),
+    )
+
+    const result = await replay(outDir, runner, qaDir, undefined, Date.now, Date.now(), stackLog)
+
+    const gapsOf = (title: string) => result.confirmed.find((file) => file.id === title)?.replay.provider_gaps
+    const shared = "[fake-provider] unsupported POST /v1/responses (also during another spec's run)"
+    expect(gapsOf('chat')).toEqual(['[fake-provider] unsupported GET /v1/messages', shared])
+    expect(gapsOf('other')).toEqual([shared])
   })
 
   test('a layout finding on a web viewport still needs 3/3 failures: only native layout measurements vary', async () => {
@@ -950,6 +987,18 @@ describe('replay of native flows', () => {
     })
 
     expect(result.confirmed[0].replay).toMatchObject({ failed: 3, runs: 3, inconclusive: 1 })
+    expect(result.confirmed[0].replay.provider_gaps).toBeUndefined()
+  })
+
+  test('only a backend line that starts with the marker is a fake-provider gap, never a webview console line', async () => {
+    await writeNative(makeNative('chat', assertFailed))
+    const marker = '[fake-provider] unsupported 2026-11-04T10:00:30.000Z POST /v1/responses'
+    const logs = [`webview: ${marker}`, `backend: <-- GET /v1/chat?q=${marker}`]
+    const failed = { passed: false, error: 'Assertion is false: "chat" is visible', logs }
+
+    const result = await nativeReplay({ chat: [failed, failed, failed] })
+
+    expect(result.confirmed[0].replay.failed).toBe(3)
     expect(result.confirmed[0].replay.provider_gaps).toBeUndefined()
   })
 
@@ -2227,17 +2276,20 @@ describe('judge', () => {
     expect(calls).toEqual([])
   })
 
-  test("the judge sees the fake provider's gaps during a finding's runs, and no block without any", async () => {
+  test("the judge sees the replay's AI provider and the fake's gaps, with no gaps block without any", async () => {
     const gap = '[fake-provider] unsupported POST /v1/responses'
     const gapped = { ...candidate('gapped'), replay: { ...candidate('gapped').replay, provider_gaps: [gap] } }
-    await writeCandidates({ confirmed: [gapped, candidate('plain')], flaky: [], observations: [], dropped: [] })
+    const real = { ...candidate('real'), charterDir: 'c3-models-providers-desktop' }
+    await writeCandidates({ confirmed: [gapped, real], flaky: [], observations: [], dropped: [] })
     const calls: Anthropic.MessageCreateParamsNonStreaming[] = []
 
     await judge(outDir, recordingCreate(calls), qaDir)
 
     const prompts = calls.map((call) => String(call.messages[0].content))
-    expect(prompts[0]).toEndWith(`</replay_failure>\n\n<fake_provider>\n${gap}\n</fake_provider>`)
-    expect(prompts[1]).toEndWith('</replay_failure>')
+    expect(prompts[0]).toEndWith(
+      `</replay_failure>\n\n<replay_provider>fake</replay_provider>\n\n<fake_provider>\n${gap}\n</fake_provider>`,
+    )
+    expect(prompts[1]).toEndWith('</replay_failure>\n\n<replay_provider>real</replay_provider>')
   })
 
   test('an image counts toward the judge spend ceiling', async () => {

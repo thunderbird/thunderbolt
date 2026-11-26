@@ -369,17 +369,20 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    A c1 flow that stops at the Connect Google wait or next waits for a text gets `control/consent.yaml` at the end of its
    sign-in step: it skips the optional Google connection, but only while Connect Google shows and that
    text (for a stopping layout flow, the quoted element) does not.
+   The fake AI provider (`e2e/fake-provider.ts`) answers Anthropic Messages, OpenAI-compatible chat completions and
+   the model list, and gives a malformed body a 400. Any other request gets a 404 and a
+   `[fake-provider] unsupported <time> <request>` line in the stack log (`QA_BACKEND_LOG`). Replay gives each finding
+   the lines logged while one of its counted runs ran, as `replay.provider_gaps`: by time for a spec, and from the
+   backend lines of its own runs for a flow. Specs replay in parallel, so a line logged during the counted runs of two
+   specs or more ends with `(also during another spec's run)`. The control spec sends no AI request, so its runs are
+   left out.
+   A spec can write to that log, so the lines are untrusted like the rest, and at most 10 are kept.
 4. **judge** (`verify.ts judge`): one Opus call per confirmed finding with `judge.md` and `known-issues.md`; a
    `visual` finding is judged on its screenshot, a native one on the flow replay ran (the allow list's own
    serialization, read from a path checked like a screenshot's). For a `layout` finding the replayed probe
-   line is the proof and a screenshot only context. The fake AI provider (`e2e/fake-provider.ts`) answers streamed
-   Anthropic Messages and streamed OpenAI-compatible chat completions, the two requests the backend sends it, and
-   gives anything else a 404 and a `[fake-provider] unsupported <time> <request>` line in the stack log. Replay reads
-   that log (`QA_BACKEND_LOG`) and gives each finding the lines logged while one of its counted runs ran, as
-   `replay.provider_gaps`: by time for a spec, since specs replay in parallel and a line can land on another spec's
-   finding too, and from the run's own log lines for a flow. The judge sees them in `<fake_provider>` and drops a
-   finding whose failure follows from one as an environment artifact. A spec can write to that log, so the lines
-   are untrusted like the rest, and at most 10 are kept. The default answer is drop. The judge also proposes the
+   line is the proof and a screenshot only context. The judge sees whether replay ran on the real or the fake AI
+   (`<replay_provider>`) and the finding's `provider_gaps` (`<fake_provider>`), and drops a finding whose failure
+   follows from a gap as an environment artifact. The default answer is drop. The judge also proposes the
    ticket's priority from a four-line rubric in `judge.md`. When the kept findings carry two distinct fingerprints or more, one more
    call with the same model groups them by defect (`groupFindings`), because each platform can word one bug
    differently: Android names an icon button by the text before it where the web and iOS also name the icon, and

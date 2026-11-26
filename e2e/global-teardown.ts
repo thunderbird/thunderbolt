@@ -8,6 +8,7 @@ import type { Server } from 'node:http'
 const globalTeardown = async () => {
   const adminIdps = (globalThis as typeof globalThis & { __adminIdps?: OAuth2Server[] }).__adminIdps ?? []
   await Promise.all(adminIdps.map((idp) => idp.stop()))
+  ;(globalThis as typeof globalThis & { __adminDns?: { close: () => void } }).__adminDns?.close()
 
   const oidcServer = (globalThis as Record<string, unknown>).__oidcServer as OAuth2Server | undefined
   if (oidcServer) {

@@ -14,6 +14,7 @@ import {
   normalizeDomain,
   type ResolveTxt,
   setDomainEnrollment,
+  testDnsServers,
   verificationRecordName,
   verificationRecordValue,
   verifyOrgDomain,
@@ -37,6 +38,37 @@ describe('emailDomain', () => {
     expect(emailDomain('A@Corp.COM')).toBe('corp.com')
     expect(emailDomain('"odd@quoted"@corp.com')).toBe('corp.com')
     expect(emailDomain('nobody')).toBeNull()
+  })
+})
+
+describe('testDnsServers', () => {
+  const saved = { nodeEnv: process.env.NODE_ENV, servers: process.env.TEST_DNS_SERVERS }
+
+  afterEach(() => {
+    process.env.NODE_ENV = saved.nodeEnv
+    if (saved.servers === undefined) {
+      delete process.env.TEST_DNS_SERVERS
+    } else {
+      process.env.TEST_DNS_SERVERS = saved.servers
+    }
+  })
+
+  it('is ignored outside tests', () => {
+    process.env.NODE_ENV = 'production'
+    process.env.TEST_DNS_SERVERS = '127.0.0.1:9884'
+    expect(testDnsServers()).toEqual([])
+  })
+
+  it('is ignored when unset', () => {
+    process.env.NODE_ENV = 'test'
+    delete process.env.TEST_DNS_SERVERS
+    expect(testDnsServers()).toEqual([])
+  })
+
+  it('names the servers while the backend runs tests', () => {
+    process.env.NODE_ENV = 'test'
+    process.env.TEST_DNS_SERVERS = '127.0.0.1:9884,127.0.0.1:9886'
+    expect(testDnsServers()).toEqual(['127.0.0.1:9884', '127.0.0.1:9886'])
   })
 })
 

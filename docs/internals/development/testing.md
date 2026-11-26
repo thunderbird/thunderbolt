@@ -284,15 +284,16 @@ Each anchor records a breakage:
 
 ### What the Config Spins Up
 
-[`e2e/global-setup.ts`](../../../e2e/global-setup.ts) starts four mock identity providers and a fake model provider; the config declares ten web servers.
+[`e2e/global-setup.ts`](../../../e2e/global-setup.ts) starts four mock identity providers, a mock DNS server and a fake model provider; the config declares ten web servers.
 
 | Component                 | Port   | Notes                                                                                                                                                         |
 | ------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Mock OIDC IdP             | `9876` | [`oauth2-mock-server`](https://www.npmjs.com/package/oauth2-mock-server); every issued token is signed for `sub=e2e-test-user` / `email=e2e@thunderbolt.test` |
-| Mock SAML IdP             | `9877` | [`e2e/mock-saml-idp.ts`](../../../e2e/mock-saml-idp.ts), with self-signed certs from [`e2e/saml-test-certs.ts`](../../../e2e/saml-test-certs.ts)              |
+| Mock SAML IdP             | `9877` | [`e2e/mock-saml-idp.ts`](../../../e2e/mock-saml-idp.ts), with self-signed certs from [`e2e/saml-test-certs.ts`](../../../e2e/saml-test-certs.ts); admin specs sign in through it by login hint and read its cert at `/cert` |
 | Fake model provider       | `9878` | [`e2e/fake-provider.ts`](../../../e2e/fake-provider.ts), the Anthropic API root of the consumer backend                                                       |
 | Admin env IdP             | `9882` | [`e2e/admin/mock-idp.ts`](../../../e2e/admin/mock-idp.ts); signs in whoever the login hint names, backs the admin backend's `sso` connection                  |
 | Admin spare IdP           | `9883` | the same, free for a spec to register as a new connection; accepts only client secrets starting `e2e-valid-`                                                  |
+| Admin mock DNS            | `9884` | [`e2e/admin/mock-dns.ts`](../../../e2e/admin/mock-dns.ts), UDP; answers the TXT records specs publish on its control port `9885` (`publishTxtRecord`), NXDOMAIN otherwise |
 | OIDC frontend             | `1421` | `bun run dev -- --port 1421`, `VITE_AUTH_MODE=sso`, `VITE_SKIP_ONBOARDING=true`                                                                               |
 | OIDC backend              | `8002` | `cd backend && bun run --watch src/index.ts`, `AUTH_MODE=oidc`, rate limiting off, `DATABASE_DRIVER=pglite`                                                   |
 | SAML frontend             | `1422` | as above, pointed at the SAML backend                                                                                                                         |
@@ -302,11 +303,11 @@ Each anchor records a breakage:
 | Consumer frontend         | `1424` | `VITE_AUTH_MODE=thunderbolt`, email-code sign-in, no anonymous session                                                                                        |
 | Consumer backend          | `8005` | `AUTH_MODE=consumer`, `NODE_ENV=test` for the fixed sign-in code                                                                                              |
 | Admin frontend            | `1427` | `VITE_AUTH_MODE=sso`, pointed at the admin backend                                                                                                            |
-| Admin backend             | `8008` | `AUTH_MODE=oidc` on the admin env IdP, open sign-up, a bootstrap admin per project and worker; its log is teed to `e2e/admin/backend.log`                     |
+| Admin backend             | `8008` | `AUTH_MODE=oidc` on the admin env IdP, open sign-up, a bootstrap admin per project and worker, domain checks against the mock DNS (`TEST_DNS_SERVERS`, honoured only with `NODE_ENV=test`); its log is teed to `e2e/admin/backend.log` |
 
 - **The 800x band is deliberate.** 8002 is off :8000 so e2e doesn't collide with `make dev`. Locally a warm e2e backend is reused across runs (`reuseExistingServer: !isCI`), safe only because :8000 can never be the one reused.
 - **The gate needs its own backend.** Backend env is per-`webServer` and fixed for its life, so an out-of-date client cannot be simulated by flipping a variable mid-run.
-- **No shared state.** Every PR test gets a fresh context and `use.storageState` is `undefined`, so each spec drives the SSO flow itself and no IndexedDB / OPFS data survives. Nightly WebKit is the exception: it needs persistent profiles for OPFS, so it clears OPFS on the test frontend origins before each case, because WebKit can share OPFS across separate profiles. Both mock IdPs stop in [`e2e/global-teardown.ts`](../../../e2e/global-teardown.ts).
+- **No shared state.** Every PR test gets a fresh context and `use.storageState` is `undefined`, so each spec drives the SSO flow itself and no IndexedDB / OPFS data survives. Nightly WebKit is the exception: it needs persistent profiles for OPFS, so it clears OPFS on the test frontend origins before each case, because WebKit can share OPFS across separate profiles. Every mock server stops in [`e2e/global-teardown.ts`](../../../e2e/global-teardown.ts).
 - **`workers: 1` is intentional.** A CI runner already hosts several Vite and backend servers on 4 vCPUs; a second browser worker oversubscribes it and starves the cold first-navigation transpile. The 60s per-test timeout and 10s `expect` floor share that cause.
 - **Parallelism comes from sharding.** [`e2e.yml`](../../../.github/workflows/e2e.yml) runs `--shard=1/2` and `--shard=2/2` as separate jobs with the `blob` reporter, then merges them into an HTML report published as the `e2e-report` artifact.
 

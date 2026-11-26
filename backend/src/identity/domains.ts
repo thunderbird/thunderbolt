@@ -88,7 +88,14 @@ export const verificationRecordName = (domain: string) => `_thunderbolt-verifica
 /** The TXT record value that proves control of a domain. */
 export const verificationRecordValue = (token: string) => `thunderbolt-verification=${token}`
 
+/** The DNS servers to query instead of the system's: `TEST_DNS_SERVERS`, honoured only while the backend runs tests. */
+export const testDnsServers = () =>
+  process.env.NODE_ENV === 'test' ? (process.env.TEST_DNS_SERVERS ?? '').split(',').filter(Boolean) : []
+
 const resolver = new Resolver({ timeout: 5000, tries: 2 })
+if (testDnsServers().length > 0) {
+  resolver.setServers(testDnsServers())
+}
 
 const systemResolveTxt: ResolveTxt = (hostname) => resolver.resolveTxt(hostname)
 

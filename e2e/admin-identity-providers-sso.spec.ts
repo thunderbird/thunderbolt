@@ -2,18 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { expect, type Browser, type Page, type ViewportSize } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 import type { Page as ApiPage, AdminMember } from '../shared/admin-api'
 import {
   type AdminApiRequest,
-  adminAppUrl,
   adminIdpUrls,
   adminTest as test,
   choosePanelAction,
   openAdminRow,
   panelMenu,
   retireConnection,
-  routeIdpIdentity,
+  signInThroughConnection,
   uniqueEmail,
   uniqueName,
   closePanel,
@@ -32,28 +31,6 @@ const openConnection = async (page: Page, adminApi: AdminApiRequest, connectionI
   const { name } = await adminApi.request<{ name: string }>('GET', `admin/connections/${connectionId}`)
   await openAdminRow(page, '/admin/sign-in-methods', name)
   await expect(page.getByRole('radio', { name: 'Sign-in' })).toBeVisible()
-}
-
-/** A fresh browser signs in through `connectionName` as `identity`; resolves to where it landed. */
-const signInThroughConnection = async (
-  browser: Browser,
-  viewport: ViewportSize | null,
-  connectionName: string,
-  identity: { sub: string; email: string },
-) => {
-  const context = await browser.newContext({
-    baseURL: adminAppUrl,
-    viewport,
-    storageState: { cookies: [], origins: [] },
-  })
-  const page = await context.newPage()
-  await routeIdpIdentity(page, identity)
-  await page.goto('/')
-  await page.getByRole('textbox', { name: 'Work email' }).fill(identity.email)
-  await page.getByRole('button', { name: 'Continue', exact: true }).click()
-  await page.getByRole('button', { name: connectionName, exact: true }).click()
-  await page.waitForURL(/\/(chats|sso-error)/, { timeout: 30_000 })
-  return { page, close: () => context.close() }
 }
 
 const membersWithEmail = async (adminApi: AdminApiRequest, email: string) =>

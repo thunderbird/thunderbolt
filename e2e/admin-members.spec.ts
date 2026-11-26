@@ -2,37 +2,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { expect, type APIRequestContext } from '@playwright/test'
+import { expect } from '@playwright/test'
 import { scimBasePath, type BreakGlassStatus, type LinkReviewPage } from '../shared/admin-api'
 import {
   adminApiBaseUrl,
   adminAppUrl,
   adminRouteStatus,
   adminTest as test,
+  canaryStatus,
+  canSignIn,
   choosePanelAction,
   openMember,
-  otpCooldownMs,
   panelMenu,
-  requestEmailCodeSignIn,
   retireConnection,
   uniqueName,
 } from './admin/helpers'
-
-/** A route any signed-in member may call: 401 once their access is gone. */
-const canaryStatus = async (request: APIRequestContext, token: string) =>
-  (
-    await request.get(`${adminApiBaseUrl}/encryption/canary`, { headers: { Authorization: `Bearer ${token}` } })
-  ).status()
-
-/** Whether `email` can sign in by email code right now, over HTTP. Waits out the code cooldown once. */
-const canSignIn = async (request: APIRequestContext, email: string) => {
-  const first = await requestEmailCodeSignIn(request, email)
-  if (first.status() !== 429) {
-    return first.ok()
-  }
-  await new Promise((done) => setTimeout(done, otpCooldownMs))
-  return (await requestEmailCodeSignIn(request, email)).ok()
-}
 
 const seededConnections: string[] = []
 

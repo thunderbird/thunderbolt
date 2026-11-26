@@ -55,6 +55,8 @@ describe('useMembersPageState', () => {
     await flush()
 
     act(() => result.current.setSearch('  bob '))
+    // The search waits out its debounce, then fetches.
+    await flush()
     await flush()
 
     expect(harness.requests.at(-1)?.search.get('q')).toBe('bob')

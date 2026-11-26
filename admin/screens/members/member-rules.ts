@@ -13,6 +13,7 @@ export type ConnectionStatusById = ReadonlyMap<string, ConnectionStatus>
 
 const available: Availability = { available: true }
 
+/** An action that can't run, with the reason to show. */
 const unavailable = (reason: MessageDescriptor): Availability => ({ available: false, reason })
 
 /** Whether the member holds the admin role from any source. */
@@ -25,10 +26,11 @@ export const isAdmin = (member: AdminMember) => member.roles.some((source) => so
  */
 export const canSignInWithoutIdp = (member: AdminMember) => member.access.allowed && !member.requiresSso
 
+/** Whether a role source is a direct grant (local or bootstrap) rather than a group's. */
 const isAdminGrant = (source: MemberRoleSource) => source.from === 'local' || source.from === 'bootstrap'
 
 /** The member's own grant of admin, local or bootstrap: the only kind a revoke removes. */
-const hasAdminGrant = (member: AdminMember) =>
+export const hasAdminGrant = (member: AdminMember) =>
   member.roles.some((source) => source.role === adminRole && isAdminGrant(source))
 
 /** Whether every admin source the member has matches `isSource`, so losing those takes admin away. */
@@ -44,12 +46,28 @@ const holdsAdminOnlyThrough = (member: AdminMember, isSource: (source: MemberRol
 export const isSelfDemotingGroupRemoval = (self: AdminMember, groupId: string) =>
   holdsAdminOnlyThrough(self, (source) => source.from === 'local_group' && source.groupId === groupId)
 
-/** An IdP mirrors a managed member's name, and would overwrite an edit. */
-export const getRenameState = (member: AdminMember): Availability =>
-  member.idpManaged?.fields.includes('name')
-    ? unavailable(msg`Your identity provider manages this name. Change it there.`)
-    : available
+/**
+ * Whether a save takes admin away from the signed-in admin editing themselves: revoking their own
+ * grant and leaving local groups strips every admin source they have.
+ */
+export const isSelfDemotingEdit = (
+  member: AdminMember,
+  selfId: string | null,
+  { revokesGrant, leftGroupIds }: { revokesGrant: boolean; leftGroupIds: string[] },
+) =>
+  member.userId === selfId &&
+  (revokesGrant || leftGroupIds.length > 0) &&
+  holdsAdminOnlyThrough(
+    member,
+    (source) =>
+      (revokesGrant && isAdminGrant(source)) ||
+      (source.from === 'local_group' && source.groupId !== undefined && leftGroupIds.includes(source.groupId)),
+  )
 
+/** Whether an IdP mirrors the member's name, so it would overwrite an edit. */
+export const isNameIdpManaged = (member: AdminMember) => member.idpManaged?.fields.includes('name') ?? false
+
+/** Whether the member can be blocked: anyone but yourself. */
 export const getBlockState = (member: AdminMember, selfId: string | null): Availability =>
   member.userId === selfId ? unavailable(msg`You can't block yourself.`) : available
 

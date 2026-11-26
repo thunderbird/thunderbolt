@@ -6,14 +6,16 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import { TriangleAlert } from 'lucide-react'
 import { useId } from 'react'
 import { DetailPanel } from '@/components/detail-panel'
-import { DetailField } from '@/components/settings/detail-field'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { FormFooter } from '@/components/ui/form-footer'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { ResponsiveModalCancel } from '@/components/ui/responsive-modal'
 import type { Invitation } from '@shared/admin-api'
 import { InlineError } from '../../components/inline-error'
 import { useInvitePanelState } from './use-invite-panel-state'
+import { FormField } from '../../components/form-field'
+import { useAutofocusOnMount } from '@/hooks/use-autofocus-on-mount'
 
 type InvitePanelProps = {
   onClose: () => void
@@ -25,42 +27,34 @@ type InvitePanelProps = {
 export const InvitePanel = ({ onClose, onInvited, onDirtyChange }: InvitePanelProps) => {
   const { t } = useLingui()
   const emailId = useId()
+  const emailRef = useAutofocusOnMount<HTMLInputElement>(true)
   const state = useInvitePanelState(onInvited)
 
   return (
-    <DetailPanel title={t`Invite member`} onClose={onClose}>
+    <DetailPanel title={t`Invite Member`} onClose={onClose}>
       <form
-        className="flex flex-col gap-4"
+        className="flex flex-1 flex-col gap-5"
         onSubmit={(event) => {
           event.preventDefault()
           state.invite()
         }}
       >
-        <DetailField
-          label={
-            <Label htmlFor={emailId}>
-              <Trans>Email</Trans>
-            </Label>
-          }
-        >
+        <FormField id={emailId} label={<Trans>Email</Trans>}>
           <Input
             id={emailId}
+            ref={emailRef}
             type="email"
             value={state.email}
             required
             maxLength={320}
+            placeholder={t`name@example.com`}
+            className="md:h-9"
             onChange={(event) => {
               state.setEmail(event.target.value)
               onDirtyChange(event.target.value.trim() !== '')
             }}
           />
-        </DetailField>
-        <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
-          <Trans>
-            They get an email with a link that signs them in. Inviting the same address again replaces the earlier link.
-          </Trans>
-        </p>
-        <InlineError error={state.error} />
+        </FormField>
         {state.claimedByIdp && (
           <Alert>
             <TriangleAlert />
@@ -69,10 +63,7 @@ export const InvitePanel = ({ onClose, onInvited, onDirtyChange }: InvitePanelPr
             </AlertTitle>
             <AlertDescription>
               <p>
-                <Trans>
-                  People on this domain normally sign in through your identity provider. You can still invite this
-                  address; the override is recorded in the audit log.
-                </Trans>
+                <Trans>You can still invite this address. The audit log records it.</Trans>
               </p>
               <Button
                 type="button"
@@ -86,16 +77,19 @@ export const InvitePanel = ({ onClose, onInvited, onDirtyChange }: InvitePanelPr
             </AlertDescription>
           </Alert>
         )}
-        {!state.claimedByIdp && (
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-              <Trans>Cancel</Trans>
-            </Button>
-            <Button type="submit" size="sm" disabled={!state.email.trim()} isLoading={state.isPending}>
-              <Trans>Send invitation</Trans>
-            </Button>
-          </div>
-        )}
+        {/* While the domain alert is up, its "Invite anyway" is how this address gets sent. */}
+        <FormFooter>
+          <InlineError error={state.error} className="min-w-0 flex-1 truncate" />
+          <ResponsiveModalCancel onClick={onClose} className="dark:hover:bg-accent" />
+          <Button
+            type="submit"
+            disabled={!state.email.trim() || state.claimedByIdp}
+            isLoading={state.isPending && !state.claimedByIdp}
+            loadingLabel={t`Inviting…`}
+          >
+            <Trans>Invite</Trans>
+          </Button>
+        </FormFooter>
       </form>
     </DetailPanel>
   )

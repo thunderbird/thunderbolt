@@ -9,9 +9,9 @@ import {
   getBlockState,
   getDetachState,
   getPurgeState,
-  getRenameState,
   getRevokeAdminState,
   isAdmin,
+  isNameIdpManaged,
   isSelfDemotingGroupRemoval,
   type ConnectionStatusById,
 } from './member-rules'
@@ -23,13 +23,13 @@ const reasonOf = (state: Availability | null) => (state && !state.available ? i1
 const active: ConnectionStatusById = new Map([[okta.id, 'active']])
 const retired: ConnectionStatusById = new Map([[okta.id, 'scim_retired']])
 
-describe('getRenameState', () => {
-  it('allows renaming a local member', () => {
-    expect(getRenameState(makeMember())).toEqual({ available: true })
+describe('isNameIdpManaged', () => {
+  it('is false for a local member', () => {
+    expect(isNameIdpManaged(makeMember())).toBe(false)
   })
 
-  it('refuses while an IdP manages the name', () => {
-    expect(getRenameState(makeScimMember('active')).available).toBe(false)
+  it('is true while an IdP manages the name', () => {
+    expect(isNameIdpManaged(makeScimMember('active'))).toBe(true)
   })
 })
 

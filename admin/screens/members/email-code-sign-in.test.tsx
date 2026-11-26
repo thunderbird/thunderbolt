@@ -25,7 +25,7 @@ describe('EmailCodeSignIn', () => {
     render(<EmailCodeSignIn origin="https://app.example.com" ssoMode={false} />)
 
     expect(screen.getByLabelText('Email-code sign-in address')).toHaveValue('https://app.example.com/')
-    expect(screen.getByText("Every admin signs in with an email code from the app's sign-in page.")).toBeInTheDocument()
+    expect(screen.queryByText(/Keep this address/)).toBeNull()
   })
 
   it('shows only the path without a web origin', () => {

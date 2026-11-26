@@ -14,8 +14,8 @@ const id = t.String({ maxLength: 255 })
 const reviewParams = t.Object({ reviewId: id })
 
 /**
- * The linking review queue: identities no automatic or self-service tier could link, waiting for
- * one admin. The services audit what they resolve; refusals are recorded here.
+ * The linking review queue: identities no automatic tier could link, waiting for one admin. The
+ * services audit what they resolve; refusals are recorded here.
  */
 export const createLinkReviewAdminRoutes = (auth: Auth, database: typeof DbType) =>
   createAdminRoutes('link-review-admin-routes', auth, database)

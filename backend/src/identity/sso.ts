@@ -8,11 +8,10 @@ import { acquireActiveSCIMUserLink } from '@better-auth/scim'
 import { sso, type SSOOptions } from '@better-auth/sso'
 import { type AuthAdapter, findMembership } from './access'
 import { createAuditEvent } from './audit/write'
-import { getCurrentOrganizationId } from './current-organization'
 import { findApprovedLinkReview, markLinkReviewLinked } from './link-reviews'
 import { findLinkCandidate, isDomainClaimedByConnection, type LinkTier } from './linking'
 import { recordIdpDeniedEmailVerified, recordSsoConnection } from './sign-in'
-import { requestSsoLinkReview, ssoLinking, takeLinkIntent } from './sso-linking'
+import { requestSsoLinkReview, ssoLinking } from './sso-linking'
 import {
   envSsoProvider,
   findSsoConnection,
@@ -148,7 +147,7 @@ const recordSsoLink = (
   createAuditEvent(adapter, {
     action: 'link.created',
     outcome: 'success',
-    actor: via === 'self_service' ? { type: 'user', id: userId } : { type: 'system' },
+    actor: { type: 'system' },
     target: { type: 'user', id: userId },
     connectionId,
     metadata: { tier: via, ...(reviewId ? { reviewId } : {}) },
@@ -184,79 +183,7 @@ const hasOtherSsoAccount = async (adapter: AuthAdapter, userId: string, provider
 }
 
 /**
- * Record tier 2's proof as an approved review on the match claim, for the IdP's SCIM create to
- * attach through. A review the IdP's earlier create opened for this identity, pending or rejected, is
- * approved in place for the account holder: one identity has one review.
- */
-const approveForIntent = async (
-  adapter: Parameters<NonNullable<SSOOptions['resolveUser']>>[1]['database'],
-  input: SsoUserResolution,
-  { userId, identityConnectionId, externalId }: { userId: string; identityConnectionId: string; externalId: string },
-) => {
-  const now = new Date()
-  const resolution = { status: 'approved', candidateUserId: userId, resolvedBy: userId, resolvedAt: now }
-  const [existing] = await adapter.findMany<{ id: string }>({
-    model: 'linkReview',
-    where: [
-      { field: 'orgId', value: getCurrentOrganizationId() },
-      { field: 'identityConnectionId', value: identityConnectionId },
-      { field: 'externalId', value: externalId },
-      { field: 'status', value: ['pending', 'approved', 'rejected'], operator: 'in' },
-    ],
-    sortBy: { field: 'createdAt', direction: 'desc' },
-    limit: 1,
-  })
-  if (existing) {
-    await adapter.update({ model: 'linkReview', where: [{ field: 'id', value: existing.id }], update: resolution })
-    return
-  }
-  await adapter.create({
-    model: 'linkReview',
-    data: {
-      orgId: getCurrentOrganizationId(),
-      identityConnectionId,
-      trigger: 'sso_sign_in',
-      externalId,
-      incomingEmail: input.providerUser.email,
-      incomingName: input.providerUser.name || null,
-      ...resolution,
-      lastSeenAt: now,
-      createdAt: now,
-      updatedAt: now,
-    },
-  })
-}
-
-/**
- * Tier 2: link the subject to the account holder who asked for it. A subject already held by
- * another user is refused rather than moved. On a connection with SCIM, the link is also recorded
- * as an approved review on the match claim, so the IdP's SCIM create attaches to this user too.
- */
-const linkThroughIntent = async (
-  adapter: Parameters<NonNullable<SSOOptions['resolveUser']>>[1]['database'],
-  input: SsoUserResolution,
-  { userId, connection }: { userId: string; connection: SsoConnection },
-) => {
-  const holder = await findSsoAccountUserId(adapter, input.providerId, input.accountKey.accountId)
-  if (holder !== null) {
-    return holder === userId
-      ? ({ action: 'continue' } as const)
-      : ({ action: 'reject', code: 'SSO_IDENTITY_LINKED_ELSEWHERE' } as const)
-  }
-  if (requiresScimRecord(connection)) {
-    const externalId = matchClaimValue(input, connection.matchClaim)
-    if (!externalId) {
-      return { action: 'reject', code: 'SSO_MATCH_CLAIM_MISSING' } as const
-    }
-    await approveForIntent(adapter, input, { userId, identityConnectionId: connection.id, externalId })
-  }
-  await recordSsoLink(adapter, { userId, connectionId: connection.id, via: 'self_service' })
-  return { action: 'link', userId, profile: 'preserve' } as const
-}
-
-/**
  * Resolve an SSO sign-in. Records the connection it came through, for admission. Then, in order:
- * - a signed-in member who asked to link (`X-Link-Intent`) gets this identity linked to them
  * - on a connection with SCIM, the subject signs into the user of the SCIM record its match claim
  *   names, never by email. An approved review attaches through the IdP's SCIM retry instead
  * - on a connection without SCIM, an approved review's user; otherwise a new identity whose email
@@ -284,19 +211,11 @@ const resolveSsoUser: NonNullable<SSOOptions['resolveUser']> = async (input, { d
     // The bootstrap admin grant needs it later in this sign-in; the user row can't carry it.
     await recordIdpDeniedEmailVerified()
   }
-  const intentUserId = await takeLinkIntent(adapter)
   if (scimRecordRequired && connection.scimConnectionId) {
-    const viaRecord = await resolveThroughScimRecord(adapter, input, {
+    return resolveThroughScimRecord(adapter, input, {
       ...connection,
       scimConnectionId: connection.scimConnectionId,
     })
-    if (viaRecord.action !== 'continue') {
-      return viaRecord
-    }
-    return intentUserId ? linkThroughIntent(adapter, input, { userId: intentUserId, connection }) : viaRecord
-  }
-  if (intentUserId) {
-    return linkThroughIntent(adapter, input, { userId: intentUserId, connection })
   }
 
   const hasSsoAccount = async (field: 'accountId' | 'userId', value: string) =>

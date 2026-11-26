@@ -13,8 +13,8 @@ import { getCurrentOrganizationId } from './current-organization'
 
 /*
  * The linking review queue: an incoming identity whose email an existing user owns, and that no
- * automatic or self-service tier may link, waits here for one admin. An approval does not link by
- * itself: the IdP's next attempt (a SCIM retry, or the next SSO sign-in) attaches to the user.
+ * automatic tier may link, waits here for one admin. An approval does not link by itself: the
+ * IdP's next attempt (a SCIM retry, or the next SSO sign-in) attaches to the user.
  */
 
 export type LinkReviewRow = typeof linkReview.$inferSelect
@@ -251,9 +251,10 @@ const resolveLinkReview = (
 
 /**
  * Approve a link: the IdP's next attempt for this identity attaches to the candidate user. A
- * rejected review can still be approved. Refused for the admin's own account, which only tier 2's
- * proof of both identities may link, and while the candidate still has a SCIM user on that
- * connection, which the IdP must delete first.
+ * rejected review can still be approved. Refused for the admin's own account (a sole admin links
+ * their own identity by claiming the domain for that connection; otherwise a second admin approves
+ * it), and while the candidate still has a SCIM user on that connection, which the IdP must delete
+ * first.
  */
 export const approveLinkReview = async (
   database: typeof DbType,

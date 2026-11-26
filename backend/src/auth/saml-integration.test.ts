@@ -31,7 +31,6 @@ import { generateTestCerts, getTestCerts } from '../../../e2e/saml-test-certs'
 import { getSharedIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
 import { account, user } from '@/db/auth-schema'
 import { and, eq } from 'drizzle-orm'
-import { linkIntentHeader } from '@/identity/sso-linking'
 import { createSessionCookie } from '@/test-utils/session-cookie'
 import { auditEvent, identityConnection, membershipSource, ssoProvider } from '@/db/schema'
 import { createSsoConnection, ensureEnvSsoConnection, updateSsoConnection } from '@/identity/sso-connections'
@@ -335,21 +334,19 @@ describe('SAML Integration', () => {
       ])
     })
 
-    it('links the SAML identity to a signed-in user who asks for it, whatever email it carries', async () => {
+    it('never links the user signed in to the browser, as on a shared machine', async () => {
       const { createAuth } = await import('./auth')
       const auth = createAuth(db)
       const sessionCookie = await createSessionCookie(auth, db)
       const existing = (await auth.api.getSession({ headers: new Headers({ Cookie: sessionCookie }) }))!.user
-      const idpEmail = `work-${crypto.randomUUID()}@example.com`
+      const idpEmail = `someone-else-${crypto.randomUUID()}@example.com`
 
-      const login = await startLogin(idpEmail, {
-        startHeaders: { Cookie: sessionCookie, [linkIntentHeader]: '1' },
-      })
+      const login = await startLogin(idpEmail, { startHeaders: { Cookie: sessionCookie } })
       const acs = await postToAcs(login, { cookie: `${sessionCookie}; ${login.cookie}`, relayState: login.relayState })
 
       expect(acs.headers.get('location')).toBe(callbackURL)
-      expect(await ssoAccountCount(existing.id)).toBe(1)
-      expect(await db.$count(user, eq(user.email, idpEmail))).toBe(0)
+      expect(await ssoAccountCount(existing.id)).toBe(0)
+      expect(await db.$count(user, eq(user.email, idpEmail))).toBe(1)
     })
 
     it('keeps signing a member in through a connection whose certificate an admin replaced, with no relinking', async () => {

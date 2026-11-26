@@ -136,7 +136,7 @@ provider's job.
   [Authentication](../self-hosting/authentication.md#what-single-sign-on-looks-like-to-the-user).
 - On a provider with SCIM, email never links anything. A sign-in lands on the account the provider
   provisioned, matched on its `externalId`, and an existing account joins a provider only through a
-  claimed domain, the person proving both identities, or an admin's approval. See
+  claimed domain or an admin's approval. See
   [Provisioning](../self-hosting/provisioning.md#collisions-and-the-review-queue).
 - An admin edits a connection with `PATCH /v1/admin/connections/:id`. The name, the OIDC client
   secret and the SAML certificate can change at any time, and nobody has to link again. The OIDC

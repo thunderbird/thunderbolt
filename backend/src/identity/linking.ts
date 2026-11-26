@@ -11,11 +11,10 @@ import { findOrgDomainForEmail } from './domains'
  * never links on its own, and two existing users are never merged: a link only attaches the
  * identity to one user, whose E2EE keys stay as they are. The tiers, tried in order:
  * 1. `domain`: the email's domain is verified and claimed by the connection the identity arrives on
- * 2. `self_service`: the person, signed in to the existing user, asked to link and completed SSO
- * 3. `review`: one admin approved the link from the review queue (`link-reviews.ts`)
+ * 2. `review`: one admin approved the link from the review queue (`link-reviews.ts`)
  */
 
-export type LinkTier = 'domain' | 'self_service' | 'review'
+export type LinkTier = 'domain' | 'review'
 
 export type LinkCandidate = { id: string; email: string; emailVerified: boolean }
 

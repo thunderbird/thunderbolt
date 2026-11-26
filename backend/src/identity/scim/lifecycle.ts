@@ -87,7 +87,7 @@ const isLiveScimSide = (connection: ScimSideConnection | undefined): connection 
 type ScimLink = {
   userId: string
   identityConnectionId: string
-  tier: Exclude<LinkTier, 'self_service'>
+  tier: LinkTier
   reviewId?: string
 }
 

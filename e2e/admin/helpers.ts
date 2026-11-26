@@ -138,6 +138,15 @@ export const createAdminApiRequest = (request: APIRequestContext, token: string)
       }
       return member
     },
+    /** The id of the connection or local group named `name`, for a test that created it in the UI. */
+    connectionIdByName: async (name: string) => {
+      const connections = await call<{ items: { id: string; name: string }[] }>('GET', 'admin/connections')
+      return connections.items.find((connection) => connection.name === name)!.id
+    },
+    groupIdByName: async (name: string) => {
+      const groups = await call<ApiPage<LocalGroup>>('GET', 'admin/groups?limit=100')
+      return groups.items.find((group) => group.name === name)!.id
+    },
     grantAdmin: (userId: string) => call<AdminMember>('POST', `admin/members/${userId}/roles`, { role: 'admin' }),
     revokeAdmin: (userId: string) => call<AdminMember>('DELETE', `admin/members/${userId}/roles/admin`),
     seedGroup: async ({ name = uniqueName('Group'), memberIds = [] }: { name?: string; memberIds?: string[] } = {}) => {
@@ -238,6 +247,53 @@ export const pickDate = async (page: Page, label: string, date: Date) => {
 }
 
 /** Open the sidebar (a drawer at phone width), then switch it to the Admin section. */
+/** Open an item's panel on an admin list page by clicking its row, as a person does. */
+export const openAdminRow = async (page: Page, path: string, name: string) => {
+  await page.goto(path)
+  await page.getByRole('button', { name: `Open ${name}`, exact: true }).click()
+}
+
+/**
+ * Open Members searched for `q`. Search narrows every row (members, link reviews, invitations), so
+ * a row in the dimmed tail shows without paging through the org's members.
+ */
+export const searchMembers = async (page: Page, q: string) => {
+  await page.goto('/admin/members')
+  // Wait for the page itself: a toggle clicked while it is still mounting can miss.
+  await expect(page.getByRole('heading', { name: 'Members', level: 1 })).toBeVisible()
+  // The page's search toggle; on desktop the sidebar's app-wide Search comes first.
+  await page.getByRole('button', { name: 'Search', exact: true }).last().click()
+  await page.getByPlaceholder('Search members').fill(q)
+}
+
+/** Open a member's panel: search Members for their email, then click their row. */
+export const openMember = async (page: Page, email: string) => {
+  await searchMembers(page, email)
+  await page.getByText(email, { exact: true }).first().click()
+}
+
+/**
+ * The open panel's ⋯ menu button: in the side panel on desktop, in the panel's dialog at phone width.
+ * Scoped to the panel because a page can have a ⋯ of its own.
+ */
+export const panelMenu = (page: Page) =>
+  page.getByRole('complementary').or(page.getByRole('dialog')).getByRole('button', { name: 'More', exact: true })
+
+/** Close the open panel; at phone width it covers the list, which reads as hidden until it closes. */
+export const closePanel = async (page: Page) => {
+  // "Close details" in the desktop side panel; the phone overlay's own close button says "Close".
+  await page
+    .getByRole('button', { name: /^Close( details)?$/ })
+    .first()
+    .click()
+}
+
+/** Pick `item` from the open panel's ⋯ menu. */
+export const choosePanelAction = async (page: Page, item: string) => {
+  await panelMenu(page).click()
+  await page.getByRole('menuitem', { name: item, exact: true }).click()
+}
+
 export const openAdminSection = async (page: Page) => {
   await openSidebarOnMobile(page)
   await page.getByRole('navigation', { name: 'Sidebar sections' }).getByRole('button', { name: 'Admin' }).click()

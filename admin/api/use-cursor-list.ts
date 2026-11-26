@@ -3,7 +3,7 @@
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
 import type { Page } from '@shared/admin-api'
-import { useInfiniteQuery, type QueryKey } from '@tanstack/react-query'
+import { keepPreviousData, useInfiniteQuery, type QueryKey } from '@tanstack/react-query'
 
 type UseCursorListOptions<T> = {
   queryKey: QueryKey
@@ -27,6 +27,8 @@ export const useCursorList = <T>({ queryKey, fetchPage, enabled }: UseCursorList
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled,
+    // A new search keeps the last results on screen until its own arrive, instead of flashing empty.
+    placeholderData: keepPreviousData,
   })
   const items = query.data?.pages.flatMap((page) => page.items) ?? []
   return {

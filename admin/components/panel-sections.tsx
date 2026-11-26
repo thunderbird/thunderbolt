@@ -4,6 +4,10 @@
 
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 
+/** The Connections form's segmented-control item style, so admin panel sections look the same. */
+const sectionItemClass =
+  'cursor-pointer gap-2 px-2 first:rounded-l-lg last:rounded-r-lg data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=off]:bg-transparent data-[state=off]:text-muted-foreground dark:data-[state=on]:bg-accent'
+
 /** Segmented control that switches between the sections of a detail panel. */
 export const PanelSections = <T extends string>({
   sections,
@@ -20,7 +24,7 @@ export const PanelSections = <T extends string>({
     type="single"
     value={value}
     aria-label={label}
-    className="w-full shrink-0"
+    className="w-full shrink-0 rounded-lg"
     variant="outline"
     onValueChange={(value) => {
       const section = sections.find((item) => item.id === value)
@@ -30,7 +34,7 @@ export const PanelSections = <T extends string>({
     }}
   >
     {sections.map((section) => (
-      <ToggleGroupItem key={section.id} value={section.id} className="cursor-pointer gap-2 px-4">
+      <ToggleGroupItem key={section.id} value={section.id} className={sectionItemClass}>
         {section.label}
       </ToggleGroupItem>
     ))}

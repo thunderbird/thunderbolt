@@ -21,10 +21,7 @@ export const BreakGlassBanner = ({ className }: { className?: string }) => (
     </AlertTitle>
     <AlertDescription>
       <p>
-        <Trans>
-          If the identity provider goes down, nobody can administer this organization. Give admin to someone who signs
-          in by email code.
-        </Trans>
+        <Trans>Give admin to someone who signs in by email code.</Trans>
       </p>
     </AlertDescription>
   </Alert>

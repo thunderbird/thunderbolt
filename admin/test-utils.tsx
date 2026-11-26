@@ -9,7 +9,7 @@ import { getFormatters, toDate } from '@/i18n/format'
 import { getClock } from '@/testing-library'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, screen } from '@testing-library/react'
-import type { ReactNode } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 
 export type FakeRequest = { method: string; path: string; search: URLSearchParams; body: unknown }
@@ -23,7 +23,7 @@ export type FakeReply = { status?: number; body?: unknown }
  */
 export const createAdminTestHarness = (
   respond: (request: FakeRequest) => FakeReply = () => ({}),
-  { initialEntries }: { initialEntries?: string[] } = {},
+  { initialEntries }: { initialEntries?: ComponentProps<typeof MemoryRouter>['initialEntries'] } = {},
 ) => {
   const requests: FakeRequest[] = []
   const http = createClient({

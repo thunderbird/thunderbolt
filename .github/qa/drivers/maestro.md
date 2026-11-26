@@ -118,7 +118,8 @@ missing.
         - eraseText
         - inputText: ${EMAIL}
         - assertVisible: ${EMAIL}
-  - tapOn: Continue
+  # Enter submits the email. The open keyboard can cover Continue, and a tap there lands on the keyboard.
+  - pressKey: Enter
   - extendedWaitUntil:
       visible: Check your email
       timeout: 120000

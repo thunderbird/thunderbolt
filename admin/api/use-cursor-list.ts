@@ -11,6 +11,9 @@ type UseCursorListOptions<T> = {
   enabled?: boolean
 }
 
+/** The cache key `useCursorList` keeps its pages under, for reading them back. */
+export const cursorListKey = (queryKey: QueryKey) => [...queryKey, 'pages']
+
 /**
  * A cursor-paged admin list with "Load more": the pages so far, flattened, and `loadMore` for the
  * next one. `error` is the first page's or the latest next page's; a failed next page keeps the
@@ -22,7 +25,7 @@ type UseCursorListOptions<T> = {
  */
 export const useCursorList = <T>({ queryKey, fetchPage, enabled }: UseCursorListOptions<T>) => {
   const query = useInfiniteQuery({
-    queryKey: [...queryKey, 'pages'],
+    queryKey: cursorListKey(queryKey),
     queryFn: ({ pageParam }) => fetchPage(pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,

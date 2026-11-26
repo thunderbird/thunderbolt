@@ -26,7 +26,7 @@ export const bob = makeMember({ userId: 'user-2', email: 'bob@example.com', name
 
 /**
  * A backend with the group `ops` holding Ada, members Ada and Bob, and no role mappings. A created
- * group is served back as `g-new`. Removals answer with `removeReply`. With `self`, the signed-in
+ * group is served back as `g-new`, and a created role mapping as `m-new`. Removals answer with `removeReply`. With `self`, the signed-in
  * admin is in `ops` too, and their detail is `self`.
  */
 export const groupBackend = (removeReply: FakeReply = { body: {} }, self?: AdminMember) => {
@@ -50,6 +50,13 @@ export const groupBackend = (removeReply: FakeReply = { body: {} }, self?: Admin
     }
     if (path === 'admin/link-reviews') {
       return { body: { reviews: [], nextCursor: null } }
+    }
+    if (path === 'admin/invitations') {
+      return { body: { items: [], nextCursor: null } }
+    }
+    if (method === 'POST' && path === 'admin/role-mappings') {
+      const { localGroupId } = body as { localGroupId: string }
+      return { body: { id: 'm-new', role: 'admin', target: { kind: 'local_group', groupId: localGroupId, name: '' } } }
     }
     if (path === 'admin/role-mappings') {
       return { body: { items: [] } }

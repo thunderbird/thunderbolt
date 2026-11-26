@@ -1079,7 +1079,7 @@ Used by `explore`, `explore-native`, the real-AI `replay` and `replay-native` le
 | `QA_TINFOIL_API_KEY`, `QA_TINFOIL_ENCLAVE_URL` | real-AI stacks: explore, replay, verify-real | QA-only Tinfoil access for the GLM models                                                                                                              |
 | `QA_EXA_API_KEY`                               | real-AI stacks: explore, replay, verify-real | QA-only Exa key for search and link previews                                                                                                           |
 | `QA_APP_CLIENT_ID`, `QA_APP_PRIVATE_KEY`       | publish, the app check                       | the GitHub App below                                                                                                                                   |
-| `QA_HEARTBEAT_URL`                             | report                                       | optional BetterStack heartbeat, sent after a scheduled run on `main` that worked                                                                       |
+| `QA_HEARTBEAT_URL`                             | report                                       | optional BetterStack heartbeat, sent after a scheduled run on `main` whose explore/fix pipeline worked; a failed `desktop-shell` reaches only `notify` |
 
 The `QA_` names differ from nightly's on purpose. Each is a QA-only secret except the GitHub App's two, which belong to
 an app shared with other automation. If an environment secret were missing, a same-named repository secret would be

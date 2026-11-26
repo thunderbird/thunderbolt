@@ -103,10 +103,10 @@ jobs:
   # harness on dedicated ports (5434/8081), then runs playwright.e2ee.config.ts.
   powersync-e2ee:
     runs-on: ubuntu-latest
-    # Each shard boots its own harness (~4 min fixed) + its slice of the suite.
-    # Sharding cuts wall-clock ~linearly; per-shard build/boot is parallelized
-    # across runners, so build-once would only save billing minutes, not latency.
-    # 15 min leaves headroom over a healthy ~9 min shard while failing a stuck one fast.
+    # Each shard boots its own harness (under a minute: Docker, build, preview)
+    # + its slice of the suite, which is nearly all of the job's time. Sharding
+    # and E2EE_WORKERS both cut it; build-once would only save billing minutes.
+    # 15 min leaves headroom over a healthy shard while failing a stuck one fast.
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -159,6 +159,8 @@ jobs:
         env:
           PLAYWRIGHT_BLOB_OUTPUT_NAME: e2ee-report-${{ strategy.job-index }}.zip
           E2E_PASSKEY_ENABLED: ${{ matrix.passkeys }}
+          # Two spec files at a time. Each test uses its own account, so files don't share data.
+          E2EE_WORKERS: 2
         run: bash scripts/run-e2ee-powersync.sh --shard=${{ matrix.shard }}
 
       - name: Upload PowerSync E2EE blob report

@@ -1494,7 +1494,7 @@ jobs:
 
       - *stop-stack
 
-      # Succeeds only when the check fails all three times on the builds without the patch.
+      # Succeeds only when the check fails all three times on the builds without the patch, inside its bug check step.
       - name: Run the visual check without the patch
         id: visual
         if: steps.visual-with.outcome == 'success'
@@ -1507,14 +1507,19 @@ jobs:
           # A stash is a commit, and the runner has no git identity.
           git -c user.name=qa -c user.email=qa@localhost stash push --include-untracked --quiet
           .github/qa/scripts/stack.sh start qa-dist qa-dist-onboarding
-          passed=0
+          report=$(mktemp)
+          failed=0
           for _ in 1 2 3; do
-            if bunx playwright test --config .github/qa/playwright.config.ts --retries=0 "qa-out/fix-$QA_FP/repro/check.spec.ts"; then
-              passed=$((passed + 1))
+            # As in replay, a run shows the bug only when it failed inside the bug check step (failedInBugStep in
+            # verify.ts). A failed sign-in or a check that never loaded shows nothing, so it fails this step.
+            rm -f "$report"
+            if ! PLAYWRIGHT_JSON_OUTPUT_FILE="$report" bunx playwright test --config .github/qa/playwright.config.ts --retries=0 --reporter=list,json "qa-out/fix-$QA_FP/repro/check.spec.ts" &&
+              jq -e 'any(.. | objects; .title == "bug check" and (.error != null or .duration == -1))' "$report" > /dev/null; then
+              failed=$((failed + 1))
             fi
           done
           .github/qa/scripts/stack.sh stop
-          [ "$passed" -eq 0 ]
+          [ "$failed" -eq 3 ]
 
       # verify-real serves this build from a fresh checkout: the provider keys must never enter this job, whose
       # tree and tools the agent's commands could have changed.

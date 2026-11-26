@@ -16,6 +16,7 @@ import { linear } from '../../../scripts/notify-on-failure'
 import { type Action, addComment, type Filed, type LinearAuth, priority, qaLabels, ticketView } from './file-findings'
 import { sanitize, secretPattern } from './sanitize'
 import {
+  bugStepProblems,
   type Finding,
   findingSchema,
   lintReproSpec,
@@ -819,8 +820,8 @@ const flowProblems = (platform: string, flow: string) => {
 }
 
 /**
- * Problems with what the patch must make pass: an edited repro spec or flow, or a visual check that is missing or
- * fails the lint. Whether the checks passed comes from `missingPasses`.
+ * Problems with what the patch must make pass: an edited repro spec or flow, or a visual check that is missing, fails
+ * the lint or, on the web, has no `bug check` step. Whether the checks passed comes from `missingPasses`.
  */
 const proofProblems = async (outDir: string, task: FixTask) => {
   if (task.kind === 'spec') {
@@ -837,7 +838,8 @@ const proofProblems = async (outDir: string, task: FixTask) => {
   const check = Bun.file('flow' in task ? task.flow : checkPath(outDir, task.fp))
   if (!(await check.exists())) return ['the visual check is missing']
   const text = await check.text()
-  const problems = 'flow' in task ? flowProblems(task.platform, text) : lintReproSpec(text)
+  const problems =
+    'flow' in task ? flowProblems(task.platform, text) : [...lintReproSpec(text), ...bugStepProblems(text)]
   return problems.map((problem) => `visual check: ${problem}`)
 }
 

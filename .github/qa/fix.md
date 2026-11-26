@@ -82,7 +82,10 @@ Before you change any code, write `qa-out/fix-<fp>/repro/check.spec.ts`, using t
 fails because of the defect the finding describes. Use `layoutProblems` from `'../../../.github/qa/layout'` when the
 defect is a layout problem, or another assertion on the DOM. It follows the rules of a repro spec: imports only from
 `@playwright/test`, `'../../../e2e/helpers'`, `'../../../.github/qa/layout'` and, for a c1 spec,
-`'../../../.github/qa/ports'`, and no `process`, file or network access of its own. Run it with
+`'../../../.github/qa/ports'`, and no `process`, file or network access of its own. Like a repro spec, it does its setup
+first, such as the sign-in, then asserts inside `test.step('bug check', async () => { … })`. A check without that step
+is not published. Without your patch, a run counts as failed only when it fails inside the step, so a run that fails
+earlier, in its sign-in for example, keeps the patch unpublished. Run it with
 `bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-<fp>/repro/check.spec.ts` and see it fail. Only
 then fix the bug, and run it again to see it pass. The workflow runs your check on the code without your patch and
 with it. The patch is published only when the check fails without it and passes with it, and the check becomes the

@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import platforms from '../platforms.json'
 import { isDenied, prChecks } from './fix'
+import { bugStep } from './findings'
 import {
   nativeDriverStartupMinutes,
   nativeJobMinutes,
@@ -454,8 +455,20 @@ describe('fix job', () => {
     expect(at('Build the patched frontend for the real-AI check')).toBeLessThan(at('Collect the patch'))
   })
 
-  // By default the check always fails, as it should without the patch.
-  const baseline = ({ edits = true, failStart = false, stashed = false, checkPasses = false } = {}) => {
+  type RunStep = { title: string; duration: number; error?: { message: string } }
+  const failedInBugCheck: RunStep[] = [
+    { title: 'sign in', duration: 900 },
+    { title: bugStep, duration: 40, error: { message: 'expected no layout problems' } },
+  ]
+  // By default the check always fails in its bug check step, as it should without the patch. `ran` holds the steps of
+  // each failed run in the check's JSON report.
+  const baseline = ({
+    edits = true,
+    failStart = false,
+    stashed = false,
+    checkPasses = false,
+    ran = failedInBugCheck,
+  } = {}) => {
     const dir = mkdtempSync(join(work, 'baseline-'))
     const bin = mkdtempSync(join(work, 'bin-'))
     const git = (...args: string[]) =>
@@ -477,7 +490,10 @@ describe('fix job', () => {
       writeFileSync(join(dir, 'backend/index.ts'), 'patched')
       writeFileSync(join(dir, 'backend/new.ts'), 'new')
     }
-    writeFileSync(join(bin, 'bunx'), `#!/bin/sh\nexit ${checkPasses ? 0 : 1}\n`, { mode: 0o755 })
+    const report = { suites: [{ specs: [{ tests: [{ results: [{ status: 'failed', steps: ran }] }] }] }], errors: [] }
+    writeFileSync(join(bin, 'report.json'), JSON.stringify(report))
+    const bunx = `#!/bin/sh\ncp '${join(bin, 'report.json')}' "$PLAYWRIGHT_JSON_OUTPUT_FILE"\nexit ${checkPasses ? 0 : 1}\n`
+    writeFileSync(join(bin, 'bunx'), bunx, { mode: 0o755 })
     const proc = Bun.spawnSync(['bash', '-e', '-c', step('fix', 'Run the visual check without the patch').run ?? ''], {
       cwd: dir,
       env: { PATH: `${bin}:${process.env.PATH}`, QA_FP: 'fp1', HOME: dir },
@@ -506,6 +522,17 @@ describe('fix job', () => {
     for (const check of [withRun, step('fix', 'Run the visual check without the patch')])
       expect(check['continue-on-error']).toBe(true)
     expect(step('fix', 'Run the visual check without the patch').if).toBe("steps.visual-with.outcome == 'success'")
+    expect(step('fix', 'Run the visual check without the patch').run).toContain('--reporter=list,json')
+  })
+
+  test('a run that failed outside its bug check step shows no bug, so the baseline fails', () => {
+    const signIn = baseline({ ran: [{ title: 'sign in', duration: 900, error: { message: 'no code arrived' } }] })
+    expect(signIn.code).not.toBe(0)
+    expect(signIn.read('backend/index.ts')).toBe('patched')
+    // A check that never loaded ran no step.
+    expect(baseline({ ran: [] }).code).not.toBe(0)
+    // A run that timed out while the step still ran (duration -1) did reach the bug.
+    expect(baseline({ ran: [{ title: bugStep, duration: -1 }] }).code).toBe(0)
   })
 
   test('a failed baseline still puts the patch back, and an agent that edited nothing pops no older stash', () => {

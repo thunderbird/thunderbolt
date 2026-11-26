@@ -434,9 +434,12 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `bug check` step, keeps the patch unpublished, since a patch that breaks the way to the bug proves no fix.
    A `visual` task has no spec, so the agent first writes `qa-out/fix-<fp>/repro/check.spec.ts` (the depth and
    `repro/` dir of a repro spec, so its imports and the Playwright config work), a check that fails because of the
-   defect. The fix job runs that check three times on the patched dev stack, where every run must pass, then three
-   times on the builds without the patch, with the patch stashed so the backend runs without it too, where every
-   run must fail. A real-AI web
+   defect. Like a repro spec, it asserts the bug inside `test.step('bug check', …)`, and `publish` refuses a check
+   without that step. The fix job runs that check three times on the patched dev stack, where every run must pass,
+   then three times on the builds without the patch, with the patch stashed so the backend runs without it too, where
+   every run must fail inside that step. These runs without the patch (the baseline) read each verdict from
+   Playwright's JSON report, as replay does: a run that fails before the step, in its sign-in for example, shows no
+   bug, and the baseline fails. A real-AI web
    task (`real`) is fixed on the fake AI, and `verify-real` runs its spec three times on the real providers against
    the patched frontend; all three must pass. A real-AI web visual task has no spec for `verify-real` to run, so
    `publish` never opens a PR for it: the ticket gets `Human Required`, like a fix that failed its checks.

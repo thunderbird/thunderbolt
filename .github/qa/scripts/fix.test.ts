@@ -39,7 +39,9 @@ import { loginViaEmailCode } from '../../../e2e/helpers'
 
 test('rename keeps the title', async ({ page }) => {
   await loginViaEmailCode(page)
-  await expect(page.getByText('Renamed')).toBeVisible()
+  await test.step('bug check', async () => {
+    await expect(page.getByText('Renamed')).toBeVisible()
+  })
 })
 `
 
@@ -1113,13 +1115,19 @@ describe('checkPatch', () => {
       expect((await checkPatch(git, outDir, visualTask(), [])).reasons).toEqual([])
     })
 
-    test('is rejected without a check, and with a check that fails the lint', async () => {
+    test('is rejected without a check, and with a check that fails the lint or has no bug check step', async () => {
       await patchFrom(fixed)
       expect((await checkPatch(git, outDir, visualTask(), [])).reasons).toEqual(['the visual check is missing'])
 
       await put(check(), `${spec}process.exit(0)\n`)
       expect((await checkPatch(git, outDir, visualTask(), [])).reasons).toEqual([
-        'visual check: line 8: "process" is not allowed',
+        'visual check: line 10: "process" is not allowed',
+      ])
+
+      // The baseline counts a run without the patch only when it failed in that step, not in its sign-in.
+      await put(check(), spec.replace("test.step('bug check'", "test.step('check'"))
+      expect((await checkPatch(git, outDir, visualTask(), [])).reasons).toEqual([
+        "visual check: no test.step('bug check', …) holds the assertion",
       ])
     })
   })
@@ -1226,7 +1234,7 @@ describe('checkPatch', () => {
     await put(reproSpec(), `${spec}process.exit(0)\n`)
     const { reasons } = await checkPatch(git, outDir, task(), [])
     expect(reasons).toContain('the repro spec was edited')
-    expect(reasons).toContain('repro spec: line 8: "process" is not allowed')
+    expect(reasons).toContain('repro spec: line 10: "process" is not allowed')
   })
 })
 

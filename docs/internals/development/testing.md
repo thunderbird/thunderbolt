@@ -58,7 +58,8 @@ then runs `bun run test:demo-videos`; see the [editing guide](../../../.agents/s
 All Chrome-based tests use Google’s current **Chrome for Testing Stable**, downloaded separately from
 Playwright with `bun run browsers:install`. Run it after setting up a checkout and regularly before browser
 work. CI refreshes Stable on every run, including after restoring a cache. Installing Playwright alone, or
-running `playwright install chromium`, does not refresh this browser. On Linux, `--with-deps` also installs
+running `playwright install chromium`, does not refresh this browser. `bun run browsers:install` also installs
+Playwright's own FFmpeg, which Playwright needs to record video in Chrome. On Linux, `--with-deps` also installs
 the system libraries Playwright lists for its own Chromium. We install with `@puppeteer/browsers` because
 Playwright's `channel: 'chrome'` launches the system Google Chrome, and `playwright install chrome` replaces
 that installation on macOS and Linux. Its Linux installer also does not support Arm64.

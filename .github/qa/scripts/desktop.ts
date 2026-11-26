@@ -229,6 +229,7 @@ const checks = async (out: string, downloads: string): Promise<CheckResult[]> =>
       await browser.deleteSession().catch(() => undefined)
       browser = await launch()
       // The chat is not checked: WebKitGTK has no OPFS, so the Linux app's database is in memory and is lost here.
+      // THU-1365 tracks that bug.
       const account = await browser.$('button[aria-label="Account menu"]')
       await account.waitForExist({ timeout: 60_000, timeoutMsg: 'the relaunched app is signed out' })
       if ((await sessionToken()) !== signedIn) throw new Error('the relaunched app holds another session')

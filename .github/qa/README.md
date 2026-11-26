@@ -959,7 +959,7 @@ It signs in, then checks, each on its own row of the run summary:
   nothing on the chat;
 - the app's own quit (`plugin:process|exit`, as the tray's Quit) and a new launch on the same profile keep the
   account: the app shows the account menu again and holds the same session token. The chat is not checked. WebKitGTK
-  has no OPFS, so the Linux app keeps its database in memory and loses it on relaunch.
+  has no OPFS, so the Linux app keeps its database in memory and loses it on relaunch (THU-1365).
 
 A failed check fails the job, which `notify` sees, and leaves a screenshot in `qa-desktop-shell` with the
 driver and stack logs. Nothing is filed. Run it on Linux with the services up and the app built as in the job:

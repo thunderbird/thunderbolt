@@ -14,8 +14,8 @@ import { createAdminTestHarness, type FakeRequest } from './test-utils'
 const screens = [
   ['/admin/members', 'Members'],
   ['/admin/groups', 'Groups'],
-  ['/admin/sign-in-methods', 'Sign-in methods'],
-  ['/admin/audit-log', 'Audit log'],
+  ['/admin/sign-in-methods', 'Sign In'],
+  ['/admin/audit-log', 'Audit Log'],
 ]
 
 const CurrentPath = () => <output aria-label="path">{useLocation().pathname}</output>

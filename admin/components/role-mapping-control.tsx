@@ -5,7 +5,7 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useId, useState } from 'react'
-import { Label } from '@/components/ui/label'
+import { FormLabel } from './form-field'
 import { Switch } from '@/components/ui/switch'
 import { adminRole, type BreakGlassWarning, type RoleMapping } from '@shared/admin-api'
 import { adminQueryKeys } from '../api/query-keys'
@@ -15,6 +15,7 @@ import { InlineError } from './inline-error'
 
 export type RoleMappingTarget = { localGroupId: string } | { identityConnectionId: string; scimGroupId: string }
 
+/** Whether `mapping` grants the role to `target`, a local group or one connection's SCIM group. */
 const isMappingOf = (mapping: RoleMapping, target: RoleMappingTarget) =>
   'localGroupId' in target
     ? mapping.target.kind === 'local_group' && mapping.target.groupId === target.localGroupId
@@ -72,14 +73,9 @@ export const RoleMappingControl = ({ target, groupName, disabled = false }: Role
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-4">
-        <div className="flex flex-col gap-0.5">
-          <Label htmlFor={switchId}>
-            <Trans>Admin role</Trans>
-          </Label>
-          <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
-            <Trans>Every member of this group is an admin.</Trans>
-          </p>
-        </div>
+        <FormLabel htmlFor={switchId}>
+          <Trans>Admin group</Trans>
+        </FormLabel>
         <Switch
           id={switchId}
           aria-label={t`Make members of ${groupName} admins`}

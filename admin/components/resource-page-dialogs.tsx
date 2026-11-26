@@ -13,6 +13,8 @@ type RemoveConfirmation = {
   title: string
   description: ReactNode
   confirmLabel: string
+  /** Whether the removed item's open panel closes; an item that stays listed (retired) keeps it. */
+  closesPanel?: boolean
   /** Removes `page.removeId`. When it throws, the dialog stays open and shows why. */
   onConfirm: (id: string) => Promise<void>
 }
@@ -25,6 +27,13 @@ export const ResourcePageDialogs = ({ page, remove }: { page: ResourcePageState;
   const { t } = useLingui()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<unknown>(null)
+
+  const leaveCopy =
+    page.dirty === 'secret'
+      ? { title: t`Leave without copying the token?`, description: t`It won't be shown again.` }
+      : page.isCreating
+        ? { title: t`Leave without creating?`, description: undefined }
+        : { title: t`Leave without saving?`, description: t`Your changes won't be saved.` }
 
   const cancelRemove = () => {
     setError(null)
@@ -40,7 +49,7 @@ export const ResourcePageDialogs = ({ page, remove }: { page: ResourcePageState;
         return
       }
       setError(null)
-      if (page.selectedId === id) {
+      if (page.selectedId === id && remove?.closesPanel !== false) {
         page.select(null)
       }
       page.patch({ removeId: null })
@@ -48,11 +57,13 @@ export const ResourcePageDialogs = ({ page, remove }: { page: ResourcePageState;
 
   return (
     <>
+      {/* Worded as Skills words it: leaving an edit loses changes, leaving a create loses the new item. */}
       <DiscardCreateDialog
         open={page.pendingSelection !== null}
-        title={t`Discard unsaved changes?`}
+        title={leaveCopy.title}
+        description={leaveCopy.description}
         onOpenChange={(open) => !open && page.patch({ pendingSelection: null })}
-        onConfirm={() => page.pendingSelection && page.select(page.pendingSelection.id)}
+        onConfirm={() => page.pendingSelection && page.select(page.pendingSelection.id, page.pendingSelection)}
       />
       {remove && (
         <ConfirmActionDialog

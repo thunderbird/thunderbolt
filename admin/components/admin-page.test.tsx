@@ -44,12 +44,30 @@ describe('AdminPage', () => {
 
   it('searches through the header search box', () => {
     const onSearch = mock((_value: string) => {})
-    render(<AdminPage title="Members" search={{ label: 'Search members', placeholder: 'Name', onSearch }} />, {
+    render(<AdminPage title="Members" search={{ placeholder: 'Search members', onSearch }} />, {
       wrapper: createAdminTestHarness().wrapper,
     })
     fireEvent.click(screen.getByRole('button', { name: 'Search' }))
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search members' }), { target: { value: 'ada' } })
+    fireEvent.change(screen.getByPlaceholderText('Search members'), { target: { value: 'ada' } })
     expect(onSearch).toHaveBeenCalledWith('ada')
+  })
+
+  it('drops the search and actions from the header while the list is empty', () => {
+    render(
+      <AdminPage
+        title="Groups"
+        isEmpty
+        search={{ placeholder: 'Search groups', onSearch: () => {} }}
+        action={<button type="button">New Group</button>}
+      >
+        <p>Row</p>
+      </AdminPage>,
+      { wrapper: createAdminTestHarness().wrapper },
+    )
+    expect(screen.getByRole('heading', { name: 'Groups' })).toBeInTheDocument()
+    expect(screen.getByText('Row')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Search' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'New Group' })).not.toBeInTheDocument()
   })
 
   it('shows the detail panel', () => {
@@ -66,27 +84,10 @@ describe('AdminPage', () => {
     expect(listBody()).not.toContainElement(refresh)
   })
 
-  it('moves a custom action into the list body on phones, where the floating header cannot cover it', () => {
-    forceMobileViewport()
-    const onClick = mock(() => {})
-    renderWithAction(
-      <button type="button" onClick={onClick}>
-        Refresh
-      </button>,
-    )
-    const [refresh, ...others] = screen.getAllByRole('button', { name: 'Refresh' })
-    expect(others).toHaveLength(0)
-    expect(listBody()).toContainElement(refresh)
-    fireEvent.click(refresh)
-    expect(onClick).toHaveBeenCalledTimes(1)
-  })
-
-  it('leaves the create pill portaled on phones, with an empty action row', () => {
+  it('keeps the action in the header on phones too, as Skills does: the create pill portals itself out', () => {
     forceMobileViewport()
     renderWithAction(<PageCreateAction label="Invite member" onClick={() => {}} />)
     const pill = screen.getByRole('button', { name: 'Invite member' })
     expect(listBody()).not.toContainElement(pill)
-    expect(listBody().firstElementChild).toBeEmptyDOMElement()
-    expect(listBody().firstElementChild).toHaveClass('empty:hidden')
   })
 })

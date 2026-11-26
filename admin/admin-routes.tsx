@@ -8,7 +8,7 @@ import { GroupsPage } from './screens/groups/groups-page'
 import { MembersPage } from './screens/members/members-page'
 import { SignInMethodsPage } from './screens/sign-in-methods/sign-in-methods-page'
 
-/** The admin screens, mounted at `/admin/*`. A detail panel opens through `?edit=<id>`, never a nested route. */
+/** The admin screens, mounted at `/admin/*`. A detail panel is page state, never a nested route. */
 const AdminRoutes = () => (
   <Routes>
     <Route index element={<Navigate to="members" replace />} />

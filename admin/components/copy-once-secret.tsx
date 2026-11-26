@@ -28,7 +28,7 @@ export const CopyOnceSecret = ({ label, copyLabel, secret, details = [], onDone 
       <div className="flex flex-col gap-1">
         <h3 className="font-medium">{label}</h3>
         <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
-          <Trans>Copy it now. It's shown only once and can't be retrieved later.</Trans>
+          <Trans>Copy it now. It won't be shown again.</Trans>
         </p>
       </div>
       <CopyableField label={label} copyLabel={copyLabel} value={secret} />

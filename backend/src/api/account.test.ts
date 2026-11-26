@@ -28,16 +28,9 @@ const signToken = (token: string): string => {
 }
 
 /**
- * Unique-ID strategy for PGlite + nested transactions:
- *
- * The revoke endpoint calls database.transaction() internally. In PGlite's
- * single-connection model this commits the outer test transaction (started by
- * createTestDb's BEGIN), so ROLLBACK in afterEach becomes a no-op and rows persist.
- * CI runs each file 5× (test:backend:5x), so the second run would hit
- * unique-constraint violations without unique IDs.
- *
- * Fix: p() prefixes every ID with a globalThis counter that survives module re-evaluation
- * (bun's --rerun-each reloads the module, resetting module-scope variables).
+ * Unique IDs: p() prefixes every ID with a globalThis counter, so a rerun in the same process (as test:backend:5x
+ * does) never reuses an ID from an earlier pass. The counter lives on globalThis because bun's --rerun-each reloads
+ * the module, which resets module-scope variables.
  */
 const counterKey = Symbol.for('account-test-runId')
 ;(globalThis as Record<symbol, number>)[counterKey] ??= 0

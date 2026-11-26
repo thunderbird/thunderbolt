@@ -3,37 +3,65 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /* ─── Thunderbolt brand tokens ──────────────────────────────
- * Matches the marketing site so landing / blog / docs all feel
- * like one surface. Do not redefine these in individual layouts.
+ * Mirrors the app palette in src/index.css so landing / blog / docs
+ * share the product's warm surfaces and brand accents.
  */
 
 @import '@fontsource-variable/inter';
-@import '@fontsource-variable/mona-sans';
-@import '@fontsource/space-mono/400.css';
-@import '@fontsource/space-mono/700.css';
-@import '@fontsource/mozilla-text';
+@import '@fontsource-variable/mozilla-headline';
 
 :root {
-	/* Palette — pulled from marketing/enterprise-page.tsx */
-	--tb-bg: #f9fafb;
-	--tb-surface: #ffffff;
-	--tb-surface-subtle: #eff1f4;
-	--tb-surface-input: #f2f4f7;
-	--tb-border: #eaecf0;
-	--tb-border-strong: #d0d5dd;
-	--tb-text: #101828;
-	--tb-text-secondary: #344054;
-	--tb-text-muted: #667085;
-	--tb-text-dim: #98a2b3;
+  --tb-bg: #f5f2ee;
+  --tb-surface: #faf8f5;
+  --tb-surface-subtle: #f0ede6;
+  --tb-surface-input: #eeebe6;
+  --tb-border: #e5dfd5;
+  --tb-border-strong: #bfb4a3;
+  --tb-text: #262120;
+  --tb-text-secondary: #47413c;
+  /* Slightly deeper than the app's muted text for small editorial copy. */
+  --tb-text-muted: #716a62;
+  --tb-text-dim: #7f7870;
+  --tb-primary: #393530;
+  --tb-brand-raspberry: #c12d6c;
+  --tb-brand-amber: #ab5e17;
+  --tb-brand: var(--tb-brand-raspberry);
+  --tb-brand-2: var(--tb-brand-amber);
+  --tb-link: var(--tb-brand);
+  --tb-on-brand: #faf8f5;
+  /* Keep the app ramp independent of theme-specific link colors. */
+  --tb-gradient-brand: linear-gradient(90deg, var(--tb-brand-amber), var(--tb-brand-raspberry));
+  --tb-shadow: 0 16px 48px -20px rgb(38 33 32 / 14%);
+  --tb-radius-control: 0.625rem;
+  --tb-radius-panel: 1rem;
 
-	/* Typography */
-	--tb-font-sans:
-		'Mona Sans Variable', 'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-	--tb-font-mono:
-		'Space Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
-	--tb-font-text: 'Mozilla Text', 'Mona Sans Variable', 'Inter Variable', Georgia, serif;
+  /* Typography */
+  --tb-font-sans: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --tb-font-heading: 'Mozilla Headline Variable', var(--tb-font-sans);
+  --tb-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
 
-	/* Measure */
-	--tb-measure-narrow: 44rem;
-	--tb-measure-wide: 64rem;
+  /* Measure */
+  --tb-measure-narrow: 44rem;
+  --tb-measure-wide: 73rem;
+}
+
+:where(h1, h2, h3, h4) {
+  font-family: var(--tb-font-heading);
+  text-wrap: balance;
+}
+
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--tb-link);
+  outline-offset: 4px;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--tb-brand) 16%, var(--tb-surface));
+  color: var(--tb-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto !important;
+  }
 }

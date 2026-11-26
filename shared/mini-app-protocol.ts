@@ -363,17 +363,9 @@ export const initializeRequestSchema = envelopeSchema.extend({
      * {@link miniAppHostMethods.identify} needs to answer "is the handshake I am
      * holding the live document's?".
      *
-     * Optional, and absence is handled rather than rejected: this rides the
-     * handshake, so a guest on an SDK copy that predates it must still be able
-     * to connect. The host falls back to its older, best-effort ordering guess
-     * for those — see `handleFrameLoad`.
-     *
-     * No `min` either, for the same reason one notch further out. A floor
-     * *rejects*, and rejecting a field on `initialize` drops the handshake
-     * itself — so a third-party guest that sends an empty string, the way a
-     * defaulted field does, would be unable to connect at all and see only a
-     * timeout. The host reads empty as absent instead, which lands it on the
-     * same fallback as a guest that sent nothing.
+     * Parsed as optional so the host can reply to older guests with an explicit
+     * SDK upgrade error instead of silently dropping their handshake. A usable
+     * document id is required before the host accepts the connection.
      */
     documentId: clampedString(64).optional(),
     capabilities: miniAppGuestCapabilitiesSchema,
@@ -777,10 +769,11 @@ export const miniAppToolSchema = z.object({
   annotations: z
     .object({
       /**
-       * Deterministic and side-effect free. Read-only tools run silently;
-       * anything else prompts the user before it touches the app. This is the
-       * whole reason the flag is on the wire rather than inferred host-side —
-       * only the app knows whether its own tool mutates something.
+       * Deterministic and side-effect free, by the app's own account. Accepted
+       * because WebMCP descriptors carry it, but it never skips the approval
+       * prompt: a call sends model-written arguments to the app's origin, and
+       * the app's word about its own tool cannot authorise that transfer. See
+       * `createMiniAppTools`.
        */
       readOnlyHint: z.boolean().optional(),
       /** Human-facing label for the approval prompt. */
@@ -885,9 +878,6 @@ export const toolsCallResultSchema = z.object({
 })
 
 export type MiniAppToolCallResult = z.infer<typeof toolsCallResultSchema>
-
-/** Whether a tool needs user approval before it runs. */
-export const requiresApproval = (tool: MiniAppTool): boolean => tool.annotations?.readOnlyHint !== true
 
 /**
  * Envelope for a guest's reply to a host request — success or failure.

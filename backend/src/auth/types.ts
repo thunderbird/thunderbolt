@@ -16,23 +16,3 @@ export const oauthTokenResponseSchema = z.object({
 })
 
 export type OAuthTokenResponse = z.infer<typeof oauthTokenResponseSchema>
-
-/**
- * Request body schema for exchanging authorization codes
- */
-export const codeRequestSchema = z.object({
-  code: z.string(),
-  code_verifier: z.string(),
-  redirect_uri: z.string(),
-})
-
-export type CodeRequest = z.infer<typeof codeRequestSchema>
-
-/**
- * Request body schema for refreshing tokens
- */
-export const refreshRequestSchema = z.object({
-  refresh_token: z.string(),
-})
-
-export type RefreshRequest = z.infer<typeof refreshRequestSchema>

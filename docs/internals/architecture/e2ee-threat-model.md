@@ -74,7 +74,12 @@ falsify, not a fact.
   refused rather than rewritten; and `devices` is exempt from the quarantine outright — its rows
   are inserted by the backend at registration with the plaintext name a keyless device sent, a
   structural plaintext writer — so a server-rewritten `devices.name` (a display label, no routing
-  or content payoff) is accepted. RULE for future schema work: adding a column or table to
+  or content payoff) is accepted. The quarantine cannot refuse a validly encrypted `models.url`
+  from a still-trusted device, so `models_secrets` also stores the provider and URL each key was
+  saved for, and the join returns the key only while the row still has them. Keys saved by an
+  older version are bound when the database opens, before sync connects. A trusted device can
+  still point a model somewhere new and receive the next prompt sent to it, but this device's BYOK
+  key stays behind. RULE for future schema work: adding a column or table to
   `encryptedColumnsMap` while plaintext rows for it already exist server-side requires a
   re-encryption migration in the same change (the `reencrypt-agents` shape), or established
   accounts' history is quarantined on every device enrolled afterwards.
@@ -113,15 +118,21 @@ falsify, not a fact.
   call that could itself adopt a fresh AK and un-set the AK just verified.
 
   **Approval recipient binding.** Before wrapping the AK, an approver
-  matches the pending device's locally computed 256-bit account/id/P-256/ML-KEM
-  fingerprint. The dialog snapshots that tuple, so a changed row cannot retarget
+  confirms the pending device's account/id/P-256/ML-KEM tuple, by default with a
+  2-digit (00 to 99) commit-then-reveal code and as a fallback with the full 256-bit
+  fingerprint. The pending device commits to its random reveal before it sees the
+  approver's challenge, so A2 substituting the tuple makes the two codes agree
+  once in 100 per attempt, with nothing to grind offline (see the residual below); `approveDevice`
+  re-verifies the commitment and the code from the dialog's snapshot before any
+  key work. The dialog snapshots that tuple, so a changed row cannot retarget
   the wrap. An honest backend also verifies the submitted attestation against the
   locked target row. This backend check is race defense: A2 can replace its stored
   metadata and verification key, so it cannot establish the malicious-server boundary.
   First receivers check their local recipient tuple before any key-state writes.
   The pre-wrap comparison is the disclosure control; receiver verification cannot
-  protect an AK already disclosed. The substitution case in `multi-device.spec.ts`
-  and focused fingerprint, service and upgrade tests guard these paths.
+  protect an AK already disclosed. The substitution case in `multi-device.spec.ts`,
+  `attacks/approval-code-substitution.spec.ts` (A2 with a self-consistent forged
+  session), and focused code, fingerprint, service and upgrade tests guard these paths.
 
   **Residuals.** (1) A device's FIRST account-key adoption remains trust-on-first-use:
   it has no previous witness to the account's key material. Fingerprint verification
@@ -129,19 +140,45 @@ falsify, not a fact.
   the AK is wrapped *to* the recovery slot's public halves, which the server stores,
   so it can wrap its own AK to them. A server-supplied AK/canary can also produce a
   self-consistent recipient attestation. Authenticating the account key itself needs
-  an additional independent trust root. (2) **Rollback passes the witness by construction** — an old
+  an additional independent trust root. For phrase recovery the phrase is now that
+  root (the continuity seal, see C9), and so is a sealed passkey. Approval, unlock
+  through a legacy passkey slot, and recovery with a phrase minted before the seal
+  remain trust-on-first-use, and the latter two mark the device unverified. (2) **Rollback passes the witness by construction** — an old
   honest envelope with its matching old keyring verifies, because DEK `"0"` is immutable. The
-  replayed set includes the canary, `signing_public_key` and `key_version`, so the device is
-  returned wholesale to an epoch a revoked device holds and whose old envelope is valid for: that
-  is **C5 defeated**, not C4's pointer residual, and no DEK-`"0"`-bound artifact can ever catch it.
-  Closing it needs the keyring authenticated, and binding `key_id → material` rather than merely
-  signing `key_version` (THU-890). (3) A refusing device keeps writing under its stale primary,
+  replayed set includes the canary, `signing_public_key` and `key_version`, so on the witness alone
+  the device would be returned wholesale to an epoch a revoked device holds, defeating C5.
+
+  What closes the passive replay: the envelope now seals an epoch counter next to the AK (`0x03`),
+  and the device stores that epoch and the sealed primary pointer with its AK, in one transaction.
+  It refuses an envelope that seals an older epoch (or none, once it holds a versioned AK) or a
+  lower pointer. Minted key_ids only grow on an honest keyring, and the pointer has been sealed
+  since `0x02`. A replay carries its own old sealed values, and the served `key_version` is never
+  a floor. DEK rows from an older epoch do not unwrap under the adopted AK, because every DEK that
+  opens under it was wrapped by a holder of that AK with its `key_id` bound in (`dekWrapAAD`).
+
+  Still open: a new device trusts the first envelope it is served. Until a device holds a
+  versioned AK, it can be returned across an AK-only rotation such as a phrase change. And the
+  floors order epochs without proving ancestry. Any holder of an older AK can seal an authentic
+  envelope at the same or a higher epoch with a higher pointer, and the witness accepts it. A
+  revoked device is such a holder and needs no partition: with A2 serving it the pre-revocation
+  state and accepting its rotation, the stock client mints a new primary DEK and seals the epoch
+  the surviving devices already hold, and they adopt a primary the revoked device minted (A2 with
+  A4, **C5 defeated**). A modified client can seal any higher epoch. A device A2 partitions on an
+  old epoch can do the same and leave out a device revoked elsewhere. Closing this needs
+  authenticated epoch ancestry (THU-890).
+
+  Gated by the `epoch replay` service tests, the loopback page-load test in
+  `key-request-responder.test.ts` and `attacks/epoch-replay.spec.ts`.
+
+  (3) A refusing device keeps writing under its stale primary,
   which after a revocation-driven rotation is a DEK the revoked device holds — confidential against
   A2, **not** against A4. Failing `encode` closed instead would wall a legitimate user on a signal
   they cannot see. (4) **Ending an attack is what wedges the device**: pre-fix a device self-healed
   once A2 stopped lying, whereas a device whose witness was minted inside the attack window can
   never clear the check. Signing out clears it, at the cost of a re-approval; the phrase-recovery
-  path stays ungated for exactly this reason. (5) A2 **withholding** an openable envelope is a DoS —
+  path skips the witness for exactly this reason. It is not exempt from the epoch floors (residual
+  2), so a device holding an inflated floor, such as one it adopted on first use, is cleared only
+  by signing out. (5) A2 **withholding** an openable envelope is a DoS —
   degradation, not disclosure, same shape as C9's first residual. (6) The immutability this rests on
   is enforced at **no layer**: `assertRotateKeyCoverage` validates key_id sets, not key material,
   because the server holds no AK. A keyring compaction that drops `"0"`, a v3 that re-mints it, or a
@@ -229,7 +266,12 @@ falsify, not a fact.
   under its own honest name. What the AAD settles is the `key_id → material` half: a signed pointer
   can no longer be satisfied by an honest-looking relabel, so what remains for THU-890 is
   FRESHNESS — an attestation that proves the pointer is current, not merely well-formed, minus a
-  monotonic local guard's blind spot (a freshly enrolled device has no baseline).
+  monotonic local guard's blind spot (a freshly enrolled device has no baseline). Since this
+  residual was written, the pointer has been sealed in the AK envelope (`0x02`, THU-890), and a
+  device now also refuses an envelope whose sealed pointer is lower than the one in force (see C2
+  residual 2). That closes the rollback to a lower pointer on an established device. Two gaps
+  remain: the freshly enrolled device's blind spot, and a holder of an older AK sealing an equal
+  or higher pointer (C2 residual 2).
 - **C5 — Revocation is cryptographic.** After `revokeDeviceAndRotate`, the removed device cannot
   read new data, cannot obtain the new AK or primary DEK, **and cannot authorize any further trust
   operation.** Note the coupling: the ECDSA signing keypair is derived from the canary, which since
@@ -243,6 +285,8 @@ falsify, not a fact.
   rebind only as itself, and that row is revoked. Revocation also has to SURVIVE a hostile keyring:
   one unopenable `wrapped_keys` row used to throw the whole AK rotation, so a single planted row
   voided the cryptographic half of every future revocation, permanently (THU-871 — see C15).
+  Against A2 working with the removed device, the rotation alone is not enough: the removed device
+  still holds the pre-revocation AK and can seal an envelope the epoch floors accept (C2 residual 2).
 - **C6 — Challenge-response is not replayable or confusable.** Nonces are single-use, expiring, and
   bound to user, device, and operation (approve / deny / revoke / rotate / recover / node-id). No
   cross-operation confusion, no cross-device reuse, no TOCTOU between issue and consume, no endpoint
@@ -252,7 +296,9 @@ falsify, not a fact.
   so it can be neither minted in cleartext nor replayed as a proof.
 - **C7 — Migration is atomic and lossless.** Exactly one migrator wins the CAS; a 409 loser degrades
   cleanly; nothing is persisted locally before HTTP 200; the recovery phrase is shown only on 200. A
-  hostile flip from a stolen session is a recoverable DoS — never plaintext exposure or data loss.
+  hostile flip from a stolen session alone is a recoverable DoS — never plaintext exposure or data
+  loss. A session plus the leaked v1 canary secret plus the account's inbox can do worse; see the
+  C8 residual.
   **Lossless now also holds against A2 (THU-877).** The migrator used to absorb the legacy CK from
   its v1 envelope having checked it only against the server-supplied canary — and A2 authors both,
   so a self-consistent forged pair passed and sealed every pre-migration row under a key nobody
@@ -278,15 +324,39 @@ falsify, not a fact.
   pending/denied row state and CLI/bridge/revoked rows remain unchanged. Every change
   rolls back together on failure. The migrator shows a new recovery phrase, replacing
   the previous one. Siblings regain access through verified approval, that new phrase
-  or a passkey enrolled for sync.
-- **C8 — Possession proof is meaningful against A4/A5.** `hash(canarySecret) == canary_secret_hash`
-  proves CK possession to an adversary that cannot rewrite the DB — a stolen session (A5) or a
-  key-holding device (A4) — and A5 (no keys) cannot satisfy it. It does **not** bind against A2, who
+  or a passkey enrolled for sync. The migrator is normally a trusted device; a pending
+  device recovering with the v1 phrase may migrate too, under the step-up gate in C8; then its
+  regular siblings end untrusted and not pending, so it is never prompted to approve the lost one.
+- **C8 — Possession proof binds only a caller who never saw the secret.** `hash(canarySecret) ==
+  canary_secret_hash` stops an adversary that cannot rewrite the DB and never saw the v1 canary
+  secret — a stolen session (A5) with no v1-era traffic or device to draw on. It is not proof of
+  the CK (see below). It does **not** bind against A2, who
   authors `canary_secret_hash` and can forge a self-consistent `(secret, hash, canary)` triple. That
   concession stands, but it is no longer sufficient for the attack: since THU-877 the migrator
   additionally verifies the offered CK against material A2 does not author and refuses it otherwise,
   so a forged triple yields a refused migration rather than an orphaned account (see C7). Same scope
   for the follower-side continuity check. (A9 was listed here in error — it has no DB-write power.)
+  **The proof is replayable, so it never trusts a device on its own.** The canary secret is static
+  and every v1 client sent it in plain on approve, deny, revoke and node-id requests: anyone who
+  ever saw it (request logs, a v1-era device, a script in a v1 client) can present it without the
+  CK. A trusted device needs nothing more. A pending device may also migrate, which is recovery with
+  the v1 phrase (BIP-39 of the raw CK), meant for when no CK-holding device is left (the server does
+  not check that). For that caller `/encryption/upgrade` checks the proof first, then an emailed
+  step-up code of its own action (`v1-phrase-recovery`, whose email says a new device will get
+  access), before any write; the code is consumed on commit and the caller is trusted in the same
+  transaction. The client opens the v1 canary with the phrase locally before asking for a code.
+  **Residual:** someone holding the secret (or the CK), a session and the account's inbox can still
+  migrate a not-yet-migrated v1 account from a device they control — demoting its trusted app
+  devices, owning the new phrase and, without the CK, planting a bogus `"v1"` slot that leaves the
+  legacy rows unreadable. That needs inbox control, which already allows deleting the account, and
+  the security emails that follow (upgrade + recovery phrase used) go to that same inbox, so they
+  are no defence here. Bridge devices keep their trust and stay dialable. Separately, a holder of
+  the secret and a session can request fresh codes and spend the three attempts on each, so the
+  owner's v1-phrase recovery can be stalled; with no trusted device left, nothing denies that
+  device. A session without the secret can do neither: the code request checks the proof too, so it
+  cannot email the owner a recovery code or replace theirs. Gated by
+  `attacks/v1-upgrade-canary-replay.spec.ts` and the gate matrix in
+  `backend/src/api/encryption-v2.test.ts`.
   This concession is also why the canary cannot serve as C2's anchor for an inbound Account Key:
   verifying a server-served canary under a server-served DEK, reached through a server-served AK, is
   the same tautology one level up. Hence the separate device-local witness there.
@@ -315,6 +385,40 @@ falsify, not a fact.
   which now refuses an AK that cannot reproduce its DEK `"0"` witness (see C2). NOT closed for a
   freshly enrolled one, whose first adoption is trust-on-first-use: there, this claim still rests on
   the server not having substituted the AK at enrolment.
+
+  **Forced-wipe recovery substitution (closed).** A2 could turn an established device into a fresh
+  one: it minted its own AK, DEK `"0"`, canary and signing key, wrapped the AK to the real recovery
+  public keys, signed a matching attestation with its own canary key, and revoked the device. The
+  client answered `403 DEVICE_DISCONNECTED` by wiping its keys and its DEK `"0"` witness. On the
+  next sign-in the victim's correct phrase opened the forged envelope, the device self-approved, and
+  its next write was sealed under a DEK A2 held. Closed by the **recovery continuity seal**: every
+  phrase mint stores a sample encrypted under DEK `"0"` plus an HMAC over it keyed by the phrase,
+  and recovery refuses (`RecoveryContinuityError`) unless both verify for the DEK `"0"` the opened AK
+  unwraps, before anything is trusted or stored. A2 holds neither DEK `"0"` nor the phrase. New
+  `kdf_salt`s carry a tag that makes the seal mandatory, and A2 cannot strip it because the salt must
+  re-derive the stored public keys from the phrase. Gated by
+  `attacks/forced-wipe-recovery-substitution.spec.ts`. **Residuals.** (a) Phrases minted before the
+  seal keep trust-on-first-use recovery until the next phrase change. (b) A2 can withhold or corrupt
+  the seal and block recovery, a DoS like (1) above. (c) Rollback to an older honest epoch still
+  passes, as for the device witness, since DEK `"0"` never changes. (d) A2 colluding with a holder of
+  DEK `"0"`'s raw bytes can pair the real DEK `"0"` with a forged AK; the seal binds DEK `"0"`, not
+  the AK. (e) Legacy passkey slots and pre-seal phrases stay accepted as trust-on-first-use, with no
+  cutoff yet; every device they unlock is marked unverified and fails closed on approving
+  devices or CLI sign-ins, enrolling or migrating a passkey, changing the phrase and minting any seal,
+  so an adopted server key cannot spread through those actions. Revoking a device or removing a
+  passkey still rotates the AK there, and that rotation wraps the new AK to the devices the server
+  lists, whose attestations check out only against the canary key this device couldn't verify. A
+  server that substituted the keys can add a recipient to that list. It already holds the lineage and
+  can wrap it to any pending device itself (residual (1) of C2), so its only gain is reading what
+  devices on that substituted lineage write after the rotation. The marker survives until the device
+  deletes its keys.
+  (f) **Passkey seal.** Sealed passkey slots carry `passkey_continuity` and verify like the phrase,
+  with the slot format identified by derivation so it cannot be stripped. A passkey enrolled before
+  the seal keeps legacy keys the server already holds, so after its in-place migration A2 can still
+  replay the legacy slot to a wiped device; that unlock is unverified, and a trusted device's next
+  rotation refuses the stale attestation. (g) The migration warning reads the continuity fields from
+  the server, so A2 can hide it; it is a migration aid for an honest backend, and protection starts
+  only once a trusted device mints the seal.
 
   **Scope correction + closure (THU-875).** "Cannot be abused for takeover" was an overclaim: the
   attestation authenticates the ACCOUNT — any keyring holder signs a valid one — not the human. A
@@ -437,6 +541,22 @@ Not findings. Documented trade-offs, listed so review does not relitigate them.
   build pinned to the wrong escrow key (THU-866 residual — see C11).
 - **Decrypt-failure handling and keys-before-data ordering** are deferred (planning gaps G2/G3);
   PowerSync retries make naive fail-closed poison the sync loop.
+- **A chance match of the 2-digit code.** Under A2 a substituted tuple shows the same code on
+  both screens once in 100 attempts even for a user who compares carefully. A2 cannot grind it:
+  every attempt needs a fresh challenge from the approver and a reveal from the pending device,
+  the pending device never restarts an attempt on its own, and the approver stops after three
+  unsuccessful attempts per 24 hours (below). The approver counts an attempt before it sends the
+  challenge, so A2 cannot see the codes and then refuse the challenge for free. Two digits trade
+  the 1 in 10⁶ of a six-digit code for an easier comparison.
+- **A careless tap on the approval code.** The approver offers its own code among six. A user
+  who taps without comparing picks it one time in six, and that approves the recipient the
+  approver snapshotted. Under A2 that is a substituted key tuple. A stolen live session (A5) or a
+  revoked device's session (A4) gets there more cheaply: it registers its own pending device and
+  runs an honest session, so the approver's real code is among the six. Typing the fingerprint
+  has no such path. Bounded, not removed, by three unsuccessful attempts per trusted device per
+  24 hours, kept in `localStorage` so neither the server nor the stolen session can reset it. Chosen for lower friction over typing the code;
+  lab studies measured more fatal errors for selection than for compare-and-confirm (Uzun,
+  Karvonen, Asokan 2007; Kainda, Flechais, Roscoe 2009).
 - **Older approvers and a malicious web host.** Updated clients require fingerprint
   verification before approving another device. During migration, the only device
   envelope is wrapped to the migrating device's local keys.

@@ -1,0 +1,181 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import { Trans, useLingui } from '@lingui/react/macro'
+import { Link } from 'react-router'
+import { Loader2, RefreshCw } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Combobox } from '@/components/ui/combobox'
+import { FormFooter } from '@/components/ui/form-footer'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { getProviderDefinition } from '@/providers/registry'
+import { ProviderConnectionIcon } from '@/settings/connections/provider-connection-icon'
+import { ProviderModelOption } from './provider-model-option'
+import type { useAddProviderModels } from './use-add-provider-models'
+
+/** Connection-first, searchable model selection without copying provider credentials. */
+export const AddProviderModels = (state: ReturnType<typeof useAddProviderModels>) => {
+  const { t } = useLingui()
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault()
+        state.submit()
+      }}
+      className="flex min-h-0 flex-1 flex-col gap-4"
+    >
+      <div className="flex shrink-0 flex-col gap-2">
+        <Label htmlFor="model-provider-connection">
+          <Trans>Connection</Trans>
+        </Label>
+        <Combobox
+          id="model-provider-connection"
+          items={state.connections.map((connection) => ({
+            id: connection.id,
+            label: connection.name,
+            filterValue: getProviderDefinition(connection.provider).name,
+            icon: <ProviderConnectionIcon provider={connection.provider} />,
+          }))}
+          value={state.connectionId}
+          onValueChange={state.changeConnection}
+          placeholder={t`Choose a connection`}
+          searchPlaceholder={t`Search connections…`}
+          emptyMessage={t`No model providers connected.`}
+          loading={state.isLoading}
+          disabled={state.isPending}
+        />
+        <Link
+          to="/settings/connections"
+          onClick={state.onCancel}
+          className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+        >
+          <Trans>Manage connections</Trans>
+        </Link>
+      </div>
+      {state.connection && !state.canLoad && (
+        <p role="status" className="text-sm text-muted-foreground">
+          {state.connection.connected ? (
+            <Trans>Enable this connection to add models.</Trans>
+          ) : (
+            <Trans>Connect this provider on this device to add models.</Trans>
+          )}
+        </p>
+      )}
+      {state.canLoad && (
+        <>
+          {!state.manual && (
+            <>
+              <div className="flex shrink-0 items-center gap-2">
+                <Input
+                  value={state.search}
+                  onChange={(event) => state.setSearch(event.target.value)}
+                  placeholder={t`Search models…`}
+                  aria-label={t`Search models`}
+                  disabled={state.isPending}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="text-muted-foreground"
+                  onClick={state.refresh}
+                  disabled={state.isLoadingCatalog || state.isPending}
+                  aria-label={t`Refresh models`}
+                >
+                  <RefreshCw className="size-4" />
+                </Button>
+              </div>
+              {state.isLoadingCatalog ? (
+                <div role="status" className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" />
+                  <Trans>Loading models…</Trans>
+                </div>
+              ) : state.catalogError ? (
+                <p role="alert" className="text-sm text-destructive">
+                  {state.catalogError}
+                </p>
+              ) : (
+                <div
+                  role="group"
+                  aria-label={t`Models`}
+                  className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-xl border p-2"
+                >
+                  {state.visibleModels.length === 0 && (
+                    <p className="p-3 text-sm text-muted-foreground">
+                      <Trans>No models found.</Trans>
+                    </p>
+                  )}
+                  {state.visibleModels.map((model) => (
+                    <ProviderModelOption
+                      key={model.id}
+                      model={model}
+                      selected={state.selected.includes(model.id)}
+                      added={state.existingIds.has(model.id)}
+                      disabled={state.isPending}
+                      onToggle={state.toggleModel}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+          {state.connection?.provider === 'custom' && (
+            <>
+              <Button
+                type="button"
+                variant="link"
+                className="shrink-0 self-start px-0 text-muted-foreground"
+                disabled={state.isPending}
+                onClick={() => state.setManual(!state.manual)}
+              >
+                {state.manual ? <Trans>Choose from available models</Trans> : <Trans>Enter a model ID</Trans>}
+              </Button>
+              {state.manual && (
+                <div className="flex shrink-0 flex-col gap-2">
+                  <Label htmlFor="manual-provider-model">
+                    <Trans>Model ID</Trans>
+                  </Label>
+                  <Input
+                    id="manual-provider-model"
+                    value={state.manualId}
+                    onChange={(event) => state.setManualId(event.target.value)}
+                    placeholder={t`e.g., llama3.3`}
+                    disabled={state.isPending}
+                  />
+                  {state.existingIds.has(state.manualId.trim()) && (
+                    <p className="text-sm text-muted-foreground">
+                      <Trans>This model has already been added.</Trans>
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </>
+      )}
+      {state.submitError && (
+        <p role="alert" className="text-sm text-destructive">
+          {state.submitError}
+        </p>
+      )}
+      {state.canLoad && state.modelsWithoutTools.length > 0 && (
+        <p role="status" className="text-sm text-muted-foreground">
+          <Trans>
+            These models do not support tools and cannot use features like web search:{' '}
+            {state.modelsWithoutTools.join(', ')}.
+          </Trans>
+        </p>
+      )}
+      <FormFooter>
+        <Button type="button" variant="outline" onClick={state.onCancel} disabled={state.isPending}>
+          <Trans>Cancel</Trans>
+        </Button>
+        <Button type="submit" disabled={!state.canSubmit} isLoading={state.isPending} loadingLabel={t`Adding…`}>
+          <Trans>Add models</Trans>
+        </Button>
+      </FormFooter>
+    </form>
+  )
+}

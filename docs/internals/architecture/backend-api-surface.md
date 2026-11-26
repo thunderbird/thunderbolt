@@ -23,7 +23,6 @@ One Elysia app, `prefix: '/v1'` (`backend/src/index.ts:72`). Route groups are pl
 | `GET /v1/locations`, `GET /v1/locations/:id`                                                           | `api/routes.ts`                         | session                                   | none                                              | gated   |
 | `POST /v1/chat/completions`, `POST /v1/chat/v1/messages`                                               | `inference/routes.ts`                   | session, CLI-device-checked               | `inference`                                       | gated   |
 | `POST /v1/agent/chat`‡                                                                                 | `hosted-agent/routes.ts`                | session, CLI-device-checked               | `inference`                                       | gated   |
-| `POST /v1/inference-usage/receipts`                                                                    | `inference/usage-receipt-routes.ts`     | session, web-only by default              | `receipt`                                         | gated   |
 | `ALL /v1/tinfoil/*`                                                                                    | `tinfoil/routes.ts`                     | session, web-only by default              | `pro`                                             | gated   |
 | `ALL /v1/proxy`                                                                                        | `proxy/routes.ts`                       | session                                   | `pro`                                             | gated   |
 | `WS /v1/proxy/ws`                                                                                      | `proxy/ws.ts`                           | subprotocol bearer                        | `pro` mounted, but not enforcing†                 | exempt  |
@@ -68,7 +67,7 @@ Re-derive from `app.routes` on a `createApp()` app (pattern: `backend/src/index.
 - `/v1/devices/*` belongs to `api/encryption.ts`, `/v1/account/devices/*` (CLI, revocation) to `api/account.ts`. Eleven encryption endpoints and their canary rules: [e2e-encryption.md](e2e-encryption.md).
 - `/v1/chat/v1/messages`: the inner `/v1` is part of the Anthropic Messages API shape.
 - `GET /v1/health` (public liveness, `api/routes.ts`) and `/v1/health/*` (token-gated probes, `api/health.ts`) are different modules on one prefix.
-- Managed inference is under `/v1/chat`, not `/v1/inference`; the only `/v1/inference-*` path is the usage receipt.
+- Managed inference is under `/v1/chat`, not `/v1/inference`.
 - No MCP route: remote MCP rides the universal proxy ([mcp-connections.md](mcp-connections.md)). The hosted agent's own MCP calls go straight from the API to the servers in `AGENT_MCP_SERVERS`.
 
 ## Global middleware, in order
@@ -103,7 +102,7 @@ Session minting, SSO, the CLI device grant, bearer signing: [backend/docs/authen
 - Sessions come from a cookie, a signed bearer, or an `x-api-key` PAT (`enableSessionForAPIKeys`).
 - `.derive` routes branch to answer 401 (no session) vs 403 (anonymous) with a machine-readable `code`. Anonymous users are rejected from sync, agent discovery and Haystack files.
 - `GET /v1/powersync/token` accepts a bearer with no session (credential refresh). The bearer plugin runs `requireSignature: true`, so any path reading a raw `Authorization` header must re-verify the signature or become a bypass.
-- Browsers cannot set headers on `new WebSocket()`, hence the subprotocol. Validation runs in `open()`, not `beforeHandle`, which Bun's adapter may invoke more than once per upgrade. The bearer entry is never echoed back, keeping it out of `WebSocket.protocol` and response logs.
+- Browsers cannot set headers on `new WebSocket()`, hence the subprotocol. Validation runs in `open()`, not `beforeHandle`, which Bun's adapter may invoke more than once per upgrade. The bearer entry is never echoed back, keeping it out of `WebSocket.protocol` and response logs. Each handshake starts a fresh session lookup; per-process sockets with the same bearer share one-second successful validation for frames and a forced five-second session poll. The WebSocket limiter does not effectively cap per-user handshakes or frame rate.
 - Health probes answer 403 when `MONITORING_TOKEN` is unset, 401 when it does not match ([self-hosting configuration](../../self-hosting/configuration.md)).
 
 Metered routes add two guards:
@@ -116,9 +115,9 @@ Metered routes add two guards:
 | Tier                       | Budget       | Key                             |
 | -------------------------- | ------------ | ------------------------------- |
 | `inference`                | 60 / minute  | `user:<id>`                     |
-| `receipt`                  | 100 / minute | `user:<id>`                     |
 | `pro`                      | 100 / minute | `user:<id>`                     |
 | `auth`                     | 10 / minute  | `ip:<addr>`                     |
+| `integration-oauth`        | 30 / minute  | `ip:<addr>`                     |
 | `anonymous-sign-in`        | 10 / minute  | `ip:<addr>`                     |
 | `captcha-challenge`        | 10 / minute  | `ip:<addr>`                     |
 | `anonymous-sign-in-global` | 2000 / hour  | `all` (one deployment-wide key) |
@@ -129,7 +128,7 @@ Limits are hardcoded per tier in `backend/src/middleware/rate-limit.ts:49-56`, t
 
 - **User-keyed limiters go after the auth macro's guard**: inside a `guard({ auth: true }, …)` callback, or inside `createMeteredRouteGuard` (`backend/src/inference/metered-route-guard.ts`), which fronts every managed-inference route. They read the macro-resolved `user`; at app level the resolve runs after `onBeforeHandle` and the limit is a silent no-op.
 - **IP-keyed limiters fail closed.** An unresolvable IP shares one `ip:unknown` bucket instead of skipping the check, so the guard on OTP send and waitlist join cannot disable itself. `extractClientIp` trusts forwarding headers only under `TRUSTED_PROXY`.
-- **`RATE_LIMIT_ENABLED=false` returns an empty plugin**: the limiter disappears rather than being bypassed per request.
+- **`RATE_LIMIT_ENABLED=false` returns an empty plugin**: the limiter disappears rather than being bypassed per request. The `integration-oauth` limit is the exception: `index.ts` builds it with `enabled: true`, so token exchanges stay limited.
 
 Limited responses carry `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset`; a 429 adds `Retry-After`. Mechanism and how to add a tier: [backend/docs/rate-limiting.md](../../../backend/docs/rate-limiting.md).
 

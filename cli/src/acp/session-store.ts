@@ -102,8 +102,10 @@ export const createSessionStore = (sessionsDir: string): SessionStore => {
     createSession: (id, cwd) => repo.create({ id, cwd }),
     openSession: async (id, cwd) => {
       // `open` needs the full timestamped metadata, which only `list` yields —
-      // the path can't be reconstructed from the id alone.
-      const existing = (await repo.list({ cwd })).find((meta) => meta.id === id)
+      // the path can't be reconstructed from the id alone. Pi flattens `/`, `\`
+      // and `:` in the directory name, so different workspaces can share one
+      // directory and only the header `cwd` tells them apart.
+      const existing = (await repo.list({ cwd })).find((meta) => meta.id === id && meta.cwd === cwd)
       if (!existing) {
         throw new Error(`no on-disk session '${id}' for workspace '${cwd}'`)
       }

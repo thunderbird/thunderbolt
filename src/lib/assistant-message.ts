@@ -2,7 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { AcpCompaction } from '@/acp/compaction'
 import { isRenderHtmlPart, renderHtmlOutput } from '@/artifacts/render-html-tool'
+import { type CreatedFile, isOfficeScriptPart, officeScriptFiles } from '@/office/office-script-tool'
 import {
   type DynamicToolUIPart,
   isToolOrDynamicToolUIPart,
@@ -18,12 +20,13 @@ import {
  * shapes are treated uniformly via `isToolOrDynamicToolUIPart` / `getToolName`.
  */
 export type ToolOrDynamicToolUIPart = ToolUIPart | DynamicToolUIPart
+export type AcpCompactionUIPart = { type: 'data-acp-compaction'; id?: string; data: AcpCompaction }
 
 /**
  * Union type of AI message parts that can be processed and potentially grouped.
- * Used as input to `groupToolParts` after filtering with `filterMessageParts`.
+ * Used as input to `groupMessageParts` after filtering with `filterMessageParts`.
  */
-export type GroupableUIPart = ReasoningUIPart | TextUIPart | ToolOrDynamicToolUIPart
+export type GroupableUIPart = ReasoningUIPart | TextUIPart | ToolOrDynamicToolUIPart | AcpCompactionUIPart
 
 /**
  * A synthetic UI part type that represents multiple consecutive reasoning/tool parts grouped together.
@@ -37,12 +40,48 @@ export type ReasoningGroupUIPart = {
   items: ReasoningGroupItem[]
 }
 
+export type CreatedFileVersions = { latest: CreatedFile; earlier: CreatedFile[] }
+type CreatedFilesPart = { type: 'created_files'; files: CreatedFileVersions[] }
+
+/**
+ * Place each file at its last save in this transcript. Walking backwards also puts
+ * earlier snapshots in newest-first order. The stored filename is already cleaned.
+ */
+const createdFileRows = (parts: GroupableUIPart[]) => {
+  const byName = new Map<string, CreatedFileVersions>()
+  const rows = new Map<GroupableUIPart, CreatedFilesPart>()
+  for (let index = parts.length - 1; index >= 0; index--) {
+    const part = parts[index]
+    if (!isOfficeScriptPart(part)) {
+      continue
+    }
+    const files = officeScriptFiles(part)
+    if (!files?.length) {
+      continue
+    }
+    const row: CreatedFileVersions[] = []
+    for (const file of files.reverse()) {
+      const versions = byName.get(file.filename)
+      if (versions) {
+        versions.earlier.push(file)
+      } else {
+        const group: CreatedFileVersions = { latest: file, earlier: [] }
+        byName.set(file.filename, group)
+        row.push(group)
+      }
+    }
+    // Even an empty row ends this tool group when all its chips move to later saves.
+    rows.set(part, { type: 'created_files', files: row.reverse() })
+  }
+  return rows
+}
+
 /**
  * Union type representing all possible parts after grouping transformation.
- * Either an original part (reasoning, text, or individual tool) or a synthetic `ReasoningGroupUIPart`.
+ * Includes the original parts, grouped steps and rows of created files.
  * Used as output from `groupMessageParts` and input to `mountMessageParts` for rendering.
  */
-export type GroupedUIPart = GroupableUIPart | ReasoningGroupUIPart
+export type GroupedUIPart = GroupableUIPart | ReasoningGroupUIPart | CreatedFilesPart
 
 /**
  * Whether a render_html part should render as its own artifact card rather than a
@@ -66,16 +105,18 @@ export const artifactRendersStandalone = (part: ToolOrDynamicToolUIPart): boolea
  * **Context**: Called by `AssistantMessage` after filtering, to organize tool calls for display.
  * Reasoning and tool calls (like `read_file`, `grep`, etc.) are grouped into a compact panel rather
  * than scattered through the message. A streaming or verified `render_html` part is lifted out to
- * render as its own artifact instead of joining the group.
+ * render as its own artifact instead of joining the group. A `run_office_script` part that created
+ * files stays in the group. Chips follow the last step to save each filename in this message.
  *
  * **Grouping logic**:
  * - Consecutive reasoning/tool parts → grouped into a single `ReasoningGroupUIPart`
- * - Text parts → kept as-is and break any active group
+ * - Text and compaction parts → kept as-is and break any active group
  *
  * @param parts - Filtered message parts (output from `filterMessageParts`)
  * @returns Parts with consecutive reasoning/tool parts grouped into `ReasoningGroupUIPart` nodes
  */
 export const groupMessageParts = (parts: GroupableUIPart[]): GroupedUIPart[] => {
+  const fileRows = createdFileRows(parts)
   const grouped: GroupedUIPart[] = []
   let currentItems: ReasoningGroupItem[] = []
 
@@ -110,8 +151,12 @@ export const groupMessageParts = (parts: GroupableUIPart[]): GroupedUIPart[] => 
         grouped.push(part)
         return
       }
-
       currentItems.push({ type: 'tool', content: part, id: part.toolCallId })
+      const fileRow = fileRows.get(part)
+      if (fileRow) {
+        flushGroup()
+        grouped.push(fileRow)
+      }
       return
     }
 
@@ -140,11 +185,11 @@ export const groupMessageParts = (parts: GroupableUIPart[]): GroupedUIPart[] => 
  * are supported by our UI. This function acts as a sanitizer before grouping and rendering.
  *
  * **Filtering rules**:
- * - Keeps `reasoning`, `text`, and any tool-like part (typed `tool-<name>` and MCP `dynamic-tool`)
+ * - Keeps `reasoning`, `text`, ACP compaction events, and tool-like parts (typed `tool-<name>` and MCP `dynamic-tool`)
  * - Removes text parts that are empty or whitespace-only
  * - Removes any unsupported part types (e.g., `source-url`, experimental types)
  *
- * **Used in**: `AssistantMessage` component, which pipes the filtered output to `groupToolParts`
+ * **Used in**: `AssistantMessage` component, which pipes the filtered output to `groupMessageParts`
  * before rendering with `mountMessageParts`.
  *
  * @param parts - Raw message parts from AI streaming response (may include unsupported types)
@@ -155,5 +200,5 @@ export const filterMessageParts = (parts: UIMessage['parts']): GroupableUIPart[]
     if (part.type === 'text') {
       return part.text.trim() !== ''
     }
-    return part.type === 'reasoning' || isToolOrDynamicToolUIPart(part)
+    return part.type === 'reasoning' || part.type === 'data-acp-compaction' || isToolOrDynamicToolUIPart(part)
   })

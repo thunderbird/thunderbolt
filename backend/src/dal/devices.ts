@@ -5,7 +5,7 @@
 import type { db as DbType, QueryableDatabase } from '@/db/client'
 import { devicesTable, encryptionMetadataTable, envelopesTable, wrappedKeysTable } from '@/db/schema'
 import { cliDeviceIdPrefix, isCliDeviceId } from '@shared/cli-device-id'
-import { and, count, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm'
+import { and, count, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm'
 import { createHash } from 'crypto'
 
 export { cliDeviceIdPrefix, isCliDeviceId }
@@ -32,6 +32,25 @@ export const isTrustedAppDevice = (
   userId: string,
 ): boolean => device !== null && device.userId === userId && device.deviceType !== 'cli' && device.trusted
 
+/**
+ * Return whether a device is an account-owned regular (`normal`) app device waiting
+ * for approval. Bridges never qualify, and revocation is the caller's to check.
+ */
+export const isPendingRegularAppDevice = (
+  device: {
+    userId: string
+    deviceType: 'normal' | 'bridge' | 'cli'
+    trusted: boolean
+    approvalPending: boolean
+  } | null,
+  userId: string,
+): boolean =>
+  device !== null &&
+  device.userId === userId &&
+  device.deviceType === 'normal' &&
+  !device.trusted &&
+  device.approvalPending
+
 export const bridgeDeviceId = (userId: string, nodeId: string) =>
   `${bridgeDeviceIdPrefix}${createHash('sha256').update(`${userId}:${nodeId}`).digest('hex')}`
 
@@ -53,34 +72,38 @@ export const getDeviceById = async (database: QueryableDatabase, deviceId: strin
     .limit(1)
     .then((rows) => rows[0] ?? null)
 
-/** Upsert a device: insert new or update lastSeen/name for existing. Only updates if userId matches.
- * Devices are never inserted trusted — trust is granted only by `markDeviceTrusted` once an
- * envelope exists for them.
- * `appVersion`, when provided, is persisted on insert and refreshed on update so operators can see
- * which client version each device is running. */
-export const upsertDevice = async (
+/**
+ * How stale `lastSeen` may get before a sync token request rewrites it. Every write to a device row
+ * adds a version to PowerSync's parameter history (the row feeds `active_device_account`), which
+ * PowerSync's Postgres storage never compacts, so a write per token refresh slows every checkpoint.
+ */
+export const deviceLastSeenRefreshMs = 60 * 60 * 1000
+
+/**
+ * Records a sync token request on the device's own row: sets `lastSeen`, `name` and, when given,
+ * `appVersion`, but only when `name` or `appVersion` changed or `lastSeen` is older than
+ * {@link deviceLastSeenRefreshMs}. Returns the updated rows, empty when nothing needed writing.
+ */
+export const touchDevice = (
   database: QueryableDatabase,
-  device: {
-    id: string
-    userId: string
-    name: string
-    lastSeen: Date
-    createdAt: Date
-    appVersion?: string
-  },
+  device: { id: string; userId: string; name: string; appVersion?: string },
+  now = new Date(),
 ) =>
   database
-    .insert(devicesTable)
-    .values({ ...device, trusted: false })
-    .onConflictDoUpdate({
-      target: devicesTable.id,
-      set: {
-        lastSeen: device.lastSeen,
-        name: device.name,
-        ...(device.appVersion ? { appVersion: device.appVersion } : {}),
-      },
-      setWhere: eq(devicesTable.userId, device.userId),
-    })
+    .update(devicesTable)
+    .set({ lastSeen: now, name: device.name, ...(device.appVersion ? { appVersion: device.appVersion } : {}) })
+    .where(
+      and(
+        eq(devicesTable.id, device.id),
+        eq(devicesTable.userId, device.userId),
+        or(
+          isNull(devicesTable.lastSeen),
+          lt(devicesTable.lastSeen, new Date(now.getTime() - deviceLastSeenRefreshMs)),
+          sql`${devicesTable.name} IS DISTINCT FROM ${device.name}`,
+          ...(device.appVersion ? [sql`${devicesTable.appVersion} IS DISTINCT FROM ${device.appVersion}`] : []),
+        ),
+      ),
+    )
     .returning()
 
 /** Create or touch a server-owned CLI device without converting collisions or reviving tombstones. */
@@ -139,11 +162,19 @@ export const revokeDevice = async (database: QueryableDatabase, deviceId: string
     .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId), isNull(devicesTable.revokedAt)))
     .returning()
 
-/** Must run inside the caller's migration transaction so envelope removal and sibling demotion roll back together. */
+/**
+ * Must run inside the caller's migration transaction so envelope removal and sibling demotion roll back together.
+ *
+ * `siblings` sets what the other regular devices become. `pending` (the migrator): trusted ones return to verified
+ * approval. `untrusted` (recovery with the v1 phrase): none stays trusted or pending, even one already waiting — it may
+ * be the very device that was lost or a leftover from a failed attempt, so nothing should prompt to approve it until it
+ * registers again. A waiting device sees this as a deny.
+ */
 export const requireMigrationSiblingApproval = async (
   database: QueryableDatabase,
   userId: string,
   callerDeviceId: string,
+  siblings: 'pending' | 'untrusted' = 'pending',
 ): Promise<void> => {
   const regularSiblings = and(
     eq(devicesTable.userId, userId),
@@ -162,6 +193,13 @@ export const requireMigrationSiblingApproval = async (
         ),
       ),
     )
+  if (siblings === 'untrusted') {
+    await database
+      .update(devicesTable)
+      .set({ trusted: false, approvalPending: false, nodeId: null, nodeIdAttestedAt: null })
+      .where(regularSiblings)
+    return
+  }
   await database
     .update(devicesTable)
     .set({ trusted: false, approvalPending: true, nodeId: null, nodeIdAttestedAt: null })

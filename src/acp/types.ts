@@ -13,6 +13,7 @@
  */
 
 import type { Stream } from '@agentclientprotocol/sdk'
+import type { AcpCompaction } from './compaction'
 
 /** Bidirectional ACP message stream + a lifecycle hook the adapter calls to
  *  tear the transport down (closes the WebSocket). */
@@ -68,6 +69,7 @@ export type AiSdkChunk =
     }
   | { type: 'tool-output-error'; toolCallId: string; errorText: string }
   | { type: 'message-metadata'; messageMetadata: Record<string, unknown> }
+  | { type: 'data-acp-compaction'; id: string; data: AcpCompaction }
   | { type: 'finish-step' }
   | { type: 'finish' }
   | { type: 'error'; errorText: string }

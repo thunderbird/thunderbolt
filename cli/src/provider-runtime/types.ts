@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { ReasoningCapabilities, ReasoningEffort } from '../../../shared/reasoning-effort.ts'
 import type { AgentHarness, AgentHarnessEvent, ToolCallEvent, ToolCallResult } from '@earendil-works/pi-agent-core'
 import type { Api, AssistantMessage, Model, MutableModels } from '@earendil-works/pi-ai'
 import type { RequestInfo } from 'undici-types'
-import type { SharedModel } from '../../../shared/defaults/models.ts'
+import type { ImageSupport, SharedModel } from '../../../shared/defaults/models.ts'
 import type { BuiltinProvider } from '../agent/types.ts'
 import type { LogoutResult } from '../auth/logout.ts'
 
@@ -14,6 +15,7 @@ export type ManagedCatalog = {
   readonly version: number
   readonly defaultModelId: string
   readonly data: SharedModel[]
+  readonly imageSupport: Readonly<Record<string, ImageSupport>>
 }
 export type ManagedCatalogLoader = (
   backendUrl: string,
@@ -165,6 +167,8 @@ export type PreparedPiBinding = {
   readonly wireModel: string
   readonly persistsCredentialStatus: boolean
   readonly piModel: Model<Api>
+  /** Provider discovery overrides Pi's static catalog; an empty list hides unverified controls. */
+  readonly reasoningCapabilities?: ReasoningCapabilities
   readonly install: (models: MutableModels) => void
   readonly attach: (harness: AgentHarness) => () => void
   readonly observePromptError: (failure: Error | AssistantMessage) => Promise<void>
@@ -178,6 +182,11 @@ export const noopBindingLifecycle = {
 } satisfies Pick<PreparedPiBinding, 'attach' | 'observePromptError' | 'dispose'>
 
 export type HarnessRuntime = {
+  readonly reasoning: {
+    readonly capabilities: () => ReasoningCapabilities
+    readonly current: () => ReasoningEffort | undefined
+    readonly set: (effort: ReasoningEffort) => Promise<void>
+  }
   readonly subscribe: (listener: (event: AgentHarnessEvent) => void) => () => void
   readonly registerToolCallGate: (handler: (event: ToolCallEvent) => Promise<ToolCallResult | undefined>) => void
   readonly steer: (text: string) => Promise<void>
@@ -205,7 +214,11 @@ export type HarnessBindingTransaction = {
 export type ProviderRuntime = {
   readonly snapshot: () => ProviderSnapshot
   readonly manage: (command: ProviderCommand) => Promise<ProviderSnapshot>
-  readonly prepare: (selection: InvocationSelection, signal?: AbortSignal) => Promise<PreparedPiBinding>
+  readonly prepare: (
+    selection: InvocationSelection,
+    signal?: AbortSignal,
+    advisorySignal?: AbortSignal,
+  ) => Promise<PreparedPiBinding>
 }
 
 export type CommandOutcome =

@@ -13,6 +13,10 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { MemoryRouter } from 'react-router'
 import type { ReactNode } from 'react'
+import {
+  RecoveryContinuityContext,
+  type RecoveryContinuityContextValue,
+} from '@/components/recovery-continuity/recovery-continuity-provider'
 import { SettingsSidebarContent } from './settings-sidebar'
 
 const anonSession = {
@@ -46,6 +50,58 @@ const renderSidebar = (authClient: AuthClient, onSearchClick = () => {}) => {
     },
   )
 }
+
+const attentionContext: RecoveryContinuityContextValue = {
+  status: 'warning',
+  phraseUpdateRequired: true,
+  passkey: 'none',
+  notice: 'none',
+  deviceTrusted: true,
+  passkeyMigration: { busy: false, errorMessage: null },
+  start: async () => {},
+  startPasskeyMigration: async () => {},
+  dismissNotice: () => {},
+}
+
+describe('SettingsSidebarContent — continuity attention', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  it('marks Preferences and links to the status card', () => {
+    const onSettingsNavigate = mock((_path: string) => {})
+    const TestProvider = createTestProvider({ authClient: createMockAuthClient({ session: authedSession }) })
+    render(
+      <TestProvider>
+        <SignInModalProvider>
+          <MemoryRouter initialEntries={['/settings']}>
+            <SidebarProvider>
+              <RecoveryContinuityContext.Provider value={attentionContext}>
+                <SettingsSidebarContent
+                  isCollapsed={false}
+                  onSectionChange={() => {}}
+                  onSettingsNavigate={onSettingsNavigate}
+                />
+              </RecoveryContinuityContext.Provider>
+            </SidebarProvider>
+          </MemoryRouter>
+        </SignInModalProvider>
+      </TestProvider>,
+    )
+
+    const preferences = screen.getByRole('button', { name: /^Preferences.*Action needed/ })
+    fireEvent.click(preferences)
+    expect(onSettingsNavigate).toHaveBeenCalledWith('/settings/preferences#recovery-phrase-status')
+  })
+})
 
 // The Agents entry is unconditional: the built-in agent is local-first and
 // custom ACP agents (including proxy-free iroh targets) work without a real
@@ -86,7 +142,7 @@ describe('SettingsSidebarContent — Agents entry visibility', () => {
   it('keeps global search available alongside the Settings tab', () => {
     const onSearchClick = mock()
     renderSidebar(createMockAuthClient({ session: anonSession }), onSearchClick)
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+    fireEvent.click(screen.getByLabelText('Search', { selector: 'button' }))
     expect(onSearchClick).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('button', { name: 'Settings' })).toHaveAttribute('aria-current', 'page')
   })

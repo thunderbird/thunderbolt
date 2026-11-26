@@ -3,9 +3,35 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { json } from 'node:stream/consumers'
 import { setTimeout } from 'node:timers/promises'
 import type { RawMessageStreamEvent } from '@anthropic-ai/sdk/resources/messages'
+import type { JSONValue } from 'ai'
 import { z } from 'zod'
+import { miniAppToolsetName, miniAppTransferPrompt, protectedEmailId } from './mini-app-fixture'
+import {
+  officeChartEditFilename,
+  officeChartEditPrompt,
+  officeChartEditScript,
+  officeDeckEditFilename,
+  officeDeckEditPrompt,
+  officeDeckEditScript,
+  officeEditFilename,
+  officeEditPrompt,
+  officeEditScript,
+  officeRetryFind,
+  officeRetryPrompt,
+  officeRetryScript,
+  officeScript,
+  officeScriptPrompt,
+  officeSkillHeading,
+  officeSkillLoadPrompt,
+  officeSkillName,
+  officeSkillWorkbookPrompt,
+  officeWorkbookPrompt,
+  officeWorkbookScript,
+} from './office-script-fixture'
+import { performanceStreamOptions, performanceStreamPrompt } from './streaming-fixture'
 
 export const fakeProviderReply = 'Hello from the fake provider, one word at a time.'
 
@@ -15,197 +41,300 @@ export const fakeProviderReply = 'Hello from the fake provider, one word at a ti
  */
 export const unsupportedRequestMarker = '[fake-provider] unsupported'
 
-/**
- * In the latest user message: the reply streams one word every 3 s instead of every 150 ms, so the QA agent has time
- * to stop it or switch the model while it streams.
- */
-export const slowReplyTrigger = 'qa:slow'
+type FakeProviderOptions = { delayMs?: number }
 
-/**
- * In the latest user message: the first request with that exact text loses its connection after three words, and the
- * same text again (a retry) gets the whole reply.
- */
-export const cutReplyTrigger = 'qa:cut'
+const textPartSchema = z.object({ type: z.string(), text: z.string().optional() })
+type TextPart = z.infer<typeof textPartSchema>
+const joinText = (parts: TextPart[]) =>
+  parts
+    .filter((part) => part.type === 'text')
+    .map((part) => part.text ?? '')
+    .join('\n')
+const textSchema = z.union([z.string(), z.array(textPartSchema).transform(joinText)])
+// Each message is reduced to its text, the tool it calls, and, for a `tool_result` turn, the result's text.
+const contentSchema = z.union([
+  z.string().transform((text) => ({ text, toolCall: undefined, toolResult: undefined })),
+  z
+    .array(textPartSchema.extend({ name: z.string().optional(), content: textSchema.optional() }))
+    .transform((parts) => ({
+      text: joinText(parts),
+      toolCall: parts.find((part) => part.type === 'tool_use')?.name,
+      toolResult: parts.find((part) => part.type === 'tool_result')?.content,
+    })),
+])
+const requestSchema = z.object({ messages: z.array(z.object({ role: z.string(), content: contentSchema })) })
 
-const replyWords = fakeProviderReply.match(/\S+\s*/g)!
+type FakeRequest = z.infer<typeof requestSchema>
 
-type Pace = { pauseMs: number; cutAfter?: number }
+const lastUserContent = (request: FakeRequest) =>
+  request.messages.findLast((message) => message.role === 'user')?.content
 
-/**
- * How the fake streams its reply to a request whose latest user message reads `text`. The triggers match in any case,
- * since a phone keyboard capitalizes the first letter. `cut` holds the texts already cut off, so that a retry of one
- * gets the whole reply.
- */
-export const paceOf = (text: string, cut: Set<string>): Pace => {
-  const lower = text.toLowerCase()
-  const pauseMs = lower.includes(slowReplyTrigger) ? 3000 : 150
-  if (!lower.includes(cutReplyTrigger) || cut.has(text)) {
-    return { pauseMs }
-  }
-  cut.add(text)
-  return { pauseMs, cutAfter: 3 }
+/** Only the last user turn can opt into the expensive fixture; ordinary replies retain their original timing. */
+const requestsPerformanceStream = (request: FakeRequest) => lastUserContent(request)?.text === performanceStreamPrompt
+
+const emailResultSchema = z.object({ body_text: z.string() })
+
+/** The email body, when the last turn answers the `google_get_email` call this script made. */
+const emailBodyFromToolResult = ({ messages }: FakeRequest) => {
+  const [call, result] = messages.slice(-2)
+  return call?.content.toolCall === 'google_get_email' && result?.content.toolResult !== undefined
+    ? emailResultSchema.parse(JSON.parse(result.content.toolResult)).body_text
+    : null
 }
 
-/** Writes each word of the reply after a pause; stops early once the client has gone (a stopped reply) or at a cut. */
-const streamWords = async (res: ServerResponse, pace: Pace, write: (text: string) => void) => {
-  for (const [index, text] of replyWords.entries()) {
-    if (index === pace.cutAfter) {
-      res.destroy()
-      return false
-    }
-    await setTimeout(pace.pauseMs)
-    if (res.destroyed) {
-      return false
-    }
-    write(text)
+/**
+ * The Mini App transfer script: read the email, then pass its body to the open app's tool, then reply in text. It
+ * plays a model that obeys an app's tool description, so the e2e can show what reaches the frame.
+ * The Office script: call `run_office_script` once, then reply in text, so the e2e can run the sandbox Worker. The
+ * workbook script does the same with Excelize.
+ * The Office edits do the same with the attached document, deck or workbook as the script's input. The turn's text also
+ * carries the attachment, so an edit prompt is matched anywhere in that text.
+ * The Office skill scripts load the Excel skill first; one then replies, the other builds the workbook once the skill's
+ * body has arrived.
+ */
+const scriptedToolCall = (request: FakeRequest): { name: string; input: Record<string, JSONValue> } | null => {
+  const text = lastUserContent(request)?.text
+  if (text === miniAppTransferPrompt) {
+    return { name: 'google_get_email', input: { id: protectedEmailId } }
   }
+  if (text === officeScriptPrompt) {
+    return { name: 'run_office_script', input: { script: officeScript } }
+  }
+  if (text === officeRetryPrompt) {
+    return { name: 'run_office_script', input: { script: officeRetryScript } }
+  }
+  if (text === officeSkillLoadPrompt || text === officeSkillWorkbookPrompt) {
+    return { name: 'skill', input: { name: officeSkillName } }
+  }
+  const [prompt, call, result] = request.messages.slice(-3)
+  if (
+    prompt?.content.text === officeSkillWorkbookPrompt &&
+    call?.content.toolCall === 'skill' &&
+    result?.content.toolResult?.includes(officeSkillHeading)
+  ) {
+    return { name: 'run_office_script', input: { script: officeWorkbookScript } }
+  }
+  if (
+    prompt?.content.text === officeRetryPrompt &&
+    call?.content.toolCall === 'run_office_script' &&
+    result?.content.toolResult
+  ) {
+    const failure = z
+      .object({ ok: z.literal(false), scriptId: z.string() })
+      .safeParse(JSON.parse(result.content.toolResult))
+    if (failure.success) {
+      return {
+        name: 'run_office_script',
+        input: { edit: { scriptId: failure.data.scriptId, replacements: [{ find: officeRetryFind, replace: '' }] } },
+      }
+    }
+  }
+  if (text === officeWorkbookPrompt) {
+    return { name: 'run_office_script', input: { script: officeWorkbookScript } }
+  }
+  if (text?.includes(officeEditPrompt)) {
+    return { name: 'run_office_script', input: { script: officeEditScript, inputs: [officeEditFilename] } }
+  }
+  if (text?.includes(officeDeckEditPrompt)) {
+    return { name: 'run_office_script', input: { script: officeDeckEditScript, inputs: [officeDeckEditFilename] } }
+  }
+  if (text?.includes(officeChartEditPrompt)) {
+    return { name: 'run_office_script', input: { script: officeChartEditScript, inputs: [officeChartEditFilename] } }
+  }
+  const body = emailBodyFromToolResult(request)
+  return body === null ? null : { name: miniAppToolsetName, input: { note: body } }
+}
+
+/** The model a Local setup finds when it lists this provider's models. */
+export const fakeOpenAiModelId = 'fake-model'
+
+// The app's Local mode calls an OpenAI-compatible URL straight from the page, so these routes answer CORS.
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+}
+const openAiRequestSchema = z.object({
+  model: z.string(),
+  stream: z.boolean().optional(),
+  stream_options: z.object({ include_usage: z.boolean().optional() }).optional(),
+})
+
+/**
+ * Answer the OpenAI-compatible routes a Local "Other provider" setup uses: the model list, and the reply in one piece
+ * or streamed word by word. A stream ends with a usage chunk when the request asks for one, as OpenAI's does. Returns
+ * false for any other route.
+ */
+const serveOpenAiCompatible = async (
+  req: IncomingMessage,
+  res: ServerResponse,
+  pathname: string,
+  delayMs: number,
+): Promise<boolean> => {
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, corsHeaders).end()
+    return true
+  }
+  if (req.method === 'GET' && pathname.endsWith('/v1/models')) {
+    res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ object: 'list', data: [{ id: fakeOpenAiModelId, object: 'model', owned_by: 'e2e' }] }))
+    return true
+  }
+  if (req.method !== 'POST' || !pathname.endsWith('/v1/chat/completions')) {
+    return false
+  }
+  const parsed = openAiRequestSchema.safeParse(await json(req).catch(() => null))
+  if (!parsed.success) {
+    res.writeHead(400, corsHeaders).end('Invalid chat completions request')
+    return true
+  }
+  const { model, stream, stream_options: streamOptions } = parsed.data
+  const base = { id: `chatcmpl-${crypto.randomUUID()}`, created: Math.floor(Date.now() / 1000), model }
+  const usage = { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18 }
+  if (!stream) {
+    res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' })
+    res.end(
+      JSON.stringify({
+        ...base,
+        object: 'chat.completion',
+        choices: [{ index: 0, message: { role: 'assistant', content: fakeProviderReply }, finish_reason: 'stop' }],
+        usage,
+      }),
+    )
+    return true
+  }
+  res.writeHead(200, { ...corsHeaders, 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' })
+  const writeChunk = (delta: { role?: 'assistant'; content?: string }, finishReason: 'stop' | null) =>
+    res.write(
+      `data: ${JSON.stringify({ ...base, object: 'chat.completion.chunk', choices: [{ index: 0, delta, finish_reason: finishReason }] })}\n\n`,
+    )
+  writeChunk({ role: 'assistant' }, null)
+  for (const content of fakeProviderReply.match(/\S+\s*/g)!) {
+    await setTimeout(delayMs)
+    if (res.destroyed) {
+      return true
+    }
+    writeChunk({ content }, null)
+  }
+  writeChunk({}, 'stop')
+  if (streamOptions?.include_usage === true) {
+    res.write(`data: ${JSON.stringify({ ...base, object: 'chat.completion.chunk', choices: [], usage })}\n\n`)
+  }
+  res.end('data: [DONE]\n\n')
   return true
 }
 
-/** The native Anthropic Messages stream, which the backend's `/chat/v1/messages` route relays. */
-const streamMessages = async (res: ServerResponse, pace: Pace) => {
-  /** Write a native Messages event with its SSE event name. */
-  const writeEvent = (event: RawMessageStreamEvent) => {
-    res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
-  }
-  const usage = {
-    input_tokens: 10,
-    output_tokens: 0,
-    cache_creation_input_tokens: 0,
-    cache_read_input_tokens: 0,
-    cache_creation: null,
-    inference_geo: null,
-    server_tool_use: null,
-    service_tier: null,
-  }
-  writeEvent({
-    type: 'message_start',
-    message: {
-      id: `msg_${crypto.randomUUID()}`,
-      type: 'message',
-      role: 'assistant',
-      model: 'claude-opus-5-5',
-      content: [],
-      container: null,
-      stop_details: null,
-      stop_reason: null,
-      stop_sequence: null,
-      usage,
-    },
-  })
-  writeEvent({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '', citations: [] } })
-  const finished = await streamWords(res, pace, (text) =>
-    writeEvent({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } }),
-  )
-  if (!finished) {
-    return
-  }
-  writeEvent({ type: 'content_block_stop', index: 0 })
-  writeEvent({
-    type: 'message_delta',
-    delta: { stop_reason: 'end_turn', stop_sequence: null, stop_details: null, container: null },
-    usage: { ...usage, output_tokens: 8 },
-  })
-  writeEvent({ type: 'message_stop' })
-}
-
-type ChunkChoice = { index: 0; delta: { role?: 'assistant'; content?: string }; finish_reason: 'stop' | null }
-type ChunkUsage = { prompt_tokens: number; completion_tokens: number; total_tokens: number }
-
 /**
- * The OpenAI-compatible chat completions stream, which the backend's `/chat/completions` route relays for a managed
- * model without the Anthropic vendor. It ends with the usage chunk the backend's ledger reads.
+ * Start a local provider with a deterministic streamed reply: Anthropic Messages for the backend, plus the
+ * OpenAI-compatible routes a Local setup connects to directly. Any other request gets a 404 and an
+ * `unsupportedRequestMarker` line on stderr.
  */
-const streamChatCompletion = async (res: ServerResponse, model: string, pace: Pace) => {
-  const id = `chatcmpl-${crypto.randomUUID()}`
-  const created = Math.floor(Date.now() / 1000)
-  const writeChunk = (choices: ChunkChoice[], usage: ChunkUsage | null = null) => {
-    res.write(`data: ${JSON.stringify({ id, object: 'chat.completion.chunk', created, model, choices, usage })}\n\n`)
-  }
-  writeChunk([{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }])
-  const finished = await streamWords(res, pace, (content) =>
-    writeChunk([{ index: 0, delta: { content }, finish_reason: null }]),
-  )
-  if (!finished) {
-    return
-  }
-  writeChunk([{ index: 0, delta: {}, finish_reason: 'stop' }])
-  writeChunk([], { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18 })
-  res.write('data: [DONE]\n\n')
-}
-
-const textPart = z.object({ type: z.literal('text'), text: z.string() })
-
-/** What the user typed in a message, in either API's shape; a tool result's blocks carry no text part. */
-const userText = z
-  .object({
-    role: z.literal('user'),
-    content: z.union([
-      z.string(),
-      z.array(z.unknown()).transform((parts) => parts.flatMap((part) => textPart.safeParse(part).data?.text ?? [])),
-    ]),
-  })
-  .transform(({ content }) => [content].flat().join('\n'))
-
-const requestSchema = z
-  .object({
-    stream: z.boolean().optional(),
-    model: z.string().default('fake-model'),
-    messages: z.array(z.unknown()).default([]),
-  })
-  .transform(({ messages, ...request }) => ({ ...request, latestText: userText.safeParse(messages.at(-1)).data ?? '' }))
-
-/** The fields the fake reads from a JSON request body, or undefined when it is not JSON or has another shape. */
-const readRequest = async (req: IncomingMessage) => {
-  const chunks: Buffer[] = []
-  for await (const chunk of req) {
-    chunks.push(chunk)
-  }
-  try {
-    return requestSchema.safeParse(JSON.parse(Buffer.concat(chunks).toString())).data
-  } catch {
-    return undefined
-  }
-}
-
-/** What the logged request line adds after its method and path: why a POST body was not one the fake answers. */
-const requestProblem = (method: string | undefined, body: z.infer<typeof requestSchema> | undefined) => {
-  if (method !== 'POST') {
-    return ''
-  }
-  if (!body) {
-    return ' with a body that is not a JSON request'
-  }
-  return body.stream === true ? '' : ' without "stream": true'
-}
-
-/**
- * Start a local LLM provider with a deterministic streamed reply. It answers what the backend sends it: streamed
- * Anthropic Messages (`/v1/messages`) and streamed OpenAI-compatible chat completions (`/v1/chat/completions`).
- * Anything else gets a 404 and an `unsupportedRequestMarker` line on stderr.
- */
-export const createFakeProvider = async (port: number): Promise<Server> => {
-  const cut = new Set<string>()
+export const createFakeProvider = async (port: number, options: FakeProviderOptions = {}): Promise<Server> => {
   const server = createServer(async (req, res) => {
-    const { pathname } = new URL(req.url!, `http://localhost:${port}`)
-    const body = req.method === 'POST' ? await readRequest(req) : undefined
-    const stream = body?.stream === true
-    if (stream && pathname === '/v1/messages') {
-      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' })
-      await streamMessages(res, paceOf(body.latestText, cut))
+    const url = new URL(req.url!, `http://localhost:${port}`)
+    if (await serveOpenAiCompatible(req, res, url.pathname, options.delayMs ?? 150)) {
+      return
+    }
+    if (req.method !== 'POST' || !url.pathname.endsWith('/v1/messages')) {
+      const route = `${req.method} ${url.pathname}`
+      console.warn(`${unsupportedRequestMarker} ${new Date().toISOString()} ${route}`)
+      res.writeHead(404, { 'Content-Type': 'text/plain' })
+      res.end(`The fake provider does not implement ${route}`)
+      return
+    }
+
+    let request: z.infer<typeof requestSchema>
+    try {
+      request = requestSchema.parse(await json(req))
+    } catch {
+      res.writeHead(400)
+      res.end('Invalid Messages request')
+      return
+    }
+    const selected = requestsPerformanceStream(request)
+      ? performanceStreamOptions
+      : { reply: fakeProviderReply, chunkSize: undefined, delayMs: 150 }
+    const { reply, chunkSize } = selected
+    const chunks = chunkSize
+      ? Array.from({ length: Math.ceil(reply.length / chunkSize) }, (_, index) =>
+          reply.slice(index * chunkSize, (index + 1) * chunkSize),
+        )
+      : reply.match(/\S+\s*/g)!
+
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' })
+    /** Write a native Messages event with its SSE event name. */
+    const writeEvent = (event: RawMessageStreamEvent) => {
+      res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
+    }
+    const usage = {
+      input_tokens: 10,
+      output_tokens: 0,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+      cache_creation: null,
+      inference_geo: null,
+      server_tool_use: null,
+      service_tier: null,
+    }
+    writeEvent({
+      type: 'message_start',
+      message: {
+        id: `msg_${crypto.randomUUID()}`,
+        type: 'message',
+        role: 'assistant',
+        model: 'claude-opus-5-5',
+        content: [],
+        container: null,
+        stop_details: null,
+        stop_reason: null,
+        stop_sequence: null,
+        usage,
+      },
+    })
+    const toolCall = scriptedToolCall(request)
+    if (toolCall) {
+      writeEvent({
+        type: 'content_block_start',
+        index: 0,
+        content_block: {
+          type: 'tool_use',
+          id: `toolu_${crypto.randomUUID()}`,
+          name: toolCall.name,
+          input: {},
+          caller: { type: 'direct' },
+        },
+      })
+      writeEvent({
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'input_json_delta', partial_json: JSON.stringify(toolCall.input) },
+      })
+      writeEvent({ type: 'content_block_stop', index: 0 })
+      writeEvent({
+        type: 'message_delta',
+        delta: { stop_reason: 'tool_use', stop_sequence: null, stop_details: null, container: null },
+        usage: { ...usage, output_tokens: 8 },
+      })
+      writeEvent({ type: 'message_stop' })
       res.end()
       return
     }
-    if (stream && pathname === '/v1/chat/completions') {
-      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' })
-      await streamChatCompletion(res, body.model, paceOf(body.latestText, cut))
-      res.end()
-      return
+    writeEvent({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '', citations: [] } })
+    for (const text of chunks) {
+      await setTimeout(options.delayMs ?? selected.delayMs)
+      if (res.destroyed) {
+        return
+      }
+      writeEvent({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } })
     }
-    const request = `${req.method} ${pathname}${requestProblem(req.method, body)}`
-    console.warn(`${unsupportedRequestMarker} ${new Date().toISOString()} ${request}`)
-    res.writeHead(404, { 'Content-Type': 'text/plain' })
-    res.end(`The fake provider does not implement ${request}`)
+    writeEvent({ type: 'content_block_stop', index: 0 })
+    writeEvent({
+      type: 'message_delta',
+      delta: { stop_reason: 'end_turn', stop_sequence: null, stop_details: null, container: null },
+      usage: { ...usage, output_tokens: 8 },
+    })
+    writeEvent({ type: 'message_stop' })
+    res.end()
   })
 
   await new Promise<void>((resolve, reject) => {
@@ -213,6 +342,7 @@ export const createFakeProvider = async (port: number): Promise<Server> => {
     // Bun's backend fetch uses IPv4 even when localhost resolves to ::1 first.
     server.listen(port, '127.0.0.1', resolve)
   })
+  // eslint-disable-next-line no-console -- Report the local fixture server's startup in the runner log.
   console.log(`Fake provider started on port ${port}`)
   return server
 }

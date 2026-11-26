@@ -17,7 +17,7 @@ describe('Authentication Routes', () => {
   let getSettingsSpy: ReturnType<typeof spyOn>
   let consoleSpies: ConsoleSpies
 
-  const createMockOAuthResponse = (status = 200, body: any = {}) =>
+  const createMockOAuthResponse = (status = 200, body: unknown = {}) =>
     new Response(JSON.stringify(body), {
       status,
       headers: { 'Content-Type': 'application/json' },
@@ -67,7 +67,7 @@ describe('Authentication Routes', () => {
         new Request('http://localhost/auth/google/exchange', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: 'test', code_verifier: 'test', redirect_uri: 'http://localhost' }),
+          body: JSON.stringify({ code: 'test', code_verifier: 'v'.repeat(43), redirect_uri: 'http://localhost' }),
         }),
       )
       expect(response.status).toBe(401)
@@ -83,7 +83,7 @@ describe('Authentication Routes', () => {
         new Request('http://localhost/auth/microsoft/exchange', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: 'test', code_verifier: 'test', redirect_uri: 'http://localhost' }),
+          body: JSON.stringify({ code: 'test', code_verifier: 'v'.repeat(43), redirect_uri: 'http://localhost' }),
         }),
       )
       expect(response.status).toBe(401)
@@ -215,7 +215,7 @@ describe('Authentication Routes', () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             code: 'test-code',
-            code_verifier: 'test-verifier',
+            code_verifier: 'v'.repeat(43),
             redirect_uri: 'https://evil.com/steal',
           }),
         }),
@@ -232,7 +232,7 @@ describe('Authentication Routes', () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             code: 'test-code',
-            code_verifier: 'test-verifier',
+            code_verifier: 'v'.repeat(43),
             redirect_uri: 'https://evil.com/steal',
           }),
         }),
@@ -256,7 +256,7 @@ describe('Authentication Routes', () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             code: 'test-code',
-            code_verifier: 'test-verifier',
+            code_verifier: 'v'.repeat(43),
             redirect_uri: 'http://localhost:1420/oauth/callback',
           }),
         }),
@@ -304,7 +304,7 @@ describe('Authentication Routes', () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             code: 'test-code',
-            code_verifier: 'test-verifier',
+            code_verifier: 'v'.repeat(43),
             redirect_uri: 'http://localhost:1420/oauth/callback',
           }),
         }),

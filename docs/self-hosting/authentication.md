@@ -108,13 +108,15 @@ If your provider needs the assertion consumer URL entered by hand:
 
 Assertions must be signed. Thunderbolt validates the signature against `SAML_CERT` and the issuer against `SAML_IDP_ISSUER`.
 
+By default, Thunderbolt accepts a response to an app-initiated login only from the browser that started it. Thunderbolt sets a cookie with the SAML request and checks it at the ACS. A cross-site POST from the IdP carries this cookie only over HTTPS. On plain HTTP, SAML works only when the IdP shares the API's site, such as `localhost` in local tests. HTTP also lacks the cookie protection against a sibling subdomain setting a copy. The login request expires after five minutes.
+
 ### Logging in from the provider's dashboard
 
 Thunderbolt refuses a SAML response that does not answer a login request it sent. That rules out a login that starts at your provider's dashboard, where a user clicks the Thunderbolt icon and the provider sends a response nobody asked for. The user is sent to `APP_URL` and sees the app's sign-in error page, which asks them to open Thunderbolt and sign in from there. Its "Try again" button starts a normal login. Nothing is signed in from the unrequested response. This redirect needs the app's origin in `TRUSTED_ORIGINS`.
 
 You can keep the dashboard icon working without changing this. Most providers let you point the icon at a URL. Set it to the address of your Thunderbolt app, such as `https://thunderbolt.example.com`. In Azure (Microsoft Entra ID) the field is called "Sign on URL". The login then starts at Thunderbolt, which sends a request, and the provider answers it.
 
-If your provider cannot do that, set `SAML_ALLOW_IDP_INITIATED=true` and restart the API. The setting is a risk. With no request to compare against, Thunderbolt cannot tell whether the person started the login or someone else did, for example by getting a signed response into their browser. The SAML library calls this a known attack vector, and the SAML2Int interoperability profile advises against this kind of login. Turn it on only if your provider leaves you no other way.
+If your provider cannot do that, set `SAML_ALLOW_IDP_INITIATED=true` and restart the API. This permits responses with no login request or browser cookie to compare. A signed response can then sign someone else's browser in to the attacker's account. A response from an app-initiated login with RelayState removed is indistinguishable from an unsolicited response, so it also skips the browser check. The SAML library calls IdP-initiated login a known attack vector, and the SAML2Int interoperability profile advises against it. Use this setting only if your provider leaves you no other way.
 
 ## What single sign-on looks like to the user
 
@@ -175,6 +177,10 @@ On desktop, OIDC and SAML sign-in opens your system browser: you authenticate th
 
 That browser handoff needs one of the ports `17421`, `17422` or `17423` free on the user's own machine. A listener opens on one of them only during a sign-in, and only the same machine connects to it. A local firewall blocking all three breaks desktop sign-in, with no fallback.
 
+Each desktop sign-in generates a fresh, unguessable `client_state`. The native loopback listener ignores malformed requests and callbacks without that exact state, continuing to wait for the real redirect. The app independently accepts a token or error only from its expected loopback address and with that same state. Per-connection reads are capped at two seconds, and the listener closes after the overall sign-in timeout even if unrelated requests keep arriving. The backend also signs the callback port, client state, and system browser's HttpOnly nonce with `BETTER_AUTH_SECRET`. This server-minted proof prevents changing the callback destination or app state, or forging a binding from a caller-chosen cookie. No persistent server-side flow store is required.
+
+**Roll out the backend before the desktop app.** The updated backend accepts initiations from older clients without `client_state`, but those clients retain their original callback protection and should then be upgraded. The updated desktop app rejects unbound callbacks from an older backend and eventually shows its sign-in retry screen; there is no compatibility fallback that accepts an unbound token. Sign-ins already in progress when the backend is upgraded must be restarted because their callbacks lack the new browser binding. Browser-only sign-in is unchanged.
+
 Which server the apps talk to is fixed when they are built. Pointing desktop or mobile users at your deployment means producing your own builds with your API and app URLs, and rebuilding when you change the authentication mode. The browser app has no such constraint.
 
 The sign-in link in an email opens the hosted Thunderbolt app directly on iOS and Android. For a self-hosted deployment that link opens in the browser instead, which still signs the user in.
@@ -203,7 +209,7 @@ A session belongs to the device that created it. With sync on, users see every s
 | SAML rejects the assertion                                     | The wrong assertion consumer URL, or a mismatched entity ID               | Compare the provider's configuration against the service-provider metadata URL above                                  |
 | An invalid certificate error on SAML                           | The certificate still has its PEM header and footer                       | Use the raw base64 body only                                                                                          |
 | Clicking the icon in the provider's dashboard does not sign in | Thunderbolt refuses SAML responses it did not ask for                     | Point the icon at your app's address, or set `SAML_ALLOW_IDP_INITIATED=true` (read the risk)                          |
-| Many users get `429` at the same time                          | `TRUSTED_PROXY` is empty behind a CDN, so everyone shares one limit       | Set `TRUSTED_PROXY` to `cloudflare` or `akamai` if you use one. See [Configuration](./configuration.md#rate-limiting) |
+| Many users get `429` at the same time                          | `TRUSTED_PROXY` is empty behind a CDN or proxy, so everyone shares one limit | Set `TRUSTED_PROXY` to `cloudflare`, `akamai`, or a fixed proxy chain's hop count. See [Configuration](./configuration.md#rate-limiting) |
 | Nobody receives a sign-in code                                 | No email service is configured                                            | Check the server logs                                                                                                 |
 | A new user gets a waitlist email instead of a code             | The address has no account and is not approved                            | Add its domain to `WAITLIST_AUTO_APPROVE_DOMAINS` and restart, or approve its `waitlist` row                          |
 

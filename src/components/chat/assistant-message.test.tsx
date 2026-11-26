@@ -6,8 +6,9 @@ import type { GroupedUIPart, ReasoningGroupUIPart } from '@/lib/assistant-messag
 import type { ThunderboltUIMessage } from '@/types'
 import type { ReasoningUIPart, TextUIPart, ToolUIPart } from 'ai'
 import { describe, expect, it } from 'bun:test'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { getClock } from '@/testing-library'
+import { ContentViewProvider } from '@/content-view/context'
 import { AssistantMessage, mountMessageParts } from './assistant-message'
 
 const createReasoningPart = (text: string): ReasoningUIPart =>
@@ -38,6 +39,15 @@ const createReasoningGroupPart = (
     type: 'reasoning_group',
     items,
   }) as ReasoningGroupUIPart
+
+const createdReport = (id: string) => ({
+  id,
+  filename: 'report.docx',
+  mimeType: 'application/docx',
+  size: 4,
+  edited: false,
+  savedAs: 'report.docx',
+})
 
 const createToolGroupPart = (tools: ToolUIPart[]): ReasoningGroupUIPart =>
   createReasoningGroupPart(tools.map((tool) => ({ type: 'tool' as const, content: tool, id: tool.toolCallId })))
@@ -281,6 +291,104 @@ describe('AssistantMessage actions', () => {
   })
 })
 
+describe('Office activity during a streaming reply', () => {
+  const writing: ToolUIPart = {
+    type: 'tool-run_office_script',
+    toolCallId: 'office',
+    state: 'input-streaming',
+    input: undefined,
+  }
+  const running: ToolUIPart = { ...writing, state: 'input-available', input: {} }
+  const search: ToolUIPart = { type: 'tool-search', toolCallId: 'search', state: 'input-available', input: {} }
+  const saved: ToolUIPart = {
+    ...running,
+    toolCallId: 'saved',
+    state: 'output-available',
+    output: { ok: true, files: [createdReport('f1')], logs: '' },
+  }
+  it('keeps an expanded tool group focused when a later save folds a preceding chip', async () => {
+    const parts = [saved, createTextPart('Checking the report.'), search]
+    const reply = (parts: ThunderboltUIMessage['parts']) => (
+      <ContentViewProvider>
+        <AssistantMessage message={{ id: 'office', role: 'assistant', parts }} isStreaming />
+      </ContentViewProvider>
+    )
+    const { rerender } = render(reply(parts))
+    await act(async () => void (await getClock().runAllAsync()))
+    const trigger = screen.getByTestId('tool-status').closest('button')!
+    fireEvent.click(trigger)
+    trigger.focus()
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+
+    rerender(
+      reply([
+        ...parts,
+        {
+          ...saved,
+          toolCallId: 'resave',
+          output: { ok: true, files: [createdReport('f2')] },
+        },
+      ]),
+    )
+    await act(async () => void (await getClock().runAllAsync()))
+    expect(screen.getByTestId('tool-status').closest('button')).toHaveAttribute('aria-expanded', 'true')
+    expect(document.activeElement).toBe(trigger)
+  })
+
+  const scenarios: [string, ThunderboltUIMessage['parts']][] = [
+    ['text followed by a tool whose input is streaming', [createTextPart('Working.'), writing]],
+    [
+      'a completed search after two unfinished calls',
+      [search, writing, { ...search, toolCallId: 'done', state: 'output-available', output: {} }],
+    ],
+    ['a file chip after a still-running call', [running, saved]],
+    ['text after a still-running call', [running, createTextPart('Working.')]],
+  ]
+  it.each(scenarios)('shows Creating file… for %s', async (_, parts) => {
+    render(
+      <ContentViewProvider>
+        <AssistantMessage message={{ id: 'office', role: 'assistant', parts }} isStreaming />
+      </ContentViewProvider>,
+    )
+    await act(async () => void (await getClock().runAllAsync()))
+    expect(screen.getByRole('button', { name: 'Creating file…' })).toBeVisible()
+    expect(screen.queryByText(/Completed/)).toBeNull()
+  })
+})
+
+it('keeps a finished office run as a step, with the chips of its files after the group', async () => {
+  const message: ThunderboltUIMessage = {
+    id: 'office',
+    role: 'assistant',
+    parts: [
+      {
+        type: 'tool-run_office_script',
+        toolCallId: 'office-call',
+        state: 'output-available',
+        input: { script: 'saveFile()' },
+        output: { ok: true, files: [createdReport('f1')], logs: '' },
+      },
+      { type: 'text', text: 'Done' },
+    ],
+  }
+  const { container } = render(
+    <ContentViewProvider>
+      <AssistantMessage message={message} isStreaming={false} />
+    </ContentViewProvider>,
+  )
+  await act(async () => void (await getClock().runAllAsync()))
+
+  const group = screen.getByText(/Completed 1 step/).closest('.tool-invocation-card')
+  expect(group).not.toBeNull()
+  expect(group?.textContent).not.toContain('report.docx')
+  expect(container.textContent).toContain('report.docx')
+
+  fireEvent.click(screen.getByText(/Completed 1 step/))
+  await act(async () => void (await getClock().runAllAsync()))
+  expect(group?.textContent).toContain('Run Office Script')
+  cleanup()
+})
+
 it('passes message streaming lifecycle to the real text renderer', () => {
   const text = 'Full response. '.repeat(100)
   const parts: GroupedUIPart[] = [{ type: 'text', text, state: 'streaming' }]
@@ -291,4 +399,27 @@ it('passes message streaming lifecycle to the real text renderer', () => {
   expect(container.textContent!.length).toBeLessThan(text.length)
   rerender(<>{mountMessageParts(parts, false, 'stream', {})}</>)
   expect(container.textContent).toBe(text.trim())
+})
+
+it('renders an ACP compaction row between the surrounding assistant text', () => {
+  const message: ThunderboltUIMessage = {
+    id: 'remote',
+    role: 'assistant',
+    parts: [
+      { type: 'text', text: 'Before compaction' },
+      {
+        type: 'data-acp-compaction',
+        id: 'event',
+        data: { agentId: 'agent', sessionId: 's', compactionId: 'c', status: 'completed' },
+      },
+      { type: 'text', text: 'After compaction' },
+    ],
+  }
+  const { container } = render(
+    <ContentViewProvider>
+      <AssistantMessage message={message} isStreaming={false} />
+    </ContentViewProvider>,
+  )
+  expect(container.textContent).toContain('Before compactionCompactedAfter compaction')
+  cleanup()
 })

@@ -65,7 +65,7 @@ env:
 jobs:
   build_and_deploy_ios:
     if: ${{ !inputs.skip_build }}
-    runs-on: macos-26
+    runs-on: xcode-27
     environment: thunderbolt_release
     outputs:
       build_version: ${{ steps.determine_version.outputs.build_version }}
@@ -167,6 +167,8 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           toolchain: stable
+          # swift-rs needs llvm-objcopy to export Swift plugin symbols on Xcode 27
+          components: llvm-tools
           cache: false
           rustflags: ''
 
@@ -177,10 +179,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: ${{ runner.os }}-cargo-ios-${{ hashFiles('src-tauri/Cargo.lock') }}
+          # Xcode in the key: a target dir from another Xcode skips the swift-rs build scripts
+          key: ${{ runner.os }}-xcode-27-cargo-ios-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-ios-
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-xcode-27-cargo-ios-
 
       - name: Install iOS targets
         run: |
@@ -188,12 +190,12 @@ jobs:
           rustup target add aarch64-apple-ios-sim
           rustup target add x86_64-apple-ios
 
-      - name: Select Xcode 26.2
+      - name: Select Xcode 27.2
         uses: mobiledevops/xcode-select-version-action@7b50160de7c8bd6a8c4ee2c2e6b5ee0983886c0b # v1
         with:
-          xcode-select-version: '26.2'
+          xcode-select-version: '27.2'
 
-      - name: Fix Xcode 26 Metal Toolchain Issue
+      - name: Fix Xcode Metal Toolchain Issue
         # Xcode 26+ adds MetalToolchain to TOOLCHAINS before XcodeDefault, causing
         # Swift compatibility libraries to not be found. Since Tauri invokes xcodebuild
         # internally (we can't pass -toolchain flag), we must remove the Metal toolchain.
@@ -326,7 +328,7 @@ jobs:
 
           # Create export options plist to work around Fastlane Xcode 16 bug
           # See: https://github.com/fastlane/fastlane/issues/29256
-          # Keeping for Xcode 26 until compatibility is confirmed
+          # Keeping until compatibility with newer Xcode is confirmed
           cd src-tauri/gen/apple
           cat > ExportOptions.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>

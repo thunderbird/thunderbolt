@@ -78,7 +78,10 @@
     }
   ],
   "c3-models-providers": [
-    { "id": "picker-lists", "outcome": "The model picker lists \"Opus 5.5\", \"DeepSeek V4.1 Flash\" and \"GLM 5.3\"" },
+    {
+      "id": "picker-lists",
+      "outcome": "The model picker lists \"Opus 5.5\", \"DeepSeek V4.1 Flash\", \"GLM 5.3\" and \"Kimi K3.1 Pro\""
+    },
     { "id": "models-reply", "outcome": "Each of those models answers a short prompt with a relevant reply" },
     {
       "id": "switch-mid-thread",
@@ -100,6 +103,10 @@
     {
       "id": "multi-turn-glm-5-3",
       "outcome": "In three turns with \"GLM 5.3\" each reply follows the earlier turns, and after a stopped reply the next message gets a full reply to it alone, without repeating the stopped answer"
+    },
+    {
+      "id": "multi-turn-kimi-k3-1-pro",
+      "outcome": "In three turns with \"Kimi K3.1 Pro\" each reply follows the earlier turns, and after a stopped reply the next message gets a full reply to it alone, without repeating the stopped answer"
     },
     {
       "id": "model-disable",

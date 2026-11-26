@@ -41,7 +41,7 @@ in-engine CSP.
 ([`src/artifacts/render-html-tool.ts`](../../../src/artifacts/render-html-tool.ts))
 takes `html` and `title`, returns `{ ok: true }` or `{ ok: false, errors }`, and
 is the only unconditional entry in `baseTools`
-([`src/lib/tools.ts:50`](../../../src/lib/tools.ts)); everything else
+([`src/lib/tools.ts:69`](../../../src/lib/tools.ts)); everything else
 `getAvailableTools` returns is gated on a setting or an integration. Errors are phrased for the model to self-correct in the same turn; the
 HTML is never echoed back.
 

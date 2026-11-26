@@ -16,7 +16,7 @@ export { getActiveLocale, getBrowserLanguages } from './active-locale'
 // chunk — statically bundling all seven would grow the entry chunk with bytes
 // only one locale ever uses. `en` is the exception: see the activation below.
 const catalogLoaders: Record<AppLocale, () => Promise<{ messages: Messages }>> = {
-  en: () => import('@/locales/en/messages.po'),
+  en: async () => ({ messages: sourceMessages }),
   de: () => import('@/locales/de/messages.po'),
   fr: () => import('@/locales/fr/messages.po'),
   es: () => import('@/locales/es/messages.po'),

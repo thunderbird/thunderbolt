@@ -30,13 +30,26 @@ import {
   type ThinkingLevel,
 } from '@earendil-works/pi-agent-core'
 import { buildAnthropicModel, type AgentFetch } from './anthropic-model.ts'
-import { buildConfidentialModel, type ReceiptLifecycle } from './confidential-model.ts'
+import { buildConfidentialModel } from './confidential-model.ts'
 import { buildOpenAiCompatModel } from './openai-compat-model.ts'
 import { BrowserExecutionEnv } from './browser-env/browser-execution-env.ts'
+import type { ReasoningEffort } from '../reasoning-effort.ts'
 import { mountAgentFs } from './browser-env/mount.ts'
 import { createBrowserCodingTools } from './coding-tools/index.ts'
 import { ensureBufferPolyfill } from './ensure-buffer.ts'
 import { buildSeedMessages, type SeedTurn } from './seed-history.ts'
+import { installOutputLimitRecovery } from './output-limit.ts'
+import {
+  createHarnessCompaction,
+  restoreCompaction,
+  type CompactionCheckpoint,
+  type HarnessCompaction,
+} from './compaction.ts'
+
+export type AppHarness = AgentHarness & {
+  compaction: HarnessCompaction
+  setReasoningEffort: (effort: ReasoningEffort | undefined, defaultLevel: ThinkingLevel) => Promise<void>
+}
 
 /** Mount-relative root under which every thread carves its isolated workspace. */
 const workspaceRoot = '/workspace'
@@ -66,12 +79,11 @@ export const workspaceDirFor = (threadId: string): string => {
  *
  *   - `anthropic` resolves a model from Pi's built-in catalog and wires the
  *     `@anthropic-ai/sdk` client through `fetch` ({@link buildAnthropicModel}).
- *   - `openai-compat` synthesizes an `openai-completions` model for the app's
- *     OpenAI-wire providers (`openai`/`custom`/`openrouter`/`thunderbolt`) and
+ *   - `openai-compat` synthesizes a completions or Responses model for the app's
+ *     OpenAI-wire providers (`openai`/`custom`/`openrouter`/`thunderbolt`/`otari`) and
  *     injects `fetch` around client construction ({@link buildOpenAiCompatModel}).
- *   - `confidential` adds catalog compatibility, attestation normalization, and
- *     usage-receipt capture around an OpenAI-compatible model
- *     ({@link buildConfidentialModel}).
+ *   - `confidential` adds catalog compatibility and attestation normalization
+ *     around an OpenAI-compatible model ({@link buildConfidentialModel}).
  */
 export type PiModelDescriptor =
   | {
@@ -89,6 +101,7 @@ export type PiModelDescriptor =
     }
   | {
       readonly kind: 'openai-compat'
+      readonly api?: 'openai-completions' | 'openai-responses'
       /** App provider name, also used as the Pi provider id. */
       readonly providerId: string
       /** Upstream model id sent on the wire. */
@@ -115,7 +128,6 @@ export type PiModelDescriptor =
       readonly baseURL: string
       readonly apiKey: string
       readonly fetch: AgentFetch
-      readonly receipts: ReceiptLifecycle
       readonly reasoning: boolean
       readonly contextWindow?: number
       readonly supportsImages: boolean
@@ -137,6 +149,7 @@ export type BuildAppHarnessOptions = {
   /** Prior conversation turns to seed into the session before the first prompt,
    *  so the agent has multi-turn context. Omitted/empty starts a blank session. */
   readonly history?: readonly SeedTurn[]
+  readonly compaction?: CompactionCheckpoint
 }
 
 /** Remove the isolated browser workspace owned by a thread. */
@@ -186,6 +199,47 @@ export const writeAgentWorkspaceFiles = async (
   return failures
 }
 
+/** A workspace file read under a size limit. */
+export type WorkspaceFileRead =
+  | { readonly status: 'read'; readonly bytes: Uint8Array<ArrayBuffer> }
+  | { readonly status: 'too-large' }
+  | { readonly status: 'missing' }
+
+/**
+ * Read a file from a thread's workspace. The path is workspace-relative, and one that leaves the workspace is
+ * refused like a missing file.
+ *
+ * @param threadId - the thread whose workspace holds the file
+ * @param path - the file's path, relative to the workspace
+ * @param maxBytes - the largest file to read; a larger one is refused before any of it is read
+ * @returns the file's bytes, `too-large`, or `missing` when it is not a readable file in the workspace
+ */
+export const readAgentWorkspaceFile = async (
+  threadId: string,
+  path: string,
+  maxBytes: number,
+): Promise<WorkspaceFileRead> => {
+  await mountAgentFs()
+  const env = new BrowserExecutionEnv({ cwd: workspaceDirFor(threadId) })
+  // Checked first: the in-memory fallback reads a folder as bytes instead of failing.
+  const info = await env.fileInfo(path)
+  if (!info.ok || info.value.kind !== 'file') {
+    return { status: 'missing' }
+  }
+  if (info.value.size > maxBytes) {
+    return { status: 'too-large' }
+  }
+  const read = await env.readBinaryFile(path)
+  if (!read.ok) {
+    return { status: 'missing' }
+  }
+  // Checked again in case the file grew after `fileInfo`.
+  return read.value.byteLength > maxBytes
+    ? { status: 'too-large' }
+    : // `readBinaryFile` returns a fresh copy, which owns its own ArrayBuffer.
+      { status: 'read', bytes: read.value as Uint8Array<ArrayBuffer> }
+}
+
 /**
  * Build a ready-to-run app harness for a thread. Mounts the ZenFS singleton
  * (once), carves the thread's isolated workspace under {@link workspaceRoot},
@@ -197,7 +251,7 @@ export const writeAgentWorkspaceFiles = async (
  * @param options - model descriptor, prompt, thinking level, thread id, extra tools, history
  * @returns the constructed {@link AgentHarness}
  */
-export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<AgentHarness> => {
+export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<AppHarness> => {
   ensureBufferPolyfill()
   await mountAgentFs()
   const workspaceDir = workspaceDirFor(options.threadId)
@@ -207,6 +261,8 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
     throw created.error
   }
   const session = await new InMemorySessionRepo().create({})
+  const effortState: { current: ReasoningEffort | undefined } = { current: undefined }
+  const getReasoningEffort = () => effortState.current
   const { models, model } =
     options.model.kind === 'anthropic'
       ? buildAnthropicModel({
@@ -218,8 +274,10 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
           modelId: options.model.modelId,
         })
       : options.model.kind === 'confidential'
-        ? buildConfidentialModel(options.model)
+        ? buildConfidentialModel({ ...options.model, getReasoningEffort })
         : buildOpenAiCompatModel({
+            api: options.model.api,
+            getReasoningEffort,
             providerId: options.model.providerId,
             modelId: options.model.modelId,
             baseURL: options.model.baseURL,
@@ -241,16 +299,26 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
     thinkingLevel: options.thinkingLevel,
     systemPrompt: options.systemPrompt,
   })
-  if (options.model.kind === 'confidential') {
-    options.model.receipts.attach(harness)
-  }
+  installOutputLimitRecovery(harness)
 
   // Seed prior turns into the (idle) session so the first prompt runs with full
   // conversational context. `appendMessage` writes straight to the session while
   // idle; `prompt` then reads them back via `session.buildContext()`.
+  if (options.compaction) {
+    await restoreCompaction(session, options.compaction)
+  }
   for (const message of buildSeedMessages(options.history)) {
     await harness.appendMessage(message)
   }
 
-  return harness
+  return Object.assign(harness, {
+    setReasoningEffort: async (effort: ReasoningEffort | undefined, defaultLevel: ThinkingLevel) => {
+      const level = effort === undefined ? defaultLevel : effort === 'none' ? 'off' : effort
+      if (harness.getThinkingLevel() !== level) {
+        await harness.setThinkingLevel(level)
+      }
+      effortState.current = effort
+    },
+    compaction: createHarnessCompaction(harness, session, options.compaction),
+  })
 }

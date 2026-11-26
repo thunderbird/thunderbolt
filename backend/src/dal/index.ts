@@ -9,9 +9,10 @@ export {
   maxActiveDevicesPerUser,
   withUserDeviceRegistrationLock,
   isCliDeviceId,
+  isPendingRegularAppDevice,
   isTrustedAppDevice,
   getDeviceById,
-  upsertDevice,
+  touchDevice,
   upsertCliDevice,
   revokeDevice,
   requireMigrationSiblingApproval,
@@ -27,6 +28,14 @@ export {
   listDevicesAwaitingLockout,
   countActiveDevices,
 } from './devices'
+
+// Device approval sessions (short-code approval relay)
+export {
+  upsertApprovalSession,
+  getApprovalSession,
+  setApprovalChallenge,
+  setApprovalReveal,
+} from './device-approval-sessions'
 
 // Users
 export { getUserById, getUserByEmail, deleteUser, deleteIdleAnonymousUsers, markUserNotNew } from './users'
@@ -50,7 +59,7 @@ export {
 export {
   getOrCreateOtpChallenge,
   validateOtpChallenge,
-  deleteOtpChallengesForEmail,
+  consumeOtpChallenge,
   deletePersistedSignInOtp,
 } from './otp-challenge'
 

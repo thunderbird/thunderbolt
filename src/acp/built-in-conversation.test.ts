@@ -4,11 +4,19 @@
 
 import '@/testing-library'
 
-import { describe, expect, it } from 'bun:test'
-import { xlsxMime } from '@/files/transformers'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { docxMime, getTransformer, pptxMime, xlsxMime } from '@/files/transformers'
 import type { StoredFile } from '@/lib/file-blob-storage'
+import { stubAppServer } from '@/test-utils/app-server'
+import { samplePptx } from '@/test-utils/sample-pptx'
 import type { ThunderboltUIMessage } from '@/types'
-import { prepareBuiltInConversation, type BuiltInConversationDeps } from './built-in-conversation'
+import type { SeedTurn } from '@shared/agent-core'
+import {
+  prepareBuiltInConversation,
+  prepareBuiltInHistory,
+  splitCompactedHistory,
+  type BuiltInConversationDeps,
+} from './built-in-conversation'
 
 const storedFile = (id: string, mimeType: string): StoredFile => ({
   id,
@@ -29,6 +37,81 @@ const message = (role: 'user' | 'assistant', parts: ThunderboltUIMessage['parts'
 })
 
 describe('prepareBuiltInConversation', () => {
+  afterEach(() => mock.restore())
+
+  it('replays only turns after the latest checkpoint and drops a deleted checkpoint on regeneration', async () => {
+    const checkpoint = {
+      version: 1 as const,
+      summary: 'Earlier decisions',
+      tokensBefore: 9_000,
+      contextTokens: 100,
+      retainedTail: [],
+    }
+    const original = message('user', [{ type: 'text', text: 'Earlier context' }])
+    const compacted = {
+      ...message('assistant', [{ type: 'text', text: 'Original visible answer' }]),
+      metadata: { contextCompaction: checkpoint },
+    }
+    const next = message('user', [{ type: 'text', text: 'Continue' }])
+    const prepared = await prepareBuiltInConversation([original, compacted, next], undefined, inline)
+    expect(prepared.compaction).toEqual(checkpoint)
+    expect(prepared.history).toEqual([])
+    expect(prepared.prompt.text).toBe('Continue')
+    expect(splitCompactedHistory([original, next]).compaction).toBeUndefined()
+    expect(compacted.parts[0]).toEqual({ type: 'text', text: 'Original visible answer' })
+  })
+  it('does not reopen compacted attachments when no workspace needs restoring', async () => {
+    const checkpoint = {
+      version: 1 as const,
+      summary: 'The old attachment has already been summarized.',
+      tokensBefore: 9_000,
+      contextTokens: 100,
+      retainedTail: [],
+    }
+    // A failed read becomes a note and would not fail this test, so record reads to prove none happen.
+    const opened: string[] = []
+    const deps: BuiltInConversationDeps = {
+      getAttachment: async (id) => {
+        opened.push(id)
+        throw new Error('Compacted attachment must not be read')
+      },
+      getTransformer: async () => {
+        throw new Error('Compacted attachment must not be transformed')
+      },
+      blobToBase64: async () => {
+        throw new Error('Compacted attachment must not be encoded')
+      },
+      readXlsxSheets: async () => {
+        throw new Error('Compacted attachment must not be parsed')
+      },
+    }
+    const history = [
+      message('user', [
+        { type: 'data-attachment', data: { localFileId: 'old', filename: 'old.pdf', mimeType: 'application/pdf' } },
+      ]),
+      { ...message('assistant', [{ type: 'text', text: 'Read it' }]), metadata: { contextCompaction: checkpoint } },
+      message('user', [{ type: 'text', text: 'Follow-up' }]),
+      message('assistant', [{ type: 'text', text: 'Answer' }]),
+    ]
+    const prepared = await prepareBuiltInHistory(history, inline, deps)
+    expect(prepared).toEqual({
+      compaction: checkpoint,
+      history: [
+        { role: 'user', text: 'Follow-up' },
+        { role: 'assistant', text: 'Answer' },
+      ],
+      files: [],
+    })
+    const conversation = await prepareBuiltInConversation(
+      [...history, message('user', [{ type: 'text', text: 'Continue' }])],
+      undefined,
+      inline,
+      deps,
+    )
+    expect(conversation.history).toEqual(prepared.history)
+    expect(conversation.prompt.text).toBe('Continue')
+    expect(opened).toEqual([])
+  })
   it('flattens quotes/text attachments and maps current images to Pi image content', async () => {
     const files = new Map([
       ['notes', storedFile('notes', 'text/plain')],
@@ -63,11 +146,11 @@ describe('prepareBuiltInConversation', () => {
     const prepared = await prepareBuiltInConversation(messages, ['Follow project style.'], inline, deps)
 
     expect(prepared.history).toEqual([
-      { role: 'user', text: 'Review this\n[Attachment: notes.txt]\n\nnote contents' },
+      { role: 'user', text: 'Review this\n[Attachment: "notes.txt"]\n\nnote contents' },
       { role: 'assistant', text: 'Reviewed.' },
     ])
     expect(prepared.prompt.text).toBe(
-      'Follow project style.\n\n> first line\n> second line\nWhat changed?\n[Attachment: diagram.png]',
+      'Follow project style.\n\n> first line\n> second line\nWhat changed?\n[Attachment: "diagram.png"]',
     )
     expect(prepared.prompt.images).toEqual([{ type: 'image', data: 'aW1hZ2U=', mimeType: 'image/png' }])
   })
@@ -91,7 +174,7 @@ describe('prepareBuiltInConversation', () => {
 
     const prepared = await prepareBuiltInConversation(messages, undefined, inline, deps)
 
-    expect(prepared.prompt.text).toBe('[Attachment: report.pdf]\n\nPDF contents\nSummarize it.')
+    expect(prepared.prompt.text).toBe('[Attachment: "report.pdf"]\n\nPDF contents\nSummarize it.')
     expect(prepared.prompt.images).toEqual([])
   })
 
@@ -113,7 +196,108 @@ describe('prepareBuiltInConversation', () => {
 
     const prepared = await prepareBuiltInConversation(messages, undefined, inline, deps)
 
-    expect(prepared.prompt.text).toBe('[Attachment: missing.bin] (file unavailable on this device)')
+    expect(prepared.prompt.text).toBe('[Attachment: "missing.bin"] (file unavailable on this device)')
+  })
+
+  describe('with an attachment that cannot be read', () => {
+    const tooBig = new Error('This spreadsheet unpacks to 180 MiB, over the 32 MiB limit for reading it.')
+    const note = `[Attachment "budget.xlsx" could not be read: ${tooBig.message}]`
+    const rejectSpreadsheet = async (): Promise<never> => {
+      throw tooBig
+    }
+    const deps: BuiltInConversationDeps = {
+      getAttachment: async (id) => storedFile(id, id === 'budget' ? xlsxMime : 'text/plain'),
+      getTransformer: async (mimeType) =>
+        mimeType === xlsxMime ? rejectSpreadsheet : async () => ({ text: 'note contents' }),
+      blobToBase64: async () => '',
+      readXlsxSheets: rejectSpreadsheet,
+    }
+    const budget: ThunderboltUIMessage['parts'][number] = {
+      type: 'data-attachment',
+      data: { localFileId: 'budget', filename: 'budget.xlsx', mimeType: xlsxMime },
+    }
+    const notes: ThunderboltUIMessage['parts'][number] = {
+      type: 'data-attachment',
+      data: { localFileId: 'notes', filename: 'notes.txt', mimeType: 'text/plain' },
+    }
+
+    it.each([
+      ['off', inline, '[Attachment: "notes.txt"]\n\nnote contents', []],
+      [
+        'on',
+        workspace,
+        '[Attachment: "notes.txt" — saved as attachments/notes/notes.txt]\n\nnote contents',
+        [{ path: 'attachments/notes/notes.txt', content: 'note contents' }],
+      ],
+    ])('inlines a note and keeps the rest of the message with tools %s', async (_tools, options, notesText, files) => {
+      const prepared = await prepareBuiltInConversation(
+        [message('user', [{ type: 'text', text: 'Compare these' }, budget, notes])],
+        undefined,
+        options,
+        deps,
+      )
+
+      expect(prepared.prompt.text).toBe(`Compare these\n${note}\n${notesText}`)
+      expect(prepared.files).toEqual(files)
+    })
+
+    it.each([
+      ['off', inline],
+      ['on', workspace],
+    ])('still prepares a later turn and compaction with tools %s', async (_tools, options) => {
+      const earlier = [
+        message('user', [budget, { type: 'text', text: 'Totals?' }]),
+        message('assistant', [{ type: 'text', text: 'I could not read it.' }]),
+      ]
+      const history: SeedTurn[] = [
+        { role: 'user', text: `${note}\nTotals?` },
+        { role: 'assistant', text: 'I could not read it.' },
+      ]
+
+      const prepared = await prepareBuiltInConversation(
+        [...earlier, message('user', [{ type: 'text', text: 'Use the CSV instead' }])],
+        undefined,
+        options,
+        deps,
+      )
+
+      expect(prepared.history).toEqual(history)
+      expect(prepared.prompt.text).toBe('Use the CSV instead')
+      expect(prepared.files).toEqual([])
+      expect(await prepareBuiltInHistory(earlier, options, deps)).toEqual({ compaction: undefined, history, files: [] })
+    })
+
+    it.each([
+      ['fails to read', deps, note],
+      [
+        'is not on this device',
+        { ...deps, getAttachment: async () => null },
+        '[Attachment: "budget.xlsx"] (file unavailable on this device)',
+      ],
+    ])('keeps the note for a file from before a checkpoint that %s', async (_case, caseDeps, caseNote) => {
+      const checkpoint = {
+        version: 1 as const,
+        summary: 'Use attachments/budget/Sheet1.tsv for the totals.',
+        tokensBefore: 9_000,
+        contextTokens: 100,
+        retainedTail: [],
+      }
+      const messages = [
+        message('user', [budget, { type: 'text', text: 'Totals?' }]),
+        { ...message('assistant', [{ type: 'text', text: 'Done' }]), metadata: { contextCompaction: checkpoint } },
+        message('user', [{ type: 'text', text: 'Follow-up' }]),
+        message('assistant', [{ type: 'text', text: 'Answer' }]),
+      ]
+
+      expect(await prepareBuiltInHistory(messages, workspace, caseDeps)).toEqual({
+        compaction: checkpoint,
+        history: [
+          { role: 'user', text: `${caseNote}\n\nFollow-up` },
+          { role: 'assistant', text: 'Answer' },
+        ],
+        files: [],
+      })
+    })
   })
 
   describe('with a workspace', () => {
@@ -154,7 +338,7 @@ describe('prepareBuiltInConversation', () => {
       )
 
       expect(prepared.prompt.text).toBe(
-        '[Attachment: notes.md — saved as attachments/n1/notes.md]\n\n# Notes\nship it\nSummarize',
+        '[Attachment: "notes.md" — saved as attachments/n1/notes.md]\n\n# Notes\nship it\nSummarize',
       )
       expect(prepared.files).toEqual([{ path: 'attachments/n1/notes.md', content: '# Notes\nship it' }])
     })
@@ -173,7 +357,7 @@ describe('prepareBuiltInConversation', () => {
         { path: 'attachments/c1/spend.tsv', content: 'payee\tamount\nHertz, LLC\t-99.5\n' },
       ])
       expect(prepared.prompt.text).toBe(
-        '[Attachment: spend.csv — saved as attachments/c1/spend.tsv]\n\npayee\tamount\nHertz, LLC\t-99.5',
+        '[Attachment: "spend.csv" — saved as attachments/c1/spend.tsv]\n\npayee\tamount\nHertz, LLC\t-99.5',
       )
     })
 
@@ -204,7 +388,7 @@ describe('prepareBuiltInConversation', () => {
       )
 
       expect(prepared.files).toEqual([{ path: `attachments/k1/${filename}`, content: text }])
-      expect(prepared.prompt.text).toBe(`[Attachment: ${filename} — saved as attachments/k1/${filename}]\n\n${text}`)
+      expect(prepared.prompt.text).toBe(`[Attachment: "${filename}" — saved as attachments/k1/${filename}]\n\n${text}`)
     })
 
     it('truncates a long file to a preview with a marker pointing at the full file', async () => {
@@ -219,7 +403,7 @@ describe('prepareBuiltInConversation', () => {
       )
 
       const lines = prepared.prompt.text.split('\n')
-      expect(lines[0]).toBe('[Attachment: big.csv — saved as attachments/big/big.tsv]')
+      expect(lines[0]).toBe('[Attachment: "big.csv" — saved as attachments/big/big.tsv]')
       expect(lines).toContain('198\t396')
       expect(lines).not.toContain('199\t398')
       expect(lines.at(-1)).toBe(
@@ -245,7 +429,7 @@ describe('prepareBuiltInConversation', () => {
       ['lines that land exactly on the character budget', `${'x'.repeat(7_999)}\n${'y'.repeat(8_000)}`],
       ['exactly 200 lines', Array.from({ length: 200 }, (_, index) => `line ${index}`).join('\n')],
     ])('keeps %s whole', async (_what, text) => {
-      expect(await promptFor(text)).toBe(`[Attachment: notes.txt — saved as attachments/t1/notes.txt]\n\n${text}`)
+      expect(await promptFor(text)).toBe(`[Attachment: "notes.txt" — saved as attachments/t1/notes.txt]\n\n${text}`)
     })
 
     it('cuts by characters after the last line that fits', async () => {
@@ -268,8 +452,24 @@ describe('prepareBuiltInConversation', () => {
         depsFor([file]),
       )
 
-      expect(prepared.prompt.text).toBe('[Attachment: empty.csv]')
+      expect(prepared.prompt.text).toBe('[Attachment: "empty.csv"]')
       expect(prepared.files).toEqual([])
+    })
+
+    it('still points at the original of an Office file with no text', async () => {
+      const file = textFile('e2', 'photos.docx', docxMime, '')
+
+      const prepared = await prepareBuiltInConversation(
+        [message('user', [attachment(file)])],
+        undefined,
+        workspace,
+        depsFor([file]),
+      )
+
+      expect(prepared.prompt.text).toBe(
+        '[Attachment: "photos.docx" — text copy at attachments/e2/photos.docx.txt. The original file is stored too: do not tell the user it did not arrive or ask them to attach it again unless run_office_script cannot find it, and confirming that you have it needs no tool call. Answer from the text copy; only when the user asks to edit it or build a file from it, list "photos.docx" (newest file with that name) or "e2" (this exact file) in run_office_script inputs]\n\n',
+      )
+      expect(prepared.files).toEqual([{ path: 'attachments/e2/photos.docx.txt', content: '' }])
     })
 
     it('cuts a single oversized line by characters', async () => {
@@ -286,17 +486,41 @@ describe('prepareBuiltInConversation', () => {
       expect(prepared.prompt.text).not.toContain('next')
     })
 
+    it('gives the model an attached deck as the text of each slide, in order, with its speaker notes', async () => {
+      // The app's server answers the check made before the deck reader is imported.
+      stubAppServer()
+      const blob = new Blob([await samplePptx()], { type: pptxMime })
+      const file: StoredFile = {
+        id: 'd1',
+        filename: 'review.pptx',
+        mimeType: pptxMime,
+        size: blob.size,
+        createdAt: 0,
+        blob,
+      }
+
+      const prepared = await prepareBuiltInConversation(
+        [message('user', [attachment(file), { type: 'text', text: 'Summarize the deck' }])],
+        undefined,
+        inline,
+        depsFor([file], { getTransformer }),
+      )
+
+      expect(prepared.prompt.text).toStartWith(
+        '[Attachment: "review.pptx"]\n\n## Slide 1\nQuarterly review\nPrepared for the board\n\nSpeaker notes:\nWelcome everyone.',
+      )
+      expect(prepared.prompt.text).toContain('## Slide 2\nRegions\n')
+      expect(prepared.prompt.text).toEndWith('## Slide 3\nSummarize the deck')
+    })
+
     it('writes each spreadsheet sheet as its own TSV', async () => {
       const file = textFile('x1', 'budget.xlsx', xlsxMime, '## Sheet: Q1\nName, Cost\nRent, 10')
       const readXlsxSheets = async () => [
         {
           name: 'Q1',
-          rows: [
-            ['Name', 'Cost'],
-            ['Rent', '10'],
-          ],
+          rows: [['Name', 'Cost'], [], ['Rent', '10']],
         },
-        { name: 'Q2/Q3', rows: [['Name'], ['Tab\there']] },
+        { name: 'Q2/Q3', rows: [['Name'], ['Tab\there'], ['two\nlines']] },
       ]
 
       const prepared = await prepareBuiltInConversation(
@@ -307,19 +531,22 @@ describe('prepareBuiltInConversation', () => {
       )
 
       expect(prepared.files).toEqual([
-        { path: 'attachments/x1/Q1.tsv', content: 'Name\tCost\nRent\t10\n' },
-        { path: 'attachments/x1/Q2_Q3.tsv', content: 'Name\nTab here\n' },
+        // The blank row stays, so Rent is on line 3 of the file, as it is in row 3 of the sheet.
+        { path: 'attachments/x1/Q1.tsv', content: 'Name\tCost\n\nRent\t10\n' },
+        { path: 'attachments/x1/Q2_Q3.tsv', content: 'Name\nTab here\ntwo lines\n' },
       ])
       expect(prepared.prompt.text).toBe(
         [
-          '[Attachment: budget.xlsx — saved as attachments/x1/Q1.tsv, attachments/x1/Q2_Q3.tsv]',
+          '[Attachment: "budget.xlsx" — text copy at attachments/x1/Q1.tsv, attachments/x1/Q2_Q3.tsv. The original file is stored too: do not tell the user it did not arrive or ask them to attach it again unless run_office_script cannot find it, and confirming that you have it needs no tool call. Answer from the text copy; only when the user asks to edit it or build a file from it, list "budget.xlsx" (newest file with that name) or "x1" (this exact file) in run_office_script inputs]',
           '',
           '## Sheet: Q1',
-          'Name\tCost',
-          'Rent\t10',
+          'Row 1: Name, Cost',
+          'Row 3: Rent, 10',
+          '',
           '## Sheet: Q2/Q3',
-          'Name',
-          'Tab here',
+          'Row 1: Name',
+          'Row 2: Tab\there',
+          'Row 3: two lines',
         ].join('\n'),
       )
     })
@@ -353,6 +580,27 @@ describe('prepareBuiltInConversation', () => {
       )
 
       expect(prepared.files).toEqual([{ path: 'attachments/p1/report.pdf.txt', content: 'PDF contents' }])
+      expect(prepared.prompt.text).toBe(
+        '[Attachment: "report.pdf" — saved as attachments/p1/report.pdf.txt]\n\nPDF contents',
+      )
+    })
+
+    it.each([
+      ['notes.docx', docxMime],
+      ['deck.pptx', pptxMime],
+    ])('tells the model the Office script tool reads the original of %s', async (filename, mimeType) => {
+      const file = textFile('o1', filename, mimeType, 'Extracted text')
+      const messages = [
+        message('user', [attachment(file), { type: 'text', text: 'Summarize it' }]),
+        message('assistant', [{ type: 'text', text: 'Done' }]),
+        message('user', [{ type: 'text', text: 'Shorter' }]),
+      ]
+
+      const prepared = await prepareBuiltInConversation(messages, undefined, workspace, depsFor([file]))
+
+      expect(prepared.history[0].text).toBe(
+        `[Attachment: "${filename}" — text copy at attachments/o1/${filename}.txt. The original file is stored too: do not tell the user it did not arrive or ask them to attach it again unless run_office_script cannot find it, and confirming that you have it needs no tool call. Answer from the text copy; only when the user asks to edit it or build a file from it, list "${filename}" (newest file with that name) or "o1" (this exact file) in run_office_script inputs]\n\nExtracted text\nSummarize it`,
+      )
     })
 
     it('keeps an unsafe filename inside its attachment directory', async () => {
@@ -394,6 +642,57 @@ describe('prepareBuiltInConversation', () => {
       expect(prepared.files.map((entry) => entry.path)).toEqual(['attachments/u3/file'])
     })
 
+    it('restores files from compacted turns without replaying their old text', async () => {
+      const file = textFile('before-summary', 'spend.csv', 'text/csv', 'a,b\n1,2')
+      const checkpoint = {
+        version: 1 as const,
+        summary: 'Use attachments/before-summary/spend.tsv for the totals.',
+        tokensBefore: 9_000,
+        contextTokens: 100,
+        retainedTail: [],
+      }
+      const messages = [
+        message('user', [attachment(file), { type: 'text', text: 'Old question' }]),
+        {
+          ...message('assistant', [{ type: 'text', text: 'Old answer' }]),
+          metadata: { contextCompaction: checkpoint },
+        },
+        message('user', [{ type: 'text', text: 'Follow-up question' }]),
+        message('assistant', [{ type: 'text', text: 'Follow-up answer' }]),
+      ]
+      const history = await prepareBuiltInHistory(messages, workspace, depsFor([file]))
+      expect(history.compaction).toEqual(checkpoint)
+      expect(history.history).toEqual([
+        { role: 'user', text: 'Follow-up question' },
+        { role: 'assistant', text: 'Follow-up answer' },
+      ])
+      expect(history.files).toEqual([{ path: 'attachments/before-summary/spend.tsv', content: 'a\tb\n1\t2\n' }])
+
+      const prepared = await prepareBuiltInConversation(
+        [...messages, message('user', [{ type: 'text', text: 'Continue with that file' }])],
+        undefined,
+        workspace,
+        depsFor([file]),
+      )
+      expect(prepared.compaction).toEqual(checkpoint)
+      expect(prepared.history).toEqual(history.history)
+      expect(prepared.files).toEqual(history.files)
+      expect(prepared.prompt.text).toBe('Continue with that file')
+    })
+
+    it('prepares workspace previews for manual compaction and full text when tools are off', async () => {
+      const content = Array.from({ length: 250 }, (_, index) => `row ${index}`).join('\n')
+      const file = textFile('manual', 'notes.txt', 'text/plain', content)
+      const messages = [message('user', [attachment(file)]), message('assistant', [{ type: 'text', text: 'Read it' }])]
+      const staged = await prepareBuiltInHistory(messages, workspace, depsFor([file]))
+      expect(staged.history[0].text).toContain('attachments/manual/notes.txt')
+      expect(staged.history[0].text).not.toContain('row 249')
+      expect(staged.files).toEqual([{ path: 'attachments/manual/notes.txt', content }])
+      const inlined = await prepareBuiltInHistory(messages, inline, depsFor([file]))
+      expect(inlined.history[0].text).toContain('row 249')
+      expect(inlined.files).toEqual([])
+    })
+
     it('uses the same shape for history turns and writes each attachment once', async () => {
       const file = textFile('h1', 'spend.csv', 'text/csv', 'a,b\n1,2')
       const messages = [
@@ -406,7 +705,7 @@ describe('prepareBuiltInConversation', () => {
 
       expect(prepared.history[0]).toEqual({
         role: 'user',
-        text: '[Attachment: spend.csv — saved as attachments/h1/spend.tsv]\n\na\tb\n1\t2\nTotal?',
+        text: '[Attachment: "spend.csv" — saved as attachments/h1/spend.tsv]\n\na\tb\n1\t2\nTotal?',
       })
       expect(prepared.files).toEqual([{ path: 'attachments/h1/spend.tsv', content: 'a\tb\n1\t2\n' }])
     })
@@ -426,7 +725,7 @@ describe('prepareBuiltInConversation', () => {
       )
 
       expect(prepared.prompt.text).toBe(
-        '[Attachment: chart.png]\n[Attachment: gone.csv] (file unavailable on this device)',
+        '[Attachment: "chart.png"]\n[Attachment: "gone.csv"] (file unavailable on this device)',
       )
       expect(prepared.prompt.images).toEqual([{ type: 'image', mimeType: 'image/png', data: 'cG5n' }])
       expect(prepared.files).toEqual([])

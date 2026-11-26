@@ -2,8 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { generateKdfSalt } from '@/crypto/recovery-key'
+import { PasskeyContinuityError } from '@/services/encryption'
+import * as encryptionService from '@/services/encryption'
+import * as encryptionApi from '@/api/encryption'
+import * as passkeys from '@/lib/passkey'
+import { DecryptionError, DeviceApprovalError, ValidationError } from '@/crypto/errors'
+import { EncryptedSyncUnsupportedError } from '@/lib/encrypted-sync-support'
+import { HttpError } from '@/lib/http'
+import { StepUpVerificationError } from '@/lib/step-up'
 import type { EncryptionMetadataResponse } from '@shared/e2ee-types'
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { classifyEncryptionMetadata, reducer, initialState, useSyncSetup } from './use-sync-setup'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import 'fake-indexeddb/auto'
@@ -11,6 +20,7 @@ import { clearAllKeys, generateAK, generateKeyPair, generateMlKemKeyPair, getAK,
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { createSpyHttpClient } from '@/test-utils/http-client-spy'
 import { clearCachedSession, setCachedSession } from '@/lib/session-cache'
+import { EncryptionRequestTimeoutError } from '@/services/encryption-request'
 
 const metadata = (schemeVersion: 1 | 2): EncryptionMetadataResponse => ({
   canary_iv: 'iv',
@@ -21,11 +31,13 @@ const metadata = (schemeVersion: 1 | 2): EncryptionMetadataResponse => ({
   recovery_mlkem_public_key: schemeVersion === 2 ? 'recovery-mlkem' : null,
   recovery_wrapped_ak: schemeVersion === 2 ? 'recovery-envelope' : null,
   recovery_attestation: schemeVersion === 2 ? 'recovery-attestation' : null,
+  recovery_continuity: schemeVersion === 2 ? 'recovery-continuity' : null,
   passkey_credential_id: null,
   passkey_ecdh_public_key: null,
   passkey_mlkem_public_key: null,
   passkey_wrapped_ak: null,
   passkey_attestation: null,
+  passkey_continuity: null,
   key_version: 1,
   primary_key_id: '0',
   scheme_version: schemeVersion,
@@ -46,7 +58,7 @@ describe('receiver verification failure', () => {
     await storeKeyPair(ecdh.privateKey, ecdh.publicKey, mlkem.publicKey, mlkem.secretKey)
     localStorage.setItem('thunderbolt_device_id', 'receiver')
     setCachedSession({ user: { id: 'account-1' } })
-    const wrappedCK = await wrapAK(await generateAK(true), ecdh.publicKey, mlkem.publicKey, '0')
+    const wrappedCK = await wrapAK(await generateAK(true), ecdh.publicKey, mlkem.publicKey, '0', 1)
     const { httpClient } = createSpyHttpClient(async (request) => {
       const path = new URL(request.url).pathname
       if (path.endsWith('/devices')) {
@@ -164,5 +176,495 @@ describe('useSyncSetup reducer', () => {
 
     expect(reducer(denied, { type: 'GO_BACK' })).toEqual({ ...initialState, step: 'intro' })
     expect(reducer(denied, { type: 'RESET' })).toEqual(initialState)
+  })
+})
+
+it('holds the active step while an encryption operation is in flight', () => {
+  const busy = { ...initialState, step: 'recovery-key-entry' as const, isLoading: true }
+  expect(reducer(busy, { type: 'GO_BACK' })).toBe(busy)
+  expect(reducer(busy, { type: 'GO_TO_RECOVERY_KEY_ENTRY' })).toBe(busy)
+  expect(reducer(busy, { type: 'RETURN_TO_APPROVAL' })).toBe(busy)
+})
+
+it('keeps recovery active when Back is pressed before recovery finishes', async () => {
+  const response = Promise.withResolvers<encryptionService.RecoverResult>()
+  const recover = spyOn(encryptionService, 'recoverWithKey').mockImplementation(() => response.promise)
+  try {
+    const { result } = renderHook(() => useSyncSetup(), { wrapper: createQueryTestWrapper() })
+    act(() => result.current.goToRecoveryKeyEntry())
+    act(() => result.current.setRecoveryKeyInput('word '.repeat(24)))
+    let pending: Promise<string>
+    act(() => {
+      pending = result.current.submitRecoveryKey()
+      result.current.chooseAdditionalDevice()
+    })
+    expect(result.current.step).toBe('recovery-key-entry')
+    expect(result.current.isLoading).toBe(true)
+    await act(async () => {
+      response.resolve({ outcome: 'recovered' })
+      expect(await pending).toBe('recovered')
+    })
+  } finally {
+    recover.mockRestore()
+  }
+})
+
+it('displays timeout guidance instead of the internal request error during setup', async () => {
+  const setup = spyOn(encryptionService, 'completeFirstDeviceSetup').mockRejectedValue(
+    new EncryptionRequestTimeoutError(),
+  )
+  try {
+    const { result } = renderHook(() => useSyncSetup(), { wrapper: createQueryTestWrapper() })
+    await act(async () => result.current.continueFirstDeviceSetup())
+    expect(result.current.error).toBe('The server took too long to respond. Please try again.')
+    expect(result.current.isLoading).toBe(false)
+    expect(result.current.recoveryKey).toBe('')
+  } finally {
+    setup.mockRestore()
+  }
+})
+
+it('admits one key setup at a time and ignores its result after resetting the wizard', async () => {
+  const response = Promise.withResolvers<string>()
+  const setup = spyOn(encryptionService, 'completeFirstDeviceSetup').mockImplementation(() => response.promise)
+  try {
+    const { result } = renderHook(() => useSyncSetup(), { wrapper: createQueryTestWrapper() })
+    let first: Promise<void>
+    act(() => {
+      first = result.current.continueFirstDeviceSetup()
+    })
+    await act(async () => {
+      await result.current.continueFirstDeviceSetup()
+    })
+    expect(setup).toHaveBeenCalledTimes(1)
+    act(() => result.current.reset())
+    await act(async () => {
+      response.resolve('late recovery phrase')
+      await first
+    })
+    expect(result.current.step).toBe('intro')
+    expect(result.current.recoveryKey).toBe('')
+  } finally {
+    setup.mockRestore()
+  }
+})
+
+describe('sync setup operation outcomes', () => {
+  const createSpies = () => ({
+    register: spyOn(encryptionService, 'registerThisDevice').mockResolvedValue({ trusted: false }),
+    fingerprint: spyOn(encryptionService, 'getThisDeviceApprovalFingerprint').mockResolvedValue('fingerprint'),
+    metadata: spyOn(encryptionApi, 'fetchEncryptionMetadata').mockResolvedValue({
+      ...metadata(2),
+      passkey_credential_id: 'credential',
+    }),
+    ensure: spyOn(encryptionService, 'ensureV2Encryption').mockResolvedValue({ outcome: 'awaiting-approval' }),
+    bootstrap: spyOn(encryptionService, 'completeFirstDeviceSetup').mockResolvedValue('recovery phrase'),
+    canary: spyOn(encryptionApi, 'checkCanaryExists').mockResolvedValue(true),
+    recover: spyOn(encryptionService, 'recoverWithKey').mockResolvedValue({ outcome: 'recovered' }),
+    stepUpRequest: spyOn(encryptionService, 'requestV1RecoveryCode').mockResolvedValue(undefined),
+    approve: spyOn(encryptionService, 'checkApprovalAndUnwrap').mockResolvedValue(true),
+    prf: spyOn(passkeys, 'getPasskeyPrfOutput').mockResolvedValue(new Uint8Array([1, 2, 3])),
+    unlock: spyOn(encryptionService, 'unlockWithPasskey').mockResolvedValue(undefined),
+    errorLog: spyOn(console, 'error').mockImplementation(() => {}),
+  })
+  let spies: ReturnType<typeof createSpies>
+  beforeEach(() => {
+    spies = createSpies()
+  })
+  afterEach(() => {
+    cleanup()
+    Object.values(spies).forEach((spy) => spy.mockRestore())
+  })
+  const mount = () => renderHook(useSyncSetup, { wrapper: createQueryTestWrapper() })
+  const httpError = (status: number) => new HttpError(new Response(null, { status }))
+
+  it('shows a localized upgrade instruction when the runtime cannot coordinate encrypted sync', async () => {
+    spies.register.mockRejectedValueOnce(new EncryptedSyncUnsupportedError())
+    const { result } = mount()
+    await act(async () => {
+      expect((await result.current.continueIntro()).outcome).toBe('error')
+    })
+    expect(result.current.error).toBe(
+      'To use encrypted sync, open this app over HTTPS and use an up-to-date browser or operating system.',
+    )
+    expect(result.current.isLoading).toBe(false)
+    expect(spies.ensure).not.toHaveBeenCalled()
+  })
+
+  it('starts first-device setup only when metadata is absent', async () => {
+    spies.metadata.mockRejectedValueOnce(httpError(404))
+    const { result } = mount()
+    await act(async () => expect((await result.current.continueIntro()).outcome).toBe('first-device'))
+    expect(result.current.step).toBe('first-device-setup')
+    expect(spies.ensure).not.toHaveBeenCalled()
+    await act(async () => result.current.continueFirstDeviceSetup())
+    expect(result.current.recoveryKey).toBe('recovery phrase')
+    expect(result.current.step).toBe('recovery-key-display')
+    expect(result.current.isLoading).toBe(false)
+  })
+
+  it.each([
+    [{ outcome: 'migrated', recoveryKey: 'migrated phrase' }, 'migrated', 'recovery-key-display'],
+    [{ outcome: 'followed' }, 'already-trusted', 'setup-complete'],
+    [{ outcome: 'already-v2' }, 'already-trusted', 'setup-complete'],
+    [{ outcome: 'awaiting-approval' }, 'additional-device', 'approval-waiting'],
+    [{ outcome: 'not-applicable' }, 'additional-device', 'approval-waiting'],
+  ] as const)('routes encryption outcome %j', async (outcome, expected, step) => {
+    spies.ensure.mockResolvedValueOnce(outcome)
+    const { result } = mount()
+    await act(async () => expect((await result.current.continueIntro()).outcome).toBe(expected))
+    expect(result.current.step).toBe(step)
+    expect(result.current.isLoading).toBe(false)
+    expect(result.current.passkeySlotCredentialId).toBe('credential')
+  })
+
+  it.each([httpError(422), new Error('Registration unavailable')])(
+    'reports registration failure: %s',
+    async (error) => {
+      spies.register.mockRejectedValueOnce(error)
+      const { result } = mount()
+      await act(async () => expect((await result.current.continueIntro()).outcome).toBe('error'))
+      expect(result.current.error).not.toContain('maximum number of devices')
+      expect(result.current.error).toBeTruthy()
+      expect(result.current.isLoading).toBe(false)
+      expect(spies.ensure).not.toHaveBeenCalled()
+    },
+  )
+
+  it('does not start encryption after a cancelled metadata lookup', async () => {
+    const response = Promise.withResolvers<EncryptionMetadataResponse>()
+    spies.metadata.mockImplementationOnce(() => response.promise)
+    const { result } = mount()
+    let pending: ReturnType<typeof result.current.continueIntro>
+    await act(async () => {
+      pending = result.current.continueIntro()
+    })
+    act(() => result.current.reset())
+    await act(async () => {
+      response.resolve(metadata(2))
+      await pending
+    })
+    expect(spies.ensure).not.toHaveBeenCalled()
+    expect(result.current.step).toBe('intro')
+  })
+
+  it.each([true, false, 'failed'] as const)(
+    'handles a bootstrap collision when canary lookup is %s',
+    async (canary) => {
+      spies.bootstrap.mockRejectedValueOnce(httpError(403))
+      if (canary === 'failed') {
+        spies.canary.mockRejectedValueOnce(new Error('offline'))
+      } else {
+        spies.canary.mockResolvedValueOnce(canary)
+      }
+      const { result } = mount()
+      await act(async () => result.current.continueFirstDeviceSetup())
+      expect(result.current.isLoading).toBe(false)
+      expect(result.current.step).toBe(canary === true ? 'approval-waiting' : 'intro')
+      expect(result.current.error).toBe(canary === false ? 'Request failed with status 403' : null)
+    },
+  )
+
+  it.each(['', 'word word'])('rejects an incomplete recovery phrase before calling the service', async (phrase) => {
+    const { result } = mount()
+    act(() => result.current.setRecoveryKeyInput(phrase))
+    await act(async () => expect(await result.current.submitRecoveryKey()).toBe('failed'))
+    expect(result.current.recoveryKeyError).toContain(`you entered ${phrase ? 2 : 0}`)
+    expect(spies.recover).not.toHaveBeenCalled()
+  })
+
+  it('normalizes recovery words and exposes verification failures', async () => {
+    const { result } = mount()
+    act(() => result.current.setRecoveryKeyInput('  WORD\n'.repeat(24)))
+    spies.recover.mockRejectedValueOnce(new ValidationError('bad phrase'))
+    await act(async () => expect(await result.current.submitRecoveryKey()).toBe('failed'))
+    expect(spies.recover).toHaveBeenCalledWith(expect.anything(), 'word '.repeat(24).trim())
+    expect(result.current.recoveryKeyError).toContain('Invalid recovery phrase')
+    // A wrong phrase is the user's to fix, so only the unexpected failure logs.
+    expect(spies.errorLog).not.toHaveBeenCalled()
+    spies.recover.mockRejectedValueOnce(new Error('offline'))
+    await act(async () => expect(await result.current.submitRecoveryKey()).toBe('failed'))
+    expect(result.current.recoveryKeyError).toBe('offline')
+    expect(result.current.isLoading).toBe(false)
+    expect(spies.errorLog).toHaveBeenCalledTimes(1)
+  })
+
+  describe('a v1 phrase', () => {
+    const phrase = 'word '.repeat(24).trim()
+
+    /** Enter a v1 phrase that checks out locally, landing on the code step. */
+    const reachStepUp = async () => {
+      const mounted = mount()
+      act(() => mounted.result.current.setRecoveryKeyInput('  WORD\n'.repeat(24)))
+      spies.recover.mockResolvedValueOnce({ outcome: 'step-up-required' })
+      await act(async () => expect(await mounted.result.current.submitRecoveryKey()).toBe('step-up'))
+      return mounted
+    }
+
+    it('emails a step-up code and moves to the code step', async () => {
+      const { result } = await reachStepUp()
+
+      expect(spies.stepUpRequest).toHaveBeenCalledWith(expect.anything(), phrase)
+      expect(result.current.step).toBe('recovery-step-up')
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    it('stays on the phrase step when the code cannot be sent', async () => {
+      const { result } = mount()
+      act(() => result.current.goToRecoveryKeyEntry())
+      act(() => result.current.setRecoveryKeyInput(phrase))
+      spies.recover.mockResolvedValueOnce({ outcome: 'step-up-required' })
+      spies.stepUpRequest.mockRejectedValueOnce(httpError(500))
+
+      await act(async () => expect(await result.current.submitRecoveryKey()).toBe('failed'))
+
+      expect(result.current.step).toBe('recovery-key-entry')
+      expect(result.current.recoveryKeyError).toBe('Failed to send the verification code')
+      expect(spies.errorLog).toHaveBeenCalled()
+    })
+
+    it('goes to the code step when a code sent moments ago is still in the inbox', async () => {
+      const { result } = mount()
+      act(() => result.current.goToRecoveryKeyEntry())
+      act(() => result.current.setRecoveryKeyInput(phrase))
+      spies.recover.mockResolvedValueOnce({ outcome: 'step-up-required' })
+      spies.stepUpRequest.mockRejectedValueOnce(httpError(429))
+
+      await act(async () => expect(await result.current.submitRecoveryKey()).toBe('step-up'))
+
+      expect(result.current.step).toBe('recovery-step-up')
+      expect(spies.errorLog).not.toHaveBeenCalled()
+    })
+
+    it('explains, without logging, that the account was upgraded elsewhere before the code was sent', async () => {
+      const { result } = mount()
+      act(() => result.current.goToRecoveryKeyEntry())
+      act(() => result.current.setRecoveryKeyInput(phrase))
+      spies.recover.mockResolvedValueOnce({ outcome: 'step-up-required' })
+      spies.stepUpRequest.mockRejectedValueOnce(new encryptionService.V1UpgradeRaceError())
+
+      await act(async () => expect(await result.current.submitRecoveryKey()).toBe('failed'))
+
+      expect(result.current.recoveryKeyError).toContain('just upgraded on another device')
+      expect(spies.errorLog).not.toHaveBeenCalled()
+    })
+
+    it('clears a rejected code so the next click cannot spend another attempt on it', async () => {
+      const { result } = await reachStepUp()
+      act(() => result.current.setStepUpOtp('00000000'))
+      spies.recover.mockRejectedValueOnce(new StepUpVerificationError('step_up_invalid'))
+
+      await act(async () => expect(await result.current.submitRecoveryStepUp()).toBe('failed'))
+
+      expect(result.current.stepUpOtp).toBe('')
+      expect(result.current.stepUpError).toContain('That code is invalid or expired')
+    })
+
+    it('empties the box after a resend, because the new code replaces the old one', async () => {
+      const { result } = await reachStepUp()
+      act(() => result.current.setStepUpOtp('12345678'))
+
+      await act(async () => result.current.resendRecoveryStepUp())
+
+      expect(spies.stepUpRequest).toHaveBeenCalledTimes(2)
+      expect(spies.stepUpRequest).toHaveBeenLastCalledWith(expect.anything(), phrase)
+      expect(result.current.step).toBe('recovery-step-up')
+      expect(result.current.stepUpOtp).toBe('')
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    it.each([
+      [httpError(429), 'A code was just sent', false],
+      [httpError(500), 'Couldn’t send a new code', true],
+      [new encryptionService.V1UpgradeRaceError(), 'just upgraded on another device', false],
+    ] as const)('keeps the typed code and explains a failed resend (%s)', async (error, message, logged) => {
+      const { result } = await reachStepUp()
+      act(() => result.current.setStepUpOtp('12345678'))
+      spies.stepUpRequest.mockRejectedValueOnce(error)
+
+      await act(async () => result.current.resendRecoveryStepUp())
+
+      expect(result.current.stepUpError).toContain(message)
+      expect(result.current.stepUpOtp).toBe('12345678')
+      expect(result.current.isLoading).toBe(false)
+      expect(spies.errorLog.mock.calls.length > 0).toBe(logged)
+    })
+
+    it('upgrades with the code and shows the new phrase as a replacement', async () => {
+      const { result } = await reachStepUp()
+      act(() => result.current.setStepUpOtp('12345678'))
+      spies.recover.mockResolvedValueOnce({ outcome: 'migrated', recoveryKey: 'new phrase' })
+
+      await act(async () => expect(await result.current.submitRecoveryStepUp()).toBe('migrated'))
+
+      expect(spies.recover).toHaveBeenLastCalledWith(expect.anything(), phrase, { stepUpOtp: '12345678' })
+      expect(result.current.step).toBe('recovery-key-display')
+      expect(result.current.recoveryKey).toBe('new phrase')
+      expect(result.current.migratedRecoveryKey).toBe(true)
+    })
+
+    it.each([
+      [new StepUpVerificationError('step_up_invalid'), 'That code is invalid or expired'],
+      [new encryptionService.V1UpgradeRaceError(), 'just upgraded on another device'],
+      [httpError(403), 'Recovery failed'],
+    ] as const)('keeps the code step open on %s', async (error, message) => {
+      const { result } = await reachStepUp()
+      spies.recover.mockRejectedValueOnce(error)
+
+      await act(async () => expect(await result.current.submitRecoveryStepUp()).toBe('failed'))
+
+      expect(result.current.step).toBe('recovery-step-up')
+      expect(result.current.stepUpError).toContain(message)
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    it('returns to the phrase step on cancel, keeping the phrase', async () => {
+      const { result } = await reachStepUp()
+
+      act(() => result.current.cancelRecoveryStepUp())
+
+      expect(result.current.step).toBe('recovery-key-entry')
+      expect(result.current.recoveryKeyInput).toBe('  WORD\n'.repeat(24))
+    })
+  })
+
+  it.each([
+    [false, 'intro', 'not been approved'],
+    [httpError(422), 'denied', null],
+    [new DeviceApprovalError('recipient-unverified'), 'intro', "Couldn't verify"],
+    [new Error('Failed to unwrap account key'), 'intro', "Couldn't verify"],
+    [new EncryptionRequestTimeoutError(), 'intro', 'took too long'],
+    [true, 'intro', null],
+  ] as const)('settles approval outcome %s', async (outcome, step, message) => {
+    if (outcome instanceof Error) {
+      spies.approve.mockRejectedValueOnce(outcome)
+    } else {
+      spies.approve.mockResolvedValueOnce(outcome)
+    }
+    const { result } = mount()
+    await act(async () => expect(await result.current.confirmApproval()).toBe(outcome === true))
+    expect(result.current.step).toBe(step)
+    expect(result.current.isLoading).toBe(false)
+    if (message) {
+      expect(result.current.approvalError).toContain(message)
+    } else {
+      expect(result.current.approvalError).toBeNull()
+    }
+  })
+
+  it('flags a recovery phrase minted before the continuity seal', async () => {
+    const { result } = mount()
+    await act(async () => result.current.continueIntro())
+    expect(result.current.legacyRecoveryPhrase).toBe(true)
+  })
+
+  it('does not flag a phrase whose salt carries the continuity tag', async () => {
+    spies.metadata.mockResolvedValue({ ...metadata(2), kdf_salt: generateKdfSalt() })
+    const { result } = mount()
+    await act(async () => result.current.continueIntro())
+    expect(result.current.legacyRecoveryPhrase).toBe(false)
+  })
+
+  it('refuses a passkey whose seal does not vouch for the unlocked keys, and can retry', async () => {
+    const { result } = mount()
+    await act(async () => result.current.continueIntro())
+    spies.unlock.mockRejectedValueOnce(new PasskeyContinuityError())
+    await act(async () => expect(await result.current.unlockWithPasskey()).toBe(false))
+    expect(result.current.approvalError).toBe(
+      "This passkey unlocked keys that don't belong to your account, so nothing was changed on this device.",
+    )
+    await act(async () => expect(await result.current.unlockWithPasskey()).toBe(true))
+  })
+
+  it('logs a failed manual check without the error, its message or cause', async () => {
+    spies.approve.mockRejectedValueOnce(new Error('private response body', { cause: { key: 'private-key-marker' } }))
+    const { result } = mount()
+    await act(async () => expect(await result.current.confirmApproval()).toBe(false))
+    expect(spies.errorLog.mock.calls).toEqual([['Failed to check device approval.']])
+  })
+
+  it('does not prompt for a passkey when the account has no slot', async () => {
+    const { result } = mount()
+    await act(async () => expect(await result.current.unlockWithPasskey()).toBe(false))
+    expect(spies.prf).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [null, "can't unlock sync on this device"],
+    [new DOMException('cancelled', 'NotAllowedError'), null],
+    [new ValidationError('wrong account'), "can't unlock sync for this account"],
+    [new Error('offline'), "Couldn't unlock sync"],
+  ] as const)('settles an unsuccessful passkey attempt: %s', async (outcome, message) => {
+    const { result } = mount()
+    await act(async () => result.current.continueIntro())
+    if (outcome instanceof Error) {
+      spies.prf.mockRejectedValueOnce(outcome)
+    } else {
+      spies.prf.mockResolvedValueOnce(outcome)
+    }
+    await act(async () => expect(await result.current.unlockWithPasskey()).toBe(false))
+    expect(result.current.isLoading).toBe(false)
+    expect(spies.unlock).not.toHaveBeenCalled()
+    if (message) {
+      expect(result.current.approvalError).toContain(message)
+    } else {
+      expect(result.current.approvalError).toBeNull()
+    }
+  })
+
+  it('stages keys only for a current passkey attempt', async () => {
+    const response = Promise.withResolvers<Uint8Array | null>()
+    const { result } = mount()
+    await act(async () => result.current.continueIntro())
+    spies.prf.mockImplementationOnce(() => response.promise)
+    let pending: Promise<boolean>
+    act(() => {
+      pending = result.current.unlockWithPasskey()
+    })
+    act(() => result.current.reset())
+    await act(async () => {
+      response.resolve(new Uint8Array([4]))
+      expect(await pending).toBe(false)
+    })
+    expect(spies.unlock).not.toHaveBeenCalled()
+    await act(async () => result.current.continueIntro())
+    await act(async () => expect(await result.current.unlockWithPasskey()).toBe(true))
+    expect(spies.unlock).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows a failure the automatic check keeps hitting, without its internal message', () => {
+    const { result } = mount()
+    act(() => result.current.approvalCheckFailed(new DecryptionError('Failed to unwrap account key')))
+    expect(result.current.approvalError).toBe(
+      "Couldn't verify this device's approval. Select Check now to try again, or choose another option below.",
+    )
+    act(() => result.current.approvalCheckFailed(new EncryptedSyncUnsupportedError()))
+    expect(result.current.approvalError).toBe(
+      'To use encrypted sync, open this app over HTTPS and use an up-to-date browser or operating system.',
+    )
+  })
+
+  it('ignores polling callbacks while a manual operation owns the wizard, before effect cleanup', async () => {
+    const response = Promise.withResolvers<boolean>()
+    spies.approve.mockImplementationOnce(() => response.promise)
+    const { result } = mount()
+    let pending: Promise<boolean>
+    act(() => {
+      pending = result.current.confirmApproval()
+      result.current.approvalVerificationFailed()
+      result.current.approvalCheckFailed(new DecryptionError('Envelope could not be opened'))
+      result.current.deviceDenied()
+      result.current.completeSetup()
+      result.current.goToPasskeyEnroll('complete')
+    })
+    expect(result.current.step).toBe('intro')
+    expect(result.current.isLoading).toBe(true)
+    expect(result.current.approvalError).toBeNull()
+    await act(async () => {
+      response.resolve(true)
+      await pending
+    })
+    act(() => result.current.completeSetup())
+    expect(result.current.step).toBe('setup-complete')
   })
 })

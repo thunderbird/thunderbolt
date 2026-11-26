@@ -19,8 +19,10 @@ type MobileCardMenuProps = {
   onOpenChange: (open: boolean) => void
   side?: MobileCardMenuSide
   title: string
+  showTitle?: boolean
   children: ReactNode
   className?: string
+  forceBackdrop?: ComponentProps<typeof DrawerContent>['forceBackdrop']
   initialFocus?: ComponentProps<typeof DrawerContent>['initialFocus']
 }
 
@@ -30,9 +32,11 @@ export const MobileCardMenu = ({
   onOpenChange,
   side = 'bottom',
   title,
+  showTitle = true,
   children,
   className,
   initialFocus,
+  forceBackdrop,
 }: MobileCardMenuProps) => {
   const safeAreaStyle: CSSProperties =
     side === 'top'
@@ -46,11 +50,12 @@ export const MobileCardMenu = ({
     <Drawer open={open} onOpenChange={onOpenChange} swipeDirection={side === 'top' ? 'up' : 'down'}>
       <DrawerContent
         initialFocus={initialFocus}
+        forceBackdrop={forceBackdrop}
         className={cn(side === 'bottom' && 'pb-[var(--mobile-card-menu-bottom-padding)]', className)}
         style={safeAreaStyle}
       >
         {side === 'bottom' && <DrawerHandle className="mb-1 mt-2" />}
-        <div className="shrink-0 px-4 pb-2 pt-2">
+        <div className={showTitle ? 'shrink-0 px-4 pb-2 pt-2' : 'sr-only'}>
           <DrawerTitle className="text-[length:var(--font-size-sm)] text-muted-foreground">{title}</DrawerTitle>
         </div>
         {/* Flex column so a child's `min-h-0` + `overflow-y-auto` region is

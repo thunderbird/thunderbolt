@@ -13,8 +13,19 @@ import path from 'path'
 import { type Connect, defineConfig } from 'vite'
 import { analyzer } from 'vite-bundle-analyzer'
 import pkg from './package.json' with { type: 'json' }
+import { exaRelayPlugin, exaRelayProxies } from './scripts/exa-relay'
+import { tinfoilSearchRelayPlugin, tinfoilSearchProxy } from './scripts/tinfoil-search-relay'
 import { copyPowerSyncAssets } from './scripts/copy-powersync-assets'
-const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url))
+import { officeSandboxScriptPlugin } from './scripts/office-sandbox-script'
+import { stripDanglingSourceMapsPlugin } from './scripts/strip-dangling-source-maps'
+import {
+  addWebKitCompatToAsset,
+  resolvePreloadDependencies,
+  webkitCompatAssetFileNames,
+  webkitCompatPlugin,
+  webkitCompatScript,
+} from './scripts/webkit-compat'
+const dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
 const host = process.env.TAURI_DEV_HOST
@@ -53,10 +64,17 @@ export default defineConfig({
     // Inject the package.json version so the client can send it as X-App-Version
     // and compare against the server-enforced minAppVersion.
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version),
+    // `tauri build --debug` builds production frontend assets for a development app.
+    'import.meta.env.TAURI_ENV_DEBUG': JSON.stringify(process.env.TAURI_ENV_DEBUG === 'true'),
   },
   build: {
     sourcemap,
+    modulePreload: { resolveDependencies: resolvePreloadDependencies },
     rolldownOptions: {
+      input: {
+        app: path.resolve(dirname, 'index.html'),
+        recovery: path.resolve(dirname, 'webview-recovery.html'),
+      },
       external: ['bun:sqlite'],
       treeshake: {
         moduleSideEffects: [
@@ -72,13 +90,19 @@ export default defineConfig({
         ],
       },
       output: {
+        assetFileNames: webkitCompatAssetFileNames,
         // Distinct prefix for the entry chunk so size-limit can track the
         // FCP-blocking bytes separately from on-demand route chunks.
-        entryFileNames: 'assets/entry-[hash].js',
+        entryFileNames: (chunk) => (chunk.name === 'recovery' ? 'assets/recovery-[hash].js' : 'assets/entry-[hash].js'),
       },
     },
   },
   plugins: [
+    webkitCompatPlugin(),
+    // The dev server runs the app's plugins on Worker modules too; a build uses `worker.plugins` below.
+    officeSandboxScriptPlugin(),
+    tinfoilSearchRelayPlugin(),
+    exaRelayPlugin(),
     {
       name: 'copy-powersync-assets',
       // `vite preview` serves the built dist/, so it has no reason to touch public/.
@@ -89,6 +113,7 @@ export default defineConfig({
           path.resolve(__dirname, 'node_modules/@powersync/web/dist/worker'),
           path.join(publicDir, '@powersync'),
           cacheDir,
+          addWebKitCompatToAsset,
         )
       },
     },
@@ -174,6 +199,10 @@ export default defineConfig({
       // Exposes PowerSync's internal lib/ so our sync worker can extend SharedSyncImplementation and
       // import WorkerClient and SharedWorkerConnectionRequest (none is in the public exports map).
       'powersync-web-internal': path.resolve(__dirname, 'node_modules/@powersync/web/lib'),
+      // The Office sandbox (`src/office/office-script.worker.ts`) evaluates each library's own browser build,
+      // which sets one global. The packages' `exports` maps don't list those files, so these aliases reach them.
+      'office-sandbox-docx': path.resolve(__dirname, 'node_modules/docx/dist'),
+      'office-sandbox-pptxgenjs': path.resolve(__dirname, 'node_modules/pptxgenjs/dist'),
       // ---- In-browser Pi harness (lazy `@shared/agent-core` chunk) Node shims ----
       // The harness runs `@earendil-works/pi-agent-core` + `pi-ai` + `just-bash` +
       // ZenFS in the browser. The four coding tools are now plain `AgentTool`s over
@@ -210,7 +239,9 @@ export default defineConfig({
   // 1. prevent vite from obscuring rust errors
   clearScreen: false,
   // 2. tauri expects a fixed port, fail if that port is not available
+  preview: { proxy: { ...exaRelayProxies, '^/_tinfoil/search(?:\\?|$)': tinfoilSearchProxy } },
   server: {
+    proxy: { ...exaRelayProxies, '^/_tinfoil/search(?:\\?|$)': tinfoilSearchProxy },
     port: 1420,
     strictPort: true,
     // The public CI diagnostic uploads only fixed labels from its Playwright case.
@@ -246,14 +277,32 @@ export default defineConfig({
         path.resolve(__dirname, '.storybook'),
         // Vite's HTML middleware checks checkLoadingAccess() for index.html
         path.resolve(__dirname, 'index.html'),
+        path.resolve(__dirname, 'webview-recovery.html'),
       ],
     },
   },
   optimizeDeps: {
-    exclude: ['@journeyapps/wa-sqlite', '@powersync/web'],
+    // The Office sandbox Worker loads these on first use. Pre-bundling found them only then and reloaded the
+    // page mid-run, and it also wrapped the library files' `?url` imports as modules. The PPTX preview's
+    // renderer is the same case: its browser build is one self-contained module, loaded when a deck opens.
+    exclude: [
+      '@journeyapps/wa-sqlite',
+      '@powersync/web',
+      'quickjs-wasi',
+      'office-sandbox-docx',
+      'office-sandbox-pptxgenjs',
+      'excelize-wasm',
+      '@ironcalc/wasm',
+      '@aiden0z/pptx-renderer',
+    ],
   },
   worker: {
     format: 'es',
+    // The worker's `?url` import of pptxgenjs copies a script naming a map the build never emits, and PostHog's
+    // source map upload fails on it.
+    plugins: () => [officeSandboxScriptPlugin(), stripDanglingSourceMapsPlugin()],
+    // Workers have their own intrinsics; a page polyfill does not protect them.
+    rolldownOptions: { output: { banner: webkitCompatScript } },
   },
   test: {
     projects: [

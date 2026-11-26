@@ -11,6 +11,7 @@ import type { classifyMcpServerAuth } from '@/lib/mcp-auth/web-oauth-flow'
 import { isUnauthorizedError } from '@/lib/mcp-unauthorized-error'
 import type { probeMcpServerTools } from '@/lib/mcp-connection-test'
 import { isIrohTarget } from '@/lib/iroh-target'
+import { isSameCredentialDestination } from '@/lib/credential-destination'
 import { buildMcpHeaders, createMcpTransport, type MCPTransportType } from '@/lib/mcp-transport'
 import { validateMcpServerUrl } from '@/lib/mcp-url-validation'
 import type { FetchFn } from '@/lib/proxy-fetch'
@@ -161,12 +162,19 @@ const addServerFormReducer = (state: AddServerFormState, action: AddServerFormAc
   }
 }
 
+/** Whether the stored credential may go where the form now points: only to the URL it was opened with. */
+const isStoredCredentialUsable = (state: AddServerFormState): boolean =>
+  !!state.originalConnection && isSameCredentialDestination(state.originalConnection.url, state.url)
+
 /** The credential a probe should use: a typed replacement wins, else the kept stored bearer. */
 const effectiveProbeToken = (state: AddServerFormState): string | undefined => {
   if (state.token) {
     return state.token
   }
-  return state.isClearingStoredToken ? undefined : (state.storedBearerToken ?? undefined)
+  if (state.isClearingStoredToken || !isStoredCredentialUsable(state)) {
+    return undefined
+  }
+  return state.storedBearerToken ?? undefined
 }
 
 /** Test-only DI seams for the add-form probe + OAuth-discovery classification,
@@ -196,8 +204,12 @@ export type UseAddServerFormResult = {
    *  panel and gates Add on a valid target + name (no http probe). */
   isIroh: boolean
   token: string
-  /** True when an existing bearer credential is stored for the server being edited. */
+  /** True when an existing bearer credential is stored for the server being edited and the
+   *  URL still points where it was saved for. */
   hasStoredBearerToken: boolean
+  /** True when the edited URL points somewhere the stored bearer or OAuth credential wasn't
+   *  saved for and no replacement is typed: probes and the saved server go without it. */
+  isStoredCredentialLeftBehind: boolean
   /** True when the user chose to remove the stored bearer token on save. */
   isClearingStoredToken: boolean
   /** Toggles between clearing and keeping the stored bearer token. */
@@ -445,7 +457,13 @@ export const useAddServerForm = ({
     transport,
     isIroh,
     token: state.token,
-    hasStoredBearerToken: state.storedBearerToken !== null,
+    hasStoredBearerToken: state.storedBearerToken !== null && isStoredCredentialUsable(state),
+    isStoredCredentialLeftBehind:
+      !!state.originalConnection &&
+      state.originalConnection.credentialType !== 'none' &&
+      state.token === '' &&
+      !state.isClearingStoredToken &&
+      !isStoredCredentialUsable(state),
     isClearingStoredToken: state.isClearingStoredToken,
     toggleClearStoredToken,
     changeName,

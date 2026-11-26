@@ -118,6 +118,7 @@ export const openWebSocketTransport = async (options: WebSocketTransportOptions)
     }
     const onError = (event: WebSocketEventMap['error']): void => {
       cleanup()
+      socket.close(normalCloseCode)
       reject(new Error(event.message ?? 'WebSocket error'))
     }
     const onClose = (event: WebSocketEventMap['close']): void => {
@@ -147,92 +148,77 @@ export const openWebSocketTransport = async (options: WebSocketTransportOptions)
   closed.catch(() => {})
 
   let readableController: ReadableStreamDefaultController<AnyMessage> | null = null
-  let readableClosed = false
-  let locallyClosed = false
 
-  const readable = new ReadableStream<AnyMessage>({
-    start(controller) {
-      readableController = controller
-    },
-  })
-
-  const settleClosedOnce = (reason: TransportTerminationError | null): void => {
+  // The unsettled `closed` promise is the single live/terminal state. Every exit
+  // consumes it before notifying streams or the socket, which may re-enter us.
+  const finish = (reason: TransportTerminationError | null): void => {
     if (!settleClosed) {
       return
     }
     const settle = settleClosed
     settleClosed = null
-    settle(reason)
-  }
-
-  const closeReadable = (): void => {
-    if (readableClosed) {
-      return
-    }
-    readableClosed = true
-    readableController?.close()
-  }
-
-  const detachLifecycle = (): void => {
     socket.removeEventListener('message', onMessage)
     socket.removeEventListener('close', onClose)
     options.signal.removeEventListener('abort', close)
+    readableController?.close()
+    readableController = null
+    settle(reason)
+    socket.close(normalCloseCode)
   }
 
-  const terminate = (error: TransportTerminationError): void => {
-    if (!settleClosed) {
-      return
-    }
-    detachLifecycle()
-    closeReadable()
-    settleClosedOnce(error)
-  }
+  const close = (): void => finish(null)
+  const readable = new ReadableStream<AnyMessage>({
+    start(controller) {
+      readableController = controller
+    },
+    cancel() {
+      // Cancellation already closed the stream; do not close its controller again.
+      readableController = null
+      close()
+    },
+  })
 
   const onMessage = (event: WebSocketEventMap['message']): void => {
-    if (readableClosed) {
+    if (!settleClosed) {
       return
     }
     try {
       readableController?.enqueue(JSON.parse(event.data) as AnyMessage)
     } catch (cause) {
-      const error = new TransportTerminationError('stream-error', 'ACP WebSocket received invalid JSON', { cause })
-      terminate(error)
-      socket.close(normalCloseCode)
+      finish(new TransportTerminationError('stream-error', 'ACP WebSocket received invalid JSON', { cause }))
     }
   }
 
   const onClose = (event: WebSocketEventMap['close']): void => {
-    if (locallyClosed) {
-      return
-    }
-    terminate(
+    finish(
       new TransportTerminationError('remote-close', `ACP transport closed (code ${event.code})`, {
         retryable: !terminalCloseCodes.has(event.code),
       }),
     )
   }
 
-  const close = (): void => {
-    if (locallyClosed) {
-      return
-    }
-    locallyClosed = true
-    detachLifecycle()
-    closeReadable()
-    settleClosedOnce(null)
-    socket.close(normalCloseCode)
-  }
-
   socket.addEventListener('message', onMessage)
   socket.addEventListener('close', onClose)
   options.signal.addEventListener('abort', close, { once: true })
+  // Abort/close can land between the opening promise and this continuation.
+  if (options.signal.aborted) {
+    close()
+  } else if (socket.readyState !== 1) {
+    finish(new TransportTerminationError('remote-close', 'ACP transport closed during handoff'))
+  }
 
   const writable = new WritableStream<AnyMessage>({
     write(message) {
-      if (readableClosed || socket.readyState !== 1) {
+      if (!settleClosed || socket.readyState !== 1) {
         throw new TransportTerminationError('remote-close', 'ACP transport is closed')
       }
-      socket.send(JSON.stringify(message))
+      try {
+        socket.send(JSON.stringify(message))
+      } catch (cause) {
+        const error = new TransportTerminationError('stream-error', 'ACP WebSocket send failed', { cause })
+        finish(error)
+        throw error
+      }
     },
     close,
     abort: close,

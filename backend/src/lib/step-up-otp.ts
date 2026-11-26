@@ -41,7 +41,7 @@ import { desc, eq, sql } from 'drizzle-orm'
  */
 
 /** What a code authorizes. Chosen by the route, never by the client. */
-export const stepUpActions = ['recovery-phrase-change', 'account-deletion'] as const
+export const stepUpActions = ['recovery-phrase-change', 'account-deletion', 'v1-phrase-recovery'] as const
 
 export type StepUpAction = (typeof stepUpActions)[number]
 
@@ -108,10 +108,11 @@ const splitStoredOtp = (value: string): { code: string; attempts: number } => {
  *
  * Rotate-per-request, not Better Auth's `resendStrategy: 'reuse'`. Reuse exists
  * to stop an unauthenticated resend from clearing the attempt counter; this row
- * has no unauthenticated door, and every mint is an authenticated request from
- * a trusted device, cooldown-gated, that also emails the account owner. Under
- * those conditions a fresh random code per request is strictly better: a
- * guesser never accumulates attempts against one fixed target.
+ * has no unauthenticated door, and every mint is an authenticated request —
+ * from a trusted device, from a session for account deletion, or from a pending
+ * device holding the v1 possession proof — cooldown-gated, that also emails the
+ * account owner. Under those conditions a fresh random code per request is
+ * strictly better: a guesser never accumulates attempts against one fixed target.
  */
 const writeFreshOtp = async (tx: QueryableDatabase, identifier: string): Promise<string> => {
   const code = generateStepUpOtp()
@@ -201,51 +202,58 @@ export type StepUpOtpVerdict = 'valid' | 'invalid' | 'expired' | 'too-many-attem
  * which is precisely the attacker this gate exists to stop, so issuing the
  * guesses in parallel costs it nothing.
  */
-export const verifyStepUpOtp = async (
+export const verifyStepUpOtpInTransaction = async (
+  tx: QueryableDatabase,
+  action: StepUpAction,
+  email: string,
+  otp: string,
+): Promise<StepUpOtpVerdict> => {
+  const [row] = await tx
+    .select()
+    .from(verification)
+    .where(eq(verification.identifier, stepUpIdentifier(action, email)))
+    .orderBy(desc(verification.createdAt))
+    .limit(1)
+    .for('update')
+  if (!row) {
+    return 'invalid'
+  }
+  if (row.expiresAt < new Date()) {
+    await tx.delete(verification).where(eq(verification.id, row.id))
+    return 'expired'
+  }
+  const { code, attempts } = splitStoredOtp(row.value)
+  if (attempts >= stepUpAllowedAttempts) {
+    // The row STAYS. It is already unusable — this check runs before the
+    // compare — and `requestStepUpOtp` reads its `createdAt` to space out
+    // emails. Deleting it here let a session holder burn the budget to erase
+    // the cooldown and immediately demand another code, flooding the owner's
+    // inbox. It clears on its own at expiry, long after the cooldown.
+    return 'too-many-attempts'
+  }
+  if (!constantTimeEquals(code, otp)) {
+    await tx
+      .update(verification)
+      .set({ value: `${code}:${attempts + 1}` })
+      .where(eq(verification.id, row.id))
+    return 'invalid'
+  }
+  return 'valid'
+}
+
+/** Check a code outside a protected action, retaining atomic attempt-budget accounting. */
+export const verifyStepUpOtp = (
   database: typeof DbType,
   action: StepUpAction,
   email: string,
   otp: string,
-): Promise<StepUpOtpVerdict> =>
-  database.transaction(async (tx) => {
-    const [row] = await tx
-      .select()
-      .from(verification)
-      .where(eq(verification.identifier, stepUpIdentifier(action, email)))
-      .orderBy(desc(verification.createdAt))
-      .limit(1)
-      .for('update')
-    if (!row) {
-      return 'invalid'
-    }
-    if (row.expiresAt < new Date()) {
-      await tx.delete(verification).where(eq(verification.id, row.id))
-      return 'expired'
-    }
-    const { code, attempts } = splitStoredOtp(row.value)
-    if (attempts >= stepUpAllowedAttempts) {
-      // The row STAYS. It is already unusable — this check runs before the
-      // compare — and `requestStepUpOtp` reads its `createdAt` to space out
-      // emails. Deleting it here let a session holder burn the budget to erase
-      // the cooldown and immediately demand another code, flooding the owner's
-      // inbox. It clears on its own at expiry, long after the cooldown.
-      return 'too-many-attempts'
-    }
-    if (!constantTimeEquals(code, otp)) {
-      await tx
-        .update(verification)
-        .set({ value: `${code}:${attempts + 1}` })
-        .where(eq(verification.id, row.id))
-      return 'invalid'
-    }
-    return 'valid'
-  })
+): Promise<StepUpOtpVerdict> => database.transaction((tx) => verifyStepUpOtpInTransaction(tx, action, email, otp))
 
 /**
  * Single-use enforcement: `verifyStepUpOtp` deliberately does NOT consume a
- * valid code, so the gated route deletes the row after its transaction
- * commits. Delete-on-commit (not on-check) keeps an action that fails midway
- * retryable with the same code.
+ * valid code. The gated route consumes it INSIDE the same transaction as
+ * verification and the protected action. A rollback preserves the code; a
+ * commit cannot leave a replay window or consume a subsequently issued code.
  */
-export const consumeStepUpOtp = (database: typeof DbType, action: StepUpAction, email: string) =>
+export const consumeStepUpOtp = (database: QueryableDatabase, action: StepUpAction, email: string) =>
   database.delete(verification).where(eq(verification.identifier, stepUpIdentifier(action, email)))

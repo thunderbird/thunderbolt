@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigCapability } from '@/hooks/use-config-capability'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Plus } from 'lucide-react'
 import { lazy, Suspense, useReducer } from 'react'
@@ -15,12 +16,12 @@ import { ResponsivePopover } from '@/components/ui/responsive-popover'
 import { SearchInput } from '@/components/ui/search-input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { maxPinnedSkills } from '@/dal'
-import { isWidgetSkillId } from '@/defaults/skills'
+import { isContractSkillId, isWidgetSkillId, skillInstruction } from '@/defaults/skills'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { skillDisplayName, skillMatchesQuery } from '@/skills/display'
 import { chipSurfaceClass, SuggestionChip } from '@/skills/suggestion-chip'
-import { useSkillTelemetry } from '@/skills/telemetry'
+import { trackSkillEvent } from '@/skills/telemetry'
 import {
   useEnabledSkills as useEnabledSkills_default,
   useLibrarySkills as useLibrarySkills_default,
@@ -35,7 +36,7 @@ type BarState = {
   reorderMode: boolean
   addOpen: boolean
   addQuery: string
-  /** Last pin/unpin/reorder failure, shown inline; cleared on the next action. */
+  /** Last pin/unpin/reorder or instruction-load failure, shown inline; cleared on the next action. */
   actionError: string | null
 }
 
@@ -72,12 +73,9 @@ type ChatSkillsBarProps = {
   onAddToChat: (skill: Skill) => void
   /** Insert the resolved skill's instruction prose into the chat input. */
   onAddInstruction: (instruction: string) => void
-  /**
-   * When `true`, render nothing. The composer toggles this on once any
-   * message has been sent so the chips don't compete for space in an
-   * ongoing thread — pinning is a "starting a new chat" affordance.
-   */
-  hidden?: boolean
+  /** Whether the composer offers this skill to the selected agent and model. A chip it does not, such as an Office
+   *  skill an older build pinned, can only be unpinned. */
+  canInsertSkill: (skillId: string) => boolean
   // Dependency injection for tests / Storybook.
   usePinnedSkills?: typeof usePinnedSkills_default
   useLibrarySkills?: typeof useLibrarySkills_default
@@ -97,7 +95,7 @@ type ChatSkillsBarProps = {
 export const ChatSkillsBar = ({
   onAddToChat,
   onAddInstruction,
-  hidden,
+  canInsertSkill,
   usePinnedSkills = usePinnedSkills_default,
   useLibrarySkills = useLibrarySkills_default,
   useEnabledSkills = useEnabledSkills_default,
@@ -106,17 +104,15 @@ export const ChatSkillsBar = ({
   const { skills: library } = useLibrarySkills()
   const { isEnabled } = useEnabledSkills()
   const { isMobile } = useIsMobile()
-  const trackSkillEvent = useSkillTelemetry()
   const { openCreateItem } = useCreateItem()
   // Minimal mode (see `selectMinimalMode`) hides the chips; typed `/skill`
   // text is plain text there.
-  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const minimalMode = useConfigCapability(selectMinimalMode)
   // Hidden too until `/config` answers, so the chips never flash in and out.
   const configLoaded = useConfigStore(selectConfigSettled)
 
   const { t } = useLingui()
   const [{ reorderMode, addOpen, addQuery, actionError }, dispatch] = useReducer(barReducer, initialBarState)
-  const lockedPinnedIds = new Set(pinned.filter((skill) => isWidgetSkillId(skill.id)).map((skill) => skill.id))
 
   // One shared pin/unpin path: telemetry only fires after the mutation
   // settles (so a rejection never records a phantom action), and a failure
@@ -125,7 +121,7 @@ export const ChatSkillsBar = ({
     dispatch({ type: 'MUTATION_STARTED' })
     try {
       await togglePin(skill.id)
-      trackSkillEvent(action === 'pin' ? 'skill_pinned' : 'skill_unpinned', skill.id, {})
+      trackSkillEvent(action === 'pin' ? 'skill_pinned' : 'skill_unpinned', {})
     } catch (error) {
       console.error('togglePin failed:', error)
       // Bound to a local so the catalog placeholder is named `{name}` — a call
@@ -138,7 +134,18 @@ export const ChatSkillsBar = ({
     }
   }
 
-  if (hidden || minimalMode || !configLoaded) {
+  // An Office manual loads from its own chunk, which fails when the app's server is unreachable.
+  const handleAddInstruction = async (skill: Skill) => {
+    dispatch({ type: 'MUTATION_STARTED' })
+    try {
+      onAddInstruction(await skillInstruction(skill))
+    } catch (error) {
+      console.error('skillInstruction failed:', error)
+      dispatch({ type: 'MUTATION_FAILED', message: t`Something went wrong. Please try again.` })
+    }
+  }
+
+  if (minimalMode || !configLoaded) {
     return null
   }
 
@@ -147,7 +154,6 @@ export const ChatSkillsBar = ({
     <Suspense fallback={null}>
       <ReorderPanel
         pinned={pinned}
-        lockedIds={lockedPinnedIds}
         embedded={isMobile}
         onReorder={async (ids, move) => {
           // `move` comes from dnd-kit's `active.id` / index lookup — unambiguous
@@ -157,7 +163,7 @@ export const ChatSkillsBar = ({
           dispatch({ type: 'MUTATION_STARTED' })
           try {
             await reorderPins(ids)
-            trackSkillEvent('skill_reordered', move.id, { from_index: move.from, to_index: move.to })
+            trackSkillEvent('skill_reordered', { from_index: move.from, to_index: move.to })
           } catch (error) {
             console.error('reorderPins failed:', error)
             dispatch({ type: 'MUTATION_FAILED', message: t`Couldn't save the new order.` })
@@ -175,7 +181,7 @@ export const ChatSkillsBar = ({
   // Pinnable = enabled and not already pinned. The popover only ever lists
   // pin candidates, never a dual "pin / unpin" surface — unpin lives on the
   // chip's own dropdown.
-  const pinnable = library.filter((s) => !isWidgetSkillId(s.id) && isEnabled(s.id) && !pinnedSet.has(s.id))
+  const pinnable = library.filter((s) => !isContractSkillId(s.id) && isEnabled(s.id) && !pinnedSet.has(s.id))
   const query = addQuery.trim()
   const pinnableFiltered = pinnable.filter((s) => skillMatchesQuery(s, query))
   const pinCapReached = pinnedSet.size >= maxPinnedSkills
@@ -320,17 +326,16 @@ export const ChatSkillsBar = ({
           <SuggestionChip
             key={skill.id}
             label={skillDisplayName(skill)}
-            onClick={() => onAddToChat(skill)}
-            onAddInstruction={() => onAddInstruction(skill.instruction)}
-            onEdit={isWidgetSkillId(skill.id) ? undefined : () => openCreateItem({ kind: 'skill', skillId: skill.id })}
-            onReorder={
-              isWidgetSkillId(skill.id)
-                ? undefined
-                : () => {
-                    void loadReorderPanel()
-                    dispatch({ type: 'REORDER_OPENED' })
-                  }
+            onClick={canInsertSkill(skill.id) ? () => onAddToChat(skill) : undefined}
+            onAddInstruction={canInsertSkill(skill.id) ? () => handleAddInstruction(skill) : undefined}
+            onEdit={
+              isContractSkillId(skill.id) ? undefined : () => openCreateItem({ kind: 'skill', skillId: skill.id })
             }
+            onReorder={() => {
+              void loadReorderPanel()
+              dispatch({ type: 'REORDER_OPENED' })
+            }}
+            // This build never pins an Office skill, so a pin comes from an older build and the user may drop it.
             onUnpin={isWidgetSkillId(skill.id) ? undefined : () => handleTogglePin(skill, 'unpin')}
           />
         ))}

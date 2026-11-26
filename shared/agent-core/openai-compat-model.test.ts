@@ -212,3 +212,92 @@ describe('buildOpenAiCompatModel — CLI options', () => {
     expect(thinking).toEqual(['thought'])
   })
 })
+
+it.each(['completed', 'failed', 'interrupted'] as const)(
+  'routes Responses API calls through injected fetch and handles %s streams',
+  async (outcome) => {
+    const requests: { url: string; body: Record<string, unknown> }[] = []
+    const events =
+      outcome === 'completed'
+        ? [
+            {
+              type: 'response.completed',
+              response: {
+                id: 'r',
+                status: 'completed',
+                output: [],
+                usage: { input_tokens: 1, output_tokens: 0, total_tokens: 1 },
+              },
+            },
+          ]
+        : outcome === 'failed'
+          ? [
+              {
+                type: 'response.failed',
+                response: { error: { code: 'subscription_sharing_usage_limit_exceeded', message: 'Limit reached' } },
+              },
+            ]
+          : []
+    const { models, model } = buildOpenAiCompatModel({
+      api: 'openai-responses',
+      getReasoningEffort: () => 'high',
+      providerId: 'openai',
+      modelId: 'gpt-test',
+      baseURL: 'https://api.openai.com/v1',
+      apiKey: 'access',
+      reasoning: false,
+      supportsImages: false,
+      fetch: async (input, init) => {
+        requests.push({ url: urlOf(input), body: JSON.parse(String(init?.body)) as Record<string, unknown> })
+        return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''), {
+          headers: { 'Content-Type': 'text/event-stream' },
+        })
+      },
+    })
+    const provider = models.getProvider('openai')!
+    const stream = provider.streamSimple(model, context)
+    const result = await stream.result()
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.url).toBe('https://api.openai.com/v1/responses')
+    expect(requests[0]?.body).toMatchObject({ stream: true, store: false, reasoning: { effort: 'high' } })
+    expect(requests[0]?.body).not.toHaveProperty('reasoning_effort')
+    expect(result.stopReason).toBe(outcome === 'completed' ? 'stop' : 'error')
+  },
+)
+describe('explicit reasoning effort', () => {
+  it.each(['openai', 'openrouter', 'tinfoil'] as const)(
+    'writes exact %s payloads and restores the original profile on Default',
+    async (format) => {
+      const payloads: Array<Record<string, unknown>> = []
+      const preference: { value: import('../reasoning-effort.ts').ReasoningEffort | undefined } = { value: 'high' }
+      const { models, model } = buildOpenAiCompatModel({
+        providerId: format,
+        modelId: 'test',
+        apiKey: 'test',
+        baseURL: 'https://test.invalid/v1',
+        reasoning: false,
+        supportsImages: false,
+        effortFormat: format,
+        getReasoningEffort: () => preference.value,
+        fetch: async (_input, init) => {
+          payloads.push(JSON.parse(String(init?.body)))
+          return makeSseResponse()
+        },
+      })
+      const provider = models.getProvider(format)!
+      for (const value of ['high', 'none', undefined] as const) {
+        preference.value = value
+        await provider
+          .streamSimple(model, context, {
+            onPayload: (payload) => ({ ...(payload as object), test_marker: 'preserved' }),
+          })
+          .result()
+      }
+      expect(payloads.map((payload) => payload.test_marker)).toEqual(['preserved', 'preserved', 'preserved'])
+      const field = format === 'openrouter' ? 'reasoning' : 'reasoning_effort'
+      expect(payloads.map((payload) => payload[field])).toEqual(
+        format === 'openrouter' ? [{ effort: 'high' }, { effort: 'none' }, undefined] : ['high', 'none', undefined],
+      )
+    },
+  )
+})

@@ -9,20 +9,32 @@ pub mod cli_installer;
 pub mod commands;
 pub mod oauth_server;
 pub mod platform_utils;
+#[cfg(any(target_os = "linux", test))]
+mod preview_guard;
+#[cfg(desktop)]
+mod tray;
+#[cfg(any(target_os = "macos", target_os = "ios", test))]
+mod webview_recovery;
 
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "ios"))]
 use tauri::Manager;
 
 // Shared app builder function
 pub fn create_app() -> tauri::Builder<tauri::Wry> {
     let mut builder = tauri::Builder::default();
 
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    {
+        builder = webview_recovery::native::configure(builder);
+    }
+
     // Single-instance: focus existing window when a second instance is launched (desktop only)
     #[cfg(desktop)]
     {
+        builder = builder.manage(tray::TrayState::default());
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
+            if let Err(error) = commands::show_main_window(app.clone()) {
+                eprintln!("Could not restore the main window: {error}");
             }
         }));
     }
@@ -41,10 +53,16 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         .plugin(tauri_plugin_passkey::init())
         .plugin(platform_utils::init())
         .invoke_handler(tauri::generate_handler![
-            commands::toggle_dock_icon,
+            commands::show_main_window,
+            commands::hide_main_window,
+            #[cfg(desktop)]
+            tray::initialize_tray,
             commands::set_interface_style,
             commands::start_oauth_server,
+            commands::stop_oauth_server,
             commands::install_thunderbolt_cli,
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            webview_recovery::native::retry_webview_after_crash,
         ]);
 
     #[cfg(debug_assertions)]
@@ -54,6 +72,12 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         // exclude this plugin entirely so they're unaffected.
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         builder = builder.plugin(tauri_plugin_devtools::init());
+    }
+
+    // Native backstop for the frontend rule that keeps external links out of Linux previews.
+    #[cfg(target_os = "linux")]
+    {
+        builder = builder.plugin(preview_guard::init());
     }
 
     // macOS window vibrancy is configured declaratively in tauri.macos.conf.json
@@ -129,6 +153,14 @@ pub fn run() {
     std::env::set_var("RUST_BACKTRACE", "1");
 
     create_app()
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, _event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = _event {
+                if let Err(error) = commands::show_main_window(_app.clone()) {
+                    eprintln!("Could not restore the main window: {error}");
+                }
+            }
+        });
 }

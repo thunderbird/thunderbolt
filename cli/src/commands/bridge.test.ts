@@ -17,6 +17,7 @@ import {
   authorizeUpgrade,
   bridgeAllowedOrigins,
   forwardFrameToStdin,
+  forwardProcessToSocket,
   generateBridgeToken,
   maxActiveProcs,
 } from './bridge.ts'
@@ -27,6 +28,64 @@ const origins = bridgeAllowedOrigins()
 /** Build an upgrade request at the given path/query with an optional Origin. */
 const upgradeRequest = (path: string, origin?: string): Request =>
   new Request(`http://127.0.0.1:8839${path}`, origin === undefined ? undefined : { headers: { origin } })
+
+describe('forwardProcessToSocket', () => {
+  test.each([0, 1])('drains buffered output before closing for process exit %s', async (code) => {
+    let output!: ReadableStreamDefaultController<Uint8Array>
+    const proc = {
+      exited: Promise.resolve(code),
+      stdout: new ReadableStream<Uint8Array>({
+        start: (controller) => {
+          output = controller
+        },
+      }),
+    } as unknown as BridgeProc
+    const socket = { send: mock(() => 1), close: mock(() => {}) }
+    const forwarding = forwardProcessToSocket(proc, socket)
+    await Promise.resolve()
+    expect(socket.close).not.toHaveBeenCalled()
+    output.enqueue(new TextEncoder().encode('{"id":1}\n{"id":2}'))
+    output.close()
+    await forwarding
+    expect(socket.send).toHaveBeenCalledTimes(2)
+    expect(socket.send).toHaveBeenNthCalledWith(1, '{"id":1}')
+    expect(socket.send).toHaveBeenNthCalledWith(2, '{"id":2}')
+    expect(socket.close).toHaveBeenCalledTimes(1)
+    expect(socket.close).toHaveBeenCalledWith(code === 0 ? 1000 : 1011, `agent exited (code ${code})`)
+  })
+
+  test('waits for the exit status after stdout ends', async () => {
+    const exited = Promise.withResolvers<number>()
+    const proc = {
+      exited: exited.promise,
+      stdout: new ReadableStream<Uint8Array>({ start: (controller) => controller.close() }),
+    } as unknown as BridgeProc
+    const socket = { send: mock(() => 1), close: mock(() => {}) }
+    const forwarding = forwardProcessToSocket(proc, socket)
+    await Promise.resolve()
+    expect(socket.close).not.toHaveBeenCalled()
+    exited.resolve(7)
+    await forwarding
+    expect(socket.close).toHaveBeenCalledWith(1011, 'agent exited (code 7)')
+  })
+
+  test('closes the socket when stdout fails so its close handler can kill the process', async () => {
+    const stderr = spyOn(process.stderr, 'write').mockImplementation(() => true)
+    try {
+      const proc = {
+        exited: new Promise<number>(() => {}),
+        stdout: new ReadableStream<Uint8Array>({ start: (controller) => controller.error(new Error('pipe failed')) }),
+      } as unknown as BridgeProc
+      const socket = { send: mock(() => 1), close: mock(() => {}) }
+      await forwardProcessToSocket(proc, socket)
+      expect(socket.close).toHaveBeenCalledTimes(1)
+      expect(socket.close).toHaveBeenCalledWith(1011, 'agent stdout failed')
+      expect(stderr).toHaveBeenCalledWith('thunderbolt bridge: stdout pump error: pipe failed\n')
+    } finally {
+      stderr.mockRestore()
+    }
+  })
+})
 
 describe('authorizeUpgrade', () => {
   test('accepts an allowlisted origin with the exact token', () => {

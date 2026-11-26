@@ -68,4 +68,35 @@ describe('PostHog Proxy Routes', () => {
     expect(response.headers.get('content-disposition')).toBe('attachment')
     expect(response.headers.get('x-content-type-options')).toBe('nosniff')
   })
+
+  it('forwards the event body without account, device, cookie, or client IP headers', async () => {
+    const payload = '{"event":"onboarding_complete"}'
+    const response = await app.handle(
+      new Request('http://localhost/posthog/batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Encoding': 'identity',
+          Authorization: 'Bearer private-token',
+          Cookie: 'session=private-session',
+          'X-Device-Id': 'private-device',
+          'X-User-Id': 'private-account',
+          'CF-Connecting-IP': '192.0.2.1',
+          'X-Forwarded-For': '192.0.2.1',
+          'Proxy-Authorization': 'private-proxy-credentials',
+          Referer: 'http://localhost/chats/private-chat',
+        },
+        body: payload,
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    const [, request] = mockFetch.mock.calls[0] as [string, RequestInit]
+    expect(Object.fromEntries(new Headers(request.headers))).toEqual({
+      'content-type': 'application/json',
+      'content-encoding': 'identity',
+    })
+    expect(await new Response(request.body).text()).toBe(payload)
+  })
 })

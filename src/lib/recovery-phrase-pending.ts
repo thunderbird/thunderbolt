@@ -38,3 +38,11 @@ export const isRecoveryPhrasePending = (): boolean => getLocalSetting('recoveryP
 
 /** Reactive read, for the re-prompt gate. */
 export const useRecoveryPhrasePending = (): boolean => useLocalSettingsStore((state) => state.recoveryPhrasePending)
+
+/** Fired once after a recovery-phrase change commits on this device. */
+export const recoveryPhraseChangedEvent = 'recovery_phrase_changed'
+
+/** Tell this window a phrase change just committed, so a seal that appears next is ours. */
+export const dispatchRecoveryPhraseChanged = (): void => {
+  window.dispatchEvent(new Event(recoveryPhraseChangedEvent))
+}

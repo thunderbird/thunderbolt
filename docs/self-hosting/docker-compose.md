@@ -88,7 +88,7 @@ BRANDING='{"appName":"Acme AI","debugTranscriptRecipient":"Acme IT","cssVars":{"
 ```bash
 docker compose ps                        # every service up, postgres and keycloak healthy
 curl http://localhost:3000/v1/config     # returns JSON, no sign-in needed
-docker compose logs -f backend           # "Running database migrations", then "Starting server"
+docker compose logs -f backend           # "Database server is ready.", then "Starting server..."
 ```
 
 The `curl` goes through the app's own address, so a JSON reply means the browser-facing service and the API behind it are both answering. Sign in as the demo user and open the same conversation in a second browser window: if it appears there too, sync is working as well.
@@ -110,7 +110,7 @@ The `curl` goes through the app's own address, so a JSON reply means the browser
 
 **It assumes `localhost`.** Sign-in URLs, the API origin and the sync address are all written as `localhost` addresses. Serving this stack to other machines under a real hostname means editing those addresses in `deploy/docker-compose.yml`, not only the port settings in `deploy/.env`. For a shared deployment we recommend Kubernetes or AWS instead.
 
-**There is no TLS.** Everything is plain HTTP. Don't let this stack leave your machine without a reverse proxy such as Caddy, nginx or Traefik in front of it. Browsers grant the local-database and isolation capabilities the app depends on only to secure origins, which means `localhost` or HTTPS and nothing in between, so on a plain-HTTP hostname the local database falls back to memory and every reload loses the user's data.
+**There is no TLS.** Everything is plain HTTP. Don't let this stack leave your machine without a reverse proxy such as Caddy, nginx or Traefik in front of it. Browsers grant the local-database and isolation capabilities the app depends on only to secure origins, which means `localhost` or HTTPS and nothing in between. On a plain-HTTP hostname the app cannot open its local database at all, so it does not start.
 
 **Rate limiting is off** and Keycloak runs in its development mode. Don't put this stack in front of real users.
 

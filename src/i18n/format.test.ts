@@ -13,6 +13,15 @@ const minute = 60 * second
 const hour = 60 * minute
 const day = 24 * hour
 
+describe('percent', () => {
+  test('formats fractions and rounds consistently through the locale formatter', () => {
+    for (const locale of ['en', 'de', 'ja'] as const) {
+      expect(getFormatters(locale).percent(0.8)).toContain(getFormatters(locale).number(80))
+      expect(getFormatters(locale).percent(0.804)).toBe(getFormatters(locale).percent(0.8))
+    }
+  })
+})
+
 describe('toDate', () => {
   test('parses a bare YYYY-MM-DD as local midnight', () => {
     const parsed = toDate('2026-08-26')
@@ -96,6 +105,12 @@ describe('numbers', () => {
   test('groups full numbers per locale', () => {
     expect(getFormatters('en').number(1_234_567)).toBe('1,234,567')
     expect(getFormatters('de').number(1_234_567)).toBe('1.234.567')
+  })
+
+  test('keeps positions ungrouped in every locale', () => {
+    expect(getFormatters('en').ungroupedInteger(5000)).toBe('5000')
+    expect(getFormatters('de').ungroupedInteger(5000)).toBe('5000')
+    expect(getFormatters('ja').ungroupedInteger(5000)).toBe('5000')
   })
 })
 

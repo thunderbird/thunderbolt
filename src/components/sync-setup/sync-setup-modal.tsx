@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Trans } from '@lingui/react/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { ResponsiveModal, ResponsiveModalContent, ResponsiveModalTitle } from '@/components/ui/responsive-modal'
 import { Button } from '@/components/ui/button'
 import { useSyncSetup } from '@/hooks/use-sync-setup'
@@ -14,9 +14,11 @@ import { RecoveryKeyDisplayStep } from './recovery-key-display-step'
 import { ApprovalWaitingStep } from './approval-waiting-step'
 import { RecoveryKeyEntryStep } from './recovery-key-entry-step'
 import { PasskeyEnrollStep } from './passkey-enroll-step'
+import { dispatchE2eeProvisioningSettled } from '@/hooks/use-e2ee-ready'
 import { usePasskeyAvailable } from '@/lib/passkey'
 import { GradientCircleCheck } from '@/components/ui/gradient-circle-check'
 import { IconCircle } from '@/components/onboarding/icon-circle'
+import { StepUpCodeDialog } from '@/components/step-up-code-dialog'
 import { useYieldToMigration } from '@/hooks/use-yield-to-migration'
 import { ArrowLeft, Loader2, Lock, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
@@ -25,6 +27,7 @@ type SyncSetupModalProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   onComplete: () => void
+  onCloseAutoFocus?: (event: Event) => void
 }
 
 /**
@@ -33,7 +36,8 @@ type SyncSetupModalProps = {
  * Flow: intro → detecting (auto) → (first-device-setup → recovery-key-display | approval-waiting)
  * → passkey-enroll (optional, only while the account has no passkey slot)
  */
-export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModalProps) => {
+export const SyncSetupModal = ({ open, onOpenChange, onComplete, onCloseAutoFocus }: SyncSetupModalProps) => {
+  const { t } = useLingui()
   const setup = useSyncSetup()
   const httpClient = useHttpClient()
   const passkeyAvailable = usePasskeyAvailable()
@@ -61,6 +65,9 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
       return
     }
     hasCompletedRef.current = true
+    // This device's keys just changed (or arrived unverified): surfaces that read
+    // key trust on mount, such as Preferences under this wizard, read it again.
+    dispatchE2eeProvisioningSettled()
     onComplete()
     onOpenChange(false)
   }, [onComplete, onOpenChange])
@@ -136,38 +143,55 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
     setup.deviceDenied()
   }
 
-  const stepsAfterRegistration: readonly string[] = ['detecting', 'approval-waiting', 'recovery-key-entry', 'denied']
+  const stepsAfterRegistration: readonly string[] = [
+    'detecting',
+    'approval-waiting',
+    'recovery-key-entry',
+    'recovery-step-up',
+    'denied',
+  ]
 
   const handleClose = () => {
     // Cancel pending state on server when closing after device was registered
     if (stepsAfterRegistration.includes(setup.step)) {
       cancelPending(httpClient).catch(() => {})
     }
+    // Even a failed recovery can leave the unverified marker behind.
+    dispatchE2eeProvisioningSettled()
     onOpenChange(false)
   }
 
-  const { isPolling } = useApprovalPolling({
+  useApprovalPolling({
     // Paused while a passkey unlock (or a manual check) is in flight, so no new poll
     // starts staging keys alongside it. A check already in flight still finishes;
     // it can only stage the same account's keys.
-    enabled: setup.step === 'approval-waiting' && !setup.isLoading,
+    enabled: open && setup.step === 'approval-waiting' && !setup.isLoading,
     checkApproval: () => checkApprovalAndUnwrap(httpClient),
     onApproved: () => showSuccess(),
     onRevoked: handleRevoked,
     onDenied: handleDenied,
     onVerificationFailed: setup.approvalVerificationFailed,
+    onError: setup.approvalCheckFailed,
   })
 
   const handleRecoveryKeySubmit = async () => {
-    const success = await setup.submitRecoveryKey()
-    if (success) {
-      showSuccess()
+    // A v1 phrase moves on to the code step or the new-phrase step instead.
+    if ((await setup.submitRecoveryKey()) !== 'recovered') {
+      return
     }
+    // A phrase minted before the continuity seal leaves this device unverified,
+    // and an unverified device can't enroll a passkey.
+    if (setup.legacyRecoveryPhrase) {
+      setup.completeSetup()
+      return
+    }
+    showSuccess()
   }
 
   return (
     <ResponsiveModal
       open={open}
+      onCloseAutoFocus={onCloseAutoFocus}
       onOpenChange={(isOpen) => {
         if (!isOpen && canDismiss) {
           // The device already holds the keys on both steps, so dismissing finishes setup.
@@ -194,10 +218,11 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
       <ResponsiveModalTitle className="sr-only">
         <Trans>Set up encrypted sync</Trans>
       </ResponsiveModalTitle>
-      {setup.step === 'recovery-key-entry' && (
+      {(setup.step === 'recovery-key-entry' || setup.step === 'recovery-step-up') && (
         <button
           type="button"
           onClick={setup.chooseAdditionalDevice}
+          disabled={setup.isLoading}
           className="absolute left-4 top-4 flex h-[var(--touch-height-sm)] w-[var(--touch-height-sm)] cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <ArrowLeft className="size-[var(--icon-size-default)]" />
@@ -223,7 +248,16 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
         )}
 
         {setup.step === 'recovery-key-display' && (
-          <RecoveryKeyDisplayStep recoveryKey={setup.recoveryKey} onDone={handleFirstDeviceDone} />
+          <RecoveryKeyDisplayStep
+            recoveryKey={setup.recoveryKey}
+            onDone={handleFirstDeviceDone}
+            title={setup.migratedRecoveryKey ? t`Save your new recovery phrase` : undefined}
+            description={
+              setup.migratedRecoveryKey
+                ? t`Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again.`
+                : undefined
+            }
+          />
         )}
 
         {setup.step === 'approval-waiting' && (
@@ -234,7 +268,6 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
             onUseRecoveryKey={setup.goToRecoveryKeyEntry}
             onUnlockWithPasskey={canUnlockWithPasskey ? handleUnlockWithPasskey : undefined}
             isLoading={setup.isLoading}
-            isPolling={isPolling}
           />
         )}
 
@@ -242,15 +275,33 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
           <PasskeyEnrollStep unlocksSync onDone={handlePasskeyStepDone} onBusyChange={setIsPasskeyEnrolling} />
         )}
 
-        {setup.step === 'recovery-key-entry' && (
+        {(setup.step === 'recovery-key-entry' || setup.step === 'recovery-step-up') && (
           <RecoveryKeyEntryStep
             value={setup.recoveryKeyInput}
             error={setup.recoveryKeyError}
             onChange={setup.setRecoveryKeyInput}
             onSubmit={handleRecoveryKeySubmit}
             isLoading={setup.isLoading}
+            legacyPhraseWarning={setup.legacyRecoveryPhrase}
           />
         )}
+
+        {/* A v1 phrase upgrades the account from this untrusted device, which
+            the server allows only with the code emailed to the account. */}
+        <StepUpCodeDialog
+          open={setup.step === 'recovery-step-up'}
+          otp={setup.stepUpOtp}
+          isBusy={setup.isLoading}
+          error={setup.stepUpError}
+          description={t`We sent an 8-digit code to your account email. Enter it to generate your new recovery phrase.`}
+          submitLabel={t`Generate new phrase`}
+          submitLoadingLabel={t`Generating…`}
+          submitOnComplete
+          onOtpChange={setup.setStepUpOtp}
+          onResend={setup.resendRecoveryStepUp}
+          onSubmit={setup.submitRecoveryStepUp}
+          onCancel={setup.cancelRecoveryStepUp}
+        />
 
         {setup.step === 'denied' && <DeniedStep onRetry={setup.reset} />}
 

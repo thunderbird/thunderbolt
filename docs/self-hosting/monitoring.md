@@ -42,6 +42,10 @@ The four probes stay off until a monitoring token is set.
 MONITORING_TOKEN=$(openssl rand -hex 32)
 ```
 
+The backend refuses to start if `MONITORING_TOKEN` is set to fewer than 32 characters (`MONITORING_TOKEN must be at least 32 characters when set`). Leaving it empty disables deep probes.
+
+Before upgrading, replace any shorter token, including a securely generated one. Generate a new token with `openssl rand -hex 32`, update the backend and monitors that send it, then restart the backend. Existing tokens of 32 or more characters continue to work.
+
 Call them with a bearer token:
 
 ```bash
@@ -73,7 +77,7 @@ The email probe asks the provider for your verified sending domains, so it needs
 
 ### The models probe
 
-`GET /v1/health/models` sends one small request to every model Thunderbolt ships preconfigured, three at a time, with a 20 second deadline each and no retries. Don't poll it more than a few times an hour: it is the only probe that spends money. We recommend every 15 minutes.
+`GET /v1/health/models` sends one small request to every model Thunderbolt ships preconfigured, all at once, with a 30 second deadline each and no retries. Don't poll it more than a few times an hour: it is the only probe that spends money. We recommend every 15 minutes.
 
 Add `?model=` to probe one model instead of the whole catalog. An unknown name returns `404`.
 
@@ -89,7 +93,7 @@ curl -H "Authorization: Bearer $MONITORING_TOKEN" \
 | Reason           | What it means                                                            |
 | ---------------- | ------------------------------------------------------------------------ |
 | `no-text`        | The model answered with an empty response.                               |
-| `timeout`        | No answer within 20 seconds.                                             |
+| `timeout`        | No answer within 30 seconds.                                             |
 | `upstream-error` | The provider returned an error. Usually a bad or exhausted key.          |
 | `missing-price`  | The model has no price on record, so the server refuses requests for it. |
 | `not-configured` | No provider key is set on the server for that model.                     |
@@ -134,7 +138,7 @@ Request lines use the Apache common log format with a response time appended:
 
 The response time runs to the moment the response headers are ready. A streamed body, such as a chat completion, keeps flowing after that, so a chat request logged at 40ms says how quickly the stream started, not how long the whole run took.
 
-The client address is the connecting socket unless `TRUSTED_PROXY` is set to `cloudflare` or `akamai`. Behind a load balancer and without it, every line shows the balancer's address. Don't set it unless you know exactly what sits in front of the server. Trusting the wrong header lets any client claim any IP and walk straight past the rate limits.
+The client address is the connecting socket unless `TRUSTED_PROXY` names what sits in front of the server: `cloudflare`, `akamai`, or the hop count of a fixed reverse-proxy chain. Behind a load balancer and without it, every line shows the balancer's address. Don't set it unless you know exactly what sits in front of the server. Trusting the wrong header lets any client claim any IP and walk straight past the rate limits.
 
 Requests to `/v1/health`, to static assets, and to the analytics proxy under `/v1/posthog/` (its config request aside) are not access-logged, so load balancer traffic will not drown the log. The deep probes under `/v1/health/` are logged like any other request.
 

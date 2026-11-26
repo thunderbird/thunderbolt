@@ -59,8 +59,16 @@ jobs:
     # public Anthropic API (no cloud creds on the runner).
     runs-on: ubuntu-latest
 
+    # DEBOUNCE. The environment's 1-minute wait timer holds the job before a
+    # runner is assigned, so rapid pushes (rebases/typo fixes) cancel at zero
+    # model cost without occupying a runner. Only survivors spend on the model.
+    # `deployment: false` keeps the wait off the PR's deployment timeline.
+    environment:
+      name: review-debounce
+      deployment: false
+
     # Cap total runner time so a hung model API call can't hold the
-    # runner indefinitely. Sized for: 60s debounce + diff preparation + TWO
+    # runner indefinitely. Sized for: diff preparation + TWO
     # model steps (the recall pass runs at high effort with a
     # $45 API budget, so it is the long pole).
     timeout-minutes: 30
@@ -94,13 +102,6 @@ jobs:
       THUNDER_FINDINGS_FILE: ${{ github.workspace }}/thunder-findings.json
 
     steps:
-      # ─────────────────────────────────────────────────────────────────────
-      # DEBOUNCE. Rapid pushes (rebases/typo fixes) cancel during this
-      # sleep at zero model cost. Only survivors proceed to spend on the model.
-      # ─────────────────────────────────────────────────────────────────────
-      - name: Debounce rapid pushes
-        run: sleep 60
-
       # ─────────────────────────────────────────────────────────────────────
       # Checkout. persist-credentials:false (don't leave a usable token on disk
       # for the model step), check out the HEAD sha shallow. The diff is
@@ -156,13 +157,13 @@ jobs:
       # review:full, review the full PR. If nothing reviewable remains, the model steps are skipped.
       # Files without usable patches are listed in a partial review, and the head marker is still recorded.
       # ─────────────────────────────────────────────────────────────────────
-      # The repo commits `.claude/{commands,agents}/thunderbot*` as symlinks into
-      # a local-only `.thunderbot/` dir that is NOT checked out in CI, so they are
-      # dangling links here. The Claude SDK scans `.claude/` (the project setting
-      # source) and crashes (`ENOENT ... statx`) on a dangling link. Remove ONLY
-      # broken symlinks; the real skill/agent files are left untouched.
+      # Every committed skill under `.claude/skills/` is a symlink into
+      # `.agents/skills/`. The Claude SDK scans `.claude/` (the project setting
+      # source) and crashes (`ENOENT ... statx`) on a symlink whose target is
+      # missing, e.g. when a PR renames a skill folder but keeps the old link.
+      # Remove only broken symlinks; links that resolve stay untouched.
       # ─────────────────────────────────────────────────────────────────────
-      - name: Prune dangling .claude symlinks (local-only tooling)
+      - name: Prune dangling .claude symlinks
         run: |
           find .claude -type l | while read -r l; do
             [ -e "$l" ] || { echo "pruning dangling symlink: $l"; rm -f "$l"; }
@@ -235,8 +236,8 @@ jobs:
           # suffix and lowercases, so either form matches. Never '*': on a public
           # repo any external App could then run the action (spending the API
           # key) with prompts it controls.
-          allowed_bots: "thunderbolt-automation-agent[bot]"
-          use_sticky_comment: "false" # we own the inline review via the post step
+          allowed_bots: 'thunderbolt-automation-agent[bot]'
+          use_sticky_comment: 'false' # we own the inline review via the post step
           # Model id pinned LITERALLY (a mutable vars.* would change review
           # behavior with no PR/audit trail). Opus 5.5 high keeps cross-file
           # judgment in the recall pass; the gate uses medium for verification.
@@ -288,10 +289,10 @@ jobs:
             The unified diff to review is in the file: ${{ env.THUNDER_DIFF_FILE }} (read it with Read).
             Previous-findings file: ${{ env.THUNDER_PREVIOUS_FINDINGS_FILE }}.
             Follow SKILL.md's Inputs and operating rule 6 for scope and history.
-            Review all categories covered by the skill (bugs, conventions,
-            React, tests, security, bundle size, docs-intent, readability).
-            Deep-mode / bounded-mode / securityMode flags are in: ${{ env.THUNDER_DEEPMODE_FILE }} —
-            honor them; do NOT decide spend yourself. When `securityMode` is true,
+            Deep-mode / bounded-mode / securityMode / lanes / domainReviewers flags are in: ${{ env.THUNDER_DEEPMODE_FILE }} —
+            honor them; do NOT decide spend yourself. Spawn one sub-reviewer per
+            lane listed in `lanes` and dispatch every reviewer listed in
+            `domainReviewers`; skip the lanes the file leaves out. When `securityMode` is true,
             ALSO run the skill's path-conditional Security dimension over the
             listed `sensitiveFiles` (it loads docs/internals/architecture/e2ee-threat-model.md
             and the exclusion list at ${{ env.THUNDER_FP_RULES_FILE }}); when false,
@@ -420,11 +421,10 @@ jobs:
       # broken recall never launders into a green "no issues".
       # ─────────────────────────────────────────────────────────────────────
 
-      # STEP 1's claude-code-action restores the committed dangling `.claude`
-      # symlinks (via its own internal git checkout), so by now they're back and
-      # the gate's SDK scan would crash on them again (`ENOENT ... statx`). Re-run
-      # the same prune right before STEP 2. Same `if:` as the gate so it only runs
-      # when the gate does.
+      # STEP 1's claude-code-action restores committed `.claude` symlinks (via its
+      # own internal git checkout), so any broken one is back and the gate's SDK
+      # scan would crash on it again (`ENOENT ... statx`). Re-run the same prune
+      # right before STEP 2. Same `if:` as the gate so it only runs when the gate does.
       - name: Prune dangling .claude symlinks (before gate)
         if: >-
           steps.persist_candidates.outputs.count != '' &&
@@ -446,8 +446,8 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           # Same bot allow-list as STEP 1 — the gate runs under the same actor.
-          allowed_bots: "thunderbolt-automation-agent[bot]"
-          use_sticky_comment: "false" # we own the inline review via the post step
+          allowed_bots: 'thunderbolt-automation-agent[bot]'
+          use_sticky_comment: 'false' # we own the inline review via the post step
           # Same model + same findings schema as STEP 1 so the kept subset round-
           # trips into readModelFindings unchanged (title/body/rule/evidence stay
           # VERBATIM; the gate's only permitted edit is DEMOTING severity).

@@ -6,8 +6,12 @@ import { useLingui } from '@lingui/react/macro'
 import { i18n } from '@/i18n'
 import { msg } from '@lingui/core/macro'
 import { useReducer } from 'react'
+import { useAsyncAttempt } from './use-async-attempt'
+import { getEncryptionErrorMessage } from '@/lib/encryption-error-message'
+import { EncryptedSyncUnsupportedError } from '@/lib/encrypted-sync-support'
+import { EncryptionRequestTimeoutError } from '@/services/encryption-request'
 import { HttpError } from '@/lib/http'
-import { useHttpClient, type HttpClient } from '@/contexts'
+import { useHttpClient } from '@/contexts'
 import { ValidationError } from '@/crypto'
 import { DeviceApprovalError } from '@/crypto/errors'
 import {
@@ -18,9 +22,15 @@ import {
   recoverWithKey,
   unlockWithPasskey as unlockWithPasskeySlot,
   ensureV2Encryption,
+  PasskeyContinuityError,
+  requestV1RecoveryCode,
+  StepUpVerificationError,
+  V1UpgradeRaceError,
+  type RecoverResult,
 } from '@/services/encryption'
+import { kdfSaltRequiresContinuity } from '@/crypto/kdf-salt'
 import { getPasskeyPrfOutput, isPasskeyCancellation } from '@/lib/passkey'
-import { checkCanaryExists, fetchEncryptionMetadata } from '@/api/encryption'
+import { checkCanaryExists, fetchEncryptionMetadataOrNull } from '@/api/encryption'
 import type { EncryptionMetadataResponse } from '@shared/e2ee-types'
 
 type SyncSetupStep =
@@ -30,6 +40,7 @@ type SyncSetupStep =
   | 'recovery-key-display'
   | 'approval-waiting'
   | 'recovery-key-entry'
+  | 'recovery-step-up'
   | 'denied'
   | 'passkey-enroll'
   | 'setup-complete'
@@ -43,10 +54,16 @@ type SyncSetupState = {
   step: SyncSetupStep
   /** Credential id of the account's passkey slot, from the metadata read at detection; null when none. */
   passkeySlotCredentialId: string | null
+  /** The account's phrase predates the continuity seal (untagged `kdf_salt`), so recovery is unverified. */
+  legacyRecoveryPhrase: boolean
   afterPasskey: AfterPasskey
   recoveryKey: string
+  /** The shown phrase came from upgrading the account, so the old one stopped working. */
+  migratedRecoveryKey: boolean
   recoveryKeyInput: string
   recoveryKeyError: string | null
+  stepUpOtp: string
+  stepUpError: string | null
   approvalError: string | null
   approvalFingerprint: string
   isLoading: boolean
@@ -58,7 +75,14 @@ type SyncSetupAction =
   | { type: 'CONTINUE_INTRO' }
   | { type: 'DETECTED_FIRST_DEVICE' }
   | { type: 'DETECTED_ADDITIONAL_DEVICE' }
+  | { type: 'RETURN_TO_APPROVAL' }
   | { type: 'SET_RECOVERY_KEY'; payload: string }
+  | { type: 'SET_MIGRATED_RECOVERY_KEY'; payload: string }
+  | { type: 'GO_TO_RECOVERY_STEP_UP' }
+  | { type: 'SET_STEP_UP_OTP'; payload: string }
+  | { type: 'SET_STEP_UP_ERROR'; payload: string }
+  | { type: 'STEP_UP_CODE_REJECTED'; payload: string }
+  | { type: 'CANCEL_RECOVERY_STEP_UP' }
   | { type: 'GO_TO_RECOVERY_KEY_ENTRY' }
   | { type: 'SET_RECOVERY_KEY_INPUT'; payload: string }
   | { type: 'SET_RECOVERY_KEY_ERROR'; payload: string | null }
@@ -70,6 +94,7 @@ type SyncSetupAction =
   | { type: 'SETUP_COMPLETE' }
   | { type: 'DEVICE_DENIED' }
   | { type: 'SET_PASSKEY_SLOT'; payload: string | null }
+  | { type: 'SET_LEGACY_RECOVERY_PHRASE'; payload: boolean }
   | { type: 'GO_TO_PASSKEY_ENROLL'; payload: AfterPasskey }
   | { type: 'GO_BACK' }
   | { type: 'RESET' }
@@ -77,10 +102,14 @@ type SyncSetupAction =
 export const initialState: SyncSetupState = {
   step: 'intro',
   passkeySlotCredentialId: null,
+  legacyRecoveryPhrase: false,
   afterPasskey: 'complete',
   recoveryKey: '',
+  migratedRecoveryKey: false,
   recoveryKeyInput: '',
   recoveryKeyError: null,
+  stepUpOtp: '',
+  stepUpError: null,
   approvalError: null,
   approvalFingerprint: '',
   isLoading: false,
@@ -97,9 +126,33 @@ export const reducer = (state: SyncSetupState, action: SyncSetupAction): SyncSet
       return { ...state, step: 'first-device-setup', isLoading: false }
     case 'DETECTED_ADDITIONAL_DEVICE':
       return { ...state, step: 'approval-waiting', isLoading: false }
+    case 'RETURN_TO_APPROVAL':
+      return state.isLoading ? state : { ...state, step: 'approval-waiting' }
     case 'SET_RECOVERY_KEY':
       return { ...state, recoveryKey: action.payload, step: 'recovery-key-display', isLoading: false }
+    case 'SET_MIGRATED_RECOVERY_KEY':
+      return {
+        ...state,
+        recoveryKey: action.payload,
+        migratedRecoveryKey: true,
+        step: 'recovery-key-display',
+        isLoading: false,
+      }
+    case 'GO_TO_RECOVERY_STEP_UP':
+      return { ...state, step: 'recovery-step-up', stepUpOtp: '', stepUpError: null, isLoading: false }
+    case 'SET_STEP_UP_OTP':
+      return { ...state, stepUpOtp: action.payload, stepUpError: null }
+    case 'SET_STEP_UP_ERROR':
+      return { ...state, stepUpError: action.payload, isLoading: false }
+    // Clear the code so the next click cannot spend another attempt on it.
+    case 'STEP_UP_CODE_REJECTED':
+      return { ...state, stepUpOtp: '', stepUpError: action.payload, isLoading: false }
+    case 'CANCEL_RECOVERY_STEP_UP':
+      return state.isLoading ? state : { ...state, step: 'recovery-key-entry' }
     case 'GO_TO_RECOVERY_KEY_ENTRY':
+      if (state.isLoading) {
+        return state
+      }
       return { ...state, step: 'recovery-key-entry', recoveryKeyInput: '', recoveryKeyError: null }
     case 'SET_RECOVERY_KEY_INPUT':
       return { ...state, recoveryKeyInput: action.payload, recoveryKeyError: null }
@@ -121,9 +174,14 @@ export const reducer = (state: SyncSetupState, action: SyncSetupAction): SyncSet
       return { ...state, step: 'denied', isLoading: false }
     case 'SET_PASSKEY_SLOT':
       return { ...state, passkeySlotCredentialId: action.payload }
+    case 'SET_LEGACY_RECOVERY_PHRASE':
+      return { ...state, legacyRecoveryPhrase: action.payload }
     case 'GO_TO_PASSKEY_ENROLL':
       return { ...state, step: 'passkey-enroll', afterPasskey: action.payload, isLoading: false }
     case 'GO_BACK':
+      if (state.isLoading) {
+        return state
+      }
       return { ...initialState, step: 'intro' }
     case 'RESET':
       return initialState
@@ -146,17 +204,68 @@ export const classifyEncryptionMetadata = (metadata: EncryptionMetadataResponse 
   return metadata.scheme_version === 1 ? 'v1' : 'v2'
 }
 
-/** Fetch encryption metadata, mapping the 404 "not set up" case to null. */
-const fetchMetadataOrNull = async (httpClient: HttpClient): Promise<EncryptionMetadataResponse | null> => {
-  try {
-    return await fetchEncryptionMetadata(httpClient)
-  } catch (err) {
-    if (err instanceof HttpError && err.response.status === 404) {
-      return null
-    }
-    throw err
+const stepUpCodeRejectedMessage = msg`That code is invalid or expired. Check your email and try again.`
+const stepUpCodeRequestFailedMessage = msg`Failed to send the verification code`
+const stepUpCodeThrottledMessage = msg`A code was just sent. Wait a moment and try again.`
+const stepUpCodeResendFailedMessage = msg`Couldn’t send a new code. Your previous code may no longer work — request another.`
+
+/** The code request answers 429 while a code it sent moments ago is still valid. */
+const isStepUpThrottled = (err: unknown): boolean => err instanceof HttpError && err.response.status === 429
+
+/** What a recovery attempt led to: done, the new-phrase step, the code step, or an error on screen. */
+type RecoverySubmitOutcome = 'recovered' | 'migrated' | 'step-up' | 'failed'
+
+/** Collapse a typed phrase to lowercase words separated by single spaces. */
+const normalizeRecoveryPhrase = (input: string): string => input.trim().toLowerCase().replace(/\s+/g, ' ')
+
+/** Log failures the user can't fix by retyping; a wrong phrase, code or lost race is expected. */
+const logUnexpectedRecoveryFailure = (err: unknown): void => {
+  if (err instanceof ValidationError || err instanceof StepUpVerificationError || err instanceof V1UpgradeRaceError) {
+    return
+  }
+  console.error('Recovery failed:', err)
+}
+
+/** Localized copy for a failed recovery; never an internal error message for a refused request. */
+const describeRecoveryFailure = (err: unknown): string => {
+  if (err instanceof ValidationError) {
+    return i18n._(msg`Invalid recovery phrase. Please check that all words are correct and in the right order.`)
+  }
+  if (err instanceof V1UpgradeRaceError) {
+    return i18n._(
+      msg`This account was just upgraded on another device, so this recovery phrase no longer works. Approve this device from that device or use its new recovery phrase.`,
+    )
+  }
+  if (err instanceof HttpError) {
+    return i18n._(msg`Recovery failed`)
+  }
+  return getEncryptionErrorMessage(err, i18n._(msg`Recovery failed`))
+}
+
+/** Route a finished recovery: an upgrade shows the new phrase; anything else carries on. */
+const settleRecovery = (result: RecoverResult, update: (action: SyncSetupAction) => void): RecoverySubmitOutcome => {
+  switch (result.outcome) {
+    case 'migrated':
+      update({ type: 'SET_MIGRATED_RECOVERY_KEY', payload: result.recoveryKey })
+      return 'migrated'
+    case 'recovered':
+      return 'recovered'
+    case 'step-up-required':
+      update({ type: 'GO_TO_RECOVERY_STEP_UP' })
+      return 'step-up'
   }
 }
+
+const approvalUnverifiedMessage = msg`Couldn't verify this device's approval. Select Check now to try again, or choose another option below.`
+
+/**
+ * What the waiting screen says when an approval check fails. A timeout and an unsupported runtime
+ * keep their own localized copy; anything else gets retry guidance, never an internal message.
+ */
+const describeApprovalFailure = (error: Error): string =>
+  error instanceof EncryptionRequestTimeoutError || error instanceof EncryptedSyncUnsupportedError
+    ? getEncryptionErrorMessage(error, i18n._(approvalUnverifiedMessage))
+    : i18n._(approvalUnverifiedMessage)
 
 /**
  * State machine for the sync setup wizard.
@@ -166,209 +275,319 @@ export const useSyncSetup = () => {
   const { t } = useLingui()
   const httpClient = useHttpClient()
   const [state, dispatch] = useReducer(reducer, initialState)
+  const operation = useAsyncAttempt()
+
+  /** Admit one operation synchronously; only its current attempt may publish UI transitions. */
+  const runOperation = async <T>(
+    fallback: T,
+    run: (update: (action: SyncSetupAction) => void, isCurrent: () => boolean) => Promise<T>,
+  ): Promise<T> => {
+    const attempt = operation.begin()
+    if (!attempt) {
+      return fallback
+    }
+    const update = (action: SyncSetupAction) => {
+      if (attempt.isCurrent()) {
+        dispatch(action)
+      }
+    }
+    try {
+      const result = await run(update, attempt.isCurrent)
+      return attempt.isCurrent() ? result : fallback
+    } finally {
+      attempt.finish()
+    }
+  }
+
+  /** Polling must not override a manual operation before React cleans up its subscription. */
+  const updateWhileIdle = (action: SyncSetupAction) => {
+    const attempt = operation.begin()
+    if (!attempt) {
+      return
+    }
+    dispatch(action)
+    attempt.finish()
+  }
 
   /**
    * Register this device and route the wizard. Also returns the account's passkey
    * slot as just detected, because a caller acting on the result in the same tick
    * would otherwise read the slot from the render before detection ran.
    */
-  const continueIntro = async (): Promise<{ outcome: IntroOutcome; passkeySlotCredentialId: string | null }> => {
-    dispatch({ type: 'CONTINUE_INTRO' })
+  const continueIntro = () =>
+    runOperation<{ outcome: IntroOutcome; passkeySlotCredentialId: string | null }>(
+      { outcome: 'error', passkeySlotCredentialId: null },
+      async (update, isCurrent) => {
+        update({ type: 'CONTINUE_INTRO' })
 
-    try {
-      await registerThisDevice(httpClient)
-      dispatch({ type: 'SET_APPROVAL_FINGERPRINT', payload: await getThisDeviceApprovalFingerprint() })
-      const metadata = await fetchMetadataOrNull(httpClient)
-      const passkeySlotCredentialId = metadata?.passkey_credential_id ?? null
-      const done = (outcome: IntroOutcome) => ({ outcome, passkeySlotCredentialId })
-      dispatch({ type: 'SET_PASSKEY_SLOT', payload: passkeySlotCredentialId })
-      const accountState = classifyEncryptionMetadata(metadata)
+        try {
+          await registerThisDevice(httpClient)
+          if (!isCurrent()) {
+            return { outcome: 'error', passkeySlotCredentialId: null }
+          }
+          update({ type: 'SET_APPROVAL_FINGERPRINT', payload: await getThisDeviceApprovalFingerprint() })
+          const metadata = await fetchEncryptionMetadataOrNull(httpClient)
+          if (!isCurrent()) {
+            return { outcome: 'error', passkeySlotCredentialId: null }
+          }
+          const passkeySlotCredentialId = metadata?.passkey_credential_id ?? null
+          const done = (outcome: IntroOutcome) => ({ outcome, passkeySlotCredentialId })
+          update({ type: 'SET_PASSKEY_SLOT', payload: passkeySlotCredentialId })
+          update({
+            type: 'SET_LEGACY_RECOVERY_PHRASE',
+            payload: metadata?.kdf_salt != null && !kdfSaltRequiresContinuity(metadata.kdf_salt),
+          })
+          const accountState = classifyEncryptionMetadata(metadata)
 
-      if (accountState === 'none') {
-        // No server-side encryption yet — this device bootstraps it.
-        dispatch({ type: 'DETECTED_FIRST_DEVICE' })
-        return done('first-device')
-      }
+          if (accountState === 'none') {
+            // No server-side encryption yet — this device bootstraps it.
+            update({ type: 'DETECTED_FIRST_DEVICE' })
+            return done('first-device')
+          }
 
-      // v1 or v2 account: the idempotent migrator/follower dispatcher decides
-      // whether this device migrates (v1 + holds the legacy CK), follows (v2 or
-      // an already-migrated account), or must wait for approval. A v1 account
-      // routes into the seamless migration — never a reset.
-      const result = await ensureV2Encryption(httpClient).catch((error) => {
-        if (error instanceof DeviceApprovalError && error.reason === 'recipient-unverified') {
-          approvalVerificationFailed()
-          return { outcome: 'awaiting-approval' } as const
+          // v1 or v2 account: the idempotent migrator/follower dispatcher decides
+          // whether this device migrates (v1 + holds the legacy CK), follows (v2 or
+          // an already-migrated account), or must wait for approval. A v1 account
+          // routes into the seamless migration — never a reset.
+          const result = await ensureV2Encryption(httpClient).catch((error) => {
+            if (error instanceof DeviceApprovalError && error.reason === 'recipient-unverified') {
+              approvalVerificationFailed(update)
+              return { outcome: 'awaiting-approval' } as const
+            }
+            throw error
+          })
+          switch (result.outcome) {
+            case 'migrated':
+              update({ type: 'SET_RECOVERY_KEY', payload: result.recoveryKey })
+              return done('migrated')
+            case 'followed':
+            case 'already-v2':
+              update({ type: 'SETUP_COMPLETE' })
+              return done('already-trusted')
+            case 'awaiting-approval':
+            case 'not-applicable':
+              update({ type: 'DETECTED_ADDITIONAL_DEVICE' })
+              return done('additional-device')
+          }
+        } catch (err) {
+          const message = getEncryptionErrorMessage(err, t`Failed to register device`)
+          update({ type: 'SET_ERROR', payload: message })
+          return { outcome: 'error', passkeySlotCredentialId: null }
         }
-        throw error
-      })
-      switch (result.outcome) {
-        case 'migrated':
-          dispatch({ type: 'SET_RECOVERY_KEY', payload: result.recoveryKey })
-          return done('migrated')
-        case 'followed':
-        case 'already-v2':
-          dispatch({ type: 'SETUP_COMPLETE' })
-          return done('already-trusted')
-        case 'awaiting-approval':
-        case 'not-applicable':
-          dispatch({ type: 'DETECTED_ADDITIONAL_DEVICE' })
-          return done('additional-device')
-      }
-    } catch (err) {
-      if (err instanceof HttpError && err.response.status === 422) {
-        dispatch({
-          type: 'SET_ERROR',
-          payload: i18n._(
-            msg`You have reached the maximum number of devices. Revoke an existing device to add a new one.`,
-          ),
-        })
-        return { outcome: 'error', passkeySlotCredentialId: null }
-      }
-      const message = err instanceof Error ? err.message : t`Failed to register device`
-      dispatch({ type: 'SET_ERROR', payload: message })
-      return { outcome: 'error', passkeySlotCredentialId: null }
-    }
-  }
+      },
+    )
 
   const goBack = () => dispatch({ type: 'GO_BACK' })
 
-  const continueFirstDeviceSetup = async () => {
-    dispatch({ type: 'START_LOADING' })
+  const continueFirstDeviceSetup = () =>
+    runOperation<void>(undefined, async (update) => {
+      update({ type: 'START_LOADING' })
 
-    try {
-      const recoveryKey = await completeFirstDeviceSetup(httpClient)
-      dispatch({ type: 'SET_RECOVERY_KEY', payload: recoveryKey })
-    } catch (err) {
-      // Another device may have completed first-device setup — check canary and switch flow
-      if (err instanceof HttpError && err.response.status === 403) {
-        try {
-          const hasCanary = await checkCanaryExists(httpClient)
-          if (hasCanary) {
-            dispatch({ type: 'DETECTED_ADDITIONAL_DEVICE' })
+      try {
+        const recoveryKey = await completeFirstDeviceSetup(httpClient)
+        update({ type: 'SET_RECOVERY_KEY', payload: recoveryKey })
+      } catch (err) {
+        // Another device may have completed first-device setup — check canary and switch flow
+        if (err instanceof HttpError && err.response.status === 403) {
+          try {
+            const hasCanary = await checkCanaryExists(httpClient)
+            if (hasCanary) {
+              update({ type: 'DETECTED_ADDITIONAL_DEVICE' })
+              return
+            }
+          } catch {
+            update({ type: 'RESET' })
             return
           }
-        } catch {
-          dispatch({ type: 'RESET' })
-          return
         }
+        const message = getEncryptionErrorMessage(err, t`Failed to set up encryption`)
+        update({ type: 'SET_ERROR', payload: message })
       }
-      const message = err instanceof Error ? err.message : t`Failed to set up encryption`
-      dispatch({ type: 'SET_ERROR', payload: message })
-    }
-  }
+    })
 
   const goToRecoveryKeyEntry = () => dispatch({ type: 'GO_TO_RECOVERY_KEY_ENTRY' })
-  const chooseAdditionalDevice = () => dispatch({ type: 'DETECTED_ADDITIONAL_DEVICE' })
+  const chooseAdditionalDevice = () => dispatch({ type: 'RETURN_TO_APPROVAL' })
 
   const setRecoveryKeyInput = (value: string) => dispatch({ type: 'SET_RECOVERY_KEY_INPUT', payload: value })
 
-  const submitRecoveryKey = async () => {
-    const normalized = state.recoveryKeyInput.trim().toLowerCase().replace(/\s+/g, ' ')
-    const wordCount = normalized.split(' ').length
+  const submitRecoveryKey = () =>
+    runOperation<RecoverySubmitOutcome>('failed', async (update, isCurrent) => {
+      const normalized = normalizeRecoveryPhrase(state.recoveryKeyInput)
+      const wordCount = normalized ? normalized.split(' ').length : 0
 
-    if (wordCount !== 24) {
-      dispatch({
-        type: 'SET_RECOVERY_KEY_ERROR',
-        payload: `Recovery phrase must be 24 words (you entered ${wordCount}).`,
-      })
-      return false
-    }
-
-    dispatch({ type: 'START_LOADING' })
-
-    try {
-      await recoverWithKey(httpClient, normalized)
-      return true
-    } catch (err) {
-      if (err instanceof ValidationError) {
-        dispatch({
+      if (wordCount !== 24) {
+        update({
           type: 'SET_RECOVERY_KEY_ERROR',
-          payload: i18n._(
-            msg`Invalid recovery phrase. Please check that all words are correct and in the right order.`,
-          ),
+          payload: i18n._(msg`Recovery phrase must be 24 words (you entered ${wordCount}).`),
         })
-      } else {
-        const message = err instanceof Error ? err.message : i18n._(msg`Recovery failed`)
-        dispatch({ type: 'SET_RECOVERY_KEY_ERROR', payload: message })
+        return 'failed'
       }
-      return false
-    }
-  }
 
-  const approvalVerificationFailed = () =>
-    dispatch({
-      type: 'SET_APPROVAL_ERROR',
-      payload: i18n._(
-        msg`Couldn't verify this device's approval. Select Check now to try again, or choose another option below.`,
-      ),
+      update({ type: 'START_LOADING' })
+
+      try {
+        const result = await recoverWithKey(httpClient, normalized)
+        if (result.outcome !== 'step-up-required') {
+          return settleRecovery(result, update)
+        }
+      } catch (err) {
+        logUnexpectedRecoveryFailure(err)
+        update({ type: 'SET_RECOVERY_KEY_ERROR', payload: describeRecoveryFailure(err) })
+        return 'failed'
+      }
+      // A v1 phrase checked out locally; upgrading the account from this
+      // untrusted device also needs the code emailed to the account.
+      // The wizard may have closed meanwhile; don't email a code nobody will enter.
+      if (!isCurrent()) {
+        return 'failed'
+      }
+      // On a 429 a code sent moments ago is still in the inbox, so go enter it.
+      try {
+        await requestV1RecoveryCode(httpClient, normalized)
+      } catch (err) {
+        if (!isStepUpThrottled(err)) {
+          logUnexpectedRecoveryFailure(err)
+          const message =
+            err instanceof V1UpgradeRaceError ? describeRecoveryFailure(err) : i18n._(stepUpCodeRequestFailedMessage)
+          update({ type: 'SET_RECOVERY_KEY_ERROR', payload: message })
+          return 'failed'
+        }
+      }
+      update({ type: 'GO_TO_RECOVERY_STEP_UP' })
+      return 'step-up'
     })
 
-  const confirmApproval = async () => {
-    dispatch({ type: 'START_LOADING' })
+  /** Finish a v1-phrase recovery with the emailed code, upgrading the account from this device. */
+  const submitRecoveryStepUp = () =>
+    runOperation<RecoverySubmitOutcome>('failed', async (update) => {
+      update({ type: 'START_LOADING' })
+      try {
+        const result = await recoverWithKey(httpClient, normalizeRecoveryPhrase(state.recoveryKeyInput), {
+          stepUpOtp: state.stepUpOtp,
+        })
+        return settleRecovery(result, update)
+      } catch (err) {
+        if (err instanceof StepUpVerificationError) {
+          update({ type: 'STEP_UP_CODE_REJECTED', payload: i18n._(stepUpCodeRejectedMessage) })
+          return 'failed'
+        }
+        logUnexpectedRecoveryFailure(err)
+        update({ type: 'SET_STEP_UP_ERROR', payload: describeRecoveryFailure(err) })
+        return 'failed'
+      }
+    })
 
-    try {
-      const approved = await checkApprovalAndUnwrap(httpClient)
-      if (!approved) {
-        dispatch({
+  /** Email a fresh step-up code, which replaces the old one, so the box starts empty. */
+  const resendRecoveryStepUp = () =>
+    runOperation<void>(undefined, async (update) => {
+      update({ type: 'START_LOADING' })
+      try {
+        await requestV1RecoveryCode(httpClient, normalizeRecoveryPhrase(state.recoveryKeyInput))
+        update({ type: 'GO_TO_RECOVERY_STEP_UP' })
+      } catch (err) {
+        if (isStepUpThrottled(err)) {
+          update({ type: 'SET_STEP_UP_ERROR', payload: i18n._(stepUpCodeThrottledMessage) })
+          return
+        }
+        logUnexpectedRecoveryFailure(err)
+        const message =
+          err instanceof V1UpgradeRaceError ? describeRecoveryFailure(err) : i18n._(stepUpCodeResendFailedMessage)
+        update({ type: 'SET_STEP_UP_ERROR', payload: message })
+      }
+    })
+
+  const setStepUpOtp = (otp: string) => dispatch({ type: 'SET_STEP_UP_OTP', payload: otp })
+  const cancelRecoveryStepUp = () => dispatch({ type: 'CANCEL_RECOVERY_STEP_UP' })
+
+  const approvalVerificationFailed = (update: (action: SyncSetupAction) => void = updateWhileIdle) =>
+    update({ type: 'SET_APPROVAL_ERROR', payload: i18n._(approvalUnverifiedMessage) })
+
+  /** The automatic check keeps failing: say so as the manual check would, which also offers Check now. */
+  const approvalCheckFailed = (error: Error) =>
+    updateWhileIdle({ type: 'SET_APPROVAL_ERROR', payload: describeApprovalFailure(error) })
+
+  const confirmApproval = () =>
+    runOperation(false, async (update) => {
+      update({ type: 'START_LOADING' })
+
+      try {
+        const approved = await checkApprovalAndUnwrap(httpClient)
+        if (!approved) {
+          update({
+            type: 'SET_APPROVAL_ERROR',
+            payload: i18n._(msg`This device has not been approved yet. Please approve it from a trusted device first.`),
+          })
+          return false
+        }
+        update({ type: 'STOP_LOADING' })
+        return true
+      } catch (err) {
+        if (err instanceof HttpError && err.response.status === 422) {
+          update({ type: 'DEVICE_DENIED' })
+          return false
+        }
+        if (err instanceof DeviceApprovalError && err.reason === 'recipient-unverified') {
+          approvalVerificationFailed(update)
+          return false
+        }
+        // A fixed line, like the other approval failures: the error itself may carry key material.
+        console.error('Failed to check device approval.')
+        update({
           type: 'SET_APPROVAL_ERROR',
-          payload: i18n._(msg`This device has not been approved yet. Please approve it from a trusted device first.`),
+          payload: err instanceof Error ? describeApprovalFailure(err) : i18n._(approvalUnverifiedMessage),
         })
         return false
       }
-      dispatch({ type: 'STOP_LOADING' })
-      return true
-    } catch (err) {
-      if (err instanceof HttpError && err.response.status === 422) {
-        dispatch({ type: 'DEVICE_DENIED' })
-        return false
-      }
-      if (err instanceof DeviceApprovalError && err.reason === 'recipient-unverified') {
-        approvalVerificationFailed()
-        return false
-      }
-      const message = err instanceof Error ? err.message : t`Failed to check approval`
-      dispatch({ type: 'SET_APPROVAL_ERROR', payload: message })
-      return false
-    }
-  }
+    })
 
   /**
    * Unlock this device with the account's passkey instead of waiting for
    * approval. Returns true once the device holds the keys.
    */
-  const unlockWithPasskey = async () => {
-    const credentialId = state.passkeySlotCredentialId
-    if (!credentialId) {
-      return false
-    }
-    dispatch({ type: 'START_LOADING' })
-    try {
-      const prfOutput = await getPasskeyPrfOutput(credentialId)
-      if (!prfOutput) {
-        dispatch({ type: 'SET_APPROVAL_ERROR', payload: i18n._(msg`This passkey can't unlock sync on this device.`) })
+  const unlockWithPasskey = () =>
+    runOperation(false, async (update, isCurrent) => {
+      const credentialId = state.passkeySlotCredentialId
+      if (!credentialId) {
         return false
       }
-      await unlockWithPasskeySlot(httpClient, { credentialId, prfOutput })
-      return true
-    } catch (err) {
-      if (isPasskeyCancellation(err)) {
-        dispatch({ type: 'STOP_LOADING' })
+      update({ type: 'START_LOADING' })
+      try {
+        const prfOutput = await getPasskeyPrfOutput(credentialId)
+        if (!isCurrent()) {
+          return false
+        }
+        if (!prfOutput) {
+          update({ type: 'SET_APPROVAL_ERROR', payload: i18n._(msg`This passkey can't unlock sync on this device.`) })
+          return false
+        }
+        await unlockWithPasskeySlot(httpClient, { credentialId, prfOutput })
+        return true
+      } catch (err) {
+        if (isPasskeyCancellation(err)) {
+          update({ type: 'STOP_LOADING' })
+          return false
+        }
+        console.error('Passkey unlock failed:', err)
+        const message =
+          err instanceof PasskeyContinuityError
+            ? i18n._(
+                msg`This passkey unlocked keys that don't belong to your account, so nothing was changed on this device.`,
+              )
+            : err instanceof ValidationError
+              ? i18n._(msg`This passkey can't unlock sync for this account.`)
+              : i18n._(msg`Couldn't unlock sync with your passkey. Please try again.`)
+        update({ type: 'SET_APPROVAL_ERROR', payload: message })
         return false
       }
-      console.error('Passkey unlock failed:', err)
-      const message =
-        err instanceof ValidationError
-          ? i18n._(msg`This passkey can't unlock sync for this account.`)
-          : i18n._(msg`Couldn't unlock sync with your passkey. Please try again.`)
-      dispatch({ type: 'SET_APPROVAL_ERROR', payload: message })
-      return false
-    }
-  }
+    })
 
-  const goToPasskeyEnroll = (after: AfterPasskey) => dispatch({ type: 'GO_TO_PASSKEY_ENROLL', payload: after })
-  const completeSetup = () => dispatch({ type: 'SETUP_COMPLETE' })
-  const deviceDenied = () => dispatch({ type: 'DEVICE_DENIED' })
-  const reset = () => dispatch({ type: 'RESET' })
+  const goToPasskeyEnroll = (after: AfterPasskey) => updateWhileIdle({ type: 'GO_TO_PASSKEY_ENROLL', payload: after })
+  const completeSetup = () => updateWhileIdle({ type: 'SETUP_COMPLETE' })
+  const deviceDenied = () => updateWhileIdle({ type: 'DEVICE_DENIED' })
+  const reset = () => {
+    operation.cancel()
+    dispatch({ type: 'RESET' })
+  }
 
   return {
     ...state,
@@ -379,8 +598,13 @@ export const useSyncSetup = () => {
     chooseAdditionalDevice,
     setRecoveryKeyInput,
     submitRecoveryKey,
+    submitRecoveryStepUp,
+    resendRecoveryStepUp,
+    setStepUpOtp,
+    cancelRecoveryStepUp,
     confirmApproval,
     approvalVerificationFailed,
+    approvalCheckFailed,
     unlockWithPasskey,
     goToPasskeyEnroll,
     completeSetup,

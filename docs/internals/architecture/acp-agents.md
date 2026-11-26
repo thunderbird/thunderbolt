@@ -86,9 +86,49 @@ disconnects and throws.
 - registers a background rebuild with the reconnect scheduler, unless the termination carries
   `retryable: false` (redialing the same endpoint cannot succeed).
 
-`disposeAdapter` / `disposeAllAdapters` are the real teardown path (agent deleted, config edited,
-sign-out). `clearLocalData` calls the latter first so no transport survives an identity change
-([delete-account-and-revoke-device.md](delete-account-and-revoke-device.md)).
+`disposeAdapter` / `disposeAllAdapters` are the real teardown path (agent disabled or deleted,
+config edited, sign-out). `clearLocalData` calls the latter first so no transport survives an
+identity change ([delete-account-and-revoke-device.md](delete-account-and-revoke-device.md)).
+
+### A disabled or deleted agent gets no new prompt
+
+An open chat holds the `Agent` object it picked. Disabling or deleting the agent, in Settings or
+through a sync from another device, never updates that object, so the client rereads the row with
+`isAgentActive` ([src/dal/agents.ts](../../../src/dal/agents.ts)). A custom agent must be enabled and
+not soft-deleted. A system agent must still be listed by discovery. These places check it:
+
+- `connectToAgent`, before it opens any new connection. A send, the commands warm-up and a
+  background rebuild all go through it, so none of them dials a disabled or deleted agent.
+- The ACP adapter, before `initialize`, before each `session/new`, `session/resume` or
+  `session/load`, and right before each `session/prompt`. A sync can land while the transport opens
+  or a session is set up, and a cached connection never goes back through `connectToAgent`.
+- The send path (`createAgentRoutingFetch`), before it saves the user turn and again just before
+  `adapter.fetch` or `adapter.compact`. The second read is the last one for the hosted agent, which
+  posts as soon as `adapter.fetch` runs.
+- `useWarmAcpCommands`, before it opens a session on a cached connection.
+
+A refused send fails with the `agent-unavailable` chat error and is not retried. If its prompt was
+already saved, it is flagged like a stopped prompt, so the auto-run never sends it after a reload to
+whatever agent the thread falls back to.
+
+The race point is the last read before the prompt goes out: right before `session/prompt` for an
+ACP agent, right before `adapter.fetch` for the hosted agent. Nothing awaits between that read and
+the dispatch.
+
+A prompt dispatched before the change lands is already in flight. Disabling or deleting the agent on
+this device disposes the adapter, which ends the prompt. A change synced from another device lets it
+finish, and does not dispose the cached connection either: it sits idle until it closes, and is
+never rebuilt. A connection that was already opening when the agent was disabled or deleted may
+finish opening its transport, but it is closed before the ACP handshake.
+
+The chat keeps the disabled or deleted agent selected. Falling back on its own could hand the
+history to an agent the user never chose for that chat, so the user picks another one in the header
+instead.
+
+A stopped prompt closes its local stream and removes its notification and permission handlers immediately.
+The adapter keeps the session occupied until the remote prompt resolves or rejects: a second prompt or
+configuration change is rejected during that interval, so late output from the cancelled turn cannot enter
+a later reply. Other sessions on the shared connection remain usable.
 
 ### Retry budget and terminal close codes
 
@@ -116,13 +156,42 @@ because connect rejections reach the chat layer as a bare string.
 - [`translators/acp-to-ai-sdk.ts`](../../../src/acp/translators/acp-to-ai-sdk.ts) converts ACP
   `session/update` notifications into the AI-SDK v5 UI message stream (`data: <json>\n\n` chunks)
   `DefaultChatTransport` already consumes, coalescing text deltas on a 200 ms flush. It is the only
-  seam where ACP vocabulary becomes app vocabulary; the chat UI does not know ACP exists.
+  seam where ACP stream events become UI message parts.
 - `available_commands_update` is captured at the adapter's session router rather than in a prompt's
-  stream, because commands are _agent-level_, shared by every thread on that agent. They land in
-  [`agent-commands-store.ts`](../../../src/acp/agent-commands-store.ts) keyed by agent id and surface in
-  the slash menu; termination and disposal clear them, so no command outlives its connection.
+  stream. The slash menu uses the latest agent-wide list in
+  [`agent-commands-store.ts`](../../../src/acp/agent-commands-store.ts), keyed by agent id.
+  Session-specific controls use the owning session's list in
+  [`session-state-store.ts`](../../../src/acp/session-state-store.ts); one thread advertising
+  `/compact` must not enable it in another. Termination clears both stores.
 - Remote and managed agents get project instructions folded into the prompt text but no project tool,
   because ACP has no system channel ([projects.md](projects.md)).
+
+### Context compaction
+
+The ACP agent owns its context and compaction policy. Thunderbolt advertises
+`clientCapabilities.session.compaction: {}` and displays `compaction_update` and
+`compaction_summary_chunk` as persistent `data-acp-compaction` message parts. An entity is keyed
+by agent, session, and compaction ID: later notifications patch it in place, including idle
+updates and history replay. Omitted fields retain their value, `null` clears them, summary
+arrays replace prior content, and chunks append. Unknown status strings remain stored and
+receive a generic presentation. A completed update without a summary still gets a completion row.
+
+These summaries are presentation data, never Pi checkpoints or instructions for reconstructing
+the remote context. The viewer renders text and resource descriptions without loading embedded
+media. Earlier conversation history remains intact. `usage_update.used` and `.size` drive the
+ACP context meter independently of billing usage; unknown usage is shown as unknown. External
+agents decide when to compact and whether a prompt fits their context window.
+
+The context menu offers **Compact now** only when the current session advertises `/compact`.
+It sends the native command through the normal prompt/cancellation path. Optional instructions
+are offered only when the command declares input support. Command prompts bypass project/skill
+decoration and transcript replay so the agent receives the slash command verbatim. A command
+that fails or completes silently is never automatically retried. Agents without structured
+notifications can still describe the result through ordinary messages.
+
+The frontend pins ACP SDK **1.9.0**, which provides native compaction validation while retaining
+the existing `ClientSideConnection` API. SDK 2.x changes that API and needs a separate migration;
+the CLI and backend keep their independent dependencies.
 
 ## Transport routing
 
@@ -313,9 +382,16 @@ for `HAYSTACK_PIPELINES is not valid JSON` or `HAYSTACK_PIPELINES schema mismatc
 half of ACP over the socket's text frames, driving the Deepset pipeline over SSE
 ([sse-parser.ts](../../../backend/src/haystack/sse-parser.ts)).
 
-- Auth is the same bearer subprotocol the client attaches, validated in `open()` rather than
-  `beforeHandle`: Bun's adapter can invoke `beforeHandle` more than once per upgrade, `open()` runs
-  exactly once per accepted socket.
+- Auth uses the same bearer subprotocol the client attaches. The first validation runs in `open()`
+  rather than `beforeHandle`: Bun's adapter can invoke `beforeHandle` more than once per upgrade.
+  Sockets using the same bearer in one backend process share a successful session check for at most
+  one second on inbound frames. A forced database poll every five seconds ignores that short cache,
+  including while idle or streaming. Revocation closes all sockets for that bearer and aborts active
+  Deepset work. Inbound and server-initiated traffic may pass for up to five seconds after revocation,
+  plus lookup and close time. Checks do not refresh session expiry, and individual SSE chunks do not
+  trigger database lookups. A lookup that fails, for example while the database restarts, is not a
+  revocation: only the handshake that made it is refused with `1013`, and live sockets keep their last
+  result until a lookup succeeds or finds the session gone.
 - The carrier subprotocol is echoed back so strict clients see their offer accepted. The bearer entry
   is deliberately _not_, keeping it out of `WebSocket.protocol` and proxy response logs.
 

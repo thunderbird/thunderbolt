@@ -2,6 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { bindModelProvider } from '@/providers/model-connection'
+import { loadReasoningCapabilities } from './reasoning-effort'
+import { reasoningProviderOptions } from './reasoning-provider-options'
+import type { ReasoningEffort } from '@shared/reasoning-effort'
 import { assembleBuiltInModelInput, createPromptParts, type BuiltInModelInput } from '@/ai/prompt'
 import { loadProjectContextForThread } from '@/projects/load-project-context'
 import { createArtifactContextTool } from '@/artifacts/artifact-context-tool'
@@ -30,11 +34,11 @@ import {
   shouldRetry,
 } from '@/ai/step-logic'
 import { getAllSkills, getIntegrationStatus, getModel, getModelProfile, getSettings } from '@/dal'
-import { getMessage } from '@/dal/chat-messages'
-import { isWidgetSkillId } from '@/defaults/skills'
+import { getMessageCache } from '@/dal/chat-messages'
+import { isOfficeSkillId, isWidgetSkillId } from '@/defaults/skills'
 import { getActiveLocale } from '@/i18n/active-locale'
-import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
-import { createSkillTool, selectEnabledSkillDefinitions } from '@/skills/skill-tool'
+import { extractLastUserText, loadSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
+import { createSkillTool, selectEnabledSkillDefinitions, type RequestSkillDefinition } from '@/skills/skill-tool'
 import { isVoiceModeActive, voiceModeSystemNote } from '@/voice/voice-mode'
 import { collectAskEntriesFromCache, formatAskResponsesNote } from '@/widgets/ask/lib'
 import { getDb } from '@/db/database'
@@ -46,12 +50,13 @@ import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { handleSessionRejected } from '@/lib/session-rejected'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
+import { usesLocalProviders } from '@/lib/provider-mode'
 import { classifyErrorKind, createChatErrorResponse } from '@/lib/error-utils'
 import { fetch as baseFetch } from '@/lib/fetch'
 import { isLoopbackHost } from '@/lib/mcp-url-validation'
 import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
-import type { FetchFn } from '@/lib/proxy-fetch'
-import { createToolset, getAvailableTools, type ToolCallCache } from '@/lib/tools'
+import { createLiveProxyFetch, type FetchFn } from '@/lib/proxy-fetch'
+import { createToolset, getAvailableTools, loadConnectedSearchApis, type ToolCallCache } from '@/lib/tools'
 import { recordDebugTranscriptRetry, recordDebugTranscriptSystemPrompts } from '@/debug-transcript/recorder'
 import { attemptsMadeFromCompletedRetries, emptyResponseRetryReason } from '@/debug-transcript/retry-metadata'
 import type { Model, ModelProfile, Skill, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
@@ -60,6 +65,7 @@ import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { HttpClient } from '@/lib/http'
+import type { ReadWorkspaceFile } from '@/office/script-inputs'
 import { v7 as uuidv7 } from 'uuid'
 
 // Currently @openrouter/ai-sdk-provider is NOT compatible with Vercel AI SDK v5. If you enable this, you will get the following error:
@@ -85,6 +91,7 @@ import {
 } from 'ai'
 import type { MCPClient, NamedMCPClient, ReconnectClient } from '@/lib/mcp-provider'
 import { isMcpDiscoveryError } from '@/lib/mcp-errors'
+import { withTimeout } from '@/lib/timeout'
 import { smoothStreamWordDelayMs } from '@/chats/chat-throttle'
 import type { SkillDefinition } from '@shared/agent-core/skills'
 import { sanitizeToolPrefix } from '@shared/mcp-tool-names'
@@ -95,6 +102,19 @@ import { createMessageMetadata } from './message-metadata'
 const fetch: typeof baseFetch = (input, init) =>
   baseFetch(input, isSsoMode() ? { ...init, credentials: 'include' } : init)
 fetch.preconnect = baseFetch.preconnect
+
+// Otari supports browser CORS. Keep its delegated key and prompts on the chosen
+// gateway, independent of Thunderbolt's backend/proxy or SSO cookie settings.
+// SDKs set User-Agent, which Firefox sends and lists in the preflight; Otari's
+// CORS allowlist rejects it, so drop it and let the browser send its own.
+const otariFetch: FetchFn = Object.assign(
+  (input: RequestInfo | URL, init?: RequestInit) => {
+    const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined))
+    headers.delete('user-agent')
+    return baseFetch(input, { ...init, headers, credentials: 'omit', redirect: 'error' })
+  },
+  { preconnect: baseFetch.preconnect },
+)
 
 /**
  * Wrap a fetch so every request carries the `X-App-Version` header. Only apply
@@ -129,6 +149,7 @@ export const ollama = createOpenAI({
 })
 
 type AiFetchStreamingResponseOptions = {
+  reasoningEffort?: ReasoningEffort
   init: RequestInit
   modelId: string
   mcpClients?: NamedMCPClient[]
@@ -144,6 +165,11 @@ type AiFetchStreamingResponseOptions = {
   getProxyFetch: () => FetchFn
 }
 
+/** Longest a send waits for an MCP server to (re)connect and answer discovery
+ *  before skipping its tools for the turn. Only a server that accepts the
+ *  connection and never answers reaches it. */
+const defaultMcpReconnectTimeoutMs = 3_000
+
 /**
  * Merge every enabled MCP server's tools into `toolset` (mutated in place and
  * returned alongside a human-readable summary). Each tool is namespaced
@@ -154,12 +180,24 @@ type AiFetchStreamingResponseOptions = {
  * (`render`, `render_2`, …); each final prefix is reserved, so a later server
  * that itself sanitizes to a generated prefix (`render_2`) is bumped again.
  *
- * Expected discovery failures skip that server for this turn and reconnect once
- * in the background for the next send, surfacing the error in the provider.
- * Programming errors propagate. After prefixing, a name that still collides
- * with an already-registered tool is skipped (first-registered wins) as
- * a safety net. The returned `summary` lists `- <prefix> (<n> tools)` per server
- * (undefined when no MCP tools were added), injected into the system prompt.
+ * An expected discovery failure (a dropped session, a 4xx/5xx, a network error)
+ * reconnects the server and retries discovery once within the same send, so an
+ * expired idle session doesn't cost the model its tools for a turn. A server
+ * still connecting when the send starts (first connect or reconnect) arrives with
+ * that connect instead of a client. Either wait, including the discovery that
+ * follows it, is bounded per server by `reconnectTimeoutMs` (default
+ * {@link defaultMcpReconnectTimeoutMs}); past it the server is skipped for this
+ * turn while the connect carries on. The first discovery on a connected client
+ * is not bounded, so a slow but healthy server isn't cut off. A failed connect,
+ * or a second discovery failure on the fresh client, skips the server too; the
+ * second failure is only logged, since the reconnect already cleared the
+ * provider's error. Servers are discovered in parallel, so the send waits for
+ * the slowest one rather than the sum, and merged in order.
+ * Programming errors propagate, unless the server's wait has already timed out.
+ * After prefixing, a name that still collides with an already-registered tool is
+ * skipped (first-registered wins) as a safety net. The returned `summary` lists
+ * `- <prefix> (<n> tools)` per server (undefined when no MCP tools were added),
+ * injected into the system prompt.
  *
  * Also returns `mcpTools`, mapping each namespaced tool name (`<prefix>_<tool>`)
  * to its owning server's `{ name, url }` plus the bare `toolName`. This is the
@@ -173,6 +211,7 @@ export const mergeMcpTools = async (
   toolset: Record<string, Tool>,
   mcpClients: NamedMCPClient[],
   reconnectClient: ReconnectClient,
+  { reconnectTimeoutMs = defaultMcpReconnectTimeoutMs }: { reconnectTimeoutMs?: number } = {},
 ): Promise<{ toolset: Record<string, Tool>; summary?: string; mcpTools: UIMessageMetadata['mcpTools'] }> => {
   const takenPrefixes = new Set<string>()
   const mcpServerEntries: string[] = []
@@ -199,7 +238,8 @@ export const mergeMcpTools = async (
     return added
   }
 
-  for (const { name: serverName, url, client } of mcpClients) {
+  /** Reserve a unique prefix for `serverName`, probing upward on collision. */
+  const reservePrefix = (serverName: string): string => {
     const basePrefix = sanitizeToolPrefix(serverName)
     let prefix = basePrefix
     let suffix = 2
@@ -208,26 +248,66 @@ export const mergeMcpTools = async (
       suffix++
     }
     takenPrefixes.add(prefix)
+    return prefix
+  }
 
-    const server = { name: serverName, url }
-    const discover = async () => {
-      try {
-        return await client.tools()
-      } catch (err) {
-        if (!isMcpDiscoveryError(err)) {
-          throw err
-        }
-        console.warn(`MCP tool discovery failed for "${serverName}"; skipping its tools for this send`, err)
-        void reconnectClient(client, err)
-        return {}
-      }
+  /** Wait for a connect, then run discovery once on the client it produced.
+   *  Returns `{}` when the connect fails or the fresh client fails discovery too. */
+  const discoverOnConnect = async (serverName: string, connecting: Promise<MCPClient | null>) => {
+    const fresh = await connecting
+    if (!fresh) {
+      console.warn(`MCP server "${serverName}" did not connect; skipping its tools for this send`)
+      return {}
     }
+    try {
+      return await fresh.tools()
+    } catch (err) {
+      if (!isMcpDiscoveryError(err)) {
+        throw err
+      }
+      console.warn(
+        `MCP tool discovery failed for "${serverName}" after reconnect; skipping its tools for this send`,
+        err,
+      )
+      return {}
+    }
+  }
 
-    const added = addTools(prefix, server, await discover())
+  /** {@link discoverOnConnect} under one bound, so a server that reconnects but
+   *  never answers discovery can't hold up the send. `withTimeout` warns when it
+   *  fires; the connect keeps running for the next send. */
+  const discoverAfterConnect = async (serverName: string, connecting: Promise<MCPClient | null>) =>
+    (await withTimeout(
+      discoverOnConnect(serverName, connecting),
+      reconnectTimeoutMs,
+      `MCP connect and discovery for ${serverName}`,
+    )) ?? {}
+
+  const discover = async (entry: NamedMCPClient) => {
+    if (!entry.client) {
+      return discoverAfterConnect(entry.name, entry.connecting)
+    }
+    try {
+      return await entry.client.tools()
+    } catch (err) {
+      if (!isMcpDiscoveryError(err)) {
+        throw err
+      }
+      console.warn(`MCP tool discovery failed for "${entry.name}"; reconnecting and retrying once`, err)
+      return discoverAfterConnect(entry.name, reconnectClient(entry.client, err))
+    }
+  }
+
+  // Prefixes are reserved in order before discovery runs in parallel, then
+  // tools merge in that same order so collisions resolve first-registered-wins.
+  const servers = mcpClients.map((entry) => ({ entry, prefix: reservePrefix(entry.name) }))
+  const discovered = await Promise.all(servers.map(({ entry }) => discover(entry)))
+  servers.forEach(({ entry, prefix }, i) => {
+    const added = addTools(prefix, { name: entry.name, url: entry.url }, discovered[i])
     if (added > 0) {
       mcpServerEntries.push(`- ${prefix} (${added} ${added === 1 ? 'tool' : 'tools'})`)
     }
-  }
+  })
 
   return {
     toolset,
@@ -270,6 +350,9 @@ export const resolveOpenAiCompatConnection = (
   switch (modelConfig.provider) {
     case 'thunderbolt': {
       const cloudUrl = getLocalSetting('cloudUrl')
+      if (usesLocalProviders(cloudUrl)) {
+        return null
+      }
       const token = getAuthToken() || 'thunderbolt'
       // See the `thunderbolt` case in createModel for the SSO/token rationale:
       // SSO web has no bearer token (cookie auth), so strip the placeholder
@@ -291,7 +374,19 @@ export const resolveOpenAiCompatConnection = (
     }
     case 'openai':
       return modelConfig.apiKey
-        ? { baseURL: 'https://api.openai.com/v1', apiKey: modelConfig.apiKey, fetch: getProxyFetch() }
+        ? {
+            baseURL: 'https://api.openai.com/v1',
+            apiKey: modelConfig.apiKey,
+            fetch: createLiveProxyFetch(getProxyFetch),
+          }
+        : null
+    case 'otari':
+      return modelConfig.url && modelConfig.apiKey
+        ? {
+            baseURL: normalizeOpenAiBaseUrl(modelConfig.url),
+            apiKey: modelConfig.apiKey,
+            fetch: otariFetch,
+          }
         : null
     case 'custom': {
       if (!modelConfig.url) {
@@ -302,12 +397,16 @@ export const resolveOpenAiCompatConnection = (
       // hosted proxy (and its SSRF checks) on web or with the toggle on.
       const baseURL = normalizeOpenAiBaseUrl(modelConfig.url)
       const hostname = URL.canParse(baseURL) ? new URL(baseURL).hostname : ''
-      const providerFetch: FetchFn = isLoopbackHost(hostname) ? baseFetch : getProxyFetch()
+      const providerFetch: FetchFn = isLoopbackHost(hostname) ? baseFetch : createLiveProxyFetch(getProxyFetch)
       return { baseURL, apiKey: modelConfig.apiKey ?? '', fetch: providerFetch }
     }
     case 'openrouter':
       return modelConfig.apiKey
-        ? { baseURL: 'https://openrouter.ai/api/v1', apiKey: modelConfig.apiKey, fetch: getProxyFetch() }
+        ? {
+            baseURL: 'https://openrouter.ai/api/v1',
+            apiKey: modelConfig.apiKey,
+            fetch: createLiveProxyFetch(getProxyFetch),
+          }
         : null
     default:
       return null
@@ -351,7 +450,8 @@ export const resolveManagedAnthropicConnection = (
   }
 }
 
-export const createModel = async (modelConfig: Model, getProxyFetch: () => FetchFn) => {
+export const createModel = async (inputModel: Model, getProxyFetch: () => FetchFn) => {
+  const { model: modelConfig, wrapFetch } = await bindModelProvider(inputModel)
   // Resolve transports lazily so cloudUrl and proxy_enabled changes are picked
   // up. Managed models use backend auth; own-key models use platform/toggle
   // routing, except loopback Custom models, which always stay device-direct.
@@ -379,7 +479,8 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       if (!conn) {
         throw new Error('No connection resolved for thunderbolt provider')
       }
-      const { baseURL, apiKey, fetch: providerFetch } = conn
+      const { baseURL, apiKey } = conn
+      const providerFetch = wrapFetch(conn.fetch)
       // OpenAI-vendor thunderbolt models use createOpenAI with .chat() to force Chat Completions API
       // (AI SDK 5 defaults createOpenAI to Responses API which our backend doesn't support)
       if (modelConfig.vendor === 'openai') {
@@ -401,7 +502,7 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
         apiKey: modelConfig.apiKey || '',
         // Native HTTP always sends an Origin, so Anthropic requires this opt-in there too.
         headers: { 'anthropic-dangerous-direct-browser-access': 'true' },
-        fetch: getProxyFetch(),
+        fetch: wrapFetch(createLiveProxyFetch(getProxyFetch)),
       })
       return anthropic(modelConfig.model)
     }
@@ -412,14 +513,15 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       }
       const openai = createOpenAI({
         apiKey: conn.apiKey,
-        fetch: conn.fetch,
+        fetch: wrapFetch(conn.fetch),
       })
       return openai(modelConfig.model)
     }
+    case 'otari':
     case 'custom': {
       const conn = resolveOpenAiCompatConnection(modelConfig, getProxyFetch)
       if (!conn) {
-        throw new Error('No URL provided for custom provider')
+        throw new Error(`No URL provided for ${modelConfig.provider} provider`)
       }
       // `conn.baseURL` and `conn.fetch` already carry the `/v1` normalization
       // and the loopback-vs-proxy dispatch (see resolveOpenAiCompatConnection).
@@ -427,10 +529,10 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       // through the same connection object, so their upstream URL + transport
       // stay in lockstep by construction.
       const openaiCompatible = createOpenAICompatible({
-        name: 'custom',
+        name: modelConfig.provider,
         baseURL: conn.baseURL,
         apiKey: conn.apiKey || undefined,
-        fetch: conn.fetch,
+        fetch: wrapFetch(conn.fetch),
       })
       return openaiCompatible(modelConfig.model)
     }
@@ -445,7 +547,7 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
         name: 'openrouter',
         baseURL: conn.baseURL,
         apiKey: conn.apiKey,
-        fetch: conn.fetch,
+        fetch: wrapFetch(conn.fetch),
       })
       return openrouter(modelConfig.model)
     }
@@ -460,7 +562,7 @@ export type PreparedAiRequestConfig = {
   readonly supportsTools: boolean
   readonly sourceCollector: SourceMetadata[]
   readonly toolset: Record<string, Tool>
-  readonly skills: readonly SkillDefinition[]
+  readonly skills: readonly RequestSkillDefinition[]
   readonly mcpToolsMetadata: UIMessageMetadata['mcpTools']
   readonly stableSystemPrompt: string
   /** Per-send tail of the system prompt: the date/time, plus the open Mini App's
@@ -479,20 +581,28 @@ export type PrepareAiRequestConfigOptions = {
   /** Thread being sent to. Resolves the owning project's instructions into the
    *  stable system prompt; omit for non-thread callers. */
   readonly chatThreadId?: string
+  /** The built-in agent's workspace, where the Office tool looks for an input after the thread's files. The
+   *  legacy pipeline has no workspace and passes none. */
+  readonly readWorkspaceFile?: ReadWorkspaceFile
   readonly telemetry?: TurnTelemetry
 }
 
-/** Register progressive skill loading only for models that support tools. */
+/** Register progressive skill loading only for models that support tools. `loadedSkills` collects what it returned. */
 export const addSkillTool = (
   toolset: Record<string, Tool>,
-  skills: readonly SkillDefinition[],
+  skills: readonly RequestSkillDefinition[],
   supportsTools: boolean,
   webToolBudget?: WebToolBudget,
+  loadedSkills?: Set<string>,
 ): Record<string, Tool> => {
   if (supportsTools) {
-    toolset.skill = createSkillTool(skills, (name) => {
-      webToolBudget?.promote(resolveSkillWebToolIntent(name))
-    })
+    toolset.skill = createSkillTool(
+      skills,
+      (name) => {
+        webToolBudget?.promote(resolveSkillWebToolIntent(name))
+      },
+      loadedSkills,
+    )
   }
   return toolset
 }
@@ -500,11 +610,19 @@ export const addSkillTool = (
 /**
  * Select skills disclosed in the built-in model's system prompt.
  *
- * Tool-capable models receive every enabled skill, while non-tool models only
- * receive widget rendering contracts inline.
+ * Tool-capable models receive every enabled skill, the Office skills only with
+ * `offersOfficeSkills`, while non-tool models only receive widget rendering
+ * contracts inline.
  */
-export const selectPromptSkillDefinitions = (skills: readonly Skill[], supportsTools: boolean): SkillDefinition[] =>
-  selectEnabledSkillDefinitions(supportsTools ? skills : skills.filter(({ id }) => isWidgetSkillId(id)))
+export const selectPromptSkillDefinitions = (
+  skills: readonly Skill[],
+  supportsTools: boolean,
+  offersOfficeSkills = false,
+): SkillDefinition[] =>
+  selectEnabledSkillDefinitions(
+    supportsTools ? skills : skills.filter(({ id }) => isWidgetSkillId(id)),
+    offersOfficeSkills,
+  )
 
 /** Load model/profile/settings and build one send's app + MCP tools and prompt. */
 export const prepareAiRequestConfig = async ({
@@ -514,6 +632,7 @@ export const prepareAiRequestConfig = async ({
   httpClient,
   webToolBudget,
   chatThreadId,
+  readWorkspaceFile,
   telemetry,
 }: PrepareAiRequestConfigOptions): Promise<PreparedAiRequestConfig> => {
   telemetry?.startPhase('request_config')
@@ -539,24 +658,36 @@ export const prepareAiRequestConfig = async ({
   const profile = await getModelProfile(db, modelId)
   const storedSkills = await getAllSkills(db)
   telemetry?.endPhase('request_config')
-  const skills = selectEnabledSkillDefinitions(storedSkills)
   const supportsTools = model.toolUsage !== 0
   // Minimal mode offers no `skill` tool, so the widget contracts it keeps are
   // inlined into the prompt (as for non-tool models) instead of loaded on demand.
   const loadsSkillsByTool = supportsTools && !selectMinimalMode(useConfigStore.getState().config)
+  // The Office skills teach `run_office_script`, which only tool-capable models get, and arrive through the `skill`
+  // tool. Without both, the prompt, the tool and a `/office-…` token must not offer them.
+  const skills = selectEnabledSkillDefinitions(storedSkills, loadsSkillsByTool)
+  const officeSkills = skills.filter(({ id }) => isOfficeSkillId(id)).map(({ name }) => name)
+  // Skills the `skill` tool returned in this send, so a failed Office script does not ask for one again.
+  const loadedSkills = new Set<string>()
   // Loaded before the toolset so the cross-chat search tool can be registered
   // conditionally alongside the other app tools.
   const projectContext = await loadProjectContextForThread(db, chatThreadId)
   const sourceCollector = webToolBudget?.sourceCollector ?? []
   const toolCallCache: ToolCallCache = new Map()
   const availableTools = supportsTools
-    ? await getAvailableTools(httpClient, sourceCollector, { settings, integrationStatus })
+    ? await getAvailableTools(
+        httpClient,
+        sourceCollector,
+        { settings, integrationStatus, ...(await loadConnectedSearchApis(db)) },
+        webToolBudget?.priorSources,
+        { chatThreadId, readWorkspaceFile, skills: officeSkills, loadedSkills },
+      )
     : []
   const appToolset = addSkillTool(
     createToolset(availableTools, toolCallCache, webToolBudget),
     skills,
     loadsSkillsByTool,
     webToolBudget,
+    loadedSkills,
   )
   // Cross-chat recall is a tool, not an injection: it costs nothing when unused
   // and leaves the cacheable stable prompt untouched. Only registered when there
@@ -626,7 +757,6 @@ export const prepareAiRequestConfig = async ({
     appToolset[name] = miniAppTool
     registeredMiniAppTools.add(name)
   }
-  const hasWebTools = 'search' in appToolset && 'fetch_content' in appToolset
   telemetry?.startPhase('mcp_discovery')
   const merged = supportsTools
     ? await mergeMcpTools(appToolset, mcpClients, reconnectClient)
@@ -675,9 +805,9 @@ export const prepareAiRequestConfig = async ({
       currency: settings.currency,
     },
     integrationStatus: integrationStatuses.length > 0 ? integrationStatuses.join(', ') : 'READY',
-    hasWebTools,
+    availableToolNames: Object.keys(merged.toolset),
     mcpServersSummary: merged.summary,
-    skills: selectPromptSkillDefinitions(storedSkills, supportsTools),
+    skills: selectPromptSkillDefinitions(storedSkills, supportsTools, loadsSkillsByTool),
     supportsTools: loadsSkillsByTool,
     // The resolved locale rather than a `language` settings read: it is synchronous, so
     // it cannot lag behind the watched-query hydration, and it already folds in browser
@@ -751,6 +881,7 @@ export const recordLegacyEmptyResponseRetry = (
  * because the routing fetch already consumed the initial request.
  */
 export const aiFetchStreamingResponse = async ({
+  reasoningEffort,
   init,
   modelId,
   mcpClients,
@@ -833,7 +964,19 @@ export const aiFetchStreamingResponse = async ({
       ...(model.vendor === 'openai' && { systemMessageMode: 'developer' as const }),
       ...profile?.providerOptions,
     }
-    const providerOptions = Object.keys(rawOptions).length > 0 ? { [providerOptionsKey]: rawOptions } : undefined
+    const effortProvider = model.provider === 'thunderbolt' ? (model.vendor ?? model.provider) : model.provider
+    const toggleThinking =
+      reasoningEffort !== undefined &&
+      effortProvider === 'anthropic' &&
+      (await loadReasoningCapabilities(model)).kind === 'toggle'
+    const providerOptions = {
+      [reasoningEffort === undefined ? providerOptionsKey : effortProvider]: reasoningProviderOptions(
+        rawOptions,
+        effortProvider,
+        reasoningEffort,
+        toggleThinking,
+      ),
+    }
 
     /**
      * Run a single streamText attempt and return the result along with metadata
@@ -916,8 +1059,9 @@ export const aiFetchStreamingResponse = async ({
     // the context-overflow estimate so the budget and the actual injection
     // stay in lockstep.
     const lastUserText = extractLastUserText(messages)
-    const instructionBySlug = new Map(skills.map(({ name, instruction }) => [name, instruction]))
-    const skillSystemMessages = resolveSkillTokenInstructions(lastUserText, instructionBySlug)
+    const skillSystemMessages = await loadSkillTokenInstructions(lastUserText, skills)
+    // An Office manual can take a network round trip to load; a send stopped meanwhile must not reach the provider.
+    abortSignal?.throwIfAborted()
 
     // Preserve the upstream status (and detail) when surfacing an API error to
     // the client. The SDK otherwise flattens an APICallError to a bare "Bad
@@ -973,7 +1117,7 @@ export const aiFetchStreamingResponse = async ({
             messages
               .filter((message) => message.role === 'assistant')
               .map(async (message) => {
-                const stored = await getMessage(db, message.id)
+                const stored = await getMessageCache(db, message.id)
                 return stored?.cache ? collectAskEntriesFromCache(stored.cache) : []
               }),
           )
@@ -1103,6 +1247,10 @@ export const aiFetchStreamingResponse = async ({
 
     return createUIMessageStreamResponse({ stream })
   } catch (error) {
+    // A stopped send is not a failure, so the caller gets its abort back rather than an error response.
+    if (abortSignal?.aborted) {
+      throw error
+    }
     console.error('aiFetchStreamingResponse error', error)
     const status =
       (error as { status?: number }).status ?? (error as { response?: { status?: number } }).response?.status

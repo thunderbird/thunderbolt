@@ -2,15 +2,15 @@
 
 Goal: choosing, switching and configuring models works with real providers.
 
-Start state: fresh user. In this charter the AI is **real**: "Opus 5.5" (Anthropic), "DeepSeek V4.1 Flash"
-and "GLM 5.3" answer for real, so replies vary. Keep prompts short and send at most 20 chat messages in total. Read
+Start state: fresh user. In this charter the AI is **real**: "Opus 5.5" (Anthropic), "DeepSeek V4.1 Flash",
+"GLM 5.3" and "Kimi K3.1 Pro" answer for real, so replies vary. Keep prompts short and send at most 24 chat messages in total. Read
 every reply: a model that says it cannot answer is a finding.
 
 1. Model picker: open it and check every model is listed. Then, for each real model, start a new chat with it and
    hold a conversation of three short turns, each building on the earlier ones. On one turn ask for a longer answer,
    stop the reply mid-stream, then send a new question: its reply answers only the new question, and neither
    repeats nor finishes the stopped answer. Functions: `picker-lists`, `models-reply`, `multi-turn-opus-5-5`,
-   `multi-turn-deepseek-v4-1-flash`, `multi-turn-glm-5-3`.
+   `multi-turn-deepseek-v4-1-flash`, `multi-turn-glm-5-3`, `multi-turn-kimi-k3-1-pro`.
 2. Switch the model in the middle of a thread while a reply streams: ask "Opus 5.5" for a long answer, switch the
    picker to "GLM 5.3" before it ends, then send a follow-up. The streaming reply ends once (finished or stopped,
    never doubled), and the follow-up's reply comes from "GLM 5.3" and follows the thread. Reload and check which model

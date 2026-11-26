@@ -27,11 +27,11 @@ another session's user.
 
 Unless your charter says otherwise, the app's AI is a local fake: every reply is "Hello from the fake provider, one
 word at a time." Before your first chat message, open the model picker (the button with test id
-`model-selector-trigger`, it shows the current model's name) and select "Opus 5.5". No other model is configured here,
-so an error message from another model is expected (a screen that hangs is still a bug). A message that contains
-`qa:slow` gets the same reply one word every 3 s, so you have time to stop it while it streams. A message that
-contains `qa:cut` loses its connection after three words the first time the fake sees its exact text, so a retry
-of it gets the whole reply. Neither is a bug in itself: judge what the app does next.
+`model-selector-trigger`, it shows the current model's name), select "Opus 5.5", and press Escape to close the picker.
+No other model is configured here, so an error message from another model is expected (a screen that hangs is still a
+bug). A message that contains `qa:slow` gets the same reply one word every 3 s, so you have time to stop it while it
+streams. A message that contains `qa:cut` loses its connection after three words the first time the fake sees its
+exact text, so a retry of it gets the whole reply. Neither is a bug in itself: judge what the app does next.
 
 When your charter says the AI is real, replies vary and can use tools (weather, maps, search, link previews, MCP
 servers, files). Read every reply in full, besides the console and the network, and check that the AI really did
@@ -204,7 +204,7 @@ Everything above still holds, with these changes:
 - Hunt for bugs. Whenever something works, try at least one variant that might break it: other input, another
   order, an interruption, a reload, a second chat, another model, any technique from the toolbox. Add each variant
   to your list.
-- The AI is **real**: "Opus 5.5" (Anthropic), "DeepSeek V4.1 Flash" and "GLM 5.3" answer for real, so replies vary. Select
+- The AI is **real**: "Opus 5.5" (Anthropic), "DeepSeek V4.1 Flash", "GLM 5.3" and "Kimi K3.1 Pro" answer for real, so replies vary. Select
   "Opus 5.5" before your first message unless the goal needs another model. Keep prompts short, and send at most 15
   chat messages, across more than one chat. That is a ceiling, not a goal: a message that tests nothing new is waste.
 - The case's `facts`, when it has any, are known only to you, like the fixture facts above: never tell the app's AI

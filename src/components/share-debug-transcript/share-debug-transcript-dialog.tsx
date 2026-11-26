@@ -21,6 +21,7 @@ import { useId } from 'react'
 
 type ShareDebugTranscriptDialogProps = {
   open: boolean
+  preview: string | null
   userNote: string
   consentAccepted: boolean
   errorMessage: string | null
@@ -34,6 +35,7 @@ type ShareDebugTranscriptDialogProps = {
 
 export const ShareDebugTranscriptDialog = ({
   open,
+  preview,
   userNote,
   consentAccepted,
   errorMessage,
@@ -48,6 +50,7 @@ export const ShareDebugTranscriptDialog = ({
   const recipient = useDebugTranscriptRecipient()
   const userNoteId = useId()
   const consentId = useId()
+  const previewId = useId()
 
   return (
     <ResponsiveModal open={open} onOpenChange={onOpenChange} showCloseButton={false}>
@@ -114,6 +117,23 @@ export const ShareDebugTranscriptDialog = ({
           />
         </div>
 
+        {preview !== null && (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor={previewId}>
+              <Trans>Content to send</Trans>
+            </Label>
+            <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
+              <Trans>Review the transcript and note below. Automatic redaction may miss sensitive information.</Trans>
+            </p>
+            <Textarea
+              id={previewId}
+              readOnly
+              value={preview}
+              className="h-48 field-sizing-fixed font-mono text-[length:var(--font-size-sm)]"
+            />
+          </div>
+        )}
+
         <div className="flex items-start gap-3">
           <Checkbox
             id={consentId}
@@ -144,7 +164,7 @@ export const ShareDebugTranscriptDialog = ({
           type="button"
           isLoading={isPending}
           loadingLabel={t`Sending…`}
-          disabled={!consentAccepted}
+          disabled={!consentAccepted || preview === null}
           onClick={onSubmit}
         >
           {errorMessage ? <Trans>Retry</Trans> : <Trans>Send to the {recipient} team</Trans>}

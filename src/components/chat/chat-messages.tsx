@@ -3,10 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { AssistantMessage } from './assistant-message'
+import { PrivateSourcesContext } from './private-sources-context'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { UserMessage } from './user-message'
 import { ErrorMessage } from './error-message'
-import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef } from 'react'
+import { Fragment, lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { messageRenderThrottleMs } from '@/chats/chat-throttle'
@@ -16,11 +17,14 @@ import { isAttachmentPart } from '@/lib/attachments'
 import { filterMessageParts } from '@/lib/assistant-message'
 import { useHaptics } from '@/hooks/use-haptics'
 import { useAttachmentRemediation } from './use-attachment-remediation'
+import { useThreadSources } from './use-thread-sources'
 import { useTurnOffModelTools } from './use-turn-off-model-tools'
 import { isBuiltInAgent } from '@/defaults/agents'
 import { QuoteReplyButton } from './quote-reply-button'
 import { selectDebugTranscriptsEnabled, useConfigStore } from '@/api/config-store'
 import type { ThunderboltUIMessage } from '@/types'
+import { useShowCompactionSummary } from '@/content-view/context'
+import { CompactionNotice } from '../context-usage'
 
 const ShareDebugTranscriptAction = lazy(async () => {
   const module = await import('@/components/share-debug-transcript')
@@ -56,7 +60,10 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
     stopping,
     selectedAgent,
     selectedModel,
+    compactionStatus,
   } = useCurrentChatSession()
+  const showCompactionSummary = useShowCompactionSummary()
+  const compacting = compactionStatus === 'compacting'
   const debugTranscriptsEnabled = useConfigStore((state) => selectDebugTranscriptsEnabled(state.config))
 
   const {
@@ -72,6 +79,14 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
   const { triggerNotification } = useHaptics()
 
   const visibleMessages = useMemo(() => messages.filter((message) => message.metadata?.oauthRetry !== true), [messages])
+  const privateSourceMessageIds = useMemo(() => {
+    const start = messages.findIndex((message) =>
+      message.metadata?.sources?.some((source) => source.allowRemoteImages === false),
+    )
+    return new Set(start === -1 ? [] : messages.slice(start).map((message) => message.id))
+  }, [messages])
+  // All messages, like the request history the model numbered its citations against.
+  const threadSources = useThreadSources(messages)
   const lastMessage = useMemo(() => visibleMessages.at(-1), [visibleMessages])
   const shareActionHostId = useMemo(() => visibleMessages.findLast(rendersContent)?.id, [visibleMessages])
   const lastAssistantMessage = useMemo(
@@ -95,7 +110,7 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
   // `showSubmittedLoading`: `submitted` with no assistant message yet to host the
   // loading indicator, so render it inline here. Shared with the composer's Stop
   // button via getTurnActivity so the two never disagree (THU-791).
-  const { isStreaming, showSubmittedLoading, pendingEmptyTurnRecovery, hasError } = getTurnActivity({
+  const { isStreaming, isActive, showSubmittedLoading, pendingEmptyTurnRecovery, hasError } = getTurnActivity({
     status,
     lastMessage,
     hasChatError: chatError != null,
@@ -103,6 +118,9 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
     retryCount,
     stopRequested: stopping,
   })
+  // An error stays held until onFinish settles it, because it saves the failed reply before it publishes a retry.
+  // Stop during the backoff clears the retry state but leaves the error, so `stopping` releases the hold.
+  const holdFiles = isActive || (hasError && !retriesExhausted && !stopping)
 
   const wasStreaming = useRef(false)
   useEffect(() => {
@@ -137,10 +155,10 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
   )
   const lastUserMessageId = lastUserMessage?.id
   const resendAttachment = useCallback(
-    (messageId: string, localFileId: string, target: 'text' | 'images') => {
+    (localFileId: string, target: 'text' | 'images') => {
       setMessages((prev) =>
         prev.map((message) =>
-          message.id === messageId
+          message.id === lastUserMessageId
             ? {
                 ...message,
                 parts: message.parts.map((part) =>
@@ -154,9 +172,10 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
       )
       regenerate()
     },
-    [setMessages, regenerate],
+    [lastUserMessageId, setMessages, regenerate],
   )
 
+  const compactionInLastMessage = compacting && isStreaming && lastMessage?.role === 'assistant'
   // Turning tools off targets the model the failed prompt was sent with. Once the user
   // picks another model, Retry is the way forward instead.
   const canTurnOffTools = builtInModel !== undefined && builtInModel.id === lastUserMessage?.metadata?.modelId
@@ -164,50 +183,47 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
   return (
     <div>
       {visibleMessages.map((message) => {
-        if (message.role === 'assistant') {
-          // Hide empty assistant messages during errors — these are broken responses
-          // that regenerate() will remove. Messages with parts are valid responses.
-          if ((hasError || pendingEmptyTurnRecovery) && !message.parts?.length) {
-            return null
-          }
+        const isLast = message.id === lastMessage?.id
+        const checkpoint = message.metadata?.contextCompaction
+        const hideAssistant = (hasError || pendingEmptyTurnRecovery) && !message.parts?.length
 
-          // Memoize last message check to avoid recalculating on every iteration
-          const isLast = message.id === lastMessage?.id
-          // Only apply viewport positioning from second message onwards
-          const shouldApplyViewport = isLast && shouldUseViewportPositioning(visibleMessages.length)
-
-          return (
-            <AssistantMessage
-              key={message.id}
-              message={message}
-              isStreaming={isStreaming && isLast}
-              isLastMessage={shouldApplyViewport}
-              isLastAssistantMessage={message.id === lastAssistantMessage?.id}
-              lastAssistantAction={message.id === shareActionHostId ? shareDebugTranscriptAction : undefined}
-            />
-          )
-        }
-        if (message.role === 'user') {
-          return (
-            <UserMessage
-              key={message.id}
-              message={message}
-              lastMessageAction={message.id === shareActionHostId ? shareDebugTranscriptAction : undefined}
-              onResendAttachment={
-                message.id === lastUserMessageId
-                  ? (localFileId, target) => resendAttachment(message.id, localFileId, target)
-                  : undefined
-              }
-            />
-          )
-        }
-
-        return null
+        return (
+          <Fragment key={message.id}>
+            {message.role === 'assistant' && !hideAssistant && (
+              <PrivateSourcesContext value={privateSourceMessageIds.has(message.id)}>
+                <AssistantMessage
+                  message={message}
+                  sources={threadSources.get(message.id)}
+                  isStreaming={isStreaming && isLast}
+                  holdFiles={holdFiles && isLast}
+                  isLastMessage={isLast && shouldUseViewportPositioning(visibleMessages.length)}
+                  isLastAssistantMessage={message.id === lastAssistantMessage?.id}
+                  lastAssistantAction={message.id === shareActionHostId ? shareDebugTranscriptAction : undefined}
+                  activity={isLast && compactionInLastMessage ? <CompactionNotice status="compacting" /> : undefined}
+                />
+              </PrivateSourcesContext>
+            )}
+            {message.role === 'user' && (
+              <UserMessage
+                message={message}
+                lastMessageAction={message.id === shareActionHostId ? shareDebugTranscriptAction : undefined}
+                onResendAttachment={message.id === lastUserMessageId ? resendAttachment : undefined}
+              />
+            )}
+            {checkpoint?.version === 1 && (
+              <CompactionNotice status="compacted" onViewSummary={() => showCompactionSummary(checkpoint)} />
+            )}
+          </Fragment>
+        )
       })}
+
+      {compacting && !compactionInLastMessage && <CompactionNotice status="compacting" />}
 
       {/* Keep a loading indicator up while remediation re-delivers + retries, so
           the suppressed error doesn't leave a blank gap. */}
-      {(showSubmittedLoading || suppressError || pendingEmptyTurnRecovery) && <SyntheticLoadingPart isStreaming />}
+      {!compacting && (showSubmittedLoading || suppressError || pendingEmptyTurnRecovery) && (
+        <SyntheticLoadingPart isStreaming />
+      )}
 
       {/* Show error message if there's an error and remediation isn't taking over */}
       {hasError && !suppressError && (

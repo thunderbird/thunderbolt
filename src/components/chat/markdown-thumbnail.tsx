@@ -5,6 +5,7 @@
 import { useQuery } from '@tanstack/react-query'
 import ReactMarkdown from 'react-markdown'
 import { useAttachmentText } from './text-snippet'
+import { markdownImageComponents } from './markdown-image'
 
 type MarkdownThumbnailProps = {
   localFileId: string
@@ -16,7 +17,7 @@ type MarkdownThumbnailProps = {
  * 160px card). Keeps the placeholder until the text and GFM plugin resolve.
  */
 export const MarkdownThumbnail = ({ localFileId }: MarkdownThumbnailProps) => {
-  const text = useAttachmentText(localFileId, 'text/markdown')
+  const text = useAttachmentText(localFileId)
   const { data: remarkGfm } = useQuery({
     queryKey: ['markdown-thumbnail-gfm'],
     queryFn: async () => {
@@ -38,7 +39,9 @@ export const MarkdownThumbnail = ({ localFileId }: MarkdownThumbnailProps) => {
         className="prose prose-sm dark:prose-invert w-[480px] origin-top-left p-4 text-foreground"
         style={{ transform: 'scale(var(--thumb-scale, 0.3))' }}
       >
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownImageComponents}>
+          {text}
+        </ReactMarkdown>
       </div>
     </div>
   )

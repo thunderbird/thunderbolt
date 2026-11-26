@@ -13,31 +13,54 @@ import {
 } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import type { Model, ThunderboltUIMessage } from '@/types'
-import { act, cleanup, createEvent, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, createEvent, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { createElement, createRef, type ReactNode } from 'react'
+import { createElement, createRef, type ReactNode, useReducer } from 'react'
 import { BrowserRouter } from 'react-router'
 import { useChatStore } from '@/chats/chat-store'
+import { useAcpSessionStore } from '@/acp/session-state-store'
+import { sessionConfigKey } from '@/acp/session-config-store'
 import { useConfigStore } from '@/api/config-store'
 import { CreateItemProvider } from '@/components/create-item/context'
+import { ContentViewProvider } from '@/content-view/context'
+import { ActiveContentView } from '@/content-view/active-content-view'
 import { getClock } from '@/testing-library'
+import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { builtInAgent } from '@/defaults/agents'
+import { defaultSkillOfficeXlsx, defaultSkillWeather } from '@/defaults/skills'
+import { estimateTokensForText } from '@/ai/tokenizers'
+import { officeXlsxSkill } from '@/office/skills/xlsx'
+import * as skillHooks from '@/skills/use-skills'
+import * as officeSkills from '@/office/skills'
+import * as adapterCache from '@/acp/adapter-cache'
+import * as attachmentStorage from '@/lib/file-blob-storage'
+import * as chatMessagesLoader from './chat-messages-loader'
 import type { Agent } from '@/types/acp'
+import type { PathFile } from '@/lib/native-files'
 import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
 import type { ImageSupportCheck } from './use-image-support-check'
+// The fake clock cannot wait for cold module I/O; browser coverage exercises the first lazy load.
+import '@/components/context-usage/compaction-summary-content'
 
 // The real blob store uses IndexedDB, which isn't available in the test env.
 // Back it with an in-memory Map so the attach path (put → chip render) works.
-const attachmentStore = new Map<string, unknown>()
-mock.module('@/lib/file-blob-storage', () => ({
-  putAttachment: async (file: { id: string }) => {
-    attachmentStore.set(file.id, file)
-  },
-  getAttachment: async (id: string) => attachmentStore.get(id) ?? null,
-  deleteAttachment: async (id: string) => {
-    attachmentStore.delete(id)
-  },
-}))
+// Spies rather than a module mock, so other test files still get the real store.
+const attachmentStore = new Map<string, attachmentStorage.StoredFile>()
+const attachmentSpies: { mockRestore: () => void }[] = []
+beforeEach(() => {
+  attachmentSpies.push(
+    spyOn(attachmentStorage, 'putAttachment').mockImplementation(async (file) => {
+      attachmentStore.set(file.id, file)
+    }),
+    spyOn(attachmentStorage, 'getAttachment').mockImplementation(async (id) => attachmentStore.get(id) ?? null),
+    spyOn(attachmentStorage, 'deleteAttachment').mockImplementation(async (id) => {
+      attachmentStore.delete(id)
+    }),
+  )
+})
+afterEach(() => {
+  attachmentSpies.splice(0).forEach((spy) => spy.mockRestore())
+})
 
 const createMockUseContextTracking =
   (
@@ -87,7 +110,12 @@ const TestWrapper = ({ children }: { children: ReactNode }) => {
   return createElement(
     BrowserRouter,
     null,
-    createElement(CreateItemProvider, null, createElement(queryWrapper, null, children)),
+    createElement(
+      ContentViewProvider,
+      null,
+      createElement(CreateItemProvider, null, createElement(queryWrapper, null, children)),
+      createElement(ActiveContentView),
+    ),
   )
 }
 
@@ -124,15 +152,85 @@ describe('ChatPromptInput', () => {
 
   beforeEach(() => {
     resetStore()
+    // Drafts flush on unmount and otherwise survive into the next randomized case.
+    localStorage.removeItem('draft:thread-1')
+    useAcpSessionStore.setState({ sessions: new Map(), owners: new Map() })
   })
 
   afterEach(async () => {
     cleanup()
+    localStorage.removeItem('draft:thread-1')
     resetStore()
+    useAcpSessionStore.setState({ sessions: new Map(), owners: new Map() })
     await resetTestDatabase()
   })
 
   describe('rendering', () => {
+    it('warms only the selected agent type on first input and after a type change', () => {
+      const { mockUseChat } = setupStore()
+      const preloadAgent = spyOn(adapterCache, 'preloadAgentConnection').mockImplementation(() => {})
+      const preloadMessages = spyOn(chatMessagesLoader, 'preloadChatMessageList').mockImplementation(() => {})
+      try {
+        render(
+          <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+          { wrapper: TestWrapper },
+        )
+        const textarea = screen.getByPlaceholderText('Ask me anything…')
+        expect(preloadAgent).not.toHaveBeenCalled()
+        expect(preloadMessages).not.toHaveBeenCalled()
+
+        fireEvent.change(textarea, { target: { value: 'a' } })
+        fireEvent.change(textarea, { target: { value: 'ab' } })
+        expect(preloadAgent.mock.calls).toEqual([['built-in']])
+
+        act(() => useChatStore.getState().updateSession('thread-1', { selectedAgent: remoteAcpAgent }))
+        fireEvent.change(textarea, { target: { value: 'abc' } })
+        fireEvent.change(textarea, { target: { value: 'abcd' } })
+        expect(preloadAgent.mock.calls).toEqual([['built-in'], ['remote-acp']])
+
+        act(() => useChatStore.getState().updateSession('thread-1', { selectedAgent: hostedAgent }))
+        fireEvent.change(textarea, { target: { value: 'abcde' } })
+        expect(preloadAgent.mock.calls).toEqual([['built-in'], ['remote-acp'], ['managed-http']])
+        expect(preloadMessages).toHaveBeenCalledTimes(1)
+      } finally {
+        cleanup()
+        preloadAgent.mockRestore()
+        preloadMessages.mockRestore()
+      }
+    })
+
+    it('ignores parent stream renders while keeping the draft editable', () => {
+      const { mockUseChat } = setupStore()
+      const onRender = mock(() => {})
+      const countedUseChat: typeof mockUseChat = (options) => {
+        onRender()
+        return mockUseChat(options)
+      }
+      const useIsMobile = createMockUseIsMobile()
+      const Parent = () => {
+        const [, rerender] = useReducer((value: number) => value + 1, 0)
+        return (
+          <>
+            <button onClick={rerender}>Parent update</button>
+            <ChatPromptInput useChat={countedUseChat} useIsMobile={useIsMobile} />
+          </>
+        )
+      }
+      render(<Parent />, { wrapper: TestWrapper })
+      const initialRenders = onRender.mock.calls.length
+
+      for (let token = 0; token < 20; token++) {
+        fireEvent.click(screen.getByRole('button', { name: 'Parent update' }))
+      }
+
+      expect(onRender.mock.calls.length - initialRenders).toBe(0)
+      const input = screen.getByPlaceholderText('Ask me anything…')
+      expect(input).toHaveValue('')
+      fireEvent.change(input, { target: { value: 'My next question' } })
+      expect(input).toHaveValue('My next question')
+      expect(onRender.mock.calls.length).toBeGreaterThan(initialRenders)
+    })
+
     it('should render textarea with placeholder', () => {
       const { mockUseChat } = setupStore()
 
@@ -141,6 +239,50 @@ describe('ChatPromptInput', () => {
       })
 
       expect(screen.getByPlaceholderText('Ask me anything…')).toBeInTheDocument()
+    })
+
+    it('unmounts the pinned-skills queries once the chat has messages and restores them for an empty chat', () => {
+      const { mockUseChat, mockChatInstance } = setupStore()
+      const previousConfig = useConfigStore.getState()
+      useConfigStore.setState({ config: {}, configLoaded: true })
+      const pinnedQuery = spyOn(skillHooks, 'usePinnedSkills').mockReturnValue({
+        pinned: [defaultSkillWeather],
+        pinnedSet: new Set([defaultSkillWeather.id]),
+        togglePin: async () => undefined,
+        reorderPins: async () => undefined,
+      })
+      try {
+        render(
+          <ChatPromptInput
+            useChat={mockUseChat}
+            useIsMobile={createMockUseIsMobile()}
+            useContextTracking={createMockUseContextTracking()}
+          />,
+          { wrapper: TestWrapper },
+        )
+        expect(screen.getByLabelText('Add a skill')).toBeInTheDocument()
+        expect(pinnedQuery).toHaveBeenCalled()
+        pinnedQuery.mockClear()
+
+        mockChatInstance.messages.push({ id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hello' }] })
+        const input = screen.getByPlaceholderText('Ask me anything…')
+        for (const value of ['N', 'Ne', 'Next']) {
+          fireEvent.change(input, { target: { value } })
+        }
+        expect(screen.queryByLabelText('Add a skill')).toBeNull()
+        expect(pinnedQuery).not.toHaveBeenCalled()
+        expect(input).toHaveValue('Next')
+        expect(screen.getByRole('button', { name: 'Context usage' })).toBeInTheDocument()
+
+        mockChatInstance.messages.length = 0
+        fireEvent.change(input, { target: { value: '' } })
+        expect(screen.getByLabelText('Add a skill')).toBeInTheDocument()
+        expect(pinnedQuery).toHaveBeenCalled()
+      } finally {
+        cleanup()
+        pinnedQuery.mockRestore()
+        useConfigStore.setState(previousConfig)
+      }
     })
   })
 
@@ -164,6 +306,35 @@ describe('ChatPromptInput', () => {
       })
 
       expect(screen.getByLabelText('Stop generating')).toBeInTheDocument()
+    })
+
+    it('preserves an editable draft while compaction blocks sending and allows stopping', () => {
+      const { mockUseChat, mockChatInstance } = setupStore()
+      useChatStore.getState().updateSession('thread-1', { compactionStatus: 'compacting' })
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      const input = screen.getByPlaceholderText('Ask me anything…')
+      expect(screen.queryByText('Compacting…')).toBeNull()
+      expect(input).toBeEnabled()
+      fireEvent.change(input, { target: { value: 'My next question' } })
+      fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' })
+      fireEvent.submit(input.closest('form')!)
+      expect(mockChatInstance.sendMessage).not.toHaveBeenCalled()
+      expect(input).toHaveValue('My next question')
+      expect(screen.queryByLabelText('Send message')).toBeNull()
+
+      fireEvent.click(screen.getByLabelText('Stop generating'))
+      expect(mockChatInstance.stop).toHaveBeenCalledTimes(1)
+      act(() => useChatStore.getState().updateSession('thread-1', { compactionStatus: 'compacted' }))
+      expect(screen.queryByText('Compacting…')).toBeNull()
+      expect(screen.queryByText('Compacted')).toBeNull()
+      expect(input).toHaveValue('My next question')
+      expect(screen.getByLabelText('Send message')).toBeEnabled()
+      act(() => useChatStore.getState().updateSession('thread-1', { compactionStatus: 'idle' }))
+      expect(screen.queryByText('Compacted')).toBeNull()
     })
 
     // Empty assistant turn sitting with status `ready` and retryCount 0 while the
@@ -248,6 +419,173 @@ describe('ChatPromptInput', () => {
     })
   })
 
+  describe('ACP context controls', () => {
+    it.each([undefined, ''])(
+      'offers manual compaction using the session command (input hint: %p)',
+      async (inputHint) => {
+        const { mockUseChat, mockChatInstance } = setupStore()
+        const compact = mock(async () => {})
+        Object.assign(mockChatInstance, { compactContext: compact })
+        useChatStore.getState().updateSession('thread-1', { selectedAgent: remoteAcpAgent })
+        useAcpSessionStore
+          .getState()
+          .set(
+            sessionConfigKey(remoteAcpAgent.id, 'thread-1'),
+            { sessionId: 'acp-1', commands: [{ name: 'compact', description: 'Compact context', inputHint }] },
+            {},
+          )
+        render(
+          <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+          { wrapper: TestWrapper },
+        )
+        const trigger = screen.getByRole('button', { name: 'Context usage' })
+        expect(trigger.textContent).toBe('')
+        fireEvent.click(trigger)
+        expect(screen.queryByLabelText('Compaction instructions (optional)') !== null).toBe(inputHint !== undefined)
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Compact now' })))
+        expect(compact).toHaveBeenCalledWith(undefined)
+        expect(mockChatInstance.sendMessage).not.toHaveBeenCalled()
+      },
+    )
+
+    it('does not borrow another thread’s command or the built-in model’s usage', () => {
+      const { mockUseChat, mockChatInstance } = setupStore()
+      Object.assign(mockChatInstance, { compactContext: mock(async () => {}) })
+      useChatStore.getState().updateSession('thread-1', { selectedAgent: remoteAcpAgent })
+      useAcpSessionStore
+        .getState()
+        .set(
+          sessionConfigKey(remoteAcpAgent.id, 'another-thread'),
+          { sessionId: 'acp-other', commands: [{ name: 'compact', description: 'Compact context' }] },
+          {},
+        )
+      render(
+        <ChatPromptInput
+          useChat={mockUseChat}
+          useContextTracking={createMockUseContextTracking(false, true, 1000, 2000)}
+          useIsMobile={createMockUseIsMobile()}
+          useWarmAcpCommands={noWarmUp}
+        />,
+        { wrapper: TestWrapper },
+      )
+      expect(screen.queryByRole('button', { name: 'Context usage' })).toBeNull()
+    })
+
+    it('uses matching persisted usage until live session usage arrives and clears it for a replacement session', () => {
+      const messages: ThunderboltUIMessage[] = [
+        {
+          id: 'reply',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Done' }],
+          metadata: { acpContextUsage: { agentId: remoteAcpAgent.id, sessionId: 'acp-1', used: 100, size: 1000 } },
+        },
+      ]
+      const { mockUseChat } = setupStore('ready', messages)
+      useChatStore.getState().updateSession('thread-1', {
+        selectedAgent: remoteAcpAgent,
+        chatThread: createMockChatThread({ agentId: remoteAcpAgent.id, acpSessionId: 'acp-1' }),
+      })
+      const { rerender } = render(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        { wrapper: TestWrapper },
+      )
+      expect(screen.getByRole('button', { name: 'Context usage' })).toHaveTextContent('10%')
+      const key = sessionConfigKey(remoteAcpAgent.id, 'thread-1')
+      act(() =>
+        useAcpSessionStore.getState().set(
+          key,
+          {
+            sessionId: 'acp-1',
+            commands: [],
+            usage: { agentId: remoteAcpAgent.id, sessionId: 'acp-1', used: 600, size: 2000 },
+          },
+          {},
+        ),
+      )
+      expect(screen.getByRole('button', { name: 'Context usage' })).toHaveTextContent('30%')
+      act(() => useAcpSessionStore.getState().set(key, { sessionId: 'acp-2', commands: [] }, {}))
+      expect(screen.queryByRole('button', { name: 'Context usage' })).toBeNull()
+      act(() => useAcpSessionStore.setState({ sessions: new Map(), owners: new Map() }))
+      messages[0].metadata!.acpContextUsage!.agentId = 'another-agent'
+      rerender(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+      )
+      expect(screen.queryByRole('button', { name: 'Context usage' })).toBeNull()
+    })
+
+    it('leaves token limits to the external agent rather than blocking a normal send', async () => {
+      const { mockUseChat, mockChatInstance } = setupStore()
+      useChatStore.getState().updateSession('thread-1', { selectedAgent: remoteAcpAgent })
+      const { container } = render(
+        <ChatPromptInput
+          useChat={mockUseChat}
+          useContextTracking={createMockUseContextTracking(true)}
+          useIsMobile={createMockUseIsMobile()}
+          useWarmAcpCommands={noWarmUp}
+        />,
+        { wrapper: TestWrapper },
+      )
+      fireEvent.change(screen.getByPlaceholderText('Ask me anything…'), { target: { value: 'Continue' } })
+      await act(async () => fireEvent.submit(container.querySelector('form')!))
+      expect(mockChatInstance.sendMessage).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('saved compaction summary', () => {
+    it('opens from the saved context menu without sending or compacting', async () => {
+      const messages: ThunderboltUIMessage[] = [
+        {
+          id: 'saved',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Original reply' }],
+          metadata: {
+            contextCompaction: {
+              version: 1,
+              summary: '## Saved decisions\n\nPreserve the keyboard shortcuts.',
+              tokensBefore: 8_000,
+              contextTokens: 2_000,
+              retainedTail: [],
+            },
+          },
+        },
+      ]
+      const { mockUseChat, mockChatInstance } = setupStore('ready', messages)
+      // Reading a stored summary remains available even after switching agents.
+      useChatStore
+        .getState()
+        .updateSession('thread-1', { selectedAgent: remoteAcpAgent, compactionStatus: 'compacted' })
+      render(
+        <ChatPromptInput
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          useContextTracking={createMockUseContextTracking(false, false, null, null)}
+          useWarmAcpCommands={noWarmUp}
+        />,
+        { wrapper: TestWrapper },
+      )
+
+      const contextTrigger = screen.getByRole('button', { name: 'Context usage' })
+      fireEvent.click(contextTrigger)
+      await act(async () => {
+        fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'View summary' }))
+      })
+      expect(screen.getByRole('region', { name: 'Compaction summary' })).toBeInTheDocument()
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(screen.getByRole('heading', { name: 'Saved decisions' })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+      await act(async () => {
+        await getClock().tickAsync(1)
+      })
+      expect(contextTrigger).toHaveFocus()
+      expect(contextTrigger).toHaveAttribute('aria-expanded', 'false')
+
+      expect(screen.queryByRole('button', { name: 'View summary' })).toBeNull()
+      expect(screen.queryByRole('region', { name: 'Compaction summary' })).toBeNull()
+      expect(mockChatInstance.sendMessage).not.toHaveBeenCalled()
+      expect(messages[0].parts).toEqual([{ type: 'text', text: 'Original reply' }])
+    })
+  })
+
   describe('mobile layout', () => {
     it('should apply mobile class names', () => {
       const { mockUseChat } = setupStore()
@@ -275,7 +613,7 @@ describe('ChatPromptInput', () => {
       expect(form?.className).toContain('p-2')
     })
 
-    it('should hide context usage indicator on mobile', () => {
+    it('keeps context controls available on mobile', () => {
       const { mockUseChat } = setupStore()
 
       render(
@@ -287,7 +625,7 @@ describe('ChatPromptInput', () => {
         { wrapper: TestWrapper },
       )
 
-      expect(screen.queryByText('50%')).toBeNull()
+      expect(screen.getByRole('button', { name: 'Context usage' })).toBeInTheDocument()
     })
 
     it('should show context usage indicator on desktop', () => {
@@ -347,6 +685,31 @@ describe('ChatPromptInput', () => {
   })
 
   describe('submitOnEnter', () => {
+    it('keeps overflow protection and hides compaction for an Anthropic model outside Pi’s catalog', async () => {
+      const { mockUseChat, mockChatInstance } = setupStore()
+      Object.assign(mockChatInstance, { compactContext: mock(async () => {}) })
+      useChatStore.getState().updateSession('thread-1', {
+        selectedModel: createMockModel({ provider: 'anthropic', model: 'unlisted-model', toolUsage: 1 }),
+      })
+      const trackEvent = mock(() => {})
+      const { container } = render(
+        <ChatPromptInput
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          useContextTracking={createMockUseContextTracking(true)}
+          trackEvent={trackEvent}
+        />,
+        { wrapper: TestWrapper },
+      )
+      fireEvent.change(screen.getByPlaceholderText('Ask me anything…'), { target: { value: 'too long' } })
+      await act(async () => fireEvent.submit(container.querySelector('form')!))
+      expect(trackEvent).toHaveBeenCalledWith(
+        'chat_send_prompt_overflow',
+        expect.objectContaining({ model_name: 'unlisted-model' }),
+      )
+      expect(mockChatInstance.sendMessage).not.toHaveBeenCalled()
+    })
+
     it('should disable submit on enter when mobile viewport', () => {
       const { mockUseChat } = setupStore()
 
@@ -529,6 +892,197 @@ describe('ChatPromptInput', () => {
         const textarea = setupWithToken(16)
         const event = pressBackspace(textarea)
         expect(event.defaultPrevented).toBe(active)
+      })
+    })
+  })
+
+  describe('Office skills in the slash menu', () => {
+    const fakeUseLibrarySkills: typeof import('@/skills/use-skills').useLibrarySkills = () => ({
+      skills: [defaultSkillOfficeXlsx],
+      isLoading: false,
+      createSkill: async () => defaultSkillOfficeXlsx,
+      updateSkill: async () => undefined,
+      softDeleteSkill: async () => undefined,
+    })
+    const fakeUseEnabledSkills: typeof import('@/skills/use-skills').useEnabledSkills = () => ({
+      isEnabled: () => true,
+      setEnabled: async () => undefined,
+    })
+
+    it.each([
+      ['the built-in agent with a model that uses tools', {}, true],
+      ['a model without tools', { selectedModel: createMockModel({ toolUsage: 0 }) }, false],
+      ['an external agent', { selectedAgent: remoteAcpAgent }, false],
+    ] as const)('offers them for %s: %p', (_, session, offered) => {
+      const { mockUseChat } = setupStore()
+      useChatStore.getState().updateSession('thread-1', session)
+      const ref = createRef<ChatPromptInputRef>()
+      render(
+        <ChatPromptInput
+          ref={ref}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          useLibrarySkills={fakeUseLibrarySkills}
+          useEnabledSkills={fakeUseEnabledSkills}
+        />,
+        { wrapper: TestWrapper },
+      )
+      act(() => {
+        ref.current?.setInput('/')
+      })
+      const textarea = screen.getByRole('textbox')
+      if (!(textarea instanceof HTMLTextAreaElement)) {
+        throw new Error('Expected the composer textarea')
+      }
+      textarea.setSelectionRange(1, 1)
+      fireEvent.select(textarea)
+
+      expect(screen.queryByText('Excel workbooks') !== null).toBe(offered)
+    })
+
+    it('counts the manual this build serves, not the row stub, toward the context estimate', () => {
+      const { mockUseChat } = setupStore()
+      const extraTokens: number[] = []
+      const useContextTracking: typeof import('@/hooks/use-context-tracking').useContextTracking = (options) => {
+        extraTokens.push(options.additionalInputTokens ?? 0)
+        return createMockUseContextTracking()()
+      }
+      const ref = createRef<ChatPromptInputRef>()
+      render(
+        <ChatPromptInput
+          ref={ref}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          useLibrarySkills={fakeUseLibrarySkills}
+          useEnabledSkills={fakeUseEnabledSkills}
+          useContextTracking={useContextTracking}
+        />,
+        { wrapper: TestWrapper },
+      )
+      act(() => {
+        ref.current?.setInput('/office-xlsx make a budget')
+      })
+
+      expect(extraTokens.at(-1)).toBe(estimateTokensForText(officeXlsxSkill))
+    })
+
+    it.each([
+      ['an external agent', { selectedAgent: remoteAcpAgent }, false],
+      ['the built-in agent with a model that uses tools', {}, true],
+    ] as const)(
+      'lets a pinned Office chip add itself to the chat only where the menu offers it: %s',
+      async (_, session, offered) => {
+        const { mockUseChat } = setupStore()
+        useChatStore.getState().updateSession('thread-1', session)
+        const previousConfig = useConfigStore.getState()
+        useConfigStore.setState({ config: {}, configLoaded: true })
+        const pinnedQuery = spyOn(skillHooks, 'usePinnedSkills').mockReturnValue({
+          pinned: [defaultSkillOfficeXlsx],
+          pinnedSet: new Set([defaultSkillOfficeXlsx.id]),
+          togglePin: async () => undefined,
+          reorderPins: async () => undefined,
+        })
+        try {
+          render(
+            <ChatPromptInput
+              useChat={mockUseChat}
+              useIsMobile={createMockUseIsMobile()}
+              useLibrarySkills={fakeUseLibrarySkills}
+              useEnabledSkills={fakeUseEnabledSkills}
+              useWarmAcpCommands={noWarmUp}
+            />,
+            { wrapper: TestWrapper },
+          )
+          fireEvent.contextMenu(screen.getByText('Excel workbooks'))
+          await waitForElement(() => screen.queryByText('Unpin'))
+
+          expect(screen.queryByText('Add to chat') !== null).toBe(offered)
+          expect(screen.queryByText('Add instructions to chat') !== null).toBe(offered)
+        } finally {
+          cleanup()
+          pinnedQuery.mockRestore()
+          useConfigStore.setState(previousConfig)
+        }
+      },
+    )
+
+    describe("adding a pinned chip's instructions while its manual loads", () => {
+      let previousConfig: ReturnType<typeof useConfigStore.getState>
+
+      beforeEach(() => {
+        previousConfig = useConfigStore.getState()
+        useConfigStore.setState({ config: {}, configLoaded: true })
+        spyOn(skillHooks, 'usePinnedSkills').mockReturnValue({
+          pinned: [defaultSkillOfficeXlsx],
+          pinnedSet: new Set([defaultSkillOfficeXlsx.id]),
+          togglePin: async () => undefined,
+          reorderPins: async () => undefined,
+        })
+      })
+
+      afterEach(() => {
+        cleanup()
+        mock.restore()
+        useConfigStore.setState(previousConfig)
+      })
+
+      /** Renders an empty chat whose pinned Excel chip the built-in agent offers, and returns its composer. */
+      const renderComposer = () => {
+        const { mockUseChat } = setupStore()
+        render(
+          <ChatPromptInput
+            useChat={mockUseChat}
+            useIsMobile={createMockUseIsMobile()}
+            useLibrarySkills={fakeUseLibrarySkills}
+            useEnabledSkills={fakeUseEnabledSkills}
+            useWarmAcpCommands={noWarmUp}
+          />,
+          { wrapper: TestWrapper },
+        )
+        const textarea = screen.getByRole('textbox')
+        if (!(textarea instanceof HTMLTextAreaElement)) {
+          throw new Error('Expected the composer textarea')
+        }
+        return textarea
+      }
+
+      const addInstructions = async () => {
+        fireEvent.contextMenu(screen.getByText('Excel workbooks'))
+        const add = await waitForElement(() => screen.queryByText('Add instructions to chat'))
+        await act(async () => fireEvent.click(add))
+      }
+
+      it('inserts the manual at the caret the user left, keeping what they typed during the load', async () => {
+        // Held so the load is cold whatever another test already loaded: the loader keeps a manual once it has it.
+        const manual = Promise.withResolvers<string>()
+        const load = spyOn(officeSkills, 'loadOfficeSkillBody').mockReturnValue(manual.promise)
+        const textarea = renderComposer()
+
+        await addInstructions()
+        expect(load).toHaveBeenCalledWith('xlsx')
+        fireEvent.change(textarea, { target: { value: 'hello world' } })
+        textarea.setSelectionRange(5, 5)
+        fireEvent.select(textarea)
+        await act(async () => manual.resolve('MANUAL'))
+
+        expect(textarea.value).toBe('hello MANUAL world')
+      })
+
+      it('says the load failed once and leaves the draft alone', async () => {
+        const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+        spyOn(officeSkills, 'loadOfficeSkillBody').mockImplementation(async () => {
+          throw new TypeError('Load failed')
+        })
+        const textarea = renderComposer()
+        fireEvent.change(textarea, { target: { value: 'keep me' } })
+
+        await addInstructions()
+
+        expect(screen.getAllByRole('alert').map((alert) => alert.textContent)).toEqual([
+          'Something went wrong. Please try again.',
+        ])
+        expect(textarea.value).toBe('keep me')
+        expect(consoleError).toHaveBeenCalled()
       })
     })
   })
@@ -885,6 +1439,185 @@ describe('ChatPromptInput', () => {
       expect(preventDefaultSpy).not.toHaveBeenCalled()
     })
 
+    describe('on Linux, where files copied in a file manager arrive by path', () => {
+      const execCommand = mock(() => true)
+
+      beforeEach(() => {
+        Object.defineProperty(document, 'execCommand', { value: execCommand, configurable: true })
+      })
+
+      afterEach(() => {
+        Reflect.deleteProperty(document, 'execCommand')
+        execCommand.mockClear()
+      })
+
+      const pathFile = (name: string, size: number, read: () => Promise<File | null>) => ({
+        name,
+        type: '',
+        size,
+        read: mock(read),
+      })
+
+      /** Renders the composer as on Linux, with `copied` standing in for the OS clipboard's file manager entry. */
+      const renderOnLinux = (
+        copied: PathFile[],
+        readCopiedFiles = async () => copied,
+        useNativeFileDrop: (options: { onDrop: (paths: string[], links: string[]) => void }) => void = () => {},
+      ) => {
+        const { mockUseChat } = setupStore()
+        render(
+          <ChatPromptInput
+            useChat={mockUseChat}
+            useIsMobile={createMockUseIsMobile()}
+            readsFilesByPath={() => true}
+            readCopiedFiles={readCopiedFiles}
+            useNativeFileDrop={useNativeFileDrop}
+          />,
+          { wrapper: TestWrapper },
+        )
+        return screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
+      }
+
+      /** Pastes what WebKitGTK shows for a file manager copy or a copied link: `text/uri-list`, no file items. */
+      const pasteUriList = (textarea: HTMLTextAreaElement, text: string, uriList = '') => {
+        const pasteEvent = createEvent.paste(textarea, {
+          clipboardData: {
+            items: [],
+            files: [],
+            types: ['text/uri-list', 'text/plain'],
+            getData: (type: string) => ({ 'text/plain': text, 'text/uri-list': uriList })[type] ?? '',
+          },
+        })
+        const preventDefaultSpy = mock(() => {})
+        Object.defineProperty(pasteEvent, 'preventDefault', { value: preventDefaultSpy })
+        act(() => {
+          textarea.focus()
+          fireEvent(textarea, pasteEvent)
+        })
+        return preventDefaultSpy
+      }
+
+      it('pastes the text when no file manager copied files', async () => {
+        const textarea = renderOnLinux([])
+        const preventDefaultSpy = pasteUriList(textarea, 'https://example.com/report')
+        await flushAttachments()
+
+        expect(preventDefaultSpy).toHaveBeenCalled()
+        expect(execCommand).toHaveBeenCalledWith('insertText', false, 'https://example.com/report')
+      })
+
+      it('pastes the text when the clipboard cannot be read for copied files', async () => {
+        const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+        const textarea = renderOnLinux([], async () => {
+          throw new Error('no clipboard')
+        })
+        pasteUriList(textarea, 'https://example.com/report')
+        await flushAttachments()
+
+        expect(execCommand).toHaveBeenCalledWith('insertText', false, 'https://example.com/report')
+        expect(consoleError).toHaveBeenCalled()
+        consoleError.mockRestore()
+      })
+
+      it('pastes the links of the uri-list when the plain text reads empty', async () => {
+        const textarea = renderOnLinux([])
+        pasteUriList(
+          textarea,
+          '',
+          '# copied links\r\nhttps://example.com/a?x=1\r\nfile:///etc/passwd\r\nhttps://b.example\r\n',
+        )
+        await flushAttachments()
+
+        expect(execCommand).toHaveBeenCalledWith('insertText', false, 'https://example.com/a?x=1\nhttps://b.example')
+      })
+
+      it('pastes nothing for a uri-list of local files that no file manager copied', async () => {
+        const textarea = renderOnLinux([])
+        pasteUriList(textarea, '', 'file:///etc/passwd\r\n')
+        await flushAttachments()
+
+        expect(execCommand).not.toHaveBeenCalled()
+        expect(screen.queryByLabelText(/^Remove /)).not.toBeInTheDocument()
+      })
+
+      it('types a dragged link into the composer', async () => {
+        const drop = Promise.withResolvers<(paths: string[], links: string[]) => void>()
+        const textarea = renderOnLinux([], undefined, ({ onDrop }) => drop.resolve(onDrop))
+        const onDrop = await drop.promise
+        await act(async () => onDrop([], ['https://example.com/a?x=1']))
+
+        expect(document.activeElement).toBe(textarea)
+        expect(execCommand).toHaveBeenCalledWith('insertText', false, 'https://example.com/a?x=1')
+      })
+
+      it('drops the text when focus left the composer before the clipboard answered', async () => {
+        const clipboard = Promise.withResolvers<PathFile[]>()
+        const textarea = renderOnLinux([], () => clipboard.promise)
+        pasteUriList(textarea, 'https://example.com/report')
+        const search = document.body.appendChild(document.createElement('input'))
+        search.focus()
+
+        clipboard.resolve([])
+        await flushAttachments()
+
+        expect(execCommand).not.toHaveBeenCalled()
+        search.remove()
+      })
+
+      it('attaches the copied files instead of their text', async () => {
+        const textarea = renderOnLinux([pathFile('deck.pptx', 2, async () => new File(['PK'], 'deck.pptx'))])
+        pasteUriList(textarea, '/home/ana/deck.pptx')
+        await flushAttachments()
+
+        expect(screen.getByLabelText('Remove deck.pptx')).toBeInTheDocument()
+        expect(execCommand).not.toHaveBeenCalled()
+      })
+
+      it('refuses a copied file over the size cap without reading it', async () => {
+        const huge = pathFile('huge.pptx', 26 * 1024 * 1024, async () => new File(['PK'], 'huge.pptx'))
+        const textarea = renderOnLinux([huge])
+        pasteUriList(textarea, '')
+        await flushAttachments()
+
+        expect(screen.getByText('"huge.pptx" is too large (max 25MB).')).toBeInTheDocument()
+        expect(huge.read).not.toHaveBeenCalled()
+      })
+
+      it('never reads a copied file of a type it refuses', async () => {
+        const page = pathFile('page.html', 6, async () => new File(['<html>'], 'page.html'))
+        const textarea = renderOnLinux([page])
+        pasteUriList(textarea, '')
+        await flushAttachments()
+
+        expect(screen.getByText('"page.html" isn\'t a supported file type.')).toBeInTheDocument()
+        expect(page.read).not.toHaveBeenCalled()
+      })
+
+      it('names a copied file it cannot read and still attaches the rest', async () => {
+        const textarea = renderOnLinux([
+          pathFile('locked.docx', 4, async () => null),
+          pathFile('deck.pptx', 2, async () => new File(['PK'], 'deck.pptx')),
+        ])
+        pasteUriList(textarea, '')
+        await flushAttachments()
+
+        expect(screen.getByText('Couldn\'t read "locked.docx".')).toBeInTheDocument()
+        expect(screen.getByLabelText('Remove deck.pptx')).toBeInTheDocument()
+      })
+
+      it('reads no file past the attachment limit', async () => {
+        const files = Array.from({ length: 11 }, (_, index) =>
+          pathFile(`deck-${index}.pptx`, 2, async () => new File(['PK'], `deck-${index}.pptx`)),
+        )
+        const textarea = renderOnLinux(files)
+        pasteUriList(textarea, '')
+        await flushAttachments()
+
+        expect(screen.getByText('You can attach up to 10 files.')).toBeInTheDocument()
+        expect(files[10].read).not.toHaveBeenCalled()
+      })
+    })
+
     it('rejects an unsupported pasted file type with an error banner', async () => {
       const { mockUseChat } = setupStore()
       render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
@@ -898,6 +1631,42 @@ describe('ChatPromptInput', () => {
 
       expect(screen.getByText(/isn't a supported file type/)).toBeInTheDocument()
     })
+
+    // The Office script tool tells the model a user cannot attach .xlsm (`describeTool` in
+    // src/office/office-script-tool.ts). Update that sentence if this test changes.
+    it.each([['application/vnd.ms-excel.sheet.macroEnabled.12'], ['']])(
+      'rejects a macro workbook pasted as %p',
+      async (type) => {
+        const { mockUseChat } = setupStore()
+        render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+          wrapper: TestWrapper,
+        })
+
+        const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
+        const file = new File(['PK'], 'macros.xlsm', { type })
+        pasteItems(textarea, [{ kind: 'file', type, getAsFile: () => file }])
+        await flushAttachments()
+
+        expect(screen.getByText(/isn't a supported file type/)).toBeInTheDocument()
+      },
+    )
+
+    it.each([['application/vnd.openxmlformats-officedocument.presentationml.presentation'], ['']])(
+      'attaches a presentation pasted as %p',
+      async (type) => {
+        const { mockUseChat } = setupStore()
+        render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+          wrapper: TestWrapper,
+        })
+
+        const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
+        const file = new File(['PK'], 'deck.pptx', { type })
+        pasteItems(textarea, [{ kind: 'file', type, getAsFile: () => file }])
+        await flushAttachments()
+
+        expect(screen.getByLabelText('Remove deck.pptx')).toBeInTheDocument()
+      },
+    )
 
     it('lets a file paste fall through untouched for the hosted agent', async () => {
       const { mockUseChat } = setupStore()
@@ -929,12 +1698,37 @@ describe('ChatPromptInput', () => {
 
       const textarea = screen.getByPlaceholderText('Ask me anything…')
       const file = new File(['data'], 'dropped.png', { type: 'image/png' })
-      fireEvent.dragOver(textarea)
+      const dataTransfer = { types: ['Files'], files: [file] }
+      const dragOver = createEvent.dragOver(textarea, { dataTransfer })
+      fireEvent(textarea, dragOver)
+      expect(dragOver.defaultPrevented).toBe(true)
       expect(screen.queryByText('Drop file to attach') !== null).toBe(attaches)
-      fireEvent.drop(textarea, { dataTransfer: { files: [file] } })
+      fireEvent.dragLeave(textarea)
+      expect(screen.queryByText('Drop file to attach')).toBeNull()
+      fireEvent.dragOver(textarea, { dataTransfer })
+      const drop = createEvent.drop(textarea, { dataTransfer })
+      fireEvent(textarea, drop)
+      expect(drop.defaultPrevented).toBe(true)
       await flushAttachments()
 
       expect(screen.queryByLabelText('Remove dropped.png') !== null).toBe(attaches)
+      expect(screen.queryByText('Drop file to attach')).toBeNull()
+    })
+
+    it('preserves native text dragging without showing the file-drop hint', () => {
+      const { mockUseChat } = setupStore()
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+      const textarea = screen.getByPlaceholderText('Ask me anything…')
+      const dataTransfer = { types: ['text/plain'], files: [] }
+      const dragOver = createEvent.dragOver(textarea, { dataTransfer })
+      const drop = createEvent.drop(textarea, { dataTransfer })
+      fireEvent(textarea, dragOver)
+      expect(screen.queryByText('Drop file to attach')).toBeNull()
+      fireEvent(textarea, drop)
+      expect(dragOver.defaultPrevented).toBe(false)
+      expect(drop.defaultPrevented).toBe(false)
     })
 
     describe('files queued before the chat moved to the hosted agent', () => {

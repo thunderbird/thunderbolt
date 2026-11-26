@@ -8,7 +8,6 @@ import { cliRegistrationPendingDeviceId } from '@/dal/sessions'
 import { apikey, session as sessionTable } from '@/db/auth-schema'
 import { createInferenceRoutes } from '@/inference/routes'
 import { authHeaders, createTestApp, type TestAppHandle } from '@/test-utils/e2e'
-import { inferenceUsageReceiptPath } from '@shared/inference-usage'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { Elysia } from 'elysia'
@@ -274,20 +273,20 @@ describe('API key authentication', () => {
     expect(await response.json()).toEqual({ error: { code: 'WEB_LOGIN_REQUIRED' } })
   })
 
-  it.each([
-    ['Tinfoil proxy', '/v1/tinfoil/chat/completions', 'application/octet-stream', 'opaque-bytes'],
-    ['inference usage receipt', `/v1/${inferenceUsageReceiptPath}`, 'application/json', '{}'],
-  ])('returns 401 when an invalid api key calls the %s', async (_name, path, contentType, body) => {
-    const response = await harness.app.handle(
-      new Request(`http://localhost${path}`, {
-        method: 'POST',
-        headers: { 'Content-Type': contentType, 'x-api-key': 'not-a-real-key' },
-        body,
-      }),
-    )
+  it.each([['Tinfoil proxy', '/v1/tinfoil/chat/completions', 'application/octet-stream', 'opaque-bytes']])(
+    'returns 401 when an invalid api key calls the %s',
+    async (_name, path, contentType, body) => {
+      const response = await harness.app.handle(
+        new Request(`http://localhost${path}`, {
+          method: 'POST',
+          headers: { 'Content-Type': contentType, 'x-api-key': 'not-a-real-key' },
+          body,
+        }),
+      )
 
-    expect(response.status).toBe(401)
-  })
+      expect(response.status).toBe(401)
+    },
+  )
 
   it('returns 401 from protected routes for an expired api key', async () => {
     const { id, key } = await createApiKey()

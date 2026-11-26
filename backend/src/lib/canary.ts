@@ -50,10 +50,13 @@ const verifyAgainstHash = async (canarySecret: string, storedHash: string): Prom
 
 /**
  * D1 CK-possession proof for `/upgrade` (fail-closed): verify the migrator's
- * recovered `canarySecret` against the retained `canary_secret_hash`. Only a
- * device holding the v1 CK can decrypt the canary and produce this secret, so a
- * stolen session (no CK) cannot pass — it cannot install an attacker AK.
+ * recovered `canarySecret` against the retained `canary_secret_hash`.
  * Rejects when no metadata or no stored hash exists.
+ *
+ * The secret is static and v1 clients sent it in plain with every approve,
+ * deny, revoke and node-id request, so passing proves someone saw it, not that
+ * they hold the CK. It is enough only for an already-trusted caller; a pending
+ * caller also needs a step-up code (see the upgrade route).
  */
 export const verifyPossessionProof = async (
   db: QueryableDatabase,

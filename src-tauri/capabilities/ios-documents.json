@@ -1,0 +1,25 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "ios-documents",
+  "description": "iOS saves downloads into the app's Documents folder, the one the Files app shows (UIFileSharingEnabled in Info.plist). The iOS sandbox has no Downloads folder, so it cannot save the way desktop does. See src/lib/download.ts.",
+  "webviews": ["main"],
+  "platforms": ["iOS"],
+  "permissions": [
+    {
+      "identifier": "fs:allow-write-text-file",
+      "allow": [
+        {
+          "path": "$DOCUMENT/*"
+        }
+      ]
+    },
+    {
+      "identifier": "fs:allow-write-file",
+      "allow": [
+        {
+          "path": "$DOCUMENT/*"
+        }
+      ]
+    }
+  ]
+}

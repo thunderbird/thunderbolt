@@ -15,6 +15,11 @@
     "@pulumi/random": "^4.19.2"
   },
   "devDependencies": {
+    "@types/bun": "^1.4.4",
     "typescript": "^6.0.3"
+  },
+  "scripts": {
+    "test": "bun test --timeout 10000",
+    "typecheck": "tsc --noEmit"
   }
 }

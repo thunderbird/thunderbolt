@@ -99,7 +99,9 @@ they only apply to models your deployment provides. A user running against their
 spends their own money and is not metered here.
 
 If an anonymous visitor signs in later, the work already on their device carries into the new account
-and the anonymous record is removed.
+and the anonymous record is removed. If that account already has local data on the device, the app
+opens the account's own data instead and later deletes the anonymous work. See
+[Devices and Accounts](devices.md#signing-out-revoking-and-deleting-which-to-use) for what happens to local data when sessions change.
 
 > Turning anonymous access on means anyone who can reach the URL can use the deployment. Put it
 > behind your network perimeter if that is not what you want.

@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createTestSettings } from '@/test-utils/settings'
-import { defaultModelId, defaultModels, defaultModelsVersion } from '@shared/defaults/models'
+import { defaultModelId, defaultModelImageSupport, defaultModels, defaultModelsVersion } from '@shared/defaults/models'
 import { noBrandingAssets, type BrandingAssets } from '@/branding/assets'
 import type { BrandingFile } from '@/branding/download'
 import { createConfigRoutes } from './config'
@@ -18,6 +18,26 @@ const fetchConfig = async (settings: Parameters<typeof createConfigRoutes>[0]) =
 
 describe('Config Routes', () => {
   describe('GET /config', () => {
+    it.each(['consumer', 'oidc', 'saml'] as const)(
+      'advertises %s authentication without credentials',
+      async (authMode) => {
+        const { body } = await fetchConfig(
+          createTestSettings({
+            authMode,
+            authAllowAnonymous: true,
+            captchaProvider: 'altcha',
+            oidcClientSecret: 'private-client-secret',
+            altchaSecret: 'private-captcha-secret',
+          }),
+        )
+        expect(body.authMode).toBe(authMode)
+        expect(body.authAllowAnonymous).toBe(true)
+        expect(body.captchaProvider).toBe('altcha')
+        expect(JSON.stringify(body)).not.toContain('private-client-secret')
+        expect(JSON.stringify(body)).not.toContain('private-captcha-secret')
+      },
+    )
+
     it('always reports e2eeEnabled: true (stale-client compatibility shim)', async () => {
       const { body } = await fetchConfig(createTestSettings())
       expect(body.e2eeEnabled).toBe(true)
@@ -226,6 +246,11 @@ describe('Config Routes', () => {
       const { body } = await fetchConfig(createTestSettings())
       expect(body.defaults.models.version).toBe(defaultModelsVersion)
       expect(body.defaults.models.data).toEqual(defaultModels)
+    })
+
+    it('ships the image-support declarations beside the models', async () => {
+      const { body } = await fetchConfig(createTestSettings())
+      expect(body.defaults.models.imageSupport).toEqual(defaultModelImageSupport)
     })
 
     it('publishes the default model id without private runtime fields', async () => {

@@ -327,7 +327,7 @@ export const createUniversalProxyRoutes = (options: CreateUniversalProxyRoutesOp
               if ('error' in pinned) {
                 const errorType = pinned.error === 'DNS_TIMEOUT' ? 'dns_timeout' : 'ssrf'
                 if (hop === 0) {
-                  return fail(400, `Blocked: ${pinned.error}`, errorType, currentUrl)
+                  return fail(400, 'Blocked: target could not be validated', errorType, currentUrl)
                 }
                 return fail(502, 'Bad gateway (SSRF or DNS error on redirect)', errorType, currentUrl)
               }

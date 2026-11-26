@@ -47,7 +47,7 @@ export const WidgetRenderer = memo(({ widget, messageId, sources }: WidgetRender
     {
       ...widget.args,
       messageId,
-      sources,
+      sourceMetadata: sources,
     },
   )
 })

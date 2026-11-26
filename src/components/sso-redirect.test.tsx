@@ -5,7 +5,7 @@
 import { AuthContext, createAuthClientInstance } from '@/contexts/auth-context'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { createMockAuthClient } from '@/test-utils/auth-client'
-import { pendingAnonIdKey } from '@/lib/analytics/use-anonymous-promotion-analytics'
+import { pendingPromotionKey } from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { getClock } from '@/testing-library'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
@@ -13,6 +13,8 @@ import * as tauriCore from '@tauri-apps/api/core'
 import * as tauriEvent from '@tauri-apps/api/event'
 import * as opener from '@tauri-apps/plugin-opener'
 import * as tauriOs from '@tauri-apps/plugin-os'
+import * as authToken from '@/lib/auth-token'
+import * as loopback from '@/lib/sso-loopback'
 import SsoRedirect from './sso-redirect'
 
 const originalCloudUrl = useLocalSettingsStore.getState().cloudUrl
@@ -23,7 +25,7 @@ describe('SsoRedirect', () => {
     cleanup()
     globalThis.fetch = originalFetch
     useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl })
-    sessionStorage.removeItem(pendingAnonIdKey)
+    sessionStorage.removeItem(pendingPromotionKey)
   })
 
   it('posts to the exact SSO endpoint when cloudUrl has trailing slashes', async () => {
@@ -225,13 +227,22 @@ describe('SsoRedirect', () => {
   })
 
   describe('on Tauri desktop', () => {
-    const renderWithLoopbackCallback = async (callbackUrl: string, authClient = createMockAuthClient()) => {
+    const renderWithLoopbackCallback = async (callbackUrl: string | null, authClient = createMockAuthClient()) => {
       Object.assign(window, { isTauri: true })
       spyOn(tauriCore, 'isTauri').mockReturnValue(true)
       spyOn(tauriCore, 'invoke').mockImplementation(async () => 17421 as never)
-      spyOn(opener, 'openUrl').mockImplementation(async () => {})
+      let complete!: (url: string | URL) => void
+      spyOn(opener, 'openUrl').mockImplementation(async (url) => complete(url))
       spyOn(tauriEvent, 'listen').mockImplementation(async (_event, cb) => {
-        queueMicrotask(() => cb({ payload: { url: callbackUrl } } as never))
+        complete = (initiate) => {
+          if (!callbackUrl) {
+            return
+          }
+          const url = new URL(callbackUrl)
+          url.hostname = 'localhost' // The native listener emits a canonical localhost URL.
+          url.searchParams.set('client_state', new URL(initiate).searchParams.get('client_state')!)
+          cb({ payload: { url: url.href } } as never)
+        }
         return () => {}
       })
       const replaceSpy = spyOn(window.location, 'replace').mockImplementation(() => undefined)
@@ -255,19 +266,59 @@ describe('SsoRedirect', () => {
       mock.restore()
     })
 
+    it('discards a callback from a server the component no longer belongs to', async () => {
+      Object.assign(window, { isTauri: true })
+      spyOn(tauriCore, 'isTauri').mockReturnValue(true)
+      const oldFlow = Promise.withResolvers<string | null>()
+      const nextFlow = Promise.withResolvers<string | null>()
+      const flowSpy = spyOn(loopback, 'startSsoFlowLoopback')
+        .mockImplementationOnce(() => oldFlow.promise)
+        .mockImplementationOnce(() => nextFlow.promise)
+      const storeToken = spyOn(authToken, 'setAuthToken').mockImplementation(() => {})
+      const replace = spyOn(window.location, 'replace').mockImplementation(() => undefined)
+      useLocalSettingsStore.setState({ cloudUrl: 'https://first.example/v1' })
+      const view = render(
+        <AuthContext.Provider value={{ authClient: createMockAuthClient() }}>
+          <SsoRedirect />
+        </AuthContext.Provider>,
+      )
+      await act(async () => {})
+      act(() => useLocalSettingsStore.setState({ cloudUrl: 'https://second.example/v1' }))
+      await act(async () => {})
+      expect(flowSpy).toHaveBeenCalledTimes(2)
+      await act(async () => oldFlow.resolve('first-server-token'))
+      expect(storeToken).not.toHaveBeenCalled()
+      expect(replace).not.toHaveBeenCalled()
+      view.unmount()
+      await act(async () => nextFlow.reject(new loopback.SsoCallbackError('access_denied')))
+      expect(storeToken).not.toHaveBeenCalled()
+      expect(replace).not.toHaveBeenCalled()
+    })
+
     it('sends a failed login to the error page with the code from the loopback', async () => {
       const { replaceSpy } = await renderWithLoopbackCallback(
-        'http://127.0.0.1:17421/?error=access_denied&error_description=free+text',
+        'http://localhost:17421/?error=access_denied&error_description=free+text',
       )
 
       expect(replaceSpy).toHaveBeenCalledWith('/sso-error?error=access_denied')
     })
 
     it('control: a callback with no token and no error keeps the retry screen', async () => {
-      const { replaceSpy, view } = await renderWithLoopbackCallback('http://127.0.0.1:17421/')
+      const { replaceSpy, view } = await renderWithLoopbackCallback('http://localhost:17421/?state=missing-token')
 
       expect(replaceSpy).not.toHaveBeenCalled()
       expect(view.getByText('Try again')).toBeTruthy()
+      expect(view.queryByRole('button', { name: 'Continue locally' })).not.toBeInTheDocument()
+    })
+
+    it('lets an optional server sign-in timeout return to local work', async () => {
+      useLocalSettingsStore.setState({ localMode: true })
+      const { replaceSpy, view } = await renderWithLoopbackCallback(null)
+      await act(async () => void (await getClock().tickAsync(5 * 60 * 1000)))
+
+      fireEvent.click(view.getByRole('button', { name: 'Continue locally' }))
+
+      expect(replaceSpy).toHaveBeenCalledWith('/')
     })
 
     it('preserves an anonymous session snapshot through the desktop SSO callback without refetching', async () => {
@@ -276,10 +327,10 @@ describe('SsoRedirect', () => {
         session: { user: { id: 'anonymous-user', email: '', isAnonymous: true } },
         getSession,
       })
-      const { replaceSpy } = await renderWithLoopbackCallback('http://127.0.0.1:17421/?token=sso-token', authClient)
+      const { replaceSpy } = await renderWithLoopbackCallback('http://localhost:17421/?token=sso-token', authClient)
 
       expect(getSession).not.toHaveBeenCalled()
-      expect(sessionStorage.getItem(pendingAnonIdKey)).toBe('anonymous-user')
+      expect(sessionStorage.getItem(pendingPromotionKey)).toBe('1')
       expect(replaceSpy).toHaveBeenCalledWith('/')
     })
 
@@ -300,7 +351,10 @@ describe('SsoRedirect', () => {
       spyOn(tauriOs, 'platform').mockReturnValue('macos')
       const callbacks: Array<() => void> = []
       spyOn(tauriEvent, 'listen').mockImplementation(async (_event, cb) => {
-        callbacks.push(() => cb({ payload: { url: 'http://127.0.0.1:17421/?token=sso-token' } } as never))
+        callbacks.push(() => {
+          const state = new URL(openUrl.mock.calls[0][0]).searchParams.get('client_state')!
+          cb({ payload: { url: `http://localhost:17421/?client_state=${state}&token=sso-token` } } as never)
+        })
         return () => {}
       })
       const replace = spyOn(window.location, 'replace').mockImplementation(() => undefined)

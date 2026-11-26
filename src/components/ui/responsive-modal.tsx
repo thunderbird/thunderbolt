@@ -161,6 +161,8 @@ type ResponsiveModalProps = {
   showCloseButton?: boolean
   /** Callback fired when focus moves into the content after opening */
   onOpenAutoFocus?: (event: Event) => void
+  /** Restore focus to a persistent control when the original trigger has unmounted. */
+  onCloseAutoFocus?: (event: Event) => void
   /** Callback fired when user clicks outside the dialog */
   onInteractOutside?: (event: Event) => void
   /** Callback fired when user presses Escape */
@@ -195,6 +197,7 @@ export const ResponsiveModal = ({
   className,
   showCloseButton = true,
   onOpenAutoFocus,
+  onCloseAutoFocus,
   onInteractOutside,
   onEscapeKeyDown,
 }: ResponsiveModalProps) => {
@@ -205,6 +208,7 @@ export const ResponsiveModal = ({
         showCloseButton={showCloseButton}
         surfaceVariant="structured"
         onOpenAutoFocus={onOpenAutoFocus}
+        onCloseAutoFocus={onCloseAutoFocus}
         onInteractOutside={onInteractOutside}
         onEscapeKeyDown={onEscapeKeyDown}
       >

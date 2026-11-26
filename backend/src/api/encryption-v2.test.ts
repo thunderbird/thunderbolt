@@ -24,7 +24,7 @@ import {
   ecdsaSignAlgorithm,
 } from '@shared/e2ee-types'
 import { createHmac } from 'crypto'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
 import type { SecurityNotifications } from '@/lib/security-notifications'
@@ -185,6 +185,7 @@ describe('Encryption API (v2)', () => {
       recoveryMlkemPublicKey: signingKeyNull ? null : recoverySlot.recoveryMlkemPublicKey,
       recoveryWrappedAk: signingKeyNull ? null : recoverySlot.recoveryWrappedAK,
       recoveryAttestation: signingKeyNull ? null : recoverySlot.recoveryAttestation,
+      recoveryContinuity: signingKeyNull ? null : 'stored-seal',
       keyVersion: 1,
       primaryKeyId: initialKeyId,
       schemeVersion,
@@ -305,6 +306,35 @@ describe('Encryption API (v2)', () => {
         .from(wrappedKeysTable)
         .where(eq(wrappedKeysTable.userId, p('u')))
       expect(key.keyId).toBe(initialKeyId)
+    })
+
+    it('stores the recovery continuity seal and serves it with the metadata', async () => {
+      const keypair = await generateSigningKeypair()
+      await createUserAndSession(p('u'), p('tok'), p('d'))
+      await insertDevice(p('d'), p('u'))
+      const bootstrap = await app.handle(
+        new Request(`${baseUrl}/devices/${p('d')}/envelope`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('d')),
+          body: JSON.stringify({
+            wrappedCK: 'wrapped-ak-boot',
+            attestation: 'att',
+            canaryIv: 'boot-iv',
+            canaryCtext: 'boot-ctext',
+            signingPublicKey: await exportSigningPublicKey(keypair),
+            kdfSalt: 'boot-salt',
+            wrappedKeys: [{ keyId: initialKeyId, wrappedKey: 'wrapped-dek-0' }],
+            ...recoverySlot,
+            recoveryContinuity: 'boot-seal',
+          }),
+        }),
+      )
+      expect(bootstrap.status).toBe(200)
+
+      const metadata = await app.handle(
+        new Request(`${baseUrl}/encryption/canary`, { headers: authHeaders(p('tok'), p('d')) }),
+      )
+      expect((await metadata.json()).recovery_continuity).toBe('boot-seal')
     })
 
     it('rejects bootstrap without a wrapped key for the primary key_id "0"', async () => {
@@ -568,9 +598,9 @@ describe('Encryption API (v2)', () => {
       expect(envelope.wrappedCk).toBe('original-ak')
     })
 
-    it('enforces the device cap at approval time', async () => {
-      // `encryption.ts:770`. The cap is checked on the untrusted → trusted
-      // transition, so registration can exceed it but approval cannot.
+    it('enforces the device cap when approving another device', async () => {
+      // The cap is checked on the untrusted → trusted transition, so
+      // registration can exceed it but approving a different device cannot.
       const keypair = await generateSigningKeypair()
       await createUserAndSession(p('u'), p('tok'), p('caller'))
       await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
@@ -659,6 +689,34 @@ describe('Encryption API (v2)', () => {
         .from(envelopesTable)
         .where(eq(envelopesTable.deviceId, p('trusted-0')))
       expect(envelope.wrappedCk).toBe('rotated-ak')
+    })
+
+    it('lets a pending device recover itself at the cap', async () => {
+      // The lost devices still count and only a trusted device can revoke
+      // them, so the cap would lock the user out of their own account.
+      const keypair = await generateSigningKeypair()
+      await createUserAndSession(p('u'), p('tok'), p('target'))
+      await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
+      for (let i = 0; i < maxActiveDevicesPerUser; i++) {
+        await insertDevice(p(`lost-${i}`), p('u'), { trusted: true })
+      }
+      await insertDevice(p('target'), p('u'))
+
+      const proof = await proofFor(p('tok'), p('target'), 'approve', keypair)
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices/${p('target')}/envelope`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('target')),
+          body: JSON.stringify({ wrappedCK: 'self-ak', attestation: 'att', proof }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const [target] = await db
+        .select()
+        .from(devicesTable)
+        .where(eq(devicesTable.id, p('target')))
+      expect(target).toMatchObject({ trusted: true, approvalPending: false })
     })
   })
 
@@ -971,6 +1029,31 @@ describe('Encryption API (v2)', () => {
       expect(key.wrappedKey).toBe(`rewrapped-${initialKeyId}`)
     })
 
+    it('rotates an account that self-recovery took past the device cap', async () => {
+      // The envelope array has no fixed bound; coverage alone sizes it.
+      const keypair = await setupRotatable([initialKeyId])
+      const otherIds = Array.from({ length: maxActiveDevicesPerUser }, (_, i) => p(`other-${i}`))
+      for (const id of otherIds) {
+        await insertDevice(id, p('u'), { trusted: true })
+      }
+      const body = await rotateBody(keypair, [initialKeyId])
+      const envelopes = [p('caller'), ...otherIds].map((deviceId) => ({
+        deviceId,
+        wrappedCK: 'new-ak',
+        attestation: 'att',
+      }))
+
+      const res = await app.handle(
+        new Request(`${baseUrl}/encryption/rotate`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('caller')),
+          body: JSON.stringify({ ...body, envelopes }),
+        }),
+      )
+
+      expect(res.status).toBe(200)
+    })
+
     /**
      * `newPrimaryKey` is the ONLY way a key_id enters an established keyring
      * (THU-871), so these tests police the exact shape of that door. The
@@ -1254,6 +1337,53 @@ describe('Encryption API (v2)', () => {
       expect(metadata.recoveryWrappedAk).toBe('recovery-wrapped-new-ak')
     })
 
+    it('keeps the stored continuity seal on a silent rotation, whatever the body carries', async () => {
+      const keypair = await setupRotatable([initialKeyId])
+      const body = await rotateBody(keypair, [initialKeyId])
+      const res = await app.handle(
+        new Request(`${baseUrl}/encryption/rotate`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('caller')),
+          body: JSON.stringify({ ...body, recoveryContinuity: 'replacement-seal' }),
+        }),
+      )
+      expect(res.status).toBe(200)
+
+      const [metadata] = await db
+        .select()
+        .from(encryptionMetadataTable)
+        .where(eq(encryptionMetadataTable.userId, p('u')))
+      expect(metadata.recoveryContinuity).toBe('stored-seal')
+    })
+
+    it.each([
+      ['the new seal', 'fresh-seal', 'fresh-seal'],
+      ['no seal', undefined, null],
+    ])('stores %s on a phrase change', async (_label, sent, stored) => {
+      const keypair = await setupRotatable([initialKeyId])
+      const body = await rotateBody(keypair, [initialKeyId])
+      const otp = await mintStepUpCode(p('u'))
+      const res = await app.handle(
+        new Request(`${baseUrl}/encryption/rotate`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('caller')),
+          body: JSON.stringify({
+            ...body,
+            stepUpOtp: otp,
+            recoveryEcdhPublicKey: 'fresh-phrase-ecdh',
+            recoveryContinuity: sent,
+          }),
+        }),
+      )
+      expect(res.status).toBe(200)
+
+      const [metadata] = await db
+        .select()
+        .from(encryptionMetadataTable)
+        .where(eq(encryptionMetadataTable.userId, p('u')))
+      expect(metadata.recoveryContinuity).toBe(stored)
+    })
+
     it('accepts CHANGED recovery public keys WITH a valid step-up code — an explicit phrase change (THU-875)', async () => {
       const keypair = await setupRotatable([initialKeyId])
       const body = await rotateBody(keypair, [initialKeyId])
@@ -1495,11 +1625,11 @@ describe('Encryption API (v2)', () => {
         await insertPasskeyRow(p('u'), p('cred-1'))
         expect((await rotate({ ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot() })).status).toBe(200)
 
+        // The savepoint keeps the refused delete from aborting the test's transaction.
         await expect(
-          db
-            .delete(passkeyTable)
-            .where(eq(passkeyTable.userId, p('u')))
-            .execute(),
+          db.transaction(async (tx) => {
+            await tx.delete(passkeyTable).where(eq(passkeyTable.userId, p('u')))
+          }),
         ).rejects.toThrow()
         expect((await readMetadata()).passkeyCredentialId).toBe(p('cred-1'))
       })
@@ -1517,6 +1647,96 @@ describe('Encryption API (v2)', () => {
 
         const res = await rotate({ ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot() })
         expect(res.status).toBe(200)
+        expect((await readMetadata()).passkeyCredentialId).toBeNull()
+      })
+
+      it('stores the passkey seal sent with a new slot', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        await insertPasskeyRow(p('u'), p('cred-1'))
+
+        const res = await rotate({
+          ...(await rotateBody(keypair, [initialKeyId])),
+          ...passkeySlot(),
+          passkeyContinuity: 'passkey-seal',
+        })
+        expect(res.status).toBe(200)
+
+        expect((await readMetadata()).passkeyContinuity).toBe('passkey-seal')
+        const canary = await app.handle(new Request(`${baseUrl}/encryption/canary`, { headers: authHeaders(p('tok')) }))
+        expect((await canary.json()).passkey_continuity).toBe('passkey-seal')
+      })
+
+      it('keeps the passkey seal on a rotation with the same slot keys and ignores a sent seal', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        await insertPasskeyRow(p('u'), p('cred-1'))
+        const enroll = { ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot(), passkeyContinuity: 'seal' }
+        expect((await rotate(enroll)).status).toBe(200)
+
+        const res = await rotate({
+          ...(await rotateBody(keypair, [initialKeyId])),
+          ...passkeySlot(),
+          passkeyWrappedAK: 'passkey-wrapped-new-ak',
+          passkeyContinuity: 'replacement-seal',
+        })
+        expect(res.status).toBe(200)
+
+        const metadata = await readMetadata()
+        expect(metadata.passkeyWrappedAk).toBe('passkey-wrapped-new-ak')
+        expect(metadata.passkeyContinuity).toBe('seal')
+      })
+
+      it('replaces the passkey seal when the slot keys change and clears it when none is sent', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        await insertPasskeyRow(p('u'), p('cred-1'))
+        const enroll = { ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot(), passkeyContinuity: 'seal' }
+        expect((await rotate(enroll)).status).toBe(200)
+
+        const sealed = { ...passkeySlot(), passkeyEcdhPublicKey: 'sealed-ecdh', passkeyMlkemPublicKey: 'sealed-mlkem' }
+        const replace = { ...(await rotateBody(keypair, [initialKeyId])), ...sealed, passkeyContinuity: 'new-seal' }
+        expect((await rotate(replace)).status).toBe(200)
+        expect((await readMetadata()).passkeyContinuity).toBe('new-seal')
+
+        const unsealed = { ...passkeySlot(), passkeyEcdhPublicKey: 'other-ecdh' }
+        expect((await rotate({ ...(await rotateBody(keypair, [initialKeyId])), ...unsealed })).status).toBe(200)
+        expect((await readMetadata()).passkeyContinuity).toBeNull()
+      })
+
+      it('clears the passkey seal when the slot is removed', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        await insertPasskeyRow(p('u'), p('cred-1'))
+        const enroll = { ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot(), passkeyContinuity: 'seal' }
+        expect((await rotate(enroll)).status).toBe(200)
+
+        expect((await rotate(await rotateBody(keypair, [initialKeyId]))).status).toBe(200)
+
+        const metadata = await readMetadata()
+        expect(metadata.passkeyCredentialId).toBeNull()
+        expect(metadata.passkeyContinuity).toBeNull()
+      })
+
+      it('serves passkey_continuity as null while passkeys are off', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        await insertPasskeyRow(p('u'), p('cred-1'))
+        const enroll = { ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot(), passkeyContinuity: 'seal' }
+        expect((await rotate(enroll)).status).toBe(200)
+
+        app = appWith(false)
+        const canary = await (
+          await app.handle(new Request(`${baseUrl}/encryption/canary`, { headers: authHeaders(p('tok')) }))
+        ).json()
+        expect(canary).toHaveProperty('passkey_continuity', null)
+      })
+
+      it('rejects a passkey seal longer than 300 characters', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        await insertPasskeyRow(p('u'), p('cred-1'))
+
+        const res = await rotate({
+          ...(await rotateBody(keypair, [initialKeyId])),
+          ...passkeySlot(),
+          passkeyContinuity: 'x'.repeat(301),
+        })
+        expect(res.status).toBe(422)
         expect((await readMetadata()).passkeyCredentialId).toBeNull()
       })
 
@@ -1568,45 +1788,224 @@ describe('Encryption API (v2)', () => {
       }
     }
 
-    it('rejects an untrusted v1 caller at the trust gate despite a valid possession proof and nonce', async () => {
-      await useCommittedDatabase()
-      await setupV1()
-      await db
-        .update(devicesTable)
-        .set({ trusted: false, approvalPending: true })
-        .where(eq(devicesTable.id, p('caller')))
-      const body = await upgradeBody()
-      const [before] = await db
-        .select()
-        .from(encryptionMetadataTable)
-        .where(eq(encryptionMetadataTable.userId, p('u')))
-      expect(await hashSecret(body.possessionProof)).toBe(before.canarySecretHash!)
-      const response = await app.handle(
-        new Request(`${baseUrl}/encryption/upgrade`, {
-          method: 'POST',
-          headers: authHeaders(p('tok'), p('caller')),
-          body: JSON.stringify(body),
-        }),
-      )
-      expect(response.status).toBe(403)
-      expect((await response.json()).error).toBe('Only trusted devices can upgrade encryption')
-      expect(
+    describe('a pending caller recovering with the v1 phrase', () => {
+      /** The caller lost its trust; an old device still holds the v1 envelope. */
+      const setupPendingCaller = async () => {
+        await setupV1()
+        await db
+          .update(devicesTable)
+          .set({ trusted: false, approvalPending: true })
+          .where(eq(devicesTable.id, p('caller')))
+        await db.delete(envelopesTable).where(eq(envelopesTable.deviceId, p('caller')))
+        await insertDevice(p('old'), p('u'), { trusted: true })
+        await insertEnvelope(p('old'), p('u'))
+      }
+
+      const recoveryEmail = () => `${p('u')}@test.com`
+      const mintRecoveryCode = () => mintStepUpOtp(db, 'v1-phrase-recovery', recoveryEmail())
+      /** Attempts already spent on the outstanding recovery code (`otp:attempts`). */
+      const recoveryCodeAttempts = async () =>
+        Number(
+          (
+            await db
+              .select()
+              .from(verification)
+              .where(eq(verification.identifier, stepUpIdentifier('v1-phrase-recovery', recoveryEmail())))
+          )[0]!.value.split(':')[1],
+        )
+
+      const postUpgrade = async (body: Record<string, unknown>) =>
+        app.handle(
+          new Request(`${baseUrl}/encryption/upgrade`, {
+            method: 'POST',
+            headers: authHeaders(p('tok'), p('caller')),
+            body: JSON.stringify(body),
+          }),
+        )
+
+      const schemeVersion = async () =>
         (
           await db
             .select()
             .from(encryptionMetadataTable)
             .where(eq(encryptionMetadataTable.userId, p('u')))
-        )[0].schemeVersion,
-      ).toBe(1)
-      expect(
+        )[0].schemeVersion
+
+      const deviceRow = async (id: string) => (await db.select().from(devicesTable).where(eq(devicesTable.id, id)))[0]
+
+      const nonceConsumed = async (nonce: string) =>
+        (await db.select().from(challengeNoncesTable).where(eq(challengeNoncesTable.nonce, nonce)))[0].consumed
+
+      it('refuses a valid possession proof and nonce without a step-up code, writing nothing', async () => {
+        await useCommittedDatabase()
+        await setupPendingCaller()
+        const body = await upgradeBody()
+
+        const response = await postUpgrade(body)
+
+        expect(response.status).toBe(403)
+        expect((await response.json()).code).toBe('step_up_required')
+        expect(await schemeVersion()).toBe(1)
+        expect(
+          await db
+            .select()
+            .from(wrappedKeysTable)
+            .where(eq(wrappedKeysTable.userId, p('u'))),
+        ).toEqual([])
+        expect(await nonceConsumed(body.nonce)).toBe(false)
+        expect((await deviceRow(p('caller'))).trusted).toBe(false)
+        expect((await deviceRow(p('old'))).trusted).toBe(true)
+      })
+
+      it('refuses a wrong step-up code and leaves the account untouched', async () => {
+        await useCommittedDatabase()
+        await setupPendingCaller()
+        const otp = await mintRecoveryCode()
+        const body = await upgradeBody({ stepUpOtp: otp === '00000000' ? '11111111' : '00000000' })
+
+        const response = await postUpgrade(body)
+
+        expect(response.status).toBe(403)
+        expect((await response.json()).code).toBe('step_up_invalid')
+        expect(await schemeVersion()).toBe(1)
+        expect(await nonceConsumed(body.nonce)).toBe(false)
+        expect((await deviceRow(p('old'))).trusted).toBe(true)
+        // The refusal commits the attempt charge, and the real code stays usable.
+        expect(await recoveryCodeAttempts()).toBe(1)
+        expect(await verifyStepUpOtp(db, 'v1-phrase-recovery', recoveryEmail(), otp)).toBe('valid')
+      })
+
+      it('upgrades with the proof and a valid code, trusting the caller and dropping the old devices', async () => {
+        await setupPendingCaller()
+        // Already waiting for approval before the upgrade.
+        await insertDevice(p('waiting'), p('u'))
+        const otp = await mintRecoveryCode()
+
+        const response = await postUpgrade(await upgradeBody({ stepUpOtp: otp }))
+
+        expect(response.status).toBe(200)
+        expect(await schemeVersion()).toBe(2)
+        expect(await deviceRow(p('caller'))).toMatchObject({ trusted: true, approvalPending: false })
+        // Neither stays pending, so the recovered device is not asked to approve them.
+        expect(await deviceRow(p('old'))).toMatchObject({ trusted: false, approvalPending: false })
+        expect(await deviceRow(p('waiting'))).toMatchObject({ trusted: false, approvalPending: false })
+        expect(
+          await db
+            .select()
+            .from(envelopesTable)
+            .where(eq(envelopesTable.deviceId, p('old'))),
+        ).toEqual([])
+        // Consumed on commit, so the same code cannot authorize anything again.
+        expect(await verifyStepUpOtp(db, 'v1-phrase-recovery', recoveryEmail(), otp)).not.toBe('valid')
+        await flushNotifications()
+        expect(sentEmails.map((email) => email.kind)).toEqual(['encryption-set-up', 'recovery-phrase-used'])
+      })
+
+      it('refuses a wrong possession proof before the step-up code is checked or charged', async () => {
+        await useCommittedDatabase()
+        await setupPendingCaller()
+        const otp = await mintRecoveryCode()
+        const wrongCode = otp === '00000000' ? '11111111' : '00000000'
+
+        const response = await postUpgrade(await upgradeBody({ stepUpOtp: wrongCode, possessionProof: 'leaked-guess' }))
+
+        expect(response.status).toBe(403)
+        expect((await response.json()).error).toBe('Invalid CK-possession proof')
+        expect(await schemeVersion()).toBe(1)
+        expect((await deviceRow(p('caller'))).trusted).toBe(false)
+        expect((await deviceRow(p('old'))).trusted).toBe(true)
+        // Without the canary secret, a session cannot spend the owner's attempts.
+        expect(await recoveryCodeAttempts()).toBe(0)
+      })
+
+      it('does not accept a code minted for a recovery phrase change', async () => {
+        await setupPendingCaller()
+        const phraseChangeCode = await mintStepUpCode(p('u'))
+
+        const response = await postUpgrade(await upgradeBody({ stepUpOtp: phraseChangeCode }))
+
+        expect(response.status).toBe(403)
+        expect((await response.json()).code).toBe('step_up_invalid')
+        expect(await schemeVersion()).toBe(1)
+      })
+
+      /** Trusted bridges, which keep their trust through a migration and count toward the cap. */
+      const insertTrustedBridges = async (count: number) => {
+        const bridgeIds = Array.from({ length: count }, (_, index) => p(`bridge-${index}`))
+        for (const id of bridgeIds) {
+          await insertDevice(id, p('u'), { trusted: true, keyless: true })
+        }
+        await db.update(devicesTable).set({ deviceType: 'bridge' }).where(inArray(devicesTable.id, bridgeIds))
+      }
+
+      it('recovers even when the trusted bridges alone fill the device cap', async () => {
+        await setupPendingCaller()
+        await insertTrustedBridges(maxActiveDevicesPerUser)
+
+        const response = await postUpgrade(await upgradeBody({ stepUpOtp: await mintRecoveryCode() }))
+
+        expect(response.status).toBe(200)
+        expect((await deviceRow(p('caller'))).trusted).toBe(true)
+      })
+
+      it('rolls back trust, sibling demotion and the code when a late write fails', async () => {
+        await useCommittedDatabase()
+        await setupPendingCaller()
+        const otp = await mintRecoveryCode()
+        // Org escrow without an orgEnvelope throws after the caller is trusted.
+        const escrow = new Elysia().use(
+          createEncryptionRoutes(auth, db, createTestSettings({ orgEscrowEnabled: true }), mockNotifications),
+        )
+
+        const response = await escrow.handle(
+          new Request(`${baseUrl}/encryption/upgrade`, {
+            method: 'POST',
+            headers: authHeaders(p('tok'), p('caller')),
+            body: JSON.stringify(await upgradeBody({ stepUpOtp: otp })),
+          }),
+        )
+
+        expect(response.status).toBe(400)
+        expect(await schemeVersion()).toBe(1)
+        expect(await deviceRow(p('caller'))).toMatchObject({ trusted: false, approvalPending: true })
+        expect((await deviceRow(p('old'))).trusted).toBe(true)
+        expect(await verifyStepUpOtp(db, 'v1-phrase-recovery', recoveryEmail(), otp)).toBe('valid')
+      })
+
+      it('refuses an untrusted caller that is not pending, even with a valid code', async () => {
+        await setupPendingCaller()
         await db
-          .select()
-          .from(wrappedKeysTable)
-          .where(eq(wrappedKeysTable.userId, p('u'))),
-      ).toEqual([])
-      expect(
-        (await db.select().from(challengeNoncesTable).where(eq(challengeNoncesTable.nonce, body.nonce)))[0].consumed,
-      ).toBe(false)
+          .update(devicesTable)
+          .set({ approvalPending: false })
+          .where(eq(devicesTable.id, p('caller')))
+        const otp = await mintRecoveryCode()
+
+        const response = await postUpgrade(await upgradeBody({ stepUpOtp: otp }))
+
+        expect(response.status).toBe(403)
+        expect((await response.json()).error).toBe(
+          'Only trusted devices, or a pending device recovering a v1 account, can upgrade encryption',
+        )
+        expect(await schemeVersion()).toBe(1)
+      })
+
+      it.each(['bridge', 'cli'] as const)('refuses a pending %s caller', async (deviceType) => {
+        await setupPendingCaller()
+        await db
+          .update(devicesTable)
+          .set({ deviceType })
+          .where(eq(devicesTable.id, p('caller')))
+        const otp = await mintRecoveryCode()
+
+        const response = await postUpgrade(await upgradeBody({ stepUpOtp: otp }))
+
+        expect(response.status).toBe(403)
+        expect((await response.json()).error).toBe(
+          'Only trusted devices, or a pending device recovering a v1 account, can upgrade encryption',
+        )
+        expect(await schemeVersion()).toBe(1)
+        expect(await verifyStepUpOtp(db, 'v1-phrase-recovery', recoveryEmail(), otp)).toBe('valid')
+      })
     })
 
     it('flips scheme 1→2, persists keyring "0"+"v1", and registers the signing key', async () => {
@@ -1637,6 +2036,24 @@ describe('Encryption API (v2)', () => {
         .from(wrappedKeysTable)
         .where(eq(wrappedKeysTable.userId, p('u')))
       expect(keys.map((k) => k.keyId).sort()).toEqual([initialKeyId, legacyKeyId].sort())
+    })
+
+    it("stores the new phrase's continuity seal", async () => {
+      await setupV1()
+      const res = await app.handle(
+        new Request(`${baseUrl}/encryption/upgrade`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('caller')),
+          body: JSON.stringify(await upgradeBody({ recoveryContinuity: 'upgrade-seal' })),
+        }),
+      )
+      expect(res.status).toBe(200)
+
+      const [metadata] = await db
+        .select()
+        .from(encryptionMetadataTable)
+        .where(eq(encryptionMetadataTable.userId, p('u')))
+      expect(metadata.recoveryContinuity).toBe('upgrade-seal')
     })
 
     it('rejects a wrong possession proof (D1)', async () => {
@@ -2772,6 +3189,81 @@ describe('Encryption API (v2)', () => {
         }),
       )
       expect(untrusted.status).toBe(403)
+    })
+
+    const v1CanarySecret = 'the-v1-content-key-canary-secret'
+
+    /** Ask for a code as the pending device `d`, optionally showing a possession proof. */
+    const requestCodeAsPending = (possessionProof?: string) =>
+      app.handle(
+        new Request(`${baseUrl}/encryption/step-up/request`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('d')),
+          ...(possessionProof !== undefined && { body: JSON.stringify({ possessionProof }) }),
+        }),
+      )
+
+    it('mints a code for a pending device only while the account is still on scheme 1', async () => {
+      const request = () => requestCodeAsPending(v1CanarySecret)
+      await createUserAndSession(p('u'), p('tok'), p('d'))
+      await insertV2Metadata(p('u'), 'unused', {
+        schemeVersion: 1,
+        signingKeyNull: true,
+        canarySecretHash: await hashSecret(v1CanarySecret),
+      })
+      await insertDevice(p('d'), p('u'))
+
+      expect((await request()).status).toBe(200)
+      expect(sentEmails.map((e) => e.kind)).toEqual(['step-up-code'])
+      // The email names the grant this code buys, not a phrase change.
+      expect((sentEmails[0]!.params as { action: string }).action).toBe('v1-phrase-recovery')
+
+      await db
+        .update(encryptionMetadataTable)
+        .set({ schemeVersion: 2 })
+        .where(eq(encryptionMetadataTable.userId, p('u')))
+      expect((await request()).status).toBe(403)
+    })
+
+    it.each([
+      ['a denied device', { approvalPending: false }],
+      ['a pending bridge', { deviceType: 'bridge' as const }],
+      ['a pending CLI device', { deviceType: 'cli' as const }],
+    ])('refuses %s on a scheme-1 account', async (_label, change) => {
+      await createUserAndSession(p('u'), p('tok'), p('d'))
+      await insertV2Metadata(p('u'), 'unused', {
+        schemeVersion: 1,
+        signingKeyNull: true,
+        canarySecretHash: await hashSecret(v1CanarySecret),
+      })
+      await insertDevice(p('d'), p('u'))
+      await db
+        .update(devicesTable)
+        .set(change)
+        .where(eq(devicesTable.id, p('d')))
+
+      const response = await requestCodeAsPending(v1CanarySecret)
+
+      expect(response.status).toBe(403)
+      expect(sentEmails).toEqual([])
+    })
+
+    it.each([
+      ['no possession proof', undefined],
+      ['a wrong possession proof', 'not-the-canary-secret'],
+    ])('emails nothing to a pending device with %s', async (_label, possessionProof) => {
+      await createUserAndSession(p('u'), p('tok'), p('d'))
+      await insertV2Metadata(p('u'), 'unused', {
+        schemeVersion: 1,
+        signingKeyNull: true,
+        canarySecretHash: await hashSecret(v1CanarySecret),
+      })
+      await insertDevice(p('d'), p('u'))
+
+      const response = await requestCodeAsPending(possessionProof)
+
+      expect(response.status).toBe(403)
+      expect(sentEmails).toEqual([])
     })
   })
 })

@@ -72,6 +72,7 @@ export const auditActionLabels: Record<AuditAction, MessageDescriptor> = {
   'admin.access_denied': msg`Admin access denied`,
 }
 
+/** Whether `action` is one this build has a label for. */
 const isAuditAction = (action: string): action is AuditAction => (auditActions as readonly string[]).includes(action)
 
 /** The label for an action, or null for one this build doesn't know (show the raw id then). */

@@ -1330,8 +1330,10 @@ jobs:
         run: |
           mapfile -t specs < <(jq -r '.[]' <<< "$SPECS")
           browsers="$HOME/.cache/ms-playwright"
-          # The output dir is the test user's own: qa-out/replay belongs to the job's user.
-          if chmod o+x "$HOME/.cache" && chmod -R o+rX "$browsers" && out=$(sudo -n -u "$QA_TEST_USER" mktemp -d) &&
+          # The output dir is the test user's own: qa-out/replay belongs to the job's user. `ls` fails on a missing
+          # spec, which Playwright would skip when another one exists.
+          if ls -- "${specs[@]}" > /dev/null && chmod o+x "$HOME/.cache" && chmod -R o+rX "$browsers" &&
+            out=$(sudo -n -u "$QA_TEST_USER" mktemp -d) &&
             sudo -n -u "$QA_TEST_USER" timeout --kill-after=10s 10m \
               env "PATH=$PATH" "PLAYWRIGHT_BROWSERS_PATH=$browsers" \
               bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 \
@@ -1677,6 +1679,8 @@ jobs:
           SPECS: ${{ toJSON(matrix.task.specs) }}
         run: |
           mapfile -t specs < <(jq -r '.[] | "qa-out-verify/" + ltrimstr("qa-out/")' <<< "$SPECS")
+          # Playwright skips a missing spec when another one exists, so this fails on one first.
+          ls -- "${specs[@]}" > /dev/null
           bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 "${specs[@]}"
 
       # Succeeds only when the check passes all three times. The baseline below runs only after it.
@@ -2139,6 +2143,8 @@ jobs:
           SPECS: ${{ toJSON(matrix.task.realSpecs) }}
         run: |
           mapfile -t specs < <(jq -r '.[]' <<< "$SPECS")
+          # Playwright skips a missing spec when another one exists, so this fails on one first.
+          ls -- "${specs[@]}" > /dev/null
           bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 "${specs[@]}"
       - *pass-marker
       - if: always() && steps.replay.outcome == 'success'

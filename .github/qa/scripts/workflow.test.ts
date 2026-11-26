@@ -684,19 +684,41 @@ describe('fix job', () => {
     expect(collect({ REPLAY: 'skipped', VISUAL: 'skipped' })).toBeUndefined()
   })
 
-  test("the replay after the fix runs every fake-AI repro of the bug's group, from the fresh download", () => {
-    const dir = mkdtempSync(join(work, 'patched-replay-'))
+  /** Runs a replay step with a stand-in Playwright and `present` of `specs` on disk; returns its exit code and args. */
+  const runReplay = (job: string, name: string, specs: string[], present: string[]) => {
+    const dir = mkdtempSync(join(work, 'replay-'))
     writeFileSync(join(dir, 'bunx'), `#!/bin/sh\nprintf '%s\\n' "$@" > "${dir}/args"\n`, { mode: 0o755 })
-    const specs = ['qa-out/c2/repro/1.spec.ts', 'qa-out/c6/repro/2.spec.ts']
-    const proc = Bun.spawnSync(['bash', '-e', '-c', step('fix', 'Replay the spec on the patched code').run ?? ''], {
+    for (const spec of present) {
+      mkdirSync(dirname(join(dir, spec)), { recursive: true })
+      writeFileSync(join(dir, spec), 'spec')
+    }
+    const proc = Bun.spawnSync(['bash', '-e', '-c', step(job, name).run ?? ''], {
       cwd: dir,
       env: { PATH: `${dir}:${process.env.PATH}`, SPECS: JSON.stringify(specs) },
     })
-    expect(proc.exitCode).toBe(0)
-    expect(readFileSync(join(dir, 'args'), 'utf8').trim().split('\n').slice(-2)).toEqual([
-      'qa-out-verify/c2/repro/1.spec.ts',
-      'qa-out-verify/c6/repro/2.spec.ts',
-    ])
+    const args = existsSync(join(dir, 'args')) ? readFileSync(join(dir, 'args'), 'utf8').trim().split('\n') : []
+    return { code: proc.exitCode, args }
+  }
+
+  test("the replay after the fix runs every fake-AI repro of the bug's group, from the fresh download", () => {
+    const specs = ['qa-out/c2/repro/1.spec.ts', 'qa-out/c6/repro/2.spec.ts']
+    const downloaded = ['qa-out-verify/c2/repro/1.spec.ts', 'qa-out-verify/c6/repro/2.spec.ts']
+    const replay = runReplay('fix', 'Replay the spec on the patched code', specs, downloaded)
+    expect(replay.code).toBe(0)
+    expect(replay.args.slice(-2)).toEqual(downloaded)
+  })
+
+  test('a replay of several specs fails before Playwright when one is missing, which Playwright would skip', () => {
+    const specs = ['qa-out/c2/repro/1.spec.ts', 'qa-out/c6/repro/2.spec.ts']
+    const patched = runReplay('fix', 'Replay the spec on the patched code', specs, ['qa-out-verify/c2/repro/1.spec.ts'])
+    expect(patched.code).not.toBe(0)
+    expect(patched.args).toEqual([])
+    const real = runReplay('verify-real', 'Replay the spec on the patched frontend', specs, [specs[0]])
+    expect(real.code).not.toBe(0)
+    expect(real.args).toEqual([])
+    expect(runReplay('verify-real', 'Replay the spec on the patched frontend', specs, specs).args.slice(-2)).toEqual(
+      specs,
+    )
   })
 
   describe('the repro check before the session', () => {
@@ -721,9 +743,14 @@ describe('fix job', () => {
     })
 
     /** The step's output, exit code and sudo calls, with stand-ins for sudo, timeout and Playwright. */
-    const replay = ({ code = 0, browsers = true } = {}) => {
+    const specs = ['qa-out/c2/repro/1.spec.ts', 'qa-out/c6/repro/1.spec.ts']
+    const replay = ({ code = 0, browsers = true, present = specs } = {}) => {
       const dir = mkdtempSync(join(work, 'unpatched-'))
       if (browsers) mkdirSync(join(dir, '.cache/ms-playwright'), { recursive: true })
+      for (const spec of present) {
+        mkdirSync(dirname(join(dir, spec)), { recursive: true })
+        writeFileSync(join(dir, spec), 'spec')
+      }
       writeFileSync(join(dir, 'sudo'), `#!/bin/sh\nprintf '%s\\n' "$*" >> "${dir}/sudo.log"\nshift 3\nexec "$@"\n`, {
         mode: 0o755,
       })
@@ -736,7 +763,7 @@ describe('fix job', () => {
           HOME: dir,
           QA_TEST_USER: 'qa-test',
           GITHUB_OUTPUT: join(dir, 'output'),
-          SPECS: JSON.stringify(['qa-out/c2/repro/1.spec.ts', 'qa-out/c6/repro/1.spec.ts']),
+          SPECS: JSON.stringify(specs),
         },
       })
       const read = (name: string) => (existsSync(join(dir, name)) ? readFileSync(join(dir, name), 'utf8') : '')
@@ -755,9 +782,11 @@ describe('fix job', () => {
     })
 
     // The usual case sets nothing and fails nothing, so a normal run shows no error annotation, and the session runs.
-    test('a failed or timed-out run, or a browser cache it cannot read, sets nothing and fails nothing', () => {
+    test('a failed or timed-out run, a missing spec or a browser cache it cannot read, sets nothing and fails nothing', () => {
       expect(replay({ code: 1 })).toMatchObject({ exitCode: 0, output: '' })
       expect(replay({ code: 124 })).toMatchObject({ exitCode: 0, output: '' })
+      // Playwright would pass on the spec that is there and skip the other.
+      expect(replay({ present: [specs[0]] })).toMatchObject({ exitCode: 0, output: '', sudo: '' })
       expect(replay({ browsers: false })).toMatchObject({ exitCode: 0, output: '', sudo: '' })
     })
 

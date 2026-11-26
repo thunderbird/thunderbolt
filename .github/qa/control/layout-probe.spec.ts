@@ -83,6 +83,29 @@ test('axe-core names controls the way a screen reader does', async ({ page }) =>
     ].map((target) => ({ kind: 'unnamed-control', target })),
   ))
 
+test('when axe-core fails, the geometry problems still go out and the failure is logged once', async ({ page }) => {
+  const messages: string[] = []
+  page.on('console', (message) => messages.push(message.text()))
+  await page.addInitScript(() =>
+    Object.assign(window, {
+      axe: {
+        run: async () => {
+          throw new Error('boom')
+        },
+      },
+    }),
+  )
+  await page.addInitScript({ path: probePath })
+  await page.goto(fixture('covered.html'))
+  expect(await layoutProblems(page)).toEqual([{ kind: 'covered', target: 'button "Continue"' }])
+  // The problem confirms on a second check, so axe failed at least twice.
+  expect(messages).toEqual([
+    '[qa-layout] ready',
+    'layout-probe.js: the axe-core name check failed: Error: boom',
+    '[qa-layout] covered button "Continue"',
+  ])
+})
+
 test('a problem after a change is confirmed within layoutProblems wait, though axe takes 150 ms a run', async ({
   page,
 }) => {

@@ -23,6 +23,7 @@
   const firstSeen = new Map()
   const logged = new Set()
   let confirmed = []
+  let nameCheckFailed = false
   let measuring = false
   let timer
   let pendingSince
@@ -350,6 +351,19 @@
     [...new Set(results.flatMap((result) => result.nodes.map((node) => node.element)))]
       .sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))
       .map((el) => ({ kind: 'unnamed-control', target: `${roleOf(el)} "${whereOf(el).slice(0, 80)}"` }))
+  /**
+   * The unnamed-control problems, or none when axe fails. A failure leaves the geometry problems in place and is logged
+   * once per page load, never as a `[qa-layout]` line, which would count as a finding.
+   */
+  const unnamedControls = async () => {
+    try {
+      return unnamedOf((await window.axe.run(namedArea, nameRules)).violations)
+    } catch (error) {
+      if (!nameCheckFailed) console.error(`layout-probe.js: the axe-core name check failed: ${error}`)
+      nameCheckFailed = true
+      return []
+    }
+  }
 
   const measure = async () => {
     const vv = window.visualViewport
@@ -372,8 +386,7 @@
             isFocusCovered(vv, area, field) && { kind: 'focus-covered', target: describe(field) },
           ].filter(Boolean)
         : []
-    const { violations } = await window.axe.run(namedArea, nameRules)
-    return [...found, ...keyboard, ...focus, ...unnamedOf(violations), ...overflows()]
+    return [...found, ...keyboard, ...focus, ...(await unnamedControls()), ...overflows()]
   }
 
   // axe refuses a second run while one is going, so a change during a run checks again after it.

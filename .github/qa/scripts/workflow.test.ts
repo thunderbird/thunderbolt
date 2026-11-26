@@ -492,14 +492,22 @@ describe('fix job', () => {
       )
       for (const REVIEW of [verdict(true), verdict(false), 'not json'])
         expect(runPlain('Build the correction prompt', { ...prompt, REVIEW })).toEqual({ code: 0, output: '' })
+      // An approval that still lists a problem is a rejection, so the fixer gets the problem.
+      const approvedWithProblem = runPlain('Build the correction prompt', {
+        ...prompt,
+        REVIEW: verdict(true, ['The Close button too.']),
+      })
+      expect(approvedWithProblem.output).toContain('<review>\n1. The Close button too.\n</review>')
     })
 
-    test("the verdict is the second review's when it ran, else the first's, and approves only on an approval", () => {
+    test("the verdict is the second review's when it ran, else the first's, and approves only with no problems", () => {
       const decide = (FIRST: string, SECOND = '', SECOND_OUTCOME = 'skipped') =>
         runPlain('Decide the review', { FIRST, SECOND, SECOND_OUTCOME }).output
       expect(decide(verdict(true))).toBe('approved=true\n')
       expect(decide(verdict(false), verdict(true), 'success')).toBe('approved=true\n')
       expect(decide(verdict(false), verdict(false), 'success')).toBe('')
+      // An approval that still lists a problem.
+      expect(decide(verdict(true, ['The Close button too.']))).toBe('')
       // A second review that failed, a correction that gave up, or a first review that never answered.
       expect(decide(verdict(false), '', 'failure')).toBe('')
       expect(decide(verdict(false))).toBe('')

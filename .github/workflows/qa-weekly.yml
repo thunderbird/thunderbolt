@@ -1498,7 +1498,8 @@ jobs:
         run: /bin/mv "$RUNNER_TEMP/claude-execution-output.json" "$RUNNER_TEMP/qa-execution-review.json" || true
       # On a rejection, the fix prompt again with the review's problems at its end, one line each (fix.md, "A
       # correction pass"), and the review prompt with them too, which the second review must settle one by one
-      # (review.md, "A second review"). An approval, or a verdict that does not parse, writes no prompt.
+      # (review.md, "A second review"). An approval that lists problems counts as a rejection. A verdict with no
+      # problems, or one that does not parse, writes no prompt.
       - name: Build the correction prompt
         id: correction-prompt
         if: steps.review.outcome == 'success'
@@ -1513,7 +1514,7 @@ jobs:
           LD_PRELOAD: ''
           LD_LIBRARY_PATH: ''
         run: |
-          problems=$(/usr/bin/jq -r 'select(.approved == false) | .problems | to_entries[] |
+          problems=$(/usr/bin/jq -r 'select(.approved != true or (.problems | length) > 0) | .problems | to_entries[] |
             "\(.key + 1). " + (.value | gsub("\\s+"; " "))' <<< "$REVIEW") || exit 0
           [ -n "$problems" ] || exit 0
           {
@@ -1557,8 +1558,8 @@ jobs:
           QA_REVIEW_PROMPT: ${{ steps.correction-prompt.outputs.review }}
         uses: anthropics/claude-code-action@fd1c128679612beff4ca259c78021c506e8aa7a7 # v1.0.237
         with: *review-session
-      # The verdict publish needs as the `review` pass: the second review's when it ran, else the first's. A second
-      # approval counts only when `resolved` names every problem of the first review by its number, with the
+      # The verdict publish needs as the `review` pass: the second review's when it ran, else the first's. A review
+      # approves only with `approved` true and no problems. A second approval also counts only when `resolved` names every problem of the first review by its number, with the
       # `file:line` that fixes it or shows it was wrong. Without that the approval is a rejection.
       - name: Decide the review
         id: review-verdict
@@ -1584,7 +1585,7 @@ jobs:
             earlier=$(/usr/bin/jq '.problems | length' <<< "$FIRST" 2> /dev/null) || earlier=0
           fi
           # shellcheck disable=SC2016 # jq variables
-          if /usr/bin/jq -e --argjson earlier "$earlier" '.approved == true and
+          if /usr/bin/jq -e --argjson earlier "$earlier" '.approved == true and (.problems | length) == 0 and
             ([range(1; $earlier + 1)] - [(.resolved // [])[] |
               select(.where | type == "string" and test("^[^\\s:]+:[1-9][0-9]*(-[1-9][0-9]*)?$")) | .problem]) == []
             ' <<< "$verdict" > /dev/null 2>&1; then

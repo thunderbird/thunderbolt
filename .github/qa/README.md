@@ -596,7 +596,8 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    review that run the agent's code (the replay, the visual check, the real-AI build) cannot add to the patch
    unreviewed. A patch still rejected, or a
    review that never answered, gets a diagnosis with the problems, so a person takes the ticket and no PR opens.
-   `Decide the review` writes `approved=true` only on an approval, and the `review` pass rests on that output, like
+   `Decide the review` writes `approved=true` only on an approval that lists no problems (one that lists some is a
+   rejection and gets the correction pass), and the `review` pass rests on that output, like
    every other pass. Both prompts are read in "Build the prompt", before Fix, whose commands could rewrite them, and
    the steps between the sessions run no agent code, with the key scan's cleared variables. This is a check against
    honest mistakes, not against a patch built to cheat: the reviewer reads code the agent wrote, and a process that

@@ -62,6 +62,8 @@ that fails, or a 4xx or 5xx on a chat or model request. A request no provider wo
 `(also during another spec's run)` may come from another finding's run, and that line alone does not justify dropping
 an AI failure. A failure that does not involve the AI (a layout, a label, a settings form) is judged on its own.
 Without `<fake_provider>`, a failing chat request is evidence like any other, not a sign of the fake.
+A message containing `qa:slow` or `qa:cut` makes the fake stream slowly or drop the connection on purpose: the delay
+or the cut is not a finding, and how the app then stops, retries and recovers is judged as usual.
 
 A `visual` finding has no repro and no replay. It comes with the screenshot the QA agent says it took when it
 saw the problem. Code checked that the session's browser or device tool saved a screenshot under that name, but the

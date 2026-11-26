@@ -1771,9 +1771,6 @@ jobs:
             check="./qa-out/fix-$QA_FP/repro/check.spec.ts"
             if [ -z "$REVIEWED_TREE" ] || [ "${sum%% *}" != "$REVIEWED_TREE" ]; then
               diagnose "The record of the tree the review read is missing or changed"
-            # A sha256sum that writes such a path raw (macOS's does) would let it forge a line of the list.
-            elif [ -n "$(files -path $'*\n*' | tr -d '\0')" ]; then
-              diagnose "A path in the checkout holds a newline"
             else
               changed=$(LC_ALL=C comm -3 <(LC_ALL=C sort "$reviewed") <(
                 {

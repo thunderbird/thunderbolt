@@ -587,7 +587,9 @@ describe('fix job', () => {
       expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toContain('(scripts/run.sh src/a.ts)')
     })
 
-    test('a path with a newline, which could forge lines of the record, rejects the approval', () => {
+    // The job runs on Ubuntu, whose GNU sha256sum writes a name with a newline escaped. macOS's writes it raw.
+    const gnuSha256sum = Bun.spawnSync([sha256sum, '--version']).stdout.toString().includes('GNU coreutils')
+    test.skipIf(!gnuSha256sum)('a path with a newline cannot forge a line of the record, since it is escaped', () => {
       const tree = checkout({ '.gitignore': 'dist/\n', 'src/bar.ts': 'reviewed' })
       const sha = (text: string) => createHash('sha256').update(text).digest('hex')
       // Two empty files in an ignored path, each named so that a raw name reads as a line for src/bar.ts.
@@ -605,9 +607,9 @@ describe('fix job', () => {
       writeFileSync(join(tree.dir, 'src/bar.ts'), 'rewritten')
       chmodSync(after, 0o644)
       chmodSync(before, 0o755)
-      expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toBe(
-        'A path in the checkout holds a newline, so the patch is not published.\n',
-      )
+      const diagnosis = collectIn(tree, { REVIEWED_TREE: reviewed })
+      expect(diagnosis).toStartWith('Files changed after the review read them (')
+      expect(diagnosis).toContain('src/bar.ts')
     })
 
     test('a missing or rewritten record rejects the approval, and a rejected patch needs none', () => {

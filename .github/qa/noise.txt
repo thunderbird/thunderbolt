@@ -11,3 +11,6 @@ convertFileSrc
 
 # A probe line is a `layout` finding. Filed as `console-error` it is only an observation, so its mislabel is visible.
 [qa-layout]
+
+# The probe logs this when axe-core throws: a failure of the QA tooling that says nothing about the app.
+layout-probe.js: the axe-core name check failed

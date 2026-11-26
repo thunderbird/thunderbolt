@@ -624,6 +624,8 @@ jobs:
               await browser.close()
             " "http://localhost:$port" || failed=1
           done
+          # The weekly guard signs in and records video, so it fails without Playwright's FFmpeg.
+          bunx playwright test --config .github/qa/playwright.config.ts --project control || failed=1
           .github/qa/scripts/stack.sh stop || failed=1
           if grep -iE 'EACCES|EPERM|permission denied' "$RUNNER_TEMP/qa-stack.log"; then
             echo "::error::A dev server could not write a file as another user."

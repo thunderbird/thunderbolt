@@ -47,6 +47,8 @@ if (import.meta.main) {
   if (process.argv.includes('--with-deps') && process.platform === 'linux') {
     await $`bunx playwright install-deps chromium`
   }
+  // Playwright records video in Chrome with its own FFmpeg build, which only `playwright install` downloads.
+  await $`bunx playwright install ffmpeg`
   const { buildId, executablePath } = await installChrome({
     platform: detectBrowserPlatform(),
     cacheDir: getChromeCacheDir(),

@@ -8,7 +8,7 @@ Use SCIM if you need offboarding to happen without anyone acting in Thunderbolt.
 
 A connection is one identity provider scope: one Entra tenant, one Okta org, one Keycloak realm. Each has an SSO side, a SCIM side, or both, and several connections can provision into the same deployment. Each connection has its own credentials and identifiers, so the same `externalId` arriving from two connections is two different people, and one connection's token can't read or change another's users or groups.
 
-An admin creates and edits connections under **Admin → Sign-in methods** in the app: open a connection, and **Sign-in** holds the SSO side, **Provisioning** the SCIM side and its tokens, **Groups** its SCIM groups' role mappings, and **Sync errors** the rejected SCIM requests. The same steps through the admin API, for scripts:
+An admin creates and edits connections under **Admin → Sign In** in the app: open a connection, and **Sign-in** holds the SSO side, **Provisioning** the SCIM side and its tokens, **Groups** its SCIM groups' role mappings, and **Sync errors** the rejected SCIM requests. The same steps through the admin API, for scripts:
 
 | Step                          | Call                                                                                    |
 | ----------------------------- | --------------------------------------------------------------------------------------- |
@@ -32,7 +32,7 @@ A new client secret or certificate takes effect at the next sign-in, and nobody 
 
 ### Domains
 
-An admin adds each email domain under **Admin → Sign-in methods** (`POST /v1/admin/domains`), publishes the TXT record it names, verifies it, and then claims it for a connection (`PUT /v1/admin/domains/:id/claim`). A claim does two things: the sign-in screen sends that domain straight to the connection, and it lets an existing account on that domain link to the connection's identity without an admin (see [Collisions](#collisions-and-the-review-queue)). On a connection with SCIM that happens when the provider provisions the account. On a connection without SCIM it matters only for an account that already signs in through another provider; any other account links by its verified email, as [Authentication](./authentication.md#what-single-sign-on-looks-like-to-the-user) describes. A claimed domain is closed to domain enrollment, so nobody gets back in that way after your provider removes them.
+An admin adds each email domain under **Admin → Sign In** (`POST /v1/admin/domains`), publishes the TXT record it names, verifies it, and then claims it for a connection (`PUT /v1/admin/domains/:id/claim`). A claim does two things: the sign-in screen sends that domain straight to the connection, and it lets an existing account on that domain link to the connection's identity without an admin (see [Collisions](#collisions-and-the-review-queue)). On a connection with SCIM that happens when the provider provisions the account. On a connection without SCIM it matters only for an account that already signs in through another provider; any other account links by its verified email, as [Authentication](./authentication.md#what-single-sign-on-looks-like-to-the-user) describes. A claimed domain is closed to domain enrollment, so nobody gets back in that way after your provider removes them.
 
 **Each subdomain is claimed on its own.** A claim on `corp.com` doesn't cover `eu.corp.com`; subdomains are never trusted implicitly.
 
@@ -67,7 +67,7 @@ A member managed by a connection that has an SSO side signs in through SSO only:
 
 **Revocation is not a remote wipe.** A revoked device clears its local data the next time it reaches the server. A device that stays offline keeps what it has.
 
-Retained data after `DELETE` is readable only by the person, with their recovery phrase or passkey, unless [organizational key escrow](./configuration.md#organizational-key-escrow) is on; see [Devices and Accounts](../admin/devices.md#organizational-key-escrow) for what escrow changes. Only an admin can delete a removed member's data for good, with **Delete member** on their page (`DELETE /v1/admin/members/:userId`).
+Retained data after `DELETE` is readable only by the person, with their recovery phrase or passkey, unless [organizational key escrow](./configuration.md#organizational-key-escrow) is on; see [Devices and Accounts](../admin/devices.md#organizational-key-escrow) for what escrow changes. Only an admin can delete a removed member's data for good, with **Delete** in their page's ⋯ menu (`DELETE /v1/admin/members/:userId`).
 
 ## Collisions and the review queue
 

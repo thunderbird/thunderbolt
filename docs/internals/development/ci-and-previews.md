@@ -166,9 +166,12 @@ comments API would 403), and the whole job is skipped for Dependabot.
 Markdown, the Helm chart, the Pulumi stacks, Tauri Rust sources, or `.github/` other than
 `e2e.yml` itself. Push to `main` is not gated, so a wrongly excluded path still reds there.
 
-**e2e sharding.** Two Playwright shards each upload a blob report; `e2e-report` merges
+**e2e sharding.** Three Playwright shards each upload a blob report (Playwright splits by test
+count, and two shards left the first one carrying most of the slow `consumer` specs); `e2e-report` merges
 them into one HTML artifact (14-day retention). Failure screenshots upload per shard; a
-shard failure does not cancel its sibling.
+shard failure does not cancel its sibling. Each shard builds the four frontend variants
+into `dist-e2e/` and serves them with `vite preview`, which is what lets it run 3 browser
+workers (see [Testing](testing.md#what-the-config-spins-up)).
 
 ## The two bots that comment
 

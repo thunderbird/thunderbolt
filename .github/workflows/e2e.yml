@@ -38,7 +38,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1/2, 2/2]
+        # Playwright splits shards by test count, and the `consumer` project holds most of the
+        # test time, so two shards came out lopsided (~830s vs ~525s of tests); three even it out.
+        shard: [1/3, 2/3, 3/3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -148,7 +150,7 @@ jobs:
 
       - name: Run PowerSync E2EE suite (shard ${{ matrix.shard }}${{ matrix.passkeys && ', passkeys' || '' }})
         # Playwright names every blob `report-<shard>.zip`, so this job's shard
-        # 1/4 and the `e2e` job's shard 1/2 both produce `report-1.zip` — and
+        # 1/4 and the `e2e` job's shard 1/3 both produce `report-1.zip` — and
         # the report job's `merge-multiple: true` flattens one onto the other.
         # Nothing reports the loser as missing: the merge proceeds with whatever
         # survived, so half the run disappears from the HTML report, and an

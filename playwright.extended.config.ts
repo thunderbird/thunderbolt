@@ -43,6 +43,9 @@ const databaseEnv = isMac
 
 export default defineConfig({
   ...baseConfig,
+  // Persistent WebKit profiles share OPFS per origin and every test wipes it on start (e2e/test.ts), so parallel
+  // workers would delete each other's databases, so the extended suite keeps one worker.
+  workers: 1,
   retries: 1,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {

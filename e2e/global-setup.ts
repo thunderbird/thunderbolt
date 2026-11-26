@@ -8,6 +8,7 @@ import {
   type MutableToken,
   type TokenRequestIncomingMessage,
 } from 'oauth2-mock-server'
+import type { FullConfig } from '@playwright/test'
 import { createHash } from 'node:crypto'
 import type { IncomingMessage } from 'node:http'
 import { z } from 'zod'
@@ -19,8 +20,10 @@ const mockOidcPort = Number(process.env.MOCK_OIDC_PORT ?? 9876)
 const mockSamlPort = Number(process.env.MOCK_SAML_PORT ?? 9877)
 const identityClaims = z.object({ sub: z.string(), email: z.email() })
 
-const globalSetup = async () => {
-  const uniqueUsers = process.env.E2E_EXTENDED_UNIQUE_USERS === 'true'
+const globalSetup = async (config: FullConfig) => {
+  // One shared OIDC/SAML user is only safe while specs run one at a time; parallel workers would overlap its
+  // sessions, devices and settings on the same backend.
+  const uniqueUsers = process.env.E2E_EXTENDED_UNIQUE_USERS === 'true' || config.workers > 1
   // --- Mock OIDC server ---
   const oidcServer = new OAuth2Server()
   await oidcServer.issuer.keys.generate('RS256')
@@ -65,7 +68,7 @@ const globalSetup = async () => {
   console.log(`Mock OIDC server started on port ${mockOidcPort}`)
 
   // --- Mock SAML IdP ---
-  const samlServer = await createMockSamlIdp(mockSamlPort)
+  const samlServer = await createMockSamlIdp(mockSamlPort, { uniqueUsers })
 
   const fakeProvider = await createFakeProvider(Number(process.env.FAKE_PROVIDER_PORT ?? 9878))
   const fakeMcpServer = process.env.E2E_EXTENDED_MCP === 'true' ? await createFakeMcpServer(9879) : undefined

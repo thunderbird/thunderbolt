@@ -278,8 +278,7 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `input-button-name` and the `aria-*-name` rules for ARIA buttons, links, menu items, fields, toggles and
    options). They cover every control a screen reader reaches, whatever its `pointer-events` or opacity (a disabled
    button, a hover-only action, a placeholder in a wrapper that stops clicks), and leave out a hidden, `aria-hidden`
-   or `inert` one. A control axe cannot settle (an `incomplete` result) is never a line: it goes to
-   `window.__qaLayout.review()` for a person to check. axe checks no `contenteditable` without a role (the app has
+   or `inert` one. A control axe cannot settle (an `incomplete` result) is never a line. axe checks no `contenteditable` without a role (the app has
    none), treats a closed shadow root's text and CSS-generated text as no name, and takes about 5 to 30 ms a run
    on the app's screens. `axe-core` is a pinned dev dependency for this alone; the
    name a geometry line quotes still comes from the probe's own approximation. The geometry kinds also skip a control that inherits

@@ -23,9 +23,8 @@ export type LayoutProblem = {
 declare global {
   // Declaration merging needs an interface.
   interface Window {
-    // Undefined until the probe loads; reading it before then throws, which is what a repro spec should do. `review`
-    // holds the controls axe-core could not settle a name for: a person checks them, they are never findings.
-    __qaLayout: { problems: () => LayoutProblem[]; review: () => LayoutProblem[] }
+    // Undefined until the probe loads; reading it before then throws, which is what a repro spec should do.
+    __qaLayout: { problems: () => LayoutProblem[] }
     // axe-core, loaded before the probe.
     axe: typeof axe
   }

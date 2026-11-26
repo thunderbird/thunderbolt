@@ -83,21 +83,6 @@ test('axe-core names controls the way a screen reader does', async ({ page }) =>
     ].map((target) => ({ kind: 'unnamed-control', target })),
   ))
 
-test('a control axe cannot settle a name for goes to review, never into a problem', async ({ page }) => {
-  await page.addInitScript(() => {
-    const element = () => document.querySelector('button')
-    Object.assign(window, {
-      axe: { run: async () => ({ violations: [], incomplete: [{ nodes: [{ element: element() }] }] }) },
-    })
-  })
-  await page.addInitScript({ path: probePath })
-  await page.goto(fixture('ok.html'))
-  expect(await layoutProblems(page)).toEqual([])
-  expect(await page.evaluate(() => window.__qaLayout.review())).toEqual([
-    { kind: 'unnamed-control', target: 'button "after Terms"' },
-  ])
-})
-
 test('a problem after a change is confirmed within layoutProblems wait, though axe takes 150 ms a run', async ({
   page,
 }) => {

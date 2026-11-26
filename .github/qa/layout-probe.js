@@ -23,7 +23,6 @@
   const firstSeen = new Map()
   const logged = new Set()
   let confirmed = []
-  let review = []
   let measuring = false
   let timer
   let pendingSince
@@ -325,7 +324,7 @@
 
   // axe-core's name rules. They take every control a screen reader reaches, whatever its pointer-events or opacity (a
   // hover-only action, the #1481 placeholder in a wrapper that stops clicks), and skip a hidden, inert or aria-hidden
-  // one. A result axe cannot settle (`incomplete`) needs a person: it goes to review(), never into a finding.
+  // one. A result axe cannot settle (`incomplete`) is never a finding.
   // Base UI's focus guards are no controls: on WebKit with VoiceOver they turn into a role=button span so the focus
   // trap catches VoiceOver's cursor (FocusGuard in @base-ui/react), and they hand focus on at once.
   const namedArea = { exclude: [['[data-base-ui-focus-guard]']] }
@@ -340,7 +339,7 @@
       'link-name',
       'select-name',
     ],
-    resultTypes: ['violations', 'incomplete'],
+    resultTypes: ['violations'],
     elementRef: true,
     selectors: false,
     // The probe measures the top page only, and waiting on frames costs axe half a second.
@@ -373,8 +372,7 @@
             isFocusCovered(vv, area, field) && { kind: 'focus-covered', target: describe(field) },
           ].filter(Boolean)
         : []
-    const { violations, incomplete } = await window.axe.run(namedArea, nameRules)
-    review = unnamedOf(incomplete)
+    const { violations } = await window.axe.run(namedArea, nameRules)
     return [...found, ...keyboard, ...focus, ...unnamedOf(violations), ...overflows()]
   }
 
@@ -427,7 +425,7 @@
     check()
   }
 
-  window.__qaLayout = { problems: () => [...confirmed], review: () => [...review] }
+  window.__qaLayout = { problems: () => [...confirmed] }
   console.error('[qa-layout] ready')
   if (document.readyState === 'complete') start()
   else addEventListener('load', start, { once: true })

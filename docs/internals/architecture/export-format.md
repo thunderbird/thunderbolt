@@ -94,9 +94,9 @@ Encrypted synced columns arrive in local SQLite **already decrypted** by the syn
 
 ### Account-mismatch guard
 
-No DB write happens until the user confirms, and the dialog is built from a read-only preview. `summarizeExportEnvelope` ([`src/dal/import.ts`](../../../src/dal/import.ts)) re-checks the envelope shape and returns the total row count, the formatted `exportedAt`, and the exporting user's email; `src/settings/preferences.tsx` calls it as soon as the file is picked. When both emails exist and differ (case-insensitively), it sets `accountMismatch` and the dialog adds a destructive-styled warning.
+No DB write happens until the user confirms, and the dialog is built from a read-only preview. `summarizeExportEnvelope` ([`src/dal/import.ts`](../../../src/dal/import.ts)) re-checks the envelope shape and returns the total row count, the formatted `exportedAt`, and the exporting user's email; `src/settings/preferences.tsx` calls it as soon as the file is picked. When both emails exist and differ (case-insensitively), it sets `accountMismatch`. For a full backup the dialog adds a destructive-styled warning; for a single-chat file it notes which account the chat came from (see [Single-chat files](#single-chat-files)).
 
-Email rather than `user.id`, because Better Auth issues a new id when an account is deleted and recreated while the email stays stable. It stays `false` when either side is missing, so a legacy export without an email raises no false alarm. The mistake is unrecoverable: the `userId` re-stamp makes foreign rows indistinguishable from the user's own, and the fan-out carries them to every signed-in device.
+Email rather than `user.id`, because Better Auth issues a new id when an account is deleted and recreated while the email stays stable. It stays `false` when either side is missing, so a legacy export without an email raises no false alarm. For a full backup the mistake is unrecoverable: the `userId` re-stamp makes foreign rows indistinguishable from the user's own. Not every foreign row syncs, though: see [Known limitations](#known-limitations-v1).
 
 ### Post-Workspaces follow-up
 
@@ -105,7 +105,52 @@ Once every user-content table carries a `workspaceId`, workspace handling stays 
 - **v1 files (no `workspaceId`):** rows are stamped with the default workspace's id on insert.
 - **v2+ files (rows carry `workspaceId`):** preserved verbatim. If the workspace is missing locally, the importer creates it (or skips the row, TBD when v2 ships).
 
+## Single-chat files
+
+The chat menu's **Export** item (in the sidebar, on desktop and mobile) saves one chat as `thunderbolt-chat-<title>-YYYY-MM-DD.json` through `exportChatThread` ([`src/dal/export.ts`](../../../src/dal/export.ts)). The title is cut to 40 characters of letters (with their combining marks), digits, spaces, dots, dashes and underscores. The file is the v1 envelope with `"kind": "chat"` and two tables: the `chat_threads` row and every message the thread holds, edited-away branches included. Soft-deleted messages are left out, as the chat itself shows them. **Settings → Preferences → Data → Import Data** reads it back.
+
+The file is meant to be shared, so it leaves out what a full backup keeps:
+
+- the `userId` of every row (the importer stamps its own anyway);
+- each MCP server URL in `metadata.mcpTools`, cut to its origin (a hosted server's path or query can hold a token; the origin still picks the tool icon), and the older `metadata.mcpServers` record;
+- `metadata.debugTranscript`, the link to a debug capture.
+
+It still names its exporter in `user` (id and email), because the importer needs them to tell its own chat from someone else's. Message content, tool calls and results, reasoning and cited sources are the conversation, so they stay.
+
+**Detection.** `detectChatImport` ([`src/dal/chat-import.ts`](../../../src/dal/chat-import.ts)) needs exactly one thread, with every message belonging to it. An unmarked file (older, or hand-made) must hold nothing else. A full backup always has settings and model rows, so it is never taken for a chat. A file marked `kind: "chat"` may carry other tables, so a later format can add some.
+
+**Only the chat is written.** Once a file is recognized as a chat, the import writes `chat_threads` and `chat_messages` and lists any other table in `ignoredTableNames`. The dialog says "one chat", so a file can't use it to change settings, models or servers on the side.
+
+**Whose file it is.** `isSameAccount` ([`src/dal/import.ts`](../../../src/dal/import.ts)) ties the file to the importing account only on a positive match:
+
+- **Emails, when both sides have one**, as in the account-mismatch guard above. A deleted and recreated account has a new id, but its old rows went with the deletion, so the original ids are free.
+- **Otherwise equal, non-empty user ids.**
+- **A signed-out side never matches.** Rows made while signed out are uploaded by whichever account signs in first, and their ids may already be owned.
+
+The file states its own exporter, so this is a claim, not proof. A file that claims the importer's email keeps its own ids and shows no different-account note. It still writes only that chat, under ids it carries, so it can only overwrite messages whose ids its author already knows.
+
+The preview and the import use the same answer, and the dialog shows one sentence: "updated" for the same account, "adds a copy" otherwise.
+
+**Same account: ids kept.** The import writes the file's thread and messages over the local ones, and restores the chat if it was deleted. It is a merge: local messages the file lacks stay.
+
+**Otherwise: ids re-keyed.** The backend resolves `chat_threads` and `chat_messages` uploads on `id` alone and only lets the owner update a row (`backend/src/dal/powersync.ts`). A chat that kept another account's ids would be stored locally and acknowledged on upload, but never stored on the server, so it would never reach the importing account's other devices.
+
+- `rekeyChat` derives each new id from an owner key and the original id. The owner key is the importing user's id, or `device:<device id>` when signed out; the prefix keeps the two from ever colliding.
+- Messages are listed in id order, and the app's ids are uuid v7, whose first half is the time. A new id keeps that first half and takes the rest from a UUID v5 of the owner key and the original id, so the copy keeps the original's order, before any message written later. An id that isn't a uuid v7 is replaced by the UUID v5 whole.
+- `chatThreadId` and `parentId` follow, so the message tree survives.
+- Importing the same file again under the same owner key gives the same ids, so it updates the copy. A different key makes another copy: importing while signed out and again after signing in, or again after signing out (which gives the device a new id).
+- The thread drops `projectId` and `acpSessionId`, which point at the other account's data.
+- A signed-out user importing their own export gets a copy too, for the reason above.
+
+**Not carried.**
+
+- Attachments are device-local and not in the file. The message still shows the file's name, as on any other device, but the file can't be opened.
+- A quote part's `sourceMessageId` is not re-keyed.
+- `agentId`, `triggeredBy` and message `modelId` are kept as they are. A chat whose agent this account doesn't have opens with the agent it would otherwise pick.
+
 ## Known limitations (v1)
+
+- **Full backups from another account don't fully sync.** Only single-chat files are re-keyed. A full backup keeps its ids, and the backend resolves `chat_threads`, `chat_messages`, `projects` and `triggers` on `id` alone (`backend/src/db/powersync-schema.ts`). So those rows import on this device, but their uploads are acknowledged and dropped while the original account still owns the ids.
 
 - **In-memory payload.** The whole export is built in memory before download; heavy users (~tens of thousands of messages) see slower exports. A streaming variant is a follow-up if files cross ~100 MB in practice.
 - **Plaintext at rest.** No encryption-at-rest on the file; users should treat it like their account password.

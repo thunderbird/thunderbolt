@@ -839,6 +839,12 @@ export type UpgradeRequest = RecoverySlotRequest & {
   nonce: string
   /** D1 CK-possession proof: the canarySecret recovered by CK-decrypting canary_ctext (no AAD). */
   possessionProof: string
+  /**
+   * Emailed step-up code. Required when the caller is a pending device upgrading
+   * with the v1 recovery phrase: the possession proof is a static secret v1
+   * clients sent in plain, so on its own it cannot make a device trusted.
+   */
+  stepUpOtp?: string
   /** The new AK wrapped per trusted device. */
   envelopes: Array<{ deviceId: string; wrappedCK: string; attestation: string }>
   /** The new keyring: MUST include a fresh primary DEK "0" AND the absorbed "v1" slot. */

@@ -4,10 +4,17 @@
 
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Info } from 'lucide-react'
+import { Suspense, use } from 'react'
 
 import { DetailDivider, DetailPanel, DetailSectionTitle } from '@/components/detail-panel'
 import { DetailActionsMenu, DetailEditDeleteMenuItems } from '@/components/settings/detail-actions-menu'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { ViewerErrorBoundary } from '@/content-view/viewer-error-boundary'
+
+/** The skill's text, or an Office skill's manual once its chunk loads; until then the nearest Suspense shows. */
+const InstructionText = ({ instruction, officeManual }: { instruction: string; officeManual?: Promise<string> }) =>
+  officeManual ? use(officeManual) : instruction
 
 /**
  * Detail panel for a single skill. Pinning is managed from the chat composer
@@ -18,6 +25,7 @@ export const SkillDetail = ({
   name,
   description,
   instruction,
+  officeManual,
   readOnly,
   onEdit,
   onDelete,
@@ -27,6 +35,8 @@ export const SkillDetail = ({
   name: string
   description: string
   instruction: string
+  /** An Office skill's manual (see `officeSkillManual`), shown in place of its row's stub. */
+  officeManual?: Promise<string>
   readOnly: boolean
   onEdit: () => void
   onDelete: () => void
@@ -74,7 +84,14 @@ export const SkillDetail = ({
         <DetailSectionTitle>
           <Trans>Instructions</Trans>
         </DetailSectionTitle>
-        <div className="whitespace-pre-wrap break-words pb-1 text-base leading-snug text-foreground">{instruction}</div>
+        <div className="whitespace-pre-wrap break-words pb-1 text-base leading-snug text-foreground">
+          {/* A manual that did not load leaves the stub; opening the skill again retries. */}
+          <ViewerErrorBoundary key={name} fallback={instruction}>
+            <Suspense fallback={<Skeleton className="h-5 w-2/3" />}>
+              <InstructionText instruction={instruction} officeManual={officeManual} />
+            </Suspense>
+          </ViewerErrorBoundary>
+        </div>
       </div>
     </DetailPanel>
   )

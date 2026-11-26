@@ -8,7 +8,7 @@ import { expect, test } from './test'
 
 test.slow()
 
-test('a file and image remain in the thread and receive a reply', async ({ page }) => {
+test('a file and image remain in the thread, and the reply quotes the file', async ({ page }) => {
   await loginViaOidc(page)
   await page.getByTestId('model-selector-trigger').click()
   await page.getByRole('button', { name: `${defaultModelOpus55.name} Thunderbolt`, exact: true }).click()
@@ -26,9 +26,10 @@ test('a file and image remain in the thread and receive a reply', async ({ page 
   ])
   await expect(page.getByText('nightly-note.txt')).toBeVisible()
   await expect(page.getByText('nightly-image.png')).toBeVisible()
-  await sendChatPrompt(page, 'Read the attached note and describe the image in one sentence.')
+  await sendChatPrompt(page, 'Quote the attached note word for word, then describe the image in one sentence.')
 
-  await expect(page.locator('[data-quotable-message-id]').last().locator('.prose')).toHaveText(/\S/, {
+  // Only a model that read the note can quote it.
+  await expect(page.locator('[data-quotable-message-id]').last().locator('.prose')).toContainText(/blue heron/i, {
     timeout: 90_000,
   })
   await expect(page.getByTitle('nightly-note.txt')).toBeVisible()

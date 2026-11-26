@@ -106,6 +106,12 @@ describe('numbers', () => {
     expect(getFormatters('en').number(1_234_567)).toBe('1,234,567')
     expect(getFormatters('de').number(1_234_567)).toBe('1.234.567')
   })
+
+  test('keeps positions ungrouped in every locale', () => {
+    expect(getFormatters('en').ungroupedInteger(5000)).toBe('5000')
+    expect(getFormatters('de').ungroupedInteger(5000)).toBe('5000')
+    expect(getFormatters('ja').ungroupedInteger(5000)).toBe('5000')
+  })
 })
 
 describe('duration', () => {

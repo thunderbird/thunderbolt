@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createAuth } from '@/auth/auth'
+import { maxActiveDevicesPerUser } from '@/dal'
 import { session as sessionTable, user as userTable } from '@/db/auth-schema'
 import { encryptionMetadataTable, envelopesTable } from '@/db/encryption-schema'
 import { devicesTable } from '@/db/schema'
@@ -237,6 +238,34 @@ describe('Encryption API', () => {
       expect(response.status).toBe(200)
       const body = await response.json()
       expect(body.trusted).toBe(false)
+    })
+
+    it('registers a new device as pending when the account is at the device cap', async () => {
+      // Lost devices still count and only a trusted device can revoke them, so
+      // capping here would stop recovery before the phrase is ever entered.
+      await createUserAndSession(p('u-cap'), p('tok-u-cap'))
+      for (let i = 0; i < maxActiveDevicesPerUser; i++) {
+        await insertDevice(p(`d-cap-${i}`), p('u-cap'), { trusted: true })
+      }
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signToken(p('tok-u-cap'))}`,
+          },
+          body: JSON.stringify({ deviceId: p('d-cap-new'), publicKey: 'pk-cap', mlkemPublicKey: 'mlkem-pk-cap' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      expect((await response.json()).trusted).toBe(false)
+      const [device] = await db
+        .select()
+        .from(devicesTable)
+        .where(eq(devicesTable.id, p('d-cap-new')))
+      expect(device).toMatchObject({ trusted: false, approvalPending: true })
     })
 
     it('returns trusted with envelope for already-trusted device', async () => {

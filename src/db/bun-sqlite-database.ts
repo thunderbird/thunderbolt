@@ -42,7 +42,7 @@ export class BunSQLiteDatabase implements DatabaseInterface {
         }
 
         try {
-          if (method === 'run' || method === 'values') {
+          if (method === 'run') {
             // For INSERT, UPDATE, DELETE, etc.
             this.sqlite.run(sql, params ?? [])
             return { rows: [] }
@@ -58,7 +58,7 @@ export class BunSQLiteDatabase implements DatabaseInterface {
             return { rows: row ? rowToArray(row) : undefined }
           }
 
-          // method === 'all'
+          // method === 'all' or 'values'
           // Return array of arrays
           const rows = Array.isArray(result) ? result.map((row) => rowToArray(row as Record<string, any>)) : []
           return { rows }

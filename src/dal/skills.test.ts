@@ -4,7 +4,7 @@
 
 import { getDb } from '@/db/database'
 import { skillsTable } from '@/db/tables'
-import { defaultSkillDailyBrief, defaultSkillWeather } from '@/defaults/skills'
+import { defaultSkillDailyBrief, defaultSkillOfficeXlsx, defaultSkillWeather } from '@/defaults/skills'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import {
@@ -222,12 +222,27 @@ describe('skills DAL', () => {
       ]
 
       for (const patch of disallowedPatches) {
-        await expect(updateSkill(getDb(), widget.id, patch)).rejects.toThrow(/widget skill/i)
+        await expect(updateSkill(getDb(), widget.id, patch)).rejects.toThrow(/built-in skill/i)
       }
 
       const after = await getSkill(getDb(), widget.id)
       expect(after?.enabled).toBe(1)
       expect(after?.description).toBe(defaultSkillWeather.description)
+    })
+  })
+
+  describe('Office skills', () => {
+    it('can be disabled but not edited, deleted or pinned', async () => {
+      await getDb().insert(skillsTable).values(defaultSkillOfficeXlsx)
+      const { id } = defaultSkillOfficeXlsx
+
+      await expect(updateSkill(getDb(), id, { instruction: 'Changed instruction' })).rejects.toThrow(/built-in skill/i)
+      await expect(updateSkill(getDb(), id, { name: 'my-excel' })).rejects.toThrow(/built-in skill/i)
+      await expect(softDeleteSkill(getDb(), id)).rejects.toThrow(/built-in skill/i)
+      await expect(setPinned(getDb(), id, 0)).rejects.toThrow(/built-in skill/i)
+      await updateSkill(getDb(), id, { enabled: 0 })
+
+      expect(await getSkill(getDb(), id)).toEqual({ ...defaultSkillOfficeXlsx, enabled: 0 })
     })
   })
 
@@ -266,7 +281,7 @@ describe('skills DAL', () => {
     it('rejects deleting widget skills', async () => {
       const widget = await seedWidgetSkill()
 
-      await expect(softDeleteSkill(getDb(), widget.id)).rejects.toThrow(/widget skill/i)
+      await expect(softDeleteSkill(getDb(), widget.id)).rejects.toThrow(/built-in skill/i)
       expect(await getSkill(getDb(), widget.id)).toEqual(widget)
     })
   })
@@ -275,7 +290,7 @@ describe('skills DAL', () => {
     it('rejects pinning widget skills but allows unpinning them', async () => {
       const widget = await seedWidgetSkill()
 
-      await expect(setPinned(getDb(), widget.id, 0)).rejects.toThrow(/widget skill/i)
+      await expect(setPinned(getDb(), widget.id, 0)).rejects.toThrow(/built-in skill/i)
       await setPinned(getDb(), widget.id, null)
 
       expect((await getSkill(getDb(), widget.id))?.pinnedOrder).toBeNull()
@@ -350,7 +365,7 @@ describe('skills DAL', () => {
       await expect(reorderPins(getDb(), ids)).rejects.toBeInstanceOf(PinLimitExceededError)
     })
 
-    it('permits reordering other pins before a stationary widget when stored orders have gaps', async () => {
+    it('moves a pinned widget past other pins', async () => {
       const a = await seed({ name: 'a' })
       const b = await seed({ name: 'b' })
       await setPinned(getDb(), a.id, 0)
@@ -358,30 +373,26 @@ describe('skills DAL', () => {
       await getDb()
         .insert(skillsTable)
         .values({ ...defaultSkillWeather, pinnedOrder: 4 })
+
+      await reorderPins(getDb(), [defaultSkillWeather.id, a.id, b.id])
+
+      const pinned = await getPinnedSkills(getDb())
+      expect(pinned.map((skill) => skill.id)).toEqual([defaultSkillWeather.id, a.id, b.id])
+    })
+
+    it('moves a regular pin above a pinned widget', async () => {
+      const a = await seed({ name: 'a' })
+      const b = await seed({ name: 'b' })
+      await setPinned(getDb(), a.id, 0)
+      await getDb()
+        .insert(skillsTable)
+        .values({ ...defaultSkillWeather, pinnedOrder: 2 })
+      await setPinned(getDb(), b.id, 5)
 
       await reorderPins(getDb(), [b.id, a.id, defaultSkillWeather.id])
 
       const pinned = await getPinnedSkills(getDb())
       expect(pinned.map((skill) => skill.id)).toEqual([b.id, a.id, defaultSkillWeather.id])
-    })
-
-    it('rejects moving a pinned widget relative to other pins when stored orders have gaps', async () => {
-      const a = await seed({ name: 'a' })
-      const b = await seed({ name: 'b' })
-      await setPinned(getDb(), a.id, 0)
-      await setPinned(getDb(), b.id, 1)
-      await getDb()
-        .insert(skillsTable)
-        .values({ ...defaultSkillWeather, pinnedOrder: 4 })
-
-      await expect(reorderPins(getDb(), [a.id, defaultSkillWeather.id, b.id])).rejects.toThrow(/widget skill/i)
-
-      const pinned = await getPinnedSkills(getDb())
-      expect(pinned.map(({ id, pinnedOrder }) => ({ id, pinnedOrder }))).toEqual([
-        { id: a.id, pinnedOrder: 0 },
-        { id: b.id, pinnedOrder: 1 },
-        { id: defaultSkillWeather.id, pinnedOrder: 4 },
-      ])
     })
 
     it('rejects adding an unpinned widget to the submitted pin order', async () => {
@@ -391,25 +402,12 @@ describe('skills DAL', () => {
         .insert(skillsTable)
         .values({ ...defaultSkillWeather, pinnedOrder: null })
 
-      await expect(reorderPins(getDb(), [a.id, defaultSkillWeather.id])).rejects.toThrow(/widget skill/i)
+      await expect(reorderPins(getDb(), [a.id, defaultSkillWeather.id])).rejects.toThrow(/built-in skill/i)
 
       expect((await getSkill(getDb(), defaultSkillWeather.id))?.pinnedOrder).toBeNull()
     })
 
-    it('rejects an order that omits a pinned widget and moves another pin across it', async () => {
-      const a = await seed({ name: 'a' })
-      const b = await seed({ name: 'b' })
-      await setPinned(getDb(), a.id, 0)
-      await setPinned(getDb(), b.id, 4)
-      await getDb().insert(skillsTable).values(defaultSkillWeather)
-
-      await expect(reorderPins(getDb(), [b.id, a.id])).rejects.toThrow(/widget skill/i)
-
-      const pinned = await getPinnedSkills(getDb())
-      expect(pinned.map((skill) => skill.id)).toEqual([a.id, defaultSkillWeather.id, b.id])
-    })
-
-    it('allows an order that omits a pinned widget when submitted pins stay on the same side', async () => {
+    it('leaves a pinned widget omitted from the order in place', async () => {
       const a = await seed({ name: 'a' })
       const b = await seed({ name: 'b' })
       await setPinned(getDb(), a.id, 0)

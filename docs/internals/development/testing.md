@@ -237,6 +237,7 @@ Check [`src/test-utils/`](../../../src/test-utils) first; most cases that tempt 
 | `@/test-utils/fake-timers`                | `installFakeTimers`                                                                               | What the preload calls; in a test use `getClock()` rather than installing your own                       |
 | `@/test-utils/chat-store-mocks`           | `createMockModel`, `createMockChatThread`, `createMockChatInstance`, `hydrateStore`, `resetStore` | Chat-store fixtures and a seeded/reset store                                                             |
 | `@/test-utils/create-request-probe`       | `CreateRequestProbe`                                                                              | Asserting a quick-create entry point opened a surface without changing routes                            |
+| `@/test-utils/xlsx-workbook`              | `workbook`                                                                                        | A real `.xlsx` for the real sheet reader, instead of mocking `read-excel-file`                           |
 
 ### What Runs Before Your Test
 
@@ -255,11 +256,11 @@ The Playwright suite in [`e2e/`](../../../e2e) covers what a unit test cannot: b
 
 [`playwright.config.ts`](../../../playwright.config.ts) splits the suite into four projects, and **a spec's filename decides which one it joins**, along with its servers and `baseURL`. Run one with `bunx playwright test --project=oidc`.
 
-| Project            | `testMatch`                             | `baseURL`               | Backing servers                                            |
-| ------------------ | --------------------------------------- | ----------------------- | ---------------------------------------------------------- |
-| `oidc`             | `/(?:oidc\|acp-\|proxy-).*\.spec\.ts$/` | `http://localhost:1421` | OIDC frontend + backend, mock OIDC IdP                     |
-| `saml`             | `/saml.*\.spec\.ts$/`                   | `http://localhost:1422` | SAML frontend + backend, mock SAML IdP                     |
-| `min-version-gate` | `/min-version-gate\.spec\.ts$/`         | `http://localhost:1421` | Both the ungated OIDC pair and the gated pair on 1423/8004 |
+| Project            | `testMatch`                             | `baseURL`               | Backing servers                                                  |
+| ------------------ | --------------------------------------- | ----------------------- | ---------------------------------------------------------------- |
+| `oidc`             | `/(?:oidc\|acp-\|proxy-).*\.spec\.ts$/` | `http://localhost:1421` | OIDC frontend + backend, mock OIDC IdP                           |
+| `saml`             | `/saml.*\.spec\.ts$/`                   | `http://localhost:1422` | SAML frontend + backend, mock SAML IdP                           |
+| `min-version-gate` | `/min-version-gate\.spec\.ts$/`         | `http://localhost:1421` | Both the ungated OIDC pair and the gated pair on 1423/8004       |
 | `artifact`         | `/\/artifact-[^/]*\.spec\.ts$/`         | none                    | Playwright serves the host page at `https://artifact-host.test/` |
 
 Each anchor records a breakage:
@@ -351,6 +352,8 @@ It runs inside [`nightly-pipeline.yml`](../../../.github/workflows/nightly-pipel
 
 [`nightly.yml`](../../../.github/workflows/nightly.yml) runs the Playwright suite on Linux in desktop and mobile Chromium and Firefox, against PostgreSQL and PowerSync containers. On macOS it runs desktop and iPhone WebKit against in-memory test backends. The PR workflow, [`e2e.yml`](../../../.github/workflows/e2e.yml), runs Chromium only.
 
+The macOS WebKit projects run each test in a saved profile. Safari's private browsing keeps storage in memory instead, so a test that needs that behavior opens its own context with `browser.newContext()`, like the private-window test in [`consumer-docx-preview.spec.ts`](../../../e2e/consumer-docx-preview.spec.ts) does.
+
 On a Mac, install WebKit and run the extended config from the repository root:
 
 ```sh
@@ -362,7 +365,7 @@ On Linux, start and migrate PostgreSQL first, then start PowerSync using [`night
 
 ### Native app smoke
 
-The native jobs install a Tauri app and take its first-run setup wizard twice, each time from a fresh install. The **Local** pass connects the fake provider's OpenAI-compatible routes as the user's own model. The **Cloud** pass joins the waitlist and signs in with the fixed test code. Both end by sending one message to the fake provider. **Enterprise** is left out, because it would reach the same backend as Cloud. To reproduce by hand, start [`services.sh`](../../../e2e/native-smoke/services.sh), then follow the build and install steps in the `native-ios` or `native-linux` workflow job. Run [`ios.sh`](../../../e2e/native-smoke/ios.sh) with Maestro and a booted iPhone simulator, or [`linux.sh`](../../../e2e/native-smoke/linux.sh) with `tauri-driver`, WebKitWebDriver, Xvfb and ffmpeg. Recordings land in `/tmp/native-smoke/`, and service logs are kept as failure artifacts.
+The native jobs install a Tauri app and take its first-run setup wizard twice, each time from a fresh install. The **Local** pass connects the fake provider's OpenAI-compatible routes as the user's own model. The **Cloud** pass joins the waitlist and signs in with the fixed test code. Both end by sending one message to the fake provider. **Enterprise** is left out, because it would reach the same backend as Cloud. To reproduce by hand, start [`services.sh`](../../../e2e/native-smoke/services.sh), then follow the build and install steps in the `native-ios` or `native-linux` workflow job. Run [`ios.sh`](../../../e2e/native-smoke/ios.sh) with Maestro and a booted iPhone simulator, or [`linux.sh`](../../../e2e/native-smoke/linux.sh) with `tauri-driver`, WebKitWebDriver, Xvfb, ffmpeg, xdotool and python3-gi. Recordings land in `/tmp/native-smoke/`, and service logs are kept as failure artifacts. The Linux pass also drags and pastes files into the composer from [`file-source.py`](../../../e2e/native-smoke/file-source.py), which offers them the way a file manager does. It must run as a user that file permissions apply to (not root), because it checks that an unreadable file is reported.
 
 Fresh consumer native installs start locally even when `VITE_THUNDERBOLT_CLOUD_URL` is set, so the builds leave `VITE_SKIP_ONBOARDING` unset and the wizard opens as it does for a user. Build with `VITE_THUNDERBOLT_CLOUD_SERVICE_URL=http://localhost:8000/v1` so the Cloud choice reaches the smoke backend rather than the public service; this setting does not connect the app automatically. Keep the backend on port 8000: the app's content security policy allows `http://localhost:8000`, and a request to another port fails before it leaves the webview.
 
@@ -427,7 +430,7 @@ These errors in CI while tests pass locally mean a new test file mocked a shared
 
 ## Helm chart tests
 
-The chart in `deploy/k8s/` has [helm-unittest](https://github.com/helm-unittest/helm-unittest) suites in `deploy/k8s/tests/`. They render the templates and assert on the output, so they need Helm but no cluster. CI runs them, plus `helm lint`, in the `helm` job of [`ci.yml`](../../../.github/workflows/ci.yml) whenever `deploy/k8s/**` changes.
+The chart in `deploy/k8s/` has [helm-unittest](https://github.com/helm-unittest/helm-unittest) suites in `deploy/k8s/tests/`. They render the templates and assert on the output, so they need Helm but no cluster. CI runs them, plus `helm lint`, in the `small-checks` job of [`ci.yml`](../../../.github/workflows/ci.yml) whenever `deploy/k8s/**` changes.
 
 ### Install the plugin
 

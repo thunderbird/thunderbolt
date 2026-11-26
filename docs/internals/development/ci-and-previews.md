@@ -5,7 +5,7 @@
 | Workflow                  | Trigger                                   | Failure mode             | Reproduce locally               |
 | ------------------------- | ----------------------------------------- | ------------------------ | ------------------------------- |
 | `ci.yml`                  | PR (any base branch) + push to `main`     | Red check                | See the job table below         |
-| `e2e.yml`                 | PR + push to `main`                       | Red check                | `bun run e2e`                   |
+| `e2e.yml`                 | PR (path-gated) + push to `main`          | Red check                | `bun run e2e`                   |
 | `security.yml`            | PR + push to `main`                       | Red check                | n/a                             |
 | `lint-pr-title.yml`       | PR opened / edited / synchronized         | Red check                | n/a                             |
 | `pr-metrics.yml`          | PR                                        | Advisory comment         | `bun run build && bun run size` |
@@ -34,8 +34,10 @@ Release workflows: [RELEASE.md](../../../RELEASE.md).
 
 | Job             | Runs when                                                                                                                                   | What it does                                                                          |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `typescript`    | Always                                                                                                                                      | `tsc --noEmit`, `bun run lint`, `bun run test:5x`                                     |
-| `backend`       | Always                                                                                                                                      | Backend type-check, lint, tests (5x), WS suite, `./server` smoke (OTEL off and on)    |
+| `typescript`    | Always                                                                                                                                      | `tsc --noEmit`, `bun run lint`, `bun run test:ci`                                     |
+| `office`        | `src/office/**`, the files its suites load eagerly, the build and test config; every push                                                   | `bun run test:office:ci`: the Office script suites, apart from `test:ci`              |
+| `backend`       | Always                                                                                                                                      | Backend type-check, lint, tests, WS suite, `./server` smoke (OTEL off and on)         |
+| `small-checks`  | `deploy/pulumi/**`, `deploy/k8s/**`, `miniapps/**`, or `ci.yml`                                                                             | Pulumi type-check and tests, `helm lint` + `helm unittest`, miniapps lint/types/tests |
 | `localization`  | `src/**`, `shared/**`, i18n/build config, `backend/src/emails/**`, `bun.lock`                                                               | `bun run i18n:check`, a catalog-compiling build, the macro tripwire                   |
 | `agent-core`    | `shared/agent-core/**`, `shared/reasoning-effort*.ts`, browser-check/Chrome scripts, `vite.config.ts`, `package.json`, `bun.lock`, `ci.yml` | `bun run test:agent-core:5x` plus the Chromium/WebKit browser check                   |
 | `cli`           | `cli/**`, `shared/agent-core/**` and the shared contracts the CLI imports                                                                   | CLI type-check, tests (5x), build, and an artifact smoke test                         |
@@ -53,21 +55,26 @@ Both run only in the `husky` pre-commit hook via
 `make format`), so `--no-verify` can land unformatted code. `bun run check` runs the full
 local set (type-check, lint, format-check, license-check).
 
-## Every test job runs five times
+## Test jobs repeat runs to catch flakes
 
-| Suite        | CI command                                    | Per-test timeout in CI         |
-| ------------ | --------------------------------------------- | ------------------------------ |
-| Frontend     | `bun run test:5x`                             | Disabled (`--timeout 3600000`) |
-| Backend      | `bun test … --randomize --rerun-each 5`       | Disabled (`--timeout 3600000`) |
-| `agent-core` | `bun run test:agent-core:5x`                  | 5s                             |
-| CLI          | `cd cli && bun run test:5x`                   | 5s                             |
-| Backend WS   | `bun run test:backend:ws` (once, ≤5 attempts) | Disabled (`--timeout 3600000`) |
+| Suite        | CI command                                               | Per-test timeout in CI         |
+| ------------ | -------------------------------------------------------- | ------------------------------ |
+| Frontend     | `bun run test:ci` (`RERUN_EACH` = 1 on PRs, 5 on `main`) | Disabled (`--timeout 3600000`) |
+| Office       | `bun run test:office:ci` (same)                          | Disabled (`--timeout 3600000`) |
+| Backend      | `bun test … --rerun-each ${RERUN_EACH:-1}` (same)        | Disabled (`--timeout 3600000`) |
+| `agent-core` | `bun run test:agent-core:5x`                             | 5s                             |
+| CLI          | `cd cli && bun run test:5x`                              | 5s                             |
+| Backend WS   | `bun run test:backend:ws` (once, ≤5 attempts)            | Disabled (`--timeout 3600000`) |
 
+- On pull requests the frontend, Office and backend suites run once, then
+  `bun scripts/rerun-changed-tests.ts <frontend|office|backend>` re-runs only the test files the
+  PR changed, 5x. A new flake almost always lives in a changed test, and running everything 5x
+  was most of the critical path. Push to `main` still runs every suite 5x.
 - `bun run test` is not what CI runs: `--randomize` plus the 5x repeat catches
   order-dependent and one-in-fifty failures. Reproduce with the `:5x` script.
 - The disabled timeout (Bun's `--timeout 0` hangs async tests) leans on step and job caps:
-  10 minutes on the backend test step, 15 or 20 on the jobs. Local `test` and
-  `test:backend` keep the 5-second timeout.
+  5 minutes per Backend WS attempt, 10 on the backend test step, 15 on the `backend` job and 20 on
+  `typescript` and `office`. Local `test` and `test:backend` keep the 5-second timeout.
 
 ### Why the WebSocket suite is excluded
 
@@ -144,7 +151,7 @@ which resolves from the repo root. The `cli` job asserts `@earendil-works/pi-ai`
 
 **CI's own scripts are unit-tested by the frontend suite.**
 `.github/scripts/post-pr-metrics.test.js`, `post-eval-results.test.ts` and
-`review-orchestrator.test.mjs` are listed in the `test` and `test:5x` scripts, so editing a
+`review-orchestrator.test.mjs` are listed in the `test` and `test:ci` scripts, so editing a
 CI script can break `bun run test`.
 
 **PR titles.** `lint-pr-title.yml` accepts the legacy `THU-123: …` form or Conventional
@@ -154,6 +161,10 @@ Commits (`feat`, `fix`, `chore`, `docs`, `refactor`, `perf`, `test`, `ci`, `buil
 **Semgrep.** Diff-aware against the base SHA on PRs, full scan on pushes to `main`; any
 report uploads as SARIF. The PR comment is skipped on fork PRs (read-only token, the
 comments API would 403), and the whole job is skipped for Dependabot.
+
+**e2e is path-gated on PRs.** `e2e.yml` skips pull requests that only touch `docs/`, `web/`,
+Markdown, the Helm chart, the Pulumi stacks, Tauri Rust sources, or `.github/` other than
+`e2e.yml` itself. Push to `main` is not gated, so a wrongly excluded path still reds there.
 
 **e2e sharding.** Two Playwright shards each upload a blob report; `e2e-report` merges
 them into one HTML artifact (14-day retention). Failure screenshots upload per shard; a
@@ -190,7 +201,8 @@ Runs the `thunder-deep-review` skill read-only and posts an inline review.
   reds the job instead of recording a fake clean review.
 - Hard-gated to same-repo, non-draft, non-Dependabot PRs: fork code must never run with
   the API key.
-- Sleeps 60 seconds so rapid pushes cancel at zero model cost, sequences behind the
+- Waits 60 seconds on the `review-debounce` environment's wait timer (before a runner is
+  assigned, `deployment: false`) so rapid pushes cancel at zero model cost, sequences behind the
   external review bots, and skips findings they already reported.
 - Escalates to a deeper fan-out at ≥600 changed lines, ≥40 files, or the `review:deep`
   label.

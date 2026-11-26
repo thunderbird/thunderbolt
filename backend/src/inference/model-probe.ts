@@ -32,12 +32,11 @@ export type ModelProbeDeps = {
   logger?: { warn: (context: Record<string, string | number>, message: string) => void }
   /** Per-model deadline, default 30_000. */
   timeoutMs?: number
-  /** Max models probed at once, default 3. */
+  /** Max models probed at once; default all, so one slow upstream adds one deadline, not one per batch. */
   concurrency?: number
 }
 
 const modelProbeTimeoutMs = 30_000
-const modelProbeConcurrency = 3
 // A 256-token ceiling leaves room for reasoning models to answer; smaller budgets returned no text live.
 const modelProbeMaxTokens = 256
 
@@ -50,7 +49,8 @@ const createConfidentialTransport = async () => {
 
 /** Probe the selected catalog models (all by default) once; returns the failing ones (empty = all healthy). */
 export const probeCatalogModels = async (deps: ModelProbeDeps): Promise<ModelProbeFailure[]> => {
-  const { database, settings, fetchFn, timeoutMs = modelProbeTimeoutMs, concurrency = modelProbeConcurrency } = deps
+  const models = deps.models ?? defaultModels
+  const { database, settings, fetchFn, timeoutMs = modelProbeTimeoutMs, concurrency = models.length } = deps
   let confidentialTransport: Promise<NonNullable<ModelProbeDeps['confidentialTransport']>> | undefined
   const probe = async (model: SharedModel): Promise<ModelProbeFailure | null> => {
     const started = performance.now()
@@ -134,7 +134,7 @@ export const probeCatalogModels = async (deps: ModelProbeDeps): Promise<ModelPro
       signal.removeEventListener('abort', abort)
     }
   }
-  const queue = (deps.models ?? defaultModels).entries()
+  const queue = models.entries()
   const results: (ModelProbeFailure | null)[] = []
   await Promise.all(
     Array.from({ length: concurrency }, async () => {

@@ -306,6 +306,8 @@ describe('createPrompt', () => {
     const result = createPrompt(baseParams)
 
     expect(result).toContain('Do not emit <widget:citation> tags')
+    expect(result).toContain('carry no source number')
+    expect(result).toContain('cite every fact from a [Source N] result with [N]')
   })
 
   test('keeps the per-turn timestamp at the end of the complete stateless prompt', () => {

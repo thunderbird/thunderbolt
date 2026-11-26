@@ -1,6 +1,6 @@
 # Keycloak Validation Stack
 
-A local stack that runs SSO and SCIM provisioning end to end against real identity providers: one Keycloak with several realms, each a separate SSO connection with its own SCIM connection, all provisioning into one org through the real outbound SCIM extension. It backs the claims in [Provisioning](../../self-hosting/provisioning.md) and in [Identity and Access](../architecture/identity-and-access.md). It is local only: nothing in CI starts it.
+A local stack that runs SSO and SCIM provisioning end to end against real identity providers: one Keycloak with several realms, each a separate SSO connection with its own SCIM connection, all provisioning into one org through the real outbound SCIM extension. It backs the claims in [Provisioning](../../self-hosting/provisioning.md) and in [Identity and Access](../architecture/identity-and-access.md). Run it locally as below; [`nightly-keycloak.yml`](../../../.github/workflows/nightly-keycloak.yml) runs the same steps every night, and on pull requests that change `e2e/keycloak/`, without gating anything.
 
 The CI-side counterparts run in `bun run test:backend` with a fake IdP: [`multi-connection.test.ts`](../../../backend/src/identity/multi-connection.test.ts) (isolation between connections, also on Postgres), [`upgrade.test.ts`](../../../backend/src/identity/upgrade.test.ts) (an existing deployment upgrading with no config change) and [`outage.test.ts`](../../../backend/src/identity/outage.test.ts) (no IdP call on the request path).
 
@@ -27,7 +27,7 @@ Everything is in [`e2e/keycloak/`](../../../e2e/keycloak):
 
 `alice` exists in `acme` and `globex`, and `pat@contractor.test` in `acme` and `initech`, so the realms collide on purpose. Every seeded user's password is `password`.
 
-**Why `scim-loopback`.** The extension refuses plain HTTP except to a loopback address. `scim-loopback` shares Keycloak's network namespace and forwards its `127.0.0.1:18000` to the backend on the host, so every SCIM target points at `http://127.0.0.1:18000/v1/api/auth/scim/v2`. It forwards over IPv4, and `backend.env` binds the backend to `127.0.0.1` (`HOST`), because Docker Desktop's `host.docker.internal` reaches the host's IPv4 loopback and the backend otherwise listens on `localhost`, which can be IPv6 only.
+**Why `scim-loopback`.** The extension refuses plain HTTP except to a loopback address. `scim-loopback` shares Keycloak's network namespace and forwards its `127.0.0.1:18000` to the backend on the host, so every SCIM target points at `http://127.0.0.1:18000/v1/api/auth/scim/v2`. It forwards over IPv4, and `backend.env` binds the backend to `127.0.0.1` (`HOST`), because Docker Desktop's `host.docker.internal` reaches the host's IPv4 loopback and the backend otherwise listens on `localhost`, which can be IPv6 only. On Linux CI the backend binds `0.0.0.0` instead (`HOST=0.0.0.0` overrides `backend.env`), because there `host-gateway` is the Docker bridge's gateway, not the host's loopback.
 
 **Why `NODE_ENV=test`.** It makes the backend accept the fixed sign-in code `12345678`, which is how `setup.ts` signs in the bootstrap admin `admin@thunderbolt.test`. It belongs to `backend.env` only: `deploy/docker/backend-image.test.ts` and the Helm tests fail if a packaged Compose file or the chart sets it.
 

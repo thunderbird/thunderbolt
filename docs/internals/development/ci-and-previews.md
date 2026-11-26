@@ -20,6 +20,7 @@ Also part of the same machinery:
 | `preview-cleanup.yml`         | Hourly cron                                                       |
 | `previews-shared-deploy.yml`  | Manual, plus Mondays 07:00 UTC                                    |
 | `nightly-images.yml`          | 05:00 UTC                                                         |
+| `nightly-keycloak.yml`        | 05:30 UTC, plus PRs touching `e2e/keycloak/`; gates nothing       |
 | `images-publish.yml`          | Push to `main` under a path filter, or called by `preview-deploy` |
 | `image-scan.yml`              | After `images-publish` or `nightly-images` succeeds, plus manual  |
 | `evals.yml`, `test-build.yml` | Manual only                                                       |

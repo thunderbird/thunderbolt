@@ -620,7 +620,7 @@ explorer, and a spec that replays it, has time to press Stop. With `qa:cut`
 whole reply, so each run must use a fresh text. Replay rewrites a flow's partial fake reply to the full one, so on a
 device c2 checks only the replies that follow. c3 covers a model switch while a reply streams and the next turn
 after a stopped reply on the real providers, where the reply's content shows whether the stopped turn leaked into it.
-c5 stops the weather prompt while its tool runs. The free session's `mind-changer` case stops and switches the model
+c5 stops the weather prompt while its tool runs. The free session's `model-hopper` case stops and switches the model
 mid-reply in one person's style. The steps fit each charter's existing message cap.
 
 Not covered: offline edits, background and resume, an upgrade over existing data and IME composition. The browser tools

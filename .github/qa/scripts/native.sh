@@ -83,6 +83,19 @@ restore_gen() {
   rm -f src-tauri/plugins/tauri-plugin-passkey/ios/Package.resolved
 }
 
+# Runs <command> with its output also in <log>. A cold SwiftPM fetch that loses the network shows up as git failing
+# on the swift-rs cache it never cloned, so that failure gets one more build after a short wait.
+retry_swiftpm_fetch() {
+  local log=$1 status=0
+  shift
+  "$@" 2>&1 | tee "$log" || status=$?
+  [ "$status" -ne 0 ] || return 0
+  grep -q 'repositories/swift-rs-[^ ]* config --get remote.origin.url.*No such file or directory' "$log" || return "$status"
+  echo "warning: the build lost the network while SwiftPM fetched swift-rs; building once more" >&2
+  sleep 10
+  "$@"
+}
+
 build() {
   local platform=$1 out=$2 skip_onboarding=true control=
   shift 2
@@ -102,7 +115,8 @@ build() {
   if [ "$platform" = ios ]; then
     # Tauri fails to rename over an existing .app.
     rm -rf src-tauri/gen/apple/build/arm64-sim
-    "${run[@]}" bun tauri ios build --target aarch64-sim --debug --ci --no-sign --config "$out/tauri.conf.json"
+    retry_swiftpm_fetch "$out/build.log" \
+      "${run[@]}" bun tauri ios build --target aarch64-sim --debug --ci --no-sign --config "$out/tauri.conf.json"
     rm -rf "$out/Thunderbolt Dev.app"
     cp -R "src-tauri/gen/apple/build/arm64-sim/Thunderbolt Dev.app" "$out/"
     return

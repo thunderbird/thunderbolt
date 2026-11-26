@@ -236,6 +236,56 @@ test('system-image fails after the second failed install', () => {
   expect(installs).toHaveLength(2)
 })
 
+// What weekly run 45888816735 logged when the runner's DNS dropped during the iOS build.
+const swiftpmFetchError =
+  "  error: Git command 'git -C /Users/runner/Library/Caches/org.swift.swiftpm/repositories/swift-rs-16819c90 config --get remote.origin.url' failed: fatal: cannot change to '/Users/runner/Library/Caches/org.swift.swiftpm/repositories/swift-rs-16819c90': No such file or directory"
+
+/**
+ * An iOS build whose first `failures` runs print `error` to stderr and exit 64 + their run number, so the first
+ * exits 65 and the second 66. `sleep` returns at once.
+ */
+const iosBuild = (error: string, failures: number) => {
+  const bin = mkdtempSync(join(work, 'bin-'))
+  const calls = join(bin, 'calls.log')
+  writeFileSync(join(bin, 'error.txt'), `${error}\n`)
+  const script = `#!/bin/bash
+echo "$*" >> '${calls}'
+run=$(grep -c '^tauri' '${calls}')
+[ "$run" -gt ${failures} ] && exit 0
+cat '${bin}/error.txt' >&2
+exit $((64 + run))
+`
+  writeFileSync(join(bin, 'bun'), script, { mode: 0o755 })
+  writeFileSync(join(bin, 'sleep'), `#!/bin/bash\necho "sleep $*" >> '${calls}'\n`, { mode: 0o755 })
+  const setup = readFileSync(native, 'utf8').split('\nusage=')[0]
+  const log = join(bin, 'build.log')
+  const proc = Bun.spawnSync(['bash', '-c', `${setup}\nretry_swiftpm_fetch "$1" bun tauri ios build`, native, log], {
+    env: { ...process.env, ...noPorts, PATH: `${bin}:${process.env.PATH}` },
+  })
+  return { proc, log, calls: readFileSync(calls, 'utf8').trim().split('\n') }
+}
+
+test('the iOS build runs once more after a SwiftPM fetch lost the network, and passes when that build does', () => {
+  const { proc, log, calls } = iosBuild(swiftpmFetchError, 1)
+  expect(proc.exitCode).toBe(0)
+  expect(calls).toEqual(['tauri ios build', 'sleep 10', 'tauri ios build'])
+  // The first build's output still reaches the job log, and the saved log has it too.
+  expect(proc.stdout.toString()).toContain(swiftpmFetchError)
+  expect(readFileSync(log, 'utf8')).toContain(swiftpmFetchError)
+})
+
+test('the iOS build fails at once with its own exit code on any other error', () => {
+  const { proc, calls } = iosBuild('error[E0425]: cannot find value `device` in this scope', 1)
+  expect(proc.exitCode).toBe(65)
+  expect(calls).toEqual(['tauri ios build'])
+})
+
+test('the iOS build fails with the second exit code when the SwiftPM fetch loses the network twice', () => {
+  const { proc, calls } = iosBuild(swiftpmFetchError, 2)
+  expect(proc.exitCode).toBe(66)
+  expect(calls).toEqual(['tauri ios build', 'sleep 10', 'tauri ios build'])
+})
+
 /**
  * Launch n runs as pid 400n. The first pidof look finds no pid and later ones find it, even from launch 2 on when
  * a slow machine spent launch 1's 1 s on one look. Only launch `step1At` reaches `[init] step1_`, and 0 means none.

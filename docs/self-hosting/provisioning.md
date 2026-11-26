@@ -71,11 +71,10 @@ Retained data after `DELETE` is readable only by the person, with their recovery
 
 ## Collisions and the review queue
 
-An identity arriving with the email of an existing account is joined to that account in one of three ways, and never by email alone:
+An identity arriving with the email of an existing account is joined to that account in one of two ways, and never by email alone:
 
 1. **Domain:** the email's domain is verified and claimed by the connection it arrives on.
-2. **Self-service:** the person, signed in to the existing account, completes SSO in the same session. The backend supports this (`/sign-in/sso` with `X-Link-Intent: 1`); the app has no button for it yet.
-3. **Review:** anything else waits for an admin in `GET /v1/admin/link-reviews`. The provider's create gets a `409` until an admin approves (`POST /v1/admin/link-reviews/:id/approve`); its next retry then links.
+2. **Review:** anything else waits for an admin in `GET /v1/admin/link-reviews`. The provider's create gets a `409` until an admin approves (`POST /v1/admin/link-reviews/:id/approve`); its next retry then links.
 
 Two existing accounts are never merged, and a link never changes someone's devices. When two providers manage one person, the first to link keeps managing their name and email.
 

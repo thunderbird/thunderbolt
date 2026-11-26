@@ -180,7 +180,9 @@ const checks = async (out: string, downloads: string): Promise<CheckResult[]> =>
           timeoutMsg: 'the preview image did not load (img-src in the CSP of src-tauri/tauri.conf.json?)',
         })
       } finally {
-        await (await browser.$('button[aria-label="Remove sample.png"]')).click()
+        // Without the chip there is nothing to remove, and clicking would replace the error above.
+        const remove = await browser.$('button[aria-label="Remove sample.png"]')
+        if (await remove.isExisting()) await remove.click()
       }
     })
 

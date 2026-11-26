@@ -82,6 +82,21 @@ describe('AuditEventPanel', () => {
     expect(screen.getByText('t9')).toBeInTheDocument()
   })
 
+  it('names the API key the actor acted through, by its id once the key is gone', async () => {
+    await renderPanel(makeAuditEvent({ id: 'e1', metadata: { apiKeyId: 'key-1' }, apiKeyLabel: 'Deploy bot' }))
+    expect(screen.getByText('Through API key Deploy bot')).toBeInTheDocument()
+
+    cleanup()
+    await renderPanel(makeAuditEvent({ id: 'e2', metadata: { apiKeyId: 'key-1' } }))
+    expect(screen.getByText('Through API key key-1')).toBeInTheDocument()
+  })
+
+  it('says nothing of an API key for an event made without one', async () => {
+    await renderPanel(makeAuditEvent({ id: 'e1', metadata: { domain: 'example.com' } }))
+
+    expect(screen.queryByText(/Through API key/)).not.toBeInTheDocument()
+  })
+
   it('shows what changed field by field, and the details by key, with unshaped data as JSON', async () => {
     await renderPanel(
       makeAuditEvent({

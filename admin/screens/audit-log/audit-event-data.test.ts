@@ -3,8 +3,18 @@
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
 import { describe, expect, it } from 'bun:test'
-import { auditDataEntries, auditFieldChanges, formatAuditValue } from './audit-event-data'
+import { auditApiKeyId, auditDataEntries, auditFieldChanges, formatAuditValue } from './audit-event-data'
 import { auditItemLink } from './audit-item-link'
+
+describe('auditApiKeyId', () => {
+  it('reads the key id from the metadata, and is null without one', () => {
+    expect(auditApiKeyId({ apiKeyId: 'key-1', method: 'GET' })).toBe('key-1')
+    expect(auditApiKeyId({ method: 'GET' })).toBeNull()
+    expect(auditApiKeyId({ apiKeyId: 7 })).toBeNull()
+    expect(auditApiKeyId(null)).toBeNull()
+    expect(auditApiKeyId(['key-1'])).toBeNull()
+  })
+})
 
 describe('auditFieldChanges', () => {
   it('reads the { field: { from, to } } shape, field by field', () => {

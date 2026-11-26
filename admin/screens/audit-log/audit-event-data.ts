@@ -6,6 +6,10 @@
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
+/** The API key an event's actor acted through, which the backend records as `metadata.apiKeyId`. */
+export const auditApiKeyId = (metadata: unknown): string | null =>
+  isRecord(metadata) && typeof metadata.apiKeyId === 'string' ? metadata.apiKeyId : null
+
 /** One field an event changed. */
 export type AuditFieldChange = { field: string; from: unknown; to: unknown }
 

@@ -46,6 +46,7 @@ const failure: AuditEvent = {
   ipAddress: null,
   actorLabel: null,
   targetLabel: null,
+  apiKeyLabel: null,
   userAgent: null,
 }
 

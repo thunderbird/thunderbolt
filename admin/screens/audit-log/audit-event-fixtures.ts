@@ -26,5 +26,6 @@ export const makeAuditEvent = (overrides: Partial<AuditEvent> = {}): AuditEvent 
   userAgent: null,
   actorLabel: null,
   targetLabel: null,
+  apiKeyLabel: null,
   ...overrides,
 })

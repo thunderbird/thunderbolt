@@ -22,7 +22,7 @@ import { ListSkeleton } from '../../components/list-skeleton'
 import { StatusBadge } from '../../components/status-badge'
 import { useHour12 } from '../../components/use-hour12'
 import { auditItemLink } from './audit-item-link'
-import { auditDataEntries, auditFieldChanges, formatAuditValue } from './audit-event-data'
+import { auditApiKeyId, auditDataEntries, auditFieldChanges, formatAuditValue } from './audit-event-data'
 import { useAuditEventPanelState } from './use-audit-event-panel-state'
 
 const valueClass = 'break-words text-base leading-snug text-foreground'
@@ -123,6 +123,7 @@ const AuditEventView = ({ event, connectionName, onClose }: AuditEventViewProps)
   const formatters = useFormatters()
   const hour12 = useHour12()
   const client = event.userAgent ? readableClient(i18n, event.userAgent) : null
+  const apiKeyName = event.apiKeyLabel ?? auditApiKeyId(event.metadata)
 
   return (
     <DetailPanel title={auditActionName(i18n, event.action)} onClose={onClose}>
@@ -152,6 +153,11 @@ const AuditEventView = ({ event, connectionName, onClose }: AuditEventViewProps)
           id={event.actorId}
           label={event.actorLabel}
         />
+        {apiKeyName && (
+          <p className={secondaryClass}>
+            <Trans>Through API key {apiKeyName}</Trans>
+          </p>
+        )}
       </DetailField>
       {event.targetType && (
         <DetailField label={<Trans>Target</Trans>}>

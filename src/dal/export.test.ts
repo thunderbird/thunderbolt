@@ -18,8 +18,9 @@ import {
   settingsTable,
   tasksTable,
 } from '@/db/tables'
+import type { UIMessageMetadata } from '@/types'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { exportFormat, exportSchemaVersion, exportUserData, exportedTableNames } from './export'
+import { exportChatThread, exportFormat, exportSchemaVersion, exportUserData, exportedTableNames } from './export'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
 beforeAll(async () => {
@@ -169,5 +170,76 @@ describe('Export DAL', () => {
     for (const rows of Object.values(exported.tables)) {
       expect(rows).toEqual([])
     }
+  })
+
+  describe('exportChatThread', () => {
+    it('holds only the thread and its live messages, edited-away branches included', async () => {
+      const db = getDb()
+      await db.insert(chatThreadsTable).values([
+        { id: 'thread-1', title: 'Mine' },
+        { id: 'thread-2', title: 'Other' },
+      ])
+      await db.insert(chatMessagesTable).values([
+        { id: 'm1', chatThreadId: 'thread-1', role: 'user', content: 'hi' },
+        { id: 'm2', chatThreadId: 'thread-1', role: 'assistant', parentId: 'm1' },
+        { id: 'm2-edit', chatThreadId: 'thread-1', role: 'assistant', parentId: 'm1' },
+        { id: 'm-deleted', chatThreadId: 'thread-1', role: 'user', deletedAt: '2026-06-16' },
+        { id: 'm3', chatThreadId: 'thread-2', role: 'user' },
+      ])
+      await db.insert(tasksTable).values({ id: 'task-1', item: 'Not exported' })
+
+      const exported = await exportChatThread(db, 'thread-1', { id: 'user-1', email: 'u1@example.com' })
+
+      expect(exported.format).toBe(exportFormat)
+      expect(exported.schemaVersion).toBe(exportSchemaVersion)
+      expect(exported.kind).toBe('chat')
+      expect(exported.user).toEqual({ id: 'user-1', email: 'u1@example.com' })
+      expect(Object.keys(exported.tables).sort()).toEqual(['chat_messages', 'chat_threads'])
+      expect(exported.tables.chat_threads.map((row) => row.id)).toEqual(['thread-1'])
+      expect(exported.tables.chat_messages.map((row) => row.id).sort()).toEqual(['m1', 'm2', 'm2-edit'])
+    })
+
+    it('leaves out owners, MCP URL paths and debug links, which a shared file must not carry', async () => {
+      const db = getDb()
+      // Messages saved before `mcpTools` existed named their servers in `mcpServers`.
+      const storedMetadata: UIMessageMetadata & { mcpServers: Record<string, { url: string }> } = {
+        modelId: 'model-1',
+        debugTranscript: {
+          traceId: 'trace-1',
+          engine: 'pi',
+          modelId: 'model-1',
+          modelName: 'Model',
+          provider: 'custom',
+          agentId: 'agent-1',
+        },
+        mcpTools: {
+          docs_search: { name: 'Docs', url: 'https://user:pass@mcp.example.com/sse?token=secret', toolName: 'search' },
+        },
+        mcpServers: { docs: { url: 'https://mcp.example.com/sse?token=legacy-secret' } },
+      }
+      await db.insert(chatThreadsTable).values({ id: 'thread-1', title: 'Mine', userId: 'user-1' })
+      await db.insert(chatMessagesTable).values({
+        id: 'm1',
+        chatThreadId: 'thread-1',
+        role: 'assistant',
+        userId: 'user-1',
+        metadata: storedMetadata,
+      })
+
+      const exported = await exportChatThread(db, 'thread-1', { id: 'user-1', email: null })
+      const [message] = exported.tables.chat_messages
+
+      expect(exported.tables.chat_threads[0]).not.toHaveProperty('userId')
+      expect(message).not.toHaveProperty('userId')
+      expect(message.metadata).toEqual({
+        modelId: 'model-1',
+        mcpTools: { docs_search: { name: 'Docs', url: 'https://mcp.example.com', toolName: 'search' } },
+      })
+      expect(JSON.stringify(exported)).not.toContain('secret')
+    })
+
+    it('throws for a chat that does not exist', async () => {
+      await expect(exportChatThread(getDb(), 'missing', { id: 'user-1', email: null })).rejects.toThrow()
+    })
   })
 })

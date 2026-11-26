@@ -4,7 +4,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { getClock } from '@/testing-library'
-import { downloadJson, exportFilenameFor } from './export-download'
+import { chatExportFilenameFor, downloadJson, exportFilenameFor } from './export-download'
 
 describe('exportFilenameFor', () => {
   it('formats the filename as YYYY-MM-DD.json in local time', () => {
@@ -24,6 +24,41 @@ describe('exportFilenameFor', () => {
     // of whether that's a different UTC day for the runner.
     const date = new Date(2026, 5, 16, 23, 30, 0)
     expect(exportFilenameFor(date)).toBe('thunderbolt-export-2026-06-16.json')
+  })
+})
+
+describe('chatExportFilenameFor', () => {
+  const date = new Date(2026, 5, 16, 12, 0, 0)
+
+  it('names the file after the chat and the local day', () => {
+    expect(chatExportFilenameFor('Trip plan', date)).toBe('thunderbolt-chat-Trip plan-2026-06-16.json')
+  })
+
+  it('keeps dots and case inside the title', () => {
+    expect(chatExportFilenameFor('Meeting with Dr. Smith', date)).toBe(
+      'thunderbolt-chat-Meeting with Dr. Smith-2026-06-16.json',
+    )
+    expect(chatExportFilenameFor('Plan v1.5 Notes', date)).toBe('thunderbolt-chat-Plan v1.5 Notes-2026-06-16.json')
+  })
+
+  it('replaces characters a filesystem rejects', () => {
+    expect(chatExportFilenameFor('a/b: c?', date)).toBe('thunderbolt-chat-a b c-2026-06-16.json')
+  })
+
+  it('shortens a long title to 40 characters and keeps the date', () => {
+    expect(chatExportFilenameFor('word '.repeat(100), date)).toBe(
+      'thunderbolt-chat-word word word word word word word word-2026-06-16.json',
+    )
+  })
+
+  it('keeps the combining marks of scripts such as Devanagari', () => {
+    expect(chatExportFilenameFor('हिन्दी में बातचीत', date)).toBe('thunderbolt-chat-हिन्दी में बातचीत-2026-06-16.json')
+  })
+
+  it('falls back to "chat" for a title with nothing usable', () => {
+    expect(chatExportFilenameFor(null, date)).toBe('thunderbolt-chat-chat-2026-06-16.json')
+    expect(chatExportFilenameFor('  ', date)).toBe('thunderbolt-chat-chat-2026-06-16.json')
+    expect(chatExportFilenameFor('???', date)).toBe('thunderbolt-chat-chat-2026-06-16.json')
   })
 })
 

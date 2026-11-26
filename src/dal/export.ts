@@ -5,8 +5,13 @@
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { localOnlyTables, syncedTables } from '@/db/powersync/schema'
 import type { SQLiteTable } from 'drizzle-orm/sqlite-core'
-import { and, eq, getTableColumns } from 'drizzle-orm'
-import { providerConnectionsTable, providerConnectionSecretsTable } from '@/db/tables'
+import { and, eq, getTableColumns, isNull } from 'drizzle-orm'
+import {
+  chatMessagesTable,
+  chatThreadsTable,
+  providerConnectionsTable,
+  providerConnectionSecretsTable,
+} from '@/db/tables'
 import { providerCredentialBound } from '@/providers/credentials'
 import type { ProviderCredentials } from '@/providers/types'
 
@@ -80,6 +85,14 @@ export const exportedTableNames: readonly IncludedTableName[] = Object.freeze(
   Object.keys(includedTables) as IncludedTableName[],
 )
 
+/** The envelope fields every export starts with. */
+const envelopeHeader = (attributedTo: UserDataExport['user']): Omit<UserDataExport, 'tables'> => ({
+  format: exportFormat,
+  schemaVersion: exportSchemaVersion,
+  exportedAt: new Date().toISOString(),
+  user: { id: attributedTo.id, email: attributedTo.email },
+})
+
 /**
  * Returns a structural snapshot of every row in the local DB that a user
  * would expect in a backup: synced user content + user-typed credentials.
@@ -95,7 +108,7 @@ export const exportedTableNames: readonly IncludedTableName[] = Object.freeze(
  */
 export const exportUserData = async (
   db: AnyDrizzleDatabase,
-  attributedTo: { id: string; email: string | null },
+  attributedTo: UserDataExport['user'],
 ): Promise<UserDataExport> => {
   const entries = Object.entries(includedTables) as Array<[IncludedTableName, SQLiteTable]>
   const results = await Promise.all(
@@ -122,10 +135,93 @@ export const exportUserData = async (
   )
 
   return {
-    format: exportFormat,
-    schemaVersion: exportSchemaVersion,
-    exportedAt: new Date().toISOString(),
-    user: { id: attributedTo.id, email: attributedTo.email },
+    ...envelopeHeader(attributedTo),
     tables: Object.fromEntries(results) as Record<IncludedTableName, unknown[]>,
+  }
+}
+
+/** Marks a file that holds one chat, so the importer knows it even if later formats add tables to it. */
+export const chatExportKind = 'chat'
+
+type ExportedChatThreadRow = Omit<typeof chatThreadsTable.$inferSelect, 'userId'>
+type ExportedChatMessageRow = Omit<typeof chatMessagesTable.$inferSelect, 'userId'>
+
+/** A {@link UserDataExport} envelope holding one chat: its thread row and that thread's messages. */
+export type ChatExport = Omit<UserDataExport, 'tables'> & {
+  kind: typeof chatExportKind
+  tables: { chat_threads: [ExportedChatThreadRow]; chat_messages: ExportedChatMessageRow[] }
+}
+
+/**
+ * The scheme and host of an MCP server URL: enough for its icon, without a path, query or credentials. A URL that
+ * doesn't parse gives `''`, which drops it rather than risk sharing it; the icon then falls back to the generic one.
+ */
+const urlOrigin = (url: string): string => {
+  try {
+    return new URL(url).origin
+  } catch {
+    return ''
+  }
+}
+
+/** Metadata of messages saved before `mcpTools` existed, which named the servers in `mcpServers`. */
+type StoredMessageMetadata = NonNullable<ExportedChatMessageRow['metadata']> & { mcpServers?: unknown }
+
+/**
+ * Drops what a shared chat must not carry: the path and query of each MCP server URL a turn used (a hosted server's
+ * URL can hold a token), the older `mcpServers` record of those servers, and the debug-capture link. Names and origins
+ * stay, so tool calls still render.
+ */
+const shareableMetadata = (metadata: ExportedChatMessageRow['metadata']): ExportedChatMessageRow['metadata'] => {
+  if (!metadata) {
+    return metadata
+  }
+  const {
+    debugTranscript: _debugTranscript,
+    mcpServers: _legacyMcpServers,
+    mcpTools,
+    ...rest
+  }: StoredMessageMetadata = metadata
+  if (!mcpTools) {
+    return rest
+  }
+  return {
+    ...rest,
+    mcpTools: Object.fromEntries(
+      Object.entries(mcpTools).map(([key, tool]) => [key, { ...tool, url: urlOrigin(tool.url) }]),
+    ),
+  }
+}
+
+/**
+ * Snapshot of one chat in the backup envelope, for sharing a single conversation: every message the thread holds,
+ * edited-away branches included and soft-deleted ones left out, as the chat itself shows them. Rows carry no `userId`, which the importer stamps anyway; the envelope still names
+ * the exporter, which the importer needs to tell its own chat from someone else's. Throws when the thread doesn't
+ * exist.
+ */
+export const exportChatThread = async (
+  db: AnyDrizzleDatabase,
+  threadId: string,
+  attributedTo: UserDataExport['user'],
+): Promise<ChatExport> => {
+  const thread = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, threadId)).get()
+  if (!thread) {
+    throw new Error(`Chat ${threadId} does not exist.`)
+  }
+  const messages = await db
+    .select()
+    .from(chatMessagesTable)
+    .where(and(eq(chatMessagesTable.chatThreadId, threadId), isNull(chatMessagesTable.deletedAt)))
+  const { userId: _threadOwner, ...threadRow } = thread
+  return {
+    ...envelopeHeader(attributedTo),
+    kind: chatExportKind,
+    tables: {
+      chat_threads: [threadRow],
+      chat_messages: messages.map(({ userId: _messageOwner, metadata, ...message }) => ({
+        ...message,
+        metadata: shareableMetadata(metadata),
+      })),
+    },
   }
 }

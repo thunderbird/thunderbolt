@@ -175,7 +175,14 @@ export { builtInAgent } from '../defaults/agents'
 export { refreshSystemAgents, type RefreshSystemAgentsResult } from '../db/seeding/seed-agents'
 
 // Export (user-data backup)
-export { exportFormat, exportSchemaVersion, exportUserData, exportedTableNames, type UserDataExport } from './export'
+export {
+  exportChatThread,
+  exportFormat,
+  exportSchemaVersion,
+  exportUserData,
+  exportedTableNames,
+  type UserDataExport,
+} from './export'
 
 // Import (restore exported data)
 export {

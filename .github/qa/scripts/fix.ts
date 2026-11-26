@@ -261,7 +261,6 @@ export const route = async ({
   const filed: Filed[] = await Bun.file(join(outDir, 'filed.json')).json()
   const { confirmed }: Verified = await Bun.file(join(outDir, 'verified.json')).json()
   const plan: FixPlan = { fixes: [], verifyNative: [] }
-  const routed = new Set<string>()
   const tickets = filed.filter((f) => ticketActions.has(f.action === 'dry-run' && !live ? f.would : f.action))
   // Every finding of one bug files with the bug's severity, so `leadRank` decides which of them leads its fix task.
   // Among equals a web visual finding leads, so its check gets written and the others join through their specs.
@@ -332,7 +331,6 @@ export const route = async ({
   const branches = new Map<string, string | undefined>()
   const declined = new Set<string>()
   for (const { fp, severity, issueId, identifier, charterDir, id } of tickets) {
-    const fresh = !routed.has(fp)
     const verified = confirmed.find((v) => v.charterDir === charterDir && v.id === id)
     if (!verified) continue
     const finding = findingSchema.parse(verified.finding)
@@ -358,7 +356,7 @@ export const route = async ({
       )
       declined.add(fp)
     }
-    const flow = 'flow' in proof && (fresh || proof.kind === 'spec') ? proof.flow : undefined
+    const flow = 'flow' in proof && (!lead || proof.kind === 'spec') ? proof.flow : undefined
     if (flow && plan.verifyNative.some((v) => v.fp === fp && v.platform === platform)) {
       // A native pass is named by platform, so a second flow there would go unchecked and could hide a half fix.
       log(
@@ -394,7 +392,6 @@ export const route = async ({
       }
       continue
     }
-    routed.add(fp)
     const own = 'spec' in proof ? [proof.spec] : []
     plan.fixes.push({
       ...task,

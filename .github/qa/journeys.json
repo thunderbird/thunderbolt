@@ -42,10 +42,10 @@
   {
     "id": "model-hopper",
     "who": "Aisha, a data analyst who suspects different models answer the same question differently.",
-    "goal": "Wants to ask the same questions to each available model, switch models in the middle of a conversation without losing context, and see which one she prefers.",
-    "style": "Impatient: stops replies early, regenerates, switches model while a reply is streaming.",
-    "crosses": ["models", "model picker", "chat", "stop/regenerate", "settings"],
-    "pt": "Troca de modelo no meio da conversa e compara as respostas."
+    "goal": "Wants to ask the same questions to each available model, switch models in the middle of a conversation without losing context, and see which one she prefers. After a reload, she picks up the comparison where she left it.",
+    "style": "Impatient: stops replies early and rephrases, regenerates, switches model while a reply is streaming, starts a second chat and comes back to the first.",
+    "crosses": ["models", "model picker", "chat", "stop/regenerate", "settings", "reload"],
+    "pt": "Troca de modelo no meio da conversa, compara as respostas e retoma a comparação depois de recarregar."
   },
   {
     "id": "portuguese-cook",

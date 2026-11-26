@@ -7,7 +7,15 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { generateText, streamText } from 'ai'
 import { z } from 'zod'
-import { createFakeProvider, fakeOpenAiModelId, fakeProviderReply, unsupportedRequestMarker } from './fake-provider'
+import {
+  createFakeProvider,
+  cutReplyTrigger,
+  fakeOpenAiModelId,
+  fakeProviderReply,
+  selectReply,
+  slowReplyTrigger,
+  unsupportedRequestMarker,
+} from './fake-provider'
 import { miniAppToolsetName, miniAppTransferPrompt, protectedEmailBody, protectedEmailId } from './mini-app-fixture'
 import {
   officeDeckEditFilename,
@@ -28,7 +36,23 @@ import {
   officeWorkbookPrompt,
   officeWorkbookScript,
 } from './office-script-fixture'
-import { performanceStreamPrompt, performanceStreamReply } from './streaming-fixture'
+import { performanceStreamOptions, performanceStreamPrompt, performanceStreamReply } from './streaming-fixture'
+
+test('the triggers set the pace, and a cut text is cut only once', () => {
+  const cutTexts = new Set<string>()
+  expect(selectReply('Write a story', cutTexts)).toEqual({ reply: fakeProviderReply, delayMs: 150, cut: false })
+  expect(selectReply(`Write a story ${slowReplyTrigger}`, cutTexts)).toMatchObject({ delayMs: 3000, cut: false })
+  expect(selectReply(`Write a story ${cutReplyTrigger} 1`, cutTexts)).toMatchObject({ delayMs: 150, cut: true })
+  expect(selectReply(`Write a story ${cutReplyTrigger} 1`, cutTexts)).toMatchObject({ cut: false })
+  expect(selectReply(`Write a story ${cutReplyTrigger} 2`, cutTexts)).toMatchObject({ cut: true })
+  expect(selectReply(performanceStreamPrompt, cutTexts)).toEqual({ ...performanceStreamOptions, cut: false })
+})
+
+test('the triggers match in any case, as a phone keyboard capitalizes them', () => {
+  const cutTexts = new Set<string>()
+  expect(selectReply('Qa:slow write a story', cutTexts)).toMatchObject({ delayMs: 3000 })
+  expect(selectReply('QA:CUT write a story', cutTexts)).toMatchObject({ cut: true })
+})
 
 test('streams a complete reply over IPv4 loopback', async () => {
   const server = await createFakeProvider(0)

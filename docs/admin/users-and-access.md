@@ -138,7 +138,7 @@ provider's job.
   provisioned, matched on its `externalId`, and an existing account joins a provider only through a
   claimed domain or an admin's approval. See
   [Provisioning](../self-hosting/provisioning.md#collisions-and-the-review-queue).
-- An admin edits a connection under **Admin → Sign-in methods**. The name, the OIDC client
+- An admin edits a connection under **Admin → Sign In**. The name, the OIDC client
   secret and the SAML certificate can change at any time, and nobody has to link again. The OIDC
   client ID, the discovery URL and the SAML entry point can change only while nobody has signed in
   through the connection, and the match claim only while no identity is linked or waiting in the
@@ -152,7 +152,7 @@ provider's job.
 
 Your provider can also provision accounts ahead of first use over SCIM 2.0, at
 `/v1/api/auth/scim/v2`. An admin creates the SCIM connection and its token under
-**Admin → Sign-in methods**; the token is shown once. On a connection with SCIM, only people
+**Admin → Sign In**; the token is shown once. On a connection with SCIM, only people
 the provider has provisioned can sign in, and deactivating or deleting them there cuts their access.
 Without SCIM, an account exists once the person signs in for the first time.
 [Provisioning](../self-hosting/provisioning.md) covers setup for Entra, Okta and Keycloak.
@@ -168,10 +168,10 @@ connection keep email codes.
 | Goal                             | How                                                                                                                           |
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | Offboard someone (SSO)           | Disable or remove them in your identity provider. Without SCIM that stops new sign-ins only; block them too to end sessions   |
-| Offboard everyone a provider let in | Retire the connection under **Admin → Sign-in methods**. Members it alone admitted lose access; anyone another source admits keeps it. Retire its SCIM side first and wait until it shows as retired; the env connection `sso` can't be retired |
+| Offboard everyone a provider let in | Retire the connection under **Admin → Sign In**. Members it alone admitted lose access; anyone another source admits keeps it. Retire its SCIM side first and wait until it shows as retired; the env connection `sso` can't be retired |
 | Offboard someone (any sign-in)   | Block them under **Admin → Members**. It outranks every identity provider grant                                              |
 | Let someone the provider deleted back in locally | Detach the link on their page under **Admin → Members**. Their other access, such as an invitation, then decides. Only a link the provider deleted, or one on a retiring or retired SCIM side, can be detached, and the provider no longer signs them in. You can't detach your own |
-| Remove a blocked member for good | **Delete member** on their page under **Admin → Members**, which deletes their account and data                              |
+| Remove a blocked member for good | **Delete** in the ⋯ menu of their page under **Admin → Members**, which deletes their account and data            |
 | Cut off one lost laptop or phone | The user revokes it under **Settings → Devices**                                                                              |
 | Remove a person's data entirely  | The user does it under **Settings → Preferences → Data**, or you delete their `user` row, which cascades to their synced data |
 
@@ -186,14 +186,16 @@ Revoking a single device stops that device syncing and cuts its sessions. It cle
 ## Admin screens
 
 Admins see an **Admin** section in the app's sidebar. Anyone in `BOOTSTRAP_ADMIN_EMAILS` is an admin
-from their first verified sign-in, and an admin can make others admins from there.
+from their first verified sign-in, and an admin can make others admins from there. Opening an item
+shows it; **Edit**, in its ⋯ menu or a row's right-click menu, opens a form whose changes apply on
+**Save**.
 
 | Screen             | What an admin does there                                                                          |
 | ------------------ | ------------------------------------------------------------------------------------------------- |
-| Members            | Find people, invite people by email (pending invitations show in the list until the person signs in, and revoked ones behind the ⋯ menu), rename them, block or unblock them, grant or revoke admin, detach a provider link, permanently delete a member who has lost access. An admin's detail says whether they can still sign in when the identity provider is down, with the email-code sign-in address to keep, and the list warns when no admin can. Identities waiting to link to an existing account show in a collapsed section above the list, where an admin approves or rejects them; rejected ones are behind the ⋯ menu, and approving one undoes the rejection |
+| Members            | Find people, invite people by email, rename them, block or unblock them, grant or revoke admin, detach a provider link, permanently delete a member who has lost access. One list holds everyone: first what waits for an admin, the identities that arrived with the email of an existing account (**Review pending**, approve or reject them) and the pending invitations (**Invited**), then the members, then dimmed the rejected reviews (approving one undoes the rejection) and the expired and revoked invitations. Search narrows all of them. An admin's detail says whether they can still sign in when the identity provider is down, with the email-code sign-in address to keep, and the list warns when no admin can |
 | Groups             | Create local groups, add and remove members, make a group's members admins                        |
-| Sign-in methods    | One list of identity provider connections and domains. Add and edit SSO connections, add SCIM and issue or revoke its tokens, map provider groups to admin, see rejected SCIM requests, retire a connection; add a domain, verify it with a DNS record, claim it for a connection, turn on domain enrollment |
-| Audit log          | Read and filter the organization's audit events                                                   |
+| Sign In            | One list of identity provider connections and domains. Add and edit SSO connections, add SCIM and issue or revoke its tokens, map provider groups to admin, see rejected SCIM requests, retire a connection; add a domain, verify it with a DNS record, claim it for a connection, turn on domain enrollment |
+| Audit Log          | Read and filter the organization's audit events                                                   |
 
 Every screen calls the admin API under `/v1/admin`, which is also the way to script any of it. The
 endpoints are listed in [Provisioning](../self-hosting/provisioning.md) and

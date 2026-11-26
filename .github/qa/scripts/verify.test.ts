@@ -177,16 +177,18 @@ const droppedAt = (result: Verified, gate: Verified['dropped'][number]['gate']) 
   result.dropped.filter((entry) => entry.gate === gate)
 
 describe('replay', () => {
-  test('a probe line filed as a console error is an observation, as a layout finding it replays', async () => {
+  test('a probe line or axe failure filed as a console error is an observation, as a layout finding it replays', async () => {
     await Bun.write(join(qaDir, 'noise.txt'), await Bun.file(join(import.meta.dir, '../noise.txt')).text())
     const evidence = '[ERROR] [qa-layout] covered button "Continue" @ http://localhost:1424/layout-probe.js:209'
+    const axeFailed = '[ERROR] layout-probe.js: the axe-core name check failed: Error: boom'
     await writeFinding(makeFinding('mislabeled', { type: 'console-error', evidence }))
+    await writeFinding(makeFinding('axe-failed', { type: 'console-error', evidence: axeFailed }))
     await writeFinding(makeFinding('layout', { type: 'layout', evidence }))
     const calls: string[][] = []
 
     const result = await replay(outDir, fakeRunner({}, calls), qaDir)
 
-    expect(titles(result.observations)).toEqual(['mislabeled'])
+    expect(titles(result.observations)).toEqual(['axe-failed', 'mislabeled'])
     expect(calls[0]).toEqual([controlSpec(), join(outDir, 'c2-chat-desktop/repro/layout.spec.ts')])
   })
 

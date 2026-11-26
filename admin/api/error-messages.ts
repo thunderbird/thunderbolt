@@ -61,6 +61,7 @@ export const adminErrorMessages: Record<AdminErrorCode, MessageDescriptor> = {
   LINK_REVIEW_RESOLVED: msg`Someone has already decided this review.`,
   LINK_REVIEW_SELF: msg`You can't decide a review of your own account.`,
   LINK_REVIEW_RECORD_EXISTS: msg`The identity provider has already provisioned this person.`,
+  AUDIT_EVENT_NOT_FOUND: msg`This event isn't in your organization's audit log.`,
 }
 
 /** Why a domain's last verification check failed. */

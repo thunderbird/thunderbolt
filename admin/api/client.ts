@@ -190,7 +190,7 @@ export const createAdminApi = (http: HttpClient, { onAdminRequired }: AdminApiOp
         read<Page<Invitation>>(
           // The API refuses an empty `q`, like the members list.
           http.get('admin/invitations', {
-            searchParams: { ...page(query), status: query.status, q: query.q || undefined },
+            searchParams: { ...page(query), status: query.status, q: query.q || undefined, expired: query.expired },
           }),
         ),
       create: (body: CreateInvitationBody) => read<Invitation>(http.post('admin/invitations', { json: body })),
@@ -211,7 +211,12 @@ export const createAdminApi = (http: HttpClient, { onAdminRequired }: AdminApiOp
       list: async (query: ListLinkReviewsQuery = {}): Promise<Page<LinkReview>> => {
         const { reviews, nextCursor } = await read<LinkReviewPage>(
           http.get('admin/link-reviews', {
-            searchParams: { ...page(query), status: query.status, connectionId: query.connectionId },
+            searchParams: {
+              ...page(query),
+              status: query.status,
+              connectionId: query.connectionId,
+              q: query.q || undefined,
+            },
           }),
         )
         return { items: reviews, nextCursor }
@@ -227,6 +232,7 @@ export const createAdminApi = (http: HttpClient, { onAdminRequired }: AdminApiOp
         )
         return { items: events, nextCursor }
       },
+      get: (eventId: string) => read<AuditEvent>(http.get(`admin/audit-events/${segment(eventId)}`)),
     },
   }
 }

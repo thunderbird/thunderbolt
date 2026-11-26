@@ -48,10 +48,22 @@ describe('createAdminApi', () => {
     expect(new URL(requests[0].url).searchParams.has('q')).toBe(false)
   })
 
+  it('sends an invitation expiry filter, and no q for a cleared link-review search', async () => {
+    const invitations = setup({ body: { items: [], nextCursor: null } })
+    await invitations.api.invitations.list({ status: 'pending', expired: false })
+    expect(new URL(invitations.requests[0].url).searchParams.get('expired')).toBe('false')
+    const reviews = setup({ body: { reviews: [], nextCursor: null } })
+    await reviews.api.linkReviews.list({ q: '' })
+    expect(new URL(reviews.requests[0].url).searchParams.has('q')).toBe(false)
+  })
+
   it('returns audit events and link reviews as pages', async () => {
     const event = { id: 'e1' }
     const events = await setup({ body: { events: [event], nextCursor: 'n' } }).api.auditEvents.list()
     expect(events).toMatchObject({ items: [event], nextCursor: 'n' })
+    const one = setup({ body: event })
+    expect(await one.api.auditEvents.get('e/1')).toMatchObject(event)
+    expect(new URL(one.requests[0].url).pathname).toBe('/v1/admin/audit-events/e%2F1')
     expect(await setup({ body: { reviews: [], nextCursor: null } }).api.linkReviews.list()).toEqual({
       items: [],
       nextCursor: null,

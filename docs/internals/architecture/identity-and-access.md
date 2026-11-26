@@ -162,7 +162,9 @@ releases let users register can't sign anyone in.
 - **Retiring** a connection (`retireSsoConnection`) sets it `retired`: its SSO side signs nobody in,
   and its members' `sso` sources stop counting. That offboards members it alone admitted; anyone with
   another live source keeps access. The env connection can't be retired here (its settings own it),
-  nor can a row whose SCIM side isn't `scim_retired` yet: retire that side first.
+  nor can a row whose SCIM side isn't `scim_retired` yet: retire that side first. It locks the row
+  before checking, and attaching a SCIM side writes only to a row still `active` with no SCIM side, so
+  the two can't both succeed.
 - **Editing** a connection (`updateSsoConnection`) changes its name, match claim, OIDC client and
   discovery URL, or SAML certificate and entry point, merging them into the stored config. What
   names the IdP or our service provider (provider id, OIDC issuer, SAML entity ids) is refused with

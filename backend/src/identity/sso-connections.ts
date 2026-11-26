@@ -518,6 +518,8 @@ export const retireSsoConnection = async (
       .where(
         and(eq(identityConnection.id, identityConnectionId), eq(identityConnection.orgId, getCurrentOrganizationId())),
       )
+      // A SCIM side attached meanwhile either commits first and refuses this, or finds the row retired.
+      .for('update')
     if (!row?.ssoProviderId || row.status === 'retired') {
       throw ssoConnectionNotFound()
     }

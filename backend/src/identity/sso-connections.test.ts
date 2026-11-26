@@ -12,11 +12,14 @@ import {
   ssoProvider,
   user,
 } from '@/db/schema'
+import { createAuth } from '@/auth/auth'
 import { createTestDb } from '@/test-utils/db'
+import { createPostgresTestDb, postgresTestUrl, waitForLockWaiters } from '@/test-utils/postgres'
 import { createTestSettings } from '@/test-utils/settings'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { getCurrentOrganizationId } from './current-organization'
+import { createScimConnection } from './scim/connections'
 import {
   createSsoConnection,
   discoverSsoConnections,
@@ -24,6 +27,7 @@ import {
   envSsoConnectionId,
   envSsoProviderId,
   requiresScimRecord,
+  retireSsoConnection,
 } from './sso-connections'
 
 const oidcSettings = createTestSettings({
@@ -309,5 +313,74 @@ describe('SSO connections', () => {
         { providerId: envSsoProviderId, name: 'SSO' },
       ])
     })
+  })
+})
+
+// PGlite runs one query at a time, so only a real Postgres shows a retirement and a SCIM attach interleaving.
+describe.skipIf(!postgresTestUrl)('retiring an SSO connection while a SCIM side attaches, on Postgres', () => {
+  let postgresDb: Awaited<ReturnType<typeof createPostgresTestDb>>
+  let actorId: string
+
+  beforeAll(async () => {
+    postgresDb = await createPostgresTestDb()
+    actorId = crypto.randomUUID()
+    await postgresDb.db.insert(user).values({ id: actorId, name: 'Admin', email: `${actorId}@example.com` })
+  })
+  afterAll(() => postgresDb.close())
+
+  const newConnection = () => {
+    const suffix = crypto.randomUUID()
+    return createSsoConnection(postgresDb.db, {
+      name: `IdP ${suffix}`,
+      providerId: `idp-${suffix}`,
+      protocol: oidcProtocol(`https://${suffix}.idp.test`),
+      matchClaim: 'sub',
+    })
+  }
+
+  /** Run `write` on the connection's row in a transaction held open until the returned release. */
+  const holdRow = async (id: string, write: Partial<typeof identityConnection.$inferInsert>) => {
+    const { promise: written, resolve: wrote } = Promise.withResolvers<void>()
+    const { promise: held, resolve: release } = Promise.withResolvers<void>()
+    const done = postgresDb.db.transaction(async (tx) => {
+      await tx.update(identityConnection).set(write).where(eq(identityConnection.id, id))
+      wrote()
+      await held
+    })
+    await written
+    return async () => {
+      release()
+      await done
+    }
+  }
+
+  it('refuses the retirement when a SCIM side commits while it waits', async () => {
+    const { db } = postgresDb
+    const id = await newConnection()
+    const commitAttach = await holdRow(id, { scimConnectionId: crypto.randomUUID() })
+
+    const retiring = retireSsoConnection(db, { identityConnectionId: id, actorId }).catch((error: unknown) => error)
+    await waitForLockWaiters(db, 1)
+    await commitAttach()
+
+    expect(await retiring).toMatchObject({ body: { code: 'SCIM_SIDE_NOT_RETIRED' } })
+    const [row] = await db.select().from(identityConnection).where(eq(identityConnection.id, id))
+    expect(row.status).toBe('active')
+  })
+
+  it('refuses the SCIM side when the retirement commits while it waits', async () => {
+    const { db } = postgresDb
+    const id = await newConnection()
+    const commitRetirement = await holdRow(id, { status: 'retired', retiredAt: new Date(), retiredBy: actorId })
+
+    const attaching = createScimConnection(createAuth(db), { actorId, identityConnectionId: id }).catch(
+      (error: unknown) => error,
+    )
+    await waitForLockWaiters(db, 1)
+    await commitRetirement()
+
+    expect(await attaching).toMatchObject({ body: { code: 'SCIM_CONNECTION_UNAVAILABLE' } })
+    const [row] = await db.select().from(identityConnection).where(eq(identityConnection.id, id))
+    expect(row).toMatchObject({ status: 'retired', scimConnectionId: null })
   })
 })

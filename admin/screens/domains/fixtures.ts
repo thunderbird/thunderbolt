@@ -18,6 +18,7 @@ export const makeDomain = (overrides: Partial<OrgDomain> = {}): OrgDomain => ({
   ...overrides,
 })
 
+/** An active OIDC connection for tests, with `overrides` applied. */
 export const makeConnection = (overrides: Partial<AdminConnection> = {}): AdminConnection => ({
   id: 'c1',
   name: 'Okta',

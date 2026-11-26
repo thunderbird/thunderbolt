@@ -69,7 +69,7 @@ const page = { patch: () => {}, close: () => {} } as unknown as ResourcePageStat
 
 const renderEditor = (state: ResourcePageState = page) => {
   const harness = createAdminTestHarness(backend)
-  render(<ConnectionEditor connectionId="c1" page={state} />, { wrapper: harness.wrapper })
+  render(<ConnectionEditor connectionId="c1" page={state} onRetireScim={() => {}} />, { wrapper: harness.wrapper })
   return harness
 }
 
@@ -80,12 +80,14 @@ describe('ConnectionEditor', () => {
     cleanup()
   })
 
-  it('offers no rename and no retire menu on a SCIM-only connection', async () => {
+  it('offers no rename and only Retire SCIM on a SCIM-only connection', async () => {
     renderEditor()
     await flush()
     expect(screen.getByRole('heading', { name: 'Acme SCIM' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Name')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'More' })).toBeNull()
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'More' }), { button: 0, ctrlKey: false })
+    expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual(['Retire SCIM'])
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
     expect(screen.getByRole('button', { name: 'Add OIDC sign-in' })).toBeInTheDocument()
   })
 
@@ -130,7 +132,7 @@ describe('ConnectionEditor', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: 'Groups' }))
     await flush()
-    expect(screen.getByText('Discard unsaved changes?')).toBeInTheDocument()
+    expect(screen.getByText('Leave without saving?')).toBeInTheDocument()
     expect(screen.getByText('Add OIDC sign-in')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Discard' }))

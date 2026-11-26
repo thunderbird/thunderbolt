@@ -66,7 +66,7 @@ const createBackend = ({ domain, connections = [okta], check = null, refuse }: B
 const openDomain = async (harness: ReturnType<typeof createAdminTestHarness>, name = 'example.com') => {
   render(<SignInMethodsPage />, { wrapper: harness.wrapper })
   await flush()
-  fireEvent.click(screen.getByRole('button', { name }))
+  fireEvent.click(screen.getByRole('button', { name: `Open ${name}` }))
   await flush()
 }
 
@@ -126,13 +126,8 @@ describe('DomainEditor', () => {
     ])
     expect(enrollmentSwitch()).not.toBeChecked()
     expect(enrollmentSwitch()).toBeDisabled()
-    expect(enrollmentSwitch()).toHaveAccessibleDescription(
-      /Okta claims this domain, so people on it sign in through that identity provider\./,
-    )
-    expect(screen.getByRole('link', { name: 'Okta' })).toHaveAttribute(
-      'href',
-      '/admin/sign-in-methods?edit=connection%3Ac1',
-    )
+    expect(enrollmentSwitch()).toHaveAccessibleDescription(/Claimed by Okta. Release the claim to open enrollment./)
+    expect(screen.getByRole('link', { name: 'Okta' })).toHaveAttribute('href', '/admin/sign-in-methods')
   })
 
   it.each<[DomainCheckError, string]>([
@@ -190,7 +185,7 @@ describe('DomainEditor', () => {
     ])
   })
 
-  it('points to Sign-in methods when no identity provider can claim', async () => {
+  it('points to Sign In when no identity provider can claim', async () => {
     await openDomain(createBackend({ domain: makeDomain({ verifiedAt }), connections: [] }))
 
     expect(screen.getByRole('link', { name: 'Add an identity provider' })).toHaveAttribute(
@@ -230,29 +225,19 @@ describe('DomainEditor', () => {
     ).toHaveLength(2)
   })
 
-  it('says each subdomain is claimed on its own', async () => {
-    await openDomain(createBackend({ domain: makeDomain({ verifiedAt }) }))
-
-    expect(
-      screen.getByText(
-        'A claim covers example.com only. Subdomains such as mail.example.com are never trusted automatically: add, verify and claim each one on its own.',
-      ),
-    ).toBeInTheDocument()
-  })
-
   it('removes an unclaimed domain after confirmation', async () => {
     const harness = createBackend({ domain: makeDomain() })
     await openDomain(harness)
 
     fireEvent.pointerDown(screen.getByRole('button', { name: 'More' }), { button: 0, pointerId: 1 })
     await flush()
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove domain' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove' }))
     await flush()
     expect(screen.getByRole('alertdialog')).toHaveTextContent('Remove example.com?')
     await click('Remove domain')
 
     expect(changes(harness).at(-1)).toMatchObject({ method: 'DELETE', path: 'admin/domains/d1' })
-    expect(screen.queryByRole('button', { name: 'example.com' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open example.com' })).not.toBeInTheDocument()
   })
 
   it('does not offer to remove a claimed domain', async () => {
@@ -261,7 +246,7 @@ describe('DomainEditor', () => {
     fireEvent.pointerDown(screen.getByRole('button', { name: 'More' }), { button: 0, pointerId: 1 })
     await flush()
 
-    expect(screen.getByRole('menuitem', { name: 'Remove domain' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('menuitem', { name: 'Remove' })).toHaveAttribute('aria-disabled', 'true')
     expect(screen.getByText('Release the claim before removing this domain.')).toBeInTheDocument()
   })
 })

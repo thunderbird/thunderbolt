@@ -2,47 +2,70 @@
  * All rights reserved. See admin/LICENSE.
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
-import { Trans, useLingui } from '@lingui/react/macro'
-import { Archive } from 'lucide-react'
+import { useLingui } from '@lingui/react/macro'
 import { useState } from 'react'
 import { DetailPanel } from '@/components/detail-panel'
-import { DetailActionsMenu } from '@/components/settings/detail-actions-menu'
-import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { DiscardCreateDialog } from '@/skills/discard-create-dialog'
 import { ListSkeleton } from '../../components/list-skeleton'
 import { PanelSections } from '../../components/panel-sections'
-import type { ResourcePageState } from '../../components/use-resource-page-state'
+import type { PanelDirt, ResourcePageState } from '../../components/use-resource-page-state'
 import { describeConnection } from './connection-status'
 import { ScimGroupsSection } from './scim-groups-section'
 import { ScimSection } from './scim-section'
-import { SsoSettingsSection } from './sso-settings-section'
+import { SsoSettingsForm, SsoSettingsSection } from './sso-settings-section'
 import { SyncErrorsSection } from './sync-errors-section'
 import { useConnection } from './use-connection-queries'
 import { InlineError } from '../../components/inline-error'
-import { connectionEditId } from '../sign-in-methods/sign-in-method-ids'
+import { ItemActionsMenu } from '../../components/item-actions'
+import { connectionActions } from '../sign-in-methods/sign-in-method-actions'
 
 type Section = 'sign-in' | 'provisioning' | 'groups' | 'sync-errors'
 
-/** One connection's panel: its sign-in side, its provisioning side, and retiring it. */
-export const ConnectionEditor = ({ connectionId, page }: { connectionId: string; page: ResourcePageState }) => {
+type ConnectionEditorProps = {
+  connectionId: string
+  /** The name the list already shows, for the title while the connection loads. */
+  name?: string
+  page: ResourcePageState
+  /** Opens the page's retire-SCIM confirm for this connection. */
+  onRetireScim: () => void
+}
+
+/**
+ * One connection's panel: its view, with the sign-in and provisioning sides and retiring it, or the
+ * edit form of an admin-created connection's SSO settings.
+ */
+export const ConnectionEditor = ({ connectionId, name, page, onRetireScim }: ConnectionEditorProps) => {
   const { t } = useLingui()
   const connection = useConnection(connectionId)
   const [section, setSection] = useState<Section>('sign-in')
   const [pendingSection, setPendingSection] = useState<Section | null>(null)
-  const onDirty = (dirty: boolean) => page.patch({ dirty })
+  const onDirty = (dirty: PanelDirt) => page.patch({ dirty })
   // A tab change unmounts the tab, losing its draft or a token not yet copied: ask first.
   const requestSection = (next: Section) => (page.dirty ? setPendingSection(next) : setSection(next))
 
   if (!connection.data) {
     return (
-      <DetailPanel title={t`Connection`} onClose={page.close}>
-        {connection.error ? <InlineError error={connection.error} /> : <ListSkeleton rows={3} />}
+      <DetailPanel title={name ?? t`Connection`} onClose={page.close}>
+        {connection.error ? <InlineError error={connection.error} /> : <ListSkeleton rows={3} variant="flat" />}
       </DetailPanel>
     )
   }
 
   const detail = connection.data
   const summary = describeConnection(detail)
+
+  if (page.isEditing && summary.canEditSso && detail.sso) {
+    return (
+      <DetailPanel title={t`Edit Connection`} onClose={page.cancelEdit}>
+        <SsoSettingsForm
+          detail={{ ...detail, sso: detail.sso }}
+          onDirty={onDirty}
+          onCancel={page.cancelEdit}
+          onSaved={() => page.select(page.selectedId)}
+        />
+      </DetailPanel>
+    )
+  }
   const sections: { id: Section; label: string }[] = [
     { id: 'sign-in', label: t`Sign-in` },
     { id: 'provisioning', label: t`Provisioning` },
@@ -57,21 +80,10 @@ export const ConnectionEditor = ({ connectionId, page }: { connectionId: string;
   return (
     <DetailPanel
       title={detail.name}
-      subtitle={detail.sso?.providerId}
+      // Read-only says so in the subtitle, as a built-in skill's panel does.
+      subtitle={detail.sso?.envOwned ? t`Set by server settings · Read-only` : undefined}
       onClose={page.close}
-      actions={
-        summary.canRetireSso && (
-          <DetailActionsMenu>
-            <DropdownMenuItem
-              variant="destructive"
-              onClick={() => page.patch({ removeId: connectionEditId(detail.id) })}
-            >
-              <Archive />
-              <Trans>Retire connection</Trans>
-            </DropdownMenuItem>
-          </DetailActionsMenu>
-        )
-      }
+      actions={<ItemActionsMenu actions={connectionActions(detail, page, onRetireScim)} />}
     >
       <div className="flex flex-1 flex-col gap-5">
         <PanelSections sections={sections} value={section} onChange={requestSection} label={t`Connection sections`} />
@@ -82,7 +94,8 @@ export const ConnectionEditor = ({ connectionId, page }: { connectionId: string;
       </div>
       <DiscardCreateDialog
         open={pendingSection !== null}
-        title={t`Discard unsaved changes?`}
+        title={page.dirty === 'secret' ? t`Leave without copying the token?` : t`Leave without saving?`}
+        description={page.dirty === 'secret' ? t`It won't be shown again.` : t`Your changes won't be saved.`}
         onOpenChange={(open) => !open && setPendingSection(null)}
         onConfirm={() => {
           onDirty(false)

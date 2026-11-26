@@ -6,12 +6,15 @@ import { expect, type APIRequestContext, type Page } from '@playwright/test'
 import { scimBasePath, type AdminConnectionDetail } from '../shared/admin-api'
 import {
   adminApiBaseUrl,
+  type AdminApiRequest,
   adminIdpUrls,
   adminTest as test,
+  openAdminRow,
   pickDate,
   retireConnection,
   uniqueEmail,
   uniqueName,
+  choosePanelAction,
 } from './admin/helpers'
 import { adminSpareIdpSecretPrefix } from './admin/mock-idp'
 
@@ -37,8 +40,9 @@ test.afterEach(async ({ adminApi }) => {
   }
 })
 
-const openConnection = async (page: Page, connectionId: string, section: string) => {
-  await page.goto(`/admin/sign-in-methods?edit=connection:${connectionId}`)
+const openConnection = async (page: Page, adminApi: AdminApiRequest, connectionId: string, section: string) => {
+  const { name } = await adminApi.request<{ name: string }>('GET', `admin/connections/${connectionId}`)
+  await openAdminRow(page, '/admin/sign-in-methods', name)
   await page.getByRole('radio', { name: section }).click()
 }
 
@@ -54,24 +58,24 @@ const dateInDays = (days: number) => {
 
 test('a SCIM token works until its credential is revoked', async ({ page, request, adminApi }) => {
   await page.goto('/admin/sign-in-methods')
-  await page.getByRole('button', { name: 'Add sign-in method' }).click()
-  await page.getByRole('button', { name: 'SCIM provisioning only' }).click()
-  await page.getByLabel('Name', { exact: true }).fill(uniqueName('SCIM'))
-  await page.getByRole('button', { name: 'Create connection' }).click()
+  await page.getByRole('button', { name: 'New Sign-in Method' }).click()
+  await page.getByRole('button', { name: /^SCIM provisioning/ }).click()
+  const name = uniqueName('SCIM')
+  await page.getByLabel('Name', { exact: true }).fill(name)
+  await page.getByRole('button', { name: 'Create', exact: true }).click()
 
   const firstToken = await readToken(page)
   await expect(page.getByRole('textbox', { name: 'SCIM base URL' })).toHaveValue(`${adminApiBaseUrl}${scimBasePath}`)
   expect(await listUsersStatus(request, firstToken)).toBe(200)
   await page.getByRole('button', { name: 'Done' }).click()
 
-  await expect(page).toHaveURL(/edit=connection(:|%3A)/)
-  const connectionId = new URL(page.url()).searchParams.get('edit')!.replace(/^connection:/, '')
+  const connectionId = await adminApi.connectionIdByName(name)
   seeded.push(connectionId)
 
   // A second credential, with a chosen expiry, works alongside the first.
   await page.getByRole('radio', { name: 'Provisioning' }).click()
   const expiry = dateInDays(30)
-  await pickDate(page, 'Credential expires on', expiry.date)
+  await pickDate(page, 'Expires on', expiry.date)
   await page.getByRole('button', { name: 'Issue a new credential' }).click()
   const secondToken = await readToken(page)
   expect(secondToken).not.toBe(firstToken)
@@ -105,7 +109,7 @@ test("a rejected SCIM request shows under the connection's sync errors", async (
   })
   expect(rejected.status()).toBeGreaterThanOrEqual(400)
 
-  await openConnection(page, connection.id, 'Sync errors')
+  await openConnection(page, adminApi, connection.id, 'Sync errors')
   await expect(page.getByText(`POST Users → ${rejected.status()}`)).toBeVisible()
 })
 
@@ -134,7 +138,7 @@ test('mapping a SCIM group to admin makes its members admin', async ({ page, req
   const scimAdminRole = async () =>
     (await adminApi.findMember(email)).roles.some((source) => source.role === 'admin' && source.from === 'scim')
 
-  await openConnection(page, connection.id, 'Groups')
+  await openConnection(page, adminApi, connection.id, 'Groups')
   const row = page.getByRole('listitem', { name: displayName })
   await expect(row).toContainText('1 member')
   const toggle = row.getByRole('switch', { name: `Make members of ${displayName} admins` })
@@ -150,16 +154,16 @@ test('mapping a SCIM group to admin makes its members admin', async ({ page, req
 test('an SSO connection takes SCIM, and a SCIM connection takes SSO', async ({ page, adminApi }) => {
   const sso = await adminApi.seedOidcConnection()
   seeded.push(sso.id)
-  await openConnection(page, sso.id, 'Provisioning')
-  await expect(page.getByText(/makes sign-in through this connection SSO-only/)).toBeVisible()
+  await openConnection(page, adminApi, sso.id, 'Provisioning')
+  await expect(page.getByText('Sign-in becomes SSO-only', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Turn on SCIM' }).click()
   await expect(page.getByRole('textbox', { name: 'SCIM token' })).toBeVisible()
   await page.getByRole('button', { name: 'Done' }).click()
-  await expect(page.getByRole('button', { name: 'Retire SCIM' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Issue a new credential' })).toBeVisible()
 
   const { connection } = await adminApi.seedScimConnection()
   seeded.push(connection.id)
-  await openConnection(page, connection.id, 'Sign-in')
+  await openConnection(page, adminApi, connection.id, 'Sign-in')
   await expect(page.getByLabel('Name', { exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: 'Add OIDC sign-in' }).click()
   await expect(page.getByLabel('Name', { exact: true })).toHaveCount(0)
@@ -167,9 +171,10 @@ test('an SSO connection takes SCIM, and a SCIM connection takes SSO', async ({ p
   await page.getByLabel('Issuer').fill(adminIdpUrls.spare)
   await page.getByLabel('Client ID').fill('thunderbolt-admin-e2e')
   await page.getByLabel('Client secret').fill(`${adminSpareIdpSecretPrefix}attach`)
-  await page.getByRole('button', { name: 'Add single sign-on' }).click()
+  await page.getByRole('button', { name: 'Add', exact: true }).click()
 
-  await expect(page.getByLabel('Name', { exact: true })).toHaveValue(connection.name)
+  // Added: the Sign-in tab shows the new SSO settings as text, which the attach form never does.
+  await expect(page.getByText('thunderbolt-admin-e2e', { exact: true })).toBeVisible()
   const attached = await adminApi.request<AdminConnectionDetail>('GET', `admin/connections/${connection.id}`)
   expect(attached).toMatchObject({
     name: connection.name,
@@ -187,13 +192,11 @@ test('retiring SCIM shows it in progress, then retired, and its token stops work
   seeded.push(connection.id)
   expect(await listUsersStatus(request, token)).toBe(200)
 
-  await openConnection(page, connection.id, 'Provisioning')
-  await page.getByRole('button', { name: 'Retire SCIM' }).click()
+  await openConnection(page, adminApi, connection.id, 'Provisioning')
+  await choosePanelAction(page, 'Retire SCIM')
   await page.getByRole('alertdialog').getByRole('button', { name: 'Retire SCIM' }).click()
 
-  await expect(
-    page.getByRole('status').filter({ hasText: /Retiring SCIM provisioning|SCIM provisioning is retired/ }),
-  ).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: /Retiring\.|SCIM provisioning is retired/ })).toBeVisible()
   await expect(page.getByText('SCIM provisioning is retired.')).toBeVisible({ timeout: 30_000 })
   expect(await listUsersStatus(request, token)).toBe(401)
 })

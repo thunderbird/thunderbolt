@@ -9,7 +9,6 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { useFormatters } from '@/i18n/use-formatters'
-import { useAppName } from '@/lib/branding-selectors'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { AdminConnectionDetail, ScimCredential } from '@shared/admin-api'
 import { TriangleAlert } from 'lucide-react'
@@ -21,6 +20,7 @@ import { ExpiryField } from './expiry-field'
 import { ScimCredentialList, shortCredentialId } from './scim-credential-list'
 import { scimBaseUrl } from './setup-urls'
 import { useScimSectionState } from './use-scim-section-state'
+import type { PanelDirt } from '../../components/use-resource-page-state'
 
 /** A token just issued, with what to paste beside it. Shown once. */
 export const IssuedScimToken = ({
@@ -55,10 +55,9 @@ export const ScimSection = ({
   onDirty,
 }: {
   detail: AdminConnectionDetail
-  onDirty: (dirty: boolean) => void
+  onDirty: (dirty: PanelDirt) => void
 }) => {
   const { t } = useLingui()
-  const appName = useAppName()
   const cloudUrl = useLocalSettingsStore((state) => state.cloudUrl)
   const scim = useScimSectionState(detail, onDirty)
   const summary = describeConnection(detail)
@@ -68,16 +67,13 @@ export const ScimSection = ({
     if (summary.scim === null) {
       if (!summary.canAddScim) {
         return (
-          <p className="text-muted-foreground">
+          <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
             <Trans>This connection can't take SCIM provisioning.</Trans>
           </p>
         )
       }
       return (
         <>
-          <p className="text-muted-foreground">
-            <Trans>With SCIM, your identity provider creates, updates and removes people in {appName}.</Trans>
-          </p>
           {detail.sso && (
             <Alert>
               <TriangleAlert />
@@ -85,17 +81,21 @@ export const ScimSection = ({
                 <Trans>Sign-in becomes SSO-only</Trans>
               </AlertTitle>
               <AlertDescription>
-                <Trans>
-                  Turning on SCIM makes sign-in through this connection SSO-only, and a person needs a SCIM record
-                  before their first sign-in: your identity provider has to provision them first.
-                </Trans>
+                <Trans>Each person needs a SCIM record before their first sign-in.</Trans>
               </AlertDescription>
             </Alert>
           )}
           <ExpiryField value={scim.expiry} onChange={scim.setExpiry} />
           <InlineError error={scim.issueError} />
           <div>
-            <Button type="button" disabled={!scim.canIssue} isLoading={scim.isIssuing} onClick={scim.enable}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!scim.canIssue}
+              isLoading={scim.isIssuing}
+              onClick={scim.enable}
+            >
               <Trans>Turn on SCIM</Trans>
             </Button>
           </div>
@@ -105,11 +105,8 @@ export const ScimSection = ({
     if (summary.scim === 'retiring') {
       return (
         <>
-          <p role="status" className="text-muted-foreground">
-            <Trans>
-              Retiring SCIM provisioning. Its tokens no longer work, and the cleanup of its people and groups runs in
-              the background.
-            </Trans>
+          <p role="status" className="text-[length:var(--font-size-sm)] text-muted-foreground">
+            <Trans>Retiring. Tokens no longer work; cleanup runs in the background.</Trans>
           </p>
           <ScimCredentialList credentials={detail.scimCredentials} />
         </>
@@ -118,7 +115,7 @@ export const ScimSection = ({
     if (summary.scim === 'retired') {
       return (
         <>
-          <p role="status" className="text-muted-foreground">
+          <p role="status" className="text-[length:var(--font-size-sm)] text-muted-foreground">
             <Trans>SCIM provisioning is retired.</Trans>
           </p>
           <ScimCredentialList credentials={detail.scimCredentials} />
@@ -129,34 +126,29 @@ export const ScimSection = ({
       <>
         {/* An issued token's card already shows the base URL beside it. */}
         {!scim.issued && (
-          <DetailField label={<Trans>SCIM base URL</Trans>}>
+          <DetailField label={<Trans>SCIM base URL</Trans>} className="gap-2">
             <CopyableField label={t`SCIM base URL`} copyLabel={t`Copy SCIM base URL`} value={scimBaseUrl(cloudUrl)} />
           </DetailField>
         )}
-        <DetailField label={<Trans>Credentials</Trans>}>
+        <DetailField label={<Trans>Credentials</Trans>} className="gap-2">
           <ScimCredentialList credentials={detail.scimCredentials} onRevoke={scim.requestRevoke} />
         </DetailField>
         <DetailDivider />
         <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
-          <Trans>
-            A new credential leaves the current ones working until you revoke them, so you can switch your identity
-            provider over without a gap.
-          </Trans>
+          <Trans>Current credentials keep working until you revoke them.</Trans>
         </p>
         <ExpiryField value={scim.expiry} onChange={scim.setExpiry} />
         <InlineError error={scim.issueError} />
-        <div className="flex flex-wrap justify-between gap-2">
+        <div>
           <Button
             type="button"
             variant="outline"
+            size="sm"
             disabled={!scim.canIssue}
             isLoading={scim.isIssuing}
             onClick={scim.rotate}
           >
             <Trans>Issue a new credential</Trans>
-          </Button>
-          <Button type="button" variant="destructive" onClick={scim.requestRetire}>
-            <Trans>Retire SCIM</Trans>
           </Button>
         </div>
       </>
@@ -178,27 +170,10 @@ export const ScimSection = ({
             <InlineError error={scim.revokeError} />
           </>
         }
-        confirmLabel={t`Revoke`}
+        confirmLabel={t`Revoke credential`}
         isPending={scim.isRevoking}
         onCancel={scim.cancelRevoke}
         onConfirm={scim.confirmRevoke}
-      />
-      <ConfirmActionDialog
-        open={scim.confirmingRetire}
-        title={t`Retire SCIM provisioning?`}
-        description={
-          <>
-            <Trans>
-              Its tokens stop working at once, and people lose the access it gave them. Cleanup runs in the background.
-              This can't be undone.
-            </Trans>
-            <InlineError error={scim.retireError} />
-          </>
-        }
-        confirmLabel={t`Retire SCIM`}
-        isPending={scim.isRetiring}
-        onCancel={scim.cancelRetire}
-        onConfirm={scim.confirmRetire}
       />
     </div>
   )

@@ -4,7 +4,7 @@
 
 import { Trans } from '@lingui/react/macro'
 import { Link } from 'react-router'
-import { useAppName } from '@/lib/branding-selectors'
+import { SettingsNoResults } from '@/components/settings/settings-empty-state'
 import type { AuditEvent, AuditEventQuery } from '@shared/admin-api'
 import { auditLogPath } from '../../api/audit-log-url'
 import { AuditEventList } from '../../components/audit-event-list'
@@ -30,20 +30,20 @@ const ScimFailure = ({ event }: { event: AuditEvent }) => {
 
 /** The connection's recent rejected SCIM requests, from the audit log. */
 export const SyncErrorsSection = ({ connectionId }: { connectionId: string }) => {
-  const appName = useAppName()
   const filters: AuditEventQuery = { action: 'scim.request', outcome: 'failure', connectionId }
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-muted-foreground">
-        <Trans>
-          Requests from your identity provider that {appName} rejected. Requests that never authenticated aren't listed,
-          because they can't be tied to a connection.
-        </Trans>
+      <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
+        <Trans>Unauthenticated requests aren't listed.</Trans>
       </p>
       <AuditEventList
         filters={filters}
         renderDetails={(event) => <ScimFailure event={event} />}
-        emptyMessage={<Trans>No failed SCIM requests.</Trans>}
+        empty={
+          <SettingsNoResults>
+            <Trans>No failed SCIM requests.</Trans>
+          </SettingsNoResults>
+        }
       />
       <Link to={auditLogPath(filters)} className="text-[length:var(--font-size-sm)] text-primary underline">
         <Trans>See all in the audit log</Trans>

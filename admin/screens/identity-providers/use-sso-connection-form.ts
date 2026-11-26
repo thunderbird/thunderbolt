@@ -32,6 +32,7 @@ type SsoCreateAction =
   | { type: 'set'; field: SsoCreateTextField; value: string }
   | { type: 'preset'; preset: ProviderPreset; protocol: SsoProtocol }
 
+/** An empty create draft, with the match claim the `other` preset suggests for `protocol`. */
 export const initialSsoCreateDraft = (protocol: SsoProtocol): SsoCreateDraft => ({
   name: '',
   providerId: '',
@@ -48,6 +49,18 @@ export const initialSsoCreateDraft = (protocol: SsoProtocol): SsoCreateDraft => 
   idpIssuer: '',
 })
 
+/**
+ * A provider id as the backend accepts it (`^[a-z0-9][a-z0-9-]{0,62}$`): lowercased, with anything
+ * else dropped, no leading hyphen and at most 63 characters. Applied as the admin types.
+ */
+export const toProviderId = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/^-+/, '')
+    .slice(0, 63)
+
+/** Applies a field edit or a preset pick; a preset only refills the match claim until the admin edits it. */
 export const ssoCreateReducer = (draft: SsoCreateDraft, action: SsoCreateAction): SsoCreateDraft => {
   if (action.type === 'preset') {
     return {
@@ -58,7 +71,7 @@ export const ssoCreateReducer = (draft: SsoCreateDraft, action: SsoCreateAction)
   }
   return {
     ...draft,
-    [action.field]: action.value,
+    [action.field]: action.field === 'providerId' ? toProviderId(action.value) : action.value,
     matchClaimTouched: draft.matchClaimTouched || action.field === 'matchClaim',
   }
 }

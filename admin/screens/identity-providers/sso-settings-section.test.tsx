@@ -6,9 +6,10 @@ import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import type { AdminConnectionDetail } from '@shared/admin-api'
 import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
 import { createAdminTestHarness, flush } from '../../test-utils'
-import { SsoSettingsSection } from './sso-settings-section'
+import { SsoSettingsForm, SsoSettingsSection } from './sso-settings-section'
+import type { SsoConnectionDetail } from './use-sso-settings-state'
 
 const oidcDetail: AdminConnectionDetail = {
   id: 'c1',
@@ -43,6 +44,17 @@ const renderSection = (detail: AdminConnectionDetail) => {
   return harness
 }
 
+const renderForm = (detail: SsoConnectionDetail) => {
+  const harness = createAdminTestHarness(() => ({ body: detail }))
+  const onSaved = mock()
+  render(<SsoSettingsForm detail={detail} onDirty={() => {}} onCancel={() => {}} onSaved={onSaved} />, {
+    wrapper: harness.wrapper,
+  })
+  return { harness, onSaved }
+}
+
+const oidcSso = oidcDetail as SsoConnectionDetail
+
 describe('SsoSettingsSection', () => {
   beforeAll(setupTestDatabase)
   afterAll(teardownTestDatabase)
@@ -50,32 +62,39 @@ describe('SsoSettingsSection', () => {
     cleanup()
   })
 
-  it('prefills the settings and shows the identity fields read-only', () => {
+  it('shows the settings as text in the view, with only the setup URLs to copy', () => {
     renderSection(oidcDetail)
+    expect(screen.getByText('https://idp.test')).toBeInTheDocument()
+    expect(screen.getByText('client')).toBeInTheDocument()
+    expect(screen.getAllByRole('textbox').map((field) => field.getAttribute('aria-label'))).toEqual(['Redirect URI'])
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull()
+  })
+
+  it('prefills the edit form with only the fields that can change', () => {
+    renderForm(oidcSso)
     expect(screen.getByLabelText('Client ID')).toHaveValue('client')
-    expect(screen.getByLabelText('Client ID')).not.toHaveAttribute('readonly')
+    expect(screen.getByLabelText('Client ID')).toBeEnabled()
     expect(screen.getByLabelText('New client secret')).toHaveValue('')
-    expect(screen.getByRole('textbox', { name: 'Issuer' })).toHaveValue('https://idp.test')
-    expect(screen.getByRole('textbox', { name: 'Issuer' })).toHaveAttribute('readonly')
-    expect(screen.getByText(/can't change\. To use a different one/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+    expect(screen.queryByText('https://idp.test')).toBeNull()
+    expect(screen.queryByLabelText('Issuer')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
   })
 
   it('shows each locked field read-only with why, before any edit', () => {
-    renderSection({ ...oidcDetail, lockedFields: ['clientId', 'discoveryEndpoint', 'matchClaim'] })
-    expect(screen.getByLabelText('Client ID')).toHaveAttribute('readonly')
-    expect(screen.getByLabelText('Client ID')).toHaveAccessibleDescription(
-      /Locked because people have signed in through this connection/,
-    )
-    expect(screen.getByLabelText('Match claim')).toHaveAccessibleDescription(/link reviews/)
-    expect(screen.getByLabelText('New client secret')).not.toHaveAttribute('readonly')
+    renderForm({ ...oidcSso, lockedFields: ['clientId', 'discoveryEndpoint', 'matchClaim'] })
+    expect(screen.getByLabelText('Client ID')).toBeDisabled()
+    expect(screen.getByLabelText('Client ID')).toHaveAccessibleDescription('Locked after the first sign-in.')
+    expect(screen.getByLabelText('Match claim')).toHaveAccessibleDescription(/link review/)
+    expect(screen.getByLabelText('New client secret')).toBeEnabled()
   })
 
-  it('sends only the replaced secret', async () => {
-    const harness = renderSection(oidcDetail)
+  it('sends only the replaced secret, then hands back to the view', async () => {
+    const { harness, onSaved } = renderForm(oidcSso)
     fireEvent.change(screen.getByLabelText('New client secret'), { target: { value: 'rotated' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await flush()
+    expect(onSaved).toHaveBeenCalledTimes(1)
     expect(harness.requests.find((request) => request.path.startsWith('admin/'))).toMatchObject({
       method: 'PATCH',
       path: 'admin/connections/c1',
@@ -85,11 +104,8 @@ describe('SsoSettingsSection', () => {
 
   it('shows the env connection read-only', () => {
     renderSection({ ...oidcDetail, sso: { ...oidcDetail.sso!, envOwned: true } })
-    expect(screen.getByText("Set by this server's OIDC or SAML settings. Change them there.")).toBeInTheDocument()
-    for (const field of screen.getAllByRole('textbox')) {
-      expect(field).toHaveAttribute('readonly')
-    }
-    expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull()
+    expect(screen.getByText('client')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull()
   })
 
   it('offers SSO on a SCIM-only connection, keeping its name and offering no rename', async () => {
@@ -98,9 +114,7 @@ describe('SsoSettingsSection', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Add OIDC sign-in' }))
     expect(screen.queryByLabelText('Name')).toBeNull()
-    expect(screen.getByText(/Adding sign-in makes this connection SSO-only/)).toHaveTextContent(
-      'can no longer sign in with an email code',
-    )
+    expect(screen.getByText(/can no longer sign in with an email code/)).toBeInTheDocument()
     for (const [label, value] of [
       ['Provider ID', 'acme'],
       ['Issuer', 'https://idp.test'],
@@ -109,7 +123,7 @@ describe('SsoSettingsSection', () => {
     ]) {
       fireEvent.change(screen.getByLabelText(label), { target: { value } })
     }
-    fireEvent.click(screen.getByRole('button', { name: 'Add single sign-on' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
     await flush()
     expect(harness.requests.find((request) => request.path.startsWith('admin/'))).toMatchObject({
       method: 'POST',

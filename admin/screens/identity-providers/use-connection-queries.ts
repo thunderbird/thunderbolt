@@ -17,6 +17,7 @@ import { useCursorList } from '../../api/use-cursor-list'
 /** How often a connection whose SCIM side is retiring is read again, until the background job ends. */
 export const retiringPollMs = 2000
 
+/** One connection's detail, polled while its SCIM side is retiring. */
 export const useConnection = (connectionId: string) => {
   const api = useAdminApi()
   return useQuery({
@@ -26,6 +27,7 @@ export const useConnection = (connectionId: string) => {
   })
 }
 
+/** The groups a connection's SCIM client has pushed, paged by cursor. */
 export const useScimGroups = (connectionId: string) => {
   const api = useAdminApi()
   return useCursorList({
@@ -55,6 +57,7 @@ const useStoreDetail = () => {
     queryClient.setQueryData(adminQueryKeys.connections.detail(detail.id), detail)
 }
 
+/** Creates an SSO connection and stores its returned detail. */
 export const useCreateSsoConnection = () => {
   const api = useAdminApi()
   const invalidate = useInvalidateConnections()
@@ -68,6 +71,7 @@ export const useCreateSsoConnection = () => {
   })
 }
 
+/** Updates an SSO connection and stores its returned detail. */
 export const useUpdateSsoConnection = (connectionId: string) => {
   const api = useAdminApi()
   const invalidate = useInvalidateConnections()
@@ -81,6 +85,7 @@ export const useUpdateSsoConnection = (connectionId: string) => {
   })
 }
 
+/** Retires a connection; members are refreshed since the access it admitted stops counting. */
 export const useRetireConnection = () => {
   const api = useAdminApi()
   const invalidate = useInvalidateConnections()
@@ -112,6 +117,7 @@ export const useRotateScimCredential = (connectionId: string) => {
   })
 }
 
+/** Revokes one of a connection's SCIM credentials. */
 export const useRevokeScimCredential = (connectionId: string) => {
   const api = useAdminApi()
   const invalidate = useInvalidateConnections()
@@ -121,6 +127,7 @@ export const useRevokeScimCredential = (connectionId: string) => {
   })
 }
 
+/** Retires a connection's SCIM side; members are refreshed since the access it admitted stops counting. */
 export const useRetireScim = (connectionId: string) => {
   const api = useAdminApi()
   const invalidate = useInvalidateConnections()

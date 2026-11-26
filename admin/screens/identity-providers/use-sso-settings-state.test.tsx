@@ -113,7 +113,7 @@ describe('useSsoSettingsState', () => {
   it('takes its locks from lockedFields', () => {
     const harness = createAdminTestHarness()
     const detail = { ...oidcDetail, lockedFields: ['clientId' as const] }
-    const { result } = renderHook(() => useSsoSettingsState({ detail, onDirty: () => {} }), {
+    const { result } = renderHook(() => useSsoSettingsState({ detail, onDirty: () => {}, onSaved: () => {} }), {
       wrapper: harness.wrapper,
     })
     expect(result.current.isLocked('clientId')).toBe(true)
@@ -128,7 +128,10 @@ describe('useSsoSettingsState', () => {
         : { body: oidcDetail },
     )
     const { result } = renderHook(
-      () => ({ detail: useConnection('c1'), form: useSsoSettingsState({ detail: oidcDetail, onDirty: () => {} }) }),
+      () => ({
+        detail: useConnection('c1'),
+        form: useSsoSettingsState({ detail: oidcDetail, onDirty: () => {}, onSaved: () => {} }),
+      }),
       { wrapper: harness.wrapper },
     )
     await flush()
@@ -150,10 +153,13 @@ describe('useSsoSettingsState', () => {
 
   it("saves only the admin's own edit when the connection is read again with another admin's change", async () => {
     const harness = createAdminTestHarness(() => ({ body: oidcDetail }))
-    const { result, rerender } = renderHook(({ detail }) => useSsoSettingsState({ detail, onDirty: () => {} }), {
-      wrapper: harness.wrapper,
-      initialProps: { detail: oidcDetail },
-    })
+    const { result, rerender } = renderHook(
+      ({ detail }) => useSsoSettingsState({ detail, onDirty: () => {}, onSaved: () => {} }),
+      {
+        wrapper: harness.wrapper,
+        initialProps: { detail: oidcDetail },
+      },
+    )
 
     rerender({ detail: { ...oidcDetail, name: 'Renamed elsewhere' } })
     expect(result.current.hasChanges).toBe(false)
@@ -170,7 +176,7 @@ describe('useSsoSettingsState', () => {
     const harness = createAdminTestHarness(() => ({ body: oidcDetail }))
     const dirty: boolean[] = []
     const { result } = renderHook(
-      () => useSsoSettingsState({ detail: oidcDetail, onDirty: (value) => dirty.push(value) }),
+      () => useSsoSettingsState({ detail: oidcDetail, onDirty: (value) => dirty.push(value), onSaved: () => {} }),
       { wrapper: harness.wrapper },
     )
 

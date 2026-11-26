@@ -9,25 +9,22 @@ import type { StatusTone } from '../../components/status-badge'
 import type { ConnectionSummary, ScimState } from './connection-status'
 
 export const ssoLabels: Record<SsoProtocol, MessageDescriptor> = {
-  oidc: msg`OIDC sign-in`,
-  saml: msg`SAML sign-in`,
+  oidc: msg`OIDC`,
+  saml: msg`SAML`,
 }
 
 export const scimLabels: Record<ScimState, MessageDescriptor> = {
-  active: msg`SCIM provisioning`,
-  retiring: msg`SCIM retiring`,
+  active: msg`SCIM`,
+  // The Retiring badge says the rest.
+  retiring: msg`SCIM`,
   retired: msg`SCIM retired`,
 }
 
 export const envOwnedLabel = msg`Set by server settings`
 
-/** The badge beside a connection: whether it still signs people in or provisions them. */
-export const connectionBadge = (summary: ConnectionSummary): { tone: StatusTone; label: MessageDescriptor } => {
-  if (summary.retired) {
-    return { tone: 'neutral', label: msg`Retired` }
-  }
-  if (summary.scim === 'retiring') {
-    return { tone: 'warning', label: msg`Retiring` }
-  }
-  return { tone: 'success', label: msg`Active` }
-}
+/**
+ * The badge beside a connection, only for a state worth flagging: retiring. An active one needs none,
+ * and a retired one sits under its own heading.
+ */
+export const connectionBadge = (summary: ConnectionSummary): { tone: StatusTone; label: MessageDescriptor } | null =>
+  !summary.retired && summary.scim === 'retiring' ? { tone: 'warning', label: msg`Retiring` } : null

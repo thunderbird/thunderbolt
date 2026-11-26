@@ -24,7 +24,7 @@ const renderEditor = (reply: FakeReply) => {
 
 const submit = async (value: string) => {
   fireEvent.change(screen.getByRole('textbox', { name: 'Domain' }), { target: { value } })
-  fireEvent.click(screen.getByRole('button', { name: 'Add domain' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Add' }))
   await flush()
 }
 
@@ -57,7 +57,7 @@ describe('AddDomainEditor', () => {
     fireEvent.change(input, { target: { value: ' ' } })
 
     expect(props.onDirtyChange.mock.calls).toEqual([[true], [false]])
-    expect(screen.getByRole('button', { name: 'Add domain' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Add' })).toBeDisabled()
   })
 
   it.each([
@@ -73,10 +73,9 @@ describe('AddDomainEditor', () => {
     expect(props.onAdded).not.toHaveBeenCalled()
   })
 
-  it('tells the admin that subdomains are added on their own', () => {
+  it('tells the admin that subdomains are added on their own, behind the info icon', async () => {
     renderEditor({})
-    expect(screen.getByRole('textbox', { name: 'Domain' })).toHaveAccessibleDescription(
-      'Add each subdomain on its own: a domain never covers its subdomains.',
-    )
+    fireEvent.focus(screen.getByRole('button', { name: 'What is this for?' }))
+    expect(await screen.findByRole('tooltip')).toHaveTextContent("Subdomains aren't included. Add each one separately.")
   })
 })

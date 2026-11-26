@@ -31,6 +31,7 @@ export type SsoFieldError = {
   isLock: boolean
 }
 
+/** Whether a server-reported field is one the SSO form shows. */
 const isSsoFormField = (value: unknown): value is SsoFormField => ssoFormFields.includes(value as SsoFormField)
 
 /** Codes that always concern one field. */

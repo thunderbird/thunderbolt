@@ -37,6 +37,7 @@ export const initialSsoSettingsDraft = ({ name, matchClaim, sso }: SsoConnection
   cert: '',
 })
 
+/** Whether the server can lock `field` against edits. */
 const isLockable = (field: SsoSettingsField): field is SsoLockableField =>
   field === 'clientId' || field === 'discoveryEndpoint' || field === 'entryPoint' || field === 'matchClaim'
 
@@ -83,6 +84,7 @@ export const buildSsoUpdateBody = (
 type UseSsoSettingsStateOptions = {
   detail: SsoConnectionDetail
   onDirty: (dirty: boolean) => void
+  onSaved: () => void
 }
 
 /**
@@ -90,7 +92,7 @@ type UseSsoSettingsStateOptions = {
  * the read (someone signed in meanwhile) is refused by the server, shown under its field, and the
  * connection is read again so the field shows as locked.
  */
-export const useSsoSettingsState = ({ detail, onDirty }: UseSsoSettingsStateOptions) => {
+export const useSsoSettingsState = ({ detail, onDirty, onSaved }: UseSsoSettingsStateOptions) => {
   const queryClient = useQueryClient()
   const [initial, setInitial] = useState(() => initialSsoSettingsDraft(detail))
   const [draft, patchDraft] = useReducer(
@@ -115,6 +117,7 @@ export const useSsoSettingsState = ({ detail, onDirty }: UseSsoSettingsStateOpti
         setInitial(next)
         patchDraft(next)
         onDirty(false)
+        onSaved()
       },
       onError: (error) => {
         if (toSsoFieldError(error)?.isLock) {
@@ -131,7 +134,6 @@ export const useSsoSettingsState = ({ detail, onDirty }: UseSsoSettingsStateOpti
     isLocked: (field: SsoSettingsField) => isSsoFieldLocked(detail, field),
     hasChanges: Object.keys(body).length > 0,
     isPending: update.isPending,
-    isSaved: update.isSuccess,
     fieldError,
     formError: fieldError ? null : update.error,
   }

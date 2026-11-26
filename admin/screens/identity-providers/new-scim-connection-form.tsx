@@ -9,22 +9,28 @@ import { FormFooter } from '@/components/ui/form-footer'
 import { Input } from '@/components/ui/input'
 import { toExpiresAt } from './credential-expiry'
 import { ExpiryField } from './expiry-field'
-import { describedBy, FormField } from './form-field'
+import { FormField } from '../../components/form-field'
+import { useAutofocusOnMount } from '@/hooks/use-autofocus-on-mount'
 import { IssuedScimToken } from './scim-section'
 import { useCreateScimConnection } from './use-connection-queries'
 import { InlineError } from '../../components/inline-error'
+import { BackOrCancel, backOrCancelFooterClass } from '../../components/back-or-cancel'
+import type { PanelDirt } from '../../components/use-resource-page-state'
 
 type NewScimConnectionFormProps = {
   onCreated: (connectionId: string) => void
   onCancel: () => void
-  onDirty: (dirty: boolean) => void
+  /** Back to the picker this form was opened from; shown in place of Cancel. */
+  onBack?: () => void
+  onDirty: (dirty: PanelDirt) => void
 }
 
 /** A connection that only provisions: its name and first credential, whose token is shown once. */
-export const NewScimConnectionForm = ({ onCreated, onCancel, onDirty }: NewScimConnectionFormProps) => {
+export const NewScimConnectionForm = ({ onCreated, onCancel, onBack, onDirty }: NewScimConnectionFormProps) => {
   const { t } = useLingui()
   const id = useId()
   const [name, setName] = useState('')
+  const nameRef = useAutofocusOnMount<HTMLInputElement>(true)
   const [expiry, setExpiry] = useState('')
   const create = useCreateScimConnection()
 
@@ -43,22 +49,21 @@ export const NewScimConnectionForm = ({ onCreated, onCancel, onDirty }: NewScimC
     )
   }
 
-  const hint = t`Your identity provider's name for this tenant or realm. It can't be renamed later.`
   return (
     <form
       className="flex flex-1 flex-col gap-5"
       onSubmit={(event) => {
         event.preventDefault()
         // The page stays dirty while the token shows, so leaving asks first.
-        create.mutate({ name: name.trim(), expiresAt: toExpiresAt(expiry) }, { onSuccess: () => onDirty(true) })
+        create.mutate({ name: name.trim(), expiresAt: toExpiresAt(expiry) }, { onSuccess: () => onDirty('secret') })
       }}
     >
-      <FormField id={id} label={<Trans>Name</Trans>} hint={hint}>
+      <FormField id={id} label={<Trans>Name</Trans>}>
         <Input
           id={id}
+          ref={nameRef}
           value={name}
           required
-          aria-describedby={describedBy(id, { hint })}
           onChange={(event) => {
             setName(event.target.value)
             onDirty(true)
@@ -72,13 +77,12 @@ export const NewScimConnectionForm = ({ onCreated, onCancel, onDirty }: NewScimC
           onDirty(true)
         }}
       />
-      <InlineError error={create.error} />
-      <FormFooter>
-        <Button type="button" variant="outline" onClick={onCancel}>
-          <Trans>Cancel</Trans>
-        </Button>
-        <Button type="submit" isLoading={create.isPending}>
-          <Trans>Create connection</Trans>
+      <FormFooter className={backOrCancelFooterClass(onBack)}>
+        {onBack && <BackOrCancel onBack={onBack} onCancel={onCancel} />}
+        <InlineError error={create.error} className="min-w-0 flex-1 truncate" />
+        {!onBack && <BackOrCancel onCancel={onCancel} />}
+        <Button type="submit" disabled={name.trim() === ''} isLoading={create.isPending} loadingLabel={t`Creating…`}>
+          <Trans>Create</Trans>
         </Button>
       </FormFooter>
     </form>

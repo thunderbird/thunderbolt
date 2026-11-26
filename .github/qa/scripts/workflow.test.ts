@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import platforms from '../platforms.json'
-import { isDenied, prChecks } from './fix'
+import { conventionalTitle, isDenied, prChecks } from './fix'
 import { bugStep } from './findings'
 import {
   nativeDriverStartupMinutes,
@@ -1137,6 +1137,18 @@ describe('publish', () => {
       'Replay the spec on the patched frontend',
     ])
       expect(step('verify-real', name).if).toBe(present)
+  })
+
+  test("a fix agent's PR title may use exactly the types Title Lint accepts", () => {
+    const lint = Bun.YAML.parse(readFileSync(join(import.meta.dir, '../../workflows/lint-pr-title.yml'), 'utf8')) as {
+      jobs: Record<string, Job>
+    }
+    const types = lint.jobs.lint.steps?.find((s) => s.uses?.startsWith('amannn/action-semantic-pull-request@'))?.with
+      ?.types
+    const accepted = (types ?? '').split('\n').filter(Boolean)
+    const alternatives = /^\^\(([^)]+)\)/.exec(conventionalTitle.source)?.[1].split('|') ?? []
+    expect(accepted).toContain('fix')
+    expect(alternatives.sort()).toEqual(accepted.sort())
   })
 })
 

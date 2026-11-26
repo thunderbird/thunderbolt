@@ -1034,7 +1034,7 @@ export const wrap = (text: string, width = maxLine) =>
     .join('\n')
 
 /** The Conventional Commits types `.github/workflows/lint-pr-title.yml` accepts, with an optional scope. */
-const conventionalTitle = /^(feat|fix|chore|docs|refactor|perf|test|ci|build|style)(\([\w-]+\))?: \S/
+export const conventionalTitle = /^(feat|fix|chore|docs|refactor|perf|test|ci|build|style)(\([\w-]+\))?: \S/
 
 /**
  * The PR title: the fix agent's `fix/<fp>.title`, a Conventional Commits title of the change, when it has that shape,

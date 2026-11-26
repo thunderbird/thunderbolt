@@ -2,7 +2,7 @@
  * All rights reserved. See admin/LICENSE.
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
-import type { AuditEventQuery, InvitationStatus, ListLinkReviewsQuery, RoleMappingQuery } from '@shared/admin-api'
+import type { AuditEventQuery, ListInvitationsQuery, ListLinkReviewsQuery, RoleMappingQuery } from '@shared/admin-api'
 
 /**
  * TanStack Query keys for every admin read. All of them start with `['admin']`, so one
@@ -23,7 +23,7 @@ export const adminQueryKeys = {
   },
   invitations: {
     all: ['admin', 'invitations'] as const,
-    list: (status: InvitationStatus, q?: string) => ['admin', 'invitations', 'list', status, { q }] as const,
+    list: (query: ListInvitationsQuery) => ['admin', 'invitations', 'list', query] as const,
   },
   connections: {
     all: ['admin', 'connections'] as const,
@@ -45,7 +45,9 @@ export const adminQueryKeys = {
   },
   auditEvents: {
     all: ['admin', 'audit-events'] as const,
+    lists: ['admin', 'audit-events', 'list'] as const,
     list: (query: AuditEventQuery) => ['admin', 'audit-events', 'list', query] as const,
+    detail: (eventId: string) => ['admin', 'audit-events', 'detail', eventId] as const,
   },
   breakGlass: ['admin', 'break-glass'] as const,
 }

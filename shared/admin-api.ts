@@ -81,6 +81,8 @@ export type AdminErrorCode =
   | 'LINK_REVIEW_RESOLVED'
   | 'LINK_REVIEW_SELF'
   | 'LINK_REVIEW_RECORD_EXISTS'
+  // Audit log
+  | 'AUDIT_EVENT_NOT_FOUND'
 
 /** An error answer. `field` names the offending field on the SSO lock and immutable-field errors. */
 export type AdminErrorBody = { code: string; message?: string; field?: string }
@@ -320,7 +322,8 @@ export type Invitation = {
   createdAt: Timestamp
 }
 
-export type ListInvitationsQuery = PageQuery & { status?: InvitationStatus; q?: string }
+/** `expired` keeps only the invitations past (`true`) or before (`false`) their expiry. */
+export type ListInvitationsQuery = PageQuery & { status?: InvitationStatus; q?: string; expired?: boolean }
 
 export type CreateInvitationBody = { email: string; idpOverride?: boolean }
 
@@ -377,7 +380,8 @@ export type LinkReview = LinkReviewRecord & {
 /** The wire shape of `GET /admin/link-reviews`; the admin client returns it as a `Page`. */
 export type LinkReviewPage = { reviews: LinkReview[]; nextCursor: string | null }
 
-export type ListLinkReviewsQuery = PageQuery & { status?: LinkReviewStatus; connectionId?: string }
+/** `q` matches part of the incoming email or name, or the candidate account's. */
+export type ListLinkReviewsQuery = PageQuery & { status?: LinkReviewStatus; connectionId?: string; q?: string }
 
 // Audit
 
@@ -503,4 +507,6 @@ export type AuditEventQuery = PageQuery & {
   connectionId?: string
   from?: Timestamp
   to?: Timestamp
+  /** Part of the actor's or target's name: a person's name or email, a connection, group, domain or API key. */
+  q?: string
 }

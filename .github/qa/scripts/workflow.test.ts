@@ -1678,7 +1678,7 @@ test('every job but the reusable notify call has a timeout and read-only permiss
     if (name === 'file') return { actions: 'read', contents: 'read', 'pull-requests': 'read' }
     // Publish lists the run's artifacts, whose names carry the checks' passes.
     if (name === 'publish') return { actions: 'read', contents: 'read' }
-    // Report reads how the bot's earlier fix PRs ended.
+    // Report reads how the bot's recent fix PRs ended.
     if (name === 'report') return { contents: 'read', 'pull-requests': 'read' }
     return { contents: 'read' }
   }

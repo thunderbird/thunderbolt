@@ -2154,7 +2154,7 @@ jobs:
     environment: qa-agent
     permissions:
       contents: read
-      # Reads how the bot's earlier fix PRs ended.
+      # Reads how the bot's recent fix PRs ended.
       pull-requests: read
     env:
       HAS_HEARTBEAT: ${{ secrets.QA_HEARTBEAT_URL != '' }}
@@ -2211,8 +2211,9 @@ jobs:
           fi
           exit "$status"
 
-      # How the bot's earlier fix PRs ended, from GitHub alone. A failed API call loses only this section.
-      - name: Report the fix PRs of earlier runs
+      # How the bot's recent fix PRs ended, this run's included, from GitHub alone. A failed API call loses only this
+      # section.
+      - name: Report the recent QA fix PRs
         if: always()
         continue-on-error: true
         env:

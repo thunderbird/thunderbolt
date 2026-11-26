@@ -55,8 +55,27 @@ test('an invitation shows in Members as invited, and its link signs the person i
   await expect(invitee.page.getByRole('heading', { name: /You've been invited to/ })).toBeVisible()
   await expect(invitee.page.getByPlaceholder('Email', { exact: true })).toHaveValue(email)
   await invitee.page.getByRole('button', { name: 'Continue', exact: true }).click()
+
+  // In SSO mode the signed-in invitee must stay in the app, never bounce back to the SSO screen.
+  const ssoVisits: string[] = []
+  invitee.page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/v1/sso/discover') {
+      ssoVisits.push('discover')
+    }
+  })
+  // Fires for in-app (history) navigations too.
+  invitee.page.on('framenavigated', (frame) => {
+    if (frame === invitee.page.mainFrame() && new URL(frame.url()).pathname.startsWith('/sso')) {
+      ssoVisits.push(frame.url())
+    }
+  })
   await invitee.page.locator('input[data-input-otp]').fill(e2eSignInCode)
   await expect(invitee.page.locator('textarea')).toBeVisible({ timeout: 30_000 })
+  await expect(invitee.page).toHaveURL(/\/chats\//)
+  await invitee.page.reload()
+  await expect(invitee.page.locator('textarea')).toBeVisible({ timeout: 30_000 })
+  await expect(invitee.page).toHaveURL(/\/chats\//)
+  expect(ssoVisits).toEqual([])
   await invitee.close()
 
   await page.reload()

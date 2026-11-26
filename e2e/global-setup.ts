@@ -16,6 +16,7 @@ import { createFakeProvider } from './fake-provider'
 import { createFakeMcpServer } from './fake-mcp-server'
 import { adminSpareIdpSecretPrefix, createLoginHintIdp } from './admin/mock-idp'
 import { createMockSamlIdp } from './mock-saml-idp'
+import { createMockDns } from './admin/mock-dns'
 
 const mockOidcPort = Number(process.env.MOCK_OIDC_PORT ?? 9876)
 const mockSamlPort = Number(process.env.MOCK_SAML_PORT ?? 9877)
@@ -83,11 +84,17 @@ const globalSetup = async (config: FullConfig) => {
     }),
   ])
 
+  // --- DNS for the admin backend (`TEST_DNS_SERVERS`), so a spec can verify a domain ---
+  const adminDns = await createMockDns(
+    Number(process.env.ADMIN_DNS_PORT ?? 9884),
+    Number(process.env.ADMIN_DNS_CONTROL_PORT ?? 9885),
+  )
+
   // Store references for teardown
   ;(globalThis as Record<string, unknown>).__oidcServer = oidcServer
   ;(globalThis as Record<string, unknown>).__samlServer = samlServer
   ;(globalThis as Record<string, unknown>).__fakeProvider = fakeProvider
-  Object.assign(globalThis, { __fakeMcpServer: fakeMcpServer, __adminIdps: adminIdps })
+  Object.assign(globalThis, { __fakeMcpServer: fakeMcpServer, __adminIdps: adminIdps, __adminDns: adminDns })
 }
 
 export default globalSetup

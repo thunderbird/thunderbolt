@@ -17,14 +17,22 @@
  */
 
 import { readFile } from 'node:fs/promises'
-import { expect, test as base, type APIRequestContext, type Browser, type Page } from '@playwright/test'
-import type {
-  AdminConnectionDetail,
-  AdminMember,
-  CreateScimConnectionBody,
-  CreateScimConnectionResponse,
-  LocalGroup,
-  Page as ApiPage,
+import {
+  expect,
+  test as base,
+  type APIRequestContext,
+  type Browser,
+  type Page,
+  type ViewportSize,
+} from '@playwright/test'
+import {
+  scimBasePath,
+  type AdminConnectionDetail,
+  type AdminMember,
+  type CreateScimConnectionBody,
+  type CreateScimConnectionResponse,
+  type LocalGroup,
+  type Page as ApiPage,
 } from '../../shared/admin-api'
 import { openSidebarOnMobile } from '../helpers'
 import { adminSpareIdpSecretPrefix, encodeLoginHint, type IdpIdentity } from './mock-idp'
@@ -40,6 +48,12 @@ export const adminApiBaseUrl = `${adminBackendUrl}/v1`
 
 /** `env` backs the deployment's `sso` connection; `spare` is free for a spec to register as a new connection. */
 export const adminIdpUrls = { env: 'http://localhost:9882', spare: 'http://localhost:9883' }
+
+/** The mock SAML IdP (`e2e/mock-saml-idp.ts`), for specs that register a SAML connection. */
+export const adminSamlIdpUrl = 'http://localhost:9877'
+
+/** The mock DNS server's control port (`e2e/admin/mock-dns.ts`). */
+const adminDnsControlUrl = `http://localhost:${process.env.ADMIN_DNS_CONTROL_PORT ?? 9885}`
 
 export const uniqueEmail = (prefix = 'member') => `${prefix}-${crypto.randomUUID()}@thunderbolt.test`
 
@@ -164,11 +178,13 @@ export const createAdminApiRequest = (request: APIRequestContext, token: string)
       name = uniqueName('IdP'),
       providerId = `idp-${crypto.randomUUID().slice(0, 8)}`,
       clientSecret = `${adminSpareIdpSecretPrefix}${crypto.randomUUID()}`,
-    }: { name?: string; providerId?: string; clientSecret?: string } = {}) =>
+      identityConnectionId,
+    }: { name?: string; providerId?: string; clientSecret?: string; identityConnectionId?: string } = {}) =>
       call<AdminConnectionDetail>('POST', 'admin/connections/sso', {
         name,
         providerId,
         protocol: { oidc: { issuer: adminIdpUrls.spare, clientId: 'thunderbolt-admin-e2e', clientSecret } },
+        identityConnectionId,
       }),
     seedScimConnection: (body: CreateScimConnectionBody = { name: uniqueName('SCIM') }) =>
       call<CreateScimConnectionResponse>('POST', 'admin/connections/scim', body),
@@ -189,6 +205,63 @@ export const retireConnection = async (adminApi: AdminApiRequest, connectionId: 
   }
   await expect.poll(async () => (await read()).status).not.toBe('scim_retiring')
   await adminApi.request('POST', `admin/connections/${connectionId}/retire`)
+}
+
+/** A route any signed-in member may call: 401 once their access is gone. */
+export const canaryStatus = async (request: APIRequestContext, token: string) =>
+  (
+    await request.get(`${adminApiBaseUrl}/encryption/canary`, { headers: { Authorization: `Bearer ${token}` } })
+  ).status()
+
+/** Whether `email` can sign in by email code right now, over HTTP. Waits out the code cooldown once. */
+export const canSignIn = async (request: APIRequestContext, email: string) => {
+  const first = await requestEmailCodeSignIn(request, email)
+  if (first.status() !== 429) {
+    return first.ok()
+  }
+  await new Promise((done) => setTimeout(done, otpCooldownMs))
+  return (await requestEmailCodeSignIn(request, email)).ok()
+}
+
+/** SCIM requests as the identity provider makes them, with a connection's token. */
+export const createScimClient = (request: APIRequestContext, token: string) => {
+  const send = (method: 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown) =>
+    request.fetch(`${adminApiBaseUrl}${scimBasePath}${path}`, {
+      method,
+      data: body === undefined ? undefined : JSON.stringify(body),
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/scim+json' },
+    })
+  return {
+    /** A new SCIM user for `email`, whose `externalId` an SSO side matches on. Resolves to its SCIM id. */
+    createUser: async (email: string, externalId: string = crypto.randomUUID()) => {
+      const response = await send('POST', '/Users', {
+        schemas: ['urn:ietf:params:scim:schemas:core:2.0:User'],
+        externalId,
+        userName: email,
+        name: { givenName: 'E2E', familyName: 'Member' },
+        emails: [{ value: email, type: 'work', primary: true }],
+        active: true,
+      })
+      expect(response.status(), await response.text()).toBe(201)
+      return ((await response.json()) as { id: string }).id
+    },
+    setActive: async (scimId: string, active: boolean) => {
+      const response = await send('PATCH', `/Users/${scimId}`, {
+        schemas: ['urn:ietf:params:scim:api:messages:2.0:PatchOp'],
+        Operations: [{ op: 'replace', path: 'active', value: active }],
+      })
+      expect(response.ok(), await response.text()).toBe(true)
+    },
+  }
+}
+
+/**
+ * Publish a TXT record on the mock DNS server the admin backend resolves through
+ * (`TEST_DNS_SERVERS`), so verifying the domain it names succeeds.
+ */
+export const publishTxtRecord = async (request: APIRequestContext, record: { name: string; value: string }) => {
+  const response = await request.put(`${adminDnsControlUrl}/txt`, { data: record })
+  expect(response.status()).toBe(204)
 }
 
 /** The status a member's token gets from an admin route: 200 while they're an admin, 403 once they aren't. */
@@ -217,15 +290,41 @@ export const readInviteUrl = async (email: string): Promise<string> => {
   return (await latest())!
 }
 
-/** Make the next IdP sign-in on this page arrive as `identity`. */
+/** Make the next IdP sign-in on this page, OIDC or SAML, arrive as `identity`. */
 export const routeIdpIdentity = async (page: Page, identity: IdpIdentity) => {
-  for (const idp of Object.values(adminIdpUrls)) {
-    await page.route(`${idp}/authorize*`, (route) => {
+  const signInUrls = [...Object.values(adminIdpUrls).map((idp) => `${idp}/authorize*`), `${adminSamlIdpUrl}/saml/sso*`]
+  for (const signInUrl of signInUrls) {
+    await page.route(signInUrl, (route) => {
       const url = new URL(route.request().url())
       url.searchParams.set('login_hint', encodeLoginHint(identity))
       return route.continue({ url: url.toString() })
     })
   }
+}
+
+/**
+ * A fresh browser enters `identity.email` on the sign-in screen, picks `connectionName` from the
+ * choice it offers, and signs in as `identity`. Resolves once it lands in the app or on the SSO error page.
+ */
+export const signInThroughConnection = async (
+  browser: Browser,
+  viewport: ViewportSize | null,
+  connectionName: string,
+  identity: IdpIdentity,
+) => {
+  const context = await browser.newContext({
+    baseURL: adminAppUrl,
+    viewport,
+    storageState: { cookies: [], origins: [] },
+  })
+  const page = await context.newPage()
+  await routeIdpIdentity(page, identity)
+  await page.goto('/')
+  await page.getByRole('textbox', { name: 'Work email' }).fill(identity.email)
+  await page.getByRole('button', { name: 'Continue', exact: true }).click()
+  await page.getByRole('button', { name: connectionName, exact: true }).click()
+  await page.waitForURL(/\/(chats|sso-error)/, { timeout: 30_000 })
+  return { page, close: () => context.close() }
 }
 
 /**

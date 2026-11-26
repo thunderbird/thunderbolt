@@ -38,6 +38,8 @@ const adminVitePort = 1427
 export const adminBackendPort = 8008
 const adminEnvIdpPort = Number(process.env.ADMIN_ENV_IDP_PORT ?? 9882)
 const adminSpareIdpPort = Number(process.env.ADMIN_SPARE_IDP_PORT ?? 9883)
+/** The mock DNS server `e2e/admin/mock-dns.ts` answers on, so admin specs can verify a domain. */
+const adminDnsPort = process.env.ADMIN_DNS_PORT ?? '9884'
 /**
  * One bootstrap admin per admin project and worker slot; see `e2e/admin/helpers.ts`. The helper keys
  * the email on `metadata.adminKey`, not the project name, which the extended config's browser
@@ -345,9 +347,11 @@ export default defineConfig({
         BETTER_AUTH_SECRET: 'e2e-test-secret-at-least-32-characters-long',
         APP_URL: `http://localhost:${adminVitePort}`,
         CORS_ORIGINS: `http://localhost:${adminVitePort}`,
-        TRUSTED_ORIGINS: [adminVitePort, adminEnvIdpPort, adminSpareIdpPort]
+        // The SAML IdP posts its response from its own origin, so it is trusted alongside the OIDC IdPs.
+        TRUSTED_ORIGINS: [adminVitePort, adminEnvIdpPort, adminSpareIdpPort, mockSamlPort]
           .map((port) => `http://localhost:${port}`)
           .join(','),
+        TEST_DNS_SERVERS: `127.0.0.1:${adminDnsPort}`,
         RATE_LIMIT_ENABLED: 'false',
         DATABASE_DRIVER: 'pglite',
       },

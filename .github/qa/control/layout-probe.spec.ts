@@ -73,6 +73,9 @@ test('axe-core names controls the way a screen reader does', async ({ page }) =>
   expect(await problemsOf(page, 'names.html')).toEqual(
     [
       'button "#u-hidden-text"',
+      'button "#u-input-button"',
+      'button "#u-submit-empty"',
+      'slider "#u-range"',
       'menuitem "#u-menuitem"',
       'option "#u-option"',
       'button "#u-blank-label"',

@@ -28,7 +28,14 @@
   let timer
   let pendingSince
 
-  const inputRoles = { checkbox: 'checkbox', radio: 'radio' }
+  const inputRoles = {
+    button: 'button',
+    checkbox: 'checkbox',
+    radio: 'radio',
+    range: 'slider',
+    reset: 'button',
+    submit: 'button',
+  }
   const roleOf = (el) =>
     el.getAttribute('role') ||
     (el.tagName === 'INPUT' && inputRoles[el.type]) ||

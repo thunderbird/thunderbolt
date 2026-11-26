@@ -48,9 +48,10 @@ Drop it when any of these hold:
 - You cannot tell from the evidence which of the above applies.
 
 `<replay_provider>` says what answered the app's AI requests during the replay: `real` for the real providers, `fake`
-for a local fake AI provider behind the app's backend. The fake accepts any model id, but on `fake` the backend has no
-key for the Tinfoil models, so only Opus 5.5 reaches the fake. A failure of any other model there is an environment
-artifact. How the app handles that failure (its message, whether the chat recovers) is still judged.
+for a local fake AI provider behind the app's backend. On `fake` the backend routes only Opus 5.5 to the fake. The
+Tinfoil models still go to the backend's Tinfoil proxy, which fails because it has no key there. A failure of any other
+model on `fake` is an environment artifact. How the app handles that failure (its message, whether the chat recovers)
+is still judged.
 
 The fake answers Anthropic Messages (`/v1/messages`) and OpenAI-compatible chat completions (`/v1/chat/completions`)
 with a canned reply, lists one model at `/v1/models`, and gives a malformed body a 400. It answers every other

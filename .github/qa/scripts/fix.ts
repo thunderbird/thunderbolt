@@ -67,7 +67,8 @@ type Proof = { kind: 'spec'; spec: string } | { kind: 'spec' | 'visual'; flow: s
 /**
  * One fix-job matrix entry. `finding` holds the only ticket fields the fix agent sees. `real` marks a session on the
  * real AI providers, where the workflow verifies the fix on them too. `branch` is the branch route checked, which
- * publish pushes to. `unitTest` asks the patch for a unit test that fails without the fix (see `needsUnitTest`).
+ * publish pushes to. `unitTest` asks the patch for a unit test that fails without the fix, when any finding of the
+ * bug needs one (see `needsUnitTest`), and `unitTestFor` is that finding when it is not the task's own.
  * `specs` and `realSpecs` are the web repro specs of every finding of the bug, its own `spec` included, on the fake
  * and the real AI: a group can hold findings that report part of the bug each, and the patch must pass them all.
  */
@@ -78,11 +79,13 @@ export type FixTask = Ticket &
     platform: string
     real: boolean
     unitTest: boolean
+    unitTestFor?: FindingView
     specs: string[]
     realSpecs: string[]
     screenshot?: string
-    finding: Pick<Finding, 'title' | 'area' | 'viewport' | 'oracle' | 'steps' | 'expected' | 'actual'>
+    finding: FindingView
   }
+type FindingView = Pick<Finding, 'title' | 'area' | 'viewport' | 'oracle' | 'steps' | 'expected' | 'actual'>
 /**
  * A flow the native verification runs on its platform with the patched app: a native task's flow, or the repro flow of
  * the same bug found on another platform. `unpatched` asks for a run without the patch too, where the flow must fail:
@@ -213,6 +216,10 @@ const leadRank = (session: string) => {
   return realAiCharters.has(session) && !nativePlatformIds.includes(parseSession(session).platform) ? 1 : 2
 }
 
+/** A web finding seen in a screenshot. The fix agent writes its check only when it is the task's own finding. */
+const webVisual = (finding: { oracle: { type: string }; viewport: string }) =>
+  finding.oracle.type === 'visual' && !nativePlatformIds.includes(finding.viewport)
+
 const proofOf = async (
   outDir: string,
   charterDir: string,
@@ -257,7 +264,17 @@ export const route = async ({
   const routed = new Set<string>()
   const tickets = filed.filter((f) => ticketActions.has(f.action === 'dry-run' && !live ? f.would : f.action))
   // Every finding of one bug files with the bug's severity, so `leadRank` decides which of them leads its fix task.
-  tickets.sort((a, b) => priority[a.severity] - priority[b.severity] || leadRank(a.charterDir) - leadRank(b.charterDir))
+  // Among equals a web visual finding leads, so its check gets written and the others join through their specs.
+  const visualFirst = (t: Filed) => {
+    const finding = confirmed.find((v) => v.charterDir === t.charterDir && v.id === t.id)?.finding
+    return finding && webVisual(finding) ? 0 : 1
+  }
+  tickets.sort(
+    (a, b) =>
+      priority[a.severity] - priority[b.severity] ||
+      leadRank(a.charterDir) - leadRank(b.charterDir) ||
+      visualFirst(a) - visualFirst(b),
+  )
   const issueIds = [...new Set(tickets.flatMap((t) => (t.issueId ? [t.issueId] : [])))]
   const [linearById, heads, openPrs] = await Promise.all([
     linearTickets({ fetchFn, key: key ?? '' }, issueIds),
@@ -324,13 +341,23 @@ export const route = async ({
     if (!branch) continue
     const proof = await proofOf(outDir, charterDir, fp, finding)
     if (!proof) {
+      // Every finding's check must pass, so one without its repro holds back the whole bug.
       log(`fix: ${fp} has no repro on disk, so it is not routed`)
+      declined.add(fp)
       continue
     }
     const platform = finding.viewport
+    const lead = plan.fixes.find((t) => t.fp === fp)
     // One fix job per bug (same fp): a second one would fight over its branch, and `leadRank` picks which finding
-    // it gets. The other findings' repros join it, since a group can hold findings that report part of the bug each,
-    // but not their visual defects: the fix agent writes a visual check for its own task alone.
+    // it gets. The other findings' repros join it, since a group can hold findings that report part of the bug each.
+    // The fix agent writes a visual check for its own task alone: a web visual finding leads among equals, and one
+    // that a sync or real-AI web finding outranks would go unchecked, so it holds back the bug.
+    if (lead && webVisual(finding) && !webVisual(lead.finding)) {
+      log(
+        `fix: ${identifier ?? fp} has a visual finding that another finding leads, and only the lead gets a visual check, so it is not routed`,
+      )
+      declined.add(fp)
+    }
     const flow = 'flow' in proof && (fresh || proof.kind === 'spec') ? proof.flow : undefined
     if (flow && plan.verifyNative.some((v) => v.fp === fp && v.platform === platform)) {
       // A native pass is named by platform, so a second flow there would go unchecked and could hide a half fix.
@@ -342,13 +369,6 @@ export const route = async ({
       const unpatched = proof.kind === 'visual' || realAiCharters.has(charterDir)
       plan.verifyNative.push({ fp, platform, session: charterDir, flow, unpatched })
     }
-    const lead = plan.fixes.find((t) => t.fp === fp)
-    if (lead && 'spec' in proof) {
-      const specs = realAiCharters.has(charterDir) ? lead.realSpecs : lead.specs
-      if (!specs.includes(proof.spec)) specs.push(proof.spec)
-    }
-    if (!fresh) continue
-    routed.add(fp)
     const task = {
       fp,
       severity,
@@ -362,6 +382,19 @@ export const route = async ({
       screenshot: finding.screenshot ? join(outDir, charterDir, finding.screenshot) : undefined,
       finding: ticketView(finding),
     }
+    if (lead) {
+      if ('spec' in proof) {
+        const specs = task.real ? lead.realSpecs : lead.specs
+        if (!specs.includes(proof.spec)) specs.push(proof.spec)
+      }
+      // The fixer sees only the lead's finding, so it is told which other finding asks for the unit test.
+      if (!lead.unitTest && needsUnitTest(task)) {
+        lead.unitTest = true
+        lead.unitTestFor = task.finding
+      }
+      continue
+    }
+    routed.add(fp)
     const own = 'spec' in proof ? [proof.spec] : []
     plan.fixes.push({
       ...task,

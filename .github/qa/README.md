@@ -415,7 +415,10 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `specs`, while `verify-real` runs all of `realSpecs`. So a finding that reports only part of a grouped bug still
    checks the patch. Native flows join `verifyNative`, one per platform, since a native pass is named by platform: a
    ticket with two findings on one native platform is not routed, with a log line, rather than checked on one of
-   them. A visual finding other than the task's own has no check (the fix agent writes one for its own task only). The fix goes on the ticket's Linear
+   them. The fix agent writes a visual check for its own task only, so among findings of equal `leadRank` a web
+   visual one leads. A ticket whose web visual finding is outranked (by a sync or real-AI web finding) is not
+   routed, with a log line, and neither is one where any finding's repro is missing from disk. A native visual
+   finding other than the task's own still has no check. The fix goes on the ticket's Linear
    branch name (`branchName`), so merging the PR closes the ticket. `route` takes that name only when it has the
    shape `<prefix>/<identifier>` with an optional `-<slug>`, in lowercase, with at most 100 characters, and
    `git check-ref-format` accepts it; otherwise the branch is `qa-fix/<identifier lowercased>`, which still links
@@ -460,8 +463,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    computes no layout. Every other web task (one without a `flow`) must add or change a unit test file, `*.test.ts` or
    `*.test.tsx` under `src/`, `shared/`, `backend/` or `cli/`, that fails without the fix. They cover a missing name,
    logic and data lost on a reload (which also gets the spec), plus the c1, real-AI and security tasks, whose check
-   never becomes a spec. `route` marks them `unitTest` in the plan (`needsUnitTest`), and only they get a
-   `verify-tests` job.
+   never becomes a spec. `route` marks a task `unitTest` in the plan when any finding of its ticket needs a unit
+   test (`needsUnitTest`), and only those tasks get a `verify-tests` job. When that finding is not the task's own,
+   `unitTestFor` hands it to the fix agent.
    `verify-tests` (keyless, see "Trust zones") checks it on a fresh checkout with `fix.ts tests`: `testRuns` picks
    the test files the patch adds or changes (a deleted one is left out, a renamed one counts under its new name) and
    runs `bun test --timeout 5000` over them from each tree's own directory (`src/`, `backend/`, `cli/`,

@@ -415,12 +415,7 @@ describe('route', () => {
   test("keeps every web repro of a group, so the patch must pass each finding's own check", async () => {
     // One panel: the lead reports both buttons, the others one each, from sessions on either AI.
     const settings = { fp: 'fp-same', charterDir: 'c6-settings-data-desktop', raw: finding('settings') }
-    const visual = {
-      fp: 'fp-same',
-      charterDir: 'c8-phone',
-      raw: finding('settings', { oracle: { type: 'visual', evidence: 'x' }, screenshot: 'mcp/1.png' }),
-    }
-    await fileTickets([fakeWeb, realWeb, settings, visual])
+    await fileTickets([fakeWeb, realWeb, settings])
     const plan = await route({ outDir, live: false, run: fakeRun([]), log: () => {} })
     const specOf = (charterDir: string) => join(outDir, charterDir, 'repro', '1.spec.ts')
     expect(plan.fixes).toHaveLength(1)
@@ -428,7 +423,48 @@ describe('route', () => {
       charterDir: 'c3-models-providers-desktop',
       specs: [specOf('c2-chat-power-user-desktop'), specOf('c6-settings-data-desktop')],
       realSpecs: [specOf('c3-models-providers-desktop')],
+      unitTest: true,
     })
+    // The lead's own finding asks for the unit test, so no other finding is named.
+    expect(plan.fixes[0].unitTestFor).toBeUndefined()
+  })
+
+  const visualWeb = { fp: 'fp-same', charterDir: 'c6-settings-data-desktop', raw: visual('settings') }
+
+  test.each([
+    ['visual first', [visualWeb, fakeWeb]],
+    ['spec first', [fakeWeb, visualWeb]],
+  ])('a web visual finding leads its bug, so its check is written and the spec joins it (%s)', async (_n, tickets) => {
+    await fileTickets(tickets)
+    const plan = await route({ outDir, live: false, run: fakeRun([]), log: () => {} })
+    expect(plan.fixes).toHaveLength(1)
+    expect(plan.fixes[0]).toMatchObject({
+      charterDir: 'c6-settings-data-desktop',
+      kind: 'visual',
+      specs: [join(outDir, 'c2-chat-power-user-desktop', 'repro', '1.spec.ts')],
+      // The visual finding's check is its proof, but the page error of the other finding needs a unit test.
+      unitTest: true,
+      unitTestFor: { title: 'chat breaks', oracle: { type: 'page-error' } },
+    })
+  })
+
+  test('a web visual finding that a real-AI finding outranks holds back its bug, since only the lead gets a check', async () => {
+    await fileTickets([visualWeb, realWeb])
+    const lines: string[] = []
+    const plan = await route({ outDir, live: false, run: fakeRun([]), log: (line) => lines.push(line) })
+    expect(plan).toEqual({ fixes: [], verifyNative: [] })
+    expect(lines).toContain(
+      'fix: fp-same has a visual finding that another finding leads, and only the lead gets a visual check, so it is not routed',
+    )
+  })
+
+  test("a finding whose repro is missing holds back its whole bug, since every finding's check must pass", async () => {
+    await fileTickets([fakeWeb, { fp: 'fp-same', charterDir: 'c6-settings-data-desktop', raw: finding('settings') }])
+    await rm(join(outDir, 'c6-settings-data-desktop', 'repro', '1.spec.ts'))
+    const lines: string[] = []
+    const plan = await route({ outDir, live: false, run: fakeRun([]), log: (line) => lines.push(line) })
+    expect(plan).toEqual({ fixes: [], verifyNative: [] })
+    expect(lines).toContain('fix: fp-same has no repro on disk, so it is not routed')
   })
 
   test('a group with two findings on one native platform is not routed, since only one of their flows is checked', async () => {

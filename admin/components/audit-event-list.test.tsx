@@ -3,36 +3,14 @@
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import type { AuditEvent } from '@shared/admin-api'
 import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { makeAuditEvent } from '../screens/audit-log/audit-event-fixtures'
 import { createAdminTestHarness, flush } from '../test-utils'
 import { AuditEventList } from './audit-event-list'
 
-const event = (overrides: Partial<AuditEvent>): AuditEvent => ({
-  id: crypto.randomUUID(),
-  orgId: 'org',
-  occurredAt: '2026-11-17T10:00:00.000Z',
-  action: 'member.blocked',
-  outcome: 'success',
-  reason: null,
-  actorType: 'user',
-  actorId: 'admin-1',
-  targetType: 'user',
-  targetId: 'u1',
-  connectionId: null,
-  credentialId: null,
-  requestId: null,
-  reportSource: 'server',
-  changes: null,
-  metadata: null,
-  ipAddress: null,
-  userAgent: null,
-  actorLabel: null,
-  targetLabel: null,
-  ...overrides,
-})
+const event = makeAuditEvent
 
 describe('AuditEventList', () => {
   beforeAll(setupTestDatabase)
@@ -140,10 +118,42 @@ describe('AuditEventList', () => {
     expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument()
   })
 
-  it('says when nothing matches', async () => {
+  it('says when nothing matches, or shows the empty state it is given', async () => {
     const harness = createAdminTestHarness(() => ({ body: { events: [], nextCursor: null } }))
-    render(<AuditEventList filters={{}} emptyMessage="No sync errors." />, { wrapper: harness.wrapper })
+    render(<AuditEventList filters={{}} />, { wrapper: harness.wrapper })
+    await flush()
+    expect(screen.getByText('No events.')).toBeInTheDocument()
+
+    cleanup()
+    render(<AuditEventList filters={{}} empty={<p>No sync errors.</p>} />, { wrapper: harness.wrapper })
     await flush()
     expect(screen.getByText('No sync errors.')).toBeInTheDocument()
+  })
+
+  it("doesn't open its rows unless asked, and with a selection opens them and marks the open one", async () => {
+    const opened = event({ id: 'e1', actorLabel: 'Ada', targetLabel: 'Bob' })
+    const harness = createAdminTestHarness(() => ({ body: { events: [opened], nextCursor: null } }))
+    render(<AuditEventList filters={{}} />, { wrapper: harness.wrapper })
+    await flush()
+    expect(screen.queryByRole('button', { name: /^Open/ })).not.toBeInTheDocument()
+
+    cleanup()
+    const selected: string[] = []
+    const { rerender } = render(
+      <AuditEventList filters={{}} selection={{ selectedId: null, onSelect: (id) => selected.push(id) }} />,
+      { wrapper: harness.wrapper },
+    )
+    await flush()
+    const row = screen.getByRole('button', { name: 'Open Member blocked Bob by Ada' })
+    expect(row).toHaveAttribute('aria-pressed', 'false')
+    expect(row).toHaveTextContent('Member blocked Bob by Ada')
+
+    fireEvent.click(row)
+    expect(selected).toEqual(['e1'])
+    rerender(<AuditEventList filters={{}} selection={{ selectedId: 'e1', onSelect: () => {} }} />)
+    expect(screen.getByRole('button', { name: 'Open Member blocked Bob by Ada' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
   })
 })

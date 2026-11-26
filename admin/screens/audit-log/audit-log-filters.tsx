@@ -8,7 +8,7 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import { useQuery } from '@tanstack/react-query'
 import { SlidersHorizontal, X } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { Button } from '@/components/ui/button'
+import { Button, mutedIconButtonClass } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
@@ -30,6 +30,11 @@ import { DateField } from '../../components/date-field'
 import { AuditActorPicker } from './audit-actor-picker'
 import { toDayInput, toRangeEnd, toRangeStart } from './audit-date-range'
 import { auditActionGroups, auditTargetTypes } from './audit-filter-options'
+import { createPortal } from 'react-dom'
+import { useMobileForegroundPortalTarget } from '@/components/ui/mobile-foreground-portal'
+import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { cn } from '@/lib/utils'
 
 // Radix Select can't hold an empty value, so "no filter" has its own.
 const any = 'any'
@@ -101,23 +106,39 @@ export const AuditLogFiltersButton = ({ filters, onChange }: AuditLogFiltersProp
   const connections = useConnections()
   const targetTypeName = useTargetTypeName()
   const activeCount = Object.values(filters).filter(Boolean).length
+  const { isMobile } = useIsMobile()
+  const portalTarget = useMobileForegroundPortalTarget()
 
   const set = (update: Partial<AuditEventQuery>) => onChange({ ...filters, ...update })
   const fromSelect = (value: string) => (value === any ? undefined : value)
   const { outcome, actorId, targetType, connectionId } = filters
 
-  return (
+  const popover = (
     <Popover>
       <PopoverTrigger asChild>
-        {/* Sized and styled like the other screens' header "+" button. */}
+        {/* On desktop it holds the header's last slot, so it takes the "+" create action's classes (`PageCreateAction`).
+            On phones it is a top-right circle like the search button, one control to its left. */}
         <Button
           type="button"
           variant="ghost"
           size="icon"
-          className="-mr-2 border bg-card hover:bg-accent max-md:mr-0"
+          className={cn(
+            'relative',
+            isMobile
+              ? [
+                  mutedIconButtonClass,
+                  mobileHeaderControlFillClass,
+                  'fixed right-[calc(1rem+var(--touch-height-lg))] z-30',
+                ]
+              : '-mr-2 border bg-card hover:bg-accent',
+          )}
+          style={isMobile ? { top: 'var(--header-control-top)' } : undefined}
           aria-label={activeCount > 0 ? t`Filters (${activeCount})` : t`Filters`}
         >
           <SlidersHorizontal />
+          {activeCount > 0 && (
+            <span aria-hidden="true" className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-primary" />
+          )}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-3">
@@ -155,6 +176,7 @@ export const AuditLogFiltersButton = ({ filters, onChange }: AuditLogFiltersProp
             <DateField
               id="audit-filter-to"
               value={toDayInput(filters.to)}
+              min={toDayInput(filters.from) || undefined}
               placeholder={<Trans>Any date</Trans>}
               onChange={(day) => set({ to: day ? toRangeEnd(day) : undefined })}
             />
@@ -221,15 +243,14 @@ export const AuditLogFiltersButton = ({ filters, onChange }: AuditLogFiltersProp
             </SelectContent>
           </Select>
         </Field>
-
-        <div className="flex justify-end border-t pt-3">
-          <Button type="button" variant="ghost" size="sm" disabled={activeCount === 0} onClick={() => onChange({})}>
-            <Trans>Clear filters</Trans>
-          </Button>
-        </div>
       </PopoverContent>
     </Popover>
   )
+  // On phones the floating header has no room for it, so it portals to the top-right corner.
+  if (isMobile) {
+    return portalTarget ? createPortal(popover, portalTarget) : null
+  }
+  return popover
 }
 
 /** Each set filter as a chip that removes it, and a way to clear them all. Renders nothing with no filter set. */

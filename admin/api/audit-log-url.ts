@@ -8,10 +8,21 @@ import type { AuditEventQuery, AuditOutcome } from '@shared/admin-api'
 /** The audit filters a link to the audit log can carry. Paging stays out of the URL. */
 type AuditLogFilters = Omit<AuditEventQuery, 'cursor' | 'limit'>
 
-const filterNames = ['action', 'outcome', 'actorId', 'targetType', 'targetId', 'connectionId', 'from', 'to'] as const
+const filterNames = [
+  'action',
+  'outcome',
+  'actorId',
+  'targetType',
+  'targetId',
+  'connectionId',
+  'from',
+  'to',
+  'q',
+] as const
 
 const outcomes: readonly AuditOutcome[] = ['success', 'failure', 'denied']
 
+/** Whether a search param names a known outcome. */
 const isOutcome = (value: string): value is AuditOutcome => (outcomes as readonly string[]).includes(value)
 
 /** A `from` or `to` bound only counts if it reads as a date; the screen formats it. */

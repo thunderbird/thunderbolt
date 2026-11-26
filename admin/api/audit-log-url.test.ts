@@ -20,6 +20,7 @@ describe('audit log URL', () => {
       connectionId: 'c1',
       from: '2026-11-01T00:00:00.000Z',
       to: '2026-11-17T23:59:59.999Z',
+      q: 'ada & co',
     }
     const path = auditLogPath({ ...filters, cursor: 'next', limit: 10 })
     expect(path).not.toContain('cursor')
@@ -27,7 +28,11 @@ describe('audit log URL', () => {
   })
 
   it('drops an unknown outcome and empty values', () => {
-    expect(parseAuditLogSearch('?outcome=maybe&action=&connectionId=c1')).toEqual({ connectionId: 'c1' })
+    expect(parseAuditLogSearch('?outcome=maybe&action=&q=&connectionId=c1')).toEqual({ connectionId: 'c1' })
+  })
+
+  it('writes a search with its filters', () => {
+    expect(auditLogPath({ outcome: 'denied', q: '100%' })).toBe('/admin/audit-log?outcome=denied&q=100%25')
   })
 
   it('drops a date bound that is not a date', () => {

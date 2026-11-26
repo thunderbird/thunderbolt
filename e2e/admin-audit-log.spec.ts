@@ -18,8 +18,7 @@ const pick = async (page: Page, filter: string, option: string) => {
 }
 
 /** The page has rendered its list, or its empty message. */
-const expectListed = (page: Page) =>
-  expect(eventRows(page).first().or(page.getByText('No events match these filters.'))).toBeVisible()
+const expectListed = (page: Page) => expect(eventRows(page).first().or(page.getByText('No events yet'))).toBeVisible()
 
 test('an admin action shows up after a reload, and the action filter narrows to it', async ({ page, adminApi }) => {
   await page.goto('/admin/audit-log')
@@ -48,14 +47,14 @@ test('a link to one target lists it alone, and outcome and date filters narrow i
 
   await openFilters(page)
   await pick(page, 'Outcome', 'Denied')
-  await expect(page.getByText('No events match these filters.')).toBeVisible()
+  await expect(page.getByText('No matching events.')).toBeVisible()
 
   await page.goto(targetLink)
   await expect(eventRows(page)).toHaveCount(1)
   await openFilters(page)
   await pickDate(page, 'From', new Date(Date.now() + 24 * 60 * 60 * 1000))
   await expect(page).toHaveURL(/[?&]from=/)
-  await expect(page.getByText('No events match these filters.')).toBeVisible()
+  await expect(page.getByText('No matching events.')).toBeVisible()
 })
 
 test('a sign-in names its person once, with a readable client and the IP', async ({ page, adminApi }) => {
@@ -86,4 +85,60 @@ test('a sign-in names its person once, with a readable client and the IP', async
   if (signIn.ipAddress) {
     await expect(row).toContainText(signIn.ipAddress)
   }
+})
+
+test("the search finds events by their target's name, keeps the filters, and lives in the URL", async ({
+  page,
+  adminApi,
+}) => {
+  const group = await adminApi.seedGroup()
+
+  await page.goto('/admin/audit-log?action=local_group.created')
+  await expectListed(page)
+  // The page's search toggle; on desktop the sidebar's app-wide Search comes first.
+  await page.getByRole('button', { name: 'Search', exact: true }).last().click()
+  await page.getByPlaceholder('Search events').fill(group.name)
+
+  await expect(page).toHaveURL(/[?&]q=/)
+  await expect(page).toHaveURL(/[?&]action=local_group\.created/)
+  await expect(eventRows(page)).toHaveCount(1)
+  await expect(eventRows(page)).toContainText(group.name)
+
+  await page.reload()
+  await expect(page.getByPlaceholder('Search events')).toHaveValue(group.name)
+  await expect(eventRows(page)).toHaveCount(1)
+
+  await page.getByPlaceholder('Search events').fill(`${group.name} nobody`)
+  await expect(page.getByText('No matching events.')).toBeVisible()
+})
+
+test('opening an event shows its actor and target in the panel, linked to their own screens', async ({
+  page,
+  adminApi,
+}) => {
+  const group = await adminApi.seedGroup()
+  const { events } = await adminApi.request<AuditEventPage>(
+    'GET',
+    `admin/audit-events?action=local_group.created&targetType=local_group&targetId=${group.id}`,
+  )
+  const [created] = events
+  expect(created.actorLabel).toBeTruthy()
+
+  await page.goto(`/admin/audit-log?targetType=local_group&targetId=${group.id}`)
+  const row = page.getByRole('button', {
+    name: `Open Group created ${group.name} by ${created.actorLabel}`,
+    exact: true,
+  })
+  // No row highlight check: on narrow screens the panel covers the list.
+  await row.click()
+
+  const panel = page.getByRole('complementary').or(page.getByRole('dialog'))
+  await expect(panel.getByRole('heading', { name: 'Group created', exact: true })).toBeVisible()
+  await expect(panel.getByRole('link', { name: created.actorLabel ?? '', exact: true })).toBeVisible()
+  await expect(panel.getByText(created.actorId ?? '', { exact: true })).toBeVisible()
+  await expect(panel.getByText(group.id, { exact: true })).toBeVisible()
+
+  await panel.getByRole('link', { name: group.name, exact: true }).click()
+  await expect(page).toHaveURL(/\/admin\/groups$/)
+  await expect(page.getByRole('heading', { name: group.name, exact: true })).toBeVisible()
 })

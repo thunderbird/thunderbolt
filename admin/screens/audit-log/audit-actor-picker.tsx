@@ -4,10 +4,12 @@
 
 import { useLingui } from '@lingui/react/macro'
 import { useQuery } from '@tanstack/react-query'
-import { useDeferredValue, useState } from 'react'
+import { useState } from 'react'
 import { Combobox } from '@/components/ui/combobox'
 import { adminQueryKeys } from '../../api/query-keys'
 import { useAdminApi } from '../../api/use-admin-api'
+import { useDebounce } from '@/hooks/use-debounce'
+import { searchDebounceMs } from '../../api/search-debounce'
 
 type AuditActorPickerProps = {
   id: string
@@ -24,7 +26,7 @@ export const AuditActorPicker = ({ id, actorId, onChange }: AuditActorPickerProp
   const api = useAdminApi()
   const [search, setSearch] = useState('')
   const [picked, setPicked] = useState<{ id: string; label: string } | null>(null)
-  const q = useDeferredValue(search.trim())
+  const q = useDebounce(search.trim(), searchDebounceMs)
   const members = useQuery({
     queryKey: adminQueryKeys.members.list(q),
     queryFn: () => api.members.list({ q }),

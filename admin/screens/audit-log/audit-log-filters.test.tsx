@@ -5,7 +5,7 @@
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import type { AuditEventQuery } from '@shared/admin-api'
 import '@testing-library/jest-dom'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
 import { createAdminTestHarness, flush, pickDate, type FakeRequest } from '../../test-utils'
 import { toRangeEnd, toRangeStart } from './audit-date-range'
@@ -119,6 +119,7 @@ describe('AuditLogFiltersButton and AuditLogFilterChips', () => {
     fireEvent.click(screen.getByRole('combobox', { name: 'Actor' }))
     fireEvent.change(screen.getByPlaceholderText('Search by name or email'), { target: { value: 'grace' } })
     await flush()
+    await flush()
 
     expect(requests.some((request) => request.path === 'admin/members' && request.search.get('q') === 'grace')).toBe(
       true,
@@ -162,19 +163,6 @@ describe('AuditLogFiltersButton and AuditLogFilterChips', () => {
     expect(screen.getByText('u9')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Remove the target filter' }))
     expect(onChange).toHaveBeenLastCalledWith({ targetType: 'user', targetId: undefined })
-  })
-
-  it('clears every filter from the end of the filter options, and disables it when none is set', async () => {
-    const { onChange } = await renderFilters({ outcome: 'denied' })
-    openFilters()
-    const dialog = screen.getByRole('dialog')
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Clear filters' }))
-    expect(onChange).toHaveBeenLastCalledWith({})
-
-    cleanup()
-    await renderFilters()
-    openFilters()
-    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Clear filters' })).toBeDisabled()
   })
 
   it('clears every filter, and offers it only when one is set', async () => {

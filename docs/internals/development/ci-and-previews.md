@@ -5,7 +5,7 @@
 | Workflow                  | Trigger                                   | Failure mode             | Reproduce locally               |
 | ------------------------- | ----------------------------------------- | ------------------------ | ------------------------------- |
 | `ci.yml`                  | PR (any base branch) + push to `main`     | Red check                | See the job table below         |
-| `e2e.yml`                 | PR + push to `main`                       | Red check                | `bun run e2e`                   |
+| `e2e.yml`                 | PR (path-gated) + push to `main`          | Red check                | `bun run e2e`                   |
 | `security.yml`            | PR + push to `main`                       | Red check                | n/a                             |
 | `lint-pr-title.yml`       | PR opened / edited / synchronized         | Red check                | n/a                             |
 | `pr-metrics.yml`          | PR                                        | Advisory comment         | `bun run build && bun run size` |
@@ -21,21 +21,28 @@ Also part of the same machinery:
 | `previews-shared-deploy.yml`  | Manual, plus Mondays 07:00 UTC                                    |
 | `nightly-images.yml`          | 05:00 UTC                                                         |
 | `images-publish.yml`          | Push to `main` under a path filter, or called by `preview-deploy` |
+| `image-scan.yml`              | After `images-publish` or `nightly-images` succeeds, plus manual  |
 | `evals.yml`, `test-build.yml` | Manual only                                                       |
+
+`image-scan.yml` runs Trivy over the six published `:latest` images and reports HIGH and CRITICAL
+findings that have a fix to code scanning, one category per image. Findings never fail the job. It covers
+what Dependabot's security alerts can't see: the packages inside container images.
 
 Release workflows: [RELEASE.md](../../../RELEASE.md).
 
 ## The `ci.yml` jobs
 
-| Job             | Runs when                                                                      | What it does                                                                          |
-| --------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| `typescript`    | Always                                                                         | `tsc --noEmit`, `bun run lint`, `bun run test:5x`                                     |
-| `backend`       | Always                                                                         | Backend type-check, lint, tests (5x), WS suite, `./server` smoke (OTEL off and on)    |
-| `localization`  | `src/**`, `shared/**`, i18n/build config, `backend/src/emails/**`, `bun.lock`  | `bun run i18n:check`, a catalog-compiling build, the macro tripwire                   |
-| `agent-core`    | `shared/agent-core/**`, `vite.config.ts`, `package.json`, `bun.lock`, `ci.yml` | `bun run test:agent-core:5x` plus the Chromium/WebKit browser check                   |
-| `cli`           | `cli/**`, `shared/agent-core/**` and the shared contracts the CLI imports      | CLI type-check, tests (5x), build, and an artifact smoke test                         |
-| `wasm-artifact` | `src/acp/iroh/pkg/**`, crate inputs, source-manifest tests, or `ci.yml`        | Staleness gate, source-manifest tests, `SOURCES.txt` and `CHECKSUMS.txt` verification |
-| `rust`          | `src-tauri/**` Rust sources/manifests or `crates/**`                           | The RUSTSEC tripwire, then `cargo build`/`clippy -D warnings`/`test`                  |
+| Job             | Runs when                                                                                                                                   | What it does                                                                          |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `typescript`    | Always                                                                                                                                      | `tsc --noEmit`, `bun run lint`, `bun run test:ci`                                     |
+| `office`        | `src/office/**`, the files its suites load eagerly, the build and test config; every push                                                   | `bun run test:office:ci`: the Office script suites, apart from `test:ci`              |
+| `backend`       | Always                                                                                                                                      | Backend type-check, lint, tests, WS suite, `./server` smoke (OTEL off and on)         |
+| `small-checks`  | `deploy/pulumi/**`, `deploy/k8s/**`, `miniapps/**`, or `ci.yml`                                                                             | Pulumi type-check and tests, `helm lint` + `helm unittest`, miniapps lint/types/tests |
+| `localization`  | `src/**`, `shared/**`, i18n/build config, `backend/src/emails/**`, `bun.lock`                                                               | `bun run i18n:check`, a catalog-compiling build, the macro tripwire                   |
+| `agent-core`    | `shared/agent-core/**`, `shared/reasoning-effort*.ts`, browser-check/Chrome scripts, `vite.config.ts`, `package.json`, `bun.lock`, `ci.yml` | `bun run test:agent-core:5x` plus the Chromium/WebKit browser check                   |
+| `cli`           | `cli/**`, `shared/agent-core/**` and the shared contracts the CLI imports                                                                   | CLI type-check, tests (5x), build, and an artifact smoke test                         |
+| `wasm-artifact` | `src/acp/iroh/pkg/**`, crate inputs, source-manifest tests, or `ci.yml`                                                                     | Staleness gate, source-manifest tests, `SOURCES.txt` and `CHECKSUMS.txt` verification |
+| `rust`          | `src-tauri/**` Rust sources/manifests or `crates/**`                                                                                        | The RUSTSEC tripwire, then `cargo build`/`clippy -D warnings`/`test`                  |
 
 Only `typescript` and `backend` run on every PR; the rest are gated by `detect-changes`
 (`dorny/paths-filter`), so **"CI passed" can mean "your job never ran"**. `agent-core` runs
@@ -48,21 +55,26 @@ Both run only in the `husky` pre-commit hook via
 `make format`), so `--no-verify` can land unformatted code. `bun run check` runs the full
 local set (type-check, lint, format-check, license-check).
 
-## Every test job runs five times
+## Test jobs repeat runs to catch flakes
 
-| Suite        | CI command                                    | Per-test timeout in CI         |
-| ------------ | --------------------------------------------- | ------------------------------ |
-| Frontend     | `bun run test:5x`                             | Disabled (`--timeout 3600000`) |
-| Backend      | `bun test … --randomize --rerun-each 5`       | Disabled (`--timeout 3600000`) |
-| `agent-core` | `bun run test:agent-core:5x`                  | 5s                             |
-| CLI          | `cd cli && bun run test:5x`                   | 5s                             |
-| Backend WS   | `bun run test:backend:ws` (once, ≤5 attempts) | Disabled (`--timeout 3600000`) |
+| Suite        | CI command                                               | Per-test timeout in CI         |
+| ------------ | -------------------------------------------------------- | ------------------------------ |
+| Frontend     | `bun run test:ci` (`RERUN_EACH` = 1 on PRs, 5 on `main`) | Disabled (`--timeout 3600000`) |
+| Office       | `bun run test:office:ci` (same)                          | Disabled (`--timeout 3600000`) |
+| Backend      | `bun test … --rerun-each ${RERUN_EACH:-1}` (same)        | Disabled (`--timeout 3600000`) |
+| `agent-core` | `bun run test:agent-core:5x`                             | 5s                             |
+| CLI          | `cd cli && bun run test:5x`                              | 5s                             |
+| Backend WS   | `bun run test:backend:ws` (once, ≤5 attempts)            | Disabled (`--timeout 3600000`) |
 
+- On pull requests the frontend, Office and backend suites run once, then
+  `bun scripts/rerun-changed-tests.ts <frontend|office|backend>` re-runs only the test files the
+  PR changed, 5x. A new flake almost always lives in a changed test, and running everything 5x
+  was most of the critical path. Push to `main` still runs every suite 5x.
 - `bun run test` is not what CI runs: `--randomize` plus the 5x repeat catches
   order-dependent and one-in-fifty failures. Reproduce with the `:5x` script.
 - The disabled timeout (Bun's `--timeout 0` hangs async tests) leans on step and job caps:
-  10 minutes on the backend test step, 15 or 20 on the jobs. Local `test` and
-  `test:backend` keep the 5-second timeout.
+  5 minutes per Backend WS attempt, 10 on the backend test step, 15 on the `backend` job and 20 on
+  `typescript` and `office`. Local `test` and `test:backend` keep the 5-second timeout.
 
 ### Why the WebSocket suite is excluded
 
@@ -74,7 +86,7 @@ build.
 ## One Bun version everywhere
 
 Every `setup-bun` step, every `oven/bun` image in `deploy/docker/` and
-`.thunderbot/Dockerfile.dev`, and the `BUN_VERSION` of both services in
+`scripts/thunderbot/Dockerfile.dev`, and the `BUN_VERSION` of both services in
 `deploy/render/public-agent.yaml` pin Bun 1.4.4. Bump them together, along with `BUN_VERSION`
 on the production backend, which is set in the Render dashboard. A `setup-bun` step without
 `bun-version` reads `packageManager`, then `engines.bun`, from `package.json`, and installs the
@@ -139,7 +151,7 @@ which resolves from the repo root. The `cli` job asserts `@earendil-works/pi-ai`
 
 **CI's own scripts are unit-tested by the frontend suite.**
 `.github/scripts/post-pr-metrics.test.js`, `post-eval-results.test.ts` and
-`review-orchestrator.test.mjs` are listed in the `test` and `test:5x` scripts, so editing a
+`review-orchestrator.test.mjs` are listed in the `test` and `test:ci` scripts, so editing a
 CI script can break `bun run test`.
 
 **PR titles.** `lint-pr-title.yml` accepts the legacy `THU-123: …` form or Conventional
@@ -149,6 +161,10 @@ Commits (`feat`, `fix`, `chore`, `docs`, `refactor`, `perf`, `test`, `ci`, `buil
 **Semgrep.** Diff-aware against the base SHA on PRs, full scan on pushes to `main`; any
 report uploads as SARIF. The PR comment is skipped on fork PRs (read-only token, the
 comments API would 403), and the whole job is skipped for Dependabot.
+
+**e2e is path-gated on PRs.** `e2e.yml` skips pull requests that only touch `docs/`, `web/`,
+Markdown, the Helm chart, the Pulumi stacks, Tauri Rust sources, or `.github/` other than
+`e2e.yml` itself. Push to `main` is not gated, so a wrongly excluded path still reds there.
 
 **e2e sharding.** Two Playwright shards each upload a blob report; `e2e-report` merges
 them into one HTML artifact (14-day retention). Failure screenshots upload per shard; a
@@ -171,8 +187,9 @@ gzipped bundle size, test coverage, Lighthouse scores.
   with a `pr-metrics-main-` prefix fallback, so a base commit with no entry is compared
   against an earlier `main` build.
 - Lighthouse is advisory: [`lighthouserc.js`](../../../lighthouserc.js) sets every assertion
-  to `warn` and reports the median of three runs. It scores the **Render** preview, not the
-  Pulumi stack.
+  to `warn` and reports the median of three runs. It scores the **Pulumi app preview's
+  signed-out entry**, which may follow SSO redirects to the identity provider. Use the
+  [performance harness](performance.md) for authenticated chat and interaction measurements.
 
 ### `thunder-deep-review.yml`
 
@@ -184,7 +201,8 @@ Runs the `thunder-deep-review` skill read-only and posts an inline review.
   reds the job instead of recording a fake clean review.
 - Hard-gated to same-repo, non-draft, non-Dependabot PRs: fork code must never run with
   the API key.
-- Sleeps 60 seconds so rapid pushes cancel at zero model cost, sequences behind the
+- Waits 60 seconds on the `review-debounce` environment's wait timer (before a runner is
+  assigned, `deployment: false`) so rapid pushes cancel at zero model cost, sequences behind the
   external review bots, and skips findings they already reported.
 - Escalates to a deeper fan-out at ≥600 changed lines, ≥40 files, or the `review:deep`
   label.
@@ -195,10 +213,10 @@ Runs the `thunder-deep-review` skill read-only and posts an inline review.
 
 A PR against `main` gets two previews, and they are not equivalent.
 
-| Preview                 | URL                                                                           | What it is                                                                                      | Use it for                                                         |
-| ----------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Render (auto)           | `https://thunderbolt-pr-<n>.onrender.com`                                     | The web app, deployed by Render                                                                 | Quick UI checks; it is what Lighthouse scores                      |
-| Pulumi stack on Fargate | `app-pr-<n>.preview.thunderbolt.io` (plus `api-pr-<n>`, `thunderbolt-pr-<n>`) | The PR's own backend, frontend and marketing services, with their own logical Postgres database | Anything touching sync, SSO, migrations, or cross-device behaviour |
+| Preview                 | URL                                                                           | What it is                                                                                      | Use it for                                                                                                                                               |
+| ----------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Render (auto)           | `https://thunderbolt-pr-<n>.onrender.com`                                     | The web app, deployed by Render                                                                 | Quick UI checks                                                                                                                                          |
+| Pulumi stack on Fargate | `app-pr-<n>.preview.thunderbolt.io` (plus `api-pr-<n>`, `thunderbolt-pr-<n>`) | The PR's own backend, frontend and marketing services, with their own logical Postgres database | Sync, SSO, migrations, cross-device behaviour and signed-out Lighthouse scores; use the [performance harness](performance.md) for signed-in measurements |
 
 Fork PRs get the Pulumi preview only after a maintainer approves the run (see
 [Preview lifecycle](#preview-lifecycle)).
@@ -246,7 +264,13 @@ realm config or different PowerSync sync rules must fall back to a monolithic de
 They deploy through `pull_request_target` behind the `fork-preview-approval` environment,
 so a maintainer approves **every push**, not every PR; that is why a fork preview sits
 pending. Under that trigger the workflow file and the Pulumi program come from `main`, so
-a fork can change image contents but never the infrastructure code.
+a fork can change image contents but never the infrastructure code. The approval job's
+name shows the commit SHA the run will build.
+
+The approval job fails unless the environment has required reviewers. GitHub creates a
+missing environment with no rules, and an environment without reviewers would let the job
+start unapproved. Same-repo PRs skip this gate: only collaborators with write access can
+push a branch here, and their previews deploy automatically.
 
 ### Teardown: on close, hourly, and by hand
 
@@ -279,18 +303,21 @@ a teardown.
 
 ## Scripts the pipeline depends on
 
-| Script                                                  | Invoked by                                           | Notes                                                                 |
-| ------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------------------------------- |
-| `scripts/check-glib-variantstriter.sh`                  | `ci.yml` `rust` job                                  | RUSTSEC-2024-0429 tripwire; runs before the build because it is cheap |
-| `scripts/agent-core-browser-check.ts`                   | `bun run test:agent-core:browser` (`agent-core` job) | Chromium + WebKit check of the production agent chunk                 |
-| `crates/thunderbolt-acp-client/build.sh`                | You, by hand                                         | Regenerates `src/acp/iroh/pkg`; `--verify` reproduces the checksums   |
-| `crates/thunderbolt-acp-client/source-manifest.sh`      | `build.sh` and `ci.yml` `wasm-artifact` job          | Hashes current crate inputs for `SOURCES.txt`                         |
-| `crates/thunderbolt-acp-client/source-manifest.test.sh` | `ci.yml` `wasm-artifact` job                         | Tests source drift and build failures without a wasm toolchain        |
-| `scripts/drop-preview-db.sh`                            | `stack-deploy.yml` `destroy` job                     | Drops the per-PR logical database before `pulumi destroy`; idempotent |
-| `.github/scripts/review-orchestrator.mjs`               | `thunder-deep-review.yml`                            | All GitHub I/O for the review bot; unit-tested by `bun run test`      |
-| `.github/scripts/post-pr-metrics.cjs`                   | `pr-metrics.yml`                                     | Renders the metrics comment; unit-tested by `bun run test`            |
-| `.github/scripts/post-eval-results.ts`                  | `evals.yml`                                          | Unit-tested by `bun run test`                                         |
-| `scripts/lingui-macro-bun-shim.ts`                      | `--preload` on every `eval*` script                  | See below                                                             |
+| Script                                                  | Invoked by                                           | Notes                                                                           |
+| ------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `scripts/check-glib-variantstriter.sh`                  | `ci.yml` `rust` job                                  | RUSTSEC-2024-0429 tripwire; runs before the build because it is cheap           |
+| `scripts/agent-core-browser-check.ts`                   | `bun run test:agent-core:browser` (`agent-core` job) | Chromium + WebKit check of the production agent chunk                           |
+| `crates/thunderbolt-acp-client/build.sh`                | You, by hand                                         | Regenerates `src/acp/iroh/pkg`; `--verify` reproduces the checksums             |
+| `crates/thunderbolt-acp-client/source-manifest.sh`      | `build.sh` and `ci.yml` `wasm-artifact` job          | Hashes current crate inputs for `SOURCES.txt`                                   |
+| `crates/thunderbolt-acp-client/source-manifest.test.sh` | `ci.yml` `wasm-artifact` job                         | Tests source drift and build failures without a wasm toolchain                  |
+| `scripts/drop-preview-db.sh`                            | `stack-deploy.yml` `destroy` job                     | Drops the per-PR logical database before `pulumi destroy`; idempotent           |
+| `.github/scripts/review-orchestrator.mjs`               | `thunder-deep-review.yml`                            | All GitHub I/O for the review bot; unit-tested by `bun run test`                |
+| `.github/scripts/post-pr-metrics.cjs`                   | `pr-metrics.yml`                                     | Renders the metrics comment; unit-tested by `bun run test`                      |
+| `.github/scripts/post-eval-results.ts`                  | `evals.yml`                                          | Unit-tested by `bun run test`                                                   |
+| `.github/scripts/docs-audit-select.ts`                  | `docs-audit.yml`                                     | Picks the commits and docs for the weekly audit; tested by `bun run test`       |
+| `.github/scripts/docs-audit-check-patch.ts`             | `docs-audit.yml` `publish` job                       | Refuses an audit patch that touches anything but docs; tested by `bun run test` |
+| `scripts/lingui-macro-bun-shim.ts`                      | `--preload` on every `eval*` script                  | See below                                                                       |
+| `scripts/prune-unreachable-deps.ts`                     | `deploy/docker/backend.Dockerfile`                   | Works around `--production` installing dev-only optional peers                  |
 
 Bun has no Babel pass, so a Lingui macro imported under plain `bun run` resolves to a stub
 that throws, and the eval CLIs reach UI modules transitively. Every `eval*` script in

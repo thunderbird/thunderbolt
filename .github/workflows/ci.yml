@@ -26,6 +26,7 @@ jobs:
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       agent-core: ${{ steps.filter.outputs.agent-core }}
+      office: ${{ steps.filter.outputs.office }}
       cli: ${{ steps.filter.outputs.cli }}
       wasm-artifact: ${{ steps.filter.outputs.wasm-artifact }}
       wasm-provenance: ${{ steps.filter.outputs.wasm-provenance }}
@@ -33,6 +34,7 @@ jobs:
       localization: ${{ steps.filter.outputs.localization }}
       miniapps: ${{ steps.filter.outputs.miniapps }}
       helm: ${{ steps.filter.outputs.helm }}
+      pulumi: ${{ steps.filter.outputs.pulumi }}
       qa: ${{ steps.filter.outputs.qa }}
     steps:
       - name: Checkout code
@@ -54,8 +56,55 @@ jobs:
               - 'src-tauri/.cargo/**'
               - 'src-tauri/capabilities/**'
               - 'crates/**'
+            # The Office sources, every file the two suites and their preload load eagerly, and the
+            # build and test configuration. Lazy imports that reach the rest of the app are left out,
+            # so update the list when the suites' imports change; main runs the job on every push.
+            office:
+              - 'src/office/**'
+              - 'src/files/transformers/**'
+              - 'src/files/unzip-within-limits.ts'
+              - 'src/api/config-store.ts'
+              - 'src/stores/local-settings-store.ts'
+              - 'src/i18n/active-locale.ts'
+              - 'src/i18n/resolve-locale.ts'
+              - 'src/i18n/identity-macros.tsx'
+              - 'src/lib/app-version-unsupported.ts'
+              - 'src/lib/app-version.ts'
+              - 'src/lib/auth-mode.ts'
+              - 'src/lib/auth-token.ts'
+              - 'src/lib/file-blob-storage.ts'
+              - 'src/lib/http.ts'
+              - 'src/lib/import-when-reachable.ts'
+              - 'src/lib/install-webkit-own-property.ts'
+              - 'src/lib/local-data-owner.ts'
+              - 'src/lib/memoize.ts'
+              - 'src/lib/platform.ts'
+              - 'src/lib/provider-mode.ts'
+              - 'src/lib/safe-file-name.ts'
+              - 'src/lib/session-cache.ts'
+              - 'src/lib/tool-output.ts'
+              - 'shared/agent-core/client-identity.ts'
+              - 'shared/agent-core/mcp-tools.ts'
+              - 'shared/compare-semver.ts'
+              - 'shared/i18n/locales.ts'
+              - 'shared/lib/hash.ts'
+              - 'shared/lib/is-record.ts'
+              - 'src/test-utils/fake-timers.ts'
+              - 'src/test-utils/web-locks.ts'
+              - 'src/bunfig.toml'
+              - 'happydom.ts'
+              - 'src/testing-library.ts'
+              - 'scripts/office-sandbox-script.ts'
+              - 'vite.config.ts'
+              - 'tsconfig.json'
+              - 'shared/tsconfig.base.json'
+              - 'package.json'
+              - 'bun.lock'
+              - 'bunfig.toml'
+              - '.github/workflows/ci.yml'
             agent-core:
               - 'shared/agent-core/**'
+              - 'shared/reasoning-effort*.ts'
               - 'scripts/agent-core-browser-check.ts'
               - 'scripts/chrome.ts'
               - 'scripts/install-chrome.ts'
@@ -69,6 +118,7 @@ jobs:
             cli:
               - 'cli/**'
               - 'shared/agent-core/**'
+              - 'shared/reasoning-effort*.ts'
               - 'shared/cli-device-id.ts'
               - 'shared/defaults/models.ts'
               - 'shared/inference-usage.ts'
@@ -110,6 +160,9 @@ jobs:
               # Also scanned by the email catalog: it authors step-up prose outside a template.
               - 'backend/src/lib/security-notifications.tsx'
               - 'backend/lingui.config.ts'
+            pulumi:
+              - 'deploy/pulumi/**'
+              - '.github/workflows/ci.yml'
             helm:
               - 'deploy/k8s/**'
               - '.github/workflows/ci.yml'
@@ -177,8 +230,19 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      # Pull requests run the suite once, then re-run only the test files they changed 5x:
+      # that is where a new flake comes from. Push to main runs the whole suite 5x.
       - name: Run tests
-        run: bun run test:5x
+        env:
+          RERUN_EACH: ${{ github.event_name == 'push' && 5 || 1 }}
+        run: bun run test:ci
+
+      - name: Re-run changed tests (5x)
+        if: github.event_name == 'pull_request'
+        run: bun scripts/rerun-changed-tests.ts frontend
+
+      - name: Check performance harness
+        run: bun run test:performance
 
       # Upload source maps to PostHog only for main branch
       - name: Build application with source maps
@@ -217,6 +281,50 @@ jobs:
         with:
           path: .metrics-baseline
           key: pr-metrics-main-${{ github.sha }}
+
+  # The Office script suites run real WebAssembly (QuickJS, Excelize, IronCalc) and take about
+  # two thirds of the frontend tests' time, so they run here, in parallel with the
+  # typescript job, which leaves them out of `test:ci`. Path-gated on pull requests like
+  # agent-core/cli; every push runs it, so a change the filter misses still fails on main.
+  office:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.office == 'true' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The merge commit and its base parent, for the changed-test re-run.
+          fetch-depth: 2
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run Office script tests
+        env:
+          RERUN_EACH: ${{ github.event_name == 'push' && 5 || 1 }}
+        run: bun run test:office:ci
+
+      - name: Re-run changed Office script tests (5x)
+        if: github.event_name == 'pull_request'
+        run: bun scripts/rerun-changed-tests.ts office
 
   # Localization gates (THU-806).
   #  1. Extraction check — re-runs `lingui extract` (idempotent; Lingui v6
@@ -290,16 +398,21 @@ jobs:
           fi
           echo "No untransformed Lingui macros in the bundle."
 
-  # Chart unit tests (helm-unittest). Runs only when the chart or this workflow
-  # changes. helm-unittest is installed from its release tarball, pinned by
-  # version and sha256, rather than with `helm plugin install`: on Helm 4 that
-  # needs `--verify=false` and runs the plugin repo's install script.
-  helm:
+  # The Pulumi program, the Helm chart and the miniapps workspace each take well under a
+  # minute to check, so they share one runner instead of queueing for three. Each step is
+  # gated on its own path filter.
+  small-checks:
     needs: detect-changes
-    if: needs.detect-changes.outputs.helm == 'true'
+    if: needs.detect-changes.outputs.pulumi == 'true' || needs.detect-changes.outputs.helm == 'true' || needs.detect-changes.outputs.miniapps == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     env:
+      PULUMI: ${{ needs.detect-changes.outputs.pulumi }}
+      HELM: ${{ needs.detect-changes.outputs.helm }}
+      MINIAPPS: ${{ needs.detect-changes.outputs.miniapps }}
+      # helm-unittest is installed from its release tarball, pinned by version and sha256,
+      # rather than with `helm plugin install`: on Helm 4 that needs `--verify=false` and
+      # runs the plugin repo's install script.
       HELM_UNITTEST_VERSION: 1.2.1
       # sha256 of helm-unittest-linux-amd64-<version>.tgz, from the release's
       # helm-unittest-checksum.sha. When bumping, first verify that file's GPG
@@ -309,7 +422,24 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Install Bun
+        if: env.PULUMI == 'true' || env.MINIAPPS == 'true'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Install Pulumi dependencies
+        if: env.PULUMI == 'true'
+        run: bun install --frozen-lockfile
+        working-directory: deploy/pulumi
+
+      - name: Type check and test Pulumi
+        if: env.PULUMI == 'true'
+        run: bun run typecheck && bun run test
+        working-directory: deploy/pulumi
+
       - name: Install helm-unittest
+        if: env.HELM == 'true'
         run: |
           archive="helm-unittest-linux-amd64-${HELM_UNITTEST_VERSION}.tgz"
           curl -fsSLO "https://github.com/helm-unittest/helm-unittest/releases/download/v${HELM_UNITTEST_VERSION}/${archive}"
@@ -319,10 +449,59 @@ jobs:
           tar -xzf "${archive}" -C "${plugin_dir}"
 
       - name: Lint chart
+        if: env.HELM == 'true'
         run: helm lint deploy/k8s --set backend.betterAuthSecretBase64=dGVzdA==
 
       - name: Test chart
+        if: env.HELM == 'true'
         run: helm unittest deploy/k8s
+
+      - name: Cache Bun dependencies (miniapps)
+        if: env.MINIAPPS == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.bun/install/cache
+            miniapps/node_modules
+            miniapps/sdk/node_modules
+            miniapps/template/node_modules
+            miniapps/samples/finance/node_modules
+          key: miniapps-bun-${{ hashFiles('miniapps/bun.lock') }}
+          restore-keys: |
+            miniapps-bun-
+
+      # Lint and format live at miniapps/; each package installs and typechecks on
+      # its own, matching how cli/ and backend/ are set up. Without these steps the
+      # root `eslint src shared` never sees these files and nothing enforces them.
+      - name: Install miniapps tooling
+        if: env.MINIAPPS == 'true'
+        run: cd miniapps && bun install --frozen-lockfile
+
+      - name: Lint miniapps
+        if: env.MINIAPPS == 'true'
+        run: cd miniapps && bun run lint
+
+      - name: Check miniapps formatting
+        if: env.MINIAPPS == 'true'
+        run: cd miniapps && bun run format-check
+
+      # One install at the workspace root covers every package (THU-906), so the
+      # per-package `bun install` this loop used to run is gone.
+      - name: Type check each miniapps package
+        if: env.MINIAPPS == 'true'
+        run: |
+          for pkg in sdk template samples/finance; do
+            echo "== $pkg"
+            (cd "miniapps/$pkg" && bunx tsc --noEmit)
+          done
+
+      # The guest SDK bridge is 480 lines of postMessage protocol and had no
+      # tests, so guest origin filtering, request/reply disambiguation and
+      # disconnect settlement were covered by nothing. The host-side suite does
+      # not stand in for it: that exercises Thunderbolt's half.
+      - name: Test miniapps
+        if: env.MINIAPPS == 'true'
+        run: cd miniapps && bun run test
 
   # shared/agent-core is an isolated module (also consumed by cli/). Its unit tests
   # are NOT part of the default `bun run test`. Include dependency/build changes:
@@ -370,60 +549,6 @@ jobs:
 
       - name: Check production agent-core in browsers
         run: bun run test:agent-core:browser
-
-  miniapps:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.miniapps == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Install Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: 1.4.4
-
-      - name: Cache Bun dependencies (miniapps)
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.bun/install/cache
-            miniapps/node_modules
-            miniapps/sdk/node_modules
-            miniapps/template/node_modules
-            miniapps/samples/finance/node_modules
-          key: miniapps-bun-${{ hashFiles('miniapps/bun.lock') }}
-          restore-keys: |
-            miniapps-bun-
-
-      # Lint and format live at miniapps/; each package installs and typechecks on
-      # its own, matching how cli/ and backend/ are set up. Without this job the
-      # root `eslint src shared` never sees these files and nothing enforces them.
-      - name: Install miniapps tooling
-        run: cd miniapps && bun install --frozen-lockfile
-
-      - name: Lint miniapps
-        run: cd miniapps && bun run lint
-
-      - name: Check miniapps formatting
-        run: cd miniapps && bun run format-check
-
-      # One install at the workspace root covers every package (THU-906), so the
-      # per-package `bun install` this loop used to run is gone.
-      - name: Type check each package
-        run: |
-          for pkg in sdk template samples/finance; do
-            echo "== $pkg"
-            (cd "miniapps/$pkg" && bunx tsc --noEmit)
-          done
-
-      # The guest SDK bridge is 480 lines of postMessage protocol and had no
-      # tests, so guest origin filtering, request/reply disambiguation and
-      # disconnect settlement were covered by nothing. The host-side suite does
-      # not stand in for it: that exercises Thunderbolt's half.
-      - name: Test miniapps
-        run: cd miniapps && bun run test
 
   # The weekly QA agent's tests and type check sit outside `bun run test` and the
   # root tsconfig, so they run here when it or a file it depends on changes.
@@ -716,6 +841,9 @@ jobs:
           --health-retries 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The merge commit and its base parent, for the changed-test re-run.
+          fetch-depth: 2
 
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -747,12 +875,20 @@ jobs:
           cd backend
           bun run lint
 
-      - name: Test backend (5x, excludes same-process WS event-delivery flakes)
+      # Once on pull requests (plus a 5x re-run of the changed test files), 5x on push to main.
+      - name: Test backend (excludes same-process WS event-delivery flakes)
         timeout-minutes: 10
         # No per-test timeout in CI (large value ≈ disabled — bun `--timeout 0` hangs async tests):
         # the 10-minute step cap above is the real ceiling, so tests that only get slow under
         # CI/PGlite contention don't spuriously fail. Local `test:backend` keeps the 5s timeout.
-        run: cd backend && bun test --timeout 3600000 --randomize --rerun-each 5 $(find src \( -name '*.test.ts' -o -name '*.test.tsx' \) -not -path '*proxy/ws-e2e.test.ts' -not -path '*haystack/routes.test.ts')
+        env:
+          RERUN_EACH: ${{ github.event_name == 'push' && 5 || 1 }}
+        run: cd backend && bun test --timeout 3600000 --randomize --rerun-each "${RERUN_EACH:-1}" $(find src \( -name '*.test.ts' -o -name '*.test.tsx' \) -not -path '*proxy/ws-e2e.test.ts' -not -path '*haystack/routes.test.ts')
+
+      - name: Re-run changed backend tests (5x)
+        if: github.event_name == 'pull_request'
+        timeout-minutes: 10
+        run: bun scripts/rerun-changed-tests.ts backend
 
       # ws-e2e.test.ts + haystack/routes.test.ts wait on Bun same-process WS close/
       # message events that Bun drops/delays under load. Systematic causes (shared

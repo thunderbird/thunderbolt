@@ -8,6 +8,7 @@ import type { Index } from 'drizzle-orm/sqlite-core'
 import { sql } from 'drizzle-orm'
 import type { SQLiteTable } from 'drizzle-orm/sqlite-core'
 import * as tablesModule from './tables'
+import { AppSchema } from './powersync/schema'
 
 const tables = Object.values(tablesModule) as SQLiteTable[]
 
@@ -36,6 +37,11 @@ const buildCreateTableSQL = (table: SQLiteTable): string => {
       constraints.push('NOT NULL')
     }
     parts.push(constraints.join(' '))
+  }
+
+  // PowerSync adds this write-only column separately from ordinary synced columns.
+  if (AppSchema.tables.some((candidate) => candidate.name === config.name && candidate.trackMetadata)) {
+    parts.push('"_metadata" TEXT')
   }
 
   return `CREATE TABLE IF NOT EXISTS ${quoteId(config.name)} (${parts.join(', ')})`

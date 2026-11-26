@@ -73,3 +73,24 @@ describe('ProjectForm in edit mode', () => {
     expect(onSubmit).not.toHaveBeenCalled()
   })
 })
+
+it('reserves a save before render and ignores completion after dismissal', async () => {
+  const pending = Promise.withResolvers<void>()
+  const onSubmit = mock(() => pending.promise)
+  const onSuccess = mock(() => {})
+  const { unmount } = render(
+    <ProjectForm initialValues={values} onCancel={() => {}} onSubmit={onSubmit} onSuccess={onSuccess} />,
+  )
+  const save = screen.getByRole('button', { name: 'Save changes' })
+  act(() => {
+    fireEvent.click(save)
+    fireEvent.click(save)
+  })
+  expect(onSubmit).toHaveBeenCalledTimes(1)
+  unmount()
+  await act(async () => {
+    pending.resolve()
+    await pending.promise
+  })
+  expect(onSuccess).not.toHaveBeenCalled()
+})

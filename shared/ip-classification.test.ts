@@ -6,6 +6,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   extractEmbeddedIpv4Address,
   isLocalNetworkAddress,
+  isLocalNetworkHost,
   isPrivateOrInternalAddress,
   parseIpAddress,
   privateOrInternalAddressCidrs,
@@ -275,4 +276,21 @@ describe('private and internal IP classification', () => {
       expect(classify(publicAddress)).toBe(publicResult)
     },
   )
+})
+
+describe('local network host classification', () => {
+  test.each([
+    ['localhost', true],
+    ['app.localhost', true],
+    ['ollama.local', true],
+    ['ollama.local.', true],
+    ['host.docker.internal', true],
+    ['192.168.1.20', true],
+    ['[::1]', true],
+    ['8.8.8.8', false],
+    ['api.example.com', false],
+    ['localhost.example.com', false],
+  ])('%s is local: %p', (host, expected) => {
+    expect(isLocalNetworkHost(host)).toBe(expected)
+  })
 })

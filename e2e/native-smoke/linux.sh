@@ -18,6 +18,7 @@ if [ -z "${DISPLAY:-}" ]; then
 fi
 command -v tauri-driver
 command -v WebKitWebDriver
+command -v xdotool
 
 ffmpeg -loglevel error -y -f x11grab -framerate 15 -video_size 1600x1200 \
   -i "$DISPLAY" -c:v libx264 -pix_fmt yuv420p /tmp/native-smoke/linux.mp4 &
@@ -37,4 +38,9 @@ for _ in {1..30}; do
   sleep 1
 done
 
-bun e2e/native-smoke/linux.ts
+# Take the setup wizard once per choice, each from a fresh install: the app keeps all its state under these
+# three directories, and each session closes the app before the next one starts.
+for setup in local cloud; do
+  find "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME" -mindepth 1 -delete
+  bun e2e/native-smoke/linux.ts "$setup"
+done

@@ -122,8 +122,8 @@ customer stacks remain on the monolithic path (see "Legacy escape hatch").
 **Per-PR database provisioning — the backend entrypoint does it.** When
 `POSTGRES_ADMIN_URL` is set, `deploy/docker/backend-entrypoint.sh:45-65` connects as the
 admin on the default database, creates the per-stack database and its PowerSync storage
-database (`<db>_ps_storage`) if they do not already exist, runs `drizzle-kit migrate`
-against `DATABASE_URL`, then creates the `powersync` publication. The name comes
+database (`<db>_ps_storage`) if they do not already exist, then creates the `powersync`
+publication; the server applies migrations against `DATABASE_URL` when it starts. The name comes
 from the Pulumi stack name with every non-alphanumeric character replaced by `_`
 (`preview-pr-846` → `preview_pr_846`, `dbNameFromStack` in `src/per-pr-stack.ts`), and
 both URLs reach the task as Secrets Manager entries. Teardown is `scripts/drop-preview-db.sh`, which `stack-deploy.yml`'s `destroy` job runs

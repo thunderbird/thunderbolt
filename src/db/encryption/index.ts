@@ -6,6 +6,7 @@ export { encryptedColumnsMap, needsSyncSetupWizard } from './config'
 export {
   codec,
   invalidateAdoptedKeyring,
+  dropCachedPrimary,
   invalidateKeyringCache,
   resetCodecState,
   keysSyncChannelName,

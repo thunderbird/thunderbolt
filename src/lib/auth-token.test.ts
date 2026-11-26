@@ -4,7 +4,11 @@
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { setActiveLocale } from '@/i18n/active-locale'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import {
+  captureAuthRequestLifetime,
+  invalidateAuthRequests,
+  isCurrentSessionToken,
   clearAuthToken,
   clearDeviceId,
   clearUserCacheSecret,
@@ -73,12 +77,63 @@ describe('auth-token', () => {
       setAuthToken('test-token-123')
       expect(getAuthToken()).toBe('test-token-123')
     })
+
+    it('reads legacy bare tokens for the existing server', () => {
+      localStorage.setItem(authTokenKey, 'legacy-token')
+      expect(getAuthToken()).toBe('legacy-token')
+    })
+
+    it('does not read a token scoped to another server even before its settings arrive', () => {
+      localStorage.setItem(authTokenKey, JSON.stringify({ token: 'other-token', cloudUrl: 'https://other.example/v1' }))
+      expect(getAuthToken()).toBeNull()
+    })
+
+    it.each(['{', '{"token":"secret"}', '{"token":23,"cloudUrl":"https://test-api.local/v1"}'])(
+      'refuses malformed credential records: %s',
+      (raw) => {
+        localStorage.setItem(authTokenKey, raw)
+        expect(getAuthToken()).toBeNull()
+      },
+    )
+
+    it('ignores shared credentials when another window changed servers before the storage event', () => {
+      const settings = useLocalSettingsStore.getState()
+      setAuthToken('old-token')
+      const nextServer = 'https://other.example/v1'
+      localStorage.setItem(
+        'thunderbolt-local-settings',
+        JSON.stringify({ state: { ...settings, cloudUrl: nextServer } }),
+      )
+      localStorage.setItem(authTokenKey, JSON.stringify({ token: 'next-token', cloudUrl: nextServer }))
+      try {
+        expect(getAuthToken()).toBeNull()
+        expect(() => setAuthToken('late-old-token')).toThrow('The selected server changed')
+        expect(JSON.parse(localStorage.getItem(authTokenKey)!)).toEqual({ token: 'next-token', cloudUrl: nextServer })
+      } finally {
+        useLocalSettingsStore.setState(settings)
+      }
+    })
   })
 
   describe('setAuthToken', () => {
+    it('binds the server immediately when a bearer credential is issued', () => {
+      useLocalSettingsStore.setState({
+        cloudUrl: 'https://selected.example/v1',
+        localMode: true,
+        serverHasAuthenticated: false,
+      })
+      setAuthToken('issued-before-session-fetch')
+      clearAuthToken()
+      expect(useLocalSettingsStore.getState().serverHasAuthenticated).toBe(true)
+    })
+
     it('stores token in localStorage', () => {
       setAuthToken('cached-token')
       expect(getAuthToken()).toBe('cached-token')
+      expect(JSON.parse(localStorage.getItem(authTokenKey)!)).toEqual({
+        token: 'cached-token',
+        cloudUrl: useLocalSettingsStore.getState().cloudUrl,
+      })
     })
 
     it('persists token until cleared', () => {
@@ -262,5 +317,34 @@ describe('onAuthTokenChangedInOtherTab', () => {
 
     expect(listener).not.toHaveBeenCalled()
     unsub()
+  })
+})
+
+describe('session bearer correlation', () => {
+  it.each(['raw-token.signature', 'raw-token.signature%2Fwith%2Bencoding%3D', 'raw-token'])(
+    'matches the raw session token to %s',
+    (bearer) => {
+      setAuthToken(bearer)
+      expect(isCurrentSessionToken('raw-token')).toBe(true)
+      expect(isCurrentSessionToken('different-account')).toBe(false)
+    },
+  )
+
+  it.each([null, '', '%bad-encoding'])('does not match missing or malformed bearer %p', (bearer) => {
+    if (bearer !== null) {
+      setAuthToken(bearer)
+    }
+    expect(isCurrentSessionToken('raw-token')).toBe(false)
+    expect(isCurrentSessionToken(undefined)).toBe(false)
+  })
+
+  it('invalidates cookie-only work before cleanup even with no bearer token', () => {
+    const isCurrent = captureAuthRequestLifetime()
+    expect(isCurrent()).toBe(true)
+    invalidateAuthRequests()
+    expect(isCurrent()).toBe(false)
+    const afterReset = captureAuthRequestLifetime()
+    clearAuthToken()
+    expect(afterReset()).toBe(false)
   })
 })

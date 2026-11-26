@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { StoredFile } from '@/lib/file-blob-storage'
+import { loadPdfjs } from './load-pdfjs'
 
 /**
  * Extracts a PDF's embedded text layer via pdfjs (lazy-imported — pdfjs is
@@ -13,20 +14,23 @@ import type { StoredFile } from '@/lib/file-blob-storage'
  * here — OCR (THU-630) is the fallback for those.
  */
 export const pdfToText = async (file: StoredFile): Promise<{ text: string }> => {
-  const pdfjs = await import('pdfjs-dist')
+  const pdfjs = await loadPdfjs()
   // Mirror the viewer's Vite worker-URL pattern so both share one worker build.
   pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
 
   const data = await file.blob.arrayBuffer()
-  const doc = await pdfjs.getDocument({ data }).promise
+  const task = pdfjs.getDocument({ data })
+  try {
+    const doc = await task.promise
+    const pages: string[] = []
+    for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
+      const page = await doc.getPage(pageNum)
+      const content = await page.getTextContent()
+      pages.push(content.items.map((item) => ('str' in item ? item.str : '')).join(' '))
+    }
 
-  const pages: string[] = []
-  for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
-    const page = await doc.getPage(pageNum)
-    const content = await page.getTextContent()
-    pages.push(content.items.map((item) => ('str' in item ? item.str : '')).join(' '))
+    return { text: pages.join('\n\n').trim() }
+  } finally {
+    await task.destroy()
   }
-  await doc.destroy()
-
-  return { text: pages.join('\n\n').trim() }
 }

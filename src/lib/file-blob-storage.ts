@@ -12,9 +12,14 @@
  * sending to an agent hydrates the bytes on demand at request time.
  *
  * Mirrors the IndexedDB pattern in `src/crypto/key-storage.ts`.
+ *
+ * Each slot has its own attachment database next to its database file
+ * (`attachmentDatabaseName`), so an account never reads another account's files.
  */
 
-const dbName = 'thunderbolt-files'
+import { attachmentDatabaseName } from './local-data-owner'
+import { promptFileName } from './safe-file-name'
+
 const storeName = 'attachments'
 const dbVersion = 1
 
@@ -33,7 +38,7 @@ export type StoredFile = {
 
 const openDB = (): Promise<IDBDatabase> =>
   new Promise((resolve, reject) => {
-    const request = indexedDB.open(dbName, dbVersion)
+    const request = indexedDB.open(attachmentDatabaseName(), dbVersion)
     request.onupgradeneeded = () => {
       const db = request.result
       if (!db.objectStoreNames.contains(storeName)) {
@@ -45,34 +50,61 @@ const openDB = (): Promise<IDBDatabase> =>
   })
 
 /**
- * Copy a blob's bytes into memory, detaching it from any file on disk.
- *
- * A `File` from an `<input>` or a drop is a *reference* to a path, not bytes, and
- * IndexedDB stores it as one — so editing or moving the source afterwards
- * invalidates the snapshot, and every later read throws `NotReadableError`. That
- * poisons the whole conversation, not just the one turn: each subsequent send
- * re-reads the history's attachments. Chat attachments are meant to be a
- * point-in-time copy, so the bytes are taken here, once.
+ * What the store holds. The bytes are an `ArrayBuffer`, because WebKit's private browsing refuses to store a `Blob`
+ * in IndexedDB. Records written before that hold a `blob`, and are still read.
  */
-const detachBytes = async (blob: Blob): Promise<Blob> => new Blob([await blob.arrayBuffer()], { type: blob.type })
+type StoredRecord = Omit<StoredFile, 'blob'> & ({ bytes: ArrayBuffer } | { blob: Blob })
 
-/** Persist an uploaded attachment locally, as a copy of the bytes. */
-export const putAttachment = async (file: StoredFile): Promise<void> => {
-  const detached = { ...file, blob: await detachBytes(file.blob) }
+/** The record as callers see it, with its bytes as a `Blob` of the file's type. */
+const toStoredFile = (record: StoredRecord): StoredFile => {
+  if ('blob' in record) {
+    return record
+  }
+  const { bytes, ...file } = record
+  return { ...file, blob: new Blob([bytes], { type: file.mimeType }) }
+}
+
+/**
+ * Persist attachments locally, as copies of the bytes, in one transaction: all of them are stored or none.
+ *
+ * A `File` from an `<input>` or a drop is a reference to a path, and IndexedDB stores it as one. Editing or moving the
+ * source afterwards would make every later read throw `NotReadableError`, which breaks the whole conversation because
+ * each send re-reads the history's attachments. Storing an `ArrayBuffer` copies the bytes here, once.
+ */
+export const putAttachments = async (files: StoredFile[]): Promise<void> => {
+  const detached: StoredRecord[] = await Promise.all(
+    files.map(async ({ blob, ...file }) => ({ ...file, bytes: await blob.arrayBuffer() })),
+  )
+  const names = files.map(({ filename }) => promptFileName(filename)).join(', ')
+  const storeError = (cause: unknown) =>
+    new Error(`Could not save ${names} in this browser's local storage, so it cannot be downloaded or attached.`, {
+      cause,
+    })
   const db = await openDB()
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, 'readwrite')
-    tx.objectStore(storeName).put(detached)
     tx.oncomplete = () => {
       db.close()
       resolve()
     }
-    tx.onerror = () => {
+    // A failed request aborts the transaction, and so does a full disk, so `abort` covers every failure.
+    tx.onabort = () => {
       db.close()
-      reject(new Error(`Failed to store attachment: ${file.id}`, { cause: tx.error }))
+      reject(storeError(tx.error))
+    }
+    const store = tx.objectStore(storeName)
+    try {
+      detached.forEach((file) => store.put(file))
+    } catch (error) {
+      // A `put` that throws (e.g. a record missing its key) does not abort the transaction, so earlier puts would commit.
+      tx.abort()
+      reject(storeError(error))
     }
   })
 }
+
+/** Persist an uploaded attachment locally, as a copy of the bytes. */
+export const putAttachment = (file: StoredFile): Promise<void> => putAttachments([file])
 
 /** Read a locally-stored attachment, or `null` if it isn't on this device. */
 export const getAttachment = async (id: string): Promise<StoredFile | null> => {
@@ -82,7 +114,8 @@ export const getAttachment = async (id: string): Promise<StoredFile | null> => {
     const request = tx.objectStore(storeName).get(id)
     request.onsuccess = () => {
       db.close()
-      resolve((request.result as StoredFile | undefined) ?? null)
+      const record = request.result as StoredRecord | undefined
+      resolve(record ? toStoredFile(record) : null)
     }
     request.onerror = () => {
       db.close()
@@ -104,23 +137,6 @@ export const deleteAttachment = async (id: string): Promise<void> => {
     tx.onerror = () => {
       db.close()
       reject(new Error(`Failed to delete attachment: ${id}`, { cause: tx.error }))
-    }
-  })
-}
-
-/** Delete every locally-stored attachment, e.g. when the device's data is wiped. */
-export const clearAllAttachments = async (): Promise<void> => {
-  const db = await openDB()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite')
-    tx.objectStore(storeName).clear()
-    tx.oncomplete = () => {
-      db.close()
-      resolve()
-    }
-    tx.onerror = () => {
-      db.close()
-      reject(new Error('Failed to clear attachments', { cause: tx.error }))
     }
   })
 }

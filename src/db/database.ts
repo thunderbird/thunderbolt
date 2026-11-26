@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { createSerialQueue } from '@/lib/serial-queue'
 import type { AnyDrizzleDatabase, DatabaseInterface, InitialSyncOutcome } from './database-interface'
 
 export type DatabaseType = 'bun-sqlite' | 'powersync'
@@ -9,6 +10,7 @@ export type DatabaseType = 'bun-sqlite' | 'powersync'
 export class Database {
   #database: DatabaseInterface | null = null
   #initialized = false
+  #enqueue = createSerialQueue()
 
   /**
    * Initialize the database connection.
@@ -16,9 +18,19 @@ export class Database {
    * @param type - The database type to use: 'powersync' in the app, 'bun-sqlite' in tests
    * @param path - The path/filename for the database
    */
-  public async initialize({ type, path }: { type: DatabaseType; path: string }): Promise<AnyDrizzleDatabase> {
+  public initialize(options: { type: DatabaseType; path: string }): Promise<AnyDrizzleDatabase> {
+    return this.#enqueue(() => this.initializeNow(options))
+  }
+
+  private async initializeNow({ type, path }: { type: DatabaseType; path: string }): Promise<AnyDrizzleDatabase> {
     if (this.#initialized && this.#database) {
       return this.#database.db
+    }
+
+    // A failed open/close can leave a partial resource. Retire it before retrying.
+    if (this.#database) {
+      await this.#database.close?.()
+      this.#database = null
     }
 
     if (type === 'bun-sqlite') {
@@ -43,7 +55,7 @@ export class Database {
    * Throws an error if not initialized.
    */
   public get db() {
-    if (!this.#database) {
+    if (!this.#initialized || !this.#database) {
       throw new Error('Database not initialized. Call initialize() first.')
     }
     return this.#database.db
@@ -54,7 +66,7 @@ export class Database {
    * Throws an error if not initialized.
    */
   public get database() {
-    if (!this.#database) {
+    if (!this.#initialized || !this.#database) {
       throw new Error('Database not initialized. Call initialize() first.')
     }
     return this.#database
@@ -70,12 +82,14 @@ export class Database {
   /**
    * Close the database connection.
    */
-  public async close(): Promise<void> {
-    if (this.#database?.close) {
-      await this.#database.close()
-    }
-    this.#database = null
+  public close(): Promise<void> {
+    return this.#enqueue(() => this.closeNow())
+  }
+
+  private async closeNow(): Promise<void> {
     this.#initialized = false
+    await this.#database?.close?.()
+    this.#database = null
   }
 
   /**
@@ -95,8 +109,8 @@ export class Database {
 let currentInstance: Database | null = null
 
 /**
- * Register the initialized Database instance for module-level access.
- * Called once during app initialization.
+ * Register the Database owner before opening it so failed initialization can be reset.
+ * Queries remain unavailable until initialization succeeds.
  */
 export const setDatabase = (instance: Database): void => {
   currentInstance = instance
@@ -141,8 +155,9 @@ export const getCurrentDatabase = (): Database | null => currentInstance
  * Closes the connection and clears the reference.
  */
 export const resetDatabase = async (): Promise<void> => {
-  if (currentInstance) {
-    await currentInstance.close()
+  const previous = currentInstance
+  await previous?.close()
+  if (currentInstance === previous) {
+    currentInstance = null
   }
-  currentInstance = null
 }

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { AcpCompactionNotice } from '@/components/context-usage'
 import { isRenderHtmlPart } from '@/artifacts/render-html-tool'
 import {
   artifactRendersStandalone,
@@ -19,16 +20,23 @@ import type { TextUIPart } from 'ai'
 import { memo, useMemo, type ReactNode } from 'react'
 import { ArtifactMessagePart } from './artifact-message-part'
 import { CopyMessageButton } from './copy-message-button'
+import { CreatedFileVersionGroup } from './created-file-version-group'
 import { ReasoningGroup } from './reasoning-group'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
 
 type AssistantMessageProps = {
   message: ThunderboltUIMessage
+  /** Sources this message's `[N]` citations may refer to — its own plus earlier turns'
+   *  (see `useThreadSources`). Defaults to the message's own `metadata.sources`. */
+  sources?: SourceMetadata[]
   isStreaming: boolean
+  /** Hide the created-file cards until the turn ends, so a file the model may still replace never shows. */
+  holdFiles?: boolean
   isLastMessage?: boolean
   isLastAssistantMessage?: boolean
   lastAssistantAction?: ReactNode
+  activity?: ReactNode
 }
 
 // While an answer streams, reserve enough room to keep the preceding user
@@ -42,6 +50,9 @@ const emptyReasoningTime: Record<string, number> = {}
 
 // Animation classes for subtle slide-in effect
 const animationClasses = 'animate-in slide-in-from-bottom-2 fade-in duration-300 ease-out'
+
+/** `tool-<name>` and `dynamic-tool` parts are both tool calls; anything else is the type's first segment. */
+const partKind = (part: GroupedUIPart): string => (part.type === 'dynamic-tool' ? 'tool' : splitPartType(part.type)[0])
 
 /**
  * Converts grouped message parts into React elements for rendering.
@@ -59,10 +70,22 @@ export const mountMessageParts = (
   mcpTools?: UIMessageMetadata['mcpTools'],
 ) => {
   const partElements: ReactNode[] = []
+  // File chips are not counted, so holding them back never moves another part's animation class.
+  let appended = 0
+
+  const appendPart = (element: ReactNode, key: number) => {
+    const index = appended++
+    // The second part replaces the loading indicator in place.
+    partElements.push(
+      <div key={key} className={index === 1 ? '' : animationClasses}>
+        {element}
+      </div>,
+    )
+  }
 
   if (groupedParts.length === 0 && isStreaming) {
     // isStreaming should always be true because the next part will *replace* this one
-    partElements.push(<SyntheticLoadingPart isStreaming />)
+    appendPart(<SyntheticLoadingPart isStreaming />, 0)
   }
 
   // Whether the message has a "body" that serves as the answer — a text part, or a
@@ -70,18 +93,41 @@ export const mountMessageParts = (
   // suppresses its ephemeral reasoning display (and that display's 200px reserve),
   // which otherwise leaves a large empty gap above an artifact card.
   const hasResponseBody = groupedParts.some((part) => {
-    const [partType] = splitPartType(part.type)
-    return partType === 'text' || partType === 'tool'
+    const kind = partKind(part)
+    return kind === 'text' || kind === 'tool' || kind === 'created_files'
   })
 
+  // Count the source parts consumed by each group. Folding a synthetic file row
+  // then leaves the identities of the surrounding message parts intact.
+  let nextPartIndex = 0
   groupedParts.forEach((part, index) => {
-    const [partType] = splitPartType(part.type)
+    if (part.type === 'created_files') {
+      // A later save can move a filename to another row, including after intervening text.
+      // Keep each disclosure keyed directly in the message's list of siblings.
+      part.files.forEach((versions, fileIndex) => {
+        partElements.push(
+          <div
+            key={`file-${versions.latest.filename}`}
+            className={`my-2 inline-flex max-w-full align-top ${fileIndex === 0 ? 'ps-4' : ''} ${fileIndex === part.files.length - 1 ? 'pe-4' : 'pe-2'}`}
+          >
+            <CreatedFileVersionGroup versions={versions} />
+          </div>,
+        )
+      })
+      return
+    }
+    const partIndex = nextPartIndex
+    nextPartIndex += part.type === 'reasoning_group' ? part.items.length : 1
+    if (part.type === 'data-acp-compaction') {
+      appendPart(<AcpCompactionNotice compaction={part.data} />, partIndex)
+      return
+    }
     const isLastPart = index === groupedParts.length - 1
 
-    switch (partType) {
+    switch (partKind(part)) {
       case 'reasoning_group': {
         const reasoningGroupPart = part as ReasoningGroupUIPart
-        partElements.push(
+        appendPart(
           <ReasoningGroup
             parts={reasoningGroupPart.items}
             isStreaming={isStreaming}
@@ -91,11 +137,12 @@ export const mountMessageParts = (
             reasoningStartTimes={reasoningStartTimes}
             mcpTools={mcpTools}
           />,
+          partIndex,
         )
         break
       }
       case 'text':
-        partElements.push(
+        appendPart(
           <TextPart
             part={part as TextUIPart}
             isStreaming={isStreaming}
@@ -103,11 +150,11 @@ export const mountMessageParts = (
             sources={sources}
             haystackReferences={haystackReferences}
           />,
+          partIndex,
         )
         break
       case 'tool':
-        // groupMessageParts only lifts render_html tool parts out of the group.
-        partElements.push(<ArtifactMessagePart part={part as ToolOrDynamicToolUIPart} />)
+        appendPart(<ArtifactMessagePart part={part as ToolOrDynamicToolUIPart} />, partIndex)
         break
     }
   })
@@ -118,13 +165,19 @@ export const mountMessageParts = (
 export const AssistantMessage = memo(
   ({
     message,
+    sources: threadSources,
     isStreaming,
+    holdFiles = false,
     isLastMessage = false,
     isLastAssistantMessage = false,
     lastAssistantAction,
+    activity,
   }: AssistantMessageProps) => {
     // Memoize filtering and grouping to avoid recomputing on every render
-    const groupedParts = useMemo(() => groupMessageParts(filterMessageParts(message.parts)), [message.parts])
+    const groupedParts = useMemo(() => {
+      const grouped = groupMessageParts(filterMessageParts(message.parts))
+      return holdFiles ? grouped.filter((part) => part.type !== 'created_files') : grouped
+    }, [message.parts, holdFiles])
 
     // Read metadata fields directly. During streaming `message.parts` grows every
     // token, so `groupedParts` — and therefore `partElements` below — already
@@ -135,7 +188,7 @@ export const AssistantMessage = memo(
     const metadata = message.metadata
     const reasoningTime = metadata?.reasoningTime ?? emptyReasoningTime
     const reasoningStartTimes = metadata?.reasoningStartTimes
-    const sources = metadata?.sources
+    const sources = threadSources ?? metadata?.sources
     const haystackReferences = metadata?.haystackReferences
     const mcpTools = metadata?.mcpTools
 
@@ -184,14 +237,12 @@ export const AssistantMessage = memo(
       [message.parts],
     )
 
-    const lastPartIsReasoningGroup = useMemo(() => {
-      const lastPart = groupedParts[groupedParts.length - 1]
-      if (!lastPart) {
-        return false
-      }
-      const [partType] = splitPartType(lastPart.type)
-      return partType === 'reasoning_group'
-    }, [groupedParts])
+    const lastPartType = groupedParts.at(-1)?.type
+    const spaceBeforeActions =
+      hasWidgets ||
+      lastPartType === 'reasoning_group' ||
+      lastPartType === 'data-acp-compaction' ||
+      lastPartType === 'created_files'
 
     const showCopyOnHover = !isLastAssistantMessage
 
@@ -202,16 +253,11 @@ export const AssistantMessage = memo(
         className={showCopyOnHover ? 'group/assistant-message' : undefined}
         style={isLastMessage && isStreaming && !hasArtifact ? { minHeight: lastMessageMinHeight } : undefined}
       >
-        {partElements.map((partElement, index) => (
-          // Skip the animation on the *second* (index === 1) partElement so that it replaces the loading part *in-place* without an animation
-          // This causes it to appear as if the loading part magically *becomes* the new part without any visual disruption
-          <div key={index} className={index === 1 ? '' : animationClasses}>
-            {partElement}
-          </div>
-        ))}
+        {(groupedParts.length > 0 || !activity) && partElements}
+        {activity}
         {!isStreaming && (copyText || lastAssistantAction) && (
           <div
-            className={`flex items-center gap-1.5 px-4 ${hasWidgets || lastPartIsReasoningGroup ? 'mt-1' : '-mt-6'} ${showCopyOnHover ? 'md:pointer-events-none md:opacity-0 md:transition-opacity md:group-hover/assistant-message:pointer-events-auto md:group-hover/assistant-message:opacity-100' : ''}`}
+            className={`flex items-center gap-1.5 px-4 ${spaceBeforeActions ? 'mt-1' : '-mt-6'} ${showCopyOnHover ? 'md:pointer-events-none md:opacity-0 md:transition-opacity md:group-hover/assistant-message:pointer-events-auto md:group-hover/assistant-message:opacity-100' : ''}`}
           >
             {copyText && <CopyMessageButton text={copyText} />}
             {lastAssistantAction}
@@ -226,10 +272,13 @@ export const AssistantMessage = memo(
       prevProps.message.id === nextProps.message.id &&
       prevProps.message.parts === nextProps.message.parts &&
       prevProps.message.metadata === nextProps.message.metadata &&
+      prevProps.sources === nextProps.sources &&
       prevProps.isStreaming === nextProps.isStreaming &&
+      prevProps.holdFiles === nextProps.holdFiles &&
       prevProps.isLastMessage === nextProps.isLastMessage &&
       prevProps.isLastAssistantMessage === nextProps.isLastAssistantMessage &&
-      prevProps.lastAssistantAction === nextProps.lastAssistantAction
+      prevProps.lastAssistantAction === nextProps.lastAssistantAction &&
+      prevProps.activity === nextProps.activity
     )
   },
 )

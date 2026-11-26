@@ -90,11 +90,13 @@ export const pollForToken = async (
   const deadlineMs = clock.now() + code.expiresInSeconds * 1000
 
   const poll = async (intervalMs: number): Promise<string> => {
+    signal?.throwIfAborted()
     if (clock.now() >= deadlineMs) {
       throw new DeviceGrantError('expired_token', 'the device code expired before it was approved')
     }
 
     const result = await transport.pollToken(code.deviceCode, signal)
+    signal?.throwIfAborted()
     if (result.kind === 'approved') return result.token
     if (result.kind === 'denied') {
       throw new DeviceGrantError('access_denied', 'login was denied on the approval page')

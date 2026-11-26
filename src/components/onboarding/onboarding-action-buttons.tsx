@@ -15,6 +15,7 @@ type OnboardingActionButtonsProps = {
   showSkip?: boolean
   showContinue?: boolean
   continueText?: ReactNode
+  backDisabled?: boolean
   continueDisabled?: boolean
   skipDisabled?: boolean
 }
@@ -27,16 +28,16 @@ export const OnboardingActionButtons = ({
   showSkip = true,
   showContinue = true,
   continueText = <Trans>Continue</Trans>,
+  backDisabled = false,
   continueDisabled = false,
   skipDisabled = false,
 }: OnboardingActionButtonsProps) => {
   const { t } = useLingui()
-
   return (
     <div className="flex flex-1 w-full justify-between">
       <div>
         {showBack && onBack && (
-          <Button onClick={onBack} variant="ghost" className="justify-center" aria-label={t`Go back`}>
+          <Button onClick={onBack} variant="ghost" size="icon" aria-label={t`Back`} disabled={backDisabled}>
             <ArrowLeft className="w-4 h-4" />
           </Button>
         )}
@@ -44,7 +45,12 @@ export const OnboardingActionButtons = ({
 
       <div className={`flex space-x-2 ${!showBack && !showSkip && 'w-full'}`}>
         {showSkip && onSkip && (
-          <Button onClick={onSkip} variant="ghost" disabled={skipDisabled}>
+          <Button
+            onClick={onSkip}
+            variant="ghost"
+            disabled={skipDisabled}
+            className="font-normal text-muted-foreground"
+          >
             <Trans>Skip</Trans>
           </Button>
         )}

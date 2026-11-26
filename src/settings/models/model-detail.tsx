@@ -5,6 +5,7 @@
 import { msg } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { AlertTriangle } from 'lucide-react'
+import { Link } from 'react-router'
 
 import { DetailDivider, DetailPanel } from '@/components/detail-panel'
 import { ModificationIndicator } from '@/components/modification-indicator'
@@ -55,7 +56,23 @@ export const ModelDetail = ({ model, onEdit, onDelete, onReset, onClose }: Model
         <DetailField label={t`Model`}>
           <p className="truncate text-base text-foreground">{model.model}</p>
         </DetailField>
-        {model.url && (
+        {model.providerConnectionId && (
+          <DetailField label={t`Connection`}>
+            <Link
+              to="/settings/connections"
+              state={{ providerConnectionId: model.providerConnectionId }}
+              className="text-sm underline underline-offset-4"
+            >
+              {model.connectionName ?? t`Manage connection`}
+            </Link>
+            {model.connectionReady === false && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                <Trans>Connection unavailable on this device.</Trans>
+              </p>
+            )}
+          </DetailField>
+        )}
+        {!model.providerConnectionId && model.url && (
           <DetailField label={t`URL`}>
             <p className="truncate text-base text-foreground">{model.url}</p>
           </DetailField>
@@ -69,7 +86,7 @@ export const ModelDetail = ({ model, onEdit, onDelete, onReset, onClose }: Model
         )}
       </div>
 
-      {needsApiKey(model) && (
+      {!model.providerConnectionId && needsApiKey(model) && (
         <>
           <DetailDivider />
           <div className="flex items-center gap-2 text-sm text-warning">

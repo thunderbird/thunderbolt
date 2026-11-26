@@ -9,9 +9,14 @@ import { ObjectSidebarContent } from './object-sidebar-content'
 import { SidebarWebview } from './sidebar-webview'
 import { Sideview } from './sideview'
 
+// Summary inspection is off the landing path; chat rendering warms the shared markdown code.
+const CompactionSummaryContent = lazy(() =>
+  import('@/components/context-usage/compaction-summary-content').then((module) => ({
+    default: module.CompactionSummaryContent,
+  })),
+)
+
 /*
- * Lazy, and the only content view that is.
- *
  * It reaches the whole shared element-picking stack — the overlay, the popover,
  * the selection state machine — none of which any other entry-bundle module
  * needs. A static import put roughly a thousand lines of it into the chunk every
@@ -40,6 +45,11 @@ export const ActiveContentView = () => {
       {state.type === 'preview' && <SidebarWebview config={state.data} onClose={close} hidden={previewHidden} />}
       {state.type === 'object-view' && <ObjectSidebarContent content={state.data} onClose={close} />}
       {state.type === 'sideview' && <Sideview />}
+      {state.type === 'compaction-summary' && (
+        <Suspense fallback={<PageFallback />}>
+          <CompactionSummaryContent checkpoint={state.data} onClose={close} />
+        </Suspense>
+      )}
       {state.type === 'artifact' && (
         <Suspense fallback={<PageFallback />}>
           <ArtifactSidebarContent data={state.data} onClose={close} />

@@ -359,15 +359,15 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    first, so a leg that runs out of time leaves the least severe without runs. The control's
    other two runs are timed before any finding's. An extra run must also leave room for the 3 runs each later finding
    is owed. A finding left with fewer than 3 counted runs is flaky, and `replay.reason` says why. A flow that waits
-   for the first screen after sign-in (`Welcome to Thunderbolt!` on the c1 build, `Ask me anything…` otherwise; three
+   for the first screen after sign-in (`Connect Google` on the c1 build, `Ask me anything…` otherwise; three
    dots count as the ellipsis) but never types the code `12345678` is signed in by the harness.
    `control/sign-in.yaml` and a wait for that screen run first as their own `maestro test`, in the same launch, and
    the flow then goes on from its own wait. A run whose sign-in failed never runs the flow and is inconclusive,
    whatever the oracle, so it can never prove a bug. Without that rule, a replay whose iOS flows never typed the
    code would have every run inconclusive. A flow for a bug on the sign-in screen waits for no later screen, so it runs as written.
    `drivers/maestro.md` gives the model the same sign-in block to copy, and each build's landing wait.
-   A c1 flow that stops at the welcome wait or next waits for a text gets `control/consent.yaml` at the end of its
-   sign-in step: it ticks the privacy checkbox and skips Connect Google, but only while the checkbox shows and that
+   A c1 flow that stops at the Connect Google wait or next waits for a text gets `control/consent.yaml` at the end of its
+   sign-in step: it skips the optional Google connection, but only while Connect Google shows and that
    text (for a stopping layout flow, the quoted element) does not.
 4. **judge** (`verify.ts judge`): one Opus call per confirmed finding with `judge.md` and `known-issues.md`; a
    `visual` finding is judged on its screenshot, a native one on the flow replay ran (the allow list's own
@@ -530,9 +530,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    same tree, commits it as publish would (so `i18n:check`'s `git status` test sees a committed tree, as in CI), and
    runs the PR checks on it (`prChecks`): `bun run check` (ci.yml's type check and lint, plus the e2e type check, the
    format check and the license check), e2e.yml's `bun run e2e:check-collected`, and, when the tree touches their
-   paths, ci.yml's `bun run i18n:check`, `bun run test:5x`, the agent-core, backend and cli type checks, lints and 5x
-   suites. Each runs with ci.yml's exact command over the whole tree, never only the changed files: a test that
-   passes alone can fail there, when another file's `mock.module` leaks into it in one Bun process. The checks run as
+   paths, ci.yml's `bun run i18n:check`, `bun run test:ci`, `bun run test:office:ci`, the agent-core, backend and cli
+   type checks, lints and suites, and the 5x re-run of the changed test files. Each suite runs with ci.yml's exact
+   command over the whole tree, not only the changed files: a test that passes alone can fail there, when another file's `mock.module` leaks into it in one Bun process. The checks run as
    `qa-test` with `CI=true`, in order, and stop at the first failure. `qa-test` can write only two things in the
    checkout, both opened with `chmod o+w` after the commit: the catalog folders, which `i18n:check` rewrites, and
    every `__snapshots__/*.snap` file, which Bun opens for writing even when every snapshot in it matches. The

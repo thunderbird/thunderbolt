@@ -3,6 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Session } from '@/contexts/auth-context'
+import { isSsoMode } from '@/lib/auth-mode'
+import { getAuthToken, isCurrentSessionToken } from '@/lib/auth-token'
 
 /**
  * Cache of the last successful Better Auth session response in localStorage.
@@ -23,6 +25,22 @@ import type { Session } from '@/contexts/auth-context'
  */
 
 const sessionCacheKey = 'thunderbolt_session_cache'
+const sessionCacheListeners = new Set<() => void>()
+
+/** Subscribes to cached-session changes in this window and other tabs. */
+export const subscribeCachedSession = (listener: () => void): (() => void) => {
+  sessionCacheListeners.add(listener)
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === sessionCacheKey || event.key === null) {
+      listener()
+    }
+  }
+  window.addEventListener('storage', onStorage)
+  return () => {
+    sessionCacheListeners.delete(listener)
+    window.removeEventListener('storage', onStorage)
+  }
+}
 
 /**
  * Shape of the payload as it exists in localStorage — a JSON-serialized subset
@@ -58,6 +76,7 @@ export const getCachedSession = (): CachedSessionData | null => {
 export const setCachedSession = (data: CachedSessionData): void => {
   try {
     localStorage.setItem(sessionCacheKey, JSON.stringify(data))
+    sessionCacheListeners.forEach((listener) => listener())
   } catch {
     // Quota exceeded or storage unavailable — caching is best-effort.
   }
@@ -66,6 +85,7 @@ export const setCachedSession = (data: CachedSessionData): void => {
 /** Remove any cached session (used on logout, 401, and full wipe). */
 export const clearCachedSession = (): void => {
   localStorage.removeItem(sessionCacheKey)
+  sessionCacheListeners.forEach((listener) => listener())
 }
 
 /**
@@ -82,4 +102,17 @@ export const isCachedSessionValid = (cached: CachedSessionData): boolean => {
   }
   const expiresAt = new Date(cached.session.expiresAt).getTime()
   return Number.isFinite(expiresAt) && expiresAt > Date.now()
+}
+
+/** Cookie-only SSO is revalidated online; bearer payloads must identify the current signed token. */
+export const isCurrentSession = (token: string | undefined): boolean =>
+  isCurrentSessionToken(token) || (!getAuthToken() && isSsoMode() && Boolean(token))
+
+/**
+ * The cached session, when it may stand in for `/get-session` until the server answers: unexpired,
+ * and for the stored bearer token (or, in SSO mode, the cookie).
+ */
+export const getUsableCachedSession = (): CachedSessionData | null => {
+  const cached = getAuthToken() || isSsoMode() ? getCachedSession() : null
+  return cached && isCachedSessionValid(cached) && isCurrentSession(cached.session?.token) ? cached : null
 }

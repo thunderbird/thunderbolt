@@ -97,6 +97,10 @@ export type Formatters = {
   compactNumber: (value: number) => string
   /** Grouped in full: "1,234" / "1.234". */
   number: (value: number) => string
+  /** A whole number with no grouping, for positions such as a spreadsheet row: "5000" in every locale. */
+  ungroupedInteger: (value: number) => string
+  /** A fraction rendered as a locale-aware whole percentage. */
+  percent: (value: number) => string
   /** An elapsed span, sub-second in milliseconds: "800ms", "1.5s", "1,5s" —
    *  only the number is localized, the unit is the SI symbol. */
   duration: (ms: number) => string
@@ -115,6 +119,7 @@ const createFormatters = (locale: AppLocale): Formatters => {
   }
   const compactFormat = new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 })
   const numberFormat = new Intl.NumberFormat(locale)
+  const percentFormat = new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 0 })
   // The number is localized; the unit is the SI symbol, appended by us. This is
   // the one place the layer does not let CLDR name a unit, and it is deliberate:
   // `unitDisplay: 'narrow'` for seconds is not stable across ICU builds, so the
@@ -132,7 +137,7 @@ const createFormatters = (locale: AppLocale): Formatters => {
     maximumFractionDigits: 1,
     useGrouping: false,
   })
-  const millisecondsFormat = new Intl.NumberFormat(locale, {
+  const ungroupedIntegerFormat = new Intl.NumberFormat(locale, {
     maximumFractionDigits: 0,
     useGrouping: false,
   })
@@ -148,10 +153,12 @@ const createFormatters = (locale: AppLocale): Formatters => {
     time: (value, { hour12 }) => timeFormats[hour12 ? 'true' : 'false'].format(toDate(value)),
     compactNumber: (value) => compactFormat.format(value),
     number: (value) => numberFormat.format(value),
+    ungroupedInteger: (value) => ungroupedIntegerFormat.format(value),
+    percent: (value) => percentFormat.format(value),
     // Rounded before the branch is chosen, for the same reason `selectRelativeUnit`
     // promotes: 999.6ms rounds to 1000 and would otherwise print `1000ms`, not `1.0s`.
     duration: (ms) =>
-      Math.round(ms) < second ? `${millisecondsFormat.format(ms)}ms` : `${secondsFormat.format(ms / second)}s`,
+      Math.round(ms) < second ? `${ungroupedIntegerFormat.format(ms)}ms` : `${secondsFormat.format(ms / second)}s`,
   }
 }
 

@@ -261,3 +261,31 @@ it.each(['string', 'URL', 'Request'] as const)(
     expect(headers.get('authorization')).toBe('Bearer token')
   },
 )
+
+it.each(['init', 'request'] as const)(
+  'honors redirect error from %s without following or retaining the body',
+  async (source) => {
+    const cancel = mock(() => {})
+    const send = mock(
+      async () => new Response(new ReadableStream({ cancel }), { status: 302, headers: { location: '/other' } }),
+    )
+    const url = 'https://provider.example/start'
+    await expect(
+      nativeFetch(
+        source === 'request' ? new Request(url, { redirect: 'error' }) : url,
+        source === 'init' ? { redirect: 'error' } : undefined,
+        send,
+      ),
+    ).rejects.toThrow('Failed to fetch')
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(cancel).toHaveBeenCalledTimes(1)
+  },
+)
+
+it('returns manual redirects without following', async () => {
+  const send = mock(async () => new Response('redirect', { status: 302, headers: { location: '/other' } }))
+  const response = await nativeFetch('https://provider.example/start', { redirect: 'manual' }, send)
+  expect(response.status).toBe(302)
+  expect(await response.text()).toBe('redirect')
+  expect(send).toHaveBeenCalledTimes(1)
+})

@@ -5,25 +5,36 @@
 import { expect, spyOn, test } from 'bun:test'
 import Anthropic from '@anthropic-ai/sdk'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { streamText } from 'ai'
+import { generateText, streamText } from 'ai'
 import { z } from 'zod'
-import { createFakeProvider, fakeProviderReply, unsupportedRequestMarker } from './fake-provider'
+import { createFakeProvider, fakeOpenAiModelId, fakeProviderReply, unsupportedRequestMarker } from './fake-provider'
+import { miniAppToolsetName, miniAppTransferPrompt, protectedEmailBody, protectedEmailId } from './mini-app-fixture'
+import {
+  officeDeckEditFilename,
+  officeDeckEditPrompt,
+  officeDeckEditScript,
+  officeEditFilename,
+  officeEditPrompt,
+  officeEditScript,
+  officeRetryFind,
+  officeRetryPrompt,
+  officeRetryScript,
+  officeScript,
+  officeScriptPrompt,
+  officeSkillHeading,
+  officeSkillLoadPrompt,
+  officeSkillName,
+  officeSkillWorkbookPrompt,
+  officeWorkbookPrompt,
+  officeWorkbookScript,
+} from './office-script-fixture'
+import { performanceStreamPrompt, performanceStreamReply } from './streaming-fixture'
 
-/** Runs `use` against a fresh fake provider on a free port. */
-const withFakeProvider = async (use: (origin: string) => Promise<void>) => {
+test('streams a complete reply over IPv4 loopback', async () => {
   const server = await createFakeProvider(0)
   try {
-    const { port } = z.object({ port: z.number() }).parse(server.address())
-    await use(`http://127.0.0.1:${port}`)
-  } finally {
-    server.close()
-    server.closeAllConnections()
-  }
-}
-
-test('streams a complete reply over IPv4 loopback', () =>
-  withFakeProvider(async (origin) => {
-    const client = new Anthropic({ apiKey: 'test-key', baseURL: origin, maxRetries: 0 })
+    const address = z.object({ port: z.number() }).parse(server.address())
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: `http://127.0.0.1:${address.port}`, maxRetries: 0 })
     const message = await client.messages
       .stream(
         {
@@ -36,35 +47,353 @@ test('streams a complete reply over IPv4 loopback', () =>
       .finalMessage()
     expect(message.content).toMatchObject([{ type: 'text', text: fakeProviderReply, citations: [] }])
     expect(message.stop_reason).toBe('end_turn')
-  }))
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
 
-test('streams a complete OpenAI-compatible chat completion with usage', () =>
-  withFakeProvider(async (origin) => {
-    const provider = createOpenAICompatible({ name: 'fake', baseURL: `${origin}/v1`, includeUsage: true })
-    const result = streamText({ model: provider('test-model'), prompt: 'Hello', maxRetries: 0 })
-    expect(await result.text).toBe(fakeProviderReply)
-    expect(await result.finishReason).toBe('stop')
-    expect(await result.usage).toMatchObject({ inputTokens: 10, outputTokens: 8, totalTokens: 18 })
-  }))
+test('the named long markdown fixture preserves every character across fixed-size deltas', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const address = z.object({ port: z.number() }).parse(server.address())
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: `http://127.0.0.1:${address.port}`, maxRetries: 0 })
+    const deltas: string[] = []
+    const stream = client.messages.stream({
+      model: 'test-model',
+      max_tokens: 10_000,
+      messages: [{ role: 'user', content: [{ type: 'text', text: performanceStreamPrompt }] }],
+    })
+    stream.on('text', (text) => deltas.push(text))
+    const message = await stream.finalMessage()
+    expect(deltas.length).toBeGreaterThan(100)
+    expect(deltas.every((text) => text.length <= 24)).toBe(true)
+    expect(deltas.join('')).toBe(performanceStreamReply)
+    expect(message.content).toMatchObject([{ type: 'text', text: performanceStreamReply }])
+    expect(message.stop_reason).toBe('end_turn')
 
-test.each([
-  ['POST', '/v1/responses', { stream: true }, 'POST /v1/responses'],
-  ['POST', '/v1/chat/completions', { stream: false }, 'POST /v1/chat/completions without "stream": true'],
-  ['GET', '/v1/models', undefined, 'GET /v1/models'],
-  ['POST', '/proxy/v1/chat/completions', { stream: true }, 'POST /proxy/v1/chat/completions'],
-  ['POST', '/v1/messages', 'not json', 'POST /v1/messages with a body that is not a JSON request'],
-])('answers %s %s with a 404 and logs it as unsupported', (method, path, body, request) =>
-  withFakeProvider(async (origin) => {
-    const log = spyOn(console, 'warn').mockImplementation(() => {})
-    try {
-      const response = await fetch(`${origin}${path}`, { method, body: body && JSON.stringify(body) })
-      expect(response.status).toBe(404)
-      expect(await response.text()).toBe(`The fake provider does not implement ${request}`)
-      const lines = log.mock.calls.map(([text]) => String(text))
-      const marker = RegExp.escape(unsupportedRequestMarker)
-      expect(lines).toEqual([expect.stringMatching(new RegExp(`^${marker} \\S+Z ${RegExp.escape(request)}$`))])
-    } finally {
-      log.mockRestore()
+    const normal = await client.messages
+      .stream({
+        model: 'test-model',
+        max_tokens: 100,
+        messages: [
+          { role: 'user', content: performanceStreamPrompt },
+          { role: 'assistant', content: 'Done.' },
+          { role: 'user', content: 'Hello again.' },
+        ],
+      })
+      .finalMessage()
+    expect(normal.content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('rejects malformed requests without breaking subsequent streams', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const baseURL = `http://127.0.0.1:${port}`
+    for (const body of ['{', 'null', '{}', '{"messages":{}}', '{"messages":[{"role":"user","content":42}]}']) {
+      const response = await fetch(`${baseURL}/v1/messages`, { method: 'POST', body })
+      expect(response.status).toBe(400)
+      expect(await response.text()).toBe('Invalid Messages request')
     }
-  }),
-)
+    const client = new Anthropic({ apiKey: 'test-key', baseURL, maxRetries: 0 })
+    const message = await client.messages
+      .stream({ model: 'test-model', max_tokens: 100, messages: [{ role: 'user', content: 'Hello again' }] })
+      .finalMessage()
+    expect(message.content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('plays a model that reads an email and passes its body to the open Mini App', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: `http://127.0.0.1:${port}`, maxRetries: 0 })
+    const send = (messages: Anthropic.MessageParam[]) =>
+      client.messages.stream({ model: 'test-model', max_tokens: 100, messages }).finalMessage()
+    const ask: Anthropic.MessageParam = { role: 'user', content: miniAppTransferPrompt }
+
+    const read = await send([ask])
+    expect(read.stop_reason).toBe('tool_use')
+    expect(read.content).toMatchObject([
+      { type: 'tool_use', name: 'google_get_email', input: { id: protectedEmailId } },
+    ])
+
+    const toolResult = (content: string): Anthropic.MessageParam => ({
+      role: 'user',
+      content: [{ type: 'tool_result', tool_use_id: 'toolu_test', content: [{ type: 'text', text: content }] }],
+    })
+    const email = JSON.stringify({ id: protectedEmailId, body_text: protectedEmailBody })
+    const transfer = await send([ask, { role: 'assistant', content: read.content }, toolResult(email)])
+    expect(transfer.content).toMatchObject([
+      { type: 'tool_use', name: miniAppToolsetName, input: { note: protectedEmailBody } },
+    ])
+
+    const reply = await send([ask, { role: 'assistant', content: transfer.content }, toolResult('Shown.')])
+    expect(reply.content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
+
+    // Another tool's JSON result is not an email; it gets the ordinary reply.
+    const otherCall: Anthropic.MessageParam = {
+      role: 'assistant',
+      content: [{ type: 'tool_use', id: 'toolu_test', name: 'search', input: {} }],
+    }
+    const unrelated = await send([ask, otherCall, toolResult('{"count":1}')])
+    expect(unrelated.content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('plays a model that builds a Word document with run_office_script, then replies', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: `http://127.0.0.1:${port}`, maxRetries: 0 })
+    const send = (messages: Anthropic.MessageParam[]) =>
+      client.messages.stream({ model: 'test-model', max_tokens: 100, messages }).finalMessage()
+    const ask: Anthropic.MessageParam = { role: 'user', content: officeScriptPrompt }
+
+    const call = await send([ask])
+    expect(call.content).toMatchObject([
+      { type: 'tool_use', name: 'run_office_script', input: { script: officeScript } },
+    ])
+
+    const reply = await send([
+      ask,
+      { role: 'assistant', content: call.content },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_test', content: '{"ok":true}' }] },
+    ])
+    expect(reply.content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('retries the failed Office call with its returned handle, then replies in text', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: `http://127.0.0.1:${port}` })
+    const messages: Anthropic.MessageParam[] = [{ role: 'user', content: officeRetryPrompt }]
+    const send = () => client.messages.stream({ model: 'test-model', max_tokens: 100, messages }).finalMessage()
+    const answer = (message: Anthropic.Message, result: { ok: true } | { ok: false; scriptId: string }) => {
+      const block = message.content[0]
+      if (block.type !== 'tool_use') {
+        throw new Error('Expected Office tool call')
+      }
+      messages.push(
+        { role: 'assistant', content: message.content },
+        {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: block.id, content: [{ type: 'text', text: JSON.stringify(result) }] },
+          ],
+        },
+      )
+      return block.input
+    }
+    const scriptId = crypto.randomUUID()
+    expect(answer(await send(), { ok: false, scriptId })).toEqual({ script: officeRetryScript })
+    expect(answer(await send(), { ok: true })).toEqual({
+      edit: { scriptId, replacements: [{ find: officeRetryFind, replace: '' }] },
+    })
+    expect((await send()).content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('plays a model that builds a workbook with run_office_script', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: `http://127.0.0.1:${port}`, maxRetries: 0 })
+    const ask: Anthropic.MessageParam = { role: 'user', content: officeWorkbookPrompt }
+
+    const call = await client.messages.stream({ model: 'test-model', max_tokens: 100, messages: [ask] }).finalMessage()
+    expect(call.content).toMatchObject([
+      { type: 'tool_use', name: 'run_office_script', input: { script: officeWorkbookScript } },
+    ])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('plays a model that loads the Excel skill and builds the workbook only once its body arrives', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: `http://127.0.0.1:${port}`, maxRetries: 0 })
+    const send = (messages: Anthropic.MessageParam[]) =>
+      client.messages.stream({ model: 'test-model', max_tokens: 100, messages }).finalMessage()
+    /** The turn so far once the skill call returns `body`. */
+    const afterSkill = async (prompt: string, body: string): Promise<Anthropic.MessageParam[]> => {
+      const ask: Anthropic.MessageParam = { role: 'user', content: prompt }
+      const call = await send([ask])
+      expect(call.content).toMatchObject([{ type: 'tool_use', name: 'skill', input: { name: officeSkillName } }])
+      return [
+        ask,
+        { role: 'assistant', content: call.content },
+        { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_test', content: body }] },
+      ]
+    }
+    const body = `${officeSkillHeading}\n\nThe rest of the skill.`
+
+    expect((await send(await afterSkill(officeSkillWorkbookPrompt, body))).content).toMatchObject([
+      { type: 'tool_use', name: 'run_office_script', input: { script: officeWorkbookScript } },
+    ])
+    for (const [prompt, result] of [
+      [officeSkillLoadPrompt, body],
+      [officeSkillWorkbookPrompt, 'Skill "office-xlsx" was not found or is disabled.'],
+    ]) {
+      expect((await send(await afterSkill(prompt, result))).content).toMatchObject([
+        { type: 'text', text: fakeProviderReply },
+      ])
+    }
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('plays a model that edits the attached document with run_office_script', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: `http://127.0.0.1:${port}`, maxRetries: 0 })
+    const ask: Anthropic.MessageParam = {
+      role: 'user',
+      content: [
+        { type: 'text', text: `${officeEditPrompt}\n\n[Attached: ${officeEditFilename}]` },
+        { type: 'text', text: 'Status: {{status}}' },
+      ],
+    }
+
+    const call = await client.messages.stream({ model: 'test-model', max_tokens: 100, messages: [ask] }).finalMessage()
+    expect(call.content).toMatchObject([
+      {
+        type: 'tool_use',
+        name: 'run_office_script',
+        input: { script: officeEditScript, inputs: [officeEditFilename] },
+      },
+    ])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('plays a model that edits the attached deck with run_office_script', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: `http://127.0.0.1:${port}`, maxRetries: 0 })
+    const ask: Anthropic.MessageParam = {
+      role: 'user',
+      content: [
+        {
+          type: 'text',
+          text: `[Attachment: "${officeDeckEditFilename}"]\n\n## Slide 1\nStatus: {{status}}\n${officeDeckEditPrompt}`,
+        },
+      ],
+    }
+
+    const call = await client.messages.stream({ model: 'test-model', max_tokens: 100, messages: [ask] }).finalMessage()
+    expect(call.content).toMatchObject([
+      {
+        type: 'tool_use',
+        name: 'run_office_script',
+        input: { script: officeDeckEditScript, inputs: [officeDeckEditFilename] },
+      },
+    ])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('serves a Local OpenAI-compatible setup: CORS, the model list, and whole or streamed replies', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const address = z.object({ port: z.number() }).parse(server.address())
+    const baseURL = `http://127.0.0.1:${address.port}/v1`
+
+    const preflight = await fetch(`${baseURL}/chat/completions`, { method: 'OPTIONS' })
+    expect(preflight.status).toBe(204)
+    expect(preflight.headers.get('access-control-allow-origin')).toBe('*')
+    const models = await fetch(`${baseURL}/models`)
+    expect(models.headers.get('access-control-allow-origin')).toBe('*')
+    expect(await models.json()).toMatchObject({ data: [{ id: fakeOpenAiModelId }] })
+
+    const model = createOpenAICompatible({ name: 'fake', baseURL, apiKey: 'test-key' }).chatModel(fakeOpenAiModelId)
+    expect((await generateText({ model, prompt: 'Hello', maxRetries: 0 })).text).toBe(fakeProviderReply)
+    const stream = streamText({ model, prompt: 'Hello', maxRetries: 0 })
+    const deltas: string[] = []
+    for await (const delta of stream.textStream) {
+      deltas.push(delta)
+    }
+    expect(deltas.length).toBeGreaterThan(1)
+    expect(deltas.join('')).toBe(fakeProviderReply)
+    expect(await stream.finishReason).toBe('stop')
+
+    const malformed = await fetch(`${baseURL}/chat/completions`, { method: 'POST', body: 'not json' })
+    expect(malformed.status).toBe(400)
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('ends a streamed chat completion with a usage chunk only when the request asks for one', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    /** The stream's SSE events for a streamed request with `extra` in its body. */
+    const events = async (extra: { stream_options?: { include_usage: boolean } }) => {
+      const body = JSON.stringify({ model: fakeOpenAiModelId, stream: true, ...extra })
+      const response = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, { method: 'POST', body })
+      return (await response.text()).trim().split('\n\n')
+    }
+
+    const withUsage = await events({ stream_options: { include_usage: true } })
+    expect(withUsage.at(-1)).toBe('data: [DONE]')
+    expect(JSON.parse(withUsage.at(-2)!.slice('data: '.length))).toMatchObject({
+      choices: [],
+      usage: { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18 },
+    })
+    const withoutUsage = await events({})
+    expect(withoutUsage.at(-1)).toBe('data: [DONE]')
+    expect(withoutUsage.filter((event) => event.includes('"usage"'))).toEqual([])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('answers a request it does not implement with a 404 and logs it as unsupported', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  const warn = spyOn(console, 'warn').mockImplementation(() => {})
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const response = await fetch(`http://127.0.0.1:${port}/v1/responses`, { method: 'POST', body: '{}' })
+    expect(response.status).toBe(404)
+    expect(await response.text()).toBe('The fake provider does not implement POST /v1/responses')
+    const marker = RegExp.escape(unsupportedRequestMarker)
+    expect(warn.mock.calls).toEqual([[expect.stringMatching(new RegExp(`^${marker} \\S+Z POST /v1/responses$`))]])
+  } finally {
+    warn.mockRestore()
+    server.close()
+    server.closeAllConnections()
+  }
+})

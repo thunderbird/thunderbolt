@@ -16,6 +16,7 @@ type CreateItemPanelShellProps = {
   open: boolean
   onClose: () => void
   onCloseComplete: () => void
+  bodyLayout?: 'scroll' | 'fill'
   children: ReactNode
 }
 
@@ -30,13 +31,14 @@ export const CreateItemPanelShell = ({
   open,
   onClose,
   onCloseComplete,
+  bodyLayout,
   children,
 }: CreateItemPanelShellProps) => {
   const { i18n } = useLingui()
 
   return (
     <DetailPanelSurface open={open} onClose={onClose} onCloseComplete={onCloseComplete} topInset>
-      <DetailPanel title={i18n._(title)} onClose={onClose}>
+      <DetailPanel title={i18n._(title)} onClose={onClose} bodyLayout={bodyLayout}>
         {children}
       </DetailPanel>
     </DetailPanelSurface>

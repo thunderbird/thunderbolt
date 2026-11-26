@@ -21,7 +21,7 @@ const createFakeHttpClient = (payload: unknown, recorded: RecordedRequest[]): Ht
     throw new Error('not implemented')
   }
 
-  return { get, post: unsupported, delete: unsupported }
+  return { get, head: unsupported, post: unsupported, delete: unsupported }
 }
 
 const munich = {
@@ -103,6 +103,9 @@ describe('fetchEnglishLocationName', () => {
         rejected.json = () => Promise.reject(new Error('geocoding unavailable'))
         rejected.text = () => Promise.reject(new Error('geocoding unavailable'))
         return rejected
+      },
+      head: () => {
+        throw new Error('not implemented')
       },
       post: () => {
         throw new Error('not implemented')

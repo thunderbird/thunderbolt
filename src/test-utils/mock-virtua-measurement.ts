@@ -16,7 +16,16 @@
  * // ...render + assertions...
  * restore()
  */
-export const mockVirtuaMeasurement = ({ viewportHeight = 800, itemHeight = 40 } = {}): (() => void) => {
+export const mockVirtuaMeasurement = ({
+  viewportHeight = 800,
+  itemHeight = 40,
+  isViewport,
+}: {
+  viewportHeight?: number
+  itemHeight?: number
+  /** Picks the scroll container, for a list where virtua observes a `keepMounted` row before the container. */
+  isViewport?: (target: Element) => boolean
+} = {}): (() => void) => {
   const originalResizeObserver = globalThis.ResizeObserver
   const originalOffsetParent = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetParent')
 
@@ -27,16 +36,15 @@ export const mockVirtuaMeasurement = ({ viewportHeight = 800, itemHeight = 40 } 
     },
   })
 
-  const makeEntry = (target: Element, height: number): ResizeObserverEntry =>
-    ({
-      target,
-      contentRect: { top: 0, bottom: 0, left: 0, right: 0, x: 0, y: 0, width: 300, height, toJSON: () => ({}) },
-      borderBoxSize: [],
-      contentBoxSize: [],
-      devicePixelContentBoxSize: [],
-    }) as unknown as ResizeObserverEntry
+  const makeEntry = (target: Element, height: number): ResizeObserverEntry => ({
+    target,
+    contentRect: { top: 0, bottom: 0, left: 0, right: 0, x: 0, y: 0, width: 300, height, toJSON: () => ({}) },
+    borderBoxSize: [],
+    contentBoxSize: [],
+    devicePixelContentBoxSize: [],
+  })
 
-  class MockResizeObserver {
+  class MockResizeObserver implements ResizeObserver {
     // Virtua observes the scroll container before any row, so the first
     // observed element per observer instance gets the viewport height.
     private isFirstObserve = true
@@ -47,16 +55,16 @@ export const mockVirtuaMeasurement = ({ viewportHeight = 800, itemHeight = 40 } 
     }
 
     observe(target: Element) {
-      const height = this.isFirstObserve ? viewportHeight : itemHeight
+      const height = (isViewport ? isViewport(target) : this.isFirstObserve) ? viewportHeight : itemHeight
       this.isFirstObserve = false
-      this.callback([makeEntry(target, height)], this as unknown as ResizeObserver)
+      this.callback([makeEntry(target, height)], this)
     }
 
     unobserve() {}
     disconnect() {}
   }
 
-  globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver
+  globalThis.ResizeObserver = MockResizeObserver
   return () => {
     globalThis.ResizeObserver = originalResizeObserver
     if (originalOffsetParent) {

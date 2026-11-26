@@ -19,6 +19,7 @@ const storageKey = 'oauth_flow_state'
  * overwrites any abandoned entry.
  */
 type OAuthState = {
+  oauthRelayUrl?: string
   state: string | null
   provider: OAuthProvider | null
   verifier: string | null
@@ -55,4 +56,14 @@ export const setOAuthState = (update: Partial<OAuthState>): void => {
 /** Clears all OAuth flow state from localStorage. */
 export const clearOAuthState = (): void => {
   localStorage.removeItem(storageKey)
+}
+
+/** Forget provider and widget OAuth loading markers when this device leaves its identity. */
+export const clearAllOAuthConnectingState = (): void => {
+  const keys = Array.from({ length: sessionStorage.length }, (_, index) => sessionStorage.key(index))
+  for (const key of keys) {
+    if (key?.startsWith('oauth_connecting_')) {
+      sessionStorage.removeItem(key)
+    }
+  }
 }

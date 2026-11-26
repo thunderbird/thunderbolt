@@ -6,52 +6,113 @@ Rust crate lives in [src-tauri/](../../../src-tauri).
 | File                                                                                  | What lives there                                                          |
 | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | [`src-tauri/src/lib.rs`](../../../src-tauri/src/lib.rs)                               | App builder: plugin registration, invoke handlers, per-platform setup     |
-| [`src-tauri/src/commands.rs`](../../../src-tauri/src/commands.rs)                     | The five `invoke` commands the frontend calls                             |
+| [`src-tauri/src/commands.rs`](../../../src-tauri/src/commands.rs)                     | Window visibility, interface style, OAuth and CLI invoke commands         |
+| [`src-tauri/src/tray.rs`](../../../src-tauri/src/tray.rs)                             | Process-owned desktop tray, menu and close handler                        |
 | [`src-tauri/src/oauth_server.rs`](../../../src-tauri/src/oauth_server.rs)             | One-shot loopback HTTP server for desktop OAuth/SSO redirects             |
 | [`src-tauri/src/cli_installer.rs`](../../../src-tauri/src/cli_installer.rs)           | Download, checksum-verify and install of the standalone `thunderbolt` CLI |
 | [`src-tauri/src/platform_utils.rs`](../../../src-tauri/src/platform_utils.rs)         | An inlined Tauri plugin whose commands Android overrides in Kotlin        |
 | [`src-tauri/capabilities/default.json`](../../../src-tauri/capabilities/default.json) | Permission manifest. A command the frontend can call must be listed here. |
 | [`src-tauri/tauri.conf.json`](../../../src-tauri/tauri.conf.json)                     | Base window, CSP, bundle, deep-link and updater config                    |
 
-Thin by design: dock-icon flipping, the OAuth loopback port, the CLI installer, Android window
+Thin by design: native window and tray lifecycle, the OAuth loopback port, the CLI installer, Android window
 insets. No business logic, no native database plugin (shipped builds keep everything in PowerSync's
 wa-sqlite in the webview), no native HTTP client the frontend can reach. `reqwest` compiles into
 every build but only `cli_installer` uses it.
 
 ## The invoke commands
 
-`lib.rs` registers exactly five ([`src-tauri/src/lib.rs:47`](../../../src-tauri/src/lib.rs#L47)).
-Everything else goes through an official plugin.
+[`lib.rs`](../../../src-tauri/src/lib.rs) registers the application commands below. Plugin commands
+are registered separately.
 
-| Command                   | Platforms                                 | Purpose                                                                                                   | Frontend caller                                                                                                                                                                              |
-| ------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `toggle_dock_icon`        | macOS (no-op else)                        | Switches activation policy between `Regular` and `Accessory`, so hiding to the tray removes the dock icon | [`src/lib/tray.tsx`](../../../src/lib/tray.tsx)                                                                                                                                              |
-| `set_interface_style`     | iOS (no-op else)                          | Sets `overrideUserInterfaceStyle` on every window scene so keyboard and system UI follow the app theme    | [`src/lib/theme-provider.tsx`](../../../src/lib/theme-provider.tsx)                                                                                                                          |
-| `start_oauth_server`      | desktop (mobile signs in over deep links) | Binds the loopback listener and returns the port                                                          | [`oauth-loopback.ts`](../../../src/lib/oauth-loopback.ts), [`sso-loopback.ts`](../../../src/lib/sso-loopback.ts), [`mcp-oauth-loopback.ts`](../../../src/lib/mcp-auth/mcp-oauth-loopback.ts) |
-| `install_thunderbolt_cli` | macOS arm64, Linux                        | One-click install of the prebuilt CLI into `~/.local/bin`                                                 | [`src/lib/cli-install.ts`](../../../src/lib/cli-install.ts)                                                                                                                                  |
+| Command                   | Platforms                                 | Purpose                                                                                                | Caller                                                                                                                                                                                       |
+| ------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `initialize_tray`         | desktop only                              | Creates the native tray once, or refreshes its translated Show/Quit labels                             | [`src/lib/tray.ts`](../../../src/lib/tray.ts)                                                                                                                                                |
+| `show_main_window`        | desktop (no-op on mobile)                 | Restores, unminimizes and focuses `main`, including its taskbar/Dock icon                              | Native tray menu in [`tray.rs`](../../../src-tauri/src/tray.rs); second-launch and macOS Dock callbacks in [`lib.rs`](../../../src-tauri/src/lib.rs)                                         |
+| `hide_main_window`        | desktop (no-op on mobile)                 | Hides `main` and its taskbar/Dock icon                                                                 | Native close handler in [`tray.rs`](../../../src-tauri/src/tray.rs)                                                                                                                          |
+| `set_interface_style`     | iOS (no-op else)                          | Sets `overrideUserInterfaceStyle` on every window scene so keyboard and system UI follow the app theme | [`src/lib/theme-provider.tsx`](../../../src/lib/theme-provider.tsx)                                                                                                                          |
+| `start_oauth_server`      | desktop (mobile signs in over deep links) | Binds the loopback listener and returns the port                                                       | [`oauth-loopback.ts`](../../../src/lib/oauth-loopback.ts), [`sso-loopback.ts`](../../../src/lib/sso-loopback.ts), [`mcp-oauth-loopback.ts`](../../../src/lib/mcp-auth/mcp-oauth-loopback.ts) |
+| `install_thunderbolt_cli` | macOS arm64, Linux                        | One-click install of the prebuilt CLI into `~/.local/bin`                                              | [`src/lib/cli-install.ts`](../../../src/lib/cli-install.ts)                                                                                                                                  |
 
 `set_interface_style` is iOS-only, not "mobile": Android keyboards follow the system dark-mode
 setting and cannot be overridden per app.
 
+### Native tray and window lifecycle
+
+[`TrayManager.initIfSupported()`](../../../src/lib/tray.ts) sends translated menu labels on desktop
+and awaits native initialization. Rust owns `main-tray`, its menu and its callbacks for the app
+process lifetime. Repeated initialization refreshes labels without adding icons or handlers,
+including across frontend HMR and full webview reloads. The frontend holds no tray resources.
+
+The native close handler is installed only after tray creation succeeds; if creation fails, boot
+continues with normal window closing. Show restores the same window from the tray menu, a second
+launch or a macOS Dock reopen event; Quit exits the process. Each hide/restore operation runs as one
+main-thread task so its window, taskbar and Dock changes cannot interleave. The `show_main_window`
+and `hide_main_window` commands return after dispatch, with operation failures logged on the main
+thread; `initialize_tray` waits for completion and propagates failures to the startup boundary.
+
 ### How the OAuth loopback server works
 
 1. Binds `127.0.0.1` on one of three ports: `17421`, `17422`, `17423`.
-2. Accepts a single connection and serves an "Authentication Complete" page.
-3. Emits an `oauth-callback` event to the frontend and releases the port.
+2. Waits for a well-formed browser redirect with the listener's local Host header. For SSO,
+   the callback must also carry exactly one `client_state` matching the sign-in attempt.
+   Malformed or unrelated requests receive a 400 response without consuming the listener.
+3. Serves an "Authentication Complete" page for the accepted callback.
+4. Emits an `oauth-callback` event to the frontend and releases the port.
 
 All three ports must be registered as redirect URIs in the provider's console; see
 [self-hosting/configuration.md](../../self-hosting/configuration.md).
 
 - **Non-blocking accept loop with a 305-second deadline**
-  ([`src-tauri/src/oauth_server.rs:62`](../../../src-tauri/src/oauth_server.rs#L62)): five seconds past
+  ([`src-tauri/src/oauth_server.rs`](../../../src-tauri/src/oauth_server.rs)): five seconds past
   the frontend's five-minute timeout, so the frontend resolves first, and an abandoned flow frees
   the port instead of leaking a thread forever.
-- **An unparseable connection still emits `oauth-callback`** with `error=invalid_request`, so a
-  stray TCP probe surfaces immediately instead of stalling the UI for five minutes.
+- **Stray probes do not emit `oauth-callback` or end the flow.** Each request has at most two
+  seconds to supply complete headers, within a 64 KiB budget that accommodates cookies shared
+  across localhost ports. A rejected request leaves the listener available for the real redirect.
+- **Accept errors retry within the same deadline.** Interrupted accepts, aborted connections,
+  and temporary resource exhaustion do not end the flow. Retries pause briefly to avoid spinning;
+  the first non-`WouldBlock` error is logged without request contents.
 - **Why loopback:** the app has no `http(s)` origin a provider will redirect to. `bind_to_port`
   errors rather than picking a random port, since an unregistered redirect URI fails unreadably.
-- **The first connection is unauthenticated**, the accepted risk for loopback OAuth (RFC 8252
-  §8.3); PKCE blocks token theft because the verifier never leaves the frontend.
+- **Local processes can reach the loopback port** (RFC 8252 §8.3). SSO validates its attempt nonce
+  before accepting either a token or an IdP error. Other OAuth flows still validate the provider's
+  state in the frontend, and PKCE blocks token theft because the verifier never leaves it.
+
+### Tinfoil sign-in on mobile
+
+Tinfoil uses the same verified HTTPS app link as Google and Microsoft:
+`https://app.thunderbolt.io/oauth/callback`. The mobile shell opens the system browser with PKCE;
+it does not run the desktop loopback server. The existing `deep-link` configuration covers both
+iOS Universal Links and Android App Links, so this flow needs no new scheme or native permission.
+
+[`tinfoil-mobile-auth.ts`](../../../src/lib/tinfoil-mobile-auth.ts) persists the pending nonce,
+verifier, setup context, and connection revision in device-local storage for ten minutes. That
+lets authorization resume after the OS terminates the app. The callback must match the exact
+HTTPS URL and pending nonce. It consumes the pending record and hands one in-memory exchange to
+the original onboarding or Connections surface through `/oauth/tinfoil`. Explicit cancellation
+clears the record; an ordinary unmount preserves it. The existing connection revision and model
+save transaction reject a return after disconnect. Tokens use the existing local Tinfoil session
+store. Provider callback URLs and errors are never logged.
+
+The global deep-link listener subscribes before reading startup links, deduplicates OAuth states,
+and cleans up listeners even when native registration finishes after unmount. The callback route
+remounts setup so a return to an already-open screen also resumes correctly. Browser popups and
+desktop loopback authorization retain their existing relay.
+
+**Registration check (2026-11-05):** Tinfoil's public authorization-info endpoint returned HTTP 200,
+client name `Thunderbolt`, product `thunderbolt`, `verified: true`, the exact mobile redirect, and
+both requested scopes for this unauthenticated GET:
+
+```text
+https://api.tinfoil.sh/oauth/authorize/info?client_id=oauthc_SDVdLmN2tIicRCMaqNGijBTNKZceSmEjwolKnycjrypWSCvN&redirect_uri=https%3A%2F%2Fapp.thunderbolt.io%2Foauth%2Fcallback&response_type=code&scope=inference%3Aapi%20offline_access
+```
+
+This verifies provider registration without signing in or granting access. A full device smoke test
+still requires a signed build whose app association is installed, a Tinfoil account, and consent:
+connect from onboarding and Connections, return with the app alive and after OS termination,
+then verify inference and search. Cancel and retry once, and confirm an old callback after disconnect
+cannot reconnect the account. Unit tests cover nonce/URL validation, expiration, cancellation,
+single exchange, StrictMode replay, routing, listener cleanup, and the transactional save guard.
 
 ### What the CLI installer does
 
@@ -75,12 +136,25 @@ both in sync.
 ### `platform-utils`: one plugin, two implementations
 
 [`platform_utils.rs`](../../../src-tauri/src/platform_utils.rs) declares an inlined plugin exposing
-`get_android_insets` and `set_bar_color`.
+these commands:
 
-- **Android** replaces the Rust bodies with `PlatformUtilsPlugin.kt`, registered via
-  `register_android_plugin("net.thunderbird.thunderbolt", "PlatformUtilsPlugin")`, reading real
-  `WindowInsetsCompat` values and driving `WindowInsetsControllerCompat`.
-- **Desktop and iOS** fall through to the Rust bodies, deliberate no-ops (`None`, `Ok(())`).
+| Command              | Answered by                        | What it does                                                                                                                                                                                                                                   |
+| -------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `get_android_insets` | Kotlin on Android; Rust elsewhere  | Real `WindowInsetsCompat` values on Android; `None` elsewhere                                                                                                                                                                                  |
+| `set_bar_color`      | Kotlin on Android; Rust elsewhere  | Drives `WindowInsetsControllerCompat` on Android; `Ok(())` elsewhere                                                                                                                                                                           |
+| `save_to_downloads`  | Rust on desktop; Kotlin on Android | Saves into Downloads for [`download.ts`](../../../src/lib/download.ts). Desktop marks the file as downloaded first; Android writes through MediaStore off the main thread and needs Android 10. iOS has no handler and saves through plugin-fs |
+| `copied_files`       | Rust on Linux only                 | Lists the regular files in `x-special/gnome-copied-files` (path, name, size). Grants no plugin-fs scope                                                                                                                                        |
+| `read_copied_file`   | Rust on Linux only                 | Returns the raw bytes of one file the last `copied_files` call listed, up to the composer's 25 MB cap. Refuses any other path                                                                                                                  |
+
+- **Android** answers the first three with `PlatformUtilsPlugin.kt`, registered via
+  `register_android_plugin("net.thunderbird.thunderbolt", "PlatformUtilsPlugin")`. A command the Rust
+  `generate_handler!` also lists never reaches Kotlin, so `save_to_downloads` is registered there for
+  desktop only.
+- **Desktop and iOS** fall through to the Rust bodies of the first two, deliberate no-ops.
+- **A failed save rejects with `{ code, message }`** on both sides. `saveErrorMessage` in `download.ts`
+  maps the stable `code` (`names_taken`, `mark_failed`, `no_downloads_folder`, `needs_android_10`,
+  `not_a_file_name`, `write_failed`) to the words the user sees; `message` is the OS text, for the
+  console only. A `write_failed` save is explained from its OS text, as plugin-fs errors on iOS are.
 
 Callers ([`use-safe-area-inset.ts`](../../../src/hooks/use-safe-area-inset.ts),
 [`set-android-bar-color.ts`](../../../src/lib/set-android-bar-color.ts)) therefore invoke
@@ -89,7 +163,7 @@ unconditionally under Tauri and read `null`/no-op as "use the CSS `env()` defaul
 Command names are declared twice on the Rust side: `generate_handler!` and
 [`build.rs`](../../../src-tauri/build.rs), whose `InlinedPlugin` mints the allow-all-commands
 `platform-utils:default` permission. Kotlin declares the camelCase counterparts (`getAndroidInsets`,
-`setBarColor`) at exactly the package path `register_android_plugin` names; a mismatch is a runtime
+`setBarColor`, `saveToDownloads`) at exactly the package path `register_android_plugin` names; a mismatch is a runtime
 `ClassNotFoundException: net.thunderbird.thunderbolt.PlatformUtilsPlugin`, not a build error.
 Android specifics and the `gen/android` re-init trap:
 [development/mobile-setup.md](../development/mobile-setup.md).
@@ -100,6 +174,7 @@ Android specifics and the `gen/android` re-init trap:
 | ----------------------- | --------------------------------------------------------------------------------------------------------------- |
 | Every target            | `process`, `fs`, `opener`, `os`, `deep-link`, `haptics`, `updater`, `store`, `platform-utils`, `http`           |
 | Desktop only            | `single-instance`. Its handler shows and focuses the existing `main` window, so a second copy raises the first. |
+| Linux only              | `linux-preview-guard` (see below)                                                                               |
 | `debug_assertions` only | `devtools`                                                                                                      |
 
 Registration is not enough.
@@ -107,8 +182,12 @@ Registration is not enough.
 is held to, scoped to `webviews: ["main"]` so child previews inherit no native permissions. A command or window operation that works in a scratch
 build and fails in the app is almost always missing an entry there.
 
-- `remote.urls` permits `http://localhost:1420/*` because in dev Vite serves the frontend, which
-  counts as remote content.
+- **Linux keeps external pages out of preview webviews.** WebKitGTK cannot tell which frame sent an
+  IPC message, so the frontend opens external links in the system browser instead of the sidebar.
+  The `linux-preview-guard` plugin ([`preview_guard.rs`](../../../src-tauri/src/preview_guard.rs)) is
+  the native backstop. It cancels http(s) navigation in every webview except `main`, unless the URL
+  is on the dev URL's origin in a dev build. Other schemes, such as `tauri://localhost`, are not
+  checked.
 - The `http:default` scope allows arbitrary HTTP/HTTPS hosts, ports and paths (including IPv6); no other schemes are allowed.
   Accepted risk: scripts in the main webview can invoke CORS-free native HTTP directly and read any reachable public, loopback, private or link-local service, including metadata endpoints; Cloud Proxy and `createProxyFetch` are routing policy, not IPC security boundaries, and preview webviews are excluded.
 - **`devtools` needs a crypto provider first.** Its `reqwest`/rustls stack panics on its first HTTPS
@@ -124,11 +203,26 @@ build and fails in the app is almost always missing an entry there.
 | macOS          | Transparent window with native blur: `transparent`, `windowEffects: hudWindow`, `titleBarStyle: Overlay`, `hiddenTitle`, shifted `trafficLightPosition`, plus `macOSPrivateApi` (needed by the transparency) in the base config |
 | Windows, Linux | Frameless: `set_decorations(false)` in the setup hook; the frontend paints minimize/maximize/close in the top-right                                                                                                             |
 | iOS            | Forces `setOpaque(true)` on the WKWebView ([`src-tauri/src/lib.rs:111`](../../../src-tauri/src/lib.rs#L111))                                                                                                                    |
-| Linux          | Sets `JSC_useOMGJIT=false` before the webview is created                                                                                                                                                                        |
+| Linux          | Sets `JSC_useOMGJIT=false` before the webview is created, and turns on native drag-drop in `tauri.linux.conf.json` (see below)                                                                                                  |
 | Desktop (all)  | `tauri.conf.json` sets `visible: false` on `main`; [`src/app.tsx`](../../../src/app.tsx) calls `getCurrentWindow().show()` after React mounts (any Tauri build), so no white flash ahead of the theme                           |
 
-Declarative half: [`tauri.macos.conf.json`](../../../src-tauri/tauri.macos.conf.json), merged over the
-base config automatically by filename. Imperative half: `lib.rs` `setup` blocks.
+On Linux, WebKitGTK shows a file dragged in from the OS only as `text/uri-list` text, so the composer
+takes the paths from Tauri's drag events (`use-native-file-drop.ts`). Files copied in a file manager
+paste through `copied_files` in `platform_utils.rs`, which reads only `x-special/gnome-copied-files`
+and never `text/uri-list`, where any page can put a `file://` path. It lists the regular files with
+their sizes and opens nothing to plugin-fs; the composer reads a file through `read_copied_file`
+only after the count, type and size checks pass, one at a time, and that command reads only a path
+the listing named, up to the composer's size cap. A dropped file instead is opened to plugin-fs by
+the drop handler, as plugin-fs does for a window-level drop, and the composer stats it first
+(`fs:allow-stat`). A path that is not a regular file (folder, device, pipe) is skipped, and a read
+the OS refuses shows in the attachment notice. The native handler takes dragged links too, so the composer types http(s) ones at
+the caret, with no drop hint. When a paste brings no copied files and its `text/plain` reads empty,
+the composer pastes only the http(s) links from its `text/uri-list`, as text.
+
+Declarative half: [`tauri.macos.conf.json`](../../../src-tauri/tauri.macos.conf.json) and
+[`tauri.linux.conf.json`](../../../src-tauri/tauri.linux.conf.json), merged over the base config
+automatically by filename. Each repeats the whole window, because the merge replaces the `windows`
+array. Imperative half: `lib.rs` `setup` blocks.
 `tauri.dev.conf.json` is a third overlay the `tauri:dev:*` scripts pass explicitly, changing only
 product name and bundle identifier (`.dev`, so dev and prod coexist on a phone) and emptying
 deep-link and updater config.
@@ -140,9 +234,9 @@ deep-link and updater config.
 - **Frameless controls:** [`window-controls.tsx`](../../../src/components/window-controls.tsx), gated
   on `isFramelessControlsPlatform()`. A fixed overlay, not a layout strip, so it cannot alter the
   `h-svh` content height; surfaces whose controls reach that corner reserve
-  `--window-controls-width`. Close calls `close()`, which the tray's `onCloseRequested` intercepts
-  to hide instead of quit. macOS uses `titleBarStyle: Overlay` instead: `decorations: false` would
-  strip the native traffic lights.
+  `--window-controls-width`. Close calls `close()`, which the native tray's `CloseRequested` handler
+  intercepts to hide instead of quit. macOS uses `titleBarStyle: Overlay` instead:
+  `decorations: false` would strip the native traffic lights.
 - **iOS is forced opaque** even though `transparent` lives only in the macOS overlay, leaving it
   opaque already. A non-opaque webview lets the root view controller's `systemBackgroundColor` bleed
   through the status-bar and home-indicator safe areas, painting a white status bar over the light

@@ -202,13 +202,23 @@ export const isOpfsAvailable = async (): Promise<boolean> => {
  */
 export const hasIndexedDbDatabase = async (
   name: string,
-  idb: Pick<IDBFactory, 'databases'> = indexedDB,
+  idb: Partial<Pick<IDBFactory, 'databases'>> = indexedDB,
 ): Promise<boolean> => {
-  if (typeof idb.databases !== 'function') {
+  if (!idb.databases) {
     return true
   }
   const databases = await idb.databases()
   return databases.some((database) => database.name === name)
+}
+
+/** Names of this origin's IndexedDB databases; empty where the browser cannot list them. */
+export const listIndexedDbDatabases = async (
+  idb: Partial<Pick<IDBFactory, 'databases'>> = indexedDB,
+): Promise<string[]> => {
+  if (!idb.databases) {
+    return []
+  }
+  return (await idb.databases()).flatMap((database) => (database.name === undefined ? [] : [database.name]))
 }
 
 /** Whether the OPFS root holds a file with this name. */
@@ -225,6 +235,18 @@ export const hasOpfsFile = async (
       return false
     }
     throw error
+  }
+}
+
+/** Removes a file from the OPFS root. A missing file counts as removed; one another tab holds open throws. */
+export const deleteOpfsFile = async (name: string, root?: Pick<FileSystemDirectoryHandle, 'removeEntry'>) => {
+  const directory = root ?? (await navigator.storage.getDirectory())
+  try {
+    await directory.removeEntry(name)
+  } catch (error) {
+    if (!(error instanceof DOMException && error.name === 'NotFoundError')) {
+      throw error
+    }
   }
 }
 
@@ -295,16 +317,19 @@ export const powerSyncDbFilename = 'thunderbolt-sync.db'
 /**
  * Determines the PowerSync database path from OPFS availability
  * @param appDataDirPath - The application data directory path
- * @returns The database path to use, or `':memory:'` when OPFS is unavailable
+ * @param filename - The database file; each slot has its own (see `local-data-owner.ts`)
+ * @returns An OPFS path, or without OPFS the bare filename: an IndexedDB database of that name, or
+ *   an in-memory one on Safari and Tauri (`pickVfs`). Either way the name is unique to the slot.
+ *   Earlier builds used a single `:memory:` name, so tabs shared one database across accounts.
  */
-export const getDatabasePath = async (appDataDirPath: string): Promise<string> => {
+export const getDatabasePath = async (appDataDirPath: string, filename: string): Promise<string> => {
   const opfsAvailable = await isOpfsAvailable()
   if (opfsAvailable) {
-    return `${appDataDirPath}/${powerSyncDbFilename}`
+    return `${appDataDirPath}/${filename}`
   }
 
-  console.warn('OPFS not available (likely private browsing), using in-memory database')
-  return ':memory:'
+  console.warn('OPFS not available (likely private browsing)')
+  return filename
 }
 
 /**

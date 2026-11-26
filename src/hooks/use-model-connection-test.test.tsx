@@ -8,6 +8,8 @@ import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import type { ReactNode } from 'react'
 import {
+  connectionTestLimits,
+  isLocalEndpoint,
   useModelConnectionTest,
   type ConnectionTestProbe,
   type ModelConnectionConfig,
@@ -51,11 +53,13 @@ describe('useModelConnectionTest', () => {
     expect(result.current.error).toBeNull()
   })
 
-  it('surfaces error with the probe failure message', async () => {
+  it('reports a safe failure without exposing a provider response or authenticated request', async () => {
     // The hook logs failures via console.error; muted so the test output stays clean.
     const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
     const probe: ConnectionTestProbe = mock(async () => {
-      throw new Error('invalid api key')
+      throw Object.assign(new Error('invalid api key: sk-existing'), {
+        request: { headers: { Authorization: 'Bearer sk-existing' } },
+      })
     })
     const { result } = renderHook(() => useModelConnectionTest(anthropicConfig, probe), { wrapper })
 
@@ -64,8 +68,34 @@ describe('useModelConnectionTest', () => {
     })
 
     expect(result.current.status).toBe('error')
-    expect(result.current.error).toBe('invalid api key')
+    expect(result.current.error).toBe(
+      'Could not connect to the model. Check your connection and credentials, then try again.',
+    )
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain('sk-existing')
+    expect(errorSpy).toHaveBeenCalledWith('Model connection test failed.')
     errorSpy.mockRestore()
+  })
+
+  it('distinguishes a bounded timeout from a provider rejection', async () => {
+    const timeout = new AbortController()
+    const timeoutSpy = spyOn(AbortSignal, 'timeout').mockReturnValue(timeout.signal)
+    const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { result } = renderHook(() => useModelConnectionTest(anthropicConfig, () => new Promise(() => {})), {
+        wrapper,
+      })
+      await act(async () => {
+        const pending = result.current.test(anthropicConfig)
+        timeout.abort(new DOMException('Timed out', 'TimeoutError'))
+        expect(await pending).toBeNull()
+      })
+      expect(result.current.isTesting).toBe(false)
+      expect(result.current.status).toBe('error')
+      expect(result.current.error).toBe('Connection test timed out. Please try again.')
+    } finally {
+      timeoutSpy.mockRestore()
+      errorSpy.mockRestore()
+    }
   })
 
   it('collapses status to idle when current credentials diverge from the tested ones', async () => {
@@ -257,5 +287,185 @@ describe('useModelConnectionTest', () => {
     })
 
     expect(verdict).toBeNull()
+  })
+})
+
+describe('isLocalEndpoint', () => {
+  it.each([
+    ['http://localhost:11434/v1', true],
+    ['http://127.0.0.1:1234', true],
+    ['http://192.168.1.20:11434', true],
+    ['http://[::1]:8080/v1', true],
+    ['http://ollama.local:11434', true],
+    ['http://host.docker.internal:11434/v1', true],
+    ['https://api.example.com/v1', false],
+  ])('classifies %s as local: %p', (url, expected) => {
+    expect(isLocalEndpoint({ provider: 'custom', url })).toBe(expected)
+  })
+
+  it('treats hosted providers and missing urls as remote', () => {
+    expect(isLocalEndpoint({ provider: 'openai', url: 'http://localhost:11434' })).toBe(false)
+    expect(isLocalEndpoint({ provider: 'custom', url: null })).toBe(false)
+  })
+})
+
+describe('connectionTestLimits', () => {
+  it('waits longer and hints at a model load for local endpoints', () => {
+    const local = connectionTestLimits({ provider: 'custom', url: 'http://localhost:11434/v1' })
+    const remote = connectionTestLimits({ provider: 'openai', url: null })
+
+    expect(local.timeoutMs).toBeGreaterThan(remote.timeoutMs)
+    expect(local.loadingHintAfterMs).not.toBeNull()
+    expect(remote.loadingHintAfterMs).toBeNull()
+  })
+})
+
+describe('useModelConnectionTest loading hint', () => {
+  const localConfig: ModelConnectionConfig = {
+    provider: 'custom',
+    model: 'llama3.2:1b',
+    url: 'http://localhost:11434/v1',
+    apiKey: null,
+  }
+  const { loadingHintAfterMs } = connectionTestLimits(localConfig)
+
+  afterEach(() => {
+    cleanup()
+    mock.restore()
+  })
+
+  /** Captures the hook's loading-hint timer so the test can fire it without waiting. */
+  const captureLoadingTimer = () => {
+    const realSetTimeout = globalThis.setTimeout
+    const captured: { fire: (() => void) | null } = { fire: null }
+    spyOn(globalThis, 'setTimeout').mockImplementation(((handler: () => void, delay?: number) => {
+      if (delay === loadingHintAfterMs) {
+        captured.fire = handler
+        return 0
+      }
+      return realSetTimeout(handler, delay)
+    }) as typeof setTimeout)
+    return captured
+  }
+
+  it('flags a slow local test as loading, then clears it on completion', async () => {
+    const timer = captureLoadingTimer()
+    let resolveInFlight: ((support: ToolSupport) => void) | null = null
+    const probe: ConnectionTestProbe = mock(
+      () =>
+        new Promise<ToolSupport>((resolve) => {
+          resolveInFlight = resolve
+        }),
+    )
+    const { result } = renderHook(() => useModelConnectionTest(localConfig, probe), { wrapper })
+
+    let testPromise: Promise<ToolSupport | null> = Promise.resolve(null)
+    act(() => {
+      testPromise = result.current.test(localConfig)
+    })
+    expect(result.current.isLoadingModel).toBe(false)
+
+    act(() => timer.fire!())
+    expect(result.current.isTesting).toBe(true)
+    expect(result.current.isLoadingModel).toBe(true)
+
+    await act(async () => {
+      resolveInFlight!('supported')
+      await testPromise
+    })
+    expect(result.current.isLoadingModel).toBe(false)
+    expect(result.current.status).toBe('success')
+  })
+
+  it('never schedules the loading hint for remote providers', async () => {
+    const timer = captureLoadingTimer()
+    const probe: ConnectionTestProbe = mock(async () => 'supported' as const)
+    const { result } = renderHook(() => useModelConnectionTest(anthropicConfig, probe), { wrapper })
+
+    await act(async () => {
+      await result.current.test(anthropicConfig)
+    })
+
+    expect(timer.fire).toBeNull()
+  })
+})
+
+describe('useModelConnectionTest cancellation and limits', () => {
+  const localConfig: ModelConnectionConfig = {
+    provider: 'custom',
+    model: 'llama3.2:1b',
+    url: 'http://localhost:11434/v1',
+    apiKey: null,
+  }
+
+  afterEach(() => {
+    cleanup()
+    mock.restore()
+  })
+
+  /** Probe that never settles on its own and records the signal of each run. */
+  const pendingProbe = () => {
+    const signals: AbortSignal[] = []
+    const probe: ConnectionTestProbe = mock((_config, _getProxyFetch, signal) => {
+      signals.push(signal)
+      return new Promise<ToolSupport>(() => {})
+    })
+    return { probe, signals }
+  }
+
+  it('aborts the pending probe on reset', () => {
+    const { probe, signals } = pendingProbe()
+    const { result } = renderHook(() => useModelConnectionTest(localConfig, probe), { wrapper })
+
+    act(() => {
+      void result.current.test(localConfig)
+    })
+    act(() => result.current.reset())
+
+    expect(signals[0]?.aborted).toBe(true)
+  })
+
+  it('aborts the previous probe when a new test starts', () => {
+    const { probe, signals } = pendingProbe()
+    const { result } = renderHook(() => useModelConnectionTest(localConfig, probe), { wrapper })
+
+    act(() => {
+      void result.current.test(localConfig)
+    })
+    act(() => {
+      void result.current.test(localConfig)
+    })
+
+    expect(signals[0]?.aborted).toBe(true)
+    expect(signals[1]?.aborted).toBe(false)
+  })
+
+  it('aborts the pending probe on unmount', () => {
+    const { probe, signals } = pendingProbe()
+    const { result, unmount } = renderHook(() => useModelConnectionTest(localConfig, probe), { wrapper })
+
+    act(() => {
+      void result.current.test(localConfig)
+    })
+    unmount()
+
+    expect(signals[0]?.aborted).toBe(true)
+  })
+
+  it.each([
+    ['local', localConfig],
+    ['hosted', anthropicConfig],
+  ])('bounds a %s test by its own time limit', (_label, config) => {
+    const timeoutSpy = spyOn(AbortSignal, 'timeout')
+    const { probe } = pendingProbe()
+    const { result } = renderHook(() => useModelConnectionTest(config, probe), { wrapper })
+
+    act(() => {
+      void result.current.test(config)
+    })
+
+    expect(timeoutSpy).toHaveBeenCalledWith(
+      connectionTestLimits({ provider: config.provider, url: config.url ?? null }).timeoutMs,
+    )
   })
 })

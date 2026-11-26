@@ -3,14 +3,23 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { csvToTsv, toTsv } from '@/files/tabular'
-import { defaultDeliveryMode, getTransformer, isPlainTextMime, xlsxMime } from '@/files/transformers'
-import { readXlsxSheets } from '@/files/transformers/xlsx-to-text'
-import { blobToBase64, isAttachmentPart } from '@/lib/attachments'
+import {
+  defaultDeliveryMode,
+  docxMime,
+  getTransformer,
+  isPlainTextMime,
+  pptxMime,
+  xlsxMime,
+} from '@/files/transformers'
+import { readXlsxSheets, sheetsToText } from '@/files/transformers/xlsx-to-text'
+import { attachmentText, blobToBase64, isAttachmentPart, unreadableAttachmentNote } from '@/lib/attachments'
 import { getAttachment, type StoredFile } from '@/lib/file-blob-storage'
+import { promptFileName } from '@/lib/safe-file-name'
 import { hydrateQuotesAsText } from '@/lib/quotes'
+import { officeScriptToolName } from '@/office/constants'
 import type { ThunderboltUIMessage } from '@/types'
 import type { ImageContent } from '@earendil-works/pi-ai'
-import type { SeedTurn, WorkspaceFile } from '@shared/agent-core'
+import type { CompactionCheckpoint, SeedTurn, WorkspaceFile } from '@shared/agent-core'
 
 export type BuiltInConversationDeps = {
   readonly getAttachment: typeof getAttachment
@@ -32,17 +41,66 @@ export type BuiltInPrompt = {
   readonly images: ImageContent[]
 }
 
-export type PreparedBuiltInConversation = {
+type PreparedBuiltInHistory = {
   readonly history: SeedTurn[]
-  readonly prompt: BuiltInPrompt
-  /** Attachment files to write into the thread workspace before the run. */
+  readonly compaction?: CompactionCheckpoint
+  /** Attachment files to restore, including those referenced by compacted turns. */
   readonly files: WorkspaceFile[]
+}
+
+export type PreparedBuiltInConversation = PreparedBuiltInHistory & {
+  readonly prompt: BuiltInPrompt
+}
+
+/** The latest surviving checkpoint bounds the history replayed after reload or regeneration. */
+export const splitCompactedHistory = (messages: ThunderboltUIMessage[]) => {
+  const index = messages.findLastIndex((message) => message.metadata?.contextCompaction?.version === 1)
+  return {
+    compaction: index >= 0 ? messages[index].metadata?.contextCompaction : undefined,
+    messages: messages.slice(index + 1),
+  }
+}
+
+/** Replay only turns after the checkpoint while restoring attachments from the full transcript. */
+export const prepareBuiltInHistory = async (
+  messages: ThunderboltUIMessage[],
+  options: BuiltInConversationOptions,
+  deps: BuiltInConversationDeps = defaultDeps,
+): Promise<PreparedBuiltInHistory> => {
+  const previous = splitCompactedHistory(messages)
+  const messagesToPrepare = options.workspace ? messages : previous.messages
+  const preparedMessages = await Promise.all(
+    messagesToPrepare.map(async (message) => {
+      if (message.role !== 'user' && message.role !== 'assistant') {
+        return null
+      }
+      return { role: message.role, prepared: await prepareMessage(message, false, options, deps) }
+    }),
+  )
+  const restoredCount = messagesToPrepare.length - previous.messages.length
+  // The summary replaces the text of turns before the checkpoint and may name a file that could not be restored, so
+  // their could-not-be-read notes are kept.
+  const lost = preparedMessages
+    .slice(0, restoredCount)
+    .flatMap((entry) => entry?.prepared.unreadable ?? [])
+    .map((text): SeedTurn => ({ role: 'user', text }))
+  const turns = preparedMessages
+    .slice(restoredCount)
+    .flatMap((entry): SeedTurn[] => (entry?.prepared.text ? [{ role: entry.role, text: entry.prepared.text }] : []))
+  const files = preparedMessages.flatMap((entry) => entry?.prepared.files ?? [])
+  return {
+    compaction: previous.compaction,
+    history: coalesceTurns([...lost, ...turns]),
+    files: [...new Map(files.map((file) => [file.path, file])).values()],
+  }
 }
 
 type PreparedPart = {
   readonly text: string
   readonly images: ImageContent[]
   readonly files: WorkspaceFile[]
+  /** Notes for attachments that could not be read. `text` contains them too. */
+  readonly unreadable?: string[]
 }
 
 type AttachmentData = Extract<ThunderboltUIMessage['parts'][number], { type: 'data-attachment' }>['data']
@@ -50,10 +108,6 @@ type AttachmentData = Extract<ThunderboltUIMessage['parts'][number], { type: 'da
 /** Inline preview budget for an attachment written to the workspace. Short files fit whole. */
 const previewMaxLines = 200
 const previewMaxChars = 16_000
-
-/** Label attachment content in plain-text conversation history. */
-const attachmentText = (filename: string, text?: string): string =>
-  text ? `[Attachment: ${filename}]\n\n${text}` : `[Attachment: ${filename}]`
 
 /** Convert transformer data URL to Pi's raw-base64 image shape. */
 const imageFromDataUrl = (mimeType: string, dataUrl: string): ImageContent => ({
@@ -93,12 +147,26 @@ const previewText = (text: string): string => {
   return `${lines.slice(0, budget.lines).join('\n')}\n\n[Showing lines 1-${budget.lines} of ${lines.length}. ${hint}]`
 }
 
-/** Label a workspace-backed attachment: where its files live, then its preview. */
-const workspaceAttachment = (filename: string, files: WorkspaceFile[], preview: string): PreparedPart => ({
-  text: `[Attachment: ${filename} — saved as ${files.map((file) => file.path).join(', ')}]\n\n${previewText(preview)}`,
-  images: [],
-  files,
-})
+const officeMimeTypes = new Set([docxMime, xlsxMime, pptxMime])
+
+/**
+ * Label a workspace-backed attachment: where its files live, then its preview. The workspace holds only an Office
+ * file's text, so its label also says the original is stored and how the Office script tool, which every turn with a
+ * workspace has, reads it: only for an edit or a new file built from it. Measure any change
+ * to this wording on real models: close rewordings changed how often they told the user the file had not arrived.
+ */
+const workspaceAttachment = (data: AttachmentData, files: WorkspaceFile[], preview: string): PreparedPart => {
+  const paths = files.map((file) => file.path).join(', ')
+  const name = promptFileName(data.filename)
+  const label = officeMimeTypes.has(data.mimeType)
+    ? `[Attachment: ${name} — text copy at ${paths}. The original file is stored too: do not tell the user it did not arrive or ask them to attach it again unless ${officeScriptToolName} cannot find it, and confirming that you have it needs no tool call. Answer from the text copy; only when the user asks to edit it or build a file from it, list ${name} (newest file with that name) or "${data.localFileId}" (this exact file) in ${officeScriptToolName} inputs]`
+    : `[Attachment: ${name} — saved as ${paths}]`
+  return {
+    text: `${label}\n\n${previewText(preview)}`,
+    images: [],
+    files,
+  }
+}
 
 /** Extract attachment text when a transformer supports its MIME type. */
 const extractAttachmentText = async (
@@ -117,9 +185,10 @@ const freeName = (name: string, used: ReadonlySet<string>, n = 1): string => {
   return used.has(candidate) ? freeName(name, used, n + 1) : candidate
 }
 
-/** Write each sheet as its own TSV, parsing the workbook once for both files and preview. */
+/** Write each sheet as its own TSV, parsing the workbook once for both files and preview. The preview labels each
+ *  row with its number, as the text the model gets without a workspace does. */
 const xlsxAttachment = async (
-  filename: string,
+  data: AttachmentData,
   dir: string,
   file: StoredFile,
   deps: BuiltInConversationDeps,
@@ -131,8 +200,7 @@ const xlsxAttachment = async (
     used.add(name)
     return { path: `${dir}/${name}.tsv`, content: toTsv(sheet.rows) }
   })
-  const preview = sheets.map((sheet, index) => `## Sheet: ${sheet.name}\n${files[index].content}`).join('')
-  return workspaceAttachment(filename, files, preview)
+  return workspaceAttachment(data, files, sheetsToText(sheets))
 }
 
 /**
@@ -150,22 +218,23 @@ const textAttachment = async (
   const { filename, localFileId, mimeType } = data
   const dir = `attachments/${safeSegment(localFileId)}`
   if (options.workspace && mimeType === xlsxMime) {
-    return xlsxAttachment(filename, dir, file, deps)
+    return xlsxAttachment(data, dir, file, deps)
   }
   const text = await extractAttachmentText(file, mimeType, deps)
   if (text === null) {
     return null
   }
-  if (!options.workspace || text === '') {
+  // An Office file with no text, such as a document of only images, still needs the label that points at its original.
+  if (!options.workspace || (text === '' && !officeMimeTypes.has(mimeType))) {
     return { text: attachmentText(filename, text), images: [], files: [] }
   }
   const name = safeSegment(filename)
   const tsv = mimeType === 'text/csv' || /\.csv$/i.test(filename) ? csvToTsv(text) : null
   if (tsv !== null) {
-    return workspaceAttachment(filename, [{ path: `${dir}/${name.replace(/\.csv$/i, '')}.tsv`, content: tsv }], tsv)
+    return workspaceAttachment(data, [{ path: `${dir}/${name.replace(/\.csv$/i, '')}.tsv`, content: tsv }], tsv)
   }
   const path = isPlainTextMime(mimeType) ? `${dir}/${name}` : `${dir}/${name}.txt`
-  return workspaceAttachment(filename, [{ path, content: text }], text)
+  return workspaceAttachment(data, [{ path, content: text }], text)
 }
 
 /** Map one attachment reference to Pi-supported prompt text, image blocks, and workspace files. */
@@ -178,7 +247,8 @@ const prepareAttachment = async (
   const { filename, localFileId, mimeType, deliverAs } = part.data
   const file = await deps.getAttachment(localFileId)
   if (!file) {
-    return { text: `${attachmentText(filename)} (file unavailable on this device)`, images: [], files: [] }
+    const text = `${attachmentText(filename)} (file unavailable on this device)`
+    return { text, images: [], files: [], unreadable: [text] }
   }
 
   if (!isCurrentTurn) {
@@ -242,7 +312,14 @@ const prepareMessage = async (
         return { text: part.text, images: [], files: [] }
       }
       if (isAttachmentPart(part)) {
-        return prepareAttachment(part, isCurrentTurn, options, deps)
+        // History is re-prepared every turn, so a throw here would break this turn and every later one.
+        try {
+          return await prepareAttachment(part, isCurrentTurn, options, deps)
+        } catch (error) {
+          console.warn('Sending a note in place of an unreadable attachment', { filename: part.data.filename, error })
+          const note = unreadableAttachmentNote(part.data.filename, error)
+          return { text: note, images: [], files: [], unreadable: [note] }
+        }
       }
       return { text: '', images: [], files: [] }
     }),
@@ -254,6 +331,7 @@ const prepareMessage = async (
       .join('\n'),
     images: parts.flatMap((part) => part.images),
     files: parts.flatMap((part) => part.files),
+    unreadable: parts.flatMap((part) => part.unreadable ?? []),
   }
 }
 
@@ -281,29 +359,17 @@ export const prepareBuiltInConversation = async (
     throw new Error('Built-in adapter: no user message in request body')
   }
 
-  const priorMessages = await Promise.all(
-    messages.slice(0, lastUserIndex).map(async (message) => {
-      if (message.role !== 'user' && message.role !== 'assistant') {
-        return null
-      }
-      return { role: message.role, prepared: await prepareMessage(message, false, options, deps) }
-    }),
-  )
-  const prior = priorMessages.filter((entry) => entry !== null)
+  const previous = await prepareBuiltInHistory(messages.slice(0, lastUserIndex), options, deps)
   const current = await prepareMessage(messages[lastUserIndex], true, options, deps)
-  const turns = coalesceTurns([
-    ...prior
-      .filter(({ prepared }) => prepared.text.length > 0)
-      .map(({ role, prepared }): SeedTurn => ({ role, text: prepared.text })),
-    { role: 'user', text: current.text },
-  ])
+  const turns = coalesceTurns([...previous.history, { role: 'user', text: current.text }])
   const promptTurn = turns.at(-1)
   if (!promptTurn) {
     throw new Error('Built-in adapter: current user message has no supported content')
   }
   const skillPrefix = skillInstructions?.length ? `${skillInstructions.join('\n\n')}\n\n` : ''
-  const files = [...prior.map(({ prepared }) => prepared), current].flatMap((prepared) => prepared.files)
+  const files = [...previous.files, ...current.files]
   return {
+    compaction: previous.compaction,
     history: turns.slice(0, -1),
     prompt: { text: `${skillPrefix}${promptTurn.text}`, images: current.images },
     files: [...new Map(files.map((file) => [file.path, file])).values()],

@@ -29,7 +29,7 @@ rule for changing a default).
 | `models`         | `defaultModelsVersion` (`shared/defaults/models.ts:175`)  | `hashModel` (`shared/defaults/models.ts:58`)                   | `id`      | `frozenFields: ['isConfidential', 'provider']`, `metadataFields: ['description', 'vendor']` |
 | `model_profiles` | none (rides the models gate)                              | `hashModelProfile` (`src/defaults/model-profiles/index.ts:20`) | `modelId` | `insertMissing: true`                                                                       |
 | `tasks`          | `defaultTasksVersion` (`src/defaults/tasks.ts:70`)        | `hashTask` (`src/defaults/tasks.ts:13`)                        | `id`      |                                                                                             |
-| `skills`         | `defaultSkillsVersion` (`src/defaults/skills.ts:283`)     | `hashSkill` (`src/defaults/skills.ts:22`)                      | `id`      | `frozenFields: ['enabled', 'pinnedOrder']` for widget skills only                           |
+| `skills`         | `defaultSkillsVersion` (`src/defaults/skills.ts`)         | `hashSkill` (`src/defaults/skills.ts:24`)                      | `id`      | `frozenFields: ['enabled', 'pinnedOrder']` for contract skills (widget + Office) only       |
 | `settings`       | `defaultSettingsVersion` (`src/defaults/settings.ts:268`) | `hashSetting` (`src/defaults/settings.ts:14`)                  | `key`     |                                                                                             |
 
 - `prompts` left the list in THU-547, when skills superseded the default automations.
@@ -50,12 +50,22 @@ now ships, a value the user chose before it became the default: reconcile takes 
 - **Changing a hash's field list does the same for that table**: existing rows read as user-edited
   forever. `hashModel` has been through it twice (`apiKey` removed, `supportsParallelToolCalls`
   added), hence the retirement sweep ignoring the hash.
-- **`deletedAt` is hashed for models, profiles and non-widget skills**, so deleting one of those
+- **`deletedAt` is hashed for models, profiles and non-contract skills**, so deleting one of those
   defaults sticks. `hashTask` covers only `item` and `isComplete`; `deleteTask` scrubs the row's
   nullable columns including `default_hash`, which fails the resurrect check just as firmly.
-- **Widget skills hash content only.** `hashSkill` excludes `enabled`, `pinnedOrder` and `deletedAt`
-  for `isWidgetSkillId` ids: the instruction text is a locked contract that must update even on a
-  widget the user turned off. `frozenFields` preserves their state instead.
+- **Contract skills hash content only.** `hashSkill` excludes `enabled`, `pinnedOrder` and `deletedAt`
+  for `isContractSkillId` ids (the widget and Office skills): the instruction text is a locked contract
+  that must update even on a skill the user turned off. `frozenFields` preserves their state instead.
+- **An Office row's `instruction` is only a stub.** It says that without `run_office_script` this
+  version of the app cannot run it, so the reader should create the file with its own tools or tell
+  the user to update. That is true on any build older than the tool, and for its external agents:
+  those builds get the rows through sync and would otherwise load a manual for a tool they lack. A
+  build with the tool serves the manual from its own code (`skillInstruction`,
+  `src/defaults/skills.ts:338`), so the text matches its sandbox and never reaches another build. The
+  hash covers the stub, so a manual change in `src/office/skills/` needs no `defaultSkillsVersion`
+  bump; the label, description or stub still do. An older build can edit or delete an Office row as
+  an ordinary skill; reconcile leaves the edit as the user's, and cannot restore the delete, whose
+  tombstone no longer matches the hash.
 - **A null `default_hash` means user-created**, exempting the row from retirement. Reconcile
   bootstraps a missing hash on a row it recognizes.
 - **`metadataFields` sit outside the hash.** `description` and `vendor` are server-owned copy;
@@ -66,12 +76,12 @@ now ships, a value the user chose before it became the default: reconcile takes 
 
 Each table with a version constant records the highest defaults version ever applied to this account
 under a `defaults_version.*` key in `settings`: four keys (models, tasks, skills, settings) in
-`versionMarkerKeys` ([`src/lib/reconcile-defaults.ts:34`](../../../src/lib/reconcile-defaults.ts)).
+`versionMarkerKeys` ([`src/lib/reconcile-defaults.ts:44`](../../../src/lib/reconcile-defaults.ts)).
 Profiles have none. The markers are settings rows, so they sync; they are the ordering signal that
 stops two devices on different builds taking turns rewriting the same rows (THU-637, extended to
 every reconciled table in THU-677).
 
-`computeCanOverwrite` (`src/lib/reconcile-defaults.ts:86`) collapses two concerns into one boolean:
+`computeCanOverwrite` (`src/lib/reconcile-defaults.ts:96`) collapses two concerns into one boolean:
 
 ```ts
 const rawCanOverwrite = pickedVersion > (stored.version ?? Number.NEGATIVE_INFINITY)
@@ -113,11 +123,11 @@ options; the latter two default to `canOverwrite`.
 Listed fields keep the existing row's value on update, and the stored hash reflects that post-freeze
 state so later passes still read the row as unedited.
 
-| Field                    | Table         | Why frozen                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ------------------------ | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `isConfidential`         | models        | A thread binds `isEncrypted` to it at creation ([`src/dal/chat-threads.ts:85`](../../../src/dal/chat-threads.ts)) and sending throws on disagreement ([`src/chats/chat-instance.ts:1114`](../../../src/chats/chat-instance.ts)); `resolveSessionModel` ([`src/chats/resolve-session-model.ts`](../../../src/chats/resolve-session-model.ts)) swaps the built-in onto a matching model when one exists; flipping it strands every thread bound to that id |
-| `provider`               | models        | Routes inference; flipping it under an existing id misroutes silently                                                                                                                                                                                                                                                                                                                                                                                    |
-| `enabled`, `pinnedOrder` | widget skills | Counterpart to their content-only hash: the contract text updates, the user's on/off and pin state does not                                                                                                                                                                                                                                                                                                                                              |
+| Field                    | Table           | Why frozen                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------ | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `isConfidential`         | models          | A thread binds `isEncrypted` to it at creation ([`src/dal/chat-threads.ts:85`](../../../src/dal/chat-threads.ts)) and sending throws on disagreement ([`src/chats/chat-instance.ts:1114`](../../../src/chats/chat-instance.ts)); `resolveSessionModel` ([`src/chats/resolve-session-model.ts`](../../../src/chats/resolve-session-model.ts)) swaps the built-in onto a matching model when one exists; flipping it strands every thread bound to that id |
+| `provider`               | models          | Routes inference; flipping it under an existing id misroutes silently                                                                                                                                                                                                                                                                                                                                                                                    |
+| `enabled`, `pinnedOrder` | contract skills | Counterpart to their content-only hash: the contract text updates, the user's on/off and pin state does not                                                                                                                                                                                                                                                                                                                                              |
 
 **To change a frozen field on a model, ship a fresh model id.** Freezing applies to updates only;
 inserts use the default as-is.
@@ -164,14 +174,17 @@ guaranteed to survive anyway.
 ## The OTA channel (models only)
 
 `GET /config` ships the backend's own copy of the shared defaults as `defaults.models`,
-`{ version, defaultModelId, data }` at
+`{ version, defaultModelId, data, imageSupport }` at
 [`backend/src/api/config.ts:30`](../../../backend/src/api/config.ts). The client caches the whole config
 in a `persist`-backed zustand store ([`src/api/config-store.ts:47`](../../../src/api/config-store.ts)),
-so later boots read the last-known payload synchronously; only `version` and `data` are consumed, and
-nothing reads `defaultModelId` today. Both sides import `shared/defaults/models.ts`, so a defaults
-change can reach users on a backend deploy without a client release.
+so later boots read the last-known payload synchronously; the app consumes only `version`, `data` and
+`imageSupport`, and never reads `defaultModelId`. `imageSupport` maps each row id to whether it reads
+images and is picked together with `data`, so the app skips the probe for a re-slugged default and the
+CLI sends images to a new catalog model without a client release; changing an entry needs a
+`defaultModelsVersion` bump. Both sides import `shared/defaults/models.ts`, so a defaults change can
+reach users on a backend deploy without a client release.
 
-`pickModelsDefaults` ([`src/lib/pick-defaults.ts:35`](../../../src/lib/pick-defaults.ts)) takes the
+`pickModelsDefaults` ([`src/lib/pick-defaults.ts:42`](../../../src/lib/pick-defaults.ts)) takes the
 server payload only if all three guards hold. Trip one and the bundle wins:
 
 1. `version` is finite and **strictly** higher than `defaultModelsVersion`.
@@ -202,7 +215,8 @@ gets the same value, so the two cannot disagree.
 
 1. Edit the defaults file.
 2. **Bump its version constant.** The gate requires strictly newer; without the bump nothing changes
-   on any existing account.
+   on any existing account. The Office skill manuals are the exception: they are code, not row
+   content, so they ship with the build.
 3. Update the colocated snapshot test (`shared/defaults/models.test.ts`,
    `src/defaults/skills.test.ts`, `src/defaults/tasks.test.ts`, `src/defaults/settings.test.ts`). It
    fails on any content change without a matching bump and prints what to update.

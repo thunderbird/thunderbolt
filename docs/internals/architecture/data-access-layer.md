@@ -131,7 +131,10 @@ carrying a credential may join `syncedTables`" invariant is in
 
 - **Models.** `selectModelsWithSecrets` ([`src/dal/models.ts`](../../../src/dal/models.ts)) `LEFT JOIN`s
   `models_secrets` at read time, so a `Model` carries `apiKey` without the column syncing, and every
-  write path strips `apiKey` before touching `modelsTable`. `createModel` writes both halves in one
+  write path strips `apiKey` before touching `modelsTable`. The join also requires the provider and
+  URL the key was saved for, so a row that a sync, an import or a raw update moves elsewhere reads no
+  key. `updateModel` rebinds a kept key when the new URL is the same destination spelled differently;
+  `bindModelKeyDestinations` does the same for spellings that arrive by sync or import. `createModel` writes both halves in one
   transaction, so no caller observes a config row without its credential.
 - **Agents.** Same split without the atomicity: `createAgent` writes only the synced row, and
   `setAgentSecrets` is separate (no production caller today).
@@ -190,7 +193,7 @@ Correctness is unaffected, but never conclude anything about index usage from a 
 ### `ON CONFLICT` is the idiom, and `setWhere` is load-bearing
 
 Every upsert pins its conflict handling with a `setWhere` re-asserting ownership
-(`eq(devicesTable.userId, …)`) or liveness (`isNull(devicesTable.revokedAt)`): `upsertDevice`,
+(`eq(devicesTable.userId, …)`) or liveness (`isNull(devicesTable.revokedAt)`):
 `upsertCliDevice`, `registerDevice`, `registerBridgeDevice`
 ([`devices.ts`](../../../backend/src/dal/devices.ts)) and `upsertEnvelope`
 ([`encryption.ts`](../../../backend/src/dal/encryption.ts)).
@@ -221,12 +224,15 @@ transaction and losing atomicity without a type error.
 **Registration is serialized per account.** `withUserDeviceRegistrationLock`
 ([`devices.ts:20`](../../../backend/src/dal/devices.ts)) takes a Postgres advisory lock on
 `hashtext(userId)`: the device cap (`maxActiveDevicesPerUser = 10`, `devices.ts:17`) is a
-count-then-insert, so two concurrent registrations would both read nine and both insert. It is
+count-then-write when one device approves another and on bridge and CLI registration, so two
+concurrent ones would both read nine and both write. Plain registration is not capped (a pending
+device gains nothing), and neither is self-recovery (lost devices still count, and only a trusted
+device can revoke them). It is
 `pg_advisory_xact_lock`, so it releases with the transaction and only does anything when you pass it
 `tx`, not the root connection.
 `backend/src/api/account.ts:296-305` wraps `deleteEnvelope`, `revokeDevice` and
 `revokeDeviceSessions` in one locked transaction, the session purge conditional on `revokeDevice`
-matching a row. Why the envelope is deleted and why the cap is enforced twice:
+matching a row. Why the envelope is deleted:
 [e2e-encryption.md](e2e-encryption.md),
 [delete-account-and-revoke-device.md](delete-account-and-revoke-device.md).
 

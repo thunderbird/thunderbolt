@@ -5,6 +5,7 @@
 import { defaultDeliveryMode, getTransformer } from '@/files/transformers'
 import type { AttachmentData, ThunderboltUIMessage } from '@/types'
 import { getAttachment, type StoredFile } from './file-blob-storage'
+import { promptFileName } from './safe-file-name'
 
 /**
  * The AI SDK `data-*` part type for a chat attachment reference. The part holds
@@ -25,7 +26,21 @@ export type AttachmentPart = {
  *  (missing on this device, or with no form that agent accepts), one line per
  *  file. English like every other model-facing text. */
 export const undeliverableAttachmentsNote = (filenames: string[]): string =>
-  filenames.map((name) => `[Attachment "${name}" could not be delivered to this agent]`).join('\n')
+  filenames.map((name) => `[Attachment ${promptFileName(name)} could not be delivered to this agent]`).join('\n')
+
+// A reader's error can quote the broken file, megabytes of it, so a note keeps only the start of the reason.
+const maxReasonChars = 300
+
+/** Model-facing note in place of an attachment whose content failed to load or
+ *  extract. It carries the reason so the model can tell the user what went wrong. */
+export const unreadableAttachmentNote = (filename: string, cause: unknown): string => {
+  const reason = cause instanceof Error ? cause.message : String(cause)
+  const shown = reason.length > maxReasonChars ? `${reason.slice(0, maxReasonChars)}…` : reason
+  return `[Attachment ${promptFileName(filename)} could not be read: ${shown}]`
+}
+
+/** The label that opens an attachment's content in a prompt, as in `[Attachment: "report.pdf"]`. */
+export const attachmentLabel = (filename: string): string => `[Attachment: ${promptFileName(filename)}]`
 
 /** Build the reference-only attachment part to include in an outgoing message. */
 export const buildAttachmentPart = (data: AttachmentData): AttachmentPart => ({
@@ -66,10 +81,13 @@ export type HydrationDeps = {
 
 const defaultHydrationDeps: HydrationDeps = { getAttachment, getTransformer }
 
-/** A `text` part carrying an attachment's extracted text, or just its name when there's no text to send. */
+/** An attachment's label followed by its extracted text, or just the label when there's no text to send. */
+export const attachmentText = (filename: string, text?: string): string =>
+  text ? `${attachmentLabel(filename)}\n\n${text}` : attachmentLabel(filename)
+
 const attachmentTextPart = (filename: string, text?: string) => ({
   type: 'text' as const,
-  text: text ? `[Attachment: ${filename}]\n\n${text}` : `[Attachment: ${filename}]`,
+  text: attachmentText(filename, text),
 })
 
 /**
@@ -166,13 +184,13 @@ export const hydrateAttachmentsAsFileParts = async (
           if (!isAttachmentPart(part)) {
             return [part]
           }
-          // An unreadable attachment is treated exactly like a missing one: leave
-          // the part alone and send the turn without those bytes. Both the lookup
-          // and the read can fail for a file stored before `putAttachment` copied
-          // bytes (it held a reference to a path on disk, so editing the source
-          // invalidated it) — and because every send re-reads the whole history,
-          // letting that throw failed the turn, burned all three auto-retries, and
-          // broke even a plain-text follow-up. The conversation stays usable.
+          // An unreadable attachment becomes a note saying why, and the turn goes
+          // out without its bytes. The lookup and the read can both fail: for a
+          // file stored before `putAttachment` copied bytes (it held a reference to
+          // a path on disk, so editing the source invalidated it), or for one a
+          // reader rejects. Every send re-reads the whole history, so a throw here
+          // would fail the turn, burn all three auto-retries, and break even a
+          // plain-text follow-up.
           try {
             const file = await deps.getAttachment(part.data.localFileId)
             if (!file) {
@@ -182,8 +200,8 @@ export const hydrateAttachmentsAsFileParts = async (
               ? await hydrateCurrentAttachment(part.data, file, deps)
               : await hydrateHistoricalAttachment(part.data, file, deps)
           } catch (error) {
-            console.warn('Skipping an unreadable attachment', { filename: part.data.filename, error })
-            return [part]
+            console.warn('Sending a note in place of an unreadable attachment', { filename: part.data.filename, error })
+            return [{ type: 'text' as const, text: unreadableAttachmentNote(part.data.filename, error) }]
           }
         }),
       )

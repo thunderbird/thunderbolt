@@ -6,12 +6,14 @@ import { useEffect, useRef } from 'react'
 
 import { getOrConnectAdapter as defaultGetOrConnectAdapter } from '@/acp/adapter-cache'
 import { useHttpClient } from '@/contexts'
+import { isAgentActive as defaultIsAgentActive } from '@/dal/agents'
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getDb as defaultGetDb } from '@/db/database'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import type { ChatThread } from '@/types'
 import type { Agent } from '@/types/acp'
 import { makeCommandSink as defaultMakeCommandSink } from './chat-instance'
+import { useChatStore } from './chat-store'
 
 /** DI seam so tests can inject fakes for the external dependencies without
  *  `mock.module()` (which is global and would leak into unrelated suites).
@@ -21,6 +23,7 @@ export type WarmAcpCommandsDeps = {
   updateChatThread?: typeof defaultUpdateChatThread
   makeCommandSink?: typeof defaultMakeCommandSink
   getDb?: typeof defaultGetDb
+  isAgentActive?: typeof defaultIsAgentActive
 }
 
 /**
@@ -52,6 +55,7 @@ export const useWarmAcpCommands = (
   const updateChatThread = deps.updateChatThread ?? defaultUpdateChatThread
   const makeCommandSink = deps.makeCommandSink ?? defaultMakeCommandSink
   const getDb = deps.getDb ?? defaultGetDb
+  const isAgentActive = deps.isAgentActive ?? defaultIsAgentActive
   const httpClient = useHttpClient()
   const getProxyFetch = useProxyFetchGetter()
   const warmedKey = useRef<string | null>(null)
@@ -75,7 +79,9 @@ export const useWarmAcpCommands = (
         onAvailableCommands: makeCommandSink(selectedAgent.id),
       }).catch(() => null)
 
-      if (!adapter) {
+      // `connectToAgent` checks the agent's row before each new connection; a
+      // cached one skips that, so check again before opening a session on it.
+      if (!adapter || !(await isAgentActive(getDb(), selectedAgent))) {
         if (!cancelled) {
           warmedKey.current = null
         }
@@ -89,6 +95,8 @@ export const useWarmAcpCommands = (
         .ensureSession({
           threadId: id,
           acpSessionId: chatThread?.acpSessionId ?? null,
+          getAcpCompactions: useChatStore.getState().sessions.get(id)?.chatInstance.getAcpCompactions,
+          onAcpSessionEvent: useChatStore.getState().sessions.get(id)?.chatInstance.onAcpSessionEvent,
           onAcpSessionId: async (sessionId) => {
             if (chatThread) {
               await updateChatThread(getDb(), chatThread.id, { acpSessionId: sessionId })
@@ -117,5 +125,6 @@ export const useWarmAcpCommands = (
     updateChatThread,
     makeCommandSink,
     getDb,
+    isAgentActive,
   ])
 }

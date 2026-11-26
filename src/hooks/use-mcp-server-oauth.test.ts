@@ -2,12 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import '@/testing-library'
+import { act, cleanup, renderHook } from '@testing-library/react'
+import { createMcpServer, getAllMcpServers } from '@/dal'
 import { getDb } from '@/db/database'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { clearMcpOAuthState, getMcpOAuthState, setMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import {
+  useMcpServerOAuth,
+  type UseMcpServerOAuthOptions,
   friendlyOAuthError,
   handleMcpOAuthCallback,
   type McpOAuthCallback,
@@ -51,6 +56,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  cleanup()
   clearMcpOAuthState()
 })
 
@@ -149,5 +155,112 @@ describe('handleMcpOAuthCallback', () => {
       message: 'Authorization server changed between start and callback — authorization rejected.',
     })
     expect(reconnectServer).not.toHaveBeenCalled()
+  })
+})
+
+const renderOAuth = (overrides: Partial<UseMcpServerOAuthOptions> = {}) => {
+  const options: UseMcpServerOAuthOptions = {
+    db: getDb(),
+    buildOAuthFetch: () => fakeFetch,
+    reconnectServer: mock(async () => {}),
+    clearNavState: mock(() => {}),
+    startMcpOAuthFlow: mock(async () => ({ status: 'completed' as const })),
+    completeMcpOAuthFlow: mock(async () => {}),
+    ...overrides,
+  }
+  return { ...renderHook(() => useMcpServerOAuth(options)), options }
+}
+
+describe('useMcpServerOAuth ownership', () => {
+  it('reserves one flow across existing-server, add, and callback entry points', async () => {
+    const pending = Promise.withResolvers<{ status: 'completed' }>()
+    const start = mock(() => pending.promise)
+    const createRow = mock(async () => {})
+    setMcpOAuthState({ serverId: 'first', startedAt: Date.now() })
+    const { result, options } = renderOAuth({ startMcpOAuthFlow: start })
+    const running = act(async () => {
+      const first = result.current.startAuthorize({ id: 'first' })
+      await result.current.startAuthorize({ id: 'second' })
+      expect(await result.current.startAddAndAuthorize({ serverId: 'new', serverUrl: '', createRow })).toBe(false)
+      await result.current.processCallback({ code: 'code' })
+      pending.resolve({ status: 'completed' })
+      await first
+    })
+    await running
+    expect(start).toHaveBeenCalledTimes(1)
+    expect(createRow).not.toHaveBeenCalled()
+    expect(options.completeMcpOAuthFlow).not.toHaveBeenCalled()
+    expect(options.reconnectServer).toHaveBeenCalledWith('first')
+  })
+
+  it('consumes a pending callback once and stops reconnecting after unmount', async () => {
+    setMcpOAuthState({ serverId: 'first', startedAt: Date.now() })
+    const pending = Promise.withResolvers<void>()
+    const complete = mock(() => pending.promise)
+    const { result, options, unmount } = renderOAuth({ completeMcpOAuthFlow: complete })
+    const first = result.current.processCallback({ code: 'code' })
+    await result.current.processCallback({ code: 'code' })
+    expect(complete).toHaveBeenCalledTimes(1)
+    unmount()
+    pending.resolve()
+    await first
+    expect(options.reconnectServer).not.toHaveBeenCalled()
+  })
+
+  it('does not begin authorization if creation finishes after unmount', async () => {
+    const pending = Promise.withResolvers<void>()
+    const { result, options, unmount } = renderOAuth()
+    const running = result.current.startAddAndAuthorize({
+      serverId: 'new',
+      serverUrl: '',
+      createRow: () => pending.promise,
+    })
+    unmount()
+    pending.resolve()
+    expect(await running).toBe(false)
+    expect(options.startMcpOAuthFlow).not.toHaveBeenCalled()
+  })
+
+  it('keeps an authorized server when reconnect fails', async () => {
+    const { result } = renderOAuth({
+      reconnectServer: async () => {
+        throw new Error('offline')
+      },
+    })
+    await act(async () => {
+      expect(
+        await result.current.startAddAndAuthorize({
+          serverId: 'new',
+          serverUrl: 'https://server.example',
+          createRow: () => createMcpServer(getDb(), { id: 'new', name: 'Authorized' }),
+        }),
+      ).toBe(true)
+    })
+    expect(await getAllMcpServers(getDb())).toHaveLength(1)
+    expect(result.current.cardStateFor('new')).toEqual({ phase: 'error', message: 'offline' })
+    expect(result.current.dialogError).toBeNull()
+    expect(result.current.isAddAuthorizePending).toBe(false)
+  })
+
+  it('rolls back failed authorization and releases the reservation for retry', async () => {
+    const start = mock(async () => {
+      throw new Error('declined')
+    })
+    const { result } = renderOAuth({ startMcpOAuthFlow: start })
+    for (const id of ['one', 'two']) {
+      await act(async () => {
+        expect(
+          await result.current.startAddAndAuthorize({
+            serverId: id,
+            serverUrl: 'https://server.example',
+            createRow: () => createMcpServer(getDb(), { id, name: id }),
+          }),
+        ).toBe(false)
+      })
+    }
+    expect(start).toHaveBeenCalledTimes(2)
+    expect(await getAllMcpServers(getDb())).toHaveLength(0)
+    expect(result.current.dialogError).toBe('declined')
+    expect(result.current.isAddAuthorizePending).toBe(false)
   })
 })

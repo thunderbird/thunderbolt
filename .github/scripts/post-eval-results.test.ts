@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { evalCommentMarker, renderEvalComment, upsertEvalComment } from './post-eval-results'
 import { aggregateEvalMetrics } from '../../src/ai/eval/stats'
-import { getScenarios } from '../../src/ai/eval/scenarios'
+import { evalModels, getScenarios } from '../../src/ai/eval/scenarios'
 import { getNecessityScenarios } from '../../src/ai/eval/necessity-scenarios'
 import { getLanguageScenarios } from '../../src/ai/eval/language-scenarios'
 import { selectSmokeScenarios } from '../../src/ai/eval/smoke'
@@ -158,7 +158,7 @@ test.each([false, true])('I2: real default matrix comment is bounded (smoke=%s)'
     ]),
   )
   const comment = renderEvalComment(metrics, baselines, renderOptions)
-  expect(manifest.cells).toHaveLength(3)
+  expect(manifest.cells).toHaveLength(evalModels.length)
   expect(scenarios.length).toBeGreaterThan(smoke ? 20 : 500)
   expect(comment.length).toBeLessThan(65_536)
   expect(comment.match(/Prompt:/g)).toHaveLength(20)

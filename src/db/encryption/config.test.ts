@@ -37,12 +37,12 @@ describe('encryption config', () => {
     })
 
     it('returns true when the AK exists but no wrapped DEK is staged', async () => {
-      await storeAK(await generateAK())
+      await storeAK(await generateAK(), { keyVersion: null, primaryKeyId: '0' })
       expect(await needsSyncSetupWizard()).toBe(true)
     })
 
     it('returns false when both the AK and at least one wrapped DEK exist', async () => {
-      await storeAK(await generateAK())
+      await storeAK(await generateAK(), { keyVersion: null, primaryKeyId: '0' })
       await storeDEK('0', 'wrapped-blob')
       expect(await needsSyncSetupWizard()).toBe(false)
     })

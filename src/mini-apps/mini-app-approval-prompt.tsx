@@ -7,6 +7,7 @@ import { Trans } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import { ChevronRight, ShieldAlert } from 'lucide-react'
 import type { PendingMiniAppApproval } from '@/chats/chat-store'
+import type { MiniAppApprovalChoice } from './approval-outcome'
 
 /**
  * Render one argument value for a human.
@@ -37,11 +38,11 @@ const toArgEntries = (args: unknown): { key: string; value: string }[] | null =>
 type MiniAppApprovalPromptProps = {
   pending: PendingMiniAppApproval
   appName: string
-  onDecide: (approved: boolean) => void
+  onDecide: (choice: MiniAppApprovalChoice) => void
 }
 
 /**
- * Approval prompt for a Mini App tool that will change something.
+ * Approval prompt for a Mini App tool call.
  *
  * Written for the person deciding, not the person debugging. Three things it
  * deliberately does *not* do:
@@ -85,6 +86,7 @@ export const MiniAppApprovalPrompt = ({ pending, appName, onDecide }: MiniAppApp
   const showToolName = heading !== tool.name
   const entries = toArgEntries(args)
   const headingId = useId()
+  const alwaysWarningId = useId()
 
   return (
     <div className="rounded-xl border border-border bg-card p-4 my-2" role="dialog" aria-labelledby={headingId}>
@@ -93,6 +95,11 @@ export const MiniAppApprovalPrompt = ({ pending, appName, onDecide }: MiniAppApp
         <div className="flex-1 min-w-0 space-y-1.5">
           <p id={headingId} className="text-[length:var(--font-size-body)] font-medium">
             {heading}
+          </p>
+          {/* Host-written, because the heading is the app's own text and could
+              describe the call as anything; this says where the data goes. */}
+          <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
+            <Trans>Approving sends this request, with the details shown, to {appName}.</Trans>
           </p>
 
           {entries && (
@@ -127,13 +134,33 @@ export const MiniAppApprovalPrompt = ({ pending, appName, onDecide }: MiniAppApp
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <Button size="sm" variant="outline" onClick={() => onDecide(false)}>
+          <Button size="sm" variant="outline" onClick={() => onDecide('denied')}>
             <Trans>Deny</Trans>
           </Button>
-          <Button size="sm" onClick={() => onDecide(true)}>
+          <Button size="sm" onClick={() => onDecide('approved')}>
             <Trans>Approve</Trans>
           </Button>
         </div>
+      </div>
+
+      {/* Last in DOM order, below the one-off choice, as in the ACP dialog: the
+          broadest grant should be the hardest to reach by accident. The line
+          beside it says what the user gives up, because later calls carry
+          details nobody will see, and the button announces it too. */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-3">
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-describedby={alwaysWarningId}
+          onClick={() => onDecide('approved-always')}
+        >
+          <Trans>Always approve this action</Trans>
+        </Button>
+        <p id={alwaysWarningId} className="text-[length:var(--font-size-xs)] text-muted-foreground">
+          <Trans>
+            Later calls run without asking, with whatever details the model sends, until Thunderbolt reloads.
+          </Trans>
+        </p>
       </div>
     </div>
   )

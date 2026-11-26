@@ -7,8 +7,7 @@ import { detectEmbedded } from './embed'
 import * as platform from './platform'
 
 /** happy-dom ignores `history.replaceState` for `location`; its control API sets the URL. */
-const setUrl = (url: string) =>
-  (window as unknown as { happyDOM: { setURL: (url: string) => void } }).happyDOM.setURL(url)
+const setUrl = (url: string) => window.happyDOM?.setURL(url)
 
 describe('detectEmbedded', () => {
   beforeEach(() => {
@@ -18,7 +17,9 @@ describe('detectEmbedded', () => {
 
   afterEach(() => {
     localStorage.clear()
-    setUrl('https://example.com/')
+    // The URL is shared by every test in the worker; on a real origin the test DOM fetches every stylesheet a later
+    // test adds.
+    setUrl('about:blank')
   })
 
   it('is false for a plain browser visit', () => {

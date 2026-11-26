@@ -109,6 +109,7 @@ own context.
 | Tool(s)                               | Available when                                                          | Source                                                                            |
 | ------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | `render_html`                         | Always (a core capability, not an integration)                          | [`src/artifacts/render-html-tool.ts`](../../../src/artifacts/render-html-tool.ts) |
+| `run_office_script`                   | Always, like `render_html`                                              | [`src/office/office-script-tool.ts`](../../../src/office/office-script-tool.ts)   |
 | `addTasks`, `getTasks`, `deleteTasks` | `experimental_feature_tasks` (default `false`)                          | `src/extensions/tasks/tools.ts`                                                   |
 | `search`, `fetch_content`             | `hasProAccess()` **and** `integrations_pro_is_enabled` (default `true`) | `src/integrations/thunderbolt-pro/tools.ts`                                       |
 | `google_*` (5 tools)                  | `integrationStatus.googleEnabled` (connected _and_ not switched off)    | `src/integrations/google/tools.ts:546`                                            |
@@ -120,6 +121,101 @@ own context.
 - A `ToolConfig` (`src/types.ts:226`) carries `name`, `description`, `parameters` (Zod), a UI `verb`
   and an optional `cacheable` flag. `verb` is the loading phrase, `{param}` filled from the call's
   input (`src/lib/tool-metadata.ts:45`): `'searching for {query}'` → `Searching for "…"…`.
+- `run_office_script` builds `.docx`, `.xlsx` and `.pptx` files. The model writes a JavaScript script, and the app
+  runs it in a QuickJS VM inside a Web Worker (`src/office/office-script.worker.ts`), with no network, no
+  DOM and no app state. The `docx` and `pptxgenjs` browser builds are loaded into the VM first. The Worker,
+  the WASM files and the libraries are files the app serves, fetched on the first run, so the entry chunk
+  and the CSP stay as they are. A run stops at 30 s, 64 MiB of memory or 4 MiB of console output
+  (`src/office/constants.ts`), and the host terminates a Worker that stops answering. Each file the script
+  saves becomes a new entry in the attachment store, and the tool result lists them. The transcript builds
+  one chip per listed file (`src/components/chat/created-file-card.tsx`), and a device without the bytes
+  says so. The chips appear when the turn ends, including any auto-retry (`holdFiles` in
+  `src/components/chat/chat-messages.tsx`), so the user never sees a file the model may still replace. Only
+  the tab running the turn holds them: another tab or device that opens the thread mid-turn loads the
+  partial reply and shows its chips. A run may save nothing, to try an API or inspect a file: it succeeds and
+  returns only its logs and a note that the user sees nothing. On the device that has the bytes, clicking the
+  chip opens the file in the side view, like the card of an attached file. The harness environment block
+  names this tool as the way to deliver a file.
+- A failed run can return a one-use `scriptId` for this send. An `edit` retries that source with ordered,
+  literal replacements that must each match once. An invalid edit leaves the ID usable. The retry resolves
+  the original input references again unless the caller supplies a new list (including an empty list).
+- The description is sent with every request, so it holds only the contract every call needs: the globals
+  and how to get bytes, `inputs`, same-name edits of the original bytes (never a rebuild from extracted
+  text), one save per file, the output checks, the password and
+  macro caveats and the limits. How to call each library lives in the Office format skills
+  ([skills.md](skills.md#the-office-format-skills)). When the send offers any, the description's second
+  sentence tells the model to load the skill for each format it will use, and names only those offered;
+  the sentence is the same on every send with the same skills, so the prompt cache holds.
+- The first script failure of a send gets one sentence added to its error. When the send offers the skill
+  for the failing format, it says to load that skill; the format is read from the error, or from the script
+  when the error names none. Otherwise, when the failing call is one of the Excelize methods models most
+  often get wrong (`SetConditionalFormat`, `AddChart`, `SetCellValue`, `SetCellFormula`, `NewStyle`,
+  `NewConditionalStyle`, `SetColWidth`), it shows the call that works. Later failures in the send get
+  nothing added, and neither does an error about a missing input, which already lists the files there are,
+  or one that tells the model to stop, such as a workbook too large to open.
+- A script can also read files, which is how it edits one. The call lists them in `inputs`, and the script
+  reads each with `readFile(name)`. The host loads them before the run (`src/office/script-inputs.ts`). It
+  looks first in the thread's stored files: the user's attachments and the files this tool made earlier in
+  the thread (`src/office/thread-files.ts`). On the harness only, it then looks in the agent's workspace.
+  A name gets the newest stored file under it, and an id gets that exact file. The tool stores what it
+  saves under a cleaned name, and its result keeps the name the script gave (`savedAs`), so a file it
+  made also answers to that name: `REPORT.DOCX` finds the `REPORT.docx` saved under it, but never an
+  upload named `REPORT.docx`. A script cannot reach
+  another chat's files. A saved file is marked as edited, and its chip says so, when its cleaned name
+  matches the cleaned name of a file the script read. A file saved under another name is new. When the
+  script read a file of the same type, the tool result adds a note. It tells the model the output is a new
+  file, and to list the exact name in `inputs` if the user wanted that file edited. So reading
+  `report.docx` and saving `report_v2.docx` gives a new file and a note. The original entry is never
+  changed, so each chip opens the file as it was when the chip was made.
+- The VM also has `fflate` and `@xmldom/xmldom`, for edits `docx` and `pptxgenjs` cannot make. xmldom ships
+  only CommonJS files, so `?sandbox-script` (`scripts/office-sandbox-script.ts`) bundles
+  `src/office/ooxml-globals.ts` into one script at build time. Before a run returns, a second QuickJS VM
+  checks the output (`src/office/check-output.ts`). It starts after the script's VM is gone, opens every
+  saved file, and parses each XML part on its own with errors and warnings set to throw. It reads a part
+  as UTF-8, or as UTF-16 when the part starts with a byte-order mark, and refuses a part whose XML
+  declaration names another encoding. The bytes come from the model, so the check has its own memory
+  limit (four times the script's), stops at the script's deadline, and never parses on the Worker's heap.
+  By default the parser lets an undefined entity or an unquoted attribute through; Word and PowerPoint
+  refuse both. If any file fails, the run saves nothing. The error names the part, says the XML is too
+  large to check, or says the check ran out of time.
+- PowerPoint scripts can call `animatePptx(bytes, { effects, transitions })` with bytes from PptxGenJS or an
+  attached deck. Both arrays are optional. Slides are 1-based in presentation order. Effects address a
+  top-level shape, picture, group or native table by unique object name and require a unique drawing ID.
+  A target with local geometry must overlap the canvas using its unrotated rectangle. An effect starts
+  on click, with the previous group, or after its longest finite member finishes, including delays and repeats.
+  If all members repeat indefinitely, the next group starts after the latest first-cycle end. Loops continue playing.
+  Fly In and Wipe In accept a from-edge direction. The other presets are Appear, Fade In, Blink, Pulse,
+  Grow/Shrink, Spin, Disappear and Fade Out. The six transitions are fade, wipe, push, zoom, cover and dissolve.
+  The helper refuses existing timing when adding effects and existing transitions when adding a transition.
+  Other package parts retain their original bytes. Scripts can edit existing timing or create custom paths
+  with the raw ZIP and XML globals.
+- Workbooks go through Excelize (`excelize-wasm`). It is WebAssembly, which QuickJS cannot run, so it runs in
+  the same Worker outside the VM. The script reaches it through a global `excelize`, and every call goes to one
+  host function (`src/office/workbook-bridge.ts`). Arguments cross as JSON with the bytes beside them, so the VM
+  pays for building them, and the host checks them as they arrive. The script can call a workbook's own methods
+  and Excelize's pure helpers, nothing else. A failed call throws, where Excelize would return an `error` field
+  the model might ignore. Two calls that Excelize accepts but that leave a sheet doing less than asked throw too:
+  `SetCellValue` with a string that starts with "=" (saved as text, not a formula; `SetCellStr` writes such
+  text), and `SetConditionalFormat` with rules that are not an array (it adds nothing). Excelize and IronCalc are about 6.7 MB, so the Worker loads them only for a script that
+  names `excelize` (`src/office/spreadsheet-engines.ts`). A chat that never builds a workbook never downloads them.
+- A workbook opens only up to 2 MiB, and up to 64 MiB unzipped. Excelize holds about 1.2 KB per cell outside the
+  VM's 64 MiB, so a run stops once Excelize's memory passes 512 MiB. WebAssembly memory never shrinks, and the
+  Worker is closed after every run anyway. A new workbook names "Microsoft Excel" as its application, because
+  LibreOffice draws some charts differently for an application it does not know. An opened one keeps its own.
+  A workbook with a VBA project gets the macro content type, and the output check holds the name to it: `.xlsm`
+  with macros, `.xlsx` without, or Excel refuses the file.
+- Excelize saves a formula with no result and marks it as text, so a viewer that does not calculate shows an
+  empty cell. When the script saves a workbook, `src/office/formula-cache.ts` loads its values, formulas, hidden
+  rows and defined names into IronCalc (`@ironcalc/wasm`), computes every formula, and writes each result into
+  the sheet XML as the cell's cached value, typed as a number, text or boolean. IronCalc cannot return a raw
+  number, so results are formatted to 15 significant digits and parsed back. Excelize expands shared formulas.
+  Some cells keep what Excelize saved: a formula IronCalc cannot compute (`AGGREGATE`, for example), an error
+  result, an array or data-table formula, and every formula of a workbook that counts dates from 1904. The tool
+  result lists each in `formulaErrors` with its file, sheet and cell. `WriteToBuffer` returns the same list, so a
+  script can check it before saving anything, or log it from a run that saves nothing.
+- Parsing every XML part of a large workbook would take most of the script's time, so the output check skips the
+  parts Excelize wrote when the script saves the bytes `WriteToBuffer` returned unchanged. Parts Excelize copied
+  from the opened file without parsing them, such as charts, are still parsed.
 - `hasProAccess` resolves a hardcoded `isProUser = true`
   (`src/integrations/thunderbolt-pro/utils.ts:8`), so the settings flag is the only real gate on the
   web tools.
@@ -132,20 +228,21 @@ own context.
 
 ## Toolset assembly and the MCP merge
 
-`createToolset` (`src/lib/tools.ts:142`) turns configs into AI SDK tools, wrapping each executor in
+`createToolset` (`src/lib/tools.ts:188`) turns configs into AI SDK tools, wrapping each executor in
 up to two layers:
 
 - **Per-request dedupe**, `cacheable` tools only. Identical calls in one streaming response share
-  the first promise; a rejection is evicted so the next call re-runs (`:94`). Never `cacheable` a
+  the first promise; a rejection is evicted so the next call re-runs (`:140`). Never `cacheable` a
   write tool: the SDK's execute-options (`abortSignal`, `messages`, `toolCallId`) are not forwarded
   through the wrapper.
-- **Budget accounting**, for the names in `webToolNames` (`:80`). A third web tool must be added to
+- **Budget accounting**, for the names in `webToolNames` (`:126`). A third web tool must be added to
   that set or it spends nothing and reports nothing.
 
 MCP tools merge last, namespaced `<prefix>_<tool>` via `sanitizeToolPrefix` (`shared/mcp-tool-names.ts`),
 so two servers exposing `list_services` stay distinct. Colliding prefixes probe upward (`render`,
 `render_2`, …); a name that still collides is skipped, first registered winning. Failed discovery
-skips the server this send; it reconnects in the background.
+reconnects and retries once in the same send, skipping the server if that fails or the reconnect and
+retry together take over 3s.
 
 `mergeMcpTools` alone knows the final name → server mapping, so it returns `mcpTools` metadata on
 the assistant message: chat history resolves a `dynamic-tool` part to its server's name, URL and
@@ -163,20 +260,22 @@ are replaced every send, which is why live MCP client closures are deliberately 
 (`:10`): `auto` 5, `search` 12, `research` 30. Intent comes from the skill token in the user's
 message (`resolveWebToolIntent`, `src/ai/turn-web-budget.ts:17`); loading the research skill
 mid-turn can promote an `auto` budget to the research cap once (`promote`,
-`src/ai/web-tool-budget.ts:81`).
+`src/ai/web-tool-budget.ts:88`).
 
-- **Calls are deduped before they are charged.** `normalizeWebToolKey` (`:126`) lowercases and collapses
+- **Calls are deduped before they are charged.** `normalizeWebToolKey` (`:134`) lowercases and collapses
   whitespace in a query, and normalizes a URL's host and path, so a repeated lookup costs nothing.
 - **Exhaustion is a result, not an error.** A call past the cap resolves to
-  `{ status: 'budget_exhausted', message }` (`:135`), and every web tool result carries a
+  `{ status: 'budget_exhausted', message }` (`:143`), and every web tool result carries a
   `Web calls remaining this turn: N` line from `createTool`'s `toModelOutput`
-  (`src/lib/tools.ts:124`). `# Tools` tells the model those notices apply only to that turn
+  (`src/lib/tools.ts:170`). `# Tools` tells the model those notices apply only to that turn
   (`src/ai/prompt.ts:145`); prompt text and enforcement change together. Pi's
   `installWebToolBudgetFloor` (`src/acp/built-in-adapter.ts:603`) steers the harness at the floor
   and un-steers it if a promotion reopens capacity.
 - **The budget owns the turn's source registry.** `sourceCollector` hangs off the budget object
-  (`:31`) so citation labels and cached web results share one lifetime; a different lifetime would
-  renumber `[N]` mid-turn.
+  (`:31`) so this turn's new sources and cached web results share one lifetime; a different lifetime
+  would renumber `[N]` mid-turn. Numbering itself spans the thread: the budget also carries
+  `priorSources` (`:37`), the sources earlier turns registered, which the chat layer seeds from the
+  history (`collectThreadSources`, `src/lib/source-utils.ts:24`).
 
 The chat layer creates the budget per turn; it survives auto-retries of the same prompt
 ([chat runtime](chat-runtime.md#budgets-and-retries)).
@@ -186,33 +285,44 @@ The chat layer creates the budget per turn; it survives auto-retries of the same
 One index travels from tool result to badge in five steps across as many modules. Changing one
 link requires changing the others.
 
-1. **Assignment.** `search` and `fetch_content` push a `SourceMetadata` entry
-   (`src/types/source.ts:9`) into the turn's `sourceCollector`, keyed by URL: a page fetched after
-   it was searched reuses its index, and `fetch_content` (authoritative title) may enrich the entry
-   in place (`src/integrations/thunderbolt-pro/tools.ts:110`). Past the 200-entry cap (`:23`),
-   sources are dropped with a warning rather than renumbered.
-2. **Disclosure.** Every result carries `[Source N] (cite as [N])` (`:70`, `:142`).
+1. **Assignment.** `search` and `fetch_content` register a `SourceMetadata` entry
+   (`src/types/source.ts:9`) in the turn's `sourceCollector` through `collectSource`
+   (`src/integrations/thunderbolt-pro/tools.ts:63`), keyed by URL. The model keeps the whole
+   history, so numbers are thread-wide: new sources continue after the highest earlier number, and a
+   URL an earlier turn registered keeps its number (`indexFor`, `:58`). A page fetched after it was
+   searched this turn reuses its index, and `fetch_content` (authoritative title) may enrich this
+   turn's entry in place (`:146`) but never an earlier turn's. Past the 200-entry cap (`:23`), a
+   source gets no number and the model is told to cite it by URL instead.
+2. **Disclosure.** Every numbered result carries `[Source N] (cite as [N])` (`withSourceReference`, `:26`).
    `# Output Format` fixes placement: inline, same line, once per source, never a footnote or
    trailing list, never the model-native `【1】` (`src/ai/prompt.ts:165`). `webToolsPrompt` adds
    that a selected subset must never be renumbered.
-3. **Persistence.** `createMessageMetadata` (`src/ai/message-metadata.ts:30`) snapshots the
+3. **Persistence.** `createMessageMetadata` (`src/ai/message-metadata.ts:31`) snapshots the
    collector onto the message's `metadata.sources` each `finish-step`, so a reloaded conversation
-   still resolves its citations.
+   still resolves its citations. Each message stores only its own turn's sources.
 4. **Cleanup.** Models drift, so `stripBracketCitations` (`src/ai/widget-parser.ts:122`) removes
    `【N†title】` and `【N】` before parsing. The regex requires the digits, sparing genuine CJK
    bracket text, and `TextPart` withholds a half-streamed `【…` suffix so the raw syntax never
-   flashes on screen (`src/components/chat/text-part.tsx:165`).
-5. **Rendering.** `buildSourceCitationPlaceholders` (`src/components/chat/text-part.tsx:81`)
-   rewrites each run of `[N]` into one `{{CITE:key}}` placeholder plus a `CitationMap` entry, which
-   `markdown-utils.tsx:115` swaps for an inline `CitationBadge`. Out-of-range indices stay literal.
-   The grouping regex (`:36`) excludes `[1](…)` by negative lookahead so Markdown links survive; the
-   same machinery serves Haystack document citations via `buildDocumentCitationPlaceholders`.
+   flashes on screen (`src/components/chat/text-part.tsx:187`).
+5. **Rendering.** `useThreadSources` (`src/components/chat/use-thread-sources.ts:39`) hands each
+   assistant message its own sources plus every earlier turn's, built at render time rather than
+   copied onto every message. `buildSourceCitationPlaceholders` (`src/components/chat/text-part.tsx:102`)
+   resolves each `[N]` by the source's `index` (`findSourceByIndex`, `src/lib/source-utils.ts:16`;
+   the latest entry wins a shared number) and rewrites each run into one `{{CITE:key}}` placeholder
+   plus a `CitationMap` entry, which `markdown-utils.tsx:119` swaps for an inline `CitationBadge`.
+   Unknown numbers stay literal. Runs inside fenced code, inline code and math (`$`, `\(…\)` and
+   `\[…\]` delimiters) are left verbatim (`blankNonProse`, `src/components/chat/markdown-blocks.ts:150`),
+   so `arr[1]` stays an index. Indented code blocks and fences inside blockquotes are not recognized
+   and read as prose.
+   The grouping regex (`text-part.tsx:43`) excludes `[1](…)` by negative lookahead so Markdown links
+   survive; the same machinery serves Haystack document citations via
+   `buildDocumentCitationPlaceholders`.
 
 Two further consumers read the same registry:
 
 - `WidgetRenderer` passes `sources` into _every_ widget's props
   (`src/components/chat/widget-renderer.tsx:50`), so `<widget:link-preview source="2" …/>` renders
-  from registry metadata instead of refetching (`src/widgets/link-preview/widget.tsx:50`).
+  from registry metadata instead of refetching (`src/widgets/link-preview/widget.tsx:67`).
 - The `citation` widget serves content that already carries structured sources and is _forbidden_ to
   the model by the prompt ([widgets.md](../widgets.md)).
 
@@ -227,7 +337,7 @@ not in a type error.
 | A prompt section        | Decide stable vs volatile (does it change per send?); place it so no user-controlled text trails; check both engines compose it                                                                |
 | A tool                  | `ToolConfig` with a `verb`, gated explicitly in `getAvailableTools`; `cacheable` only if read-only and deterministic; usage text in the fragment beside its gate, never the unconditional body |
 | A web-capable tool      | Add it to `webToolNames`, or it escapes the budget                                                                                                                                             |
-| A source-producing tool | Write `SourceMetadata` into the injected `sourceCollector` with URL-keyed index reuse, or `[N]` alignment breaks for the turn                                                                  |
+| A source-producing tool | Register through `collectSource` with the injected `sourceCollector` and `priorSources`: URL-keyed reuse, numbers continuing after earlier turns, or `[N]` alignment breaks                    |
 
 ## Source map
 
@@ -239,11 +349,14 @@ not in a type error.
 | Project section                            | `src/projects/project-prompt.ts`, `src/projects/project-search-tool.ts`                                                 |
 | Tool availability, dedupe, budget wrapper  | `src/lib/tools.ts`                                                                                                      |
 | Tool display metadata                      | `src/lib/tool-metadata.ts`                                                                                              |
+| Office file tool, sandbox and Worker       | `src/office/`                                                                                                           |
 | Per-send config, MCP merge, volatile notes | `src/ai/fetch.ts`                                                                                                       |
 | Pi harness composition and tool install    | `src/acp/built-in-adapter.ts`, `src/acp/built-in-conversation.ts`                                                       |
 | Web budget                                 | `src/ai/web-tool-budget.ts`, `src/ai/turn-web-budget.ts`                                                                |
 | Source registry type                       | `src/types/source.ts`                                                                                                   |
+| Source registry and lookup                 | `src/integrations/thunderbolt-pro/tools.ts`, `src/lib/source-utils.ts`                                                  |
 | Citation parsing and rendering             | `src/components/chat/text-part.tsx`, `src/components/chat/markdown-utils.tsx`, `src/components/chat/citation-badge.tsx` |
+| Thread source pool, code/math detection    | `src/components/chat/use-thread-sources.ts`, `src/components/chat/markdown-blocks.ts`                                   |
 | Native-bracket cleanup                     | `src/ai/widget-parser.ts`                                                                                               |
 
 ## Related

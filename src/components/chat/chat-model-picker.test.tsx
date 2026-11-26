@@ -19,7 +19,7 @@ import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import type { Agent } from '@/types/acp'
 import { getClock } from '@/testing-library'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { MemoryRouter } from 'react-router'
 import type { ReactNode } from 'react'
 import { ChatModelPicker } from './chat-model-picker'
@@ -166,6 +166,26 @@ describe('ChatModelPicker', () => {
     expect(container.firstChild).toBeNull()
   })
 
+  it('follows the live available-model list when a provider is hidden', () => {
+    const otari = createMockModel({
+      id: 'otari-model',
+      name: 'Otari model',
+      provider: 'otari',
+      url: 'https://otari.example/api/v1',
+    })
+    setupWithAgent(builtInAgent, [otari, gpt4])
+    render(<ChatModelPicker embedded />, { wrapper: TestWrapper })
+    expect(screen.getByText('Otari model')).toBeInTheDocument()
+
+    act(() => useChatStore.getState().setModels([gpt4]))
+    expect(screen.queryByText('Otari model')).toBeNull()
+    expect(screen.getByText('GPT-4')).toBeInTheDocument()
+    expect(useChatStore.getState().sessions.get('thread-1')?.selectedModel.id).toBe(gpt4.id)
+
+    act(() => useChatStore.getState().setModels([]))
+    expect(screen.queryByText('GPT-4')).toBeNull()
+  })
+
   it('changes the selected model in the store on click', async () => {
     setupWithAgent(builtInAgent)
 
@@ -199,6 +219,21 @@ describe('ChatModelPicker', () => {
     fireEvent.click(await screen.findByText('Add Model'))
 
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByTestId('create-request')).toHaveTextContent('/|model')
+  })
+
+  it('opens model creation directly from the embedded header and closes its parent', () => {
+    setupWithAgent(builtInAgent)
+    const close = mock()
+    render(
+      <>
+        <ChatModelPicker embedded onClose={close} />
+        <CreateRequestProbe />
+      </>,
+      { wrapper: TestWrapper },
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Add Model' }))
+    expect(close).toHaveBeenCalledTimes(1)
     expect(screen.getByTestId('create-request')).toHaveTextContent('/|model')
   })
 

@@ -6,17 +6,24 @@ import { and, desc, eq, getTableColumns, isNull, sql, type SQL } from 'drizzle-o
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { chatMessagesTable, chatThreadsTable } from '@/db/tables'
 
+/**
+ * A chat's latest activity id, correlated to the enclosing `chat_threads` row.
+ * A correlated lookup uses PowerSync's message index instead of rescanning its JSON view per chat.
+ */
+export const getChatLastActivityId = (db: AnyDrizzleDatabase) => {
+  const latestMessage = db
+    .select({ id: sql<string>`max(${chatMessagesTable.id})` })
+    .from(chatMessagesTable)
+    .where(and(eq(chatMessagesTable.chatThreadId, chatThreadsTable.id), isNull(chatMessagesTable.deletedAt)))
+  return sql<string>`max(${chatThreadsTable.id}, coalesce((${latestMessage}), ${chatThreadsTable.id}))`
+}
+
 /** UUIDv7 ids order activity without loading message bodies or writing extra timestamps. */
 export const getChatActivityQuery = (db: AnyDrizzleDatabase, filter?: SQL) => {
-  const lastActivityId = sql<string>`max(${chatThreadsTable.id}, coalesce(max(${chatMessagesTable.id}), ${chatThreadsTable.id}))`
+  const lastActivityId = getChatLastActivityId(db)
   return db
     .select({ ...getTableColumns(chatThreadsTable), lastActivityId: lastActivityId.as('last_activity_id') })
     .from(chatThreadsTable)
-    .leftJoin(
-      chatMessagesTable,
-      and(eq(chatMessagesTable.chatThreadId, chatThreadsTable.id), isNull(chatMessagesTable.deletedAt)),
-    )
     .where(and(isNull(chatThreadsTable.deletedAt), filter))
-    .groupBy(chatThreadsTable.id)
-    .orderBy(desc(lastActivityId), desc(chatThreadsTable.id))
+    .orderBy(({ lastActivityId }) => [desc(lastActivityId), desc(chatThreadsTable.id)])
 }

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { StoredFile } from '@/lib/file-blob-storage'
+import { importWhenReachable } from '@/lib/import-when-reachable'
 
 /**
  * Client-side transformer registry: turns a stored attachment into a form a
@@ -34,6 +35,12 @@ export const docxMime = 'application/vnd.openxmlformats-officedocument.wordproce
 /** MIME type for `.xlsx` (OOXML spreadsheets). */
 export const xlsxMime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
+/** MIME type for `.xlsm` (OOXML spreadsheets with macros). */
+export const xlsmMime = 'application/vnd.ms-excel.sheet.macroEnabled.12'
+
+/** MIME type for `.pptx` (OOXML presentations). */
+export const pptxMime = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+
 /**
  * True for files that are already text (CSV, plain text, Markdown, JSON, logs…).
  * These get a passthrough text transformer (so any `text/*` type works without
@@ -61,8 +68,8 @@ export const plainTextExtensions: ReadonlySet<string> = new Set(['md', 'markdown
 
 /**
  * Office formats we can extract, keyed by extension, for when the OS names them
- * badly: a machine without Office installed reports `.xlsx` and `.docx` as an
- * empty type, `application/octet-stream`, or (since both are zips)
+ * badly: a machine without Office installed reports `.xlsx`, `.docx` and `.pptx`
+ * as an empty type, `application/octet-stream`, or (since all are zips)
  * `application/zip`. The composer accepts them on extension either way, so
  * without this they'd be stored under a type no transformer serves — delivered
  * as bytes the model can't read, with remediation unable to recover because it
@@ -71,12 +78,13 @@ export const plainTextExtensions: ReadonlySet<string> = new Set(['md', 'markdown
 const officeExtensionMimes: ReadonlyMap<string, string> = new Map([
   ['xlsx', xlsxMime],
   ['docx', docxMime],
+  ['pptx', pptxMime],
 ])
 
 /**
  * The MIME type a file should be treated as: a declared type we can already
  * handle, otherwise an extension-based fallback — `text/plain` for text-ish
- * files, the real office type for xlsx/docx.
+ * files, the real office type for xlsx/docx/pptx.
  *
  * Normalizing at the point a file enters the app is what makes the rest work —
  * {@link defaultDeliveryMode} then routes it as text instead of native bytes.
@@ -96,12 +104,16 @@ export const resolveTextMimeType = (filename: string, declaredType: string): str
  * Default delivery mode for an attachment given its MIME type, when no explicit
  * {@link import('@/types').AttachmentData.deliverAs} override is set. Plain-text
  * files go out as text (lossless and universally accepted), and so do
- * spreadsheets: no provider accepts xlsx as a native file part, so native-first
- * would only buy a guaranteed rejection and a retry. Everything else defaults to
- * native bytes (`undefined`).
+ * spreadsheets and presentations: no provider accepts xlsx or pptx as a native
+ * file part, so native-first would only buy a guaranteed rejection and a retry.
+ * Everything else defaults to native bytes (`undefined`).
  */
 export const defaultDeliveryMode = (mime: string): TransformTarget | undefined =>
-  isPlainTextMime(mime) || mime === xlsxMime ? 'text' : undefined
+  isPlainTextMime(mime) || mime === xlsxMime || mime === pptxMime ? 'text' : undefined
+
+// It shares a chunk with the workbook preview, which Safari never loads once a fetch of it failed, so it waits for the
+// app's server.
+const pptxToTextModule = importWhenReachable(() => import('./pptx-to-text'))
 
 /**
  * Lazy loaders keyed by `"<source-mime>-><target>"`. Adding a transformer is a
@@ -113,6 +125,7 @@ const loaders: Partial<Record<TransformerKey, () => Promise<Transformer>>> = {
   [`${docxMime}->text`]: async () => (await import('./docx-to-text')).docxToText,
   'application/pdf->images': async () => (await import('./pdf-to-images')).pdfToImages,
   [`${xlsxMime}->text`]: async () => (await import('./xlsx-to-text')).xlsxToText,
+  [`${pptxMime}->text`]: async () => (await pptxToTextModule()).pptxToText,
 }
 
 /** True if a transformer exists for this source MIME → target. Sync, for routing decisions. */

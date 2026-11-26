@@ -7,6 +7,7 @@ import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { MemoryRouter } from 'react-router'
 import type { ReactNode } from 'react'
 
 import { CreateItemProvider, useCreateItem } from './context'
@@ -19,7 +20,7 @@ const HostControls = () => {
       <button type="button" onClick={() => openCreateItem({ kind: 'skill' })}>
         open skill
       </button>
-      <button type="button" onClick={closeCreateItem}>
+      <button type="button" onClick={() => closeCreateItem()}>
         close
       </button>
     </>
@@ -30,10 +31,12 @@ const Wrapper = ({ children }: { children: ReactNode }) => {
   const Provider = createTestProvider()
   return (
     <Provider>
-      <CreateItemProvider>
-        {children}
-        <HostControls />
-      </CreateItemProvider>
+      <MemoryRouter>
+        <CreateItemProvider>
+          {children}
+          <HostControls />
+        </CreateItemProvider>
+      </MemoryRouter>
     </Provider>
   )
 }

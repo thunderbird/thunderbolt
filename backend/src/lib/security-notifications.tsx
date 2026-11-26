@@ -98,6 +98,16 @@ export const stepUpCopy: Record<StepUpAction, (i18n: I18n, deviceName: string) =
       id: 'If this wasn’t you, don’t enter the code — sign out of that device and change your sign-in method immediately.',
     }),
   }),
+  'v1-phrase-recovery': (i18n, deviceName) => ({
+    subject: i18n._({ id: 'Confirm your account recovery' }),
+    body: i18n._({
+      id: 'Device “{deviceName}” asked to recover your account and upgrade its encryption. Enter this code in the app to continue. That device will get access to your encrypted data, a new recovery phrase will replace the old one, and your other app devices will need to be approved again.',
+      values: { deviceName },
+    }),
+    guidance: i18n._({
+      id: 'If this wasn’t you, don’t enter the code — someone may be trying to take over your account. Sign out of that device and change your sign-in method immediately.',
+    }),
+  }),
 }
 
 export const securityNotifications: SecurityNotifications = {

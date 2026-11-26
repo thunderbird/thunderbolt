@@ -13,7 +13,7 @@ Each install keeps its own copy of your data and works on its own. Sync is optio
 | iOS, Android          | Apple TestFlight and Google Play internal testing                                      | Not yet listed publicly in the app stores                                      |
 | Terminal              | `thunderbolt` command line client                                                      | Apple Silicon Macs and Linux. Installable from the desktop app, or from source |
 
-The web, desktop and mobile apps share one codebase, so features carry across except where a platform blocks them: the in-app browser and the cloud-proxy switch are desktop-only. The terminal client is a separate coding agent rather than this app.
+The web, desktop and mobile apps share one codebase, so features carry across except where a platform blocks them: the in-app browser works only in the macOS and Windows apps, and the cloud-proxy switch is desktop-only. The terminal client is a separate coding agent rather than this app.
 
 The web app requires HTTPS. It keeps a database inside the browser and uses browser cryptography, both of which browsers only allow on a secure origin. Automatic desktop updates reach only the official builds, which ship with an update feed and a signing key. A desktop app you build yourself has neither, so you distribute new installers to your users the same way you distributed the first one.
 
@@ -67,13 +67,13 @@ File attachments do not follow a chat. The message carries the file's name but n
 
 Install or open Thunderbolt on the new device and sign in with the same account. It registers as pending and shows an "Approve this device" screen until you either:
 
-- Approve it from an already trusted device under **Settings → Devices**, entering the fingerprint shown on the new device's screen or received through a separate trusted channel.
-- Enter the current 24 word recovery phrase. Use the new phrase if it was replaced during migration or a phrase change.
+- Approve it from an already trusted device under **Settings → Devices**. Tap **Approve**, then tap the code that matches the 2-digit code on the new device's screen. If none match, choose **None of these match** and do not approve. **Use fingerprint instead** lets you type the full fingerprint, which is also the way when one of the two devices runs an older version.
+- Enter the current 24 word recovery phrase. Use the new phrase if it was replaced during migration or a phrase change. If the account still uses the original encryption, the original phrase works too (the way back when no device that had sync turned on is left): Thunderbolt asks for a code sent to the account email, upgrades the account from this device and shows a new phrase to save. Other devices then need to be approved again.
 - Choose **Unlock with passkey** if the account has an available passkey enrolled for sync.
 
 The pending device checks for approval on its own, so nothing needs re-entering once you approve.
 
-Device names are generated, for example "Thunderbolt on macOS" or "Chrome on Windows", and they cannot be renamed. Every tab of the same browser profile counts as one device; a different browser, or a different profile in the same browser, is separate. An account can have **10 active devices**. Devices still waiting for approval do not count toward the limit, and revoked ones do not either, so more devices can queue for approval than there are free slots; the extras are refused at approval rather than at registration. Headless bridges appear in the device list labeled **Bridge**. Command line installs appear labeled **CLI**, but only where the operator has set `CLI_DEVICE_REGISTRATION_ENABLED=true`; it is off by default, and until it is on `thunderbolt login` fails outright. A command line client authenticated with an API token never registers a device and has no entry in the list.
+Device names are generated, for example "Thunderbolt on macOS" or "Chrome on Windows", and they cannot be renamed. Every tab of the same browser profile counts as one device; a different browser, or a different profile in the same browser, is separate. An account can have **10 active devices**. Devices still waiting for approval do not count toward the limit, and revoked ones do not either, so more devices can queue for approval than there are free slots; another device cannot approve one past the limit. Recovering with your recovery phrase or a passkey is never blocked by the limit, because devices you lost still hold their slots. Headless bridges appear in the device list labeled **Bridge**. Command line installs appear labeled **CLI**, but only where the operator has set `CLI_DEVICE_REGISTRATION_ENABLED=true`; it is off by default, and until it is on `thunderbolt login` fails outright. A command line client authenticated with an API token never registers a device and has no entry in the list.
 
 ## Approving, denying, and revoking
 

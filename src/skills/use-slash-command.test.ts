@@ -4,7 +4,7 @@
 
 import { describe, expect, it, mock } from 'bun:test'
 import { act, renderHook } from '@testing-library/react'
-import { createRef, type KeyboardEvent } from 'react'
+import { createElement, createRef, type KeyboardEvent, Profiler, type ReactNode, useState } from 'react'
 
 import type { Skill } from '@/types'
 import { chipMarker, deleteSkillTokenAt, pendingSigilForKey } from './parse-skill-tokens'
@@ -81,6 +81,38 @@ describe('getSlashState', () => {
     // in-progress query is "mee" — the trailing "t later" is not yet typed
     // from the autocomplete state machine's perspective.
     expect(getSlashState('hi /meet later', 7)).toEqual({ tokenStart: 3, query: 'mee' })
+  })
+})
+
+describe('useSlashCommand input and selection events', () => {
+  it('commits each typed value with its caret and ignores the following unchanged selection', () => {
+    const inputRef = createRef<HTMLTextAreaElement>()
+    const library = [fakeSkill('alpha')]
+    const onRender = mock(() => {})
+    const hook = renderHook(
+      () => {
+        const [value, setValue] = useState('')
+        return useSlashCommand({ value, setValue, inputRef, library, isEnabled: () => true })
+      },
+      {
+        wrapper: ({ children }: { children: ReactNode }) =>
+          createElement(Profiler, { id: 'slash-input', onRender }, children),
+      },
+    )
+
+    const initialCommits = onRender.mock.calls.length
+    for (let length = 1; length <= 20; length++) {
+      act(() => hook.result.current.handleChange('x'.repeat(length), length))
+      act(() => hook.result.current.handleSelect(length, length))
+    }
+    expect(onRender.mock.calls.length - initialCommits).toBe(20)
+
+    // The popup must already use the new caret before a separate select event.
+    act(() => hook.result.current.handleChange('hello /al', 9))
+    expect(hook.result.current.popupOpen).toBe(true)
+    expect(hook.result.current.popupItems.map((item) => item.name)).toEqual(['alpha'])
+    act(() => hook.result.current.handleSelect(0, 0))
+    expect(hook.result.current.popupOpen).toBe(false)
   })
 })
 

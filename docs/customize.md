@@ -136,9 +136,10 @@ and none doubled.
 The model sees one line per enabled skill and fetches the body only when it decides that skill
 applies. A vague description means the skill is never used.
 
-Skills can be enabled, disabled, and pinned as chips above the composer, up to ten of them. Five
-built-in skills define how Thunderbolt renders things like weather and maps in a reply: those can be
-switched off but not edited or deleted, and once unpinned cannot be pinned again. The other four it
+Skills can be enabled, disabled, and pinned as chips above the composer, up to ten of them. Eight
+built-in skills can be switched off but not edited or deleted, and once unpinned cannot be pinned
+again: five define how Thunderbolt renders things like weather and maps in a reply, and three teach
+the built-in agent to make Word, Excel and PowerPoint files. The other four it
 ships with, Search, Research, Daily Brief and Important Emails, you can edit or delete like your own. Your
 edits to a built-in skill are preserved when Thunderbolt updates its own copies. Worked examples:
 [Skills](using/skills.md).
@@ -225,14 +226,14 @@ voice to speak in. The choice is per device. See [Voice](using/voice.md).
 
 ## Preferences
 
-| Section                  | Controls                                                                                                       | Scope              |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------- | ------------------ |
-| User Experience          | Theme (Light, Dark, System), where chat links open (Ask, Browser or New tab, plus Sidebar on desktop), haptics | This device        |
-| Personalization          | Preferred name                                                                                                 | Your account       |
-| Localization             | Location, language, distance, temperature, time format, currency                                               | Your account       |
-| Help Thunderbolt Improve | Preview features, anonymous usage data                                                                         | Your account       |
-| Network                  | Use cloud proxy                                                                                                | This device        |
-| Data                     | Sync this device, export, import, delete local data, and delete the whole account                              | Mostly this device |
+| Section                  | Controls                                                                                                                              | Scope              |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| User Experience          | Theme (Light, Dark, System), where chat links open (Ask, Browser or New tab, plus Sidebar on macOS and Windows desktop apps), haptics | This device        |
+| Personalization          | Preferred name                                                                                                                        | Your account       |
+| Localization             | Location, language, distance, temperature, time format, currency                                                                      | Your account       |
+| Help Thunderbolt Improve | Preview features, anonymous usage data                                                                                                | Your account       |
+| Network                  | Use cloud proxy                                                                                                                       | This device        |
+| Data                     | Sync this device, export, import, delete local data, and delete the whole account                                                     | Mostly this device |
 
 Most preferences show a revert control next to them once changed from their shipped value.
 

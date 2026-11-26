@@ -47,7 +47,6 @@ export {
 
 // Chat Messages
 export {
-  deleteChatMessageAndDescendants,
   getChatMessages,
   getLastMessage,
   saveMessagesWithContextUpdate,

@@ -25,12 +25,13 @@ import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Agent, AgentAdapter } from '@/types/acp'
 import { getAllSkills } from '@/dal'
+import { isAgentActive } from '@/dal/agents'
 import { getDb } from '@/db/database'
+import { createAgentUnavailableError } from '@/lib/error-utils'
 import { selectEnabledSkillDefinitions } from '@/skills/skill-tool'
-import { connectAcpAdapter, type AcpAdapterDeps } from './acp-adapter'
+import type { AcpAdapterDeps } from './acp-adapter'
 import type { AcpCommand } from './translators/acp-to-ai-sdk'
-import { createBuiltInAdapter, type BuiltInAdapterOptions } from './built-in-adapter'
-import { createManagedHttpAdapter } from './managed-http-adapter'
+import type { BuiltInAdapterOptions } from './built-in-adapter'
 
 /** Connection-scoped context handed to {@link connectToAgent}. Deliberately
  *  carries only what's needed to OPEN a connection — per-thread fields travel
@@ -46,8 +47,14 @@ export type ConnectToAgentContext = {
 
 export type ConnectToAgentDeps = BuiltInAdapterOptions & AcpAdapterDeps
 
-/** Read enabled skills from same DAL source used by built-in agent. */
-const getEnabledSkills = async () => selectEnabledSkillDefinitions(await getAllSkills(getDb()))
+/** Read enabled skills from same DAL source used by built-in agent. The Office skills stay behind by default: they
+ *  teach the app's `run_office_script`, which an external agent does not have. Row ids stay behind too, off the wire. */
+const getEnabledSkills = async () =>
+  selectEnabledSkillDefinitions(await getAllSkills(getDb())).map(({ name, description, instruction }) => ({
+    name,
+    description,
+    instruction,
+  }))
 
 /**
  * Build an `AgentAdapter` for the given agent. Exhaustive over `AgentType`, so a
@@ -55,22 +62,36 @@ const getEnabledSkills = async () => selectEnabledSkillDefinitions(await getAllS
  * `managed-http` posts the chat's history to the backend, so it is only taken
  * for a system agent; the synced `agents` table's plaintext `type` must never
  * be able to select it.
+ *
+ * Every new generation passes through here (a send, the commands warm-up, a
+ * background rebuild), so an agent disabled or deleted since its caller read it
+ * is refused before anything is dialed. The ACP adapter repeats the same check for
+ * its handshake, its session requests and each prompt.
  */
 export const connectToAgent = async (
   agent: Agent,
   ctx: ConnectToAgentContext,
   deps: ConnectToAgentDeps = {},
 ): Promise<AgentAdapter> => {
+  const isActive = deps.isAgentActive ?? (() => isAgentActive(getDb(), agent))
+  if (agent.type !== 'built-in' && !(await isActive())) {
+    throw createAgentUnavailableError(agent.id)
+  }
   switch (agent.type) {
-    case 'built-in':
+    case 'built-in': {
+      const { createBuiltInAdapter } = await import('./built-in-adapter')
       return createBuiltInAdapter(agent, deps)
-    case 'managed-http':
+    }
+    case 'managed-http': {
       if (agent.isSystem !== 1) {
         throw new Error(`Refusing managed-http for non-system agent ${agent.id}`)
       }
+      const { createManagedHttpAdapter } = await import('./managed-http-adapter')
       return createManagedHttpAdapter(agent)
+    }
     case 'remote-acp':
-    case 'managed-acp':
+    case 'managed-acp': {
+      const { connectAcpAdapter } = await import('./acp-adapter')
       return connectAcpAdapter(
         agent,
         { httpClient: ctx.httpClient, onAvailableCommands: ctx.onAvailableCommands },
@@ -81,8 +102,10 @@ export const connectToAgent = async (
           textDeltaThrottleMs: deps.textDeltaThrottleMs,
           handshakeTimeoutMs: deps.handshakeTimeoutMs,
           getEnabledSkills: deps.getEnabledSkills ?? getEnabledSkills,
+          isAgentActive: isActive,
         },
       )
+    }
     default: {
       const unknownType: never = agent.type
       throw new Error(`Unknown agent type ${String(unknownType)} for agent ${agent.id}`)

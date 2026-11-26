@@ -71,6 +71,29 @@ describe('withStoppedReplyMarkers', () => {
     expect(withStoppedReplyMarkers(messages)).toEqual(messages)
   })
 
+  it('marks the latest stopped reasoning-only reply when preparing compaction history', () => {
+    const messages = [
+      ...opening,
+      user('u2', essayPrompt, true),
+      assistant('a2', [{ type: 'reasoning', text: 'Planning…' }]),
+    ]
+    const marked = withStoppedReplyMarkers(messages, { includeLatestPrompt: true })
+    expect(marked.at(-1)?.parts).toEqual([{ type: 'text', text: stoppedReplyMarker }])
+    expect(marked.slice(0, -1)).toEqual(messages)
+    expect(withStoppedReplyMarkers(messages)).toEqual(messages)
+  })
+
+  it('keeps a partial text reply and an unstopped prompt unchanged during compaction', () => {
+    const partial = [
+      ...opening,
+      user('u2', essayPrompt, true),
+      assistant('a2', [{ type: 'text', text: 'Partial answer' }]),
+    ]
+    expect(withStoppedReplyMarkers(partial, { includeLatestPrompt: true })).toEqual(partial)
+    const unanswered = [...opening, user('u2', essayPrompt)]
+    expect(withStoppedReplyMarkers(unanswered, { includeLatestPrompt: true })).toEqual(unanswered)
+  })
+
   it('keeps the stopped prompt out of the prompt sent to the built-in agent', async () => {
     const messages = [...opening, user('u2', essayPrompt, true), user('u3', question)]
 

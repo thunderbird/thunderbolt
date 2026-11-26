@@ -15,6 +15,7 @@ import type { Model, ThunderboltUIMessage } from '@/types'
 import { defaultModelOpus55 } from '@shared/defaults/models'
 import { buildJudgePrompt, type JudgeVerdict } from './judge'
 import { acceptEval, aggregateEvalMetrics } from './stats'
+import { parseStream } from './stream-parser'
 import { fixtureAttempt, fixtureManifest, fixtureScenario } from './test-fixtures'
 import {
   createEvalAdapterContext,
@@ -27,7 +28,7 @@ import {
   runScenario,
 } from './runner'
 
-const model: Model = { ...defaultModelOpus55, apiKey: null }
+const model: Model = { ...defaultModelOpus55, apiKey: null, reasoningEffort: null }
 const proxyFetch: FetchFn = Object.assign(async () => new Response(), {
   preconnect: async () => false,
 })
@@ -231,6 +232,34 @@ test('generation retries never exceed two attempts', async () => {
   const attempt = fixtureAttempt(undefined, false, 'infra_error')
   expect((await runTrial(fixtureScenario(), 0, async () => attempt)).attempts).toHaveLength(2)
 })
+
+test.each(['Provider finish_reason: network_error', 'AbortError', 'User stopped generation'])(
+  'excludes %s while retaining real invalid input in the same stream',
+  async (errorText) => {
+    const invalid = {
+      type: 'tool-input-error',
+      toolCallId: 'invalid',
+      toolName: 'search',
+      input: {},
+      errorText: 'Invalid arguments: query required',
+    }
+    const events = [
+      invalid,
+      {
+        ...invalid,
+        toolCallId: 'pending',
+        errorText,
+        toolMetadata: { interrupted: true },
+      },
+      { type: 'error', errorText: invalid.errorText },
+      { type: 'finish' },
+    ]
+    const stream = await parseStream(
+      new Response(events.map((event) => 'data: ' + JSON.stringify(event) + '\n\n').join('')),
+    )
+    expect(recoveredToolEvents([stream])).toEqual({ toolInfraError: 0, toolMisuse: 1, budgetDenial: 0 })
+  },
+)
 
 test('recovered errors distinguish invalid inputs, infrastructure problems and budget denial', () => {
   const stream = fixtureAttempt().streams[0]

@@ -73,7 +73,7 @@ document.modelContext.registerTool(
     name: 'set_assumption',
     description: 'Change one input of the model and recompute.',
     inputSchema: { type: 'object', properties: { key: { type: 'string' } }, required: ['key'] },
-    // Omitted or false means Thunderbolt prompts the user before every call.
+    // Thunderbolt asks before every call, whatever readOnlyHint says, unless the user picked "Always approve this action".
     annotations: { readOnlyHint: false, title: 'Change an assumption' },
     execute: ({ key }) => ({ content: [{ type: 'text', text: `Set ${key}.` }] }),
   },

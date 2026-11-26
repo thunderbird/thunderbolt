@@ -44,7 +44,7 @@ and skip DNS; a custom discovery service removes that last n0 dependency.
 docker compose -f deploy/iroh-relay/docker-compose.yml up -d
 ```
 
-The service runs `n0computer/iroh-relay:v1.0.2 --dev` over plain HTTP on port `3340`: no TLS, no
+The service runs `n0computer/iroh-relay:v1.4.1 --dev` over plain HTTP on port `3340`: no TLS, no
 QUIC address discovery, localhost only. Point both clients at it:
 
 ```sh

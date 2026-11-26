@@ -95,4 +95,16 @@ describe('MobileCardMenu', () => {
     expect(onOpenChange).toHaveBeenCalledTimes(1)
     expect(onOpenChange.mock.calls[0]?.[0]).toBe(false)
   })
+  it('renders its own blur backdrop when nested in another drawer', () => {
+    render(
+      <MobileCardMenu open onOpenChange={() => {}} title="Parent">
+        <MobileCardMenu open forceBackdrop onOpenChange={() => {}} title="Account menu">
+          <button type="button">Log out</button>
+        </MobileCardMenu>
+      </MobileCardMenu>,
+    )
+    const overlays = document.querySelectorAll('[data-slot="drawer-overlay"]')
+    expect(overlays).toHaveLength(2)
+    expect(overlays[1]).toHaveClass('backdrop-blur-xs', 'backdrop-saturate-75')
+  })
 })

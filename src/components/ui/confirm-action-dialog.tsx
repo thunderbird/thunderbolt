@@ -34,6 +34,8 @@ type ConfirmActionDialogProps = {
   onConfirm: () => void
   /** Fires on every non-confirm dismissal: Cancel, Escape, and backdrop. */
   onCancel: () => void
+  /** Extra content between the description and the buttons, such as an optional reason field. */
+  children?: ReactNode
 }
 
 /**
@@ -53,6 +55,7 @@ export const ConfirmActionDialog = ({
   isPending = false,
   onConfirm,
   onCancel,
+  children,
 }: ConfirmActionDialogProps) => {
   const { t } = useLingui()
   const { isMobile } = useIsMobile()
@@ -75,6 +78,7 @@ export const ConfirmActionDialog = ({
         description={description}
         role="alertdialog"
       >
+        {children}
         <MobileActionSheetFooter>
           <Button ref={cancelButtonRef} variant="outline" onClick={onCancel}>
             {cancelText}
@@ -94,6 +98,7 @@ export const ConfirmActionDialog = ({
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
+        {children}
         <AlertDialogFooter>
           {/* Radix's Cancel closes the dialog itself; onCancel arrives once
               via onOpenChange(false), so no onClick here. */}

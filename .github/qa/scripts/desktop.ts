@@ -138,7 +138,9 @@ const checks = async (out: string, downloads: string): Promise<CheckResult[]> =>
     if (results[0].error) return results
 
     await check('copy a reply to the X clipboard', async () => {
-      await (await browser.$('[data-testid="model-selector-trigger"]')).click()
+      const modelSelector = await browser.$('[data-testid="model-selector-trigger"]')
+      await modelSelector.waitForClickable({ timeout: 10_000 })
+      await modelSelector.click()
       // As in the native smoke: the Thunderbolt mark sets apart the managed model, which reaches the fake provider.
       const standardModel = await browser.$('//button[normalize-space()="Opus 5.5"]')
       await (await standardModel.$('[role="img"][aria-label="Thunderbolt"]')).waitForDisplayed()

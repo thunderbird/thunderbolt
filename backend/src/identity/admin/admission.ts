@@ -4,7 +4,7 @@
 
 import type { QueryableDatabase } from '@/db/client'
 import { identityConnection, invitation, orgDomain } from '@/db/schema'
-import { and, asc, desc, eq, ilike } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, ilike, lte } from 'drizzle-orm'
 import { getCurrentOrganizationId } from '../current-organization'
 import { verificationRecordName, verificationRecordValue } from '../domains'
 import { escapeLike } from './members'
@@ -33,10 +33,28 @@ export const toInvitationView = (row: typeof invitation.$inferSelect): Invitatio
   createdAt: row.createdAt,
 })
 
-/** The org's invitations in one status, newest first, one page at a time. `q` matches part of the email. */
+/** Invitations past their expiry (`true`), before it (`false`), or either (`undefined`). */
+const expiryFilter = (expired: boolean | undefined) => {
+  if (expired === undefined) {
+    return undefined
+  }
+  const now = new Date()
+  return expired ? lte(invitation.expiresAt, now) : gt(invitation.expiresAt, now)
+}
+
+/**
+ * The org's invitations in one status, newest first, one page at a time. `q` matches part of the
+ * email; `expired` keeps only the ones past (`true`) or before (`false`) their expiry.
+ */
 export const listInvitations = async (
   database: QueryableDatabase,
-  { status, q, after, limit }: { status: InvitationStatus; q?: string; after?: [string, string]; limit: number },
+  {
+    status,
+    q,
+    expired,
+    after,
+    limit,
+  }: { status: InvitationStatus; q?: string; expired?: boolean; after?: [string, string]; limit: number },
 ): Promise<Page<InvitationView>> => {
   const rows = await database
     .select({ invitation, cursorAt: exactTimestamp(invitation.createdAt) })
@@ -46,6 +64,7 @@ export const listInvitations = async (
         eq(invitation.orgId, getCurrentOrganizationId()),
         eq(invitation.status, status),
         q ? ilike(invitation.email, `%${escapeLike(q)}%`) : undefined,
+        expiryFilter(expired),
         after ? beforeTimestampCursor(invitation.createdAt, invitation.id, after) : undefined,
       ),
     )

@@ -9,11 +9,11 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { Key, remote, type ChainablePromiseElement } from 'webdriverio'
 import { z } from 'zod'
-import { fakeOpenAiModelId, fakeProviderReply } from '../fake-provider'
+import { fakeProviderReply } from '../fake-provider'
+import { clickButton, completeSetup } from './setup-wizard'
 
 // linux.sh runs this once per setup choice, each from a fresh install.
 const setup = z.enum(['local', 'cloud']).parse(process.argv[2])
-const providerUrl = process.env.PROVIDER_URL ?? 'http://127.0.0.1:9878/v1'
 
 const capabilities = {
   browserName: 'wry',
@@ -37,55 +37,6 @@ const invokeNative = async (command: string, args: Record<string, NativeValue> =
   nativeValueSchema.parse(
     await browser.execute('return window.__TAURI__.core.invoke(arguments[0], arguments[1])', command, args),
   )
-
-/** Wait for a wizard step by its heading. The chat behind the wizard has its own "Connect your AI" heading. */
-const waitForStep = async (heading: string) =>
-  (await browser.$(`//*[@role="dialog"]//h2[contains(normalize-space(), "${heading}")]`)).waitForDisplayed({
-    timeout: 60_000,
-  })
-
-/** Find a button by its exact text and click it once it can be clicked. */
-const clickButton = async (text: string) => {
-  const button = await browser.$(`//button[normalize-space()="${text}"]`)
-  await button.waitForClickable({ timeout: 30_000 })
-  await button.click()
-}
-
-/** Local: no server and no account; the user connects their own OpenAI-compatible model. */
-const setUpLocal = async () => {
-  await (await browser.$('input[aria-label="Local"]')).click()
-  await clickButton('Continue')
-  await waitForStep('Connect your AI')
-  await (await browser.$('input[aria-label="Other provider"]')).click()
-  await clickButton('Continue')
-  await waitForStep('Add a model')
-  await (await browser.$('input[placeholder="http://localhost:11434/v1"]')).setValue(providerUrl)
-  // The model list loads from the provider when the picker opens.
-  await (await browser.$('//button[@role="combobox"][contains(., "Select model")]')).click()
-  const model = await browser.$(`//*[@role="option"][normalize-space()="${fakeOpenAiModelId}"]`)
-  await model.waitForDisplayed({ timeout: 30_000 })
-  await model.click()
-  await clickButton('Test model')
-  await (await browser.$('//*[contains(text(), "Test successful!")]')).waitForDisplayed({ timeout: 30_000 })
-  await clickButton('Add Model')
-  await waitForStep('Add web search')
-  await clickButton('Skip')
-}
-
-/** Cloud: a waitlist account on the smoke backend, signed in with its fixed code. */
-const setUpCloud = async () => {
-  await (await browser.$('input[aria-label="Cloud (Waitlist)"]')).click()
-  await clickButton('Continue')
-  const email = await browser.$('input[placeholder="Email"]')
-  await email.waitForDisplayed({ timeout: 60_000 })
-  await email.setValue(`native-${crypto.randomUUID()}@thunderbolt.test`)
-  await clickButton('Continue')
-  const otp = await browser.$('input[autocomplete="one-time-code"]')
-  await otp.waitForDisplayed({ timeout: 30_000 })
-  await otp.setValue('12345678')
-  await waitForStep('Connect Google')
-  await clickButton('Skip')
-}
 
 /** Drive the X pointer and keyboard as a person would. */
 const xdotool = (...args: string[]) => execFileSync('xdotool', args)
@@ -189,34 +140,15 @@ try {
     invokeNative('initialize_tray', { showLabel: 'Show', quitLabel: 'Quit' }),
   ])
   await browser.refresh()
-  const terms = await browser.$('#terms-agreement')
-  await terms.waitForDisplayed({ timeout: 60_000 })
+  await (await browser.$('#terms-agreement')).waitForDisplayed({ timeout: 60_000 })
   assert.equal(
     await invokeNative('plugin:tray|get_by_id', { id: 'main-tray' }),
     trayBeforeReload,
     'Reloading the frontend should retain the native tray',
   )
 
-  // Accept the terms, then choose how to use the app.
-  await terms.click()
-  await clickButton('Continue')
-  await waitForStep('Choose your setup')
-  await (setup === 'local' ? setUpLocal() : setUpCloud())
-  await waitForStep('What should we call you?')
-  await (await browser.$('input[placeholder="Enter your name"]')).setValue('Smoke')
-  await clickButton('Continue')
-  if (setup === 'cloud') {
-    // The location picker opens on its own; close it before skipping the step.
-    await waitForStep('Where are you located?')
-    await browser.keys(Key.Escape)
-    await clickButton('Skip')
-  }
-  await waitForStep('Which language do you prefer?')
-  await clickButton('Continue')
-  await waitForStep("You're all set!")
-  await clickButton('Continue')
+  await completeSetup(browser, setup)
   const composer = await browser.$('textarea')
-  await composer.waitForDisplayed({ timeout: 60_000 })
   const appReadyAt = Date.now()
   assert.equal(
     await (await browser.$('section[aria-label="Security notice"]')).isExisting(),
@@ -275,7 +207,7 @@ try {
   const settings = await browser.$('nav[aria-label="Sidebar sections"] button[aria-label^="Settings"]')
   await settings.waitForClickable({ timeout: 30_000 })
   await settings.click()
-  await clickButton('Preferences')
+  await clickButton(browser, 'Preferences')
   const ask = await browser.$('[role="radio"][aria-label="Always ask"]')
   await ask.waitForDisplayed({ timeout: 30_000 })
   assert.equal(

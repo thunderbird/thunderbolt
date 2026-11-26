@@ -428,7 +428,8 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    branch counts), and a ticket whose branch exists without an open PR, since the key owner may be working there. A
    ticket Linear does not return gets the identifier-only branch and a log line. `publish` pushes only when the
    branch does not exist yet. Each stage waits for its whole matrix, so with about 20 tickets the time from `file` to the last
-   `publish` is about 70 to 80 minutes, and about two hours when one fix runs to its step timeout.
+   `publish` is about 70 to 80 minutes. It is close to four hours when one fix job runs its fix, its correction pass
+   and both reviews to their step timeouts (60, 60, 20 and 20 minutes, under the job's own cap of 200).
    In a fix-only run, before the session, the fix job replays a fake-AI web task's original spec 3 times on the dev
    stack without any patch, with the same Playwright command as the replay after the fix. It catches a ticket whose
    twin was fixed after it was filed. A group that also holds a real-AI repro or a native flow skips it too, since a
@@ -579,36 +580,37 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    is cut at a word to 100 characters, and a security fix keeps its fixed title. The description says what the
    passed checks showed and that an AI wrote the change, and the commit body wraps that text at 100 columns.
 
-   Before any check runs, a fresh session reviews the patch (`review.md`): it gets the task, reads the patch with
-   `git diff HEAD` and `git status --short --untracked-files=all` (each added file, also inside a new folder), the
-   callers of what it changes and the code the finding's steps run, and
-   tries to show the fix is wrong (wrong owner or layer, a broken caller, a test off the real path or a proxy, a
-   fake-provider artifact, a missed sibling, one adjacent case). It has `Read`, `Glob`, `Grep` and those two git
-   commands, no edit tool and no test runs (`verify-tests` and `verify-checks` run the tests), and answers
-   `approved`, `problems` and `resolved` as structured output. It sits in the fix job, with
-   Fix's QA Anthropic key and read-only token and nothing else, and before the key scan, since after that scan code
-   the agent wrote runs outside its sandbox. A rejection runs the fix session once more (`Correct the fix`, the same
-   tools and caps) on the fix prompt with the problems appended, then a second review, whose prompt carries the first
-   review's problems, numbered: it must find each one fixed, or shown wrong by the code, before it approves, and
-   show where. `Decide the review` counts a second approval only when `resolved` names every earlier problem with the
-   `file:line` that settles it; otherwise it is a rejection, and the diagnosis lists the first review's problems. A
-   local run showed why: a second review approved after three tool calls in 16 seconds. Before each review a step
-   records the hash and executable bit of every file in the checkout, plus the hash of a web visual task's check
-   (`qa-out/` is ignored, but the check is the proof and becomes the PR's e2e spec, so the review reads it too), and
-   `Collect the patch` turns an approval into a rejection when that check, or a file git would publish, changed
-   after the approving review read it, so the steps after the
-   review that run the agent's code (the replay, the visual check, the real-AI build) cannot add to the patch
-   unreviewed. A patch still rejected, or a
-   review that never answered, gets a diagnosis with the problems, so a person takes the ticket and no PR opens.
-   `Decide the review` writes `approved=true` only on an approval that lists no problems (one that lists some is a
-   rejection and gets the correction pass), and the `review` pass rests on that output, like
-   every other pass. Both prompts are read in "Build the prompt", before Fix, whose commands could rewrite them, and
-   the steps between the sessions run no agent code, with the key scan's cleared variables. This is a check against
-   honest mistakes, not against a patch built to cheat: the reviewer reads code the agent wrote, and a process that
-   outlived the sandbox (see "Passes") could read the key from a review step's environment as it could from the key
-   scan's. Each session's metrics go in the report as `fix-<fp>`, `fix-<fp>-review`, `fix-<fp>-correct` and
+   Before any check runs, a fresh session reviews the patch (`review.md`). It gets the task and tries to show the fix
+   is wrong: the wrong owner or layer, a broken caller, a test off the real path or a proxy, a fake-provider
+   artifact, a missed sibling, or one adjacent case. It reads the patch with `git diff HEAD` and
+   `git status --short --untracked-files=all` (each added file, also inside a new folder), a web visual task's check
+   in `qa-out/fix-<fp>/repro/` (the proof, which becomes the PR's e2e spec), the callers of what the patch changes
+   and the code the finding's steps run. Its tools are `Read`, `Glob`, `Grep` and those two git commands. It has no
+   edit tool and runs no tests, since `verify-tests` and `verify-checks` run them. It answers `approved`, `problems`
+   and `resolved` as structured output. The session sits in the fix job, with Fix's QA Anthropic key and read-only
+   token and nothing else, and before the key scan, since after that scan code the agent wrote runs outside its
+   sandbox. Both prompts are read in "Build the prompt", before Fix, whose commands could rewrite them, and the steps
+   between the sessions run no agent code, with the key scan's cleared variables.
+
+   A rejection runs the fix session once more (`Correct the fix`, with the same tools and caps) on the fix prompt
+   with the problems appended. A second review follows, and its prompt carries the first review's problems,
+   numbered: before it approves, it must find each one fixed, or shown wrong by the code, and say where.
+   `Decide the review` writes `approved=true` only for an approval that lists no problems. An approval that lists
+   some is a rejection and gets the correction pass. A second approval also needs a `resolved` entry for every
+   earlier problem, with the `file:line` that settles it, or it counts as a rejection. A patch still rejected, or a
+   review that never answered, gets a diagnosis with the problems (the first review's when the second lists none),
+   so a person takes the ticket and no PR opens. The `review` pass rests on that output, like every other pass. Each
+   session's metrics go in the report as `fix-<fp>`, `fix-<fp>-review`, `fix-<fp>-correct` and
    `fix-<fp>-review-again`. A session that ran to its step cap shows as a timeout, and the report notes that a cut
    review gave no verdict.
+
+   Before each review a step records the hash and executable bit of every file in the checkout, plus the hash of a
+   web visual task's check, which sits in ignored `qa-out/`. `Collect the patch` turns an approval into a rejection
+   when that check, or a file git would publish, changed after the approving review read it. The replay, the visual
+   check and the real-AI build run the agent's code after the review, so none of them can add to the patch
+   unreviewed. The review catches honest mistakes. It cannot stop a patch built to cheat: the reviewer reads code the
+   agent wrote, and a process that outlived the sandbox (see "Passes") could read the key from a review step's
+   environment as it could from the key scan's.
 
    The fix session's tools are `Read`, `Glob`, `Grep`, `Edit`, `Write`, `Bash` and `Skill`, with no `Agent`, `Task`,
    web tool or git. `Skill` is there so the agent can run the bundled `simplify` skill on its own changes before it

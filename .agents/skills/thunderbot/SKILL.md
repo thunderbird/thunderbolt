@@ -139,7 +139,7 @@ Follow the plan; parallelize per the playbook.
 
 ### Phase 8: Create a draft PR
 
-**Read [pr-workflow.md](references/pr-workflow.md).** Create a draft with `gh pr create --draft`, title `⚡ <IDENTIFIER>: <title>`, body with Summary, Linear link, Test Plan and Changes. Save the PR number.
+**Read [pr-workflow.md](references/pr-workflow.md).** Create a draft with `gh pr create --draft`, title `<type>(<IDENTIFIER>): <title>` in Conventional Commits format, body with Summary, Linear link, Test Plan and Changes. Save the PR number.
 
 ### Phase 9: Finalize the PR
 

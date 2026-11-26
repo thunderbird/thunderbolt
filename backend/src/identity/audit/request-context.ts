@@ -7,14 +7,30 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 
 type RequestHandler = (request: Request) => Response | Promise<Response>
 
-const requestIdStorage = new AsyncLocalStorage<string>()
+/** The API key a request authenticated with, and the user who owns it. */
+export type AuditApiKey = { id: string; userId: string }
+
+type AuditRequestContext = { requestId: string; apiKey?: AuditApiKey }
+
+const requestContextStorage = new AsyncLocalStorage<AuditRequestContext>()
 
 /** Run `fn` as one request: every audit event it writes shares one request id. */
 export const runWithAuditRequestId = <T>(fn: () => T, requestId: string = crypto.randomUUID()) =>
-  requestIdStorage.run(requestId, fn)
+  requestContextStorage.run({ requestId }, fn)
 
 /** The current request's id, or undefined outside a request (boot, background jobs). */
-export const getAuditRequestId = () => requestIdStorage.getStore()
+export const getAuditRequestId = () => requestContextStorage.getStore()?.requestId
+
+/** Record that the current request authenticated with `apiKey`. Does nothing outside a request. */
+export const setAuditApiKey = (apiKey: AuditApiKey) => {
+  const context = requestContextStorage.getStore()
+  if (context) {
+    context.apiKey = apiKey
+  }
+}
+
+/** The API key the current request authenticated with, if it did. */
+export const getAuditApiKey = () => requestContextStorage.getStore()?.apiKey
 
 /**
  * Gives each request its own id, so the several events one request writes (a SCIM `DELETE`, say)

@@ -8,7 +8,7 @@ import { createRateLimitConsumer, type RateLimitTierConfig } from '@/middleware/
 import type { AuthAdapter } from '../access'
 import { getCurrentOrganizationId } from '../current-organization'
 import type { AuditAction, AuditActorType, AuditOutcome } from './events'
-import { getAuditRequestId } from './request-context'
+import { getAuditApiKey, getAuditRequestId } from './request-context'
 
 /** What an audit event records. Never put secrets here: credential and key ids, never their values. */
 export type AuditEventInput = {
@@ -29,6 +29,18 @@ export type AuditEventInput = {
   userAgent?: string | null
 }
 
+/**
+ * The event's metadata, with `apiKeyId` added when the request authenticated with an API key and
+ * the event's actor is that key's owner: the owner acted through the key.
+ */
+const auditMetadata = ({ actor, metadata }: AuditEventInput) => {
+  const apiKey = getAuditApiKey()
+  if (!apiKey || actor.type !== 'user' || actor.id !== apiKey.userId) {
+    return metadata ?? null
+  }
+  return { ...metadata, apiKeyId: apiKey.id }
+}
+
 const toAuditRow = (event: AuditEventInput) => ({
   id: crypto.randomUUID(),
   orgId: getCurrentOrganizationId(),
@@ -45,7 +57,7 @@ const toAuditRow = (event: AuditEventInput) => ({
   requestId: event.requestId ?? getAuditRequestId() ?? null,
   reportSource: event.reportSource ?? 'server',
   changes: event.changes ?? null,
-  metadata: event.metadata ?? null,
+  metadata: auditMetadata(event),
   ipAddress: event.ipAddress ?? null,
   userAgent: event.userAgent ?? null,
 })

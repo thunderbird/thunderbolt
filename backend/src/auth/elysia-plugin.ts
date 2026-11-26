@@ -5,6 +5,7 @@
 import { getSettings } from '@/config/settings'
 import type { db as DbType } from '@/db/client'
 import { getDeviceById } from '@/dal/devices'
+import { setAuditApiKey } from '@/identity/audit/request-context'
 import { createSharedLock, isPostgres } from '@/identity/scim/concurrency'
 import { createScimRequestHandler, isScimPath } from '@/identity/scim/request'
 import { extractClientIp } from '@/utils/request'
@@ -14,15 +15,27 @@ import { type Auth, createAuth } from './auth'
 import { authBasePath, getSessionPath, passkeyVerifyPaths } from './paths'
 
 /**
- * Resolve a session while translating credential rejection into an unauthenticated result.
+ * Resolve a session while translating credential rejection into an unauthenticated result, and
+ * record for audit the API key the session came from, if any.
  *
  * Exported because a route that calls `auth.api.getSession` directly does not
  * get this: Better Auth *throws* an `APIError` for a rejected credential — a
  * stray `x-api-key` trips its before-hook — and an unhandled throw reaches the
  * error handler as a 500 rather than the 401 it is. Any route resolving its own
  * session should come through here.
+ *
+ * With `x-api-key` present, the api-key plugin answers with a session whose id is the key's id,
+ * so the audit events the key's owner causes in this request carry `metadata.apiKeyId`.
  */
 export const resolveAuthSession = async (auth: Auth, headers: Headers) => {
+  const session = await getSessionOrNull(auth, headers)
+  if (session && headers.has('x-api-key')) {
+    setAuditApiKey({ id: session.session.id, userId: session.user.id })
+  }
+  return session
+}
+
+const getSessionOrNull = async (auth: Auth, headers: Headers) => {
   try {
     return await auth.api.getSession({ headers })
   } catch (error) {

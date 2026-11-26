@@ -303,19 +303,26 @@ secret known and checks no row holds it.
 - A failed attempt's transaction rolls back, taking any event in it along. `recordFailedAttempt` writes
   the failure after that transaction ends.
 - Every request runs under a server-generated id (`request-context.ts`), and each event it writes
-  carries it as `request_id`, so the several events one request causes correlate.
+  carries it as `request_id`, so the several events one request causes correlate. The context also
+  holds the API key `resolveAuthSession` authenticated the request with, if any (see Actors).
 - `GET /v1/admin/audit-events` pages admins through the log, newest first, at most 100 a page.
   Each event carries `actorLabel` and `targetLabel`, the actor's and target's names looked up in the
-  org at read time ([labels.ts](../../../backend/src/identity/audit/labels.ts)); a person is named only
-  while they're a member, and a deleted target reads as null.
-  Viewing a page is not audited. Every admin route goes through `createAdminMacro`, which re-checks the
+  org at read time ([labels.ts](../../../backend/src/identity/audit/labels.ts)), and `apiKeyLabel`,
+  the name of the API key the actor acted through; a person is named only while they're a member,
+  and a deleted target or key reads as null. The `q` search matches the key's name too.
+  `GET /v1/admin/audit-events/:eventId` returns one event in the same shape, labels included, and
+  answers `404 AUDIT_EVENT_NOT_FOUND` for an id that isn't in the caller's org.
+  Viewing a page or an event is not audited. Every admin route goes through `createAdminMacro`, which re-checks the
   admin role on each request and records a denied attempt as `admin.access_denied`.
 
 ### Actors
 
-The actor is the `user` who acted, an `api_key` when the request carried one (its owner in
-`metadata.userId`), a `scim_connection` for anything a SCIM request causes, or the `system`. A SCIM
-event names the identity connection and the credential the IdP authenticated with, never an upstream
+The actor is the `user` who acted, a `scim_connection` for anything a SCIM request causes, or the
+`system`. A request made with an API key acts as the key's owner: the owner is the actor, and each
+event whose actor they are carries `metadata.apiKeyId`. Only routes that resolve their session
+through `resolveAuthSession` (the admin API, client reports) record the key; Better Auth's own
+routes called with a key, such as `/revoke-sessions`, record the owner without it. A SCIM event
+names the identity connection and the credential the IdP authenticated with, never an upstream
 person: the IdP doesn't say who, so nothing is invented.
 
 ### Sign-in

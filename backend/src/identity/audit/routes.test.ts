@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import {
+  apikey,
   auditEvent,
   identityConnection,
   localGroup,
@@ -23,6 +24,18 @@ import { insertAuditEvent } from './write'
 type AuditPage = {
   events: { id: string; action: string; orgId: string; actorLabel: string | null; targetLabel: string | null }[]
   nextCursor: string | null
+}
+
+/** Create an API key for the harness's user, as a client would. */
+const createApiKey = async (harness: TestAppHandle, name: string) => {
+  const res = await harness.app.handle(
+    new Request('http://localhost/v1/api/auth/api-key/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders(harness.bearerToken) },
+      body: JSON.stringify({ name }),
+    }),
+  )
+  return (await res.json()) as { id: string; key: string }
 }
 
 describe('GET /v1/admin/audit-events', () => {
@@ -106,20 +119,92 @@ describe('GET /v1/admin/audit-events', () => {
     expect(await denialsBy(userId)).toEqual([])
   })
 
-  it('names the API key, and its owner, when a key is refused', async () => {
-    const created = await harness.app.handle(
-      new Request('http://localhost/v1/api/auth/api-key/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders(harness.bearerToken) },
-        body: JSON.stringify({}),
-      }),
-    )
-    const { id, key } = (await created.json()) as { id: string; key: string }
+  it("records a refused key's owner as the actor, and the key it came through", async () => {
+    const { id, key } = await createApiKey(harness, 'Deploy bot')
 
     expect((await list('', { 'x-api-key': key })).status).toBe(403)
-    const denials = await denialsBy(id)
-    expect(denials).toMatchObject([{ actorType: 'api_key', metadata: { userId } }])
+    const denials = await denialsBy(userId)
+    expect(denials).toMatchObject([{ actorType: 'user', requestId: expect.any(String), metadata: { apiKeyId: id } }])
     expect(JSON.stringify(denials)).not.toContain(key)
+  })
+
+  describe('through an API key', () => {
+    const createGroup = async (name: string, headers: Record<string, string>) => {
+      const res = await harness.app.handle(
+        new Request('http://localhost/v1/admin/groups', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ name }),
+        }),
+      )
+      expect(res.status).toBe(200)
+      const { id } = (await res.json()) as { id: string }
+      const [event] = await harness.db
+        .select()
+        .from(auditEvent)
+        .where(and(eq(auditEvent.action, 'local_group.created'), eq(auditEvent.targetId, id)))
+      return event
+    }
+
+    const getEvent = async (eventId: string) =>
+      (await (
+        await harness.app.handle(
+          new Request(`http://localhost/v1/admin/audit-events/${eventId}`, {
+            headers: authHeaders(harness.bearerToken),
+          }),
+        )
+      ).json()) as { apiKeyLabel: string | null }
+
+    beforeEach(makeAdmin)
+
+    it("records the key's owner as the actor and the key in the metadata, and names the key", async () => {
+      const { id, key } = await createApiKey(harness, 'Deploy bot')
+
+      const event = await createGroup('Ops', { 'x-api-key': key })
+
+      expect(event).toMatchObject({ actorType: 'user', actorId: userId, metadata: { apiKeyId: id } })
+      expect(event.requestId).not.toBeNull()
+      expect(JSON.stringify(event)).not.toContain(key)
+      expect(await getEvent(event.id)).toMatchObject({ apiKeyLabel: 'Deploy bot' })
+    })
+
+    it('records no key for a request signed in without one', async () => {
+      const event = await createGroup('Ops', authHeaders(harness.bearerToken))
+
+      expect(event).toMatchObject({ actorType: 'user', actorId: userId, metadata: { name: 'Ops' } })
+      expect(event.metadata).not.toHaveProperty('apiKeyId')
+      expect(await getEvent(event.id)).toMatchObject({ apiKeyLabel: null })
+    })
+
+    it("keeps one request's key out of a concurrent request's events", async () => {
+      const { id, key } = await createApiKey(harness, 'Deploy bot')
+
+      const [keyed, signedIn] = await Promise.all([
+        createGroup('Keyed', { 'x-api-key': key }),
+        createGroup('Signed in', authHeaders(harness.bearerToken)),
+      ])
+
+      expect(keyed.metadata).toEqual({ name: 'Keyed', apiKeyId: id })
+      expect(signedIn.metadata).toEqual({ name: 'Signed in' })
+    })
+
+    it('leaves a deleted key unnamed, its id still in the metadata', async () => {
+      const { id, key } = await createApiKey(harness, 'Deploy bot')
+      const event = await createGroup('Ops', { 'x-api-key': key })
+      await harness.db.delete(apikey).where(eq(apikey.id, id))
+
+      expect(await getEvent(event.id)).toMatchObject({ apiKeyLabel: null })
+      expect(event.metadata).toEqual({ name: 'Ops', apiKeyId: id })
+    })
+
+    it('finds an event by the name of the key it came through', async () => {
+      const { key } = await createApiKey(harness, 'Deploy bot')
+      const event = await createGroup('Ops', { 'x-api-key': key })
+      await createGroup('Finance', authHeaders(harness.bearerToken))
+
+      const page = (await (await list('?q=deploy%20BOT&action=local_group.created')).json()) as AuditPage
+      expect(page.events.map((found) => found.id)).toEqual([event.id])
+    })
   })
 
   it('pages an admin through the current org’s events, newest first', async () => {

@@ -84,4 +84,4 @@ export type AuditAction = (typeof auditActions)[number]
 
 export type AuditOutcome = 'success' | 'failure' | 'denied'
 
-export type AuditActorType = 'user' | 'scim_connection' | 'api_key' | 'system'
+export type AuditActorType = 'user' | 'scim_connection' | 'system'

@@ -7,7 +7,6 @@ import type { db as DbType } from '@/db/client'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { createRateLimitConsumer } from '@/middleware/rate-limit'
 import { Elysia, t } from 'elysia'
-import { sessionActor } from './actor'
 import { insertAuditEvent } from './write'
 
 /** Client reports one user may send per hour. They are rare user actions, so this bounds storage. */
@@ -51,7 +50,7 @@ export const createClientAuditRoutes = (auth: Auth, database: typeof DbType) => 
     .use(createAuthMacro(auth))
     .post(
       '/audit/client-events',
-      async ({ body, request, set, user, session }) => {
+      async ({ body, set, user, session }) => {
         if (user.isAnonymous) {
           set.status = 204
           return
@@ -60,15 +59,13 @@ export const createClientAuditRoutes = (auth: Auth, database: typeof DbType) => 
         if (limited) {
           return limited
         }
-        const { actor, metadata } = sessionActor({ user, session }, request.headers)
         await insertAuditEvent(database, {
           action: body.action,
           outcome: 'success',
-          actor,
+          actor: { type: 'user', id: user.id },
           target: body.target,
           reportSource: 'client',
           metadata: {
-            ...metadata,
             provider: body.provider ?? null,
             authMethod: body.authMethod ?? null,
             deviceId: session.deviceId ?? null,

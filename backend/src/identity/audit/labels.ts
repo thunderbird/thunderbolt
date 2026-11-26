@@ -13,7 +13,7 @@ import {
   orgMembership,
   user,
 } from '@/db/schema'
-import { and, eq, ilike, inArray, or, type SQL, type SQLWrapper } from 'drizzle-orm'
+import { and, eq, ilike, inArray, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm'
 import { escapeLike } from '../admin/members'
 
 /** The actor and target types that have something readable to show. */
@@ -123,11 +123,11 @@ const matches: Record<LabelKind, Matches> = {
       .where(and(eq(invitation.orgId, orgId), ilike(invitation.email, pattern))),
 }
 
-const actorKinds = ['user', 'api_key', 'scim_connection'] as const
+const actorKinds = ['user', 'scim_connection'] as const
 
 /**
- * Events whose actor or target label contains `q`, case-insensitively, as a filter on `auditEvent`. It
- * matches what `labelAuditEvents` shows, and a person's email as well as their name.
+ * Events whose actor, target or API key label contains `q`, case-insensitively, as a filter on `auditEvent`.
+ * It matches what `labelAuditEvents` shows, and a person's email as well as their name.
  */
 export const auditLabelMatches = (database: typeof DbType, orgId: string, q: string): SQL | undefined => {
   const pattern = `%${escapeLike(q)}%`
@@ -138,16 +138,30 @@ export const auditLabelMatches = (database: typeof DbType, orgId: string, q: str
     ...labelKinds.map((kind) =>
       and(eq(auditEvent.targetType, kind), inArray(auditEvent.targetId, matches[kind](database, orgId, pattern))),
     ),
+    inArray(sql`${auditEvent.metadata}->>'apiKeyId'`, matches.api_key(database, orgId, pattern)),
   )
 }
 
-type LabelledEvent = { actorType: string; actorId: string | null; targetType: string | null; targetId: string | null }
+type LabelledEvent = {
+  actorType: string
+  actorId: string | null
+  targetType: string | null
+  targetId: string | null
+  metadata: unknown
+}
 
-export type AuditLabels = { actorLabel: string | null; targetLabel: string | null }
+export type AuditLabels = { actorLabel: string | null; targetLabel: string | null; apiKeyLabel: string | null }
+
+/** The API key an event's actor acted through, which the writer records as `metadata.apiKeyId`. */
+const apiKeyIdOf = (metadata: unknown) => {
+  const apiKeyId = (metadata as { apiKeyId?: unknown } | null)?.apiKeyId
+  return typeof apiKeyId === 'string' ? apiKeyId : null
+}
 
 /**
- * Readable names for a page of events' actors and targets: a person's name (or email), a connection, group,
- * domain or API key's name, an invitation's address. Null where there's none, or the thing is gone.
+ * Readable names for a page of events' actors, targets and the API keys their actors acted through: a
+ * person's name (or email), a connection, group, domain or API key's name, an invitation's address. Null
+ * where there's none, or the thing is gone.
  */
 export const labelAuditEvents = async <T extends LabelledEvent>(
   database: typeof DbType,
@@ -158,6 +172,7 @@ export const labelAuditEvents = async <T extends LabelledEvent>(
   const refs = events.flatMap((event) => [
     [event.actorType, event.actorId],
     [event.targetType, event.targetId],
+    ['api_key', apiKeyIdOf(event.metadata)],
   ])
   for (const [kind, id] of refs) {
     if (isLabelKind(kind) && id) {
@@ -181,5 +196,6 @@ export const labelAuditEvents = async <T extends LabelledEvent>(
     ...event,
     actorLabel: labelOf(event.actorType, event.actorId),
     targetLabel: labelOf(event.targetType, event.targetId),
+    apiKeyLabel: labelOf('api_key', apiKeyIdOf(event.metadata)),
   }))
 }

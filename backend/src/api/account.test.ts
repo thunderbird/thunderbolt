@@ -2,22 +2,34 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { insertTestUsers } from '@/test-utils/identity'
 import { createAuth } from '@/auth/auth'
 import { session as sessionTable, user } from '@/db/auth-schema'
 import { challengeNoncesTable, encryptionMetadataTable, envelopesTable } from '@/db/encryption-schema'
-import { chatThreadsTable, devicesTable, settingsTable, tasksTable } from '@/db/schema'
+import {
+  auditEvent,
+  chatThreadsTable,
+  devicesTable,
+  identityConnection,
+  membershipSource,
+  orgMembership,
+  settingsTable,
+  tasksTable,
+} from '@/db/schema'
+import { getCurrentOrganizationId } from '@/identity/current-organization'
 import { linkCliSessionToDevice } from '@/dal/sessions'
 import { verification } from '@/db/auth-schema'
 import type { SecurityNotifications } from '@/lib/security-notifications'
 import { mintStepUpOtp, stepUpIdentifier } from '@/lib/step-up-otp'
 import { createTestDb } from '@/test-utils/db'
+import { createPostgresTestDb, postgresTestUrl, waitForLockWaiters } from '@/test-utils/postgres'
 import { registerCliDevice } from '@/test-utils/cli-device'
 import { createTestSettings } from '@/test-utils/settings'
 import { exportSigningPublicKey, generateSigningKeypair, signChallenge } from '@/test-utils/e2ee'
 import type { ChallengeProof } from '@shared/e2ee-types'
 import { createHmac } from 'crypto'
-import { eq } from 'drizzle-orm'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { and, eq } from 'drizzle-orm'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createAccountRoutes } from './account'
 
@@ -90,7 +102,7 @@ describe('Account API', () => {
     const now = new Date()
     const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-    await db.insert(user).values({
+    await insertTestUsers(db, {
       id: userId,
       name: 'Test User',
       email: `${userId}@example.com`,
@@ -128,7 +140,7 @@ describe('Account API', () => {
     options: { deviceId?: string; expiresAt?: Date; isAnonymous?: boolean } = {},
   ) => {
     const now = new Date()
-    await db.insert(user).values({
+    await insertTestUsers(db, {
       id: userId,
       name: 'CLI User',
       email: `${userId}@example.com`,
@@ -616,7 +628,7 @@ describe('Account API', () => {
     it('rejects a synthetic authenticated session that has no persisted session row', async () => {
       const userId = p('cli-synthetic-user')
       const now = new Date()
-      await db.insert(user).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Synthetic User',
         email: `${userId}@example.com`,
@@ -655,6 +667,22 @@ describe('Account API', () => {
       expect(persistedSession.deviceId).toBeNull()
     })
 
+    it('refuses registration for a blocked member without creating or binding a device, and still lets them log out', async () => {
+      const userId = p('cli-blocked-user')
+      const token = p('cli-blocked-token')
+      const deviceId = `cli-${crypto.randomUUID()}`
+      await createCliSession(userId, token)
+      await db.update(orgMembership).set({ blockedAt: new Date() }).where(eq(orgMembership.userId, userId))
+
+      const response = await registerCli(token, deviceId)
+
+      expect(response.status).toBe(401)
+      expect(await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))).toHaveLength(0)
+      const [persistedSession] = await db.select().from(sessionTable).where(eq(sessionTable.token, token))
+      expect(persistedSession.deviceId).toBeNull()
+      expect((await logoutCli(token)).status).not.toBe(401)
+    })
+
     it('self-logout soft-revokes the bound CLI device and deletes every linked session', async () => {
       const userId = p('cli-self-logout-user')
       const token = p('cli-self-logout-token')
@@ -687,6 +715,9 @@ describe('Account API', () => {
       expect(persistedDevice.revokedAt).not.toBeNull()
       expect(persistedDevice.trusted).toBe(false)
       expect(await db.select().from(sessionTable).where(eq(sessionTable.deviceId, deviceId))).toHaveLength(0)
+      expect(await db.select().from(auditEvent).where(eq(auditEvent.targetId, deviceId))).toMatchObject([
+        { action: 'auth.sign_out', outcome: 'success', actorId: userId, targetType: 'device' },
+      ])
     })
 
     it('does not log out or revoke a session bound to a non-CLI device', async () => {
@@ -743,6 +774,9 @@ describe('Account API', () => {
       const [persistedDevice] = await db.select().from(devicesTable).where(eq(devicesTable.id, targetDeviceId))
       expect(persistedDevice.revokedAt).not.toBeNull()
       expect(await db.select().from(sessionTable).where(eq(sessionTable.deviceId, targetDeviceId))).toHaveLength(0)
+      expect(await db.select().from(auditEvent).where(eq(auditEvent.targetId, targetDeviceId))).toMatchObject([
+        { action: 'auth.session_revoked', outcome: 'success', actorId: userId, targetType: 'device' },
+      ])
     })
 
     it('rejects a trusted CLI caller for E2EE remote revoke', async () => {
@@ -823,7 +857,7 @@ describe('Account API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(user).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Session Revoke User',
         email: `${userId}@example.com`,
@@ -896,7 +930,7 @@ describe('Account API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(user).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Single Session User',
         email: `${userId}@example.com`,
@@ -951,7 +985,7 @@ describe('Account API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(user).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Nonexistent Revoke User',
         email: `${userId}@example.com`,
@@ -1026,7 +1060,7 @@ describe('Account API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(user).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Test User',
         email: 'full-delete@example.com',
@@ -1070,6 +1104,13 @@ describe('Account API', () => {
 
       const settingsLeft = await db.select().from(settingsTable).where(eq(settingsTable.userId, userId))
       expect(settingsLeft).toHaveLength(0)
+      // The event outlives the user it names.
+      expect(
+        await db
+          .select()
+          .from(auditEvent)
+          .where(and(eq(auditEvent.action, 'account.deleted'), eq(auditEvent.targetId, userId))),
+      ).toMatchObject([{ outcome: 'success', actorId: userId }])
     })
 
     it('cascade deletes all PowerSync rows when user is deleted (user_id foreign keys)', async () => {
@@ -1077,7 +1118,7 @@ describe('Account API', () => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
-      await db.insert(user).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Cascade User',
         email: 'cascade-delete@example.com',
@@ -1157,7 +1198,7 @@ describe('Account API', () => {
       const email = `${userId}@example.com`
       const token = p(`tok-${label}`)
       const now = new Date()
-      await db.insert(user).values({
+      await insertTestUsers(db, {
         id: userId,
         name: 'Delete Me',
         email,
@@ -1711,5 +1752,77 @@ describe('Account API', () => {
       const [device] = await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
       expect(device.revokedAt).not.toBeNull()
     })
+  })
+})
+
+// PGlite runs one query at a time, so only a real Postgres shows the delete and a SCIM link interleaving.
+describe.skipIf(!postgresTestUrl)('DELETE /v1/account on Postgres', () => {
+  let postgresDb: Awaited<ReturnType<typeof createPostgresTestDb>>
+  let app: { handle: (request: Request) => Promise<Response> }
+
+  beforeAll(async () => {
+    postgresDb = await createPostgresTestDb()
+    const routes = createAccountRoutes(
+      createAuth(postgresDb.db),
+      createTestSettings({ betterAuthSecret }),
+      postgresDb.db,
+      { notifications: {} as SecurityNotifications },
+    )
+    const elysia = new Elysia({ prefix: '/v1' }).use(routes)
+    app = { handle: (request) => elysia.handle(request) }
+  })
+  afterAll(() => postgresDb.close())
+
+  it('refuses an account a SCIM link attaches while the delete waits for it', async () => {
+    const { db } = postgresDb
+    const userId = crypto.randomUUID()
+    const email = `${userId}@example.com`
+    const token = crypto.randomUUID()
+    await insertTestUsers(db, { id: userId, name: 'Linked', email, emailVerified: true })
+    await db.insert(sessionTable).values({
+      id: crypto.randomUUID(),
+      expiresAt: new Date(Date.now() + 3600 * 1000),
+      token,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      userId,
+    })
+    const [connection] = await db
+      .insert(identityConnection)
+      .values({ id: crypto.randomUUID(), orgId: getCurrentOrganizationId(), name: userId, scimConnectionId: userId })
+      .returning()
+    const [membership] = await db.select().from(orgMembership).where(eq(orgMembership.userId, userId))
+    const code = await mintStepUpOtp(db, 'account-deletion', email)
+
+    const { promise: linked, resolve: link } = Promise.withResolvers<void>()
+    const { promise: held, resolve: release } = Promise.withResolvers<void>()
+    // A SCIM create's reconcile, holding the source it added until it commits.
+    const linking = db.transaction(async (tx) => {
+      await tx.insert(membershipSource).values({
+        id: crypto.randomUUID(),
+        orgId: getCurrentOrganizationId(),
+        membershipId: membership.id,
+        kind: 'scim',
+        identityConnectionId: connection.id,
+      })
+      link()
+      await held
+    })
+    await linked
+    const deleting = app.handle(
+      new Request('http://localhost/v1/account', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${signToken(token)}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stepUpOtp: code }),
+      }),
+    )
+    await waitForLockWaiters(db, 1)
+    release()
+    await linking
+
+    const response = await deleting
+    expect(response.status).toBe(403)
+    expect(await response.json()).toMatchObject({ code: 'ACCOUNT_IDP_MANAGED' })
+    expect(await db.$count(user, eq(user.id, userId))).toBe(1)
   })
 })

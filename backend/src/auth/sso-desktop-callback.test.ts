@@ -23,7 +23,7 @@ const createApp = (settings = ssoSettings, fetchFn?: typeof fetch) =>
 const startFlow = async (
   port = 17421,
   state: string | null = clientState,
-  options: { origin?: string; headers?: HeadersInit } = {},
+  options: { origin?: string; headers?: HeadersInit; providerId?: string } = {},
 ) => {
   const ssoRequests: { providerId: string; callbackURL: string; errorCallbackURL: string }[] = []
   const fakeFetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -34,7 +34,11 @@ const startFlow = async (
     )
   }) as typeof fetch
   const app = createApp({ ...ssoSettings, betterAuthUrl: options.origin ?? ssoSettings.betterAuthUrl }, fakeFetch)
-  const query = new URLSearchParams({ loopback_port: String(port), ...(state && { client_state: state }) })
+  const query = new URLSearchParams({
+    loopback_port: String(port),
+    ...(state && { client_state: state }),
+    ...(options.providerId && { provider_id: options.providerId }),
+  })
   const response = await app.handle(
     new Request(`${options.origin ?? 'http://localhost'}/v1/api/auth/sso/desktop-initiate?${query}`, {
       headers: options.headers,
@@ -71,6 +75,18 @@ const complete = (
 }
 
 describe('SSO desktop routes', () => {
+  it('starts the sign-in on the connection the app chose', async () => {
+    const flow = await startFlow(17421, clientState, { providerId: 'keycloak' })
+    expect(flow.ssoRequest.providerId).toBe('keycloak')
+  })
+
+  it('refuses a malformed provider id', async () => {
+    const response = await createApp().handle(
+      new Request('http://localhost/v1/api/auth/sso/desktop-initiate?loopback_port=17421&provider_id=..%2Fregister'),
+    )
+    expect(response.status).toBe(422)
+  })
+
   it('is unavailable in consumer mode', async () => {
     const app = createApp({ authMode: 'consumer' } as Settings)
     const response = await app.handle(

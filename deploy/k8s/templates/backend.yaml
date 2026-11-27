@@ -45,6 +45,15 @@ spec:
               value: {{ .Values.backend.env.authMode }}
             - name: WAITLIST_ENABLED
               value: {{ .Values.backend.env.waitlistEnabled | quote }}
+            {{- /* Both read nil-safely: absent on an install upgraded with --reuse-values. */}}
+            {{- with .Values.backend.env.bootstrapAdminEmails }}
+            - name: BOOTSTRAP_ADMIN_EMAILS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if hasKey .Values.backend.env "openSignupEnabled" }}
+            - name: OPEN_SIGNUP_ENABLED
+              value: {{ .Values.backend.env.openSignupEnabled | quote }}
+            {{- end }}
             - name: DATABASE_DRIVER
               value: {{ .Values.backend.env.databaseDriver }}
             # THUNDERBOLT_POSTGRES_PASSWORD must appear before DATABASE_URL so the

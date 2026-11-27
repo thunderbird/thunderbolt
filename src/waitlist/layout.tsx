@@ -2,27 +2,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { AuthScreenFrame } from '@/components/auth-screen'
 import { PageFallback } from '@/loading'
 import { Suspense } from 'react'
 import { Outlet } from 'react-router'
 
 /**
  * Full-screen layout for waitlist pages.
- * Dark background, centered content with safe area handling for mobile.
  */
 export const WaitlistLayout = () => {
   return (
-    <div
-      className="flex h-dvh w-full flex-col items-center justify-center overflow-hidden bg-background"
-      style={{
-        paddingTop: 'var(--safe-area-top-padding)',
-        paddingBottom: 'calc(var(--safe-area-bottom-padding) + var(--kb, 0px))',
-      }}
-    >
+    <AuthScreenFrame>
       <Suspense fallback={<PageFallback />}>
         <Outlet />
       </Suspense>
-    </div>
+    </AuthScreenFrame>
   )
 }
 

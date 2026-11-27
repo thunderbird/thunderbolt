@@ -62,6 +62,7 @@ on:
       - 'scripts/e2e-source-modules.ts'
       - 'scripts/prune-unreachable-deps.ts'
       - 'src/**'
+      - 'admin/**'
       - 'public/**'
       - 'shared/**'
       - 'backend/package.json'

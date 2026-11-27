@@ -112,6 +112,8 @@ When a sign-in arrives with an identity Thunderbolt has not seen before, and an 
 - The account's email is verified, because its owner signed in with an emailed code.
 - The account already has an identity from your provider (`provider_id` is `sso`). This covers a new identity for the same person: switching `AUTH_MODE` between `oidc` and `saml`, moving to a different provider, or a provider that changed the user's subject or NameID.
 
+An account that already signs in through a different SSO connection is never joined this way. That sign-in is refused with "an administrator needs to approve linking" and waits in the link review queue, unless the connection it came through claims the account's verified domain.
+
 Two things cause "account not linked":
 
 - The account was never verified and has no `sso` identity, such as a local account with the same address that was never verified. Use the check and the fix below.

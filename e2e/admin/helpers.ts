@@ -1,0 +1,449 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/**
+ * Helpers for the admin screens' Playwright specs.
+ *
+ * - **Naming:** an admin spec is `e2e/admin-<area>.spec.ts`, at the top of `e2e/`. Only the `admin`
+ *   (desktop) and `admin-narrow` (400 px) projects run it, against the admin stack in
+ *   `playwright.config.ts`: Vite on 1427, an OIDC-mode backend on 8008, and two login-hint IdPs
+ *   (`adminIdpUrls`).
+ * - **Shared org:** every admin spec, in every worker, runs against the same organization. Use unique
+ *   names and emails (`uniqueEmail`, `uniqueName`), never assert global counts or list positions,
+ *   and never remove a bootstrap admin, so break-glass never fires by accident.
+ * - **Fixtures:** `adminTest` signs this worker's bootstrap admin in once and gives every test a
+ *   `page` signed in as that admin, plus `adminApi` to seed data over HTTP.
+ */
+
+import { readFile } from 'node:fs/promises'
+import {
+  expect,
+  test as base,
+  type APIRequestContext,
+  type Browser,
+  type Page,
+  type ViewportSize,
+} from '@playwright/test'
+import {
+  scimBasePath,
+  type AdminConnectionDetail,
+  type AdminMember,
+  type CreateScimConnectionBody,
+  type CreateScimConnectionResponse,
+  type LocalGroup,
+  type Page as ApiPage,
+} from '../../shared/admin-api'
+import { openSidebarOnMobile } from '../helpers'
+import { adminSpareIdpSecretPrefix, encodeLoginHint, type IdpIdentity } from './mock-idp'
+
+// Matches testSignInOtp in backend/src/auth/otp-constants.ts (NODE_ENV=test only).
+export const e2eSignInCode = '12345678'
+
+export const adminAppUrl = 'http://localhost:1427'
+export const adminBackendUrl = 'http://localhost:8008'
+
+/** The admin backend's API base, for raw requests such as SCIM (`${adminApiBaseUrl}/api/auth/scim/v2/Users`). */
+export const adminApiBaseUrl = `${adminBackendUrl}/v1`
+
+/** `env` backs the deployment's `sso` connection; `spare` is free for a spec to register as a new connection. */
+export const adminIdpUrls = { env: 'http://localhost:9882', spare: 'http://localhost:9883' }
+
+/** The mock SAML IdP (`e2e/mock-saml-idp.ts`), for specs that register a SAML connection. */
+export const adminSamlIdpUrl = 'http://localhost:9877'
+
+/** The mock DNS server's control port (`e2e/admin/mock-dns.ts`). */
+const adminDnsControlUrl = `http://localhost:${process.env.ADMIN_DNS_CONTROL_PORT ?? 9885}`
+
+export const uniqueEmail = (prefix = 'member') => `${prefix}-${crypto.randomUUID()}@thunderbolt.test`
+
+export const uniqueName = (prefix: string) => `${prefix} ${crypto.randomUUID().slice(0, 8)}`
+
+type StorageState = Awaited<ReturnType<Awaited<ReturnType<Browser['newContext']>>['storageState']>>
+
+export type AdminSession = { email: string; token: string; storageState: StorageState }
+
+export type SeededMember = { userId: string; email: string; token: string }
+
+/** The bearer token the app stored after signing in. */
+const readStoredToken = (storageState: StorageState) => {
+  const entry = storageState.origins
+    .find((origin) => origin.origin === adminAppUrl)
+    ?.localStorage.find((item) => item.name === 'thunderbolt_auth_token')
+  const token = entry && (JSON.parse(entry.value) as { token?: string }).token
+  if (!token) {
+    throw new Error('Signed in, but the app stored no auth token')
+  }
+  return token
+}
+
+/** The backend refuses a second code for one address within 15 s; past that, it answers again. */
+export const otpCooldownMs = 15_250
+
+/**
+ * Sign in by email code on the SSO deployment's fallback page, then wait for the chat UI. When the
+ * address asked for a code moments ago (a worker restarted), wait out the backend's cooldown once.
+ */
+export const signInByEmailCode = async (page: Page, email: string) => {
+  await page.goto('/sign-in/email-code')
+  await page.getByPlaceholder('Email', { exact: true }).fill(email)
+  const requestCode = async () => {
+    const response = page.waitForResponse((res) => new URL(res.url()).pathname === '/v1/waitlist/join')
+    await page.getByRole('button', { name: 'Continue', exact: true }).click()
+    return (await response).status()
+  }
+  if ((await requestCode()) === 429) {
+    await page.waitForTimeout(otpCooldownMs)
+    expect(await requestCode()).toBe(200)
+  }
+  await page.locator('input[autocomplete="one-time-code"]').fill(e2eSignInCode)
+  await expect(page.locator('textarea')).toBeVisible({ timeout: 30_000 })
+}
+
+/**
+ * Ask for an email code for `email` and sign in with it, over HTTP. Answers the sign-in response, or the
+ * code request's when the backend refused to send one (a 429 within `otpCooldownMs`). It never retries.
+ */
+export const requestEmailCodeSignIn = async (request: APIRequestContext, email: string) => {
+  const headers = { Origin: adminAppUrl }
+  const join = await request.post(`${adminApiBaseUrl}/waitlist/join`, { data: { email }, headers })
+  if (!join.ok()) {
+    return join
+  }
+  const { challengeToken } = (await join.json()) as { challengeToken?: string }
+  return request.post(`${adminApiBaseUrl}/api/auth/sign-in/email-otp`, {
+    data: { email, otp: e2eSignInCode },
+    headers: { ...headers, 'x-challenge-token': challengeToken ?? '' },
+  })
+}
+
+/** Sign an address in over HTTP, without a browser. */
+const signInByApi = async (request: APIRequestContext, email: string): Promise<SeededMember> => {
+  const signIn = await requestEmailCodeSignIn(request, email)
+  expect(signIn.ok(), `${new URL(signIn.url()).pathname} answered ${signIn.status()}`).toBe(true)
+  const token = signIn.headers()['set-auth-token']
+  const { user } = (await signIn.json()) as { user: { id: string } }
+  return { userId: user.id, email, token }
+}
+
+/** The admin API over HTTP, as the worker's bootstrap admin. Paths are relative to `/v1/`. */
+export const createAdminApiRequest = (request: APIRequestContext, token: string) => {
+  const call = async <T>(method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE', path: string, body?: unknown) => {
+    const response = await request.fetch(`${adminApiBaseUrl}/${path}`, {
+      method,
+      data: body,
+      headers: { Authorization: `Bearer ${token}`, Origin: adminAppUrl },
+    })
+    if (!response.ok()) {
+      throw new Error(`${method} ${path} answered ${response.status()}: ${await response.text()}`)
+    }
+    return (response.status() === 204 ? undefined : await response.json()) as T
+  }
+
+  return {
+    request: call,
+    /** A new member, signed in by email code over HTTP (open sign-up admits them). */
+    seedMember: () => signInByApi(request, uniqueEmail()),
+    findMember: async (email: string) => {
+      const page = await call<ApiPage<AdminMember>>('GET', `admin/members?q=${encodeURIComponent(email)}`)
+      const member = page.items.find((item) => item.email === email)
+      if (!member) {
+        throw new Error(`No member ${email}`)
+      }
+      return member
+    },
+    /** The id of the connection or local group named `name`, for a test that created it in the UI. */
+    connectionIdByName: async (name: string) => {
+      const connections = await call<{ items: { id: string; name: string }[] }>('GET', 'admin/connections')
+      return connections.items.find((connection) => connection.name === name)!.id
+    },
+    groupIdByName: async (name: string) => {
+      const groups = await call<ApiPage<LocalGroup>>('GET', 'admin/groups?limit=100')
+      return groups.items.find((group) => group.name === name)!.id
+    },
+    grantAdmin: (userId: string) => call<AdminMember>('POST', `admin/members/${userId}/roles`, { role: 'admin' }),
+    revokeAdmin: (userId: string) => call<AdminMember>('DELETE', `admin/members/${userId}/roles/admin`),
+    seedGroup: async ({ name = uniqueName('Group'), memberIds = [] }: { name?: string; memberIds?: string[] } = {}) => {
+      const group = await call<LocalGroup>('POST', 'admin/groups', { name })
+      for (const userId of memberIds) {
+        await call('POST', `admin/groups/${group.id}/members`, { userId })
+      }
+      return group
+    },
+    /**
+     * An OIDC connection on the spare IdP, which signs in whoever `routeIdpIdentity` names. The IdP
+     * accepts only secrets starting with `adminSpareIdpSecretPrefix`.
+     */
+    seedOidcConnection: ({
+      name = uniqueName('IdP'),
+      providerId = `idp-${crypto.randomUUID().slice(0, 8)}`,
+      clientSecret = `${adminSpareIdpSecretPrefix}${crypto.randomUUID()}`,
+      identityConnectionId,
+    }: { name?: string; providerId?: string; clientSecret?: string; identityConnectionId?: string } = {}) =>
+      call<AdminConnectionDetail>('POST', 'admin/connections/sso', {
+        name,
+        providerId,
+        protocol: { oidc: { issuer: adminIdpUrls.spare, clientId: 'thunderbolt-admin-e2e', clientSecret } },
+        identityConnectionId,
+      }),
+    seedScimConnection: (body: CreateScimConnectionBody = { name: uniqueName('SCIM') }) =>
+      call<CreateScimConnectionResponse>('POST', 'admin/connections/scim', body),
+  }
+}
+
+export type AdminApiRequest = ReturnType<typeof createAdminApiRequest>
+
+/** Retire a connection a test created, SCIM side first, so the shared org keeps only live connections. */
+export const retireConnection = async (adminApi: AdminApiRequest, connectionId: string) => {
+  const read = () => adminApi.request<AdminConnectionDetail>('GET', `admin/connections/${connectionId}`)
+  const detail = await read()
+  if (detail.status === 'active' && detail.scim) {
+    await adminApi.request('POST', `admin/connections/${connectionId}/scim/retire`)
+  }
+  if (!detail.sso || detail.status === 'retired') {
+    return
+  }
+  await expect.poll(async () => (await read()).status).not.toBe('scim_retiring')
+  await adminApi.request('POST', `admin/connections/${connectionId}/retire`)
+}
+
+/** A route any signed-in member may call: 401 once their access is gone. */
+export const canaryStatus = async (request: APIRequestContext, token: string) =>
+  (
+    await request.get(`${adminApiBaseUrl}/encryption/canary`, { headers: { Authorization: `Bearer ${token}` } })
+  ).status()
+
+/** Whether `email` can sign in by email code right now, over HTTP. Waits out the code cooldown once. */
+export const canSignIn = async (request: APIRequestContext, email: string) => {
+  const first = await requestEmailCodeSignIn(request, email)
+  if (first.status() !== 429) {
+    return first.ok()
+  }
+  await new Promise((done) => setTimeout(done, otpCooldownMs))
+  return (await requestEmailCodeSignIn(request, email)).ok()
+}
+
+/** SCIM requests as the identity provider makes them, with a connection's token. */
+export const createScimClient = (request: APIRequestContext, token: string) => {
+  const send = (method: 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown) =>
+    request.fetch(`${adminApiBaseUrl}${scimBasePath}${path}`, {
+      method,
+      data: body === undefined ? undefined : JSON.stringify(body),
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/scim+json' },
+    })
+  return {
+    /** A new SCIM user for `email`, whose `externalId` an SSO side matches on. Resolves to its SCIM id. */
+    createUser: async (email: string, externalId: string = crypto.randomUUID()) => {
+      const response = await send('POST', '/Users', {
+        schemas: ['urn:ietf:params:scim:schemas:core:2.0:User'],
+        externalId,
+        userName: email,
+        name: { givenName: 'E2E', familyName: 'Member' },
+        emails: [{ value: email, type: 'work', primary: true }],
+        active: true,
+      })
+      expect(response.status(), await response.text()).toBe(201)
+      return ((await response.json()) as { id: string }).id
+    },
+    setActive: async (scimId: string, active: boolean) => {
+      const response = await send('PATCH', `/Users/${scimId}`, {
+        schemas: ['urn:ietf:params:scim:api:messages:2.0:PatchOp'],
+        Operations: [{ op: 'replace', path: 'active', value: active }],
+      })
+      expect(response.ok(), await response.text()).toBe(true)
+    },
+  }
+}
+
+/**
+ * Publish a TXT record on the mock DNS server the admin backend resolves through
+ * (`TEST_DNS_SERVERS`), so verifying the domain it names succeeds.
+ */
+export const publishTxtRecord = async (request: APIRequestContext, record: { name: string; value: string }) => {
+  const response = await request.put(`${adminDnsControlUrl}/txt`, { data: record })
+  expect(response.status()).toBe(204)
+}
+
+/** The status a member's token gets from an admin route: 200 while they're an admin, 403 once they aren't. */
+export const adminRouteStatus = async (request: APIRequestContext, token: string) =>
+  (
+    await request.get(`${adminApiBaseUrl}/admin/members?limit=1`, { headers: { Authorization: `Bearer ${token}` } })
+  ).status()
+
+/** The admin backend's stdout, as `playwright.config.ts` tees it. */
+const adminBackendLog = new URL('./backend.log', import.meta.url)
+
+/**
+ * The link of the latest invitation to `email`, read from the admin backend's dev log (no email is
+ * sent in tests). Waits for the line to appear.
+ */
+export const readInviteUrl = async (email: string): Promise<string> => {
+  const pattern = new RegExp(
+    `Invitation URL for ${email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\(no email sent\\): (\\S+)`,
+    'g',
+  )
+  const latest = async () => {
+    const log = await readFile(adminBackendLog, 'utf8').catch(() => '')
+    return [...log.matchAll(pattern)].at(-1)?.[1] ?? null
+  }
+  await expect.poll(latest, { message: `an invitation link for ${email}` }).not.toBeNull()
+  return (await latest())!
+}
+
+/** Make the next IdP sign-in on this page, OIDC or SAML, arrive as `identity`. */
+export const routeIdpIdentity = async (page: Page, identity: IdpIdentity) => {
+  const signInUrls = [...Object.values(adminIdpUrls).map((idp) => `${idp}/authorize*`), `${adminSamlIdpUrl}/saml/sso*`]
+  for (const signInUrl of signInUrls) {
+    await page.route(signInUrl, (route) => {
+      const url = new URL(route.request().url())
+      url.searchParams.set('login_hint', encodeLoginHint(identity))
+      return route.continue({ url: url.toString() })
+    })
+  }
+}
+
+/**
+ * A fresh browser enters `identity.email` on the sign-in screen, picks `connectionName` from the
+ * choice it offers, and signs in as `identity`. Resolves once it lands in the app or on the SSO error page.
+ */
+export const signInThroughConnection = async (
+  browser: Browser,
+  viewport: ViewportSize | null,
+  connectionName: string,
+  identity: IdpIdentity,
+) => {
+  const context = await browser.newContext({
+    baseURL: adminAppUrl,
+    viewport,
+    storageState: { cookies: [], origins: [] },
+  })
+  const page = await context.newPage()
+  await routeIdpIdentity(page, identity)
+  await page.goto('/')
+  await page.getByRole('textbox', { name: 'Work email' }).fill(identity.email)
+  await page.getByRole('button', { name: 'Continue', exact: true }).click()
+  await page.getByRole('button', { name: connectionName, exact: true }).click()
+  await page.waitForURL(/\/(chats|sso-error)/, { timeout: 30_000 })
+  return { page, close: () => context.close() }
+}
+
+/**
+ * Pick `date` in the empty date field labelled `label`: open its calendar, page from this month to the
+ * date's month, and click the day. Labels are the English ones the app renders in the e2e locale.
+ */
+export const pickDate = async (page: Page, label: string, date: Date) => {
+  const month = new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric' }).format(date)
+  const step = date > new Date() ? 'Next month' : 'Previous month'
+  await page.getByLabel(label, { exact: true }).click()
+  const grid = page.getByRole('grid')
+  for (let pages = 0; (await grid.getAttribute('aria-label')) !== month; pages++) {
+    expect(pages, `the calendar never reached ${month}`).toBeLessThan(120)
+    await page.getByRole('button', { name: step }).click()
+  }
+  const day = new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(date)
+  // The day button's name says "Today, " and ", selected" around the date when they apply.
+  await grid.getByRole('button', { name: new RegExp(`^(Today, )?${day}(, selected)?$`) }).click()
+}
+
+/** Open the sidebar (a drawer at phone width), then switch it to the Admin section. */
+/** Open an item's panel on an admin list page by clicking its row, as a person does. */
+export const openAdminRow = async (page: Page, path: string, name: string) => {
+  await page.goto(path)
+  await page.getByRole('button', { name: `Open ${name}`, exact: true }).click()
+}
+
+/**
+ * Open Members searched for `q`. Search narrows every row (members, link reviews, invitations), so
+ * a row in the dimmed tail shows without paging through the org's members.
+ */
+export const searchMembers = async (page: Page, q: string) => {
+  await page.goto('/admin/members')
+  // Wait for the page itself: a toggle clicked while it is still mounting can miss.
+  await expect(page.getByRole('heading', { name: 'Members', level: 1 })).toBeVisible()
+  // The page's search toggle; on desktop the sidebar's app-wide Search comes first.
+  await page.getByRole('button', { name: 'Search', exact: true }).last().click()
+  await page.getByPlaceholder('Search members').fill(q)
+}
+
+/** Open a member's panel: search Members for their email, then click their row. */
+export const openMember = async (page: Page, email: string) => {
+  await searchMembers(page, email)
+  await page.getByText(email, { exact: true }).first().click()
+}
+
+/**
+ * The open panel's ⋯ menu button: in the side panel on desktop, in the panel's dialog at phone width.
+ * Scoped to the panel because a page can have a ⋯ of its own.
+ */
+export const panelMenu = (page: Page) =>
+  page.getByRole('complementary').or(page.getByRole('dialog')).getByRole('button', { name: 'More', exact: true })
+
+/** Close the open panel; at phone width it covers the list, which reads as hidden until it closes. */
+export const closePanel = async (page: Page) => {
+  // "Close details" in the desktop side panel; the phone overlay's own close button says "Close".
+  await page
+    .getByRole('button', { name: /^Close( details)?$/ })
+    .first()
+    .click()
+}
+
+/** Pick `item` from the open panel's ⋯ menu. */
+export const choosePanelAction = async (page: Page, item: string) => {
+  await panelMenu(page).click()
+  await page.getByRole('menuitem', { name: item, exact: true }).click()
+}
+
+export const openAdminSection = async (page: Page) => {
+  await openSidebarOnMobile(page)
+  await page.getByRole('navigation', { name: 'Sidebar sections' }).getByRole('button', { name: 'Admin' }).click()
+}
+
+/**
+ * `page` is signed in as this worker's bootstrap admin (`<adminKey>-<parallelIndex>@thunderbolt.test`,
+ * signed in once per worker), and `adminApi` calls the admin API as them. `memberPage` opens a new
+ * page signed in as a fresh member, in this project's viewport.
+ */
+export const adminTest = base.extend<
+  { adminApi: AdminApiRequest; memberPage: () => Promise<{ page: Page; email: string; token: string }> },
+  { adminSession: AdminSession }
+>({
+  adminSession: [
+    async ({ browser }, use, workerInfo) => {
+      const { adminKey } = workerInfo.project.metadata as { adminKey?: string }
+      if (!adminKey) {
+        throw new Error(`Project ${workerInfo.project.name} has no metadata.adminKey; see playwright.config.ts`)
+      }
+      // No two workers running at once share a parallelIndex, so the address is this worker's alone.
+      const email = `${adminKey}-${workerInfo.parallelIndex}@thunderbolt.test`
+      const context = await browser.newContext({ baseURL: adminAppUrl })
+      await signInByEmailCode(await context.newPage(), email)
+      const storageState = await context.storageState()
+      await context.close()
+      await use({ email, token: readStoredToken(storageState), storageState })
+    },
+    { scope: 'worker', timeout: 90_000 },
+  ],
+  storageState: async ({ adminSession }, use) => {
+    await use(adminSession.storageState)
+  },
+  adminApi: async ({ request, adminSession }, use) => {
+    await use(createAdminApiRequest(request, adminSession.token))
+  },
+  memberPage: async ({ browser, viewport }, use) => {
+    const contexts: Awaited<ReturnType<Browser['newContext']>>[] = []
+    await use(async () => {
+      // The test runner applies the `storageState` fixture (the admin's) to every new context: start empty.
+      const context = await browser.newContext({
+        baseURL: adminAppUrl,
+        viewport,
+        storageState: { cookies: [], origins: [] },
+      })
+      contexts.push(context)
+      const page = await context.newPage()
+      const email = uniqueEmail()
+      await signInByEmailCode(page, email)
+      return { page, email, token: readStoredToken(await context.storageState()) }
+    })
+    await Promise.all(contexts.map((context) => context.close()))
+  },
+})

@@ -64,6 +64,7 @@ import type { ProviderCredentials, OAuthProviderType } from './types'
 import { getProviderDefinition } from './registry'
 import { getProviderConnectionRevision } from './revision'
 import { createIdentityController } from '@/lib/identity-lifetime'
+import { useReportConnectionEvent } from '@/lib/report-connection-event'
 
 type AuthorizationController = ReturnType<typeof createIdentityController> & { returnId?: string }
 
@@ -110,6 +111,7 @@ export const useProviderAuthorization = ({
 }) => {
   const db = useDatabase()
   const queryClient = useQueryClient()
+  const reportConnectionEvent = useReportConnectionEvent()
   const { t } = useLingui()
   const [returned] = useState(() => (resumeReturn ? getProviderAuthorizationReturn() : null))
   const [state, update] = useReducer((state: State, change: Partial<State>) => ({ ...state, ...change }), {
@@ -176,6 +178,13 @@ export const useProviderAuthorization = ({
     if (input.purpose === 'onboarding-search') {
       useSearchProviderStore.getState().selectSearchConnection(id)
     }
+    // The authorization's one completion point: token refreshes never come through here.
+    reportConnectionEvent({
+      action: existing ? 'user_connection.credential_replaced' : 'user_connection.added',
+      target: { type: 'provider_connection', id },
+      provider: input.provider,
+      authMethod: 'oauth',
+    })
     onConnected(id)
   }
 

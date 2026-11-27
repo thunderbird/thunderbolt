@@ -51,6 +51,12 @@ describe('getOtpErrorMessage', () => {
     })
   })
 
+  it.each(['link', 'code'] as const)('tells a member whose organization requires SSO to use it (%s)', (context) => {
+    expect(
+      resolve({ code: 'ACCESS_SSO_REQUIRED', message: 'Access to this organization is not available' }, context),
+    ).toBe('Your organization requires you to sign in with single sign-on.')
+  })
+
   describe('fallbacks', () => {
     it('uses error.message when code is unknown', () => {
       expect(resolve({ code: 'UNKNOWN', message: 'Custom message' }, 'link')).toBe('Custom message')

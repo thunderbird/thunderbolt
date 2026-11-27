@@ -149,6 +149,26 @@ msgid "You can reply to this email"
 msgstr ""
 
 #. js-lingui-explicit-id
+#: src/emails/invitation.tsx
+msgid "You're invited to {appName}"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/emails/invitation.tsx
+msgid "You've been invited to join {appName}. Accept the invitation to sign in with this email address."
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/emails/invitation.tsx
+msgid "Accept invitation"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/emails/invitation.tsx
+msgid "This invitation expires in one week. If you weren't expecting it, you can ignore this email."
+msgstr ""
+
+#. js-lingui-explicit-id
 #: src/emails/magic-link.tsx
 msgid "Your {appName} verification code"
 msgstr ""

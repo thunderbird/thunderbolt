@@ -82,6 +82,27 @@ export const isFramelessControlsPlatform = (): boolean => {
 
 export type WebOsPlatform = 'macos' | 'windows' | 'linux' | 'ios' | 'android' | 'unknown'
 
+/** The OS a user-agent string names. Mobile first: their UAs also contain desktop OS strings. */
+const osFromUserAgent = (ua: string): WebOsPlatform => {
+  if (/iPhone|iPad/.test(ua)) {
+    return 'ios'
+  }
+  if (/Android/.test(ua)) {
+    return 'android'
+  }
+  if (/Mac/.test(ua)) {
+    return 'macos'
+  }
+  // Not a bare `Win`: native Apple clients send `Darwin/…`, which contains it.
+  if (/Windows/.test(ua)) {
+    return 'windows'
+  }
+  if (/Linux/.test(ua)) {
+    return 'linux'
+  }
+  return 'unknown'
+}
+
 /**
  * Detects the user's OS when running in a web browser via navigator.userAgent.
  * @returns The web OS platform, or 'unknown' when running in Tauri or when the UA cannot be parsed.
@@ -90,28 +111,9 @@ export const getWebOsPlatform = (): WebOsPlatform => {
   if (isTauri() || typeof navigator === 'undefined') {
     return 'unknown'
   }
-  const ua = navigator.userAgent
-  // Check mobile platforms first — their UAs also contain desktop OS strings
-  if (/iPhone|iPad/.test(ua)) {
-    return 'ios'
-  }
-  if (/Android/.test(ua)) {
-    return 'android'
-  }
-  if (/Mac/.test(ua)) {
-    // iPadOS 13+ reports a desktop "Macintosh" UA — distinguish via touch support
-    if (navigator.maxTouchPoints > 0) {
-      return 'ios'
-    }
-    return 'macos'
-  }
-  if (/Win/.test(ua)) {
-    return 'windows'
-  }
-  if (/Linux/.test(ua)) {
-    return 'linux'
-  }
-  return 'unknown'
+  const os = osFromUserAgent(navigator.userAgent)
+  // iPadOS 13+ reports a desktop "Macintosh" UA — distinguish via touch support
+  return os === 'macos' && navigator.maxTouchPoints > 0 ? 'ios' : os
 }
 
 /** Returns true when the web browser is running on a mobile OS (iOS or Android). */
@@ -136,20 +138,10 @@ export const isWebDesktopPlatform = (): boolean => {
  */
 export const isIosPlatform = (): boolean => (isTauri() && getPlatform() === 'ios') || getWebOsPlatform() === 'ios'
 
-type WebBrowser = 'safari' | 'chrome' | 'firefox' | 'edge' | 'unknown'
+export type WebBrowser = 'safari' | 'chrome' | 'firefox' | 'edge' | 'unknown'
 
-/**
- * Returns the browser when running on web (not Tauri).
- * Chrome and Edge include "Safari" in their UA for compatibility, so we check Edge/Chrome first.
- * @returns Browser identifier, or 'unknown' when not on web or UA cannot be parsed
- */
-export const getWebBrowser = (): WebBrowser => {
-  if (getPlatform() !== 'web' || typeof navigator === 'undefined') {
-    return 'unknown'
-  }
-
-  const ua = navigator.userAgent
-
+/** The browser a user-agent string names. Chrome and Edge include "Safari" in their UA for compatibility, so they're checked first. */
+const browserFromUserAgent = (ua: string): WebBrowser => {
   if (ua.includes('Edg')) {
     return 'edge'
   }
@@ -162,9 +154,28 @@ export const getWebBrowser = (): WebBrowser => {
   if (ua.includes('Safari')) {
     return 'safari'
   }
-
   return 'unknown'
 }
+
+/**
+ * Returns the browser when running on web (not Tauri).
+ * @returns Browser identifier, or 'unknown' when not on web or UA cannot be parsed
+ */
+export const getWebBrowser = (): WebBrowser => {
+  if (getPlatform() !== 'web' || typeof navigator === 'undefined') {
+    return 'unknown'
+  }
+  return browserFromUserAgent(navigator.userAgent)
+}
+
+/**
+ * The OS and browser a stored user-agent string names, e.g. an audit event's. Unlike `getWebOsPlatform`,
+ * an iPad posing as a Mac reads as macOS: telling them apart takes the live device's touch support.
+ */
+export const parseUserAgent = (ua: string): { os: WebOsPlatform; browser: WebBrowser } => ({
+  os: osFromUserAgent(ua),
+  browser: browserFromUserAgent(ua),
+})
 
 /**
  * Checks if OPFS (Origin Private File System) is available

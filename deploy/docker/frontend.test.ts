@@ -36,6 +36,13 @@ test('the frontend image includes every HTML build entry', () => {
   }
 })
 
+test('the frontend image includes the lazy-loaded admin screens', () => {
+  const loader = readFileSync(join(root, 'src/lib/admin-module.ts'), 'utf8')
+  const target = loader.match(/import\('([^']+)'\)/)?.[1]
+  expect(target).toBeDefined()
+  expect(isCopiedAtBuildPath(join(resolve(root, 'src/lib'), target!, 'index.ts'))).toBe(true)
+})
+
 test('the frontend image copies the complete local Vite configuration import graph', async () => {
   const loaded: string[] = []
   const result = await Bun.build({

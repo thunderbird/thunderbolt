@@ -15,6 +15,7 @@ import { testSearchProvider } from '@/integrations/standalone-search/api'
 import { searchProviders, type SearchProvider } from '@/integrations/standalone-search/providers'
 import { useSearchProviderStore, type SearchSelection } from '@/stores/search-provider-store'
 import { createIdentityController } from '@/lib/identity-lifetime'
+import { useReportConnectionEvent } from '@/lib/report-connection-event'
 
 type State = {
   provider: SearchProvider | null
@@ -40,6 +41,7 @@ export const useSearchProviderSetup = (
   const { t } = useLingui()
   const db = useDatabase()
   const queryClient = useQueryClient()
+  const reportConnectionEvent = useReportConnectionEvent()
   const stored = useSearchProviderStore()
   const [state, update] = useReducer((state: State, patch: Partial<State>) => ({ ...state, ...patch }), {
     provider: initialProvider ?? null,
@@ -99,6 +101,12 @@ export const useSearchProviderSetup = (
         return id
       })
       controller.signal.throwIfAborted()
+      reportConnectionEvent({
+        action: state.connectionId ? 'user_connection.credential_replaced' : 'user_connection.added',
+        target: { type: 'provider_connection', id: connectionId },
+        provider,
+        authMethod: 'api_key',
+      })
       stored.selectSearchConnection(connectionId)
       const savedConfiguration = useSearchProviderStore.getState()
       update({ status: 'success', connectionId, apiKey: '' })
@@ -126,6 +134,12 @@ export const useSearchProviderSetup = (
     try {
       if (state.connectionId) {
         await disconnectProviderConnection(db, state.connectionId)
+        reportConnectionEvent({
+          action: 'user_connection.removed',
+          target: { type: 'provider_connection', id: state.connectionId },
+          provider: state.provider ?? undefined,
+          authMethod: 'api_key',
+        })
       }
       if (!controller.signal.aborted) {
         const current = useSearchProviderStore.getState()

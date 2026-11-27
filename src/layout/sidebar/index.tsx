@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useConfigCapability } from '@/hooks/use-config-capability'
-import { selectMinimalMode } from '@/api/config-store'
 import type { DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { Sidebar as SidebarRoot, useSidebar } from '@/components/ui/sidebar'
@@ -19,12 +17,17 @@ import { miniAppPath, useChatDestination } from '@/mini-apps/use-chat-destinatio
 import { useSearchPalette } from '@/search/search-palette-context'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
-import { useCallback, useMemo, useRef } from 'react'
+import { Suspense, lazy, useCallback, useMemo, useRef } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router'
 import { ChatSidebarContent } from './chat-sidebar'
 import { SettingsSidebarContent } from './settings-sidebar'
 import { useSidebarSection } from './use-sidebar-section'
+import { useVisibleSections } from './use-visible-sections'
+import { loadAdminModule } from '@/lib/admin-module'
+import { PageFallback } from '@/loading'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
+
+const AdminSidebar = lazy(async () => ({ default: (await loadAdminModule()).AdminSidebar }))
 
 /**
  * Main sidebar component that orchestrates between chat and settings sidebars
@@ -49,10 +52,11 @@ export default function Sidebar() {
 
   const { activeSection: routeSection, setActiveSection } = useSidebarSection(location.pathname)
   // Subscribed here rather than in `ChatSidebarContent`, which is unmounted
-  // while the Settings section is open: a minimal-mode `/config` answer that
-  // lands then must still pull the sidebar back to chats.
-  const minimalMode = useConfigCapability(selectMinimalMode)
-  const activeSection = minimalMode ? 'chats' : routeSection
+  // while another section is open: a `/config` or session answer that lands
+  // then must still pull the sidebar back to chats. Minimal mode drops
+  // Settings; Admin stays for admins.
+  const visibleSections = useVisibleSections()
+  const activeSection = visibleSections.includes(routeSection) ? routeSection : 'chats'
 
   const { experimentalFeatureTasks } = useSettings({
     experimental_feature_tasks: false,
@@ -149,7 +153,16 @@ export default function Sidebar() {
   return (
     <SidebarRoot collapsible={isMobile ? 'offcanvas' : 'icon'}>
       <TooltipProvider>
-        {activeSection === 'settings' ? (
+        {activeSection === 'admin' ? (
+          <Suspense fallback={<PageFallback />}>
+            <AdminSidebar
+              isCollapsed={isCollapsed}
+              onSectionChange={setActiveSection}
+              onNavigate={handleNavigate}
+              onSearchClick={openSearchPalette}
+            />
+          </Suspense>
+        ) : activeSection === 'settings' ? (
           <SettingsSidebarContent
             isCollapsed={isCollapsed}
             onSectionChange={setActiveSection}

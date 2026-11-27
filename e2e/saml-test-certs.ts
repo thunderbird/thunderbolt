@@ -19,7 +19,8 @@ import { tmpdir } from 'node:os'
  */
 let cached: { privateKey: string; cert: string; certSingleLine: string } | null = null
 
-const generate = () => {
+/** A new keypair on every call, for a test that needs a second IdP certificate. */
+export const generateTestCerts = () => {
   const dir = mkdtempSync(join(tmpdir(), 'saml-e2e-'))
   const keyPath = join(dir, 'key.pem')
   const certPath = join(dir, 'cert.pem')
@@ -42,7 +43,7 @@ const generate = () => {
 
 export const getTestCerts = () => {
   if (!cached) {
-    cached = generate()
+    cached = generateTestCerts()
   }
   return cached
 }

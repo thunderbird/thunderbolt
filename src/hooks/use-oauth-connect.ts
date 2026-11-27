@@ -22,6 +22,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useReducer } from 'react'
 import { useAsyncAttempt } from './use-async-attempt'
 import { v4 as uuidv4 } from 'uuid'
+import { useReportConnectionEvent } from '@/lib/report-connection-event'
 
 type OAuthDependencies = {
   startOAuthFlowLoopback?: typeof startOAuthFlowLoopback
@@ -81,6 +82,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
   const { t, i18n } = useLingui()
   const db = useDatabase()
   const queryClient = useQueryClient()
+  const reportConnectionEvent = useReportConnectionEvent()
   const { onSuccess, onError, setPreferredName = false, returnContext = 'integrations', dependencies } = options
   const [state, dispatch] = useReducer(oauthUiReducer, { phase: 'idle' })
   const operation = useAsyncAttempt()
@@ -126,6 +128,12 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
       signal.throwIfAborted()
       await saveIntegrationCredentials(tx, provider, credentials, true)
       signal.throwIfAborted()
+    })
+    reportConnectionEvent({
+      action: 'user_connection.added',
+      target: { type: 'integration', id: provider },
+      provider,
+      authMethod: 'oauth',
     })
     await queryClient.invalidateQueries({ queryKey: ['integrationStatus'] })
     signal.throwIfAborted()

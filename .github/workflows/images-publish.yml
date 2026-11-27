@@ -52,6 +52,7 @@ on:
       - '.github/workflows/images-publish.yml'
       - 'backend/**'
       - 'src/**'
+      - 'admin/**'
       - 'shared/defaults/models.ts'
       - 'shared/inference-usage.ts'
       - 'scripts/prune-unreachable-deps.ts'

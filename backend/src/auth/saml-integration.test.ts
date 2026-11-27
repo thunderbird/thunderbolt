@@ -27,12 +27,13 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'b
 import { Elysia } from 'elysia'
 import { inflateRawSync } from 'node:zlib'
 import * as samlify from 'samlify'
-import { getTestCerts } from '../../../e2e/saml-test-certs'
+import { generateTestCerts, getTestCerts } from '../../../e2e/saml-test-certs'
 import { getSharedIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
 import { account, user } from '@/db/auth-schema'
 import { and, eq } from 'drizzle-orm'
 import { createSessionCookie } from '@/test-utils/session-cookie'
-import { ssoProvider } from '@/db/schema'
+import { auditEvent, identityConnection, membershipSource, ssoProvider } from '@/db/schema'
+import { createSsoConnection, ensureEnvSsoConnection, updateSsoConnection } from '@/identity/sso-connections'
 
 const realFetch = (globalThis as Record<string, unknown>).__originalFetch as typeof fetch
 
@@ -75,8 +76,9 @@ describe('SAML Integration', () => {
   })
 
   describe('SAML sign-in endpoint', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue(baseSettings)
+      await ensureEnvSsoConnection(db, baseSettings)
     })
 
     it('should return a redirect URL pointing to the SAML IdP', async () => {
@@ -176,22 +178,38 @@ describe('SAML Integration', () => {
       })
     })
 
-    beforeEach(() => {
+    beforeEach(async () => {
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({ ...baseSettings, samlCert: idpCert })
+      await ensureEnvSsoConnection(db, { ...baseSettings, samlCert: idpCert })
     })
 
     /**
      * Start a SAML login in a fresh browser and sign the response for `email`. An unsolicited response
      * has no `InResponseTo`, as when the login starts from the IdP dashboard.
      */
-    const startLogin = async (email: string, { unsolicited = false, assertionOnly = false } = {}) => {
+    const startLogin = async (
+      email: string,
+      {
+        unsolicited = false,
+        assertionOnly = false,
+        startHeaders = {},
+        providerId = 'sso',
+        identityProvider = idp,
+      }: {
+        unsolicited?: boolean
+        assertionOnly?: boolean
+        startHeaders?: Record<string, string>
+        providerId?: string
+        identityProvider?: typeof idp
+      } = {},
+    ) => {
       const { createAuth } = await import('./auth')
       const app = new Elysia({ prefix: '/v1' }).mount(createAuth(db).handler)
       const start = await app.handle(
         new Request('http://localhost/v1/api/auth/sign-in/sso', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ providerId: 'sso', callbackURL }),
+          headers: { 'Content-Type': 'application/json', ...startHeaders },
+          body: JSON.stringify({ providerId, callbackURL }),
         }),
       )
       const idpRedirect = new URL(((await start.json()) as { url: string }).url)
@@ -209,7 +227,7 @@ describe('SAML Integration', () => {
         wantAssertionsSigned: assertionOnly,
         assertionConsumerService: [{ Binding: samlify.Constants.namespace.binding.post, Location: acsUrl }],
       })
-      const { context: samlResponse } = await idp.createLoginResponse(
+      const { context: samlResponse } = await identityProvider.createLoginResponse(
         sp,
         { extract: unsolicited ? {} : { request: { id: requestId } } },
         'post',
@@ -288,6 +306,100 @@ describe('SAML Integration', () => {
 
       expect(await signInThroughIdp(email)).toContain('error=account_not_linked')
       expect(await ssoAccountCount(local.id)).toBe(0)
+    })
+
+    const signInEvents = (userId: string) =>
+      db
+        .select()
+        .from(auditEvent)
+        .where(and(eq(auditEvent.action, 'auth.sign_in'), eq(auditEvent.actorId, userId)))
+
+    it('audits a SAML sign-in, and a refused one by its error code with no user', async () => {
+      const existing = await existingUser()
+      await signInThroughIdp(existing.email)
+
+      const [success] = (await signInEvents(existing.id)).filter((event) => event.outcome === 'success').slice(-1)
+      expect(success).toMatchObject({ connectionId: 'sso', metadata: { method: 'saml' } })
+      expect((success.metadata as { sessionId?: string }).sessionId).toBeString()
+
+      const attacker = await attackerLogin()
+      const before = new Date()
+      await postToAcs(attacker, { relayState: attacker.relayState })
+      const failures = await db
+        .select()
+        .from(auditEvent)
+        .where(and(eq(auditEvent.action, 'auth.sign_in'), eq(auditEvent.reason, 'unsolicited_response')))
+      expect(failures.filter((event) => event.occurredAt >= before)).toMatchObject([
+        { outcome: 'failure', actorId: null, connectionId: 'sso', metadata: { method: 'saml' } },
+      ])
+    })
+
+    it('never links the user signed in to the browser, as on a shared machine', async () => {
+      const { createAuth } = await import('./auth')
+      const auth = createAuth(db)
+      const sessionCookie = await createSessionCookie(auth, db)
+      const existing = (await auth.api.getSession({ headers: new Headers({ Cookie: sessionCookie }) }))!.user
+      const idpEmail = `someone-else-${crypto.randomUUID()}@example.com`
+
+      const login = await startLogin(idpEmail, { startHeaders: { Cookie: sessionCookie } })
+      const acs = await postToAcs(login, { cookie: `${sessionCookie}; ${login.cookie}`, relayState: login.relayState })
+
+      expect(acs.headers.get('location')).toBe(callbackURL)
+      expect(await ssoAccountCount(existing.id)).toBe(0)
+      expect(await db.$count(user, eq(user.email, idpEmail))).toBe(1)
+    })
+
+    it('keeps signing a member in through a connection whose certificate an admin replaced, with no relinking', async () => {
+      const providerId = `rotating-${crypto.randomUUID()}`
+      const next = generateTestCerts()
+      const nextIdp = samlify.IdentityProvider({
+        entityID: baseSettings.samlIdpIssuer,
+        signingCert: next.cert,
+        privateKey: next.privateKey,
+        singleSignOnService: [
+          { Binding: samlify.Constants.namespace.binding.redirect, Location: baseSettings.samlEntryPoint },
+        ],
+      })
+      const connectionId = await createSsoConnection(db, {
+        name: `Rotating ${providerId}`,
+        providerId,
+        protocol: {
+          saml: {
+            entityId: baseSettings.samlEntityId,
+            entryPoint: baseSettings.samlEntryPoint,
+            cert: idpCert,
+            idpIssuer: baseSettings.samlIdpIssuer,
+          },
+        },
+      })
+      const existing = await existingUser()
+      const signIn = async (identityProvider: typeof idp) => {
+        const login = await startLogin(existing.email, { providerId, identityProvider })
+        return (await postToAcs(login, login)).headers.get('location')
+      }
+      const accounts = () =>
+        db.$count(account, and(eq(account.userId, existing.id), eq(account.providerId, providerId)))
+      try {
+        expect(await signIn(idp)).toBe(callbackURL)
+        expect(await accounts()).toBe(1)
+
+        await updateSsoConnection(db, {
+          identityConnectionId: connectionId,
+          saml: { cert: next.certSingleLine },
+          actorId: existing.id,
+          isTrustedOrigin: () => false,
+        })
+
+        expect(await signIn(idp)).not.toBe(callbackURL)
+        expect(await signIn(nextIdp)).toBe(callbackURL)
+        expect(await accounts()).toBe(1)
+      } finally {
+        // The suites share this database, and a second connection changes what the login screen offers.
+        await db.delete(account).where(eq(account.providerId, providerId))
+        await db.delete(membershipSource).where(eq(membershipSource.identityConnectionId, connectionId))
+        await db.delete(identityConnection).where(eq(identityConnection.id, connectionId))
+        await db.delete(ssoProvider).where(eq(ssoProvider.providerId, providerId))
+      }
     })
 
     const attackerLogin = () => startLogin(`attacker-${crypto.randomUUID()}@example.com`)
@@ -590,8 +702,9 @@ describe('SAML Integration', () => {
   })
 
   describe('SSO provider self-registration', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue(baseSettings)
+      await ensureEnvSsoConnection(db, baseSettings)
     })
 
     it('refuses an ordinary session and stores no provider', async () => {
@@ -620,7 +733,7 @@ describe('SAML Integration', () => {
       )
 
       expect(res.status).toBe(403)
-      expect(await db.select().from(ssoProvider)).toHaveLength(0)
+      expect(await db.$count(ssoProvider, eq(ssoProvider.providerId, 'attacker-idp'))).toBe(0)
     })
 
     it('serves SP metadata only for the configured provider', async () => {

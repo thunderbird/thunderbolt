@@ -122,6 +122,22 @@ The built-in authentication limiter keys each request on the client address it r
 
 A shared bucket fills fast. Entering an emailed sign-in code (`/sign-in/email-otp`) allows 3 requests per 60 seconds, so behind such a proxy only three people a minute can finish signing in with a code. Requesting the code itself (`/email-otp/send-verification-otp`) has the same limit when a client calls it directly. Many users then get `429` at the same time. Set `TRUSTED_PROXY` to `cloudflare` or `akamai` if one of them sits in front of the API, or to the hop count of a fixed reverse-proxy chain. See [Configuration](./configuration.md#rate-limiting) for the other buckets.
 
+## Organizations and provisioning
+
+The release that adds organizations, SSO connections and SCIM provisioning needs no configuration change. On its first start the API:
+
+1. creates the deployment's organization and makes every existing account a member of it, recording how each most likely got in (through your SSO provider, an approved waitlist row, or neither, for accounts older than the waitlist). Anonymous users are not members.
+2. saves the provider in your `OIDC_*` or `SAML_*` settings as the SSO connection `sso`. The environment stays its source: change a value and restart to apply it.
+
+Existing sessions, personal access tokens and sync keep working, and SSO users sign in to the same accounts as before. New email-code sign-ups are still gated by the waitlist unless you set `OPEN_SIGNUP_ENABLED=true`.
+
+Two things to know:
+
+- **Someone who signs up on an old instance during a rolling upgrade is signed out once.** Their account is created after the organization, by code that doesn't know about memberships, so their session reads as signed out. Their next sign-in makes them a member.
+- **Nobody is an admin yet.** List your admins' addresses in `BOOTSTRAP_ADMIN_EMAILS`: each gets the admin role at its first verified sign-in. Include a break-glass admin your identity provider doesn't manage; see [Authentication](./authentication.md#what-single-sign-on-looks-like-to-the-user).
+
+Then add further providers and provisioning as [Provisioning](./provisioning.md) describes.
+
 ## Order of upgrade
 
 Within a single version, apply in this order:

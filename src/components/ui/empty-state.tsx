@@ -18,7 +18,7 @@ type EmptyStateProps = {
   title: string
   /** Why the page exists / what to do next. Omit for "no search results", where
    *  the user knows what they were looking for. */
-  description?: string
+  description?: ReactNode
   /** Typically a `Button` that starts the create flow. */
   action?: ReactNode
 }

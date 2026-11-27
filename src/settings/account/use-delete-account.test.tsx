@@ -9,6 +9,7 @@ import { HttpClientProvider } from '@/contexts'
 import { setCachedSession, clearCachedSession } from '@/lib/session-cache'
 import { HttpError } from '@/lib/http'
 import { StepUpVerificationError } from '@/lib/step-up'
+import { AccountManagedByIdpError } from '@/api/account'
 import { createMockHttpClient } from '@/test-utils/http-client'
 import { initialState, reducer, useDeleteAccount } from './use-delete-account'
 
@@ -375,5 +376,21 @@ describe('useDeleteAccount', () => {
     expect(result.current.status).toBe('stepUp')
     expect(result.current.otp).toBe('12345678')
     expect(deletedCount).toBe(0)
+  })
+
+  it('says the organization manages the account when the server refuses for that reason', async () => {
+    const managed = () => Promise.reject(new AccountManagedByIdpError())
+    const { result } = renderHook(() => useDeleteAccount(managed, managed), { wrapper })
+
+    act(() => result.current.openConfirm())
+    await act(async () => {
+      await result.current.requestStepUpCode()
+    })
+    expect(result.current.error).toContain('Your organization manages this account')
+
+    await act(async () => {
+      await result.current.confirmDeletion()
+    })
+    expect(result.current.error).toContain('Your organization manages this account')
   })
 })

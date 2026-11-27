@@ -29,11 +29,16 @@ export class SsoCallbackError extends Error {
  * to bridge the session cookie back to the app via the loopback server.
  *
  * @param baseUrl - Backend base URL (e.g. `http://localhost:8000`)
+ * @param providerId - The SSO connection to sign in with
  * @param timeoutMs - How long to wait for the user to complete auth (default: 5 minutes)
  * @returns Signed bearer token on success, `null` on timeout
  * @throws On server start failure, network error, or `SsoCallbackError` for an IdP error
  */
-export const startSsoFlowLoopback = async (baseUrl: string, timeoutMs = ssoTimeoutMs): Promise<string | null> => {
+export const startSsoFlowLoopback = async (
+  baseUrl: string,
+  providerId: string,
+  timeoutMs = ssoTimeoutMs,
+): Promise<string | null> => {
   const clientState = generateCodeVerifier()
   const port = await invoke<number>('start_oauth_server', { flowId: clientState, clientState })
   const callbackOrigin = `http://localhost:${port}`
@@ -69,6 +74,7 @@ export const startSsoFlowLoopback = async (baseUrl: string, timeoutMs = ssoTimeo
     const initiateUrl = `${baseUrl}/v1/api/auth/sso/desktop-initiate?${new URLSearchParams({
       loopback_port: String(port),
       client_state: clientState,
+      provider_id: providerId,
     })}`
     await openUrl(initiateUrl)
 

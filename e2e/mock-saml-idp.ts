@@ -26,6 +26,15 @@ const userFor = (requestId: string, uniqueUsers: boolean) => {
 }
 
 /**
+ * The user named by a `<sub>|<email>` login hint, as the admin specs' `routeIdpIdentity` adds it,
+ * or undefined without one. The email is the NameID.
+ */
+const userFromLoginHint = (hint: string | null) => {
+  const email = hint?.split('|')[1]
+  return email ? { ...testUser, email, displayName: email.split('@')[0] } : undefined
+}
+
+/**
  * Create and start a mock SAML Identity Provider.
  *
  * When the browser hits GET /saml/sso?SAMLRequest=..., the server:
@@ -37,7 +46,7 @@ const userFor = (requestId: string, uniqueUsers: boolean) => {
  */
 export const createMockSamlIdp = async (port: number, { uniqueUsers = false } = {}) => {
   const issuer = `http://localhost:${port}`
-  const { cert, privateKey } = getTestCerts()
+  const { cert, certSingleLine, privateKey } = getTestCerts()
 
   // Disable samlify's built-in schema validation — we're the IdP, not validating inbound
   samlify.setSchemaValidator({ validate: async () => 'skipped' })
@@ -77,6 +86,8 @@ export const createMockSamlIdp = async (port: number, { uniqueUsers = false } = 
         const idMatch = xml.match(/ID="([^"]+)"/)
         const acsUrl = acsMatch?.[1] ?? ''
         const requestId = idMatch?.[1] ?? '_unknown'
+        // The requester's entity ID, so a connection an admin adds may name its own.
+        const spEntityId = xml.match(/<(?:\w+:)?Issuer[^>]*>([^<]+)</)?.[1] ?? 'e2e-saml-sp'
 
         if (!acsUrl) {
           res.writeHead(400, { 'Content-Type': 'text/plain' })
@@ -87,7 +98,7 @@ export const createMockSamlIdp = async (port: number, { uniqueUsers = false } = 
         // Create a temporary SP representing the requester so samlify can generate
         // a properly addressed response
         const sp = samlify.ServiceProvider({
-          entityID: 'e2e-saml-sp',
+          entityID: spEntityId,
           assertionConsumerService: [{ Binding: 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST', Location: acsUrl }],
         })
 
@@ -96,7 +107,7 @@ export const createMockSamlIdp = async (port: number, { uniqueUsers = false } = 
           sp,
           { extract: { request: { id: requestId } } },
           'post',
-          userFor(requestId, uniqueUsers),
+          userFromLoginHint(url.searchParams.get('login_hint')) ?? userFor(requestId, uniqueUsers),
         )
 
         // Return an auto-submitting HTML form (standard SAML HTTP-POST binding)
@@ -116,6 +127,14 @@ export const createMockSamlIdp = async (port: number, { uniqueUsers = false } = 
         res.writeHead(500, { 'Content-Type': 'text/plain' })
         res.end(`Mock SAML IdP error: ${err}`)
       }
+      return
+    }
+
+    // The signing certificate, for a spec that registers a connection: workers can't share the
+    // keypair `getTestCerts` makes in this process.
+    if (url.pathname === '/cert') {
+      res.writeHead(200, { 'Content-Type': 'text/plain' })
+      res.end(certSingleLine)
       return
     }
 

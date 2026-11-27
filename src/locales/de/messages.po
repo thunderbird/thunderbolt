@@ -21,6 +21,14 @@ msgstr "„{filename}“ ist zu groß (max. {maxMegabytes} MB)."
 msgid "\"{filename}\" isn't a supported file type."
 msgstr "„{filename}“ ist kein unterstützter Dateityp."
 
+#. placeholder {0}: review.attempts
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+attempt%7D+other+%7B%23+attempts%7D%7D&pluralize_on=0
+#: admin/screens/members/link-review-panel.tsx
+msgid "# attempt"
+msgid_plural "# attempts"
+msgstr[0] ""
+msgstr[1] ""
+
 #. placeholder {0}: leftOut.unsupportedCharts
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+chart+of+a+type+the+preview+does+not+draw%7D+other+%7B%23+charts+of+types+the+preview+does+not+draw%7D%7D&pluralize_on=0
 #: src/components/xlsx-preview/left-out-banner.tsx
@@ -77,6 +85,23 @@ msgid_plural "# MCP servers"
 msgstr[0] "# MCP-Server"
 msgstr[1] "# MCP-Server"
 
+#. placeholder {0}: group.memberCount
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+member%7D+other+%7B%23+members%7D%7D&pluralize_on=0
+#: admin/screens/groups/groups-page.tsx
+#: admin/screens/identity-providers/scim-groups-section.tsx
+msgid "# member"
+msgid_plural "# members"
+msgstr[0] ""
+msgstr[1] ""
+
+#. placeholder {0}: selected.length
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+selected%7D+other+%7B%23+selected%7D%7D&pluralize_on=0
+#: admin/components/membership-multi-select.tsx
+msgid "# selected"
+msgid_plural "# selected"
+msgstr[0] ""
+msgstr[1] ""
+
 #. placeholder {0}: tools.length
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+tool%7D+other+%7B%23+tools%7D%7D&pluralize_on=0
 #: src/components/available-tools.tsx
@@ -97,6 +122,21 @@ msgstr[1] "# Tools"
 #: src/mini-apps/mini-app-page.tsx
 msgid "{0} is only available on desktop"
 msgstr ""
+
+#: admin/components/audit-event-list.tsx
+msgid "{action} {target} by {actor}"
+msgstr ""
+
+#: admin/components/audit-event-list.tsx
+msgid "{action} by {actor}"
+msgstr ""
+
+#. js-lingui:icu=%7BadminCount%2C+plural%2C+one+%7BThis+organization+has+%23+admin.%7D+other+%7BThis+organization+has+%23+admins.%7D%7D&pluralize_on=adminCount
+#: admin/screens/break-glass/break-glass-page.tsx
+#~ msgid "This organization has # admin."
+#~ msgid_plural "This organization has # admins."
+#~ msgstr[0] ""
+#~ msgstr[1] ""
 
 #: src/components/chat/chat-prompt-input.tsx
 msgid "{agentName} can't take attachments. Remove the attached files to send."
@@ -138,12 +178,42 @@ msgstr "{appName} möchte sich mit {providerName} E-Mail und Kalender verbinden"
 msgid "{appName} will use it across the app. You can change it later in Preferences."
 msgstr "{appName} verwendet sie in der gesamten App. Sie können sie später in den Einstellungen ändern."
 
+#: admin/components/audit-event-labels.ts
+msgid "{browserName} on {osName}"
+msgstr ""
+
+#: admin/screens/members/members-page.tsx
+msgid "{connection} · {lastSeen}"
+msgstr ""
+
+#: admin/screens/members/members-page.tsx
+#~ msgid "{connection} · Rejected"
+#~ msgstr ""
+
+#: admin/screens/members/pending-link-reviews.tsx
+#~ msgid "{connection}, {lastSeen}"
+#~ msgstr ""
+
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+chat%7D+other+%7B%23+chats%7D%7D&pluralize_on=count
 #: src/projects/index.tsx
 #~ msgid "# chat"
 #~ msgid_plural "# chats"
 #~ msgstr[0] "# Chat"
 #~ msgstr[1] "# Chats"
+
+#. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+identity+waiting+to+be+linked%7D+other+%7B%23+identities+waiting+to+be+linked%7D%7D&pluralize_on=count
+#: admin/screens/members/pending-link-reviews.tsx
+#~ msgid "# identity waiting to be linked"
+#~ msgid_plural "# identities waiting to be linked"
+#~ msgstr[0] ""
+#~ msgstr[1] ""
+
+#. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7BMore+than+%23+identity+waiting+to+be+linked%7D+other+%7BMore+than+%23+identities+waiting+to+be+linked%7D%7D&pluralize_on=count
+#: admin/screens/members/pending-link-reviews.tsx
+#~ msgid "More than # identity waiting to be linked"
+#~ msgid_plural "More than # identities waiting to be linked"
+#~ msgstr[0] ""
+#~ msgstr[1] ""
 
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7BOne+skill+references+this.+If+you+delete+it%2C+that+skill+may+no+longer+resolve.%7D+other+%7B%23+skills+reference+this.+If+you+delete+it%2C+they+may+no+longer+resolve.%7D%7D&pluralize_on=count
 #: src/skills/dependents-dialog.tsx
@@ -159,6 +229,10 @@ msgid_plural "# skills reference this. If you disable it, they may no longer res
 msgstr[0] "Ein Skill verweist darauf. Wenn Sie es deaktivieren, kann dieser Skill möglicherweise nicht mehr aufgelöst werden."
 msgstr[1] "# Skills verweisen darauf. Wenn Sie es deaktivieren, können sie möglicherweise nicht mehr aufgelöst werden."
 
+#: src/components/ui/calendar.tsx
+msgid "{day}, selected"
+msgstr ""
+
 #. js-lingui:icu=%7BenabledSkills%2C+plural%2C+one+%7B%23+skill%7D+other+%7B%23+skills%7D%7D&pluralize_on=enabledSkills
 #: src/components/settings/agents/agent-detail.tsx
 msgid "# skill"
@@ -169,6 +243,14 @@ msgstr[1] "# Skills"
 #: src/mini-apps/mini-app-download-prompt.tsx
 msgid "{fileName} will be saved to your Downloads folder."
 msgstr ""
+
+#: admin/screens/members/link-review-confirm-dialog.tsx
+#~ msgid "{incoming} (subject <0>{subject}</0>) from {connection} stays unlinked from {existing}, and is refused until an admin approves the link."
+#~ msgstr ""
+
+#: admin/screens/members/link-review-confirm-dialog.tsx
+#~ msgid "{incoming} (subject <0>{subject}</0>) from {connection} will be linked to the existing account {existing}. The next sign-in or provisioning attempt from this connection attaches to that account."
+#~ msgstr ""
 
 #: src/components/xlsx-preview/sheet-overlay.tsx
 msgid "{kindLabel}: {title}"
@@ -189,9 +271,34 @@ msgid_plural "# charts or pictures not shown in full"
 msgstr[0] "# Diagramm oder Bild nicht vollständig angezeigt"
 msgstr[1] "# Diagramme oder Bilder nicht vollständig angezeigt"
 
+#. js-lingui:icu=%7BlocalAdminCount%2C+plural%2C+one+%7B%23+admin+can+sign+in+without+your+identity+provider%7D+other+%7B%23+admins+can+sign+in+without+your+identity+provider%7D%7D&pluralize_on=localAdminCount
+#: admin/screens/break-glass/break-glass-page.tsx
+#~ msgid "# admin can sign in without your identity provider"
+#~ msgid_plural "# admins can sign in without your identity provider"
+#~ msgstr[0] ""
+#~ msgstr[1] ""
+
 #: src/components/chat/image-support-notice.tsx
 msgid "{modelName} can't read images. Switch to a model that can, or remove the image."
 msgstr "{modelName} kann keine Bilder lesen. Wechseln Sie zu einem Modell, das Bilder lesen kann, oder entfernen Sie das Bild."
+
+#: admin/screens/domains/domain-enrollment-field.tsx
+#~ msgid "{name} claims this domain, so people on it sign in through that identity provider. Release the claim to open enrollment."
+#~ msgstr ""
+
+#. js-lingui:icu=%7BrejectedCount%2C+plural%2C+one+%7B%23+rejected%7D+other+%7B%23+rejected%7D%7D&pluralize_on=rejectedCount
+#: admin/screens/members/pending-link-reviews.tsx
+#~ msgid "# rejected"
+#~ msgid_plural "# rejected"
+#~ msgstr[0] ""
+#~ msgstr[1] ""
+
+#. js-lingui:icu=%7BrevokedCount%2C+plural%2C+one+%7B%23+revoked%7D+other+%7B%23+revoked%7D%7D&pluralize_on=revokedCount
+#: admin/screens/members/members-page.tsx
+#~ msgid "# revoked"
+#~ msgid_plural "# revoked"
+#~ msgstr[0] ""
+#~ msgstr[1] ""
 
 #. js-lingui:icu=%7Brows%2C+plural%2C+one+%7BThis+file+contains+%23+row+exported+by+%7BimportSourceEmail%7D+on+%7BimportExportedAt%7D.%7D+other+%7BThis+file+contains+%23+rows+exported+by+%7BimportSourceEmail%7D+on+%7BimportExportedAt%7D.%7D%7D&pluralize_on=rows
 #: src/settings/preferences.tsx
@@ -220,6 +327,10 @@ msgid "This file contains # row."
 msgid_plural "This file contains # rows."
 msgstr[0] "Diese Datei enthält # Zeile."
 msgstr[1] "Diese Datei enthält # Zeilen."
+
+#: admin/screens/members/link-review-panel.tsx
+msgid "{status} · Decided {decidedAt}"
+msgstr ""
 
 #. js-lingui:icu=%7BstepCount%2C+plural%2C+one+%7BCompleted+%23+step+in+%7Bduration%7D%7D+other+%7BCompleted+%23+steps+in+%7Bduration%7D%7D%7D&pluralize_on=stepCount
 #: src/components/chat/reasoning-group-title.tsx
@@ -274,18 +385,50 @@ msgstr "⚠ Dieser Export wurde von einem anderen Konto erstellt ({importSourceE
 msgid "3-D chart"
 msgstr "3D-Diagramm"
 
+#: admin/screens/domains/domain-claim-section.tsx
+#~ msgid "A claim covers {name} only. Subdomains such as mail.{name} are never trusted automatically: add, verify and claim each one on its own."
+#~ msgstr ""
+
+#: admin/screens/domains/domain-claim-section.tsx
+#~ msgid "A claim covers this domain only. Subdomains such as mail.{name} are never trusted automatically: add, verify and claim each one on its own."
+#~ msgstr ""
+
+#: admin/screens/domains/domain-claim-section.tsx
+#~ msgid "A claimed domain is closed to enrollment and to plain invitations: people on it sign in through the identity provider."
+#~ msgstr ""
+
 #: src/hooks/use-sync-setup.ts
 #: src/settings/account/use-delete-account.ts
 msgid "A code was just sent. Wait a moment and try again."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "A connection with this name already exists."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "A connection with this provider ID already exists."
 msgstr ""
 
 #: src/components/device-approval.tsx
 msgid "A device wants to sign in to your account as the Thunderbolt CLI. Only approve if you just started this from your own terminal."
 msgstr "Ein Gerät möchte sich als Thunderbolt CLI in Ihrem Konto anmelden. Genehmigen Sie dies nur, wenn Sie es gerade selbst in Ihrem Terminal gestartet haben."
 
+#: admin/api/error-messages.ts
+msgid "A group with this name already exists."
+msgstr ""
+
+#: admin/screens/members/email-code-sign-in.tsx
+#~ msgid "A local admin signs in here when the identity provider is down. With one identity provider the sign-in screen goes straight to it, so keep this address somewhere that doesn't depend on it."
+#~ msgstr ""
+
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "A new 24-word recovery phrase will be generated and shown to you once. Your current phrase will stop working immediately. Your synced data is unaffected. To continue, we’ll email you a verification code."
 msgstr ""
+
+#: admin/screens/identity-providers/scim-section.tsx
+#~ msgid "A new credential leaves the current ones working until you revoke them, so you can switch your identity provider over without a gap."
+#~ msgstr ""
 
 #: src/components/pending-device-modal.tsx
 msgid "A new device is requesting access to your encrypted data."
@@ -311,6 +454,10 @@ msgstr "Eine neue Version ist verfügbar. Zum Installieren die Update-Aufforderu
 msgid "A URL, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare NodeId works only if the peer is discoverable)."
 msgstr "Eine URL – oder fügen Sie ein iroh-Ticket Ihrer Bridge ein, um eine Peer-to-Peer-Verbindung herzustellen (eine reine NodeId funktioniert nur, wenn der Peer auffindbar ist)."
 
+#: admin/api/error-messages.ts
+msgid "A verification record was found, but its value doesn't match."
+msgstr ""
+
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "A WebSocket endpoint, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare NodeId works only if the peer is discoverable)."
 msgstr "Ein WebSocket-Endpunkt – oder fügen Sie ein iroh-Ticket Ihrer Bridge ein, um eine Peer-to-Peer-Verbindung herzustellen (eine reine NodeId funktioniert nur, wenn der Peer auffindbar ist)."
@@ -320,9 +467,17 @@ msgstr "Ein WebSocket-Endpunkt – oder fügen Sie ein iroh-Ticket Ihrer Bridge 
 msgid "About"
 msgstr "Info"
 
+#: admin/screens/invitations/invitations-page.tsx
+#~ msgid "Accepted"
+#~ msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Accepts connections from your devices"
 msgstr "Akzeptiert Verbindungen von Ihren Geräten"
+
+#: admin/screens/members/member-access-section.tsx
+msgid "Access"
+msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Access token required"
@@ -332,6 +487,10 @@ msgstr "Zugriffstoken erforderlich"
 msgid "Account"
 msgstr "Konto"
 
+#: admin/api/audit-action-labels.ts
+msgid "Account deleted"
+msgstr ""
+
 #: src/components/account-deleted.tsx
 msgid "Account Deleted"
 msgstr "Konto gelöscht"
@@ -340,6 +499,7 @@ msgstr "Konto gelöscht"
 msgid "Account menu"
 msgstr "Kontomenü"
 
+#: admin/screens/audit-log/audit-log-filters.tsx
 #: src/components/chat/permission-dialog.tsx
 msgid "Action"
 msgstr "Aktion"
@@ -348,10 +508,16 @@ msgstr "Aktion"
 msgid "Action needed"
 msgstr ""
 
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Action: {actionName}"
+msgstr ""
+
 #: src/search/palette/search-palette.tsx
 msgid "Actions"
 msgstr "Aktionen"
 
+#: admin/screens/identity-providers/scim-credential-list.tsx
+#: admin/screens/members/member-labels.ts
 #: src/settings/devices.tsx
 msgid "Active"
 msgstr ""
@@ -364,6 +530,17 @@ msgstr ""
 msgid "Activity"
 msgstr "Aktivität"
 
+#: admin/screens/audit-log/audit-event-panel.tsx
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Actor"
+msgstr ""
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Actor: <0/>"
+msgstr ""
+
+#: admin/screens/domains/add-domain-editor.tsx
+#: admin/screens/identity-providers/sso-connection-form.tsx
 #: src/settings/encryption/passkey-section.tsx
 msgid "Add"
 msgstr ""
@@ -378,6 +555,10 @@ msgstr "Fügen Sie <0>~/.local/bin</0> zu Ihrem PATH hinzu und starten Sie dann 
 
 #: src/settings/search/index.tsx
 #~ msgid "Add a connection"
+#~ msgstr ""
+
+#: admin/screens/domains/domains-page.tsx
+#~ msgid "Add a domain, verify it, then let people on it join or hand it to an identity provider."
 #~ msgstr ""
 
 #: src/components/onboarding/onboarding-model-step.tsx
@@ -399,6 +580,10 @@ msgstr ""
 #: src/components/otari-connection/otari-connection.tsx
 msgid "Add a provider in your Otari workspace, then refresh to choose a model."
 msgstr ""
+
+#: admin/screens/identity-providers/new-connection-editor.tsx
+#~ msgid "Add a sign-in method"
+#~ msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Add a skill"
@@ -425,6 +610,18 @@ msgstr ""
 msgid "Add connection"
 msgstr ""
 
+#: admin/screens/domains/add-domain-editor.tsx
+#~ msgid "Add domain"
+#~ msgstr ""
+
+#: admin/screens/domains/add-domain-editor.tsx
+msgid "Add Domain"
+msgstr ""
+
+#: admin/screens/domains/add-domain-editor.tsx
+#~ msgid "Add each subdomain on its own: a domain never covers its subdomains."
+#~ msgstr ""
+
 #: src/settings/connections/index.tsx
 msgid "Add failed"
 msgstr "Hinzufügen fehlgeschlagen"
@@ -436,6 +633,14 @@ msgstr "Anweisungen zum Chat hinzufügen"
 #: src/settings/connections/index.tsx
 msgid "Add MCP Server"
 msgstr "MCP-Server hinzufügen"
+
+#: admin/screens/groups/group-form-panel.tsx
+msgid "Add member"
+msgstr ""
+
+#: admin/screens/groups/group-panel.tsx
+#~ msgid "Add members"
+#~ msgstr ""
 
 #: src/components/otari-connection/otari-connection.tsx
 #~ msgid "Add model"
@@ -453,16 +658,45 @@ msgstr "Modell hinzufügen"
 msgid "Add models"
 msgstr ""
 
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "Add OIDC sign-in"
+msgstr ""
+
 #: src/settings/passkeys.tsx
 #~ msgid "Add passkey"
 #~ msgstr ""
+
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "Add SAML sign-in"
+msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Add Server"
 msgstr "Server hinzufügen"
 
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+#~ msgid "Add sign-in method"
+#~ msgstr ""
+
+#: admin/screens/identity-providers/new-connection-editor.tsx
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+#~ msgid "Add Sign-in Method"
+#~ msgstr ""
+
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#~ msgid "Add single sign-on"
+#~ msgstr ""
+
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "Add summary instructions (optional)"
+msgstr ""
+
+#: admin/screens/domains/domain-record-section.tsx
+#~ msgid "Add this TXT record at your DNS provider, then verify the domain."
+#~ msgstr ""
+
+#: admin/screens/domains/domain-record-section.tsx
+msgid "Add this TXT record at your DNS provider."
 msgstr ""
 
 #: src/components/chat/chat-add-menu.tsx
@@ -482,6 +716,10 @@ msgstr ""
 #~ msgid "Add your first server"
 #~ msgstr "Ersten Server hinzufügen"
 
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+msgid "Add your first sign-in method"
+msgstr ""
+
 #: src/tasks/index.tsx
 msgid "Add Your First Task"
 msgstr "Erste Aufgabe hinzufügen"
@@ -495,12 +733,56 @@ msgstr ""
 #~ msgid "Added {0}"
 #~ msgstr ""
 
+#: admin/screens/members/member-labels.ts
+msgid "Added by an admin"
+msgstr ""
+
+#: admin/screens/identity-providers/sso-settings-section.tsx
+#~ msgid "Adding sign-in makes this connection SSO-only: the people it provisions can no longer sign in with an email code, and a person needs a SCIM record before their first sign-in."
+#~ msgstr ""
+
+#: admin/screens/domains/add-domain-editor.tsx
+#: admin/screens/identity-providers/sso-connection-form.tsx
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/add-provider-models.tsx
 msgid "Adding…"
 msgstr "Wird hinzugefügt…"
+
+#: admin/screens/groups/groups-page.tsx
+#: admin/screens/members/member-badges.tsx
+#: admin/screens/members/member-form-panel.tsx
+#: admin/screens/members/member-roles-section.tsx
+#: src/layout/sidebar/nav-toggle.tsx
+msgid "Admin"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Admin access denied"
+msgstr ""
+
+#: admin/screens/members/member-rules.ts
+msgid "Admin comes from a group. Change the group to take it away."
+msgstr ""
+
+#: admin/components/role-mapping-control.tsx
+#: admin/screens/groups/group-form-panel.tsx
+#: admin/screens/groups/group-view-panel.tsx
+msgid "Admin group"
+msgstr ""
+
+#: admin/components/role-mapping-control.tsx
+#~ msgid "Admin role"
+#~ msgstr ""
+
+#: admin/screens/audit-log/audit-filter-options.ts
+msgid "Administration"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Admission policy updated"
+msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Advanced (JSON)"
@@ -533,6 +815,10 @@ msgstr "KI-Nutzungslimit erreicht"
 msgid "All agents"
 msgstr "Alle Agenten"
 
+#: admin/screens/link-reviews/link-reviews-page.tsx
+#~ msgid "All identity providers"
+#~ msgstr ""
+
 #: src/layout/sidebar/project-drop-list.tsx
 #: src/projects/index.tsx
 #~ msgid "All projects"
@@ -552,6 +838,10 @@ msgstr ""
 
 #: src/lib/openrouter-auth.ts
 #~ msgid "Allow popups to connect to OpenRouter, then try again."
+#~ msgstr ""
+
+#: admin/screens/members/member-form-panel.tsx
+#~ msgid "Already an admin through a group."
 #~ msgstr ""
 
 #: src/settings/connections/provider-connected-state.tsx
@@ -598,6 +888,18 @@ msgstr ""
 msgid "An encrypted agent connection alone does not verify the agent or its model provider."
 msgstr ""
 
+#: src/lib/sso-error-messages.ts
+msgid "An existing {appName} account already uses this email. Your administrator needs to approve linking it to this sign-in."
+msgstr "Ein bestehendes {appName}-Konto verwendet bereits diese E-Mail-Adresse. Ihr Administrator muss die Verknüpfung mit dieser Anmeldung genehmigen."
+
+#: admin/api/error-messages.ts
+msgid "An identity provider claims this domain."
+msgstr ""
+
+#: admin/screens/members/invite-panel.tsx
+msgid "An identity provider manages this domain"
+msgstr ""
+
 #: src/lib/openrouter-auth.ts
 #~ msgid "An OpenRouter connection is already in progress."
 #~ msgstr ""
@@ -605,6 +907,10 @@ msgstr ""
 #: src/lib/tool-metadata.ts
 msgid "Analyzing…"
 msgstr "Wird analysiert…"
+
+#: admin/components/audit-event-labels.ts
+msgid "Android"
+msgstr ""
 
 #: src/projects/emoji-catalog.ts
 msgid "Animals & nature"
@@ -614,6 +920,10 @@ msgstr "Tiere & Natur"
 msgid "Anonymous Usage Data"
 msgstr "Anonyme Nutzungsdaten"
 
+#: admin/screens/members/link-review-panel.tsx
+msgid "Another admin has to approve your own link."
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Another device changed the account keys. Refreshing fetches the current key, then the revoke runs again."
 msgstr ""
@@ -621,6 +931,38 @@ msgstr ""
 #: src/widgets/ask/display.tsx
 msgid "Answer"
 msgstr "Antwort"
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Any action"
+msgstr ""
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Any connection"
+msgstr ""
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Any date"
+msgstr ""
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Any outcome"
+msgstr ""
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Any target"
+msgstr ""
+
+#: admin/screens/audit-log/audit-actor-picker.tsx
+msgid "Anyone"
+msgstr ""
+
+#: admin/screens/domains/domain-enrollment-field.tsx
+#~ msgid "Anyone with a verified email on {name} can join as a member."
+#~ msgstr ""
+
+#: admin/screens/domains/domain-enrollment-field.tsx
+msgid "Anyone with a verified email on this domain can join as a member."
+msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "Anything else you'd like to share?"
@@ -669,6 +1011,8 @@ msgstr "App-Version"
 msgid "Approval code"
 msgstr "Genehmigungscode"
 
+#: admin/screens/members/link-review-confirm-dialog.tsx
+#: admin/screens/members/member-actions.tsx
 #: src/components/approve-device/fingerprint-confirmation.tsx
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
@@ -693,6 +1037,11 @@ msgstr "Dieses Gerät genehmigen"
 msgid "Approve this device?"
 msgstr "Dieses Gerät genehmigen?"
 
+#: admin/screens/members/link-review-confirm-dialog.tsx
+#~ msgid "Approve this link?"
+#~ msgstr ""
+
+#: admin/screens/members/link-review-labels.ts
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "Approved"
 msgstr ""
@@ -713,6 +1062,14 @@ msgstr "Sind Sie sicher? Alle von Ihnen vorgenommenen Änderungen gehen verloren
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Area chart"
 msgstr "Flächendiagramm"
+
+#: admin/screens/members/pending-link-reviews.tsx
+#~ msgid "Arrived from an identity provider with the email of an existing account. Approve to link one to that account."
+#~ msgstr ""
+
+#: admin/screens/members/link-review-panel.tsx
+msgid "Arrived through"
+msgstr ""
 
 #: src/components/chat/artifact-message-part.tsx
 msgid "Artifact"
@@ -739,6 +1096,11 @@ msgstr ""
 msgid "Ask me anything…"
 msgstr "Fragen Sie mich etwas…"
 
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "Assertion consumer service URL"
+msgstr ""
+
 #: src/components/context-usage/retained-context-message.tsx
 msgid "Assistant"
 msgstr ""
@@ -746,6 +1108,28 @@ msgstr ""
 #: src/components/sync-enable-warning-dialog.tsx
 msgid "At this time, synced data is not encrypted. Enabling sync will store your data on our servers without encryption. Do you want to continue?"
 msgstr "Synchronisierte Daten sind derzeit nicht verschlüsselt. Wenn Sie die Synchronisierung aktivieren, werden Ihre Daten unverschlüsselt auf unseren Servern gespeichert. Möchten Sie fortfahren?"
+
+#: admin/screens/members/link-review-panel.tsx
+msgid "Attempts"
+msgstr ""
+
+#: admin/admin-sidebar.tsx
+#: admin/screens/audit-log/audit-log-page.tsx
+#~ msgid "Audit log"
+#~ msgstr ""
+
+#: admin/admin-sidebar.tsx
+#: admin/screens/audit-log/audit-log-page.tsx
+msgid "Audit Log"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Audit log exported"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Audit log read in bulk"
+msgstr ""
 
 #: src/components/onboarding/onboarding-model-step.tsx
 #: src/settings/connections/provider-connection-form.tsx
@@ -815,6 +1199,10 @@ msgstr ""
 msgid "Back to App"
 msgstr "Zurück zur App"
 
+#: src/components/sso-sign-in/sso-email-code-page.tsx
+msgid "Back to organization sign-in"
+msgstr "Zurück zur Anmeldung über Ihre Organisation"
+
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Bar chart"
 msgstr "Balkendiagramm"
@@ -827,6 +1215,47 @@ msgstr "Basis-URL"
 msgid "Bearer token or API key"
 msgstr "Bearer-Token oder API-Schlüssel"
 
+#: admin/screens/members/member-actions.tsx
+msgid "Block"
+msgstr ""
+
+#: admin/screens/members/block-member-dialog.tsx
+msgid "Block {memberName}?"
+msgstr ""
+
+#: admin/screens/members/block-member-dialog.tsx
+msgid "Block member"
+msgstr ""
+
+#: admin/screens/members/member-badges.tsx
+msgid "Blocked"
+msgstr ""
+
+#: admin/screens/members/member-labels.ts
+msgid "Blocked by an admin"
+msgstr ""
+
+#: admin/screens/members/member-access-section.tsx
+msgid "Blocked on {blockedOn}"
+msgstr ""
+
+#: admin/screens/members/member-access-section.tsx
+msgid "Blocked on {blockedOn}: {blockReason}"
+msgstr ""
+
+#: admin/screens/members/member-labels.ts
+#: admin/screens/members/member-roles-section.tsx
+msgid "Bootstrap admin"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Bootstrap admin granted"
+msgstr ""
+
+#: admin/screens/members/member-roles-section.tsx
+#~ msgid "Bootstrap admin, from the deployment's settings"
+#~ msgstr ""
+
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Box and whisker chart"
 msgstr "Kastengrafik"
@@ -834,6 +1263,11 @@ msgstr "Kastengrafik"
 #: src/components/search-provider-setup/search-provider-setup.tsx
 msgid "Brave provides search results. Choose Exa, Tavily, or Tinfoil to read full pages."
 msgstr ""
+
+#: admin/admin-sidebar.tsx
+#: admin/screens/break-glass/break-glass-page.tsx
+#~ msgid "Break-glass"
+#~ msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Bridge"
@@ -875,6 +1309,30 @@ msgstr "Wenn Sie fortfahren, stimmen Sie unseren <0>Nutzungsbedingungen</0> und 
 #: src/widgets/connect-integration/widget.tsx
 msgid "Calendar"
 msgstr "Kalender"
+
+#: admin/screens/identity-providers/sso-settings-section.tsx
+#~ msgid "Can change only until someone signs in through this connection."
+#~ msgstr ""
+
+#: admin/screens/members/member-labels.ts
+msgid "Can only sign in through single sign-on"
+msgstr ""
+
+#: admin/screens/members/member-access-section.tsx
+msgid "Can sign in"
+msgstr ""
+
+#: admin/screens/members/member-admin-sign-in.tsx
+msgid "Can sign in without your identity provider"
+msgstr ""
+
+#: admin/screens/identity-providers/new-scim-connection-form.tsx
+#~ msgid "Can't be renamed later."
+#~ msgstr ""
+
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#~ msgid "Can't change later."
+#~ msgstr ""
 
 #: src/components/app-error-screen.tsx
 #: src/components/approve-device/approve-device-dialog.tsx
@@ -941,6 +1399,10 @@ msgstr ""
 msgid "Change your recovery phrase?"
 msgstr ""
 
+#: admin/screens/audit-log/audit-event-panel.tsx
+msgid "Changes"
+msgstr ""
+
 #: src/hooks/use-mcp-server-oauth.ts
 #: src/settings/connections/use-mcp-server-form-controller.ts
 msgid "Changes were saved, but reconnecting failed. Please retry."
@@ -987,6 +1449,10 @@ msgstr ""
 msgid "Chats in a project inherit its instructions."
 msgstr "Chats in einem Projekt übernehmen dessen Anweisungen."
 
+#: admin/screens/domains/domain-verification-section.tsx
+msgid "Check again"
+msgstr ""
+
 #: src/hooks/use-desktop-update.ts
 #: src/settings/app-version-section.tsx
 msgid "Check for updates"
@@ -1011,6 +1477,10 @@ msgstr "Prüfen Sie Ihre Verbindung und öffnen Sie die Datei erneut, oder laden
 #: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "Check your connection and open the file again, or download it to open it in a word processor."
 msgstr "Prüfen Sie Ihre Verbindung und öffnen Sie die Datei erneut, oder laden Sie sie herunter, um sie in einer Textverarbeitung zu öffnen."
+
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "Check your connection and try again."
+msgstr "Prüfen Sie Ihre Verbindung und versuchen Sie es erneut."
 
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/waitlist/waitlist-content.tsx
@@ -1046,6 +1516,7 @@ msgstr "Ihr Browser wird geprüft…"
 msgid "Checking your session."
 msgstr "Ihre Sitzung wird geprüft."
 
+#: admin/screens/domains/domain-verification-section.tsx
 #: src/components/sync-setup/approval-waiting-step.tsx
 #: src/hooks/use-desktop-update.ts
 msgid "Checking…"
@@ -1057,6 +1528,10 @@ msgstr ""
 
 #: src/components/otari-connection/otari-connection.tsx
 msgid "Choose a model"
+msgstr ""
+
+#: src/components/ui/calendar.tsx
+msgid "Choose a month"
 msgstr ""
 
 #: src/components/search-provider-setup/search-provider-setup.tsx
@@ -1079,6 +1554,10 @@ msgstr "Symbol auswählen"
 msgid "Choose an icon for {label}"
 msgstr "Symbol für {label} auswählen"
 
+#: admin/screens/domains/domain-claim-section.tsx
+msgid "Choose an identity provider"
+msgstr ""
+
 #: src/components/ui/searchable-menu/searchable-menu.tsx
 msgid "Choose an option"
 msgstr "Option auswählen"
@@ -1099,6 +1578,14 @@ msgstr ""
 #: src/settings/models/add-provider-models.tsx
 msgid "Choose from available models"
 msgstr ""
+
+#: admin/screens/members/member-form-panel.tsx
+msgid "Choose groups"
+msgstr ""
+
+#: src/components/sso-sign-in/sso-connection-list.tsx
+msgid "Choose how to sign in"
+msgstr "Anmeldemethode wählen"
 
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Choose how you use Thunderbolt."
@@ -1144,8 +1631,36 @@ msgstr "Wählen Sie Ihren E-Mail-Anbieter, um auf Ihre E-Mails und Ihren Kalende
 msgid "Choose your setup"
 msgstr ""
 
+#: admin/components/audit-event-labels.ts
+msgid "Chrome"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "City or region"
+msgstr ""
+
+#: admin/screens/domains/domain-claim-section.tsx
+msgid "Claim"
+msgstr ""
+
+#: admin/screens/domains/domain-status-badge.tsx
+msgid "Claimed"
+msgstr ""
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+msgid "Claimed by {name}"
+msgstr ""
+
+#: admin/screens/domains/domain-enrollment-field.tsx
+msgid "Claimed by {name}. Release the claim to open enrollment."
+msgstr ""
+
+#: admin/screens/domains/domain-claim-section.tsx
+msgid "Claimed by <0>{name}</0>"
+msgstr ""
+
+#: admin/screens/domains/domain-claim-section.tsx
+msgid "Claiming turns enrollment off. Releasing the claim doesn't turn it back on."
 msgstr ""
 
 #: src/layout/sidebar/chat-actions.tsx
@@ -1157,6 +1672,14 @@ msgstr ""
 #: src/components/app-error-screen.tsx
 msgid "Clear Database"
 msgstr "Datenbank löschen"
+
+#: admin/components/date-field.tsx
+msgid "Clear date"
+msgstr ""
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Clear filters"
+msgstr ""
 
 #: src/components/app-error-screen.tsx
 msgid "Clear Local Database"
@@ -1188,6 +1711,19 @@ msgstr "Klarer Himmel"
 
 #: src/settings/devices.tsx
 msgid "CLI"
+msgstr ""
+
+#: admin/screens/audit-log/audit-event-panel.tsx
+msgid "Client"
+msgstr ""
+
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "Client ID"
+msgstr ""
+
+#: admin/screens/identity-providers/sso-connection-form.tsx
+msgid "Client secret"
 msgstr ""
 
 #: src/components/sync-setup/recovery-key-display-step.tsx
@@ -1225,6 +1761,10 @@ msgstr "Sortierung schließen"
 #: src/components/provider-authorization-result.tsx
 #~ msgid "Close this window"
 #~ msgstr ""
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+msgid "Closed to enrollment"
+msgstr ""
 
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Cloud"
@@ -1408,6 +1948,14 @@ msgstr "Verbinden Sie einen Remote-Agenten, der das Agent Client Protocol sprich
 msgid "Connect a search provider to let your agents search the web."
 msgstr ""
 
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+#~ msgid "Connect an identity provider to sign people in, or add a domain your organization owns."
+#~ msgstr ""
+
+#: admin/screens/identity-providers/new-connection-editor.tsx
+#~ msgid "Connect an identity provider, or add a domain your organization owns."
+#~ msgstr ""
+
 #: src/components/otari-connection/otari-connection.tsx
 #~ msgid "Connect another account"
 #~ msgstr ""
@@ -1507,6 +2055,14 @@ msgstr ""
 msgid "Connect your AI"
 msgstr ""
 
+#: admin/screens/identity-providers/identity-providers-page.tsx
+#~ msgid "Connect your identity provider to sign people in and keep accounts in step with it."
+#~ msgstr ""
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+#~ msgid "Connect your identity providers to sign people in and keep accounts in step, and verify the domains your organization owns."
+#~ msgstr ""
+
 #: src/settings/connections/connections-list.tsx
 #~ msgid "Connect your own MCP servers to give agents more tools."
 #~ msgstr "Verbinden Sie Ihre eigenen MCP-Server, um Agenten mehr Tools zu geben."
@@ -1587,6 +2143,9 @@ msgstr "Verbindung zum neuen Gerät wird hergestellt…"
 msgid "Connecting…"
 msgstr "Verbindung wird hergestellt…"
 
+#: admin/screens/audit-log/audit-event-panel.tsx
+#: admin/screens/audit-log/audit-log-filters.tsx
+#: admin/screens/identity-providers/connection-editor.tsx
 #: src/components/settings/agents/agent-detail.tsx
 #: src/settings/models/add-provider-models.tsx
 #: src/settings/models/model-detail.tsx
@@ -1599,6 +2158,10 @@ msgstr "Verbindung"
 
 #: src/lib/otari-browser-auth.ts
 msgid "Connection cancelled. You can connect to Otari whenever you're ready."
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Connection created"
 msgstr ""
 
 #: src/components/chat/attestation/attestation-details.tsx
@@ -1635,6 +2198,18 @@ msgstr ""
 msgid "Connection problem. Check your internet and try again."
 msgstr "Verbindungsproblem. Prüfen Sie Ihre Internetverbindung und versuchen Sie es erneut."
 
+#: admin/api/audit-action-labels.ts
+msgid "Connection retired"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Connection retiring"
+msgstr ""
+
+#: admin/screens/identity-providers/connection-editor.tsx
+msgid "Connection sections"
+msgstr ""
+
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Connection successful!"
@@ -1652,6 +2227,10 @@ msgstr ""
 msgid "Connection unavailable on this device."
 msgstr ""
 
+#: admin/api/audit-action-labels.ts
+msgid "Connection updated"
+msgstr ""
+
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "Connection verified"
 msgstr ""
@@ -1660,6 +2239,11 @@ msgstr ""
 msgid "Connection Verified"
 msgstr ""
 
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Connection: {connectionLabel}"
+msgstr ""
+
+#: admin/screens/audit-log/audit-filter-options.ts
 #: src/components/chat/chat-add-menu.tsx
 #: src/components/settings/agents/agent-detail.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
@@ -1698,6 +2282,7 @@ msgid "Context Window Exceeded"
 msgstr "Kontextfenster überschritten"
 
 #: src/components/device-approval.tsx
+#: src/components/invite-accept/invite-accept-page.tsx
 #: src/components/magic-link-verify.tsx
 #: src/components/onboarding/onboarding-action-buttons.tsx
 #: src/components/onboarding/onboarding-dialog.tsx
@@ -1705,6 +2290,7 @@ msgstr "Kontextfenster überschritten"
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/components/sign-in/sign-in-success-step.tsx
+#: src/components/sso-sign-in/sso-email-step.tsx
 #: src/components/sync-setup/passkey-enroll-step.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/settings/connections/connection-setup-footer.tsx
@@ -1718,7 +2304,7 @@ msgid "Continue in your Thunderbolt window"
 msgstr ""
 
 #: src/components/sso-error.tsx
-#: src/components/sso-redirect.tsx
+#: src/components/sso-sign-in/sso-redirect.tsx
 msgid "Continue locally"
 msgstr ""
 
@@ -1751,6 +2337,11 @@ msgstr "Kopieren"
 msgid "Copy allow command"
 msgstr "Freigabebefehl kopieren"
 
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "Copy assertion consumer service URL"
+msgstr ""
+
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Copy bridge target"
 msgstr "Bridge-Ziel kopieren"
@@ -1758,6 +2349,10 @@ msgstr "Bridge-Ziel kopieren"
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Copy build command"
 msgstr "Build-Befehl kopieren"
+
+#: admin/screens/identity-providers/scim-section.tsx
+msgid "Copy expiry date"
+msgstr ""
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Copy fingerprint"
@@ -1767,6 +2362,14 @@ msgstr "Fingerabdruck kopieren"
 msgid "Copy HTML"
 msgstr "HTML kopieren"
 
+#: admin/components/copy-once-secret.tsx
+msgid "Copy it now. It won't be shown again."
+msgstr ""
+
+#: admin/components/copy-once-secret.tsx
+#~ msgid "Copy it now. It's shown only once and can't be retrieved later."
+#~ msgstr ""
+
 #: src/components/chat/copy-message-button.tsx
 msgid "Copy message"
 msgstr "Nachricht kopieren"
@@ -1774,6 +2377,35 @@ msgstr "Nachricht kopieren"
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Copy PATH command"
 msgstr "PATH-Befehl kopieren"
+
+#: admin/screens/domains/domain-record-section.tsx
+msgid "Copy record name"
+msgstr ""
+
+#: admin/screens/domains/domain-record-section.tsx
+msgid "Copy record value"
+msgstr ""
+
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "Copy redirect URI"
+msgstr ""
+
+#: admin/screens/identity-providers/scim-section.tsx
+msgid "Copy SCIM base URL"
+msgstr ""
+
+#: admin/screens/identity-providers/scim-section.tsx
+msgid "Copy SCIM token"
+msgstr ""
+
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "Copy service provider metadata URL"
+msgstr ""
+
+#: admin/screens/members/email-code-sign-in.tsx
+msgid "Copy the sign-in address"
+msgstr ""
 
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Copy to clipboard"
@@ -2047,6 +2679,10 @@ msgstr "Die Emoji-Liste konnte nicht geladen werden. Schließen Sie die Auswahl 
 msgid "Couldn't load this app's pairing identity: {error}"
 msgstr "Die Kopplungsidentität dieser App konnte nicht geladen werden: {error}"
 
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "Couldn't load this invitation"
+msgstr "Diese Einladung konnte nicht geladen werden"
+
 #: src/mini-apps/mini-app-page.tsx
 msgid "Couldn't load your apps. Check your connection and reload."
 msgstr ""
@@ -2054,6 +2690,10 @@ msgstr ""
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't pin {name}."
 msgstr "{name} konnte nicht angepinnt werden."
+
+#: admin/api/error-messages.ts
+msgid "Couldn't reach the server. Check your connection and try again."
+msgstr ""
 
 #: src/components/onboarding/use-onboarding-server-state.ts
 msgid "Couldn't reach Thunderbolt Cloud. Try again, or set up without a server for now."
@@ -2139,15 +2779,35 @@ msgstr "Die sichere KI-Verbindung konnte nicht verifiziert werden. Das ist meist
 msgid "Couldn't verify this device's approval. Select Check now to try again, or choose another option below."
 msgstr "Die Genehmigung dieses Geräts konnte nicht überprüft werden. Wählen Sie „Jetzt prüfen“, um es erneut zu versuchen, oder wählen Sie unten eine andere Option."
 
+#: admin/screens/groups/group-form-panel.tsx
+#: admin/screens/identity-providers/new-scim-connection-form.tsx
+#: admin/screens/identity-providers/sso-connection-form.tsx
 #: src/projects/project-create-form.tsx
 #: src/search/palette/search-palette.tsx
 #: src/skills/skill-form.tsx
 msgid "Create"
 msgstr "Erstellen"
 
+#: admin/screens/groups/groups-page.tsx
+#~ msgid "Create a group to manage several members at once."
+#~ msgstr ""
+
 #: src/search/commands/create-commands.ts
 msgid "Create Agent"
 msgstr "Agent erstellen"
+
+#: admin/screens/identity-providers/new-scim-connection-form.tsx
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#~ msgid "Create connection"
+#~ msgstr ""
+
+#: admin/screens/groups/group-panel.tsx
+#~ msgid "Create group"
+#~ msgstr ""
+
+#: admin/screens/groups/group-form-panel.tsx
+msgid "Create Group"
+msgstr ""
 
 #: src/search/commands/create-commands.ts
 msgid "Create Model"
@@ -2172,6 +2832,10 @@ msgstr "Projekt erstellen"
 msgid "Create Skill"
 msgstr "Skill erstellen"
 
+#: admin/screens/groups/groups-page.tsx
+msgid "Create your first group"
+msgstr ""
+
 #: src/projects/index.tsx
 #~ msgid "Create your first project"
 #~ msgstr "Erstellen Sie Ihr erstes Projekt"
@@ -2180,10 +2844,17 @@ msgstr "Skill erstellen"
 msgid "Create your first skill"
 msgstr "Erstellen Sie Ihren ersten Skill"
 
+#: admin/screens/identity-providers/scim-credential-list.tsx
+msgid "Created {created}, expires {expires}"
+msgstr ""
+
 #: src/lib/tool-metadata.ts
 msgid "Creating file…"
 msgstr "Datei wird erstellt…"
 
+#: admin/screens/groups/group-form-panel.tsx
+#: admin/screens/identity-providers/new-scim-connection-form.tsx
+#: admin/screens/identity-providers/sso-connection-form.tsx
 #: src/lib/tool-metadata.ts
 #: src/projects/project-create-form.tsx
 #: src/skills/skill-form.tsx
@@ -2194,6 +2865,23 @@ msgstr "Wird erstellt…"
 msgid "Credential (optional)"
 msgstr "Anmeldedaten (optional)"
 
+#: admin/screens/identity-providers/scim-credential-list.tsx
+msgid "Credential {id}"
+msgstr ""
+
+#. placeholder {0}: event.credentialId
+#: admin/screens/audit-log/audit-event-panel.tsx
+msgid "Credential <0>{0}</0>"
+msgstr ""
+
+#: admin/screens/identity-providers/expiry-field.tsx
+#~ msgid "Credential expires on"
+#~ msgstr ""
+
+#: admin/screens/identity-providers/scim-section.tsx
+msgid "Credentials"
+msgstr ""
+
 #: src/settings/connections/provider-connection-form.tsx
 msgid "Credentials stay on this device."
 msgstr ""
@@ -2201,6 +2889,10 @@ msgstr ""
 #: src/settings/preferences.tsx
 msgid "Currency"
 msgstr "Währung"
+
+#: admin/screens/identity-providers/scim-section.tsx
+msgid "Current credentials keep working until you revoke them."
+msgstr ""
 
 #: src/settings/app-version-section.tsx
 msgid "Current version"
@@ -2259,6 +2951,10 @@ msgstr "Daten"
 msgid "Debug transcript sharing is turned off on this server."
 msgstr ""
 
+#: admin/screens/members/link-review-panel.tsx
+#~ msgid "Decided {decidedAt}"
+#~ msgstr ""
+
 #: src/components/chat/effort-selector/use-effort-selector-state.ts
 #~ msgid "Default"
 #~ msgstr ""
@@ -2267,6 +2963,12 @@ msgstr ""
 msgid "Default setting"
 msgstr "Standardeinstellung"
 
+#: admin/screens/identity-providers/expiry-field.tsx
+#~ msgid "Defaults to one year."
+#~ msgstr ""
+
+#: admin/screens/groups/group-actions.tsx
+#: admin/screens/members/member-actions.tsx
 #: src/components/chat/permission-dialog.tsx
 #: src/components/settings/detail-actions-menu.tsx
 #: src/components/ui/chat-nav-button.tsx
@@ -2281,6 +2983,14 @@ msgstr "Löschen"
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Delete {agentName}?"
 msgstr "{agentName} löschen?"
+
+#: admin/screens/members/members-page.tsx
+msgid "Delete {removingName} permanently?"
+msgstr ""
+
+#: admin/screens/groups/groups-page.tsx
+msgid "Delete {removingName}?"
+msgstr ""
 
 #: src/skills/delete-skill-dialog.tsx
 msgid "Delete {skillName}?"
@@ -2342,6 +3052,14 @@ msgstr ""
 msgid "Delete data from device"
 msgstr "Daten vom Gerät löschen"
 
+#: admin/screens/groups/groups-page.tsx
+msgid "Delete group"
+msgstr ""
+
+#: admin/screens/members/members-page.tsx
+msgid "Delete member"
+msgstr ""
+
 #: src/settings/models/index.tsx
 msgid "Delete Model"
 msgstr "Modell löschen"
@@ -2349,6 +3067,10 @@ msgstr "Modell löschen"
 #: src/settings/account/delete-account-section.tsx
 msgid "Delete My Account"
 msgstr "Mein Konto löschen"
+
+#: admin/screens/members/member-panel.tsx
+#~ msgid "Delete permanently"
+#~ msgstr ""
 
 #: src/projects/project-delete-dialog.tsx
 msgid "Delete project"
@@ -2371,9 +3093,17 @@ msgstr "Thread löschen?"
 msgid "Delete this chat?"
 msgstr "Diesen Chat löschen?"
 
+#: admin/screens/groups/groups-page.tsx
+msgid "Delete this group?"
+msgstr ""
+
 #: src/settings/connections/index.tsx
 msgid "Delete this MCP server and its saved credentials?"
 msgstr "Diesen MCP-Server und seine gespeicherten Anmeldedaten löschen?"
+
+#: admin/screens/members/members-page.tsx
+#~ msgid "Delete this member permanently?"
+#~ msgstr ""
 
 #: src/settings/models/index.tsx
 msgid "Delete this model from your configured models?"
@@ -2391,12 +3121,21 @@ msgstr "Konto löschen"
 msgid "Delete your account?"
 msgstr "Ihr Konto löschen?"
 
+#: admin/screens/members/member-panel.tsx
+#~ msgid "Deletes their account and all their data. Use this to handle an erasure request. It can't be undone."
+#~ msgstr ""
+
 #: src/components/logout-modal.tsx
 #: src/settings/account/delete-account-section.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/models/index.tsx
 msgid "Deleting…"
 msgstr "Wird gelöscht…"
+
+#: admin/components/audit-event-labels.ts
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Denied"
+msgstr ""
 
 #: src/widgets/weather-forecast/lib.ts
 msgid "Dense drizzle"
@@ -2435,6 +3174,8 @@ msgstr "Wird abgelehnt…"
 msgid "Depositing rime fog"
 msgstr "Reifnebel"
 
+#: admin/screens/groups/group-form-panel.tsx
+#: admin/screens/groups/group-view-panel.tsx
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/components/settings/agents/agent-detail.tsx
 #: src/skills/skill-detail.tsx
@@ -2446,10 +3187,30 @@ msgstr "Beschreibung"
 msgid "Description (optional)"
 msgstr "Beschreibung (optional)"
 
+#: admin/screens/members/member-sources-section.tsx
+msgid "Detach"
+msgstr ""
+
+#: admin/screens/members/member-sources-section.tsx
+msgid "Detach from {connectionName}?"
+msgstr ""
+
+#: admin/screens/members/member-sources-section.tsx
+msgid "Detach from {sourceConnectionName}"
+msgstr ""
+
+#: admin/screens/audit-log/audit-event-panel.tsx
+msgid "Details"
+msgstr ""
+
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
 msgid "Dev Settings"
 msgstr "Entwicklereinstellungen"
+
+#: admin/api/audit-action-labels.ts
+msgid "Device"
+msgstr ""
 
 #: src/components/device-revoked.tsx
 msgid "Device access revoked"
@@ -2546,6 +3307,11 @@ msgstr "Deaktivierte Agenten erscheinen nicht in der Agentenauswahl im Chat."
 msgid "Discard"
 msgstr "Verwerfen"
 
+#: admin/components/resource-page-dialogs.tsx
+#: admin/screens/identity-providers/connection-editor.tsx
+#~ msgid "Discard unsaved changes?"
+#~ msgstr ""
+
 #: src/components/provider-connection-button.tsx
 #: src/components/search-provider-setup/search-provider-setup.tsx
 #: src/settings/connections/integration-detail.tsx
@@ -2581,6 +3347,15 @@ msgstr "Getrennt"
 msgid "Disconnecting…"
 msgstr ""
 
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "Discovery URL"
+msgstr ""
+
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#~ msgid "Discovery URL (optional)"
+#~ msgstr ""
+
 #: src/components/chat/composer-alert.tsx
 #: src/components/download-app-banner-mobile.tsx
 #: src/components/recovery-continuity/recovery-continuity-banner.tsx
@@ -2605,14 +3380,66 @@ msgstr "Entfernung"
 msgid "Distance unit"
 msgstr "Entfernungseinheit"
 
+#: admin/screens/domains/domain-record-section.tsx
+msgid "DNS record"
+msgstr ""
+
 #: src/widgets/connect-integration/widget.tsx
 msgid "Do not ask again"
 msgstr "Nicht mehr fragen"
+
+#: admin/api/audit-action-labels.ts
+#: admin/screens/domains/add-domain-editor.tsx
+#: admin/screens/identity-providers/new-connection-editor.tsx
+msgid "Domain"
+msgstr ""
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+#~ msgid "Domain · Closed to enrollment"
+#~ msgstr ""
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+#~ msgid "Domain · Open to enrollment"
+#~ msgstr ""
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+#~ msgid "Domain · Signs people in through {name}"
+#~ msgstr ""
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+#~ msgid "Domain · Waiting for verification"
+#~ msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Domain added"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Domain claimed"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Domain released"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Domain removed"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Domain verified"
+msgstr ""
+
+#: admin/admin-sidebar.tsx
+#: admin/screens/domains/domains-page.tsx
+#~ msgid "Domains"
+#~ msgstr ""
 
 #: src/components/onboarding/onboarding-celebration-step.tsx
 msgid "Donate anonymous usage data"
 msgstr ""
 
+#: admin/components/copy-once-secret.tsx
 #: src/components/device-approval.tsx
 #: src/components/sync-setup/recovery-key-display-step.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
@@ -2699,10 +3526,21 @@ msgstr "z. B. gpt-4-turbo-preview"
 msgid "e.g., llama3.3"
 msgstr ""
 
-#: src/components/sign-in/sign-in-email-step.tsx
-msgid "Early Access Login"
-msgstr "Anmeldung für den Early Access"
+#: admin/screens/identity-providers/scim-section.tsx
+msgid "Each person needs a SCIM record before their first sign-in."
+msgstr ""
 
+#: src/components/sign-in/sign-in-email-step.tsx
+#~ msgid "Early Access Login"
+#~ msgstr "Anmeldung für den Early Access"
+
+#: admin/components/audit-event-labels.ts
+msgid "Edge"
+msgstr ""
+
+#: admin/screens/groups/group-actions.tsx
+#: admin/screens/members/member-actions.tsx
+#: admin/screens/sign-in-methods/sign-in-method-actions.tsx
 #: src/components/settings/detail-actions-menu.tsx
 #: src/components/settings/edit-delete-context-menu.tsx
 #: src/projects/project-action-menu-items.tsx
@@ -2711,13 +3549,37 @@ msgstr "Anmeldung für den Early Access"
 msgid "Edit"
 msgstr "Bearbeiten"
 
+#: admin/screens/identity-providers/connection-editor.tsx
+#~ msgid "Edit connection"
+#~ msgstr ""
+
+#: admin/screens/identity-providers/connection-editor.tsx
+msgid "Edit Connection"
+msgstr ""
+
 #: src/components/chat/permission-dialog.tsx
 msgid "Edit file"
 msgstr "Datei bearbeiten"
 
+#: admin/screens/groups/group-form-panel.tsx
+#~ msgid "Edit group"
+#~ msgstr ""
+
+#: admin/screens/groups/group-form-panel.tsx
+msgid "Edit Group"
+msgstr ""
+
 #: src/settings/connections/index.tsx
 msgid "Edit MCP Server"
 msgstr "MCP-Server bearbeiten"
+
+#: admin/screens/members/member-form-panel.tsx
+#~ msgid "Edit member"
+#~ msgstr ""
+
+#: admin/screens/members/member-form-panel.tsx
+msgid "Edit Member"
+msgstr ""
 
 #: src/settings/models/index.tsx
 msgid "Edit Model"
@@ -2748,6 +3610,7 @@ msgstr "{fileName} wird bearbeitet…"
 msgid "Editing…"
 msgstr "Wird bearbeitet…"
 
+#: admin/screens/members/invite-panel.tsx
 #: src/components/onboarding/onboarding-auth-step.tsx
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/waitlist/waitlist-content.tsx
@@ -2757,6 +3620,14 @@ msgstr "E-Mail"
 #: src/components/sign-in/sign-in-email-step.tsx
 msgid "Email address"
 msgstr "E-Mail-Adresse"
+
+#: admin/screens/break-glass/break-glass-page.tsx
+#~ msgid "Email-code sign-in"
+#~ msgstr ""
+
+#: admin/screens/members/email-code-sign-in.tsx
+msgid "Email-code sign-in address"
+msgstr ""
 
 #. placeholder {0}: provider.name
 #: src/settings/connections/connections-list.tsx
@@ -2859,6 +3730,14 @@ msgstr ""
 msgid "Endpoint"
 msgstr "Endpunkt"
 
+#: admin/screens/groups/group-form-panel.tsx
+msgid "Engineering"
+msgstr ""
+
+#: admin/screens/domains/domain-enrollment-field.tsx
+msgid "Enrollment"
+msgstr ""
+
 #: src/components/device-approval.tsx
 msgid "Enter a different code"
 msgstr "Anderen Code eingeben"
@@ -2923,8 +3802,40 @@ msgstr "Geben Sie Ihren Namen ein"
 msgid "Enter your verification code"
 msgstr ""
 
+#: src/components/sso-sign-in/sso-email-step.tsx
+msgid "Enter your work email to continue with your organization's sign-in."
+msgstr "Geben Sie Ihre geschäftliche E-Mail-Adresse ein, um mit der Anmeldung Ihrer Organisation fortzufahren."
+
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Enterprise"
+msgstr ""
+
+#: admin/screens/identity-providers/new-connection-editor.tsx
+#~ msgid "Entra ID, Okta, Keycloak and most providers."
+#~ msgstr ""
+
+#: admin/screens/audit-log/audit-event-panel.tsx
+msgid "Event"
+msgstr ""
+
+#: admin/screens/break-glass/break-glass-page.tsx
+#~ msgid "Every admin signs in through an identity provider. If it goes down, no one can administer this organization. Give the admin role to a member no identity provider manages, from <0>Members</0>."
+#~ msgstr ""
+
+#: admin/screens/members/email-code-sign-in.tsx
+#~ msgid "Every admin signs in with an email code from the app's sign-in page."
+#~ msgstr ""
+
+#: admin/screens/groups/group-view-panel.tsx
+#~ msgid "Every member is an admin"
+#~ msgstr ""
+
+#: admin/components/role-mapping-control.tsx
+#~ msgid "Every member of this group is an admin."
+#~ msgstr ""
+
+#: admin/screens/groups/group-form-panel.tsx
+msgid "Everyone in this group is an admin."
 msgstr ""
 
 #: src/settings/search/search-connection-detail.tsx
@@ -2939,6 +3850,14 @@ msgstr ""
 #~ msgid "Exa search through your Tinfoil subscription"
 #~ msgstr ""
 
+#: admin/screens/domains/add-domain-editor.tsx
+msgid "example.com"
+msgstr ""
+
+#: admin/screens/members/link-review-panel.tsx
+msgid "Existing account"
+msgstr ""
+
 #: src/components/onboarding/onboarding-search-step.tsx
 #~ msgid "Existing connection"
 #~ msgstr ""
@@ -2950,6 +3869,37 @@ msgstr "Sprachmodus beenden"
 #: src/components/ui/header.tsx
 msgid "Expand Sidebar"
 msgstr "Seitenleiste ausklappen"
+
+#: admin/screens/identity-providers/scim-credential-list.tsx
+#: admin/screens/members/member-badges.tsx
+msgid "Expired"
+msgstr ""
+
+#: admin/screens/members/invitation-panel.tsx
+#: admin/screens/members/members-page.tsx
+msgid "Expired {expiresOn}"
+msgstr ""
+
+#: admin/screens/members/invitation-panel.tsx
+#~ msgid "Expired on {expiresOn}. Invite them again to send a new link."
+#~ msgstr ""
+
+#: admin/screens/identity-providers/scim-section.tsx
+msgid "Expires"
+msgstr ""
+
+#: admin/screens/members/invitation-panel.tsx
+#: admin/screens/members/members-page.tsx
+msgid "Expires {expiresOn}"
+msgstr ""
+
+#: admin/screens/identity-providers/expiry-field.tsx
+msgid "Expires on"
+msgstr ""
+
+#: admin/screens/identity-providers/expiry-field.tsx
+#~ msgid "Expires on (optional)"
+#~ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Export all of your data as JSON."
@@ -3083,8 +4033,21 @@ msgstr "Der MCP-Server konnte nicht aktualisiert werden"
 msgid "Failed to update the model."
 msgstr ""
 
+#: admin/components/audit-event-labels.ts
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Failure"
+msgstr ""
+
 #: src/settings/connections/new-connection-picker.tsx
 msgid "Filter by type"
+msgstr ""
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Filters"
+msgstr ""
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Filters ({activeCount})"
 msgstr ""
 
 #: src/components/onboarding/onboarding-model-step.tsx
@@ -3099,9 +4062,17 @@ msgstr ""
 msgid "Finish securing after revoking {deviceName}"
 msgstr ""
 
+#: admin/components/audit-event-labels.ts
+msgid "Firefox"
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "First device setup"
 msgstr "Einrichtung des ersten Geräts"
+
+#: admin/screens/members/link-review-panel.tsx
+msgid "First seen"
+msgstr ""
 
 #: src/projects/emoji-catalog.ts
 msgid "Flags"
@@ -3115,9 +4086,37 @@ msgstr "Neblig"
 msgid "Food & drink"
 msgstr "Essen & Trinken"
 
+#: admin/screens/identity-providers/new-connection-editor.tsx
+#~ msgid "For providers that only offer SAML 2.0."
+#~ msgstr ""
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "From"
+msgstr ""
+
 #. placeholder {0}: app.name
 #: src/mini-apps/mini-app-chat-badge.tsx
 msgid "From {0}"
+msgstr ""
+
+#: admin/screens/members/member-roles-section.tsx
+msgid "From {groupName} in {connectionName}"
+msgstr ""
+
+#: admin/screens/members/member-roles-section.tsx
+msgid "From <0>{groupName}</0>"
+msgstr ""
+
+#: admin/screens/members/member-roles-section.tsx
+#~ msgid "From the group {groupName} in {connectionName}. Change it in your identity provider."
+#~ msgstr ""
+
+#: admin/screens/members/member-roles-section.tsx
+#~ msgid "From the group <0>{groupName}</0>. Remove them from the group to take it away."
+#~ msgstr ""
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "From: {fromDate}"
 msgstr ""
 
 #: src/components/xlsx-preview/chart-labels.ts
@@ -3174,6 +4173,10 @@ msgstr "Wetter für {location} wird abgerufen…"
 msgid "Getting weather…"
 msgstr "Wetter wird abgerufen…"
 
+#: admin/components/break-glass-banner.tsx
+msgid "Give admin to someone who signs in by email code."
+msgstr ""
+
 #: src/widgets/connect-integration/widget.tsx
 msgid "Gmail & Calendar"
 msgstr "Gmail & Kalender"
@@ -3211,6 +4214,67 @@ msgstr ""
 #: src/widgets/ask/display.tsx
 msgid "Got it, working on that next."
 msgstr "Verstanden, das mache ich als Nächstes."
+
+#: admin/screens/members/member-roles-section.tsx
+msgid "Granted by an admin"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+#: admin/screens/groups/group-view-panel.tsx
+msgid "Group"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Group created"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Group deleted"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Group member added"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Group member removed"
+msgstr ""
+
+#: admin/screens/groups/groups-page.tsx
+#~ msgid "Group members to manage them together. A group mapped to the admin role makes its members admins."
+#~ msgstr ""
+
+#: admin/screens/groups/group-panel.tsx
+#~ msgid "Group name"
+#~ msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Group role mapping"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Group role mapping added"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Group role mapping removed"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Group updated"
+msgstr ""
+
+#: admin/admin-sidebar.tsx
+#: admin/screens/groups/groups-page.tsx
+#: admin/screens/identity-providers/connection-editor.tsx
+#: admin/screens/members/member-form-panel.tsx
+#: admin/screens/members/member-view-panel.tsx
+msgid "Groups"
+msgstr ""
+
+#: admin/screens/audit-log/audit-filter-options.ts
+msgid "Groups and role mappings"
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Haptic Feedback"
@@ -3281,6 +4345,10 @@ msgstr "Histogramm"
 msgid "How {appName} salutes you"
 msgstr "Wie {appName} Sie anspricht"
 
+#: admin/screens/members/member-sources-section.tsx
+#~ msgid "How they sign in"
+#~ msgstr ""
+
 #: src/settings/connections/provider-connection-form.tsx
 msgid "http://localhost:11434/v1"
 msgstr ""
@@ -3308,6 +4376,56 @@ msgstr "Ich stimme der <0>Datenschutzerklärung</0> und den <1>Nutzungsbedingung
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "I have saved my recovery phrase"
 msgstr "Ich habe meine Wiederherstellungsphrase gespeichert"
+
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#~ msgid "Identifies the provider and can't change later."
+#~ msgstr ""
+
+#: admin/api/audit-action-labels.ts
+#: admin/screens/audit-log/audit-event-panel.tsx
+#: admin/screens/domains/domain-claim-section.tsx
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#: admin/screens/members/link-review-panel.tsx
+msgid "Identity provider"
+msgstr ""
+
+#: admin/screens/domains/domain-claim-section.tsx
+msgid "Identity provider claim"
+msgstr ""
+
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "Identity provider issuer"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Identity provider link created"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Identity provider link detached"
+msgstr ""
+
+#: admin/screens/members/invitation-panel.tsx
+msgid "Identity provider override"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Identity provider override used"
+msgstr ""
+
+#: admin/admin-sidebar.tsx
+#: admin/screens/identity-providers/identity-providers-page.tsx
+#~ msgid "Identity providers"
+#~ msgstr ""
+
+#: admin/screens/members/members-page.tsx
+#~ msgid "IdP override"
+#~ msgstr ""
+
+#: admin/components/break-glass-banner.tsx
+#~ msgid "If the identity provider goes down, nobody can administer this organization. Give admin to someone who signs in by email code."
+#~ msgstr ""
 
 #: src/components/provider-authorization-result.tsx
 #~ msgid "If this window stays open, you can safely close the tab."
@@ -3366,6 +4484,14 @@ msgstr "Importieren Sie Ihre Daten aus einer zuvor exportierten JSON-Datei."
 msgid "Importing…"
 msgstr "Wird importiert…"
 
+#: admin/screens/identity-providers/sso-connection-form.tsx
+msgid "In Entra, map externalId to objectId. The default, mailNickname, won't match."
+msgstr ""
+
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#~ msgid "In Entra's provisioning attribute mappings, map externalId to objectId. Entra sends mailNickname by default, which won't match."
+#~ msgstr ""
+
 #: src/components/telemetry-required-modal.tsx
 msgid "In order to use preview features, we ask that you help us improve the product by sharing telemetry data."
 msgstr "Um Vorschaufunktionen zu nutzen, bitten wir Sie, uns durch das Teilen von Telemetriedaten bei der Verbesserung des Produkts zu helfen."
@@ -3382,6 +4508,10 @@ msgstr ""
 #: src/settings/voice.tsx
 msgid "Include the version prefix (e.g. /v1). Then hit “Load models” to populate the pickers below."
 msgstr "Geben Sie das Versionspräfix mit an (z. B. /v1). Klicken Sie dann auf „Modelle laden“, um die Auswahlfelder unten zu füllen."
+
+#: admin/screens/members/link-review-panel.tsx
+#~ msgid "Incoming identity"
+#~ msgstr ""
 
 #: src/content-view/object-sidebar-content.tsx
 msgid "Input"
@@ -3433,9 +4563,129 @@ msgstr "Ungültige Wiederherstellungsphrase. Prüfen Sie, ob alle Wörter korrek
 msgid "Invalid verification link. Please request a new one."
 msgstr "Ungültiger Bestätigungslink. Bitte fordern Sie einen neuen an."
 
+#: admin/api/audit-action-labels.ts
+#: admin/screens/members/invitation-panel.tsx
+#: admin/screens/members/member-labels.ts
+msgid "Invitation"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Invitation accepted"
+msgstr ""
+
+#: admin/screens/members/members-page.tsx
+#~ msgid "Invitation expired {expiresOn}"
+#~ msgstr ""
+
+#: admin/screens/members/members-page.tsx
+#~ msgid "Invitation expires {expiresOn}"
+#~ msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Invitation revoked"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Invitation sent"
+msgstr ""
+
+#. placeholder {0}: notice.email
+#: admin/screens/members/members-page.tsx
+#~ msgid "Invitation sent to {0}."
+#~ msgstr ""
+
+#: admin/screens/invitations/invitations-page.tsx
+#~ msgid "Invitation sent to {lastInvited}."
+#~ msgstr ""
+
+#: admin/screens/invitations/invitations-page.tsx
+#~ msgid "Invitation status"
+#~ msgstr ""
+
+#. placeholder {0}: notice.email
+#: admin/screens/members/members-page.tsx
+#~ msgid "Invitation to {0} revoked."
+#~ msgstr ""
+
+#: admin/screens/members/members-page.tsx
+#~ msgid "Invitations"
+#~ msgstr ""
+
+#: admin/screens/audit-log/audit-filter-options.ts
+msgid "Invitations and domains"
+msgstr ""
+
+#: admin/screens/members/invite-panel.tsx
+msgid "Invite"
+msgstr ""
+
+#: admin/screens/members/members-page.tsx
+#~ msgid "Invite a member"
+#~ msgstr ""
+
+#: admin/screens/members/invite-panel.tsx
+msgid "Invite anyway"
+msgstr ""
+
+#: admin/screens/members/invite-panel.tsx
+#: admin/screens/members/members-page.tsx
+#~ msgid "Invite member"
+#~ msgstr ""
+
+#: admin/screens/members/invite-panel.tsx
+#: admin/screens/members/members-page.tsx
+msgid "Invite Member"
+msgstr ""
+
+#: admin/screens/invitations/invitations-page.tsx
+#~ msgid "Invite people by email. Each invitation link works once and expires after seven days."
+#~ msgstr ""
+
+#: admin/screens/members/members-page.tsx
+#~ msgid "Invite people by email. They show here until they sign in."
+#~ msgstr ""
+
+#: admin/screens/members/members-page.tsx
+msgid "Invite your first member"
+msgstr ""
+
+#: admin/screens/members/invitation-panel.tsx
+#: admin/screens/members/member-badges.tsx
+msgid "Invited"
+msgstr ""
+
+#: admin/screens/members/members-page.tsx
+msgid "Invited {invitedOn}"
+msgstr ""
+
+#: admin/screens/members/invitation-panel.tsx
+#~ msgid "Invited past the identity provider that claims this domain. The audit log records it."
+#~ msgstr ""
+
+#: admin/screens/members/invite-panel.tsx
+msgid "Inviting…"
+msgstr ""
+
+#: admin/components/audit-event-labels.ts
+msgid "iOS"
+msgstr ""
+
 #: src/components/settings/agents/validate-agent-url.ts
 msgid "iOS requires a secure URL (wss://)"
 msgstr "iOS erfordert eine sichere URL (wss://)"
+
+#: admin/screens/audit-log/audit-event-panel.tsx
+msgid "IP address"
+msgstr ""
+
+#: admin/screens/identity-providers/scim-section.tsx
+msgid "Issue a new credential"
+msgstr ""
+
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "Issuer"
+msgstr ""
 
 #: src/components/xlsx-preview/xlsx-preview.tsx
 msgid "It may be damaged or protected with a password. Download the file to open it in a spreadsheet app."
@@ -3449,8 +4699,17 @@ msgstr "Sie ist möglicherweise beschädigt. Laden Sie die Datei herunter, um si
 msgid "It may be damaged. Download the file to open it in a word processor."
 msgstr "Es ist möglicherweise beschädigt. Laden Sie die Datei herunter, um sie in einer Textverarbeitung zu öffnen."
 
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "It may have expired, been used already, or been withdrawn. Ask for a new invitation."
+msgstr "Sie ist möglicherweise abgelaufen, wurde bereits verwendet oder zurückgezogen. Bitten Sie um eine neue Einladung."
+
 #: src/components/recovery-continuity/recovery-continuity-banner.tsx
 msgid "It was created before a security update. A new phrase lets recovery confirm your keys are yours."
+msgstr ""
+
+#: admin/components/resource-page-dialogs.tsx
+#: admin/screens/identity-providers/connection-editor.tsx
+msgid "It won't be shown again."
 msgstr ""
 
 #: src/components/onboarding/onboarding-celebration-step.tsx
@@ -3461,8 +4720,48 @@ msgstr ""
 msgid "Its instructions are removed. Chats in the project are kept and become ordinary chats."
 msgstr "Die Anweisungen werden entfernt. Chats im Projekt bleiben erhalten und werden zu normalen Chats."
 
+#: admin/screens/members/members-page.tsx
+msgid "Its link stops working."
+msgstr ""
+
+#: admin/screens/members/invitation-panel.tsx
+#~ msgid "Its link stops working. You can invite the address again later."
+#~ msgstr ""
+
+#: admin/screens/groups/groups-page.tsx
+#~ msgid "Its members lose any role the group gives them. Their other access stays the same."
+#~ msgstr ""
+
+#: admin/screens/groups/groups-page.tsx
+msgid "Its members lose any role this group gives them."
+msgstr ""
+
+#: admin/screens/identity-providers/scim-section.tsx
+msgid "Its token stops working at once."
+msgstr ""
+
+#: admin/screens/identity-providers/scim-section.tsx
+#~ msgid "Its tokens stop working at once, and people lose the access it gave them. Cleanup runs in the background. This can't be undone."
+#~ msgstr ""
+
+#: admin/screens/identity-providers/retire-scim-dialog.tsx
+msgid "Its tokens stop working at once, and people lose the access it gave them. This can't be undone."
+msgstr ""
+
+#: admin/screens/identity-providers/sso-settings-section.tsx
+#~ msgid "Its value must be the person's SCIM externalId. It can change only until someone signs in through this connection."
+#~ msgstr ""
+
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#~ msgid "Its value must be the person's SCIM externalId. It decides which account a sign-in belongs to, and it locks once someone signs in."
+#~ msgstr ""
+
 #: src/waitlist/waitlist-content.tsx
 msgid "Join the waitlist or sign in if you already have access."
+msgstr ""
+
+#: admin/screens/members/member-profile-section.tsx
+msgid "Joined"
 msgstr ""
 
 #: src/components/sidebar-footer.tsx
@@ -3497,6 +4796,10 @@ msgstr "Gespeicherte Anmeldedaten behalten"
 msgid "Keep the new device on its approval screen, or tap New code there, then try again."
 msgstr "Lassen Sie das neue Gerät auf seinem Genehmigungsbildschirm oder tippen Sie dort auf „Neuer Code“ und versuchen Sie es dann erneut."
 
+#: admin/screens/members/email-code-sign-in.tsx
+msgid "Keep this address somewhere that doesn't depend on your identity provider."
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Keep your data in sync across all your devices. Everything is encrypted end-to-end. Only your devices can read your data."
 msgstr "Halten Sie Ihre Daten auf allen Geräten synchron. Alles ist Ende-zu-Ende verschlüsselt. Nur Ihre Geräte können Ihre Daten lesen."
@@ -3505,15 +4808,31 @@ msgstr "Halten Sie Ihre Daten auf allen Geräten synchron. Alles ist Ende-zu-End
 msgid "Keep your data synced across devices."
 msgstr "Halten Sie Ihre Daten geräteübergreifend synchron."
 
+#: admin/screens/identity-providers/provider-presets.ts
+msgid "Keycloak"
+msgstr ""
+
 #: src/components/onboarding/onboarding-language-step.tsx
 #: src/settings/preferences.tsx
 #: src/waitlist/waitlist-language-picker.tsx
 msgid "Language"
 msgstr "Sprache"
 
+#: admin/screens/domains/domain-verification-section.tsx
+msgid "Last checked {lastChecked}"
+msgstr ""
+
+#: admin/screens/members/link-review-panel.tsx
+msgid "Last seen"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Last seen {lastSeen}"
 msgstr "Zuletzt gesehen {lastSeen}"
+
+#: admin/screens/identity-providers/scim-credential-list.tsx
+msgid "Last used {lastUsed}"
+msgstr ""
 
 #: src/components/download-app-banner-desktop.tsx
 #: src/components/unsaved-recovery-phrase-prompt.tsx
@@ -3525,15 +4844,31 @@ msgstr "Später"
 msgid "Later calls run without asking, with whatever details the model sends, until Thunderbolt reloads."
 msgstr ""
 
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "Leave blank to keep the current one."
+msgstr ""
+
+#: admin/screens/identity-providers/sso-settings-section.tsx
+#~ msgid "Leave blank to keep the current one. A new one takes effect at the next sign-in, and nobody needs to link again."
+#~ msgstr ""
+
 #: src/components/logout-modal.tsx
 msgid "Leave data on device"
 msgstr "Daten auf dem Gerät lassen"
 
+#: admin/components/resource-page-dialogs.tsx
+#: admin/screens/identity-providers/connection-editor.tsx
+msgid "Leave without copying the token?"
+msgstr ""
+
+#: admin/components/resource-page-dialogs.tsx
 #: src/skills/discard-create-dialog.tsx
 #: src/skills/skills-view.tsx
 msgid "Leave without creating?"
 msgstr "Verlassen, ohne zu erstellen?"
 
+#: admin/components/resource-page-dialogs.tsx
+#: admin/screens/identity-providers/connection-editor.tsx
 #: src/components/create-item/create-skill-panel.tsx
 #: src/skills/skills-view.tsx
 msgid "Leave without saving?"
@@ -3567,6 +4902,43 @@ msgstr "Heller Modus"
 msgid "Line chart"
 msgstr "Liniendiagramm"
 
+#: admin/screens/members/link-review-confirm-dialog.tsx
+msgid "Link {incoming} to {existing}?"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Link review"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Link review approved"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Link review opened"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Link review rejected"
+msgstr ""
+
+#: admin/admin-sidebar.tsx
+#: admin/screens/link-reviews/link-reviews-page.tsx
+#~ msgid "Link reviews"
+#~ msgstr ""
+
+#: admin/screens/members/link-review-labels.ts
+msgid "Linked"
+msgstr ""
+
+#: admin/screens/audit-log/audit-filter-options.ts
+msgid "Linking"
+msgstr ""
+
+#: admin/components/audit-event-labels.ts
+msgid "Linux"
+msgstr ""
+
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Listening"
 msgstr "Höre zu"
@@ -3574,6 +4946,14 @@ msgstr "Höre zu"
 #: src/settings/voice.tsx
 msgid "Load models"
 msgstr "Modelle laden"
+
+#: admin/components/load-more-footer.tsx
+msgid "Load more"
+msgstr ""
+
+#: admin/components/list-skeleton.tsx
+msgid "Loading"
+msgstr ""
 
 #: src/components/embedded/surface-status.tsx
 msgid "Loading {name}…"
@@ -3616,6 +4996,10 @@ msgstr "Arbeitsmappe wird geladen"
 msgid "Loading this app's pairing identity…"
 msgstr "Kopplungsidentität dieser App wird geladen…"
 
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "Loading your invitation…"
+msgstr "Ihre Einladung wird geladen…"
+
 #: src/components/chat/chat-ui.tsx
 #: src/components/device-approval.tsx
 #: src/components/sidebar-footer.tsx
@@ -3648,6 +5032,22 @@ msgstr "Standort"
 #~ msgid "Location is required."
 #~ msgstr "Standort ist erforderlich."
 
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "Locked after the first sign-in or a link review."
+msgstr ""
+
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "Locked after the first sign-in."
+msgstr ""
+
+#: admin/screens/identity-providers/sso-settings-section.tsx
+#~ msgid "Locked because people have signed in through this connection, or link reviews for it are pending or approved."
+#~ msgstr ""
+
+#: admin/screens/identity-providers/sso-settings-section.tsx
+#~ msgid "Locked because people have signed in through this connection. It decides which account a sign-in belongs to."
+#~ msgstr ""
+
 #: src/components/logout-modal.tsx
 #: src/components/sidebar-footer.tsx
 msgid "Log out"
@@ -3661,9 +5061,42 @@ msgstr "Abmeldung…"
 msgid "Low"
 msgstr ""
 
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#~ msgid "Lowercase letters, numbers and hyphens. Can't change later."
+#~ msgstr ""
+
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#~ msgid "Lowercase letters, numbers and hyphens. It appears in the URLs you give your identity provider and can't change later."
+#~ msgstr ""
+
+#: admin/components/audit-event-labels.ts
+msgid "macOS"
+msgstr ""
+
 #: src/widgets/weather-forecast/lib.ts
 msgid "Mainly clear"
 msgstr "Überwiegend klar"
+
+#: admin/screens/members/member-form-panel.tsx
+#~ msgid "Make {memberName} an admin"
+#~ msgstr ""
+
+#: admin/screens/members/member-roles-section.tsx
+#~ msgid "Make admin"
+#~ msgstr ""
+
+#: admin/screens/groups/group-form-panel.tsx
+#~ msgid "Make members admins"
+#~ msgstr ""
+
+#. placeholder {0}: form.draft.name.trim()
+#: admin/screens/groups/group-form-panel.tsx
+#~ msgid "Make members of {0} admins"
+#~ msgstr ""
+
+#: admin/components/role-mapping-control.tsx
+msgid "Make members of {groupName} admins"
+msgstr ""
 
 #: src/settings/connections/provider-connection-detail.tsx
 msgid "Manage account"
@@ -3699,6 +5132,22 @@ msgstr ""
 #~ msgid "Manage subscription"
 #~ msgstr ""
 
+#: admin/screens/members/members-page.tsx
+#~ msgid "Manage who can sign in and who is an admin."
+#~ msgstr ""
+
+#: admin/screens/members/members-page.tsx
+#~ msgid "Manage who can sign in, their admin role, and the identity providers they come from."
+#~ msgstr ""
+
+#: admin/screens/members/members-page.tsx
+#~ msgid "Manage who can sign in, their admin role, and the identity providers they come from. Invited people show here until they sign in."
+#~ msgstr ""
+
+#: admin/screens/members/member-view-panel.tsx
+msgid "Managed by {managedBy}"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Managed by your deployment — always available, no setup needed."
 msgstr "Von Ihrer Bereitstellung verwaltet – immer verfügbar, keine Einrichtung nötig."
@@ -3710,6 +5159,16 @@ msgstr "Kartendiagramm"
 #: src/widgets/map/widget.tsx
 msgid "Maps can’t be displayed here — WebGL is disabled or unavailable in this browser."
 msgstr "Karten können hier nicht angezeigt werden – WebGL ist in diesem Browser deaktiviert oder nicht verfügbar."
+
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "Match attribute"
+msgstr ""
+
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "Match claim"
+msgstr ""
 
 #: src/components/chat/attestation/attestation-details.tsx
 msgid "Matching measurements"
@@ -3723,6 +5182,7 @@ msgstr "Maximieren"
 msgid "Maximum"
 msgstr ""
 
+#: admin/api/audit-action-labels.ts
 #: src/settings/connections/new-connection-picker.tsx
 msgid "MCP server"
 msgstr ""
@@ -3733,6 +5193,55 @@ msgstr "MCP-Server"
 
 #: src/components/chat/effort-selector/use-effort-selector-state.ts
 msgid "Medium"
+msgstr ""
+
+#: admin/screens/members/member-panel.tsx
+#: admin/screens/members/member-roles-section.tsx
+msgid "Member"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Member admitted"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Member blocked"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Member permanently deleted"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Member unblocked"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Member updated"
+msgstr ""
+
+#: admin/screens/members/member-roles-section.tsx
+#~ msgid "Member, with no admin role"
+#~ msgstr ""
+
+#: admin/admin-sidebar.tsx
+#: admin/screens/audit-log/audit-filter-options.ts
+#: admin/screens/groups/group-form-panel.tsx
+#: admin/screens/groups/group-view-panel.tsx
+#: admin/screens/members/members-page.tsx
+msgid "Members"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Membership source added"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Membership source removed"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Membership source suspended"
 msgstr ""
 
 #: src/components/sidebar-footer.tsx
@@ -3747,6 +5256,10 @@ msgstr "Nachrichten"
 #: src/i18n/unit-labels.ts
 msgid "Metric"
 msgstr "Metrisch"
+
+#: admin/screens/identity-providers/provider-presets.ts
+msgid "Microsoft Entra ID"
+msgstr ""
 
 #: src/settings/preferences.tsx
 #~ msgid "Mini Apps"
@@ -3869,10 +5382,25 @@ msgstr ""
 #~ msgid "Move to project"
 #~ msgstr "In Projekt verschieben"
 
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "Must hold the person's SCIM externalId."
+msgstr ""
+
+#: admin/screens/identity-providers/sso-connection-form.tsx
+msgid "Must hold the person's SCIM externalId. Locks after the first sign-in."
+msgstr ""
+
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "My Agent"
 msgstr "Mein Agent"
 
+#: admin/screens/domains/domain-record-section.tsx
+#: admin/screens/groups/group-form-panel.tsx
+#: admin/screens/identity-providers/new-scim-connection-form.tsx
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#: admin/screens/identity-providers/sso-settings-section.tsx
+#: admin/screens/members/link-review-panel.tsx
+#: admin/screens/members/member-form-panel.tsx
 #: src/components/onboarding/onboarding-name-step.tsx
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/components/settings/agents/agent-detail.tsx
@@ -3890,6 +5418,18 @@ msgstr "Name"
 msgid "Name is required."
 msgstr "Ein Name ist erforderlich."
 
+#: src/components/sso-sign-in/sso-email-step.tsx
+msgid "name@company.com"
+msgstr "name@firma.de"
+
+#: admin/screens/members/invite-panel.tsx
+msgid "name@example.com"
+msgstr ""
+
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#~ msgid "Names this app to your identity provider and can't change later."
+#~ msgstr ""
+
 #: src/components/ui/mobile-sidebar.tsx
 msgid "Navigation"
 msgstr "Navigation"
@@ -3905,6 +5445,10 @@ msgstr "Netzwerk"
 #: src/settings/models/model-catalog.ts
 msgid "Network request failed (the browser blocked the request or the server is unreachable)."
 msgstr "Netzwerkanfrage fehlgeschlagen (der Browser hat die Anfrage blockiert oder der Server ist nicht erreichbar)."
+
+#: admin/screens/identity-providers/scim-credential-list.tsx
+msgid "Never used"
+msgstr ""
 
 #: src/routes/settings/agents/index.tsx
 msgid "New Agent"
@@ -3931,9 +5475,17 @@ msgstr "Neuer Chat"
 #~ msgid "New chat in this project"
 #~ msgstr "Neuer Chat in diesem Projekt"
 
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "New client secret"
+msgstr ""
+
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "New code"
 msgstr ""
+
+#: admin/screens/identity-providers/new-connection-editor.tsx
+#~ msgid "New connection"
+#~ msgstr ""
 
 #: src/components/create-item/context.tsx
 #: src/settings/connections/connections-list.tsx
@@ -3945,17 +5497,47 @@ msgstr "Neue Verbindung"
 msgid "New device waiting"
 msgstr "Neues Gerät wartet"
 
+#: admin/screens/groups/group-panel.tsx
+#: admin/screens/groups/groups-page.tsx
+#~ msgid "New group"
+#~ msgstr ""
+
+#: admin/screens/groups/groups-page.tsx
+msgid "New Group"
+msgstr ""
+
 #: src/settings/models/index.tsx
 msgid "New Model"
 msgstr "Neues Modell"
+
+#: admin/screens/identity-providers/new-connection-editor.tsx
+msgid "New OIDC Connection"
+msgstr ""
 
 #: src/layout/sidebar/project-tree-menu.tsx
 #: src/layout/sidebar/project-tree.tsx
 msgid "New project"
 msgstr "Neues Projekt"
 
+#: admin/screens/identity-providers/new-connection-editor.tsx
+msgid "New SAML Connection"
+msgstr ""
+
+#: admin/screens/identity-providers/new-connection-editor.tsx
+msgid "New SCIM Connection"
+msgstr ""
+
 #: src/settings/search/index.tsx
 msgid "New Search Connection"
+msgstr ""
+
+#: admin/screens/identity-providers/new-connection-editor.tsx
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+msgid "New Sign-in Method"
+msgstr ""
+
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "New signing certificate"
 msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
@@ -3970,6 +5552,22 @@ msgstr "Neuer Tab"
 #: src/tasks/index.tsx
 msgid "New Task"
 msgstr "Neue Aufgabe"
+
+#: src/components/ui/calendar.tsx
+msgid "Next month"
+msgstr ""
+
+#: admin/screens/members/member-badges.tsx
+msgid "No access"
+msgstr ""
+
+#: admin/screens/members/member-labels.ts
+msgid "No active sign-in method"
+msgstr ""
+
+#: admin/components/break-glass-banner.tsx
+msgid "No admin can sign in without your identity provider"
+msgstr ""
 
 #: src/components/ui/agent-selector/agent-selector.tsx
 msgid "No agents found"
@@ -4000,9 +5598,65 @@ msgstr ""
 msgid "No connections yet"
 msgstr ""
 
+#: admin/screens/identity-providers/scim-credential-list.tsx
+msgid "No credentials."
+msgstr ""
+
 #: src/settings/devices.tsx
-msgid "No devices yet. Sign in with sync to see devices here."
-msgstr "Noch keine Geräte. Melden Sie sich mit Synchronisierung an, um hier Geräte zu sehen."
+msgid "No devices yet"
+msgstr ""
+
+#: src/settings/devices.tsx
+#~ msgid "No devices yet. Sign in with sync to see devices here."
+#~ msgstr "Noch keine Geräte. Melden Sie sich mit Synchronisierung an, um hier Geräte zu sehen."
+
+#: admin/screens/domains/domains-page.tsx
+#~ msgid "No domains yet"
+#~ msgstr ""
+
+#: admin/screens/audit-log/audit-log-page.tsx
+#~ msgid "No events match these filters."
+#~ msgstr ""
+
+#: admin/screens/audit-log/audit-log-page.tsx
+msgid "No events yet"
+msgstr ""
+
+#: admin/components/audit-event-list.tsx
+msgid "No events."
+msgstr ""
+
+#: admin/screens/identity-providers/sync-errors-section.tsx
+msgid "No failed SCIM requests."
+msgstr ""
+
+#: admin/screens/groups/groups-page.tsx
+msgid "No groups yet"
+msgstr ""
+
+#: admin/screens/identity-providers/scim-groups-section.tsx
+msgid "No groups yet."
+msgstr ""
+
+#: admin/screens/members/member-form-panel.tsx
+msgid "No groups."
+msgstr ""
+
+#: admin/screens/domains/domain-claim-section.tsx
+msgid "No identity provider can claim this domain yet. <0>Add an identity provider</0> first."
+msgstr ""
+
+#: admin/screens/identity-providers/identity-providers-page.tsx
+#~ msgid "No identity providers yet. Add one to sign people in or provision them."
+#~ msgstr ""
+
+#: admin/screens/members/members-page.tsx
+#~ msgid "No invitation was sent to an address like that."
+#~ msgstr ""
+
+#: admin/screens/invitations/invitations-page.tsx
+#~ msgid "No invitations here."
+#~ msgstr ""
 
 #: src/components/ui/searchable-menu/searchable-menu.tsx
 msgid "No items found"
@@ -4012,13 +5666,17 @@ msgstr "Keine Einträge gefunden"
 msgid "No items found."
 msgstr "Keine Einträge gefunden."
 
+#: admin/screens/link-reviews/link-reviews-page.tsx
+#~ msgid "No links are waiting for review."
+#~ msgstr ""
+
 #: src/components/location-search-combobox.tsx
 msgid "No locations found."
 msgstr "Keine Orte gefunden."
 
 #: src/components/sign-in/sign-in-email-step.tsx
-msgid "No logs or training on your data"
-msgstr "Keine Protokolle und kein Training mit Ihren Daten"
+#~ msgid "No logs or training on your data"
+#~ msgstr "Keine Protokolle und kein Training mit Ihren Daten"
 
 #: src/settings/devices.tsx
 msgid "No longer accepts device connections"
@@ -4033,6 +5691,32 @@ msgstr "Keine Treffer"
 msgid "No matching connections."
 msgstr "Keine passenden Verbindungen."
 
+#: admin/screens/audit-log/audit-log-page.tsx
+msgid "No matching events."
+msgstr ""
+
+#: admin/screens/groups/groups-page.tsx
+msgid "No matching groups."
+msgstr ""
+
+#: admin/screens/members/members-page.tsx
+#~ msgid "No matching invitations"
+#~ msgstr ""
+
+#: admin/screens/members/members-page.tsx
+#~ msgid "No matching invitations."
+#~ msgstr ""
+
+#: admin/screens/members/members-page.tsx
+#~ msgid "No matching members"
+#~ msgstr ""
+
+#: admin/screens/audit-log/audit-actor-picker.tsx
+#: admin/screens/groups/group-form-panel.tsx
+#: admin/screens/members/members-page.tsx
+msgid "No matching members."
+msgstr ""
+
 #: src/settings/models/index.tsx
 msgid "No matching models."
 msgstr ""
@@ -4046,6 +5730,10 @@ msgstr ""
 msgid "No matching projects."
 msgstr "Keine passenden Projekte."
 
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+msgid "No matching sign-in methods."
+msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "No matching skills"
 msgstr "Keine passenden Skills"
@@ -4053,6 +5741,15 @@ msgstr "Keine passenden Skills"
 #: src/skills/skills-list.tsx
 msgid "No matching skills."
 msgstr "Keine passenden Skills."
+
+#: admin/screens/groups/group-panel.tsx
+#~ msgid "No members to add."
+#~ msgstr ""
+
+#: admin/screens/groups/group-view-panel.tsx
+#: admin/screens/members/members-page.tsx
+msgid "No members yet"
+msgstr ""
 
 #: src/settings/models/add-provider-models.tsx
 msgid "No model providers connected."
@@ -4085,8 +5782,21 @@ msgstr "Keine Modelle gefunden."
 msgid "No models returned (server unreachable, or it doesn’t list models). Enter model and voice ids manually."
 msgstr "Keine Modelle zurückgegeben (Server nicht erreichbar oder listet keine Modelle auf). Geben Sie Modell- und Stimmen-IDs manuell ein."
 
+#. placeholder {0}: group.name
+#: admin/screens/groups/group-view-panel.tsx
+#~ msgid "No one is in {0} yet."
+#~ msgstr ""
+
+#: admin/screens/groups/group-panel.tsx
+#~ msgid "No one is in {groupName} yet."
+#~ msgstr ""
+
 #: src/settings/passkeys.tsx
 #~ msgid "No passkeys yet"
+#~ msgstr ""
+
+#: admin/screens/members/members-page.tsx
+#~ msgid "No pending invitations"
 #~ msgstr ""
 
 #: src/projects/index.tsx
@@ -4105,9 +5815,25 @@ msgstr ""
 msgid "No results found."
 msgstr "Keine Ergebnisse gefunden."
 
+#: admin/screens/link-reviews/link-reviews-page.tsx
+#~ msgid "No reviews."
+#~ msgstr ""
+
 #: src/settings/search/index.tsx
 msgid "No search connections available"
 msgstr ""
+
+#: admin/screens/identity-providers/new-connection-editor.tsx
+#~ msgid "No sign-in"
+#~ msgstr ""
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+msgid "No sign-in methods yet"
+msgstr ""
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+#~ msgid "No sign-in methods yet. Connect an identity provider to sign people in, or add a domain your organization owns."
+#~ msgstr ""
 
 #: src/skills/skills-list.tsx
 msgid "No skills yet"
@@ -4125,6 +5851,22 @@ msgstr "Keine Aufgaben gefunden, die zu „{searchQuery}“ passen"
 msgid "No tasks yet"
 msgstr "Noch keine Aufgaben"
 
+#: admin/api/error-messages.ts
+msgid "No verification record was found. DNS changes can take a while to appear."
+msgstr ""
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+msgid "Nobody can sign in through it any more, and members only it admitted lose access. This can't be undone."
+msgstr ""
+
+#: admin/screens/members/members-page.tsx
+#~ msgid "Nobody's name or email matches that search."
+#~ msgstr ""
+
+#: admin/screens/members/member-view-panel.tsx
+msgid "None"
+msgstr ""
+
 #: src/components/approve-device/approve-device-dialog.tsx
 msgid "None of these match"
 msgstr "Keiner stimmt überein"
@@ -4132,6 +5874,14 @@ msgstr "Keiner stimmt überein"
 #: src/components/chat/chat-prompt-input.tsx
 msgid "None of your models can be used in this chat. Choose another agent to send."
 msgstr "Keines deiner Modelle kann in diesem Chat verwendet werden. Wähle einen anderen Agenten, um zu senden."
+
+#: admin/screens/members/member-labels.ts
+msgid "Not a member of this organization"
+msgstr ""
+
+#: admin/screens/groups/group-view-panel.tsx
+#~ msgid "Not an admin group"
+#~ msgstr ""
 
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "Not approved yet"
@@ -4145,6 +5895,10 @@ msgstr "In privaten Chats nicht verfügbar."
 msgid "Not available on this device"
 msgstr "Auf diesem Gerät nicht verfügbar"
 
+#: admin/screens/domains/domain-verification-section.tsx
+msgid "Not checked yet"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Not configured"
 msgstr "Nicht konfiguriert"
@@ -4152,6 +5906,10 @@ msgstr "Nicht konfiguriert"
 #: src/components/not-found.tsx
 msgid "Not Found"
 msgstr "Nicht gefunden"
+
+#: admin/screens/members/member-panel.tsx
+#~ msgid "Not in any group"
+#~ msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 #: src/components/sync-setup/confirm-identity-step.tsx
@@ -4167,6 +5925,10 @@ msgstr "In dieser Vorschau nicht angezeigt"
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Not tested"
 msgstr "Nicht getestet"
+
+#: admin/screens/members/member-labels.ts
+#~ msgid "Nothing admits them any more"
+#~ msgstr ""
 
 #. placeholder {0}: app.url
 #: src/mini-apps/mini-app-frame.tsx
@@ -4185,6 +5947,10 @@ msgstr ""
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "Nothing to compact yet."
 msgstr ""
+
+#: admin/screens/members/pending-link-reviews.tsx
+#~ msgid "Nothing waiting to be linked"
+#~ msgstr ""
 
 #: src/services/revoke-failure.ts
 msgid "Nothing was changed — the recovery keys the server offered could not be verified against this device. This can indicate tampering."
@@ -4238,6 +6004,26 @@ msgstr ""
 msgid "Offline. Changes will sync when back online."
 msgstr "Offline. Änderungen werden synchronisiert, sobald Sie wieder online sind."
 
+#: admin/screens/identity-providers/connection-labels.ts
+msgid "OIDC"
+msgstr ""
+
+#: admin/screens/identity-providers/connection-labels.ts
+#~ msgid "OIDC sign-in"
+#~ msgstr ""
+
+#: admin/screens/identity-providers/new-connection-editor.tsx
+msgid "OIDC single sign-on"
+msgstr ""
+
+#: admin/screens/identity-providers/provider-presets.ts
+msgid "Okta"
+msgstr ""
+
+#: admin/screens/identity-providers/new-connection-editor.tsx
+#~ msgid "Okta, Entra ID, Keycloak…"
+#~ msgstr ""
+
 #: src/components/chat/effort-selector/use-effort-selector-state.ts
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "On"
@@ -4260,12 +6046,21 @@ msgstr "Einen Moment, wir suchen den Code."
 msgid "OneDrive Access"
 msgstr "OneDrive-Zugriff"
 
+#: admin/api/error-messages.ts
+msgid "Only a removed member can be deleted. Remove their access first."
+msgstr ""
+
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Only available in private chats."
 msgstr "Nur in privaten Chats verfügbar."
 
 #. placeholder {0}: agent.name
 #. placeholder {0}: connection.name
+#. placeholder {0}: domain.domain
+#: admin/components/audit-event-list.tsx
+#: admin/screens/groups/groups-page.tsx
+#: admin/screens/members/members-page.tsx
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
 #: src/components/settings/agents/agent-row.tsx
 #: src/settings/search/index.tsx
 msgid "Open {0}"
@@ -4294,6 +6089,10 @@ msgstr "{skillName} öffnen"
 #: src/settings/connections/connections-list.tsx
 msgid "Open {title}"
 msgstr "{title} öffnen"
+
+#: admin/screens/members/email-code-sign-in.tsx
+msgid "Open <0>{path}</0> on your organization's web app."
+msgstr ""
 
 #: src/mini-apps/mini-app-chat-banner.tsx
 msgid "Open app"
@@ -4340,8 +6139,17 @@ msgstr ""
 msgid "Open Link"
 msgstr "Link öffnen"
 
+#. placeholder {0}: review.incomingEmail
+#: admin/screens/members/members-page.tsx
+msgid "Open link review for {0}"
+msgstr ""
+
 #: src/components/otari-connection/otari-connection.tsx
 msgid "Open Otari"
+msgstr ""
+
+#: admin/screens/members/member-labels.ts
+msgid "Open sign-up"
 msgstr ""
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
@@ -4359,6 +6167,11 @@ msgstr ""
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Open Thunderbolt CLI"
 msgstr "Thunderbolt CLI öffnen"
+
+#: admin/screens/domains/domain-enrollment-field.tsx
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+msgid "Open to enrollment"
+msgstr ""
 
 #: src/settings/connections/new-connection-picker.tsx
 #~ msgid "OpenAI-compatible"
@@ -4401,6 +6214,14 @@ msgstr "Optional – für lokale Server ohne Authentifizierung leer lassen."
 #~ msgid "Optional — what this project is for"
 #~ msgstr "Optional – wofür dieses Projekt gedacht ist"
 
+#: admin/screens/identity-providers/expiry-field.tsx
+#~ msgid "Optional. It stops working at the end of that day. Without a date, it expires in a year."
+#~ msgstr ""
+
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#~ msgid "Optional. Leave blank to use the issuer's."
+#~ msgstr ""
+
 #: src/components/onboarding/onboarding-search-step.tsx
 msgid "Optionally let your agent search the web"
 msgstr ""
@@ -4417,6 +6238,14 @@ msgstr "Oder klicken Sie auf den Magic Link in Ihrer E-Mail"
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "Or enter the 8-digit code"
 msgstr "Oder geben Sie den 8-stelligen Code ein"
+
+#: admin/api/audit-action-labels.ts
+msgid "Organization"
+msgstr ""
+
+#: admin/screens/members/member-labels.ts
+msgid "Organization domain"
+msgstr ""
 
 #: src/layout/sidebar/project-tree-menu.tsx
 #: src/layout/sidebar/project-tree.tsx
@@ -4460,8 +6289,21 @@ msgstr ""
 msgid "Otari web search isn’t available. Configure a search provider in Otari to use it here."
 msgstr ""
 
+#: admin/screens/identity-providers/provider-presets.ts
+msgid "Other"
+msgstr ""
+
 #: src/components/onboarding/onboarding-model-step.tsx
 msgid "Other provider"
+msgstr ""
+
+#: admin/screens/audit-log/audit-event-panel.tsx
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Outcome"
+msgstr ""
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Outcome: {outcomeName}"
 msgstr ""
 
 #: src/widgets/connect-integration/widget.tsx
@@ -4536,9 +6378,45 @@ msgstr "Fügen Sie eine <0>mcpServers</0>-Konfiguration ein. Es werden nur Remot
 msgid "Peer-to-peer via iroh — the connection is verified when a chat starts."
 msgstr "Peer-to-Peer über iroh – die Verbindung wird beim Start eines Chats verifiziert."
 
+#: admin/screens/members/link-review-labels.ts
+msgid "Pending"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Pending approvals"
 msgstr "Ausstehende Genehmigungen"
+
+#: admin/admin-sidebar.tsx
+msgid "People"
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "People already sign in through this connection, so the match claim can't change."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "People already sign in through this connection, so this field can't change."
+msgstr ""
+
+#: admin/screens/identity-providers/sso-settings-section.tsx
+#~ msgid "People can't sign in through this connection: it only provisions them."
+#~ msgstr ""
+
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "People it provisions can no longer sign in with an email code, and each needs a SCIM record before their first sign-in."
+msgstr ""
+
+#: admin/screens/members/invite-panel.tsx
+#~ msgid "People on this domain normally sign in through your identity provider. You can still invite this address; the override is recorded in the audit log."
+#~ msgstr ""
+
+#: admin/screens/members/members-page.tsx
+#~ msgid "People show here once they sign in or an identity provider adds them."
+#~ msgstr ""
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+msgid "People who joined through this domain stay members. Adding it again needs a new verification record."
+msgstr ""
 
 #: src/settings/account/delete-account-section.tsx
 msgid "Permanently delete your account and all data on our servers and this device."
@@ -4548,9 +6426,42 @@ msgstr "Löscht Ihr Konto und alle Daten auf unseren Servern und auf diesem Ger�
 msgid "Permission Required"
 msgstr "Berechtigung erforderlich"
 
+#: admin/api/audit-action-labels.ts
+#: admin/components/audit-event-labels.ts
+msgid "Person"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Personal connection added"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Personal connection credential replaced"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Personal connection removed"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Personal connection updated"
+msgstr ""
+
+#: admin/screens/audit-log/audit-filter-options.ts
+msgid "Personal connections"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Personalization"
 msgstr "Personalisierung"
+
+#: admin/screens/identity-providers/expiry-field.tsx
+msgid "Pick a date"
+msgstr ""
+
+#: src/components/sso-sign-in/sso-connection-list.tsx
+msgid "Pick the identity provider your organization uses for you."
+msgstr "Wählen Sie den Identitätsanbieter, den Ihre Organisation für Sie verwendet."
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Pick this code on your other device."
@@ -4640,6 +6551,10 @@ msgstr "Für diesen Dateityp ist keine Vorschau verfügbar. Nutzen Sie die Schal
 msgid "Preview webview is only available in the desktop app"
 msgstr "Die Vorschau-Webview ist nur in der Desktop-App verfügbar"
 
+#: src/components/ui/calendar.tsx
+msgid "Previous month"
+msgstr ""
+
 #: src/settings/models/model-detail.tsx
 msgid "Privacy"
 msgstr "Datenschutz"
@@ -4692,6 +6607,16 @@ msgstr ""
 msgid "Provider"
 msgstr "Anbieter"
 
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "Provider ID"
+msgstr ""
+
+#: admin/screens/audit-log/audit-filter-options.ts
+#: admin/screens/identity-providers/connection-editor.tsx
+msgid "Provisioning"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Proxying is required in the web app to bypass browser CORS restrictions."
 msgstr "In der Web-App ist ein Proxy erforderlich, um CORS-Einschränkungen des Browsers zu umgehen."
@@ -4740,6 +6665,10 @@ msgstr "{fileName} wird gelesen…"
 msgid "Ready to submit"
 msgstr "Bereit zum Senden"
 
+#: admin/screens/members/block-member-dialog.tsx
+msgid "Reason (optional)"
+msgstr ""
+
 #: src/content-view/context.tsx
 msgid "Reasoning"
 msgstr "Begründung"
@@ -4778,6 +6707,18 @@ msgstr ""
 #~ msgid "Reconnect {name}"
 #~ msgstr ""
 
+#: admin/screens/domains/domain-record-section.tsx
+msgid "Record name"
+msgstr ""
+
+#: admin/screens/domains/domain-record-section.tsx
+msgid "Record value"
+msgstr ""
+
+#: admin/screens/audit-log/audit-event-panel.tsx
+msgid "Recorded by"
+msgstr ""
+
 #: src/hooks/use-sync-setup.ts
 msgid "Recovery failed"
 msgstr "Wiederherstellung fehlgeschlagen"
@@ -4803,6 +6744,15 @@ msgstr ""
 msgid "Recovery phrase updated."
 msgstr ""
 
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "Redirect URI"
+msgstr ""
+
+#: admin/screens/audit-log/audit-log-page.tsx
+#~ msgid "Refresh"
+#~ msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Refresh keys and retry"
 msgstr ""
@@ -4820,8 +6770,38 @@ msgstr ""
 msgid "Registering this device and detecting your account status."
 msgstr "Dieses Gerät wird registriert und Ihr Kontostatus ermittelt."
 
+#: admin/screens/members/link-review-confirm-dialog.tsx
+#: admin/screens/members/member-actions.tsx
+msgid "Reject"
+msgstr ""
+
+#: admin/screens/members/link-review-confirm-dialog.tsx
+msgid "Reject linking {incoming}?"
+msgstr ""
+
+#: admin/screens/members/link-review-confirm-dialog.tsx
+#~ msgid "Reject this link?"
+#~ msgstr ""
+
+#: admin/screens/members/link-review-labels.ts
+#: admin/screens/members/member-badges.tsx
+msgid "Rejected"
+msgstr ""
+
+#: admin/screens/members/pending-link-reviews.tsx
+#~ msgid "Rejected links"
+#~ msgstr ""
+
+#: admin/screens/domains/domain-claim-section.tsx
+msgid "Release claim"
+msgstr ""
+
 #: src/components/chat/attestation/attestation-details.tsx
 msgid "Release digest"
+msgstr ""
+
+#: admin/screens/domains/domain-claim-section.tsx
+msgid "Release the claim before removing this domain."
 msgstr ""
 
 #: src/components/local-data-switch-screen.tsx
@@ -4830,6 +6810,7 @@ msgstr ""
 msgid "Reload"
 msgstr "Neu laden"
 
+#: admin/screens/sign-in-methods/sign-in-method-actions.tsx
 #: src/components/remove-bridge-dialog.tsx
 #: src/components/settings/edit-delete-context-menu.tsx
 #: src/settings/connections/integration-detail.tsx
@@ -4837,6 +6818,11 @@ msgstr "Neu laden"
 #: src/settings/encryption/passkey-section.tsx
 msgid "Remove"
 msgstr "Entfernen"
+
+#. placeholder {0}: member.label
+#: admin/screens/groups/group-member-list.tsx
+msgid "Remove {0} from the group"
+msgstr ""
 
 #. placeholder {0}: connection.name
 #: src/settings/connections/provider-connection-detail.tsx
@@ -4851,9 +6837,17 @@ msgstr "{filename} entfernen"
 msgid "Remove {integrationName}?"
 msgstr ""
 
-#: src/settings/passkeys.tsx
+#: admin/screens/groups/group-panel.tsx
+#~ msgid "Remove {memberName} from the group"
+#~ msgstr ""
+
+#: admin/screens/groups/group-panel.tsx
 #~ msgid "Remove {name}"
 #~ msgstr ""
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+msgid "Remove {removingName}?"
+msgstr ""
 
 #: src/components/logout-modal.tsx
 msgid "Remove all chats, settings, and cached data from this device."
@@ -4861,6 +6855,14 @@ msgstr "Entfernt alle Chats, Einstellungen und zwischengespeicherten Daten von d
 
 #: src/settings/connections/provider-connection-detail.tsx
 msgid "Remove connection"
+msgstr ""
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+msgid "Remove domain"
+msgstr ""
+
+#: admin/screens/members/member-form-panel.tsx
+msgid "Remove from {name}"
 msgstr ""
 
 #: src/layout/sidebar/project-tree.tsx
@@ -4873,17 +6875,70 @@ msgstr "Aus Projekt entfernen"
 msgid "Remove icon"
 msgstr "Symbol entfernen"
 
+#: admin/screens/groups/group-panel.tsx
+#~ msgid "Remove me from the group"
+#~ msgstr ""
+
+#: admin/screens/members/member-roles-section.tsx
+#~ msgid "Remove my admin role"
+#~ msgstr ""
+
 #: src/components/chat/quote-chip.tsx
 msgid "Remove quote"
 msgstr "Zitat entfernen"
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Remove the action filter"
+msgstr ""
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Remove the actor filter"
+msgstr ""
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Remove the connection filter"
+msgstr ""
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Remove the end date"
+msgstr ""
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Remove the outcome filter"
+msgstr ""
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Remove the start date"
+msgstr ""
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Remove the target filter"
+msgstr ""
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Remove the target type filter"
+msgstr ""
 
 #: src/components/remove-bridge-dialog.tsx
 msgid "Remove this bridge?"
 msgstr "Diese Bridge entfernen?"
 
+#: admin/screens/groups/group-form-panel.tsx
+#: admin/screens/members/member-form-panel.tsx
+msgid "Remove your own admin role?"
+msgstr ""
+
 #: src/settings/encryption/passkey-section.tsx
 msgid "Remove your passkey?"
 msgstr "Passkey entfernen?"
+
+#: admin/screens/members/member-labels.ts
+msgid "Removed"
+msgstr ""
+
+#: admin/screens/members/member-labels.ts
+msgid "Removed by the identity provider"
+msgstr ""
 
 #: src/components/remove-bridge-dialog.tsx
 #: src/lib/tool-metadata.ts
@@ -4916,6 +6971,11 @@ msgstr "Antworten"
 #~ msgid "Reply in British English. Prefer bullet points over prose."
 #~ msgstr "Antworte auf britischem Englisch. Verwende bevorzugt Stichpunkte statt Prosa."
 
+#. placeholder {0}: event.requestId
+#: admin/screens/audit-log/audit-event-panel.tsx
+msgid "Request <0>{0}</0>"
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Request denied"
 msgstr "Anfrage abgelehnt"
@@ -4927,6 +6987,10 @@ msgstr "Anfrage abgelaufen"
 #: src/mini-apps/mini-app-approval-prompt.tsx
 msgid "Requested by {appName}"
 msgstr ""
+
+#: admin/screens/identity-providers/sync-errors-section.tsx
+#~ msgid "Requests from your identity provider that {appName} rejected. Requests that never authenticated aren't listed, because they can't be tied to a connection."
+#~ msgstr ""
 
 #: src/components/chat/file-card.tsx
 msgid "Resend as images"
@@ -4980,6 +7044,56 @@ msgstr "Ergebnis"
 msgid "Retained messages and tool results"
 msgstr ""
 
+#: admin/screens/sign-in-methods/sign-in-method-actions.tsx
+msgid "Retire"
+msgstr ""
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+msgid "Retire {removingName}?"
+msgstr ""
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+msgid "Retire connection"
+msgstr ""
+
+#: admin/screens/identity-providers/retire-scim-dialog.tsx
+#: admin/screens/sign-in-methods/sign-in-method-actions.tsx
+msgid "Retire SCIM"
+msgstr ""
+
+#: admin/screens/identity-providers/retire-scim-dialog.tsx
+msgid "Retire SCIM for {name}?"
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "Retire SCIM provisioning on this connection first."
+msgstr ""
+
+#: admin/screens/identity-providers/scim-section.tsx
+#~ msgid "Retire SCIM provisioning?"
+#~ msgstr ""
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+#~ msgid "Retire this connection?"
+#~ msgstr ""
+
+#: admin/screens/identity-providers/scim-credential-list.tsx
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+msgid "Retired"
+msgstr ""
+
+#: admin/screens/identity-providers/connection-labels.ts
+msgid "Retiring"
+msgstr ""
+
+#: admin/screens/identity-providers/scim-section.tsx
+#~ msgid "Retiring SCIM provisioning. Its tokens no longer work, and the cleanup of its people and groups runs in the background."
+#~ msgstr ""
+
+#: admin/screens/identity-providers/scim-section.tsx
+msgid "Retiring. Tokens no longer work; cleanup runs in the background."
+msgstr ""
+
 #: src/lib/tool-metadata.ts
 msgid "Retrieving data…"
 msgstr "Daten werden abgerufen…"
@@ -5008,15 +7122,25 @@ msgstr "Neuer Versuch…"
 msgid "Return to Thunderbolt"
 msgstr ""
 
+#: admin/components/break-glass-banner.tsx
+#~ msgid "Review break-glass access"
+#~ msgstr ""
+
 #: src/components/recovery-continuity/recovery-continuity-banner.tsx
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "Review devices"
+msgstr ""
+
+#: admin/screens/members/member-badges.tsx
+msgid "Review pending"
 msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "Review the transcript and note below. Automatic redaction may miss sensitive information."
 msgstr ""
 
+#: admin/screens/identity-providers/scim-credential-list.tsx
+#: admin/screens/members/member-actions.tsx
 #: src/components/revoke-device-dialog.tsx
 #: src/settings/devices.tsx
 msgid "Revoke"
@@ -5026,6 +7150,34 @@ msgstr "Widerrufen"
 msgid "Revoke {deviceName}"
 msgstr "{deviceName} widerrufen"
 
+#: admin/screens/members/member-roles-section.tsx
+#~ msgid "Revoke admin"
+#~ msgstr ""
+
+#: admin/screens/identity-providers/scim-section.tsx
+msgid "Revoke credential"
+msgstr ""
+
+#: admin/screens/identity-providers/scim-credential-list.tsx
+msgid "Revoke credential {id}"
+msgstr ""
+
+#: admin/screens/identity-providers/scim-section.tsx
+msgid "Revoke credential {revokingId}?"
+msgstr ""
+
+#: admin/screens/members/members-page.tsx
+msgid "Revoke invitation"
+msgstr ""
+
+#: admin/screens/invitations/invitations-page.tsx
+#~ msgid "Revoke invitation to {email}"
+#~ msgstr ""
+
+#: admin/screens/members/members-page.tsx
+msgid "Revoke the invitation to {removingName}?"
+msgstr ""
+
 #: src/components/revoke-device-dialog.tsx
 msgid "Revoke this CLI?"
 msgstr ""
@@ -5034,14 +7186,37 @@ msgstr ""
 msgid "Revoke this device?"
 msgstr "Dieses Gerät widerrufen?"
 
+#: admin/screens/members/invitation-panel.tsx
+#~ msgid "Revoke this invitation?"
+#~ msgstr ""
+
+#: admin/screens/identity-providers/scim-credential-list.tsx
+#: admin/screens/members/invitation-panel.tsx
+#: admin/screens/members/member-badges.tsx
 #: src/settings/devices.tsx
 msgid "Revoked"
 msgstr "Widerrufen"
+
+#: admin/screens/members/invitation-panel.tsx
+#~ msgid "Revoked. Its link no longer works."
+#~ msgstr ""
 
 #: src/components/revoke-device-dialog.tsx
 #: src/settings/devices.tsx
 msgid "Revoking…"
 msgstr "Wird widerrufen…"
+
+#: admin/api/audit-action-labels.ts
+msgid "Role granted"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Role revoked"
+msgstr ""
+
+#: admin/screens/members/member-roles-section.tsx
+msgid "Roles"
+msgstr ""
 
 #. placeholder {0}: formatters.number(maxRows)
 #. placeholder {1}: formatters.number(rows)
@@ -5061,6 +7236,29 @@ msgstr "Befehl ausführen"
 msgid "Run this on the machine hosting the bridge, then add it — the connection is verified on first use."
 msgstr "Führen Sie dies auf dem Rechner aus, der die Bridge hostet, und fügen Sie sie dann hinzu – die Verbindung wird bei der ersten Nutzung verifiziert."
 
+#: admin/components/audit-event-labels.ts
+msgid "Safari"
+msgstr ""
+
+#: admin/screens/identity-providers/connection-labels.ts
+msgid "SAML"
+msgstr ""
+
+#: admin/screens/identity-providers/new-connection-editor.tsx
+#~ msgid "SAML 2.0"
+#~ msgstr ""
+
+#: admin/screens/identity-providers/connection-labels.ts
+#~ msgid "SAML sign-in"
+#~ msgstr ""
+
+#: admin/screens/identity-providers/new-connection-editor.tsx
+msgid "SAML single sign-on"
+msgstr ""
+
+#: admin/screens/groups/group-form-panel.tsx
+#: admin/screens/identity-providers/sso-settings-section.tsx
+#: admin/screens/members/member-form-panel.tsx
 #: src/components/set-node-id-dialog.tsx
 #: src/components/settings/agents/editable-field.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
@@ -5072,6 +7270,11 @@ msgstr "Speichern"
 
 #: src/mini-apps/mini-app-download-prompt.tsx
 msgid "Save a file from {appName}?"
+msgstr ""
+
+#: admin/screens/groups/group-form-panel.tsx
+#: admin/screens/members/member-form-panel.tsx
+msgid "Save and lose admin"
 msgstr ""
 
 #: src/projects/project-form.tsx
@@ -5091,7 +7294,7 @@ msgstr ""
 msgid "Save failed"
 msgstr "Speichern fehlgeschlagen"
 
-#: src/settings/connections/provider-connection-detail.tsx
+#: admin/screens/members/member-profile-section.tsx
 #~ msgid "Save name"
 #~ msgstr ""
 
@@ -5114,10 +7317,17 @@ msgstr "{name} wurde in „Downloads“ gespeichert."
 msgid "Saved {name} to the Files app."
 msgstr "{name} wurde in der Dateien-App gespeichert."
 
+#: admin/screens/identity-providers/sso-settings-section.tsx
+#~ msgid "Saved."
+#~ msgstr ""
+
 #: src/lib/download.ts
 msgid "Saving files needs Android 10 or later."
 msgstr "Zum Speichern von Dateien ist Android 10 oder höher erforderlich."
 
+#: admin/screens/groups/group-form-panel.tsx
+#: admin/screens/identity-providers/sso-settings-section.tsx
+#: admin/screens/members/member-form-panel.tsx
 #: src/projects/project-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/models/edit-model-form.tsx
@@ -5136,6 +7346,109 @@ msgstr "Aus Bild scannen"
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Scatter chart"
 msgstr "Punktdiagramm"
+
+#: admin/screens/domains/domain-rules.ts
+#: admin/screens/identity-providers/connection-labels.ts
+msgid "SCIM"
+msgstr ""
+
+#: admin/screens/identity-providers/scim-section.tsx
+msgid "SCIM base URL"
+msgstr ""
+
+#: admin/components/audit-event-labels.ts
+msgid "SCIM connection"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "SCIM credential"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "SCIM credential issued"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "SCIM credential revoked"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "SCIM credential rotated"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "SCIM group"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "SCIM group created"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "SCIM group deleted"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "SCIM group members changed"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "SCIM group updated"
+msgstr ""
+
+#: admin/screens/identity-providers/new-connection-editor.tsx
+#: admin/screens/members/link-review-labels.ts
+#: admin/screens/members/member-labels.ts
+msgid "SCIM provisioning"
+msgstr ""
+
+#: admin/screens/identity-providers/scim-section.tsx
+msgid "SCIM provisioning is retired."
+msgstr ""
+
+#: admin/screens/identity-providers/new-connection-editor.tsx
+#~ msgid "SCIM provisioning only"
+#~ msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "SCIM request"
+msgstr ""
+
+#: admin/screens/identity-providers/connection-labels.ts
+msgid "SCIM retired"
+msgstr ""
+
+#: admin/screens/identity-providers/connection-labels.ts
+#~ msgid "SCIM retiring"
+#~ msgstr ""
+
+#: admin/screens/identity-providers/scim-section.tsx
+msgid "SCIM token"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "SCIM user"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "SCIM user created"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "SCIM user deactivated"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "SCIM user deleted"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "SCIM user reactivated"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "SCIM user updated"
+msgstr ""
 
 #: src/components/chat/scroll-to-bottom-button.tsx
 msgid "Scroll to bottom"
@@ -5171,6 +7484,11 @@ msgstr ""
 msgid "Search and work with your OneDrive files and documents."
 msgstr "Ihre OneDrive-Dateien und -Dokumente durchsuchen und bearbeiten."
 
+#: admin/screens/audit-log/audit-actor-picker.tsx
+#: admin/screens/groups/group-form-panel.tsx
+msgid "Search by name or email"
+msgstr ""
+
 #: src/search/palette/search-palette.tsx
 msgid "Search chats, models, skills, agents…"
 msgstr "Chats, Modelle, Skills, Agenten suchen…"
@@ -5202,13 +7520,26 @@ msgstr "Währungen suchen…"
 msgid "Search emoji"
 msgstr "Emoji suchen"
 
+#: admin/screens/audit-log/audit-log-page.tsx
+msgid "Search events"
+msgstr ""
+
 #: src/components/ui/command.tsx
 msgid "Search for a command to run…"
 msgstr "Nach einem Befehl suchen…"
 
+#: admin/screens/groups/groups-page.tsx
+#: admin/screens/members/member-form-panel.tsx
+msgid "Search groups"
+msgstr ""
+
 #: src/components/location-search-combobox.tsx
 msgid "Search locations…"
 msgstr "Orte suchen…"
+
+#: admin/screens/members/members-page.tsx
+msgid "Search members"
+msgstr ""
 
 #: src/settings/models/add-provider-models.tsx
 #: src/settings/models/index.tsx
@@ -5243,6 +7574,10 @@ msgstr ""
 #: src/settings/connections/provider-connection-detail.tsx
 #~ msgid "Search settings"
 #~ msgstr ""
+
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+msgid "Search sign-in methods"
+msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
 #: src/skills/skills-list.tsx
@@ -5282,8 +7617,16 @@ msgstr "Wird gesucht…"
 msgid "Securing…"
 msgstr ""
 
+#: admin/admin-sidebar.tsx
+msgid "Security"
+msgstr ""
+
 #: src/components/recovery-continuity/recovery-continuity-banner.tsx
 msgid "Security notice"
+msgstr ""
+
+#: admin/screens/identity-providers/sync-errors-section.tsx
+msgid "See all in the audit log"
 msgstr ""
 
 #: src/voice/speakable.ts
@@ -5329,11 +7672,19 @@ msgstr "Auswählen…"
 msgid "Selected server"
 msgstr ""
 
+#: admin/screens/members/invite-panel.tsx
+#~ msgid "Send"
+#~ msgstr ""
+
 #: src/components/recovery-phrase-change-dialogs.tsx
 #: src/components/sync-setup/confirm-identity-step.tsx
 #: src/settings/account/delete-account-section.tsx
 msgid "Send code"
 msgstr ""
+
+#: admin/screens/members/invite-panel.tsx
+#~ msgid "Send invitation"
+#~ msgstr ""
 
 #: src/components/sign-in/sign-in-email-step.tsx
 msgid "Send Magic Link"
@@ -5379,6 +7730,10 @@ msgstr "Als Bilder gesendet"
 msgid "Sent as text"
 msgstr "Als Text gesendet"
 
+#: admin/screens/members/members-page.tsx
+#~ msgid "Sent by email, and shown here until the person signs in."
+#~ msgstr ""
+
 #. placeholder {0}: i + 1
 #: src/components/xlsx-preview/chart-svg.tsx
 msgid "Series {0}"
@@ -5409,6 +7764,35 @@ msgstr "Server-URL"
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Servers JSON"
 msgstr "Server-JSON"
+
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "Service provider entity ID"
+msgstr ""
+
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "Service provider metadata"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Session expired"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Session revoked"
+msgstr ""
+
+#: admin/screens/identity-providers/connection-labels.ts
+msgid "Set by server settings"
+msgstr ""
+
+#: admin/screens/identity-providers/connection-editor.tsx
+msgid "Set by server settings · Read-only"
+msgstr ""
+
+#: admin/screens/identity-providers/sso-settings-section.tsx
+#~ msgid "Set by this server's OIDC or SAML settings. Change them there."
+#~ msgstr ""
 
 #: src/search/commands/use-commands.ts
 msgid "Set Dark"
@@ -5525,9 +7909,22 @@ msgstr "QR-Code anzeigen"
 msgid "Show QR code for {deviceName}"
 msgstr "QR-Code für {deviceName} anzeigen"
 
+#: admin/screens/members/members-page.tsx
+#~ msgid "Show rejected links"
+#~ msgstr ""
+
+#: admin/screens/members/members-page.tsx
+#~ msgid "Show revoked invitations"
+#~ msgstr ""
+
 #: src/tasks/index.tsx
 msgid "Showing 50 of {totalCount} tasks"
 msgstr "50 von {totalCount} Aufgaben werden angezeigt"
+
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#: admin/screens/identity-providers/sso-settings-section.tsx
+#~ msgid "Shown on the sign-in screen."
+#~ msgstr ""
 
 #: src/components/external-link-toggle-group.tsx
 msgid "Sidebar"
@@ -5543,9 +7940,13 @@ msgstr "Erneut anmelden"
 
 #: src/components/device-approval.tsx
 #: src/components/sidebar-footer.tsx
+#: src/components/sso-sign-in/sso-email-step.tsx
 msgid "Sign in"
 msgstr "Anmelden"
 
+#: admin/admin-sidebar.tsx
+#: admin/screens/sign-in-methods/sign-in-methods-page.tsx
+#: src/components/invite-accept/invite-accept-page.tsx
 #: src/components/onboarding/onboarding-server-step.tsx
 #: src/components/sign-in-modal.tsx
 #: src/settings/preferences.tsx
@@ -5610,10 +8011,22 @@ msgstr ""
 msgid "Sign in to the CLI"
 msgstr "Bei der CLI anmelden"
 
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "Sign in with {email} to accept the invitation."
+msgstr "Melden Sie sich mit {email} an, um die Einladung anzunehmen."
+
+#: src/components/sso-sign-in/sso-email-code-page.tsx
+msgid "Sign in with an email code"
+msgstr "Mit einem E-Mail-Code anmelden"
+
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/waitlist/waitlist-content.tsx
 msgid "Sign in with passkey"
 msgstr "Mit Passkey anmelden"
+
+#: src/settings/devices.tsx
+msgid "Sign in with sync to see devices here."
+msgstr ""
 
 #: src/components/device-approval.tsx
 msgid "Sign in with your {appName} account to approve this CLI request."
@@ -5632,9 +8045,22 @@ msgstr ""
 msgid "Sign out"
 msgstr "Abmelden"
 
+#: admin/screens/identity-providers/connection-editor.tsx
+msgid "Sign-in"
+msgstr ""
+
+#: admin/screens/audit-log/audit-filter-options.ts
+msgid "Sign-in and sessions"
+msgstr ""
+
 #: src/components/device-approval.tsx
 msgid "Sign-in approved"
 msgstr "Anmeldung genehmigt"
+
+#: admin/screens/identity-providers/scim-section.tsx
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "Sign-in becomes SSO-only"
+msgstr ""
 
 #: src/components/device-approval.tsx
 msgid "Sign-in denied"
@@ -5644,9 +8070,18 @@ msgstr "Anmeldung abgelehnt"
 msgid "Sign-in failed"
 msgstr ""
 
+#: admin/screens/members/member-sources-section.tsx
+msgid "Sign-in methods"
+msgstr ""
+
 #: src/components/welcome-dialog.tsx
 msgid "Sign-in successful"
 msgstr "Anmeldung erfolgreich"
+
+#: admin/screens/identity-providers/sso-connection-form.tsx
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "Sign-in URL"
+msgstr ""
 
 #: src/lib/sso-error-messages.ts
 msgid "Sign-in was cancelled, or your identity provider did not grant access."
@@ -5656,13 +8091,25 @@ msgstr ""
 msgid "Signed build provenance"
 msgstr ""
 
+#: admin/api/audit-action-labels.ts
+msgid "Signed in"
+msgstr ""
+
 #: src/settings/connections/provider-connection-summary.tsx
 msgid "Signed in to {name}"
+msgstr ""
+
+#: admin/api/audit-action-labels.ts
+msgid "Signed out"
 msgstr ""
 
 #: src/components/signed-out.tsx
 msgid "Signed Out"
 msgstr "Abgemeldet"
+
+#: admin/screens/identity-providers/sso-connection-form.tsx
+msgid "Signing certificate"
+msgstr ""
 
 #: src/components/sign-in/sign-in-form.tsx
 msgid "Signing in…"
@@ -5676,9 +8123,41 @@ msgstr ""
 msgid "Signing you in…"
 msgstr "Sie werden angemeldet…"
 
+#: admin/screens/members/member-admin-sign-in.tsx
+msgid "Signs in only through {name}"
+msgstr ""
+
+#: admin/screens/members/member-admin-sign-in.tsx
+#~ msgid "Signs in only through {name}. If it goes down, this admin can't get in."
+#~ msgstr ""
+
+#: admin/screens/members/member-admin-sign-in.tsx
+msgid "Signs in only through your identity providers"
+msgstr ""
+
+#: admin/screens/members/member-admin-sign-in.tsx
+#~ msgid "Signs in only through your identity providers. If they go down, this admin can't get in."
+#~ msgstr ""
+
+#: admin/screens/members/member-profile-section.tsx
+#~ msgid "Signs in with SSO only"
+#~ msgstr ""
+
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Simple"
 msgstr "Einfach"
+
+#: admin/screens/members/member-labels.ts
+msgid "Single sign-on"
+msgstr ""
+
+#: admin/screens/identity-providers/new-connection-editor.tsx
+#~ msgid "Single sign-on with OIDC"
+#~ msgstr ""
+
+#: admin/screens/identity-providers/new-connection-editor.tsx
+#~ msgid "Single sign-on with SAML"
+#~ msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
@@ -5728,6 +8207,10 @@ msgstr "Smileys & Menschen"
 msgid "Snow grains"
 msgstr "Schneegriesel"
 
+#: admin/api/error-messages.ts
+msgid "Someone has already decided this review."
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
@@ -5751,6 +8234,10 @@ msgstr "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut."
 msgid "Something went wrong. Retrying ({retryCount}/{maxRetries})…"
 msgstr "Etwas ist schiefgelaufen. Neuer Versuch ({retryCount}/{maxRetries})…"
 
+#: admin/api/error-messages.ts
+msgid "Something went wrong. Try again."
+msgstr ""
+
 #: src/components/chat/attestation/attestation-details.tsx
 msgid "Source repository"
 msgstr ""
@@ -5766,6 +8253,22 @@ msgstr "Spreche"
 #: src/settings/voice.tsx
 msgid "Speech-to-text and text-to-speech run in Thunderbolt’s confidential enclave."
 msgstr "Sprache-zu-Text und Text-zu-Sprache laufen in der Confidential Enclave von Thunderbolt."
+
+#: admin/screens/domains/domain-rules.ts
+msgid "SSO"
+msgstr ""
+
+#: admin/screens/domains/domain-rules.ts
+msgid "SSO + SCIM"
+msgstr ""
+
+#: admin/screens/members/member-view-panel.tsx
+msgid "SSO only"
+msgstr ""
+
+#: admin/screens/members/link-review-labels.ts
+msgid "SSO sign-in"
+msgstr ""
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Stacked area chart"
@@ -5796,6 +8299,7 @@ msgstr ""
 msgid "Starting…"
 msgstr "Wird gestartet…"
 
+#: admin/screens/members/invitation-panel.tsx
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Status"
 msgstr "Status"
@@ -5820,10 +8324,23 @@ msgstr "Speicher ist deaktiviert"
 msgid "STT model"
 msgstr "STT-Modell"
 
+#: admin/screens/domains/add-domain-editor.tsx
+msgid "Subdomains aren't included. Add each one separately."
+msgstr ""
+
+#: admin/screens/members/link-review-panel.tsx
+msgid "Subject"
+msgstr ""
+
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 #: src/widgets/ask/display.tsx
 msgid "Submit"
 msgstr "Senden"
+
+#: admin/components/audit-event-labels.ts
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Success"
+msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Successfully connected to the agent."
@@ -5853,6 +8370,10 @@ msgstr ""
 msgid "Surface chart"
 msgstr "Oberflächendiagramm"
 
+#: admin/screens/members/member-labels.ts
+msgid "Suspended"
+msgstr ""
+
 #: src/components/ui/header.tsx
 msgid "Switch Agent"
 msgstr "Agent wechseln"
@@ -5865,6 +8386,10 @@ msgstr "Zu {suggestedLanguageLabel} wechseln"
 msgid "Symbols"
 msgstr "Symbole"
 
+#: admin/screens/identity-providers/connection-editor.tsx
+msgid "Sync errors"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Sync This Device With Cloud"
 msgstr "Dieses Gerät mit der Cloud synchronisieren"
@@ -5873,6 +8398,7 @@ msgstr "Dieses Gerät mit der Cloud synchronisieren"
 msgid "Synced {relative}"
 msgstr "Synchronisiert {relative}"
 
+#: admin/components/audit-event-labels.ts
 #: src/components/theme-toggle-group.tsx
 msgid "System"
 msgstr "System"
@@ -5900,6 +8426,22 @@ msgstr "Tippen Sie auf den Code, den das neue Gerät anzeigt. Wenn keiner übere
 #: src/settings/app-version-section.tsx
 msgid "Tap to check for updates."
 msgstr "Tippen, um nach Updates zu suchen."
+
+#: admin/screens/audit-log/audit-event-panel.tsx
+msgid "Target"
+msgstr ""
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Target type"
+msgstr ""
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Target type: {targetTypeLabel}"
+msgstr ""
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "Target: <0>{targetId}</0>"
+msgstr ""
 
 #: src/layout/sidebar/chat-sidebar.tsx
 #: src/search/commands/navigation.ts
@@ -5981,6 +8523,14 @@ msgstr ""
 msgid "That code isn't valid or has already been used. Check your terminal and try again."
 msgstr "Dieser Code ist ungültig oder wurde bereits verwendet. Prüfen Sie Ihr Terminal und versuchen Sie es erneut."
 
+#: admin/api/error-messages.ts
+msgid "That isn't a valid domain."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "That role can't be assigned."
+msgstr ""
+
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "The {recipient} team, for debugging. It's tied to your account — it isn't anonymous."
 msgstr ""
@@ -6004,6 +8554,10 @@ msgstr "Beim KI-Anbieter gibt es gerade Probleme. Versuchen Sie es in einem Mome
 #: src/components/chat/error-message.tsx
 msgid "The AI provider took too long to respond. Try again."
 msgstr "Der KI-Anbieter hat zu lange für eine Antwort gebraucht. Versuchen Sie es erneut."
+
+#: admin/screens/audit-log/audit-event-panel.tsx
+msgid "The app"
+msgstr ""
 
 #: src/webview-recovery/index.ts
 msgid "The app's web content stopped unexpectedly more than once. Automatic reloads have been paused."
@@ -6069,6 +8623,14 @@ msgstr ""
 msgid "The device will be signed out and lose access to your synced data. Its local copy is cleared the next time it connects; a device that never comes back online keeps what is already on it. Your recovery phrase keeps working."
 msgstr ""
 
+#: admin/api/error-messages.ts
+msgid "The discovery URL isn't valid."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "The DNS lookup failed. Try again later."
+msgstr ""
+
 #: src/lib/download.ts
 msgid "The file could not be marked as downloaded from the internet, so it was not saved. The Downloads folder may be on a drive that cannot keep that mark."
 msgstr "Die Datei konnte nicht als aus dem Internet heruntergeladen markiert werden und wurde daher nicht gespeichert. Der Ordner „Downloads“ liegt möglicherweise auf einem Laufwerk, das diese Markierung nicht speichern kann."
@@ -6081,9 +8643,45 @@ msgstr "Der Fingerabdruck stimmt nicht überein. Prüfen Sie den auf dem neuen G
 msgid "The folder to save into does not exist."
 msgstr "Der Zielordner existiert nicht."
 
+#: admin/screens/members/member-rules.ts
+msgid "The identity provider can reactivate them. Delete the user there first."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "The identity provider has already provisioned this person."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "The identity provider has suspended this member. Remove them there first."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "The identity provider has suspended this member's link."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "The identity provider manages this field. Change it there."
+msgstr ""
+
+#: admin/screens/members/member-rules.ts
+msgid "The identity provider only suspended them. Delete the user there first."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "The identity provider still provisions this member. Remove them there first."
+msgstr ""
+
+#: admin/screens/members/member-rules.ts
+msgid "The identity provider still vouches for them. Remove them there first."
+msgstr ""
+
 #: src/components/chat/error-message.tsx
 msgid "The instructions from your skills or project are too long for this agent. Shorten a long skill or the project's instructions, then try again."
 msgstr "Die Anweisungen aus Ihren Skills oder Ihrem Projekt sind für diesen Agenten zu lang. Kürzen Sie einen langen Skill oder die Anweisungen des Projekts und versuchen Sie es dann erneut."
+
+#: admin/screens/domains/domain-verification-section.tsx
+msgid "The last check failed"
+msgstr ""
 
 #: src/widgets/map/widget.tsx
 msgid "The map couldn’t be loaded."
@@ -6123,6 +8721,10 @@ msgstr "Die Vorschau öffnet Arbeitsmappen bis {limit} MB. Laden Sie die Datei h
 msgid "The previous account's data on this device could not be secured. Reload to try again."
 msgstr "Die Daten des vorherigen Kontos auf diesem Gerät konnten nicht geschützt werden. Laden Sie neu, um es erneut zu versuchen."
 
+#: admin/api/error-messages.ts
+msgid "The provider ID can only use lowercase letters, numbers and hyphens."
+msgstr ""
+
 #: src/components/onboarding/provider-setup-error.ts
 msgid "The provider rejected the model request (HTTP {status}). Check model access and your subscription."
 msgstr ""
@@ -6151,6 +8753,14 @@ msgstr ""
 #~ msgid "The search provider returned too much content. Try another page."
 #~ msgstr ""
 
+#: admin/screens/audit-log/audit-event-panel.tsx
+msgid "The server"
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "The server doesn't trust the discovery URL's origin."
+msgstr ""
+
 #: src/settings/connections/mcp-server-form.tsx
 msgid "The server rejected the credential. Check your bearer token or API key."
 msgstr "Der Server hat die Anmeldedaten abgelehnt. Prüfen Sie Ihren Bearer-Token oder API-Schlüssel."
@@ -6175,6 +8785,18 @@ msgstr "Der Anmeldedienst ist gerade nicht verfügbar. Prüfen Sie Ihre Verbindu
 msgid "The transcript was rejected by the server."
 msgstr ""
 
+#: admin/screens/members/members-page.tsx
+msgid "Their account and all their data are deleted. This can't be undone."
+msgstr ""
+
+#: admin/screens/members/link-review-confirm-dialog.tsx
+msgid "Their next sign-in from {connection} uses {existing}'s account."
+msgstr ""
+
+#: admin/screens/members/member-sources-section.tsx
+msgid "Their other sign-in methods then decide their access."
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Theme"
 msgstr "Design"
@@ -6183,10 +8805,34 @@ msgstr "Design"
 msgid "There is not enough free space on this device."
 msgstr "Auf diesem Gerät ist nicht genügend freier Speicherplatz vorhanden."
 
+#: admin/screens/link-reviews/link-reviews-page.tsx
+#~ msgid "These identities arrived from an identity provider with the email of an existing account, and no automatic rule could link them. Approve to link one to that account."
+#~ msgstr ""
+
 #. placeholder {0}: state.modelsWithoutTools.join(', ')
 #: src/settings/models/add-provider-models.tsx
 msgid "These models do not support tools and cannot use features like web search: {0}."
 msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "These settings are for a different sign-in protocol."
+msgstr ""
+
+#: admin/screens/members/link-review-confirm-dialog.tsx
+msgid "They can't sign in from {connection} until an admin approves the link."
+msgstr ""
+
+#: admin/screens/members/invite-panel.tsx
+#~ msgid "They get an email with a link that signs them in. Inviting the same address again replaces the earlier link."
+#~ msgstr ""
+
+#: admin/screens/members/block-member-dialog.tsx
+msgid "They're signed out everywhere and can't sign in until you unblock them."
+msgstr ""
+
+#: admin/screens/members/member-access-section.tsx
+#~ msgid "They're signed out everywhere and can't sign in, even through your identity provider, until you unblock them."
+#~ msgstr ""
 
 #: src/components/chat/reasoning-group-title.tsx
 #: src/components/chat/reasoning-item.tsx
@@ -6231,12 +8877,37 @@ msgstr "Dieser Code ist abgelaufen."
 msgid "This code has expired. Please request a new one."
 msgstr "Dieser Code ist abgelaufen. Bitte fordern Sie einen neuen an."
 
+#: admin/api/error-messages.ts
+#: admin/screens/identity-providers/scim-section.tsx
+msgid "This connection can't take SCIM provisioning."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "This connection can't take single sign-on."
+msgstr ""
+
 #: src/lib/otari-browser-auth.ts
 msgid "This connection expired. Please connect to Otari again."
 msgstr ""
 
+#: admin/api/error-messages.ts
+msgid "This connection has no active SCIM provisioning."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "This connection has no single sign-on."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "This connection is configured by the server's settings and can't be changed here."
+msgstr ""
+
 #: src/components/provider-authorization-result.tsx
 msgid "This connection link is no longer valid. Return to Thunderbolt and start a new connection."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "This connection no longer exists."
 msgstr ""
 
 #: src/components/chat/error-message.tsx
@@ -6312,17 +8983,61 @@ msgstr "Für dieses Dokument ist keine Vorschau möglich"
 msgid "This document is too large to preview"
 msgstr "Dieses Dokument ist zu groß für eine Vorschau"
 
+#: admin/api/error-messages.ts
+msgid "This domain has already been added."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "This domain no longer exists."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "This event isn't in your organization's audit log."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "This field identifies the identity provider and can't be changed."
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "This file doesn't look like a {appName} export."
 msgstr "Diese Datei scheint kein {appName}-Export zu sein."
+
+#: admin/api/error-messages.ts
+msgid "This group already has that role."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "This group no longer exists."
+msgstr ""
 
 #: src/components/onboarding/onboarding-location-step.tsx
 msgid "This helps us personalize your experience with local settings and features."
 msgstr "So können wir Ihr Erlebnis mit lokalen Einstellungen und Funktionen personalisieren."
 
+#: admin/screens/identity-providers/sso-settings-section.tsx
+#~ msgid "This identifies the provider and can't change. To use a different one, retire this connection and add another."
+#~ msgstr ""
+
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "This invitation is no longer valid"
+msgstr "Diese Einladung ist nicht mehr gültig"
+
+#: admin/api/error-messages.ts
+msgid "This invitation no longer exists."
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "This is the first device on your account. We'll create an encryption key to protect your data and give you a recovery key to keep safe."
 msgstr "Das ist das erste Gerät in Ihrem Konto. Wir erstellen einen Verschlüsselungsschlüssel zum Schutz Ihrer Daten und geben Ihnen einen Wiederherstellungsschlüssel zum sicheren Aufbewahren."
+
+#: admin/screens/members/link-review-panel.tsx
+#~ msgid "This is your own account, so another admin has to approve the link."
+#~ msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "This link can't be detached."
+msgstr ""
 
 #: src/lib/otp-error-messages.ts
 msgid "This link has expired. Please request a new one."
@@ -6335,6 +9050,22 @@ msgstr "Dieser Link ist ungültig. Bitte fordern Sie einen neuen an."
 #: src/hooks/use-external-link-dialog.ts
 msgid "This link uses an address the app cannot open."
 msgstr "Diese Adresse kann von der App nicht geöffnet werden."
+
+#: admin/api/error-messages.ts
+msgid "This list changed. Reload it and try again."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "This member doesn't hold that role."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "This member isn't linked to that identity provider."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "This member no longer exists."
+msgstr ""
 
 #: src/mini-apps/mini-app-frame.tsx
 msgid "This mini app uses an outdated SDK. Ask its maintainer to update the SDK and redeploy it."
@@ -6400,6 +9131,10 @@ msgstr ""
 msgid "This permanently removes the revoked bridge registration. The bridge can register again afterward."
 msgstr "Damit wird die widerrufene Bridge-Registrierung endgültig entfernt. Die Bridge kann sich danach erneut registrieren."
 
+#: admin/api/error-messages.ts
+msgid "This person is already a member."
+msgstr ""
+
 #: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "This presentation can't be previewed"
 msgstr "Für diese Präsentation ist keine Vorschau möglich"
@@ -6439,8 +9174,32 @@ msgstr "Damit wird die Verbindung nur aus {appName} entfernt. Auf dem Remote-Ser
 msgid "This removes the connection from your devices. Models and search using it will become unavailable. Your chat history will be kept."
 msgstr ""
 
+#: admin/screens/members/member-sources-section.tsx
+#~ msgid "This removes their link to this identity provider. Their other sign-in sources then decide their access."
+#~ msgstr ""
+
 #: src/settings/devices.tsx
 msgid "This replaces your 24-word phrase. The one you have now will stop working, and you will need to save the new one."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "This review no longer exists."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "This role comes from a group. Change the group's mapping instead."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "This role comes from the identity provider. Change it there."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "This role mapping no longer exists."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "This SCIM group no longer exists."
 msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
@@ -6470,6 +9229,14 @@ msgstr "Dieses Tabellenblatt ist zu groß für eine Vorschau"
 #: src/lib/sso-error-messages.ts
 msgid "This sign-in did not start from {appName}. Open {appName} and sign in from there."
 msgstr ""
+
+#: src/lib/sso-error-messages.ts
+#~ msgid "This sign-in is already linked to another {appName} account. Ask your administrator for help."
+#~ msgstr "Diese Anmeldung ist bereits mit einem anderen {appName}-Konto verknüpft. Wenden Sie sich an Ihren Administrator."
+
+#: src/lib/sso-error-messages.ts
+msgid "This sign-in option is no longer available. Try again, or ask your administrator."
+msgstr "Diese Anmeldeoption ist nicht mehr verfügbar. Versuchen Sie es erneut oder wenden Sie sich an Ihren Administrator."
 
 #: src/lib/device-grant.ts
 msgid "This sign-in request has expired. Start a new one from your terminal."
@@ -6552,9 +9319,17 @@ msgstr "Diese Arbeitsmappe hat keine sichtbaren Tabellenblätter"
 msgid "This workbook is too large to preview"
 msgstr "Diese Arbeitsmappe ist zu groß für eine Vorschau"
 
+#: admin/screens/break-glass/break-glass-page.tsx
+#~ msgid "Those who sign in with an email code can still administer it if your identity provider is down."
+#~ msgstr ""
+
 #: src/components/chat/reasoning-group-title.tsx
 msgid "Thought for {duration}"
 msgstr "{duration} nachgedacht"
+
+#: admin/screens/audit-log/audit-event-panel.tsx
+msgid "Through API key {apiKeyName}"
+msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Thunderbolt CLI"
@@ -6573,8 +9348,8 @@ msgid "Thunderbolt is not allowed to save there."
 msgstr "Thunderbolt darf an diesem Ort nicht speichern."
 
 #: src/components/sign-in/sign-in-email-step.tsx
-msgid "Thunderbolt is open-source"
-msgstr "Thunderbolt ist Open Source"
+#~ msgid "Thunderbolt is open-source"
+#~ msgstr "Thunderbolt ist Open Source"
 
 #: src/settings/connections/use-integrations-controller.tsx
 msgid "Thunderbolt Pro is not available yet. Stay tuned!"
@@ -6607,6 +9382,10 @@ msgstr "Gewitter mit starkem Hagel"
 #: src/widgets/weather-forecast/lib.ts
 msgid "Thunderstorm with slight hail"
 msgstr "Gewitter mit leichtem Hagel"
+
+#: admin/screens/audit-log/audit-event-panel.tsx
+msgid "Time"
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Time format"
@@ -6660,6 +9439,10 @@ msgstr ""
 msgid "Tinfoil web search failed. Check your connection and subscription, then try again."
 msgstr ""
 
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "To"
+msgstr ""
+
 #: src/widgets/connect-integration/widget.tsx
 #~ msgid "to access your calendar"
 #~ msgstr "um auf Ihren Kalender zuzugreifen"
@@ -6676,8 +9459,24 @@ msgstr ""
 msgid "To continue, we’ll email you a verification code."
 msgstr "Zum Fortfahren senden wir Ihnen einen Bestätigungscode per E-Mail."
 
+#: admin/screens/identity-providers/sso-settings-section.tsx
+msgid "To retire this connection, retire its SCIM provisioning first."
+msgstr ""
+
 #: src/lib/encrypted-sync-support.ts
 msgid "To use encrypted sync, open this app over HTTPS and use an up-to-date browser or operating system."
+msgstr ""
+
+#: admin/screens/audit-log/audit-log-filters.tsx
+msgid "To: {toDate}"
+msgstr ""
+
+#: src/components/ui/calendar.tsx
+msgid "Today, {day}"
+msgstr ""
+
+#: src/components/ui/calendar.tsx
+msgid "Today, {day}, selected"
 msgstr ""
 
 #: src/search/commands/use-commands.ts
@@ -6746,9 +9545,10 @@ msgstr "Vertrauenswürdige Geräte"
 #: src/components/auth-gate/browser-check.tsx
 #: src/components/chat/attestation/attestation-panel.tsx
 #: src/components/embedded/surface-status.tsx
+#: src/components/invite-accept/invite-accept-page.tsx
 #: src/components/recovery-phrase-change-dialogs.tsx
 #: src/components/sso-error.tsx
-#: src/components/sso-redirect.tsx
+#: src/components/sso-sign-in/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/content-view/viewer-load-failure.tsx
 #: src/webview-recovery/index.ts
@@ -6783,6 +9583,10 @@ msgstr "TTS-Stimme"
 msgid "Turn off tools and retry"
 msgstr ""
 
+#: admin/screens/identity-providers/scim-section.tsx
+msgid "Turn on SCIM"
+msgstr ""
+
 #: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "Turn on sync on new devices with just your passkey, no approval needed. Anyone with access to your passkey can unlock your data."
 msgstr "Aktivieren Sie die Synchronisierung auf neuen Geräten einfach mit Ihrem Passkey, ganz ohne Genehmigung. Wer Zugriff auf Ihren Passkey hat, kann Ihre Daten entsperren."
@@ -6795,7 +9599,15 @@ msgstr "Aktivieren Sie die Synchronisierung auf diesem Gerät, um diesen Passkey
 msgid "Turning off telemetry will disable all preview features. Are you sure you want to continue?"
 msgstr "Wenn Sie die Telemetrie deaktivieren, werden alle Vorschaufunktionen deaktiviert. Möchten Sie wirklich fortfahren?"
 
-#: src/components/sso-redirect.tsx
+#: admin/screens/identity-providers/scim-section.tsx
+#~ msgid "Turning on SCIM makes sign-in through this connection SSO-only, and a person needs a SCIM record before their first sign-in: your identity provider has to provision them first."
+#~ msgstr ""
+
+#: admin/screens/domains/domain-record-section.tsx
+msgid "Type"
+msgstr ""
+
+#: src/components/sso-sign-in/sso-redirect.tsx
 msgid "Unable to connect to the identity provider. Check your network connection and SSO configuration."
 msgstr "Verbindung zum Identitätsanbieter nicht möglich. Prüfen Sie Ihre Netzwerkverbindung und Ihre SSO-Konfiguration."
 
@@ -6806,6 +9618,14 @@ msgstr "Die Wettervorhersage konnte nicht geladen werden: {errorMessage}"
 #: src/widgets/weather-forecast/widget.tsx
 msgid "Unable to load weather forecast."
 msgstr "Die Wettervorhersage konnte nicht geladen werden."
+
+#: admin/screens/identity-providers/sync-errors-section.tsx
+msgid "Unauthenticated requests aren't listed."
+msgstr ""
+
+#: admin/screens/members/member-actions.tsx
+msgid "Unblock"
+msgstr ""
 
 #: src/components/app-error-screen.tsx
 msgid "Unfortunately, the local database encountered an error while being migrated to the latest version of this app. Deleting your local data will resolve the issue but you will permanently lose your settings and chat history. This action cannot be undone."
@@ -6855,6 +9675,7 @@ msgstr "Nicht erreichbar {relative}"
 msgid "Untitled chat"
 msgstr "Chat ohne Titel"
 
+#: admin/screens/domains/domain-status-badge.tsx
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "Unverified"
 msgstr ""
@@ -6979,6 +9800,12 @@ msgstr ""
 msgid "Use an API key instead"
 msgstr ""
 
+#: src/components/sso-error.tsx
+#: src/components/sso-sign-in/sso-connection-list.tsx
+#: src/components/sso-sign-in/sso-email-step.tsx
+msgid "Use an email code instead"
+msgstr "Stattdessen einen E-Mail-Code verwenden"
+
 #: src/lib/mcp-url-validation.ts
 msgid "Use an http:// or https:// URL"
 msgstr "Verwenden Sie eine http://- oder https://-URL"
@@ -7086,6 +9913,14 @@ msgstr "Nutzererlebnis"
 msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
 msgstr "{usedTokensLabel} von {maxTokensLabel} des Kontextfensters genutzt"
 
+#: admin/screens/domains/domain-record-section.tsx
+msgid "Value"
+msgstr ""
+
+#: admin/screens/domains/domain-verification-section.tsx
+msgid "Verification"
+msgstr ""
+
 #: src/components/chat/attestation/attestation-panel.tsx
 msgid "Verification covers model inference. Connected tools and external services have their own privacy boundaries."
 msgstr ""
@@ -7113,12 +9948,40 @@ msgstr ""
 msgid "Verification unavailable"
 msgstr ""
 
+#: admin/screens/domains/domain-status-badge.tsx
+msgid "Verified"
+msgstr ""
+
 #: src/components/chat/attestation/attestation-details.tsx
 msgid "Verified on this device"
 msgstr ""
 
+#: admin/screens/domains/domain-verification-section.tsx
+msgid "Verify"
+msgstr ""
+
+#: admin/screens/identity-providers/new-connection-editor.tsx
+#~ msgid "Verify a domain you own, then let people on it join or send them to an identity provider."
+#~ msgstr ""
+
 #: src/components/chat/attestation/attestation-panel.tsx
 msgid "Verify connection"
+msgstr ""
+
+#: admin/screens/domains/domains-page.tsx
+#~ msgid "Verify the domains your organization owns, then decide how people on each one join."
+#~ msgstr ""
+
+#: admin/screens/domains/domain-claim-section.tsx
+msgid "Verify this domain before an identity provider can claim it."
+msgstr ""
+
+#: admin/screens/domains/domain-enrollment-field.tsx
+msgid "Verify this domain before opening it to enrollment."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "Verify this domain first."
 msgstr ""
 
 #: src/components/chat/attestation/use-attestation-display.ts
@@ -7203,6 +10066,14 @@ msgstr "Warten auf den Funken… Thunderbolt öffnet sich von selbst."
 msgid "Waiting for approval"
 msgstr "Warten auf Genehmigung"
 
+#: admin/screens/members/invitation-panel.tsx
+#~ msgid "Waiting for them to sign in. The link works until {expiresOn}."
+#~ msgstr ""
+
+#: admin/screens/domains/domains-page.tsx
+#~ msgid "Waiting for verification"
+#~ msgstr ""
+
 #: src/mini-apps/mini-app-page.tsx
 #~ msgid "Waiting for your approval in the app"
 #~ msgstr ""
@@ -7211,6 +10082,11 @@ msgstr "Warten auf Genehmigung"
 msgid "Waiting for your other device…"
 msgstr ""
 
+#: admin/screens/members/pending-link-reviews.tsx
+#~ msgid "Waiting to be linked"
+#~ msgstr ""
+
+#: admin/screens/members/member-labels.ts
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Waitlist"
 msgstr ""
@@ -7230,6 +10106,10 @@ msgstr ""
 #: src/lib/sso-error-messages.ts
 msgid "We could not sign you in. Please try again."
 msgstr ""
+
+#: src/lib/sso-error-messages.ts
+msgid "We couldn't match this sign-in to an account. Ask your administrator for help."
+msgstr "Diese Anmeldung konnte keinem Konto zugeordnet werden. Wenden Sie sich an Ihren Administrator."
 
 #: src/components/auth-gate/browser-check.tsx
 msgid "We couldn't verify your browser. Check your connection and try again."
@@ -7256,6 +10136,10 @@ msgstr ""
 #: src/settings/account/delete-account-section.tsx
 msgid "We sent an 8-digit code to your account email. Enter it to permanently delete your account."
 msgstr ""
+
+#: src/components/sso-sign-in/sso-email-code-page.tsx
+msgid "We'll send a sign-in code to your email address."
+msgstr "Wir senden einen Anmeldecode an Ihre E-Mail-Adresse."
 
 #: src/waitlist/waitlist-content.tsx
 msgid "We've sent an email to <0>{email}</0> with your next steps."
@@ -7302,6 +10186,7 @@ msgstr "Willkommen!"
 msgid "What agents use"
 msgstr "Was Agenten nutzen"
 
+#: admin/components/form-field.tsx
 #: src/skills/skill-detail.tsx
 #: src/skills/skill-form.tsx
 msgid "What is this for?"
@@ -7314,6 +10199,10 @@ msgstr "Wofür ist dieses Projekt gedacht?"
 #: src/components/settings/agents/agent-detail.tsx
 msgid "What it uses"
 msgstr "Was er nutzt"
+
+#: admin/screens/identity-providers/new-connection-editor.tsx
+#~ msgid "What should this identity provider do?"
+#~ msgstr ""
 
 #: src/components/onboarding/onboarding-name-step.tsx
 msgid "What should we call you?"
@@ -7330,6 +10219,10 @@ msgstr "Was möchten Sie mit Ihren lokalen Daten machen?"
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "What's in it?"
 msgstr ""
+
+#: admin/screens/members/pending-link-reviews.tsx
+#~ msgid "When an identity provider sends someone with the email of an existing account and no rule can link them, they wait here for you."
+#~ msgstr ""
 
 #: src/settings/preferences.tsx
 #~ msgid "When enabled, requests are routed through Thunderbolt's cloud proxy."
@@ -7367,9 +10260,21 @@ msgstr ""
 msgid "Window controls"
 msgstr "Fenstersteuerung"
 
+#: admin/components/audit-event-labels.ts
+msgid "Windows"
+msgstr ""
+
+#: admin/screens/identity-providers/scim-section.tsx
+#~ msgid "With SCIM, your identity provider creates, updates and removes people in {appName}."
+#~ msgstr ""
+
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 msgid "word1 word2 word3 ..."
 msgstr "wort1 wort2 wort3 ..."
+
+#: src/components/sso-sign-in/sso-email-step.tsx
+msgid "Work email"
+msgstr "Geschäftliche E-Mail-Adresse"
 
 #: src/settings/preferences.tsx
 msgid "Would you like to change the language to {suggestedLanguageLabel}?"
@@ -7419,6 +10324,31 @@ msgstr "Sie können Integrationen später in den Einstellungen verbinden."
 msgid "You can return to your terminal."
 msgstr "Sie können zu Ihrem Terminal zurückkehren."
 
+#: admin/screens/members/invite-panel.tsx
+msgid "You can still invite this address. The audit log records it."
+msgstr ""
+
+#: admin/api/error-messages.ts
+#: admin/screens/members/member-rules.ts
+msgid "You can't block yourself."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "You can't decide a review of your own account."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "You can't delete yourself."
+msgstr ""
+
+#: admin/api/error-messages.ts
+msgid "You can't detach your own identity provider link."
+msgstr ""
+
+#: admin/screens/members/member-rules.ts
+msgid "You can't detach your own link."
+msgstr ""
+
 #: src/components/provider-authorization-result.tsx
 #~ msgid "You cancelled this connection. Return to Thunderbolt to try again whenever you're ready."
 #~ msgstr ""
@@ -7447,6 +10377,11 @@ msgstr "Sie können sich mit diesem Passkey nicht mehr anmelden oder die Synchro
 msgid "You'll get a new 24-word recovery phrase, shown once. It lets recovery confirm that your encryption keys are really yours. Your current phrase stops working as soon as the new one is created, and your synced data is unaffected. To continue, we'll email you a verification code."
 msgstr ""
 
+#: admin/screens/groups/group-form-panel.tsx
+#: admin/screens/members/member-form-panel.tsx
+msgid "You'll lose access to the admin screens. Only another admin can give it back."
+msgstr ""
+
 #: src/skills/discard-create-dialog.tsx
 #: src/skills/skills-view.tsx
 msgid "You'll lose what you've added so far."
@@ -7459,6 +10394,14 @@ msgstr "Alles bereit!"
 #: src/components/onboarding/onboarding-celebration-step.tsx
 msgid "You're all set! 🎉"
 msgstr "Alles bereit! 🎉"
+
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "You're already signed in"
+msgstr "Sie sind bereits angemeldet"
+
+#: admin/api/error-messages.ts
+msgid "You're no longer an admin of this organization."
+msgstr ""
 
 #: src/components/magic-link-verify.tsx
 #: src/components/sign-in/sign-in-success-step.tsx
@@ -7478,6 +10421,14 @@ msgstr "Sie nutzen die neueste Version."
 #~ msgid "You're ready for the next step. Return to Thunderbolt to finish connecting your account."
 #~ msgstr ""
 
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "You're signed in as {email}."
+msgstr "Sie sind als {email} angemeldet."
+
+#: src/components/invite-accept/invite-accept-page.tsx
+msgid "You've been invited to {appName}"
+msgstr "Sie wurden zu {appName} eingeladen"
+
 #: src/settings/models/model-detail.tsx
 msgid "You've customized this model."
 msgstr "Sie haben dieses Modell angepasst."
@@ -7493,6 +10444,14 @@ msgstr "Sie haben Ihr KI-Nutzungslimit für das aktuelle 5-Stunden-Fenster errei
 #: src/components/chat/error-message.tsx
 msgid "You've reached your AI usage limit for the current 7-day window. Try again later."
 msgstr "Sie haben Ihr KI-Nutzungslimit für das aktuelle 7-Tage-Fenster erreicht. Versuchen Sie es später erneut."
+
+#: src/lib/sso-error-messages.ts
+msgid "Your access to {appName} has been blocked. Ask your administrator for help."
+msgstr "Ihr Zugang zu {appName} wurde gesperrt. Wenden Sie sich an Ihren Administrator."
+
+#: src/lib/sso-error-messages.ts
+msgid "Your account has been deactivated. Ask your administrator to restore your access."
+msgstr "Ihr Konto wurde deaktiviert. Bitten Sie Ihren Administrator, Ihren Zugang wiederherzustellen."
 
 #: src/components/account-deleted.tsx
 msgid "Your account has been deleted and local data has been cleared."
@@ -7542,6 +10501,8 @@ msgstr ""
 msgid "Your call"
 msgstr "Ihre Entscheidung"
 
+#: admin/components/resource-page-dialogs.tsx
+#: admin/screens/identity-providers/connection-editor.tsx
 #: src/components/create-item/create-skill-panel.tsx
 #: src/skills/skills-view.tsx
 msgid "Your changes won't be saved."
@@ -7592,6 +10553,30 @@ msgstr ""
 msgid "Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."
 msgstr ""
 
+#: admin/screens/identity-providers/new-connection-editor.tsx
+#~ msgid "Your identity provider creates and updates people. You can add sign-in later."
+#~ msgstr ""
+
+#: src/lib/sso-error-messages.ts
+msgid "Your identity provider didn't send the identifier your organization matches accounts on. Ask your administrator to check the connection."
+msgstr "Ihr Identitätsanbieter hat die Kennung nicht gesendet, über die Ihre Organisation Konten zuordnet. Bitten Sie Ihren Administrator, die Verbindung zu prüfen."
+
+#: admin/screens/identity-providers/scim-groups-section.tsx
+#~ msgid "Your identity provider hasn't pushed any groups yet."
+#~ msgstr ""
+
+#: admin/screens/members/member-rules.ts
+#~ msgid "Your identity provider manages this name. Change it there."
+#~ msgstr ""
+
+#: admin/screens/identity-providers/scim-groups-section.tsx
+#~ msgid "Your identity provider owns these groups. A mapping follows the group's ID, so renaming it there changes nothing here."
+#~ msgstr ""
+
+#: admin/screens/identity-providers/new-scim-connection-form.tsx
+#~ msgid "Your identity provider's name for this tenant or realm. It can't be renamed later."
+#~ msgstr ""
+
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Your local data stays on this device until you enable sync."
 msgstr ""
@@ -7620,6 +10605,18 @@ msgstr ""
 #: src/components/recovery-phrase-change-dialogs.tsx
 msgid "Your old recovery phrase no longer works. Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
 msgstr ""
+
+#: src/lib/sso-error-messages.ts
+msgid "Your organization hasn't given you access to {appName} yet. Ask your administrator to add you."
+msgstr "Ihre Organisation hat Ihnen noch keinen Zugang zu {appName} gewährt. Bitten Sie Ihren Administrator, Sie hinzuzufügen."
+
+#: src/settings/account/use-delete-account.ts
+msgid "Your organization manages this account, so it can’t be deleted here. Ask your administrator."
+msgstr "Ihre Organisation verwaltet dieses Konto, daher kann es hier nicht gelöscht werden. Wenden Sie sich an Ihren Administrator."
+
+#: src/lib/otp-error-messages.ts
+msgid "Your organization requires you to sign in with single sign-on."
+msgstr "Ihre Organisation verlangt die Anmeldung per Single Sign-On."
 
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "Your passkey was added before a security update. Check it once so unlocking with it can confirm your encryption keys are yours."
@@ -7672,6 +10669,10 @@ msgstr ""
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Your request to sync this device was denied by another device. You can try again or close this dialog."
 msgstr "Ihre Anfrage, dieses Gerät zu synchronisieren, wurde von einem anderen Gerät abgelehnt. Sie können es erneut versuchen oder diesen Dialog schließen."
+
+#: admin/api/error-messages.ts
+msgid "Your session has ended. Sign in again."
+msgstr ""
 
 #: src/lib/tinfoil-auth.ts
 msgid "Your Tinfoil connection has expired. Reconnect Tinfoil in Settings → Connections."

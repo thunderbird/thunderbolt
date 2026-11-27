@@ -4,14 +4,15 @@
 
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Link, useSearchParams } from 'react-router'
-import { AppWordmark } from '@/components/app-wordmark'
+import { AuthScreen, AuthScreenHeading, authButtonClass } from '@/components/auth-screen'
 import { useAppName } from '@/lib/branding-selectors'
 import { Button } from '@/components/ui/button'
 import { getSsoErrorMessage } from '@/lib/sso-error-messages'
+import { ssoEmailCodePath } from '@/lib/sso-paths'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 
 /**
- * Where a failed SSO login lands (`errorCallbackURL` in `sso-redirect.tsx`, or `AuthGate` for an error that
+ * Where a failed SSO login lands (`errorCallbackURL` in `sso-sign-in/use-sso-sign-in-state.ts`, or `AuthGate` for an error that
  * arrives on `/`). It must not be `/sso-redirect`, which restarts the login on load and would loop.
  */
 const SsoError = () => {
@@ -21,31 +22,33 @@ const SsoError = () => {
   const localMode = useLocalSettingsStore((state) => state.localMode)
 
   return (
-    <div className="flex flex-col items-center justify-center w-full h-dvh px-6">
-      <div className="flex flex-col items-center gap-8 text-center">
-        <AppWordmark />
-
-        <div className="flex flex-col items-center gap-2">
-          <h1 className="text-4xl font-semibold tracking-tight">
-            <Trans>Sign-in failed</Trans>
-          </h1>
-          <p className="text-muted-foreground">{i18n._(getSsoErrorMessage(searchParams.get('error'), appName))}</p>
-        </div>
-
-        <Button asChild>
+    <AuthScreen>
+      <AuthScreenHeading
+        title={<Trans>Sign-in failed</Trans>}
+        description={i18n._(getSsoErrorMessage(searchParams.get('error'), appName))}
+      />
+      <div className="flex w-full flex-col gap-4">
+        <Button asChild className={authButtonClass}>
           <Link to="/sso-redirect" replace>
             <Trans>Try again</Trans>
           </Link>
         </Button>
+        {/* With one SSO connection the sign-in goes straight to the IdP, so this is where people no IdP
+            manages (an invitee, a break-glass admin) find the email code. */}
+        <Button asChild variant="ghost" className={authButtonClass}>
+          <Link to={ssoEmailCodePath}>
+            <Trans>Use an email code instead</Trans>
+          </Link>
+        </Button>
         {localMode && (
-          <Button asChild variant="outline">
+          <Button asChild variant="outline" className={authButtonClass}>
             <Link to="/" replace>
               <Trans>Continue locally</Trans>
             </Link>
           </Button>
         )}
       </div>
-    </div>
+    </AuthScreen>
   )
 }
 

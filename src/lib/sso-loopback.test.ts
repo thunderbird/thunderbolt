@@ -34,11 +34,12 @@ describe('startSsoFlowLoopback', () => {
 
   it('generates an unguessable client nonce and requires it with the bearer token', async () => {
     openUrlSpy.mockImplementation(async (url) => respond(url, { token: 'rawtoken.sig==' }))
-    expect(await startSsoFlowLoopback('http://localhost:8000')).toBe('rawtoken.sig==')
+    expect(await startSsoFlowLoopback('http://localhost:8000', 'sso')).toBe('rawtoken.sig==')
     const initiate = new URL(openUrlSpy.mock.calls[0][0])
     expect(initiate.origin).toBe('http://localhost:8000')
     expect(initiate.pathname).toBe('/v1/api/auth/sso/desktop-initiate')
     expect(initiate.searchParams.get('loopback_port')).toBe('17421')
+    expect(initiate.searchParams.get('provider_id')).toBe('sso')
     expect(initiate.searchParams.get('client_state')).toMatch(/^[A-Za-z0-9_-]{43,128}$/)
     expect(tauriCore.invoke).toHaveBeenCalledWith('start_oauth_server', {
       flowId: initiate.searchParams.get('client_state'),
@@ -57,7 +58,7 @@ describe('startSsoFlowLoopback', () => {
         callback({ payload: { url: `http://localhost:17421/?${params}` } })
         respond(url, { token: 'real-token' })
       })
-      expect(await startSsoFlowLoopback('http://localhost:8000')).toBe('real-token')
+      expect(await startSsoFlowLoopback('http://localhost:8000', 'sso')).toBe('real-token')
     },
   )
 
@@ -77,7 +78,7 @@ describe('startSsoFlowLoopback', () => {
       }
       respond(initiate, { token: 'real-token' })
     })
-    expect(await startSsoFlowLoopback('http://localhost:8000')).toBe('real-token')
+    expect(await startSsoFlowLoopback('http://localhost:8000', 'sso')).toBe('real-token')
   })
 
   it('accepts valid callbacks using the URL.canParse polyfill while ignoring malformed callbacks', async () => {
@@ -90,7 +91,7 @@ describe('startSsoFlowLoopback', () => {
         respond(url, { client_state: 'wrong-state', token: 'attacker-token' })
         respond(url, { token: 'real-token' })
       })
-      expect(await startSsoFlowLoopback('http://localhost:8000')).toBe('real-token')
+      expect(await startSsoFlowLoopback('http://localhost:8000', 'sso')).toBe('real-token')
       expect(unlistenFn).toHaveBeenCalledTimes(1)
       expect(tauriCore.invoke).toHaveBeenCalledWith('stop_oauth_server', {
         flowId: expect.any(String),
@@ -113,8 +114,8 @@ describe('startSsoFlowLoopback', () => {
       }
       respond(url, { token: `token-${states.length}` })
     })
-    expect(await startSsoFlowLoopback('http://localhost:8000')).toBe('token-1')
-    expect(await startSsoFlowLoopback('http://localhost:8000')).toBe('token-2')
+    expect(await startSsoFlowLoopback('http://localhost:8000', 'sso')).toBe('token-1')
+    expect(await startSsoFlowLoopback('http://localhost:8000', 'sso')).toBe('token-2')
     expect(states[0]).not.toBe(states[1])
   })
 
@@ -122,7 +123,7 @@ describe('startSsoFlowLoopback', () => {
     openUrlSpy.mockImplementation(async (url) =>
       respond(url, { error: 'access_denied', error_description: 'Untrusted text' }),
     )
-    await expect(startSsoFlowLoopback('http://localhost:8000')).rejects.toMatchObject({
+    await expect(startSsoFlowLoopback('http://localhost:8000', 'sso')).rejects.toMatchObject({
       code: 'access_denied',
       message: 'access_denied',
     })
@@ -134,7 +135,7 @@ describe('startSsoFlowLoopback', () => {
 
   it('rejects a matching callback without a token', async () => {
     openUrlSpy.mockImplementation(async (url) => respond(url, {}))
-    await expect(startSsoFlowLoopback('http://localhost:8000')).rejects.toThrow('No token in SSO callback')
+    await expect(startSsoFlowLoopback('http://localhost:8000', 'sso')).rejects.toThrow('No token in SSO callback')
     expect(unlistenFn).toHaveBeenCalledTimes(1)
     expect(tauriCore.invoke).toHaveBeenCalledWith('stop_oauth_server', {
       flowId: expect.any(String),
@@ -145,7 +146,7 @@ describe('startSsoFlowLoopback', () => {
     openUrlSpy.mockImplementation(async () =>
       callback({ payload: { url: 'http://localhost:17421/?token=legacy-token' } }),
     )
-    const promise = startSsoFlowLoopback('http://localhost:8000', 1)
+    const promise = startSsoFlowLoopback('http://localhost:8000', 'sso', 1)
     await getClock().tickAsync(10)
     expect(await promise).toBeNull()
     expect(unlistenFn).toHaveBeenCalledTimes(1)
@@ -156,7 +157,7 @@ describe('startSsoFlowLoopback', () => {
 
   it('cleans up the listener when browser opening fails', async () => {
     openUrlSpy.mockRejectedValue(new Error('Browser unavailable'))
-    await expect(startSsoFlowLoopback('http://localhost:8000')).rejects.toThrow('Browser unavailable')
+    await expect(startSsoFlowLoopback('http://localhost:8000', 'sso')).rejects.toThrow('Browser unavailable')
     expect(unlistenFn).toHaveBeenCalledTimes(1)
     expect(tauriCore.invoke).toHaveBeenCalledWith('stop_oauth_server', {
       flowId: expect.any(String),

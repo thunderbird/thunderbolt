@@ -2,12 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import '@/testing-library'
+import { getClock } from '@/testing-library'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { createMcpServer, getAllMcpServers, getMcpServerCredentials } from '@/dal'
 import { getDb } from '@/db/database'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { createClient } from '@/lib/http'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { useAddServerForm } from '@/hooks/use-add-server-form'
 import type { FetchFn } from '@/lib/proxy-fetch'
@@ -45,7 +46,18 @@ describe('MCP form submission ownership', () => {
   const renderController = async (overrides: Partial<Parameters<typeof useMcpServerFormController>[0]> = {}) => {
     const servers = await getAllMcpServers(getDb())
     const dispatch = mock((_action: ConnectionsPageAction) => {})
-    const wrapper = createTestProvider()
+    const reported: unknown[] = []
+    const httpClient = createClient({
+      prefixUrl: 'http://backend.test',
+      fetch: async (input, init) => {
+        const request = input instanceof Request ? input : new Request(input, init)
+        if (new URL(request.url).pathname === '/audit/client-events') {
+          reported.push(await request.json())
+        }
+        return new Response('{}')
+      },
+    })
+    const wrapper = createTestProvider({ httpClient })
     const hook = renderHook(
       () => {
         const form = useAddServerForm({
@@ -76,7 +88,7 @@ describe('MCP form submission ownership', () => {
       { wrapper },
     )
     act(() => hook.result.current.form.changeUrl('https://example.com/mcp'))
-    return { ...hook, dispatch, servers }
+    return { ...hook, dispatch, servers, reported }
   }
 
   it('persists the submitted transport and credential if the form changes before the mutation runs', async () => {
@@ -169,5 +181,26 @@ describe('MCP form submission ownership', () => {
     })
     expect(result.current.form.url).toBe('https://replacement.example/mcp')
     expect(dispatch).not.toHaveBeenCalled()
+  })
+
+  it('reports a server added for OAuth, and its removal, with the oauth auth method', async () => {
+    const { result, reported } = await renderController({
+      credentialsById: {},
+      startAddAndAuthorize: async ({ createRow }) => {
+        await createRow()
+        return true
+      },
+    })
+    await act(async () => result.current.controller.addAndAuthorize())
+    const [server] = await getAllMcpServers(getDb())
+
+    const { result: next, reported: removals } = await renderController({
+      credentialsById: { [server.id]: { type: 'oauth' } },
+    })
+    await act(async () => next.current.controller.deleteMutation.mutateAsync(server.id))
+    await getClock().runAllAsync()
+
+    expect(reported).toMatchObject([{ action: 'user_connection.added', authMethod: 'oauth' }])
+    expect(removals).toMatchObject([{ action: 'user_connection.removed', authMethod: 'oauth' }])
   })
 })

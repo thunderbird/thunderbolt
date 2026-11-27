@@ -1,0 +1,69 @@
+suite: Identity settings
+templates:
+  - templates/backend.yaml
+set:
+  backend.betterAuthSecretBase64: dGVzdA==
+tests:
+  - it: renders open sign-up off and no bootstrap admins by default
+    documentSelector: { path: kind, value: Deployment }
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: OPEN_SIGNUP_ENABLED, value: 'false' }
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: BOOTSTRAP_ADMIN_EMAILS }
+          any: true
+
+  - it: passes bootstrap admin emails and open sign-up through verbatim
+    documentSelector: { path: kind, value: Deployment }
+    set:
+      backend.env.bootstrapAdminEmails: admin@corp.example,break-glass@corp.example
+      backend.env.openSignupEnabled: 'true'
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: BOOTSTRAP_ADMIN_EMAILS, value: 'admin@corp.example,break-glass@corp.example' }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: OPEN_SIGNUP_ENABLED, value: 'true' }
+
+  - it: quotes an unquoted boolean
+    documentSelector: { path: kind, value: Deployment }
+    set:
+      backend.env.openSignupEnabled: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: OPEN_SIGNUP_ENABLED, value: 'true' }
+
+  # `helm upgrade --reuse-values` from a release that predates these values leaves them absent.
+  # Helm deletes a key set to null, which reproduces that here: the backend's own defaults apply.
+  - it: omits both when an upgrade predates them
+    documentSelector: { path: kind, value: Deployment }
+    set:
+      backend.env.bootstrapAdminEmails: null
+      backend.env.openSignupEnabled: null
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: BOOTSTRAP_ADMIN_EMAILS }
+          any: true
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: OPEN_SIGNUP_ENABLED }
+          any: true
+
+  # The fixed sign-in code of NODE_ENV=test belongs to local test stacks only.
+  - it: runs the backend in production mode, whatever identity values are set
+    documentSelector: { path: kind, value: Deployment }
+    set:
+      backend.env.bootstrapAdminEmails: admin@corp.example
+      backend.env.openSignupEnabled: 'true'
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: NODE_ENV, value: production }
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: NODE_ENV, value: test }

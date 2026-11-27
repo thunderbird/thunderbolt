@@ -22,6 +22,7 @@ import { getProStatus } from '@/integrations/thunderbolt-pro/utils'
 import type { OAuthProvider } from '@/lib/auth'
 import type { ConnectionsPageAction } from './page-state'
 import type { Integration } from './types'
+import { useReportConnectionEvent } from '@/lib/report-connection-event'
 
 type IntegrationsControllerOptions = {
   db: AnyDrizzleDatabase
@@ -35,6 +36,7 @@ const isOAuthProvider = (provider: Integration['provider']): provider is OAuthPr
 export const useIntegrationsController = ({ db, dispatch }: IntegrationsControllerOptions) => {
   const { t } = useLingui()
   const queryClient = useQueryClient()
+  const reportConnectionEvent = useReportConnectionEvent()
   const authenticated = useServerAuthentication()
   const integrationSettings = useSettings({ integrations_pro_is_enabled: false })
   const { data: status, isLoading: isStatusLoading } = useIntegrationStatus()
@@ -105,6 +107,12 @@ export const useIntegrationsController = ({ db, dispatch }: IntegrationsControll
     }
     try {
       await deleteIntegrationCredentials(db, integration.provider)
+      reportConnectionEvent({
+        action: 'user_connection.removed',
+        target: { type: 'integration', id: integration.provider },
+        provider: integration.provider,
+        authMethod: 'oauth',
+      })
       await queryClient.invalidateQueries({ queryKey: ['integrationStatus'] })
     } catch (error) {
       console.error('Failed to disconnect integration', error)

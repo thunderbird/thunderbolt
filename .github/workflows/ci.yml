@@ -145,6 +145,7 @@ jobs:
             # build: app source (strings + catalogs), shared/ (imported by the
             # frontend build), build/i18n config, deps, and this workflow.
             localization:
+              - 'admin/**'
               - 'src/**'
               - 'shared/**'
               - 'index.html'
@@ -232,6 +233,9 @@ jobs:
 
       - name: Lint
         run: bun run lint
+
+      - name: Check source license notices
+        run: bun run license:check
 
       # Pull requests run the suite once, then re-run only the test files they changed 5x:
       # that is where a new flake comes from. Push to main runs the whole suite 5x.
@@ -831,7 +835,8 @@ jobs:
     # 15min cap = >6x headroom over the worst legitimate run (even with the 5x
     # rerun gate) while killing a starved run ~24x sooner than the 360min default.
     timeout-minutes: 15
-    # Only the binary smoke step uses it: inside a compiled binary PGlite can't find its pglite.data.
+    # The binary smoke step boots against it (inside a compiled binary PGlite can't find its
+    # pglite.data), and the `*.postgres.test.ts` suites run on it: PGlite hides concurrency.
     services:
       postgres:
         image: postgres:18-alpine
@@ -888,11 +893,14 @@ jobs:
         # CI/PGlite contention don't spuriously fail. Local `test:backend` keeps the 5s timeout.
         env:
           RERUN_EACH: ${{ github.event_name == 'push' && 5 || 1 }}
+          TEST_POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/postgres
         run: cd backend && bun test --timeout 3600000 --randomize --rerun-each "${RERUN_EACH:-1}" $(find src \( -name '*.test.ts' -o -name '*.test.tsx' \) -not -path '*proxy/ws-e2e.test.ts' -not -path '*haystack/routes.test.ts')
 
       - name: Re-run changed backend tests (5x)
         if: github.event_name == 'pull_request'
         timeout-minutes: 10
+        env:
+          TEST_POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/postgres
         run: bun scripts/rerun-changed-tests.ts backend
 
       # ws-e2e.test.ts + haystack/routes.test.ts wait on Bun same-process WS close/

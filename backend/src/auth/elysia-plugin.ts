@@ -2,23 +2,40 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { getSettings } from '@/config/settings'
 import type { db as DbType } from '@/db/client'
 import { getDeviceById } from '@/dal/devices'
+import { setAuditApiKey } from '@/identity/audit/request-context'
+import { createSharedLock, isPostgres } from '@/identity/scim/concurrency'
+import { createScimRequestHandler, isScimPath } from '@/identity/scim/request'
+import { extractClientIp } from '@/utils/request'
 import { APIError } from 'better-auth'
 import { Elysia, type AnyElysia } from 'elysia'
 import { type Auth, createAuth } from './auth'
 import { authBasePath, getSessionPath, passkeyVerifyPaths } from './paths'
 
 /**
- * Resolve a session while translating credential rejection into an unauthenticated result.
+ * Resolve a session while translating credential rejection into an unauthenticated result, and
+ * record for audit the API key the session came from, if any.
  *
  * Exported because a route that calls `auth.api.getSession` directly does not
  * get this: Better Auth *throws* an `APIError` for a rejected credential — a
  * stray `x-api-key` trips its before-hook — and an unhandled throw reaches the
  * error handler as a 500 rather than the 401 it is. Any route resolving its own
  * session should come through here.
+ *
+ * With `x-api-key` present, the api-key plugin answers with a session whose id is the key's id,
+ * so the audit events the key's owner causes in this request carry `metadata.apiKeyId`.
  */
 export const resolveAuthSession = async (auth: Auth, headers: Headers) => {
+  const session = await getSessionOrNull(auth, headers)
+  if (session && headers.has('x-api-key')) {
+    setAuditApiKey({ id: session.session.id, userId: session.user.id })
+  }
+  return session
+}
+
+const getSessionOrNull = async (auth: Auth, headers: Headers) => {
   try {
     return await auth.api.getSession({ headers })
   } catch (error) {
@@ -160,6 +177,14 @@ const isRevokedDeviceSessionCheck = async (database: typeof DbType, request: Req
 /** Create a Better Auth plugin for Elysia with the provided database. */
 export const createBetterAuthPlugin = (database: typeof DbType, ipRateLimit?: AnyElysia) => {
   const auth = createAuth(database)
+  const settings = getSettings()
+  const handleScim = createScimRequestHandler({
+    handler: auth.handler,
+    database,
+    rateLimit: { enabled: settings.rateLimitEnabled },
+    // PGlite runs in one process, where the in-process lock already covers every write.
+    sharedLock: isPostgres(database) ? createSharedLock(database) : undefined,
+  })
 
   const plugin = new Elysia({ name: 'better-auth' })
   if (ipRateLimit) {
@@ -172,11 +197,15 @@ export const createBetterAuthPlugin = (database: typeof DbType, ipRateLimit?: An
   // path like /v1/x/v1/api/auth/sign-in/anonymous reach it and skip the path-keyed limits.
   plugin.all(
     '/api/auth/*',
-    async ({ request, status }) => {
+    async ({ request, status, server }) => {
+      const { pathname } = new URL(request.url)
+      if (isScimPath(pathname)) {
+        const socketIp = server?.requestIP(request)?.address || 'unknown'
+        return handleScim(request, extractClientIp(request.headers, socketIp, settings.trustedProxy))
+      }
       if (await isRevokedDeviceSessionCheck(database, request)) {
         return status(403, { code: 'DEVICE_DISCONNECTED' })
       }
-      const { pathname } = new URL(request.url)
       if (!pathname.includes('/passkey/')) {
         return auth.handler(request)
       }

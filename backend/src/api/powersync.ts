@@ -18,6 +18,7 @@ import { findPlaintextViolation } from '@/lib/encrypted-payload'
 import type { db as DbType } from '@/db/client'
 import { verifySignedBearerToken } from '@/auth/bearer-token'
 import type { User } from '@shared/types/auth'
+import { hasAccess } from '@/identity/access'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { jwt } from '@elysiajs/jwt'
 import { Elysia, t } from 'elysia'
@@ -224,6 +225,13 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
       if (userRow.isAnonymous) {
         set.status = 403
         return { error: 'Forbidden', code: 'ANONYMOUS_SYNC_FORBIDDEN' }
+      }
+
+      // This path reads the session row itself, so it skips the access check `getSession` runs.
+      // A 401 makes the client treat the session as over, as Path 1 does for the same member.
+      if (!(await hasAccess(auth, userRow.id))) {
+        set.status = 401
+        return { error: 'Unauthorized' }
       }
 
       const userId = sessionRow.userId

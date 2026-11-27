@@ -148,6 +148,7 @@ describe('dates', () => {
   test('renders a date-only string on the day it names', () => {
     expect(getFormatters('en').weekday('2026-08-26')).toBe('Wed')
     expect(getFormatters('en').weekdayDate('2026-08-26')).toBe('Wednesday, Aug 26')
+    expect(getFormatters('en').monthYear('2026-08-26')).toBe('August 2026')
   })
 
   test('orders date parts per locale', () => {

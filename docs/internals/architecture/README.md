@@ -115,6 +115,7 @@ All groups mount on one Elysia app with `prefix: '/v1'` (`backend/src/index.ts`)
 | `/v1/api/auth/*`                            | Better Auth flows (OAuth, OIDC/SAML SSO, email-OTP, session, CLI device grant, API keys, opt-in anonymous sessions)                    |
 | `/v1/auth/google/*`, `/v1/auth/microsoft/*` | Confidential-client OAuth token exchange and refresh for the Google and Microsoft integrations, so the client secret stays server-side |
 | `/v1/auth/oidc/config`                      | Expected OIDC issuer origin for redirect validation (mounted only in `oidc` mode)                                                      |
+| `/v1/sso/discover`                          | The SSO connections the login screen offers for an email's domain (mounted only in `oidc`/`saml` mode)                                 |
 | `/v1/config`                                | Unauthenticated bootstrap config: feature flags the client needs before sign-in, plus the OTA default-models payload                   |
 | `/v1/health`, `/v1/health/*`                | Liveness, plus token-gated deep probes for database, PowerSync, email, and models                                                      |
 | `/v1/waitlist/*`                            | Waitlist join; issues the OTP challenge token                                                                                          |
@@ -198,6 +199,7 @@ Both run the transformer in a worker and end with decrypted data in local SQLite
 - [Operator Branding](branding.md): shadcn-format theme tokens, shadows, radius, fonts, logo, links, default theme, app name and debug-transcript recipient from `/config`; follow-ups.
 - [Client Auth and Session](client-auth-and-session.md): credential storage; reload, offline boot, second tab.
 - [Sign-in and the Waitlist](sign-in-and-waitlist.md): one endpoint signs a user up, in, or onto the queue.
+- [Identity and Access](identity-and-access.md): organization membership, how each member got in, the access check, roles, the audit log and the first admin.
 - [Widgets](../widgets.md): assistant output as interactive components.
 - [Mini Apps](mini-apps.md): customer web apps beside the chat, the bridge protocol, and the security posture.
 

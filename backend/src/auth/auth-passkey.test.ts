@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { insertTestUsers } from '@/test-utils/identity'
 import { createAuth } from '@/auth/auth'
 import { createBetterAuthPlugin, passkeyChallengeHeader } from '@/auth/elysia-plugin'
 import { cliRegistrationPendingDeviceId } from '@/dal/sessions'
@@ -9,8 +10,9 @@ import { deleteUser } from '@/dal/users'
 import { clearSettingsCache } from '@/config/settings'
 import { passkey as passkeyTable, session as sessionTable, user as userTable } from '@/db/auth-schema'
 import { encryptionMetadataTable } from '@/db/encryption-schema'
+import { auditEvent, orgMembership } from '@/db/schema'
 import { createTestDb } from '@/test-utils/db'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { createHmac } from 'node:crypto'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
@@ -88,7 +90,7 @@ describe('passkey rules (one per account, slot-safe delete)', () => {
     userId = `passkey-user-${crypto.randomUUID()}`
     token = `passkey-token-${crypto.randomUUID()}`
     const now = new Date()
-    await db.insert(userTable).values({
+    await insertTestUsers(db, {
       id: userId,
       name: 'Passkey User',
       email: `${userId}@test.com`,
@@ -110,9 +112,49 @@ describe('passkey rules (one per account, slot-safe delete)', () => {
     await cleanup()
   })
 
+  it('audits a failed passkey sign-in against the user whose passkey it names, and an unknown one against none', async () => {
+    await insertPasskey('known-credential')
+    const verify = (credentialId: string) =>
+      auth.handler(
+        new Request(`${authUrl}/passkey/verify-authentication`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            response: { id: credentialId, rawId: credentialId, type: 'public-key', response: {} },
+          }),
+        }),
+      )
+
+    expect((await verify('known-credential')).ok).toBe(false)
+    expect((await verify('unknown-credential')).ok).toBe(false)
+
+    const events = await db
+      .select()
+      .from(auditEvent)
+      .where(and(eq(auditEvent.action, 'auth.sign_in'), eq(auditEvent.outcome, 'failure')))
+    expect(events.map((event) => [event.actorId, (event.metadata as { method: string }).method])).toEqual([
+      [userId, 'passkey'],
+      [null, 'passkey'],
+    ])
+  })
+
   it('lets an account without a passkey start registration', async () => {
     const res = await authed('/passkey/generate-register-options')
     expect(res.status).toBe(200)
+  })
+
+  // Better Auth's passkey routes authenticate internally, skipping the identity plugin's
+  // session check, so the guard must refuse a member without access itself.
+  it('refuses passkey management for a member without access, and writes no passkey', async () => {
+    await db.update(orgMembership).set({ blockedAt: new Date() }).where(eq(orgMembership.userId, userId))
+    expect((await authed('/passkey/generate-register-options')).status).toBe(401)
+    expect((await authed('/passkey/list-user-passkeys')).status).toBe(401)
+    expect(await db.select().from(passkeyTable).where(eq(passkeyTable.userId, userId))).toHaveLength(0)
+  })
+
+  it('still answers 401 to a caller with no session', async () => {
+    const res = await auth.handler(new Request(`${authUrl}/passkey/generate-register-options`))
+    expect(res.status).toBe(401)
   })
 
   // The user before-hook runs ahead of the bearer plugin; a bearer-only caller

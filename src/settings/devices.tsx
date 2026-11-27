@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
+import { Smartphone } from 'lucide-react'
 import { useDatabase } from '@/contexts'
 import { getAllDevices, getPendingDevices, type Device } from '@/dal'
 import { getDeviceId } from '@/lib/auth-token'
@@ -12,6 +13,7 @@ import { RevokeDeviceDialog } from '@/components/revoke-device-dialog'
 import { RemoveBridgeDialog } from '@/components/remove-bridge-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { EmptyState } from '@/components/ui/empty-state'
 import type { Formatters } from '@/i18n/format'
 import { useFormatters } from '@/i18n/use-formatters'
 import { lazy, Suspense, useRef, useState, type ReactNode } from 'react'
@@ -495,9 +497,11 @@ export default function DevicesSettingsPage() {
           <Trans>Loading devices…</Trans>
         </p>
       ) : visibleDevices.length === 0 ? (
-        <p className="text-muted-foreground py-4">
-          <Trans>No devices yet. Sign in with sync to see devices here.</Trans>
-        </p>
+        <EmptyState
+          icon={Smartphone}
+          title={t`No devices yet`}
+          description={t`Sign in with sync to see devices here.`}
+        />
       ) : (
         <section className="flex flex-col gap-2">
           {hasPendingDevices && (

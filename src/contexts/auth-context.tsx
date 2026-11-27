@@ -36,7 +36,7 @@ import {
 } from '@/lib/session-cache'
 import { resolveAbsoluteBackendUrl } from '@/lib/url-utils'
 import { signOutAndLeave } from '@/lib/sign-out'
-import { anonymousClient, emailOTPClient } from 'better-auth/client/plugins'
+import { anonymousClient, emailOTPClient, inferAdditionalFields } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
 import { consumePendingSsoPromotion } from '@/lib/analytics/anonymous-promotion-sso-bridge'
 import { LocalDataSwitchScreen } from '@/components/local-data-switch-screen'
@@ -71,7 +71,12 @@ export const createAuthClientInstance = (cloudUrl: string, ssoMode = isSsoMode()
   const client = createAuthClient({
     baseURL,
     basePath: '/v1/api/auth',
-    plugins: [emailOTPClient(), anonymousClient()],
+    plugins: [
+      emailOTPClient(),
+      anonymousClient(),
+      // The backend adds the caller's org roles to every session read over HTTP.
+      inferAdditionalFields({ user: { roles: { type: 'string[]', required: false, input: false } } }),
+    ],
     fetchOptions: cloudUrl ? buildFetchOptions(platform, ssoMode, cloudUrl) : { customFetchImpl: standaloneAuthFetch },
     // Skip focus refetches to avoid spending rate-limit budget on every tab switch.
     // The refresh manager skips offline checks, but still refetches on reconnect

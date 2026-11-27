@@ -11,7 +11,7 @@ import { createProject } from '@/dal/projects'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { createMockAuthClient } from '@/test-utils/auth-client'
-import { createMockHttpClient } from '@/test-utils/http-client'
+import { createClient } from '@/lib/http'
 import { mockVirtuaMeasurement } from '@/test-utils/mock-virtua-measurement'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
@@ -24,12 +24,27 @@ import { v7 as uuidv7 } from 'uuid'
 import Sidebar from './index'
 import type { ReactNode } from 'react'
 
+// The admin sidebar's Link reviews badge reads the review queue; everything else gets an empty list.
+const sidebarHttpClient = createClient({
+  prefixUrl: 'http://test-api.local',
+  fetch: async (input) =>
+    Response.json(
+      new URL((input as Request).url).pathname === '/admin/link-reviews' ? { reviews: [], nextCursor: null } : [],
+    ),
+})
+
+const adminSession = { user: { id: 'admin-1', email: 'admin@example.com', roles: ['member', 'admin'] } }
+
 const createSidebarWrapper =
-  ({ path = '/chats/new', defaultOpen = true } = {}) =>
+  ({
+    path = '/chats/new',
+    defaultOpen = true,
+    session = null,
+  }: { path?: string; defaultOpen?: boolean; session?: typeof adminSession | null } = {}) =>
   ({ children }: { children: ReactNode }) => (
     <DatabaseProvider db={getDb()}>
-      <HttpClientProvider httpClient={createMockHttpClient([])}>
-        <AuthProvider authClient={createMockAuthClient()}>
+      <HttpClientProvider httpClient={sidebarHttpClient}>
+        <AuthProvider authClient={createMockAuthClient({ session })}>
           <SignInModalProvider>
             <MemoryRouter initialEntries={[path]}>
               <SidebarProvider defaultOpen={defaultOpen}>
@@ -221,6 +236,31 @@ describe('Sidebar reactivity', () => {
       act(() => useConfigStore.getState().updateConfig({ minimalMode: false }))
 
       expect(screen.getByLabelText('Settings')).toBeInTheDocument()
+    })
+
+    it('offers Admin to admins only', () => {
+      useConfigStore.setState({ config: { minimalMode: false }, configLoaded: true })
+      renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
+      expect(screen.queryByLabelText('Admin')).not.toBeInTheDocument()
+
+      cleanup()
+      renderWithReactivity(<Sidebar />, {
+        tables: ['chat_threads'],
+        wrapper: createSidebarWrapper({ session: adminSession }),
+      })
+      expect(screen.getByLabelText('Admin')).toBeInTheDocument()
+    })
+
+    it('keeps Admin, without Settings, for admins in minimal mode', async () => {
+      useConfigStore.setState(minimalConfig)
+      renderWithReactivity(<Sidebar />, {
+        tables: ['chat_threads'],
+        wrapper: createSidebarWrapper({ path: '/admin/members', session: adminSession }),
+      })
+
+      expect(await waitForElement(() => screen.queryByRole('button', { name: 'Audit Log' }))).toBeInTheDocument()
+      expect(screen.getByLabelText('Admin')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Settings')).not.toBeInTheDocument()
     })
 
     it('shows no section toggle until the config has loaded', () => {

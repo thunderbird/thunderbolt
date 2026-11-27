@@ -10,6 +10,7 @@ One Elysia app, `prefix: '/v1'` (`backend/src/index.ts:72`). Route groups are pl
 | ------------------------------------------------------------------------------------------------------ | --------------------------------------- | ----------------------------------------- | ------------------------------------------------- | ------- |
 | `ALL /v1/*` (Better Auth: `/v1/api/auth/*`)                                                            | `auth/elysia-plugin.ts`, `auth/auth.ts` | the flow's own                            | `auth` (IP)                                       | gated\* |
 | `GET /v1/api/auth/sso/desktop-initiate`, `/desktop-callback`                                           | `auth/sso-desktop-callback.ts`          | browser redirect                          | none                                              | exempt  |
+| `ALL /v1/api/auth/scim/v2/*` (SCIM 2.0 provisioning)                                                   | `identity/scim/request.ts`              | SCIM connection bearer token              | `scim` (token), `scim-auth-failure` (IP)          | exempt  |
 | `GET /v1/captcha/challenge` (only with `CAPTCHA_PROVIDER=altcha`)                                      | `auth/captcha-routes.ts`                | public                                    | `captcha-challenge` (IP)                          | gated   |
 | `GET /v1/health`                                                                                       | `api/routes.ts`                         | public                                    | none                                              | exempt  |
 | `GET /v1/health/{database,powersync,email,models}`                                                     | `api/health.ts`                         | `MONITORING_TOKEN`                        | none                                              | exempt  |
@@ -17,6 +18,7 @@ One Elysia app, `prefix: '/v1'` (`backend/src/index.ts:72`). Route groups are pl
 | `GET /v1/config/branding/:file` (downloaded branding fonts and logos, `immutable`)                     | `api/config.ts`                         | public                                    | none                                              | exempt  |
 | `GET /v1/config/branding/email-logo` (light logo if PNG/JPEG, else 302 to `${APP_URL}/email-logo.png`) | `api/config.ts`                         | public                                    | none                                              | exempt  |
 | `POST /v1/waitlist/join`                                                                               | `waitlist/routes.ts`                    | public                                    | `auth` (IP) + 15s per-email cooldown              | gated   |
+| `POST /v1/sso/discover`                                                                                | `identity/sso-routes.ts`                | public                                    | `auth` (IP)                                       | gated   |
 | `GET /v1/posthog/config`, `ALL /v1/posthog/*`                                                          | `posthog/routes.ts`                     | public                                    | none                                              | exempt  |
 | `GET /v1/auth/oidc/config`                                                                             | `auth/oidc.ts`                          | public                                    | none                                              | gated   |
 | `GET /v1/auth/{google,microsoft}/config`, `POST …/exchange`, `POST …/refresh`                          | `auth/google.ts`, `auth/microsoft.ts`   | session                                   | none                                              | gated   |
@@ -39,9 +41,10 @@ One Elysia app, `prefix: '/v1'` (`backend/src/index.ts:72`). Route groups are pl
 | `GET /v1/agents`                                                                                       | `agents/routes.ts`                      | session, non-anonymous                    | none                                              | gated   |
 | `GET /v1/haystack/files/:fileId`                                                                       | `haystack/routes.ts`                    | session, non-anonymous                    | none                                              | gated   |
 | `WS /v1/haystack/ws`                                                                                   | `haystack/routes.ts`                    | subprotocol bearer                        | none                                              | gated   |
+| `ALL /v1/admin/*` (members, groups, connections, admission, link reviews, the audit log)               | `identity/admin/`, `identity/audit/`    | session + admin role, per request         | none                                              | gated   |
 | `GET /v1/swagger`, `/v1/swagger/json`                                                                  | `@elysiajs/swagger`, `SWAGGER_ENABLED`  | public                                    | none                                              | gated   |
 
-\* Exempt subtrees: `/v1/api/auth/sso` (browser redirects), `/v1/api/auth/error` (failed-SSO redirect) and `/v1/api/auth/device` (headless CLI device grant). The rest of `/v1/api/auth/*` is gated.
+\* Exempt subtrees: `/v1/api/auth/sso` (browser redirects), `/v1/api/auth/error` (failed-SSO redirect) `/v1/api/auth/device` (headless CLI device grant) and `/v1/api/auth/scim/v2` (IdP provisioning clients). The rest of `/v1/api/auth/*` is gated.
 
 † The `pro` limiter is mounted on the WebSocket plugin but keys on the macro-resolved `user`, while the bearer is authorized in `open()`, so the handshake is not user-limited ([rate-limiting.md](../../../backend/docs/rate-limiting.md)).
 
@@ -56,6 +59,7 @@ Re-derive from `app.routes` on a `createApp()` app (pattern: `backend/src/index.
 | PowerSync routes              | empty plugin without `POWERSYNC_JWT_SECRET`                                                         |
 | SSO desktop callbacks         | mounted only when `AUTH_MODE` is not `consumer`                                                     |
 | `GET /v1/auth/oidc/config`    | only under `AUTH_MODE=oidc` with an `OIDC_ISSUER`                                                   |
+| `POST /v1/sso/discover`       | mounted only when `AUTH_MODE` is `oidc` or `saml`                                                   |
 | Transcript intake             | only under `DEBUG_TRANSCRIPT_INTAKE_ENABLED`                                                        |
 | Hosted agent                  | only under `AGENT_ENABLED`                                                                          |
 | Transcript relay              | 403 stub when `DEBUG_TRANSCRIPT_UPSTREAM_URL` is unset                                              |

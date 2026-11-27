@@ -5206,9 +5206,7 @@ msgstr "Punktdiagramm"
 msgid "Scroll to bottom"
 msgstr "Nach unten scrollen"
 
-#: src/components/ui/page-search.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
-#: src/layout/sidebar/sidebar-header-actions.tsx
 #: src/search/commands/navigation.ts
 #: src/search/palette/search-palette.tsx
 #: src/settings/connections/new-connection-picker.tsx
@@ -5267,6 +5265,10 @@ msgstr "Währungen suchen…"
 msgid "Search emoji"
 msgstr "Emoji suchen"
 
+#: src/layout/sidebar/sidebar-header-actions.tsx
+msgid "Search everything"
+msgstr "Alles durchsuchen"
+
 #: src/components/ui/command.tsx
 msgid "Search for a command to run…"
 msgstr "Nach einem Befehl suchen…"
@@ -5313,6 +5315,10 @@ msgstr ""
 #: src/skills/skills-list.tsx
 msgid "Search skills"
 msgstr "Skills suchen"
+
+#: src/tasks/index.tsx
+msgid "Search tasks"
+msgstr "Aufgaben durchsuchen"
 
 #: src/tasks/index.tsx
 msgid "Search tasks…"

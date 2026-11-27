@@ -155,7 +155,7 @@ describe('ConnectionsList empty state', () => {
     'keeps the search no-matches state distinct from an empty list (%j)',
     async (rows) => {
       renderList({ integrations: [...rows.integrations] })
-      fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Search connections' }))
       fireEvent.change(screen.getByPlaceholderText('Search connections'), { target: { value: 'no such connection' } })
       await act(async () => {
         await getClock().runAllAsync()

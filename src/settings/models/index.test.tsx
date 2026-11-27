@@ -72,7 +72,7 @@ describe('ModelsPage reactivity', () => {
     })
     renderModelsPage()
     await waitForElement(() => screen.queryByRole('button', { name: /^Work assistant/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Search models' }))
     const input = screen.getByPlaceholderText('Search models')
     expect(input).toHaveFocus()
     for (const query of ['  WORK  ', 'deepseek/flash', 'OpenRouter']) {
@@ -89,7 +89,7 @@ describe('ModelsPage reactivity', () => {
     })
     expect(screen.getByText('No matching models.')).toBeVisible()
     expect(screen.queryByText('No models configured')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Search models' }))
     expect(screen.getByRole('button', { name: /^Work assistant/ })).toBeVisible()
     expect(screen.getByRole('button', { name: /^Other assistant/ })).toBeVisible()
   })

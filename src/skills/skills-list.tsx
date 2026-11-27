@@ -71,7 +71,7 @@ export const SkillsList = ({
     <SettingsListPane>
       <PageSearch onSearch={setSearch}>
         <PageHeader title={t`Skills`}>
-          <PageSearch.Button />
+          <PageSearch.Button label={t`Search skills`} />
           <PageCreateAction label={t`New Skill`} onClick={onCreate} />
         </PageHeader>
 

@@ -290,7 +290,7 @@ it('filters named connections and cloud search, and clears the filter', async ()
   setAuthToken('session')
   renderPage()
   await waitForElement(() => screen.queryByRole('button', { name: /^Research/ }))
-  fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Search connections' }))
   const input = screen.getByPlaceholderText('Search connections')
   expect(input).toHaveFocus()
   for (const query of ['  RESEARCH  ', 'Exa']) {

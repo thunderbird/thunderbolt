@@ -5187,9 +5187,7 @@ msgstr "散布図"
 msgid "Scroll to bottom"
 msgstr "最下部にスクロール"
 
-#: src/components/ui/page-search.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
-#: src/layout/sidebar/sidebar-header-actions.tsx
 #: src/search/commands/navigation.ts
 #: src/search/palette/search-palette.tsx
 #: src/settings/connections/new-connection-picker.tsx
@@ -5248,6 +5246,10 @@ msgstr "通貨を検索…"
 msgid "Search emoji"
 msgstr "絵文字を検索"
 
+#: src/layout/sidebar/sidebar-header-actions.tsx
+msgid "Search everything"
+msgstr "すべてを検索"
+
 #: src/components/ui/command.tsx
 msgid "Search for a command to run…"
 msgstr "実行するコマンドを検索…"
@@ -5294,6 +5296,10 @@ msgstr ""
 #: src/skills/skills-list.tsx
 msgid "Search skills"
 msgstr "スキルを検索"
+
+#: src/tasks/index.tsx
+msgid "Search tasks"
+msgstr "タスクを検索"
 
 #: src/tasks/index.tsx
 msgid "Search tasks…"

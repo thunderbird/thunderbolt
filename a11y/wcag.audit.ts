@@ -138,10 +138,10 @@ test('signed in: chat and settings', async ({ browser }) => {
   if (await accountMenu.isVisible()) {
     await checkFocusReturn(page, 'Chat home', accountMenu, 'the account menu')
   }
-  // Scoped to the sidebar with an exact name: a bare "Search" also matches buttons like "Pinned skill Search".
+  // Scoped to the sidebar with an exact name: a bare "Search" would also match buttons like "Pinned skill Search".
   const searchButton = page
     .getByRole('navigation', { name: 'Sidebar' })
-    .getByRole('button', { name: 'Search', exact: true })
+    .getByRole('button', { name: 'Search everything', exact: true })
   await checkFocusReturn(page, 'Chat home', searchButton, 'the search palette')
 
   for (const screen of settingsScreens) {

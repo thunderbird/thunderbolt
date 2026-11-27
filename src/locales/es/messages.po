@@ -5225,9 +5225,7 @@ msgstr "Gráfico de dispersión"
 msgid "Scroll to bottom"
 msgstr "Desplazarse al final"
 
-#: src/components/ui/page-search.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
-#: src/layout/sidebar/sidebar-header-actions.tsx
 #: src/search/commands/navigation.ts
 #: src/search/palette/search-palette.tsx
 #: src/settings/connections/new-connection-picker.tsx
@@ -5286,6 +5284,10 @@ msgstr "Buscar monedas…"
 msgid "Search emoji"
 msgstr "Buscar emoji"
 
+#: src/layout/sidebar/sidebar-header-actions.tsx
+msgid "Search everything"
+msgstr "Buscar en todo"
+
 #: src/components/ui/command.tsx
 msgid "Search for a command to run…"
 msgstr "Busca un comando para ejecutar…"
@@ -5332,6 +5334,10 @@ msgstr ""
 #: src/skills/skills-list.tsx
 msgid "Search skills"
 msgstr "Buscar habilidades"
+
+#: src/tasks/index.tsx
+msgid "Search tasks"
+msgstr "Buscar tareas"
 
 #: src/tasks/index.tsx
 msgid "Search tasks…"

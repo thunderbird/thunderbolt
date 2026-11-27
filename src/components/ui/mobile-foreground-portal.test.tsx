@@ -24,7 +24,7 @@ describe('MobileForegroundPortalProvider', () => {
         <PageHeader title="Agents">
           <PageCreateAction label="New Agent" onClick={() => {}} />
           <PageSearch onSearch={() => {}}>
-            <PageSearch.Button />
+            <PageSearch.Button label="Search agents" />
           </PageSearch>
         </PageHeader>
       </MobileForegroundPortalProvider>,
@@ -33,6 +33,6 @@ describe('MobileForegroundPortalProvider', () => {
     const portal = document.querySelector('[data-slot="mobile-foreground-portal"]')
     expect(portal).toContainElement(screen.getByRole('heading', { name: 'Agents' }))
     expect(portal).toContainElement(screen.getByRole('button', { name: 'New Agent' }))
-    expect(portal).toContainElement(screen.getByRole('button', { name: 'Search' }))
+    expect(portal).toContainElement(screen.getByRole('button', { name: 'Search agents' }))
   })
 })

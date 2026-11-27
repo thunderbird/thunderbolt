@@ -30,7 +30,7 @@ export const onboardingWizard = (page: Page) => page.getByRole('dialog', { name:
 
 /** The sidebar Search button once in the app, or the onboarding wizard that covers it (and hides it from the a11y tree). */
 export const inAppOrOnboarding = (page: Page) =>
-  page.getByRole('button', { name: 'Search' }).or(onboardingWizard(page)).first()
+  page.getByRole('button', { name: 'Search everything' }).or(onboardingWizard(page)).first()
 
 /** Sign in through the shared Keycloak that PR previews use. */
 const signInWithKeycloak = async (page: Page) => {
@@ -147,7 +147,7 @@ export const signedInPage = async (browser: Browser): Promise<Page | null> => {
   await skipOnboarding(page)
   await dismissWelcome(page)
   const reached = await page
-    .getByRole('button', { name: 'Search' })
+    .getByRole('button', { name: 'Search everything' })
     .first()
     .waitFor({ timeout: 60_000 })
     .then(

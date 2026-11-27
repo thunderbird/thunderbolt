@@ -676,7 +676,7 @@ const TasksPage = () => {
             <PageHeader title={t`Tasks`}>
               {!showEmptyState && (
                 <>
-                  <PageSearch.Button />
+                  <PageSearch.Button label={t`Search tasks`} />
                   <PageCreateAction
                     label={t`New Task`}
                     onClick={startAddingTask}

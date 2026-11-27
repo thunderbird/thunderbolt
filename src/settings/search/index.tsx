@@ -67,7 +67,7 @@ const SearchSettingsPage = () => {
         <SettingsListPane className="gap-6 md:pb-12">
           <PageSearch onSearch={setSearch}>
             <PageHeader title={t`Search`}>
-              <PageSearch.Button />
+              <PageSearch.Button label={t`Search connections`} />
               <PageCreateAction label={t`New Search Connection`} onClick={() => selectPanel('new')} />
             </PageHeader>
             <PageSearch.Input placeholder={t`Search connections`} onSearch={setSearch} />

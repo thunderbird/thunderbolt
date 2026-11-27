@@ -5206,9 +5206,7 @@ msgstr "Scatter chart"
 msgid "Scroll to bottom"
 msgstr "Scroll to bottom"
 
-#: src/components/ui/page-search.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
-#: src/layout/sidebar/sidebar-header-actions.tsx
 #: src/search/commands/navigation.ts
 #: src/search/palette/search-palette.tsx
 #: src/settings/connections/new-connection-picker.tsx
@@ -5267,6 +5265,10 @@ msgstr "Search currencies…"
 msgid "Search emoji"
 msgstr "Search emoji"
 
+#: src/layout/sidebar/sidebar-header-actions.tsx
+msgid "Search everything"
+msgstr "Search everything"
+
 #: src/components/ui/command.tsx
 msgid "Search for a command to run…"
 msgstr "Search for a command to run…"
@@ -5313,6 +5315,10 @@ msgstr "Search provider"
 #: src/skills/skills-list.tsx
 msgid "Search skills"
 msgstr "Search skills"
+
+#: src/tasks/index.tsx
+msgid "Search tasks"
+msgstr "Search tasks"
 
 #: src/tasks/index.tsx
 msgid "Search tasks…"

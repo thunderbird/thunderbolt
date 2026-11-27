@@ -51,7 +51,7 @@ export const useIntegrationsController = ({ db, dispatch }: IntegrationsControll
         name: 'Thunderbolt',
         provider: 'thunderbolt-pro',
         connectLabel: t`Get Pro`,
-        icon: <AppLogo size={20} />,
+        icon: <AppLogo size={20} alt="" />,
         isEnabled: isProUser && integrationSettings.integrationsProIsEnabled.value,
         isConnected: isProUser,
       },

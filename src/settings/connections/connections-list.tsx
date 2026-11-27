@@ -221,7 +221,7 @@ export const ConnectionsList = ({
     <SettingsListPane>
       <PageSearch onSearch={setSearch}>
         <PageHeader title={t`Connections`}>
-          <PageSearch.Button />
+          <PageSearch.Button label={t`Search connections`} />
           <PageCreateAction label={t`New Connection`} onClick={onAdd} />
         </PageHeader>
 

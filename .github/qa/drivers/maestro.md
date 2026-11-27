@@ -103,19 +103,19 @@ missing.
       visible: Cloud \(Waitlist\)
       timeout: 120000
   - tapOn: Cloud \(Waitlist\)
-  - tapOn: Continue
-  # The first Cloud connection after a fresh install can outlast the app's 5 s timeout, so Continue gets one retry.
-  - extendedWaitUntil:
-      visible: Want early access\?|Couldn.t reach Thunderbolt Cloud.*
-      timeout: 120000
-  - runFlow:
-      when:
-        visible: Couldn.t reach Thunderbolt Cloud.*
+  # The app stops waiting for the server after 5 s and shows "Couldn't reach Thunderbolt Cloud" with Continue to try
+  # again. A slow first request can hit that, so Continue is tapped again only while the waitlist form is missing.
+  - retry:
+      maxRetries: 3
       commands:
-        - tapOn: Continue
-  - extendedWaitUntil:
-      visible: Want early access?
-      timeout: 120000
+        - runFlow:
+            when:
+              notVisible: Want early access?
+            commands:
+              - tapOn: Continue
+        - extendedWaitUntil:
+            visible: Want early access?
+            timeout: 30000
   - waitForAnimationToEnd
   # The simulator can drop a focus tap, and inputText types anyway; eraseText stops a partial try doubling up.
   - retry:

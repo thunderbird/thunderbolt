@@ -225,7 +225,9 @@ transaction and losing atomicity without a type error.
 ([`devices.ts:20`](../../../backend/src/dal/devices.ts)) takes a Postgres advisory lock on
 `hashtext(userId)`: the device cap (`maxActiveDevicesPerUser = 10`, `devices.ts:17`) is a
 count-then-write when one device approves another and on bridge and CLI registration, so two
-concurrent ones would both read nine and both write. Plain registration is not capped (a pending
+concurrent ones would both read nine and both write. Bridge rows count only against bridge
+registration (`countActiveDevices(…, 'all')`): any account credential can add one, so they must
+not use up the slots that approval and CLI registration check. Plain registration is not capped (a pending
 device gains nothing), and neither is self-recovery (lost devices still count, and only a trusted
 device can revoke them). It is
 `pg_advisory_xact_lock`, so it releases with the transaction and only does anything when you pass it

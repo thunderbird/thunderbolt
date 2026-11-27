@@ -257,15 +257,17 @@ The iroh transport ([src/acp/iroh/iroh-transport.ts](../../../src/acp/iroh/iroh-
 
 ### Two trust layers
 
-A bridge admits a peer whose handshake-authenticated NodeId is in **either** place
+An updated CLI bridge admits a peer whose handshake-authenticated NodeId is in **either** place
 ([cli/src/iroh/bridge.ts](../../../cli/src/iroh/bridge.ts), `isConnectionAllowed`):
 
-| Layer                    | Source                                                          | Notes                                                                                                                                                                           |
-| ------------------------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Account allowlist        | `GET /v1/devices/allowlist`, fetched with the stored credential | The trusted, non-revoked NodeIds of the account the CLI is logged in to. Cached in memory, refreshed on a 45s heartbeat. Checked first, and short-circuits.                     |
-| Manual `iroh allow` file | A newline-delimited NodeId list                                 | Mandatory for Standalone (no account), cross-account, and CI use. When the CLI has no credential the account layer is simply absent and the bridge falls back without erroring. |
+| Layer                    | Source                                                          | Notes                                                                                                                                                                                                          |
+| ------------------------ | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Account allowlist        | `GET /v1/devices/allowlist`, fetched with the stored credential | Admits only trusted, non-revoked `normal` app devices on the account. Bridge rows remain listed for self-revocation. Cached in memory, refreshed on a 45s heartbeat. Checked first, and short-circuits.        |
+| Manual `iroh allow` file | A newline-delimited NodeId list                                 | Mandatory for another CLI's bridge identity, Standalone (no account), cross-account, and CI use. When the CLI has no credential the account layer is simply absent and the bridge falls back without erroring. |
 
-#### Self-enrollment: no manual `iroh allow` for your own machines
+The server lists bridge rows apart, in `bridgeNodeIds`, so no CLI version admits them. A CLI from before that split reads only `nodeIds`, does not find its own row there, and turns account auto-trust off until it is upgraded and restarted; its manual `iroh allow` file keeps working.
+
+#### Self-enrollment: no manual `iroh allow` for your own app devices
 
 - `ensureSelfEnrollment` ([src/lib/iroh-enrollment.ts](../../../src/lib/iroh-enrollment.ts)) posts the
   app's dialer NodeId to `POST /v1/devices/me/node-id`, which pins the write to the session's bound
@@ -274,8 +276,10 @@ A bridge admits a peer whose handshake-authenticated NodeId is in **either** pla
 - Best-effort: the transport awaits it before dialling but it warns rather than rejects, and the
   add-agent panel posts through `fireAndForgetSelfEnrollment`, so a failure never blocks the add.
   Manual pairing is the fallback.
-- The bridge registers symmetrically via `POST /v1/devices/bridge`, creating a
-  `device_type = 'bridge'` row named after the host. Subject to the per-account device cap (422), and
+- The bridge registers via `POST /v1/devices/bridge`, creating a
+  `device_type = 'bridge'` row named after the host. Updated CLI bridges use it for self-revocation
+  only, because registration accepts an account credential with no device-bound session.
+  Registration is subject to the per-account device cap (422) and
   refuses to resurrect a revoked identity (409, surfaced as `BridgeDeviceRevokedError` telling the
   user to remove it in Settings → Devices). Lifecycle:
   [powersync-account-devices.md](powersync-account-devices.md).

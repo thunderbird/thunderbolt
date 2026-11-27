@@ -92,7 +92,7 @@ export const createRateLimiter = (
   windowMs: number,
   clock: () => number = Date.now,
   maxKeys: number = rateMaxKeys,
-): { allow: (key: string) => boolean } => {
+) => {
   const hits = new Map<string, number[]>()
 
   const allow = (key: string): boolean => {
@@ -124,7 +124,7 @@ export const createRateLimiter = (
  *
  * @param max - the number of slots
  */
-export const createHandshakeGuard = (max: number): { tryAcquire: () => boolean; release: () => void } => {
+export const createHandshakeGuard = (max: number) => {
   let inFlight = 0
   return {
     tryAcquire: () => {
@@ -261,8 +261,9 @@ export type HandleConnectionOptions = {
 
 /**
  * The bridge trust gate: a peer is admitted if its authenticated NodeId is in
- * the cached same-account allowlist (auto-trust) OR the manual `iroh allow` file
- * (Standalone / cross-account / CI). The account allowlist is checked first and
+ * the cached same-account allowlist as a normal app device (auto-trust) OR the manual
+ * `iroh allow` file (another CLI's bridge identity, even on the same account, or
+ * Standalone / cross-account / CI). The account allowlist is checked first and
  * short-circuits, so the manual file is only read when auto-trust doesn't cover the
  * peer. The QUIC handshake has already authenticated `remoteId`, so this is pure
  * authorization over a proven identity.
@@ -501,11 +502,11 @@ export const startAccountTrust = async (
       throw new Error(`cloud URL is not a secure transport (${credential.cloudUrl})`)
     }
     await registerBridgeWithBackend(credential, selfNodeId, hostname() || 'Bridge', fetchFn)
-    const initialNodeIds = await fetchAccountAllowlist(credential, fetchFn)
+    const initialEntries = await fetchAccountAllowlist(credential, fetchFn)
     const accountAllowlist = createAccountAllowlist(
       () => fetchAccountAllowlist(credential, fetchFn),
       selfNodeId,
-      initialNodeIds,
+      initialEntries,
     )
     const stop = startMembershipHeartbeat(accountAllowlist, openConnections)
     return { accountAllowlist, stop }
@@ -526,8 +527,8 @@ export const startAccountTrust = async (
  * bridge connections until interrupted. Each connection is handled concurrently
  * so a slow or stalled session never blocks new peers; a SIGINT/SIGTERM kills
  * every spawned agent before exit so none are orphaned. When the CLI is logged in
- * to an account, same-account peers are auto-trusted from the backend allowlist and
- * re-checked on a 45s heartbeat; otherwise the manual `iroh allow` file is the gate.
+ * to an account, normal app devices on that account are auto-trusted from the backend allowlist
+ * and re-checked on a 45s heartbeat; otherwise the manual `iroh allow` file is the gate.
  */
 export const runIrohBridge = async (config: BridgeConfig): Promise<void> => {
   const { endpoint, nodeId, ticket } = await bindServer(config.protocol)

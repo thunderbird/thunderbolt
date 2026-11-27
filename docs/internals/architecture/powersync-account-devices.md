@@ -140,7 +140,7 @@ Bridge and CLI rows share the shape and lifecycle, so the DAL guards carry the d
 
 Trust-sensitive columns are server-managed. `revoked_at`, `trusted`, `approval_pending`, `public_key`, `mlkem_public_key`, `app_version`, `device_type`, `node_id` and `node_id_attested_at` sit in `uploadDenyColumns`, stripped from any `PUT`/`PATCH`; `devices` sits in `uploadDenyDelete`, so a sync `DELETE` is rejected and a row goes only through the section 6 route ([backend/src/dal/powersync.ts](../../../backend/src/dal/powersync.ts), full gate in [powersync-upload-authorization.md](powersync-upload-authorization.md)). How `trusted`, `approval_pending` and `public_key` feed encryption setup and device approval: [e2e-encryption.md](e2e-encryption.md).
 
-Three routes set `node_id` / `node_id_attested_at`: canary-gated `POST /devices/:deviceId/node-id`, session-pinned `POST /devices/me/node-id`, and bridge registration (`registerBridgeDevice`). Revoke and deny clear them so a removed device stops being dialable.
+Three routes write `node_id` / `node_id_attested_at`: `POST /devices/:deviceId/node-id`, `POST /devices/me/node-id`, and bridge registration (`registerBridgeDevice`). Both node-id routes require a session bound to a device; the attestation route (`POST /devices/:deviceId/node-id`) also requires a signed challenge. App self-enrollment and bridge registration both accept caller-selected NodeIds, but bridge registration accepts an account credential without device binding. `GET /devices/allowlist` therefore lists bridge rows apart, in `bridgeNodeIds`, and CLI bridges use them only for self-revocation, never for automatic peer admission. A CLI from before that split turns account auto-trust off until upgraded. Revoke and deny clear these columns so a removed device stops being dialable.
 
 During a legacy encryption upgrade through `POST /encryption/upgrade`, trusted, non-revoked regular app devices other than the migrator return to pending approval, and their node IDs and attestation timestamps are cleared. When the migrator is a pending device recovering with the v1 phrase, it becomes trusted in the same transaction, and every other non-revoked regular app device ends untrusted and not pending (it asks for approval again when next opened). Other device states remain unchanged.
 
@@ -334,19 +334,19 @@ A hard delete, deliberately narrow: only a **revoked bridge** device (**409** ot
 
 Encryption setup, device approval, iroh pairing, key recovery. Mounted on `/v1` without a sub-prefix (unlike the account routes above), so full paths are `/v1/devices/…` and `/v1/encryption/canary`. All need an authenticated session; several also need canary proof of CK possession. Defined in `backend/src/api/encryption.ts`; key hierarchy in [e2e-encryption.md](e2e-encryption.md).
 
-| Route                              | Purpose                                                                                         |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `POST /devices`                    | Register a device with its public key (encryption setup)                                        |
-| `POST /devices/:deviceId/envelope` | Store a wrapped content key; also marks the target device trusted                               |
-| `GET /devices/me/envelope`         | Fetch this device's own wrapped content key                                                     |
-| `GET /encryption/canary`           | Fetch the canary used to verify a recovery key                                                  |
-| `POST /devices/:deviceId/deny`     | Deny a pending device; requires `canarySecret`                                                  |
-| `POST /devices/me/cancel-pending`  | Withdraw this device's own pending request; `X-Device-ID`, no canary                            |
-| `POST /devices/:deviceId/node-id`  | Attest another device's iroh `node_id`; requires `canarySecret`                                 |
-| `POST /devices/me/node-id`         | Self-enroll this device's own `node_id`; no canary, it can only bind its own row                |
-| `GET /devices/allowlist`           | Trusted, non-revoked `node_id`s on the account (the bridge's peer allowlist)                    |
-| `POST /devices/bridge`             | Register an ACP/MCP bridge; the only way to create a `device_type = 'bridge'` row               |
-| `DELETE /devices/:deviceId`        | Hard-delete a revoked bridge row (see [Remove Device](#remove-device-delete-v1devicesdeviceid)) |
+| Route                              | Purpose                                                                                                      |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `POST /devices`                    | Register a device with its public key (encryption setup)                                                     |
+| `POST /devices/:deviceId/envelope` | Store a wrapped content key; also marks the target device trusted                                            |
+| `GET /devices/me/envelope`         | Fetch this device's own wrapped content key                                                                  |
+| `GET /encryption/canary`           | Fetch the canary used to verify a recovery key                                                               |
+| `POST /devices/:deviceId/deny`     | Deny a pending device; requires `canarySecret`                                                               |
+| `POST /devices/me/cancel-pending`  | Withdraw this device's own pending request; `X-Device-ID`, no canary                                         |
+| `POST /devices/:deviceId/node-id`  | Attest another device's iroh `node_id`; requires `canarySecret`                                              |
+| `POST /devices/me/node-id`         | Self-enroll this device's own `node_id`; no canary, it can only bind its own row                             |
+| `GET /devices/allowlist`           | Trusted, non-revoked `node_id`s on the account; updated CLI bridges use bridge rows only for self-revocation |
+| `POST /devices/bridge`             | Register an ACP/MCP bridge; the only way to create a `device_type = 'bridge'` row                            |
+| `DELETE /devices/:deviceId`        | Hard-delete a revoked bridge row (see [Remove Device](#remove-device-delete-v1devicesdeviceid))              |
 
 ---
 

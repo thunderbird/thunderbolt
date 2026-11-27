@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { getSettings, isRequestOriginAllowed } from '@/config/settings'
 import type { db as DbType } from '@/db/client'
 import { getDeviceById } from '@/dal/devices'
 import { APIError } from 'better-auth'
@@ -34,11 +35,20 @@ export const resolveAuthSession = async (auth: Auth, headers: Headers) => {
  * Reusable auth macro plugin. Use with `{ auth: true }` on routes
  * to require authentication and get typed `user`/`session` on context.
  */
-export const createAuthMacro = (auth: Auth) =>
-  new Elysia({ name: 'auth-macro' }).macro({
+export const createAuthMacro = (auth: Auth) => {
+  const settings = getSettings()
+  return new Elysia({ name: 'auth-macro' }).macro({
     auth: {
-      async resolve({ status, request: { headers } }) {
-        const session = await resolveAuthSession(auth, headers)
+      async resolve({ status, request }) {
+        // In SSO builds the session is a `SameSite=Lax` cookie, which a browser attaches to
+        // form posts and `text/plain` fetches from any same-site origin (a Mini App on a
+        // sibling subdomain). Neither is preflighted, so CORS never refuses them; this does.
+        // A request without `Origin` (the CLI, server-to-server callers) passes as before.
+        if (!isRequestOriginAllowed(request, settings)) {
+          return status(403, { code: 'ORIGIN_NOT_ALLOWED' })
+        }
+
+        const session = await resolveAuthSession(auth, request.headers)
 
         if (!session?.user) {
           // The code tells the client this 401 is ours, not an upstream provider's
@@ -53,6 +63,7 @@ export const createAuthMacro = (auth: Auth) =>
       },
     },
   })
+}
 
 // Better Auth adds the `__Secure-` prefix whenever cookies are secure (HTTPS or
 // production), so both spellings must match.

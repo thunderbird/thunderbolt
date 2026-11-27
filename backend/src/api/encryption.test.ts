@@ -773,12 +773,31 @@ describe('Encryption API', () => {
       expect(response.status).toBe(200)
       const body = await response.json()
       const nodeIds = (body.nodeIds as Array<{ nodeId: string; deviceType: string }>).map((n) => n.nodeId).sort()
-      expect(nodeIds).toEqual(['node-bridge', 'node-trusted'])
+      expect(nodeIds).toEqual(['node-trusted'])
 
-      const bridge = (body.nodeIds as Array<{ nodeId: string; deviceType: string }>).find(
-        (n) => n.nodeId === 'node-bridge',
+      // Bridge rows are reported apart from the dialers: a bridge's NodeId must never admit a peer.
+      const bridgeNodeIds = body.bridgeNodeIds as Array<{ nodeId: string; deviceType: string }>
+      expect(bridgeNodeIds).toEqual([{ nodeId: 'node-bridge', deviceType: 'bridge' }])
+    })
+
+    it('never lists a NodeId registered through POST /devices/bridge among the dialers', async () => {
+      // A session alone can register a bridge, so a NodeId planted that way must not end up
+      // where a bridge reads the peers it admits — only under bridgeNodeIds.
+      await createUserAndSession(p('u-al-planted'), p('tok-al-planted'))
+      const planted = await app.handle(
+        new Request(`${baseUrl}/devices/bridge`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${signToken(p('tok-al-planted'))}` },
+          body: JSON.stringify({ nodeId: 'node-planted' }),
+        }),
       )
-      expect(bridge?.deviceType).toBe('bridge')
+      expect(planted.status).toBe(200)
+
+      const response = await getAllowlist(p('tok-al-planted'))
+      expect(response.status).toBe(200)
+      const body = await response.json()
+      expect(body.nodeIds).toEqual([])
+      expect((body.bridgeNodeIds as Array<{ nodeId: string }>).map((n) => n.nodeId)).toEqual(['node-planted'])
     })
 
     it("excludes a denied device's node_id (trusted=false, approvalPending=false)", async () => {
@@ -903,6 +922,17 @@ describe('Encryption API', () => {
 
       expect(response.status).toBe(422)
       expect(await response.json()).toEqual({ error: 'Device limit reached' })
+    })
+
+    it('still caps bridges by every trusted row, bridges included', async () => {
+      await createUserAndSession(p('u-br-cap-all'), p('tok-br-cap-all'))
+      for (let i = 0; i < 10; i++) {
+        await insertDevice(p(`d-br-cap-all-${i}`), p('u-br-cap-all'), { trusted: true, deviceType: 'bridge' })
+      }
+
+      const response = await registerBridge(p('tok-br-cap-all'), { nodeId: bridgeNodeId })
+
+      expect(response.status).toBe(422)
     })
 
     it('allows re-registration of an existing bridge when the account is at the device cap', async () => {

@@ -662,6 +662,43 @@ describe('Encryption API (v2)', () => {
       expect(response.status).toBe(200)
     })
 
+    it('approves another device when bridge rows fill the rest of the cap', async () => {
+      // Any account credential can add a bridge row, so bridges must not use up approval slots.
+      const keypair = await generateSigningKeypair()
+      await createUserAndSession(p('u'), p('tok'), p('caller'))
+      await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
+      await insertDevice(p('trusted-0'), p('u'), { trusted: true })
+      await db.insert(devicesTable).values(
+        Array.from({ length: maxActiveDevicesPerUser - 1 }, (_, i) => ({
+          id: p(`bridge-${i}`),
+          userId: p('u'),
+          name: 'Bridge',
+          trusted: true,
+          deviceType: 'bridge' as const,
+          lastSeen: now,
+          createdAt: now,
+        })),
+      )
+      await bindSession(p('u'), p('trusted-0'))
+      await insertEnvelope(p('trusted-0'), p('u'))
+      await insertDevice(p('target'), p('u'))
+
+      const proof = await proofFor(p('tok'), p('trusted-0'), 'approve', keypair)
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices/${p('target')}/envelope`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('trusted-0')),
+          body: JSON.stringify({
+            wrappedCK: 'target-ak',
+            attestation: await deviceAttestationFor(keypair, p('target')),
+            proof,
+          }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+    })
+
     it('allows a trusted device to re-key its own envelope even at the cap', async () => {
       // Re-key is not a state transition, so the cap must not block it —
       // otherwise a full account could never rotate.

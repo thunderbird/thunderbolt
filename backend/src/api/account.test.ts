@@ -459,6 +459,29 @@ describe('Account API', () => {
       expect(await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))).toHaveLength(0)
     })
 
+    it('registers a CLI row when bridge rows alone would fill the cap', async () => {
+      const userId = p('cli-cap-br-user')
+      const token = p('cli-cap-br-token')
+      const deviceId = `cli-${crypto.randomUUID()}`
+      const now = await createCliSession(userId, token)
+      await db.insert(devicesTable).values([
+        { id: p('cli-cap-br-laptop'), userId, name: 'Laptop', trusted: true, lastSeen: now, createdAt: now },
+        ...Array.from({ length: 9 }, (_, index) => ({
+          id: p(`cli-cap-br-${index}`),
+          userId,
+          name: `Bridge ${index}`,
+          trusted: true,
+          deviceType: 'bridge' as const,
+          lastSeen: now,
+          createdAt: now,
+        })),
+      ])
+
+      const response = await registerCli(token, deviceId)
+
+      expect(response.status).toBe(200)
+    })
+
     it('enforces the active-device cap for a new CLI row', async () => {
       const userId = p('cli-cap-user')
       const token = p('cli-cap-token')

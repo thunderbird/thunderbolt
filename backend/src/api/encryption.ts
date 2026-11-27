@@ -494,7 +494,7 @@ const persistOrgEnvelope = async (
 }
 
 /** Map a thrown BadRequest/Forbidden/SchemeConflict error onto the response; rethrow anything else. */
-const mapEncryptionError = (err: unknown, set: { status?: number | string }): { error: string } => {
+const mapEncryptionError = (err: unknown, set: { status?: number | string }) => {
   if (err instanceof BadRequestError) {
     set.status = 400
     return { error: err.message }
@@ -1780,12 +1780,20 @@ export const createEncryptionRoutes = (
     // Account allowlist: the trusted, non-revoked node_ids of the caller's account. The
     // bridge fetches this with a bearer, caches it, and auto-allows same-account iroh peers.
     // Scoped to the caller's user_id — never leaks another account's rows.
+    // `nodeIds` are the dialers a bridge may admit: app devices, whose node_id only lands
+    // here once a trusted device approved them. Bridge rows are kept apart in
+    // `bridgeNodeIds`: POST /devices/bridge inserts them trusted on nothing more than a
+    // session, so a bridge's node_id must never admit a peer — it is listed only so a
+    // running bridge can notice its own revocation.
     .get(
       '/devices/allowlist',
       async ({ user: sessionUser }) => {
         const userId = sessionUser!.id
-        const nodeIds = await getTrustedNodeIds(database, userId)
-        return { nodeIds }
+        const rows = await getTrustedNodeIds(database, userId)
+        return {
+          nodeIds: rows.filter((row) => row.deviceType !== 'bridge'),
+          bridgeNodeIds: rows.filter((row) => row.deviceType === 'bridge'),
+        }
       },
       { auth: true },
     )
@@ -1795,9 +1803,11 @@ export const createEncryptionRoutes = (
     // route, not raw sync). Inserted trusted + non-revoked because the user deliberately added
     // their own bridge. Scoped to the caller's account (registerBridgeDevice derives the row id
     // from userId, and the `bridge-` id namespace is reserved from client uploads), so it can
-    // never write another user's row. node_id here is the bridge's SERVER NodeId; it surfaces in
-    // getTrustedNodeIds (the account allowlist), which is intentional and harmless — no peer can
-    // dial as the bridge's key without its ed25519 private key, so listing it grants nothing.
+    // never write another user's row. node_id here is the bridge's SERVER NodeId, sent by the
+    // caller and not attested by any trusted device. It surfaces in GET /devices/allowlist
+    // under `bridgeNodeIds` only — never among the dialer `nodeIds` — so a session that was
+    // never approved as a device cannot register a NodeId of its own and get it admitted by the
+    // account's bridges. A bridge's own NodeId is listed so it can detect its own revocation.
     // A revoked bridge is not silently re-added with the same NodeId. Registration reports the
     // tombstone so the caller can remove it explicitly before pairing again.
     .post(
@@ -1813,7 +1823,12 @@ export const createEncryptionRoutes = (
           withUserDeviceRegistrationLock(tx, userId, async () => {
             const existingBridge = await getDeviceById(tx, bridgeDeviceId(userId, body.nodeId))
             if (!existingBridge) {
-              const activeCount = await countActiveDevices(tx, userId)
+              // Bridges are the one path that counts every trusted row, bridges
+              // included: they need no approval, so this is the only bound on how
+              // many of them a credential can add. Approving a device and
+              // registering a CLI leave bridge rows out, so bridges never take
+              // the slots those checks need.
+              const activeCount = await countActiveDevices(tx, userId, 'all')
               if (activeCount >= maxActiveDevicesPerUser) {
                 return { limitReached: true as const }
               }

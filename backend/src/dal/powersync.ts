@@ -33,8 +33,8 @@ const uploadDenyColumns: Partial<Record<PowerSyncTableName, string[]>> = {
     'approval_pending',
     'app_version',
     // device_type discriminates a bridge from a normal device and drives the account allowlist
-    // (bridges auto-trust same-account peers). Only the bridge-registration route may set it, so a
-    // client can't relabel its own device a 'bridge' via a raw PowerSync upload.
+    // (bridge rows are listed apart and never admitted as peers). Only the bridge-registration
+    // route may set it, so a client can't relabel its own device a 'bridge' via a raw PowerSync upload.
     'device_type',
     // node_id binds a device to a P2P identity — trust-sensitive. Writers are the canary-gated
     // POST /devices/:id/node-id route for trusted-device administration and the session-pinned
@@ -87,7 +87,7 @@ const toSchemaRecord = (
   dbRecord: Record<string, unknown>,
   validDbNames: Set<string>,
   dbNameToKey: Record<string, string>,
-): Record<string, unknown> => {
+) => {
   const out: Record<string, unknown> = {}
   for (const [dbName, value] of Object.entries(dbRecord)) {
     if (!validDbNames.has(dbName)) {
@@ -196,13 +196,13 @@ export const applyOperation = async (
 
   switch (op.op) {
     case 'PUT': {
-      const payload = { ...(op.data ?? {}) } as Record<string, unknown>
+      const payload = { ...(op.data ?? {}) }
       delete payload.id
       delete payload.user_id
       for (const col of uploadDenyColumns[tableName] ?? []) {
         delete payload[col]
       }
-      const rawData: Record<string, unknown> = { ...payload, id: op.id, user_id: userId }
+      const rawData = { ...payload, id: op.id, user_id: userId }
       const schemaValues = toSchemaRecord(rawData, validDbNames, dbNameToKey)
       if (Object.keys(schemaValues).length === 0) {
         return false
@@ -229,7 +229,7 @@ export const applyOperation = async (
       if (!op.data || Object.keys(op.data).length === 0) {
         return true
       }
-      const patchPayload = { ...op.data } as Record<string, unknown>
+      const patchPayload = { ...op.data }
       delete patchPayload.id
       delete patchPayload.user_id
       for (const col of uploadDenyColumns[tableName] ?? []) {

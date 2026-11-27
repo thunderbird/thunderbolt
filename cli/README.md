@@ -263,14 +263,15 @@ cross-account and CI peers.
 Same-account auto-trust activates when the CLI has a stored web session or a
 `THUNDERBOLT_TOKEN`. The bridge registers its own NodeId with the backend as an
 account device named after the host, primes an allowlist from
-`GET /devices/allowlist` before accepting any connection, and admits any NodeId
-on it with no `iroh allow` step. A 45s heartbeat refreshes that list and closes
-any live session whose peer has since been revoked, so revoking a device in the
-app takes effect within one interval. If the refreshed list no longer contains
-the bridge's own NodeId, the account has revoked this device: auto-trust turns
-off and same-account sessions are torn down, while manually allowed peers
-survive. Pairing that bridge again means removing it in Settings → Devices
-first.
+`GET /devices/allowlist` before accepting any connection, and admits the account's
+app devices with no `iroh allow` step. Another CLI's bridge identity is listed but
+never auto-admitted, so it needs `thunderbolt iroh allow <nodeid>`. A 45s heartbeat
+refreshes that list and closes any live session whose peer has since been revoked,
+so revoking a device in the app takes effect within one interval. If the refreshed
+list no longer contains the bridge's own NodeId, the account has revoked this
+device: auto-trust turns off and same-account sessions are torn down, while
+manually allowed peers survive. Pairing that bridge again means removing it in
+Settings → Devices first.
 
 Auto-trust is best-effort. A missing credential, a cloud URL that is not a
 secure transport, or a failed registration or allowlist fetch disables it for

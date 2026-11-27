@@ -365,6 +365,18 @@ describe('devices DAL', () => {
       expect(count).toBe(1)
     })
 
+    it('does not let bridge rows, which nobody approves, use up the slots of approved devices', async () => {
+      const now = new Date()
+      await db.insert(devicesTable).values([
+        { id: 'trusted-app', userId, name: 'Laptop', trusted: true, lastSeen: now, createdAt: now },
+        { id: 'cli-1', userId, name: 'CLI', trusted: true, deviceType: 'cli', lastSeen: now, createdAt: now },
+        { id: 'bridge-1', userId, name: 'Bridge', trusted: true, deviceType: 'bridge', lastSeen: now, createdAt: now },
+        { id: 'bridge-2', userId, name: 'Gone', deviceType: 'bridge', lastSeen: now, createdAt: now, revokedAt: now },
+      ])
+      expect(await countActiveDevices(db, userId)).toBe(2)
+      expect(await countActiveDevices(db, userId, 'all')).toBe(3)
+    })
+
     it('does not count devices from other users', async () => {
       const now = new Date()
       const otherUserId = 'other-user-count'

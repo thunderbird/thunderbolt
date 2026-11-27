@@ -229,12 +229,29 @@ export const markDeviceTrusted = async (database: QueryableDatabase, deviceId: s
     .returning()
 
 /** Count active (trusted, non-revoked) devices for a user.
- * Pending and limbo devices do NOT count toward the device cap (THU-502). */
-export const countActiveDevices = async (database: QueryableDatabase, userId: string) => {
+ * Pending and limbo devices do NOT count toward the device cap (THU-502).
+ *
+ * The default `'approved'` scope also leaves out bridge rows. `registerBridgeDevice` inserts
+ * them trusted for any credential of the account, with no approval from a trusted device, so
+ * they must not take the slots that approving a device or registering a CLI checks. Only
+ * bridge registration itself counts `'all'`, which keeps the number of bridge rows bounded by
+ * the same cap as before. */
+export const countActiveDevices = async (
+  database: QueryableDatabase,
+  userId: string,
+  scope: 'all' | 'approved' = 'approved',
+) => {
   const rows = await database
     .select({ count: count() })
     .from(devicesTable)
-    .where(and(eq(devicesTable.userId, userId), eq(devicesTable.trusted, true), isNull(devicesTable.revokedAt)))
+    .where(
+      and(
+        eq(devicesTable.userId, userId),
+        eq(devicesTable.trusted, true),
+        isNull(devicesTable.revokedAt),
+        ...(scope === 'approved' ? [ne(devicesTable.deviceType, 'bridge')] : []),
+      ),
+    )
   return rows[0]?.count ?? 0
 }
 
@@ -294,9 +311,10 @@ export const setDeviceNodeId = async (database: typeof DbType, deviceId: string,
 /**
  * List the account's iroh allowlist: the endpoint identities (node_id) of every trusted,
  * non-revoked device that has bound one. Scoped to `userId`, so it never returns another
- * account's rows. A headless bridge fetches this (bearer-auth) to auto-allow same-account
- * peers without embedding PowerSync or holding the E2EE Content Key. Denied/pending devices
- * are excluded (only `trusted` rows), as are revoked ones, CLI rows, and rows with a null node_id.
+ * account's rows. A headless bridge fetches this (bearer-auth) to auto-allow normal app
+ * devices on the account without embedding PowerSync or holding the E2EE Content Key.
+ * Denied/pending devices are excluded (only `trusted` rows), as are revoked ones, CLI rows,
+ * and rows with a null node_id.
  */
 export const getTrustedNodeIds = async (database: typeof DbType, userId: string) =>
   database

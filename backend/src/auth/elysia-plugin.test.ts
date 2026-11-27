@@ -198,3 +198,64 @@ describe('session check from a revoked device', () => {
     expect((await response.json())?.user?.email).toBe(handle.email)
   })
 })
+
+describe('auth macro and the Origin header', () => {
+  let handle: TestAppHandle
+
+  beforeEach(async () => {
+    handle = await createTestApp()
+  })
+
+  afterEach(async () => {
+    await handle.cleanup()
+  })
+
+  /** What a browser sends for `<form method="post">` on `origin`, with the SSO session cookie attached. */
+  const formPost = (origin: string) =>
+    handle.app.handle(
+      new Request('http://localhost/v1/devices/bridge', {
+        method: 'POST',
+        headers: {
+          cookie: `better-auth.session_token=${encodeURIComponent(handle.bearerToken)}`,
+          origin,
+          'content-type': 'application/x-www-form-urlencoded',
+        },
+        body: 'nodeId=attacker-node-id&name=Workstation',
+      }),
+    )
+
+  const allowlist = async () => {
+    const response = await handle.app.handle(
+      new Request('http://localhost/v1/devices/allowlist', { headers: authHeaders(handle.bearerToken) }),
+    )
+    return ((await response.json()) as { bridgeNodeIds: unknown[] }).bridgeNodeIds
+  }
+
+  it('refuses a cookie-authenticated form post from an origin outside CORS_ORIGINS', async () => {
+    const response = await formPost('https://orders.example.com')
+
+    expect(response.status).toBe(403)
+    expect(await response.json()).toEqual({ code: 'ORIGIN_NOT_ALLOWED' })
+    expect(await allowlist()).toEqual([])
+  })
+
+  it('refuses the foreign origin before looking at the credential', async () => {
+    const response = await handle.app.handle(
+      new Request('http://localhost/v1/devices/allowlist', { headers: { origin: 'https://orders.example.com' } }),
+    )
+
+    expect(response.status).toBe(403)
+  })
+
+  it('still serves an allowed origin', async () => {
+    expect((await formPost('http://localhost:1420')).status).toBe(200)
+  })
+
+  it('still serves a request without Origin, as the CLI sends', async () => {
+    const response = await handle.app.handle(
+      new Request('http://localhost/v1/devices/allowlist', { headers: authHeaders(handle.bearerToken) }),
+    )
+
+    expect(response.status).toBe(200)
+  })
+})

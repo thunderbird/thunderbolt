@@ -4,7 +4,7 @@
 
 /**
  * Tests for the account-scoped allowlist: the credential-fetched, in-memory
- * cache of the account's trusted NodeIds. Covers the wire contract (URL, auth header
+ * cache of the account's device entries. Covers the wire contract (URL, auth header
  * per credential kind, body parsing), the cache swap on refresh, the soft-fail on a
  * transient fetch error (keep last-known-good, never throw), and self-revocation
  * (the bridge's own NodeId dropping out of a populated list disables auto-trust).
@@ -17,6 +17,7 @@ import {
   createAccountAllowlist,
   fetchAccountAllowlist,
   registerBridgeWithBackend,
+  type AllowlistEntry,
   type FetchFn,
 } from './account-allowlist.ts'
 
@@ -28,18 +29,40 @@ const cred = (overrides: Partial<BridgeCredential> = {}): BridgeCredential => ({
   ...overrides,
 })
 
+type TestResponseBody =
+  | {
+      nodeIds: ReadonlyArray<{ nodeId: string | null; deviceType: string }>
+      bridgeNodeIds?: ReadonlyArray<{ nodeId: string | null; deviceType: string }>
+    }
+  | { error: string }
+  | { device: Record<string, never> }
+type AuthHeadersSeen = { auth: string | null; apiKey: string | null }
+type AllowlistRequestSeen = AuthHeadersSeen & { url: string }
+type AbortSignalSeen = { signal: AbortSignal | null }
+type RegistrationRequestSeen = AbortSignalSeen & {
+  url: string
+  method: string | undefined
+  body: string
+  auth: string | null
+}
+
 /** Build a JSON `Response` for the injected fetch. */
-const jsonResponse = (body: unknown, status = 200): Response =>
+const jsonResponse = (body: TestResponseBody, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 
 describe('fetchAccountAllowlist — wire contract', () => {
-  it('GETs /devices/allowlist with the session bearer and returns the node ids', async () => {
-    const seen: { url: string; auth: string | null; apiKey: string | null } = { url: '', auth: null, apiKey: null }
+  it('GETs /devices/allowlist with the session bearer and returns the device rows', async () => {
+    const seen: AllowlistRequestSeen = { url: '', auth: null, apiKey: null }
     const fetchFn: FetchFn = async (url, init) => {
       seen.url = url
       seen.auth = new Headers(init?.headers).get('authorization')
       seen.apiKey = new Headers(init?.headers).get('x-api-key')
-      return jsonResponse({ nodeIds: [{ nodeId: 'peer-a' }, { nodeId: 'peer-b' }] })
+      return jsonResponse({
+        nodeIds: [
+          { nodeId: 'peer-a', deviceType: 'normal' },
+          { nodeId: 'peer-b', deviceType: 'bridge' },
+        ],
+      })
     }
 
     const ids = await fetchAccountAllowlist(cred({ token: 'signed.jwt' }), fetchFn)
@@ -47,11 +70,14 @@ describe('fetchAccountAllowlist — wire contract', () => {
     expect(seen.url).toBe('https://api.test/v1/devices/allowlist')
     expect(seen.auth).toBe('Bearer signed.jwt')
     expect(seen.apiKey).toBeNull() // a session never sends x-api-key
-    expect(ids).toEqual(['peer-a', 'peer-b'])
+    expect(ids).toEqual([
+      { nodeId: 'peer-a', deviceType: 'normal' },
+      { nodeId: 'peer-b', deviceType: 'bridge' },
+    ])
   })
 
   it('sends the PAT via x-api-key (not Authorization) for an api-key credential', async () => {
-    const seen: { auth: string | null; apiKey: string | null } = { auth: null, apiKey: null }
+    const seen: AuthHeadersSeen = { auth: null, apiKey: null }
     const fetchFn: FetchFn = async (_url, init) => {
       seen.auth = new Headers(init?.headers).get('authorization')
       seen.apiKey = new Headers(init?.headers).get('x-api-key')
@@ -78,8 +104,31 @@ describe('fetchAccountAllowlist — wire contract', () => {
   })
 
   it('drops rows with a null node id (nullable column, never-bound devices)', async () => {
-    const fetchFn: FetchFn = async () => jsonResponse({ nodeIds: [{ nodeId: 'ok' }, { nodeId: null }] })
-    expect(await fetchAccountAllowlist(cred(), fetchFn)).toEqual(['ok'])
+    const fetchFn: FetchFn = async () =>
+      jsonResponse({
+        nodeIds: [
+          { nodeId: 'ok', deviceType: 'normal' },
+          { nodeId: null, deviceType: 'normal' },
+        ],
+      })
+    expect(await fetchAccountAllowlist(cred(), fetchFn)).toEqual([{ nodeId: 'ok', deviceType: 'normal' }])
+  })
+
+  it('reads bridge rows listed apart in bridgeNodeIds, so the bridge still finds itself', async () => {
+    const fetchFn: FetchFn = async () =>
+      jsonResponse({
+        nodeIds: [{ nodeId: 'app', deviceType: 'normal' }],
+        bridgeNodeIds: [
+          { nodeId: 'self', deviceType: 'bridge' },
+          { nodeId: 'planted', deviceType: 'bridge' },
+        ],
+      })
+    const allowlist = createAccountAllowlist(() => fetchAccountAllowlist(cred(), fetchFn), 'self')
+    await allowlist.refresh()
+
+    expect(allowlist.isSelfRevoked()).toBe(false)
+    expect(allowlist.has('app')).toBe(true)
+    expect(allowlist.has('planted')).toBe(false)
   })
 
   it('throws on a non-2xx response so the caller can decide to soft-fail', async () => {
@@ -88,7 +137,7 @@ describe('fetchAccountAllowlist — wire contract', () => {
   })
 
   it('passes an abort signal so a hung backend cannot block the fetch forever', async () => {
-    const seen: { signal: AbortSignal | null } = { signal: null }
+    const seen: AbortSignalSeen = { signal: null }
     const fetchFn: FetchFn = async (_url, init) => {
       seen.signal = init?.signal ?? null
       return jsonResponse({ nodeIds: [] })
@@ -102,17 +151,11 @@ describe('fetchAccountAllowlist — wire contract', () => {
 
 describe('registerBridgeWithBackend — wire contract', () => {
   it('POSTs the bare NodeId and bridge name with the session bearer', async () => {
-    const seen: {
-      url: string
-      method: string | undefined
-      body: string | null | undefined
-      auth: string | null
-      signal: AbortSignal | null
-    } = { url: '', method: undefined, body: undefined, auth: null, signal: null }
+    const seen: RegistrationRequestSeen = { url: '', method: undefined, body: '', auth: null, signal: null }
     const fetchFn: FetchFn = async (url, init) => {
       seen.url = url
       seen.method = init?.method
-      seen.body = typeof init?.body === 'string' ? init.body : undefined
+      seen.body = await new Request(url, init).text()
       seen.auth = new Headers(init?.headers).get('authorization')
       seen.signal = init?.signal ?? null
       return jsonResponse({ device: {} })
@@ -128,7 +171,7 @@ describe('registerBridgeWithBackend — wire contract', () => {
   })
 
   it('reports a revoked bridge on 409 and uses x-api-key for a PAT', async () => {
-    const seen: { auth: string | null; apiKey: string | null } = { auth: null, apiKey: null }
+    const seen: AuthHeadersSeen = { auth: null, apiKey: null }
     const fetchFn: FetchFn = async (_url, init) => {
       seen.auth = new Headers(init?.headers).get('authorization')
       seen.apiKey = new Headers(init?.headers).get('x-api-key')
@@ -165,19 +208,77 @@ describe('registerBridgeWithBackend — wire contract', () => {
  *  self-revoked (self-revocation is exercised in its own describe below). */
 const selfNode = 'self-node'
 
+/** Keep peer fixtures explicit about their normal app device type. */
+const peerEntry = (nodeId: string): AllowlistEntry => ({ nodeId, deviceType: 'normal' })
+
+/** Keep bridge fixtures distinct from normal app devices. */
+const bridgeEntry = (nodeId: string): AllowlistEntry => ({ nodeId, deviceType: 'bridge' })
+const selfEntry = bridgeEntry(selfNode)
+
 describe('createAccountAllowlist — in-memory cache', () => {
+  it('keeps the bridge listed while admitting only normal app devices', async () => {
+    const fetchFn: FetchFn = async () =>
+      jsonResponse({
+        nodeIds: [
+          { nodeId: selfNode, deviceType: 'bridge' },
+          { nodeId: 'attacker-bridge', deviceType: 'bridge' },
+          { nodeId: 'normal-peer', deviceType: 'normal' },
+        ],
+      })
+    const allowlist = createAccountAllowlist(() => fetchAccountAllowlist(cred(), fetchFn), selfNode)
+
+    await allowlist.refresh()
+
+    expect(allowlist.isSelfRevoked()).toBe(false)
+    expect(allowlist.has('normal-peer')).toBe(true)
+    expect(allowlist.has('attacker-bridge')).toBe(false)
+  })
+
+  it('keeps an app device trusted when a later bridge row shares its NodeId', async () => {
+    const allowlist = createAccountAllowlist(
+      async () => [selfEntry, peerEntry('app-device'), bridgeEntry('app-device')],
+      selfNode,
+    )
+
+    await allowlist.refresh()
+
+    expect(allowlist.has('app-device')).toBe(true)
+  })
+
+  it.each(['cli', 'future'])('denies a peer with device type %s', async (deviceType) => {
+    const fetchFn: FetchFn = async () =>
+      jsonResponse({
+        nodeIds: [selfEntry, { nodeId: 'unproved-peer', deviceType }],
+      })
+    const allowlist = createAccountAllowlist(() => fetchAccountAllowlist(cred(), fetchFn), selfNode)
+
+    await allowlist.refresh()
+
+    expect(allowlist.isSelfRevoked()).toBe(false)
+    expect(allowlist.has('unproved-peer')).toBe(false)
+  })
+
   it('trusts no peer until the first successful refresh', () => {
-    const allowlist = createAccountAllowlist(async () => [selfNode, 'peer'], selfNode)
+    const allowlist = createAccountAllowlist(async () => [selfEntry, peerEntry('peer')], selfNode)
     expect(allowlist.has('peer')).toBe(false)
   })
 
   it('starts from a successfully fetched startup prime', () => {
-    const allowlist = createAccountAllowlist(async () => [], selfNode, [selfNode, 'peer'])
+    const allowlist = createAccountAllowlist(async () => [], selfNode, [
+      selfEntry,
+      bridgeEntry('attacker-bridge'),
+      peerEntry('peer'),
+    ])
+    expect(allowlist.isSelfRevoked()).toBe(false)
     expect(allowlist.has('peer')).toBe(true)
+    expect(allowlist.has('attacker-bridge')).toBe(false)
   })
 
   it('populates the cache on refresh and trims the queried id', async () => {
-    const allowlist = createAccountAllowlist(async () => [selfNode, 'peer-a', 'peer-b'], selfNode)
+    const allowlist = createAccountAllowlist(
+      async () => [selfEntry, peerEntry('peer-a'), peerEntry('peer-b')],
+      selfNode,
+    )
     await allowlist.refresh()
     expect(allowlist.has('peer-a')).toBe(true)
     expect(allowlist.has('  peer-b  ')).toBe(true)
@@ -185,12 +286,12 @@ describe('createAccountAllowlist — in-memory cache', () => {
   })
 
   it('replaces the cache on each refresh, so a revoked id drops out', async () => {
-    let ids = [selfNode, 'peer-a', 'peer-b']
+    let ids = [selfEntry, peerEntry('peer-a'), peerEntry('peer-b')]
     const allowlist = createAccountAllowlist(async () => ids, selfNode)
     await allowlist.refresh()
     expect(allowlist.has('peer-b')).toBe(true)
 
-    ids = [selfNode, 'peer-a'] // peer-b revoked in the account
+    ids = [selfEntry, peerEntry('peer-a')] // peer-b revoked in the account
     await allowlist.refresh()
     expect(allowlist.has('peer-b')).toBe(false)
     expect(allowlist.has('peer-a')).toBe(true)
@@ -201,7 +302,7 @@ describe('createAccountAllowlist — in-memory cache', () => {
     let fail = false
     const allowlist = createAccountAllowlist(async () => {
       if (fail) throw new Error('network down')
-      return [selfNode, 'peer-a']
+      return [selfEntry, peerEntry('peer-a')]
     }, selfNode)
 
     await allowlist.refresh()
@@ -231,7 +332,7 @@ describe('createAccountAllowlist — in-memory cache', () => {
 describe('createAccountAllowlist — self-revocation', () => {
   it('trusts no account peer once this bridge is dropped from a populated allowlist', async () => {
     // The populated list omits selfNode → the account revoked this bridge.
-    const allowlist = createAccountAllowlist(async () => ['peer-a', 'peer-b'], selfNode)
+    const allowlist = createAccountAllowlist(async () => [peerEntry('peer-a'), peerEntry('peer-b')], selfNode)
     await allowlist.refresh()
 
     expect(allowlist.isSelfRevoked()).toBe(true)
@@ -240,7 +341,7 @@ describe('createAccountAllowlist — self-revocation', () => {
   })
 
   it('keeps trusting peers while this bridge is still listed', async () => {
-    const allowlist = createAccountAllowlist(async () => [selfNode, 'peer-a'], selfNode)
+    const allowlist = createAccountAllowlist(async () => [selfEntry, peerEntry('peer-a')], selfNode)
     await allowlist.refresh()
 
     expect(allowlist.isSelfRevoked()).toBe(false)
@@ -256,12 +357,12 @@ describe('createAccountAllowlist — self-revocation', () => {
   })
 
   it('re-trusts once this bridge returns to the allowlist (re-keyed / re-attested)', async () => {
-    let ids = ['peer-a'] // selfNode absent → revoked
+    let ids = [peerEntry('peer-a')] // selfNode absent → revoked
     const allowlist = createAccountAllowlist(async () => ids, selfNode)
     await allowlist.refresh()
     expect(allowlist.isSelfRevoked()).toBe(true)
 
-    ids = [selfNode, 'peer-a'] // this bridge re-added
+    ids = [selfEntry, peerEntry('peer-a')] // this bridge re-added
     await allowlist.refresh()
     expect(allowlist.isSelfRevoked()).toBe(false)
     expect(allowlist.has('peer-a')).toBe(true)

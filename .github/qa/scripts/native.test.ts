@@ -42,7 +42,8 @@ const fakeAdb = ({ ignoresSettings = false, refusesBroadcast = false } = {}) => 
 echo "$*" >> '${calls}'
 case "$*" in
   devices) printf 'List of devices attached\\nemulator-5554\\tdevice\\n' ;;
-  *" emu avd name") printf 'qa-android\\r\\nOK\\r\\n' ;;
+  # CRLF, and a trailing OK as adb's emulator console prints, must not hide the name.
+  *"getprop ro.boot.qemu.avd_name") printf 'qa-android\\r\\nOK\\r\\n' ;;
   *"getprop sys.boot_completed") echo 1 ;;
   *"test -d /sdcard/Android")
     [ -f '${bin}/mounted' ] && exit 0
@@ -204,6 +205,7 @@ const detached = (command: string) =>
   Bun.spawnSync(['bash', '-c', `${command} > /dev/null 2>&1 & echo $!`])
     .stdout.toString()
     .trim()
+/** Sends SIGTERM to each pid a test started, so nothing outlives the test. */
 const stop = (...pids: string[]) => Bun.spawnSync(['kill', ...pids])
 
 /** adb lists the emulator as offline while the pid file still names `previous`, the emulator of an earlier boot. */
@@ -220,7 +222,7 @@ case "$*" in
     state=device
     [ "$(cat '${pidFile}')" = "$(cat '${dir}/previous')" ] && state=offline
     printf 'List of devices attached\\nemulator-5554\\t%s\\n' "$state" ;;
-  *" emu avd name") printf 'qa-android\\r\\nOK\\r\\n' ;;
+  *"getprop ro.boot.qemu.avd_name") printf 'qa-android\\r\\nOK\\r\\n' ;;
   *"getprop sys.boot_completed" | *"settings get global hide_error_dialogs") echo 1 ;;
 esac
 exit 0
@@ -268,6 +270,66 @@ test('device android leaves alone a recorded pid that now runs another program',
   expect(proc.exitCode).toBe(0)
   expect(running(other)).toBe(true)
   stop(other, booted)
+})
+
+/**
+ * Boots our AVD, which adb lists as emulator-5554 once the boot has started; with `other`, emulator-5560 runs another
+ * AVD beside it from the start. emulator-5554's name probe reads empty for its first `empty` calls. `sleep` returns
+ * at once. Returns how the boot ended and how many name probes emulator-5554 got.
+ */
+const bootWithNameProbe = (empty: number, other: boolean) => {
+  const dir = mkdtempSync(join(work, 'name-'))
+  const bin = join(dir, 'bin')
+  const probes = join(dir, 'probes')
+  mkdirSync(bin)
+  writeFileSync(
+    join(bin, 'adb'),
+    `#!/bin/bash
+case "$*" in
+  devices)
+    printf 'List of devices attached\\n'
+    ${other ? "printf 'emulator-5560\\tdevice\\n'" : ''}
+    [ -f '${dir}/qa-emulator.pid' ] && printf 'emulator-5554\\tdevice\\n' ;;
+  *"5560 shell getprop ro.boot.qemu.avd_name") printf 'pixel-other\\r\\n' ;;
+  *"getprop ro.boot.qemu.avd_name")
+    echo >> '${probes}'
+    if [ "$(wc -l < '${probes}')" -gt ${empty} ]; then printf 'qa-android\\r\\n'; else printf '\\r\\n'; fi ;;
+  *"getprop sys.boot_completed" | *"settings get global hide_error_dialogs") echo 1 ;;
+esac
+exit 0
+`,
+  )
+  writeFileSync(join(bin, 'avdmanager'), '#!/bin/bash\necho qa-android\n')
+  writeFileSync(join(bin, 'emulator'), '#!/bin/bash\nexec /bin/sleep 20\n')
+  writeFileSync(join(bin, 'sleep'), '#!/bin/sh\n')
+  for (const tool of ['adb', 'avdmanager', 'emulator', 'sleep']) chmodSync(join(bin, tool), 0o755)
+  const proc = Bun.spawnSync(['bash', native, 'device', 'android'], {
+    env: {
+      ...process.env,
+      ...noPorts,
+      PATH: `${bin}:${process.env.PATH}`,
+      ANDROID_AVD_HOME: join(dir, 'avd'),
+      TMPDIR: dir,
+    },
+  })
+  stop(readFileSync(join(dir, 'qa-emulator.pid'), 'utf8').trim())
+  return { proc, probes: readFileSync(probes, 'utf8').length }
+}
+
+test('device android waits out a name probe that reads empty for a moment, beside another AVD', () => {
+  const { proc, probes } = bootWithNameProbe(2, true)
+
+  expect(proc.exitCode).toBe(0)
+  expect(proc.stdout.toString()).toBe('emulator-5554\n')
+  expect(probes).toBe(3)
+})
+
+test('device android takes the only emulator after booting it, though its name probe never answers', () => {
+  const { proc, probes } = bootWithNameProbe(999, false)
+
+  expect(proc.exitCode).toBe(0)
+  expect(proc.stdout.toString()).toBe('emulator-5554\n')
+  expect(probes).toBe(1)
 })
 
 test("device-lost prints adb's state, whether the emulator runs and only counts from its log", () => {
@@ -330,7 +392,7 @@ test('a boot whose emulator exits prints only counts from its log, never its lin
   )
 })
 
-test('resume-logs appends a new stream and stops the old one only while its pid still runs logcat', () => {
+test('resume-logs appends a new stream and stops the old one only while its pid still writes the log', () => {
   const dir = mkdtempSync(join(work, 'resume-'))
   const bin = join(dir, 'bin')
   const calls = join(dir, 'calls.log')
@@ -350,17 +412,19 @@ test('resume-logs appends a new stream and stops the old one only while its pid 
     expect(proc.exitCode).toBe(0)
     return readFileSync(`${file}.pid`, 'utf8').trim()
   }
-  const other = detached('sleep 10')
+  // Its arguments name logcat, but it writes elsewhere.
+  const other = detached("exec -a 'adb logcat -v epoch' sleep 10")
 
   const first = resume(other)
   const second = resume(first)
 
   expect(running(other)).toBe(true)
-  expect(running(first)).toBe(false)
+  // Only Linux has /proc to tell which file a pid writes; elsewhere the old stream is left running.
+  expect(running(first)).toBe(process.platform !== 'linux')
   expect(running(second)).toBe(true)
   expect(readFileSync(file, 'utf8')).toBe(before)
   expect(readFileSync(calls, 'utf8')).toBe('-s emulator-5556 logcat -v epoch -T 1 -s Tauri/Console:*\n'.repeat(2))
-  stop(other, second)
+  stop(other, first, second)
 })
 
 /**

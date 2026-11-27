@@ -28,7 +28,8 @@
 #                                                               the replacement 60 s of its own
 #   native.sh stop-logs <file>
 #   native.sh resume-logs <device> <file>                       Android only: after adb lost the device, stream
-#                                                               again into <file>, appending from the newest line
+#                                                               again into <file>, appending from the newest line;
+#                                                               fails when the new stream exits within a second
 #   native.sh control <platform> <device> [out-dir]             run the positive control on the control build
 #                                                               installed on <device>; exit 0 when the layout check
 #                                                               reports the covered Email field
@@ -215,12 +216,15 @@ crash_counts() {
   done
 }
 
-# The online emulator that runs our AVD, if any. Another emulator on the same adb is not ours to use.
+# The online emulator that runs our AVD, if any. Another emulator on the same adb is not ours to use. With `booted`
+# (we just started ours), the only online emulator counts as ours while its name reads empty, so an image that does
+# not set the property cannot fail the boot.
 our_emulator() {
-  local serial name
-  for serial in $(adb devices | sed -n 's/^\(emulator-[0-9]*\)[[:space:]]*device$/\1/p'); do
-    name=$(adb -s "$serial" emu avd name 2> /dev/null | tr -d '\r') || true
-    if grep -qx "$avd" <<< "$name"; then
+  local serials serial name
+  serials=$(adb devices | sed -n 's/^\(emulator-[0-9]*\)[[:space:]]*device$/\1/p')
+  for serial in $serials; do
+    name=$(timeout -k 1 10 adb -s "$serial" shell getprop ro.boot.qemu.avd_name 2> /dev/null | tr -d '\r') || true
+    if grep -qx "$avd" <<< "$name" || { [ "${1:-}" = booted ] && [ -z "$name" ] && [ "$serials" = "$serial" ]; }; then
       echo "$serial"
       return
     fi
@@ -257,7 +261,7 @@ device_android() {
       crash_counts >&2
       die "the emulator exited"
     fi
-    serial=$(our_emulator)
+    serial=$(our_emulator ${emulator_pid:+booted})
     [ -n "$serial" ] && break
     sleep 2
   done
@@ -397,17 +401,20 @@ stop_logs() {
 }
 
 # Unlike `logs`, it neither clears the device's log nor empties <file>, so what came before the loss stays in both.
-# The old stream is stopped only while its pid still runs logcat: adb's reset may have ended it long ago, and a pid
-# can be reused.
+# The old stream is stopped only while its pid still writes <file>: adb's reset may have ended it long ago, and a pid
+# can be reused. Without /proc (macOS) it is left running. The command fails when the new stream has exited a second
+# later.
 resume_logs() {
-  local device=$1 file=$2 pid
+  local device=$1 file=$2 pid stream
   pid=$(cat "$file.pid" 2> /dev/null) || pid=
-  if [[ -n $pid && $(ps -ww -o args= -p "$pid" 2> /dev/null) == *" logcat "* ]]; then
-    kill "$pid" 2> /dev/null || true
-  fi
-  # -T 1 starts at the newest line, so earlier runs' lines are not streamed again.
+  if [ -n "$pid" ] && [ "/proc/$pid/fd/1" -ef "$file" ]; then kill "$pid" 2> /dev/null || true; fi
+  # -T 1 starts at the newest buffered entry, so earlier runs' lines are not streamed again. That one entry can show
+  # up twice in <file> when it matches the tag filter.
   adb -s "$device" logcat -v epoch -T 1 -s 'Tauri/Console:*' >> "$file" 2>&1 &
-  echo $! > "$file.pid"
+  stream=$!
+  echo "$stream" > "$file.pid"
+  sleep 1
+  kill -0 "$stream" 2> /dev/null || die "the new WebView log stream exited at once"
 }
 
 # Exits 0 only when the keyboard is open and the probe logged focus-covered for the Email field. The flow, log and

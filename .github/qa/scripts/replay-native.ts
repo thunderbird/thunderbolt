@@ -21,8 +21,6 @@ const probeWaitMs = 1200
 const nativeSh = join(import.meta.dir, 'native.sh')
 const driverTimeout = 'iOS driver not ready in time'
 const androidVideo = '/sdcard/qa-replay.mp4'
-/** How long adb gets to see a lost emulator again before a new one is booted. */
-const reconnectSeconds = 30
 
 /**
  * Thrown by an Android run whose emulator dropped off adb, so the run never counts. With `retry` the emulator is back
@@ -89,38 +87,45 @@ export const createRunFlow = (opts: {
   const ios = platform === 'ios'
   const recovers = !ios && recoverBy !== undefined
   const device = { id: opts.deviceId, recovered: false }
-  /** adb answers within 10 s that the emulator is ready, not offline or missing. */
-  const online = async () =>
-    (await $`timeout 10 adb -s ${device.id} get-state`.quiet().nothrow()).stdout.toString().trim() === 'device'
-  /** The seconds left before `recoverBy`, for each recovery step's `timeout`, so a hung step ends there. */
+  /** The whole seconds before `recoverBy`, less the one a step's hard kill (`timeout -k 1`) may add. */
+  const secondsLeft = () => Math.floor(((recoverBy ?? 0) - Date.now()) / 1000) - 1
+  /** The `timeout` of each step after a loss, so a hung step is killed by `recoverBy`. */
   const left = () => {
-    const seconds = Math.floor(((recoverBy ?? 0) - Date.now()) / 1000)
+    const seconds = secondsLeft()
     if (seconds < 1) throw new DeviceLost('emulator dropped off adb, and the leg has no time left to bring it back')
     return seconds
   }
-  /** As the job's boot: a new emulator (`native.sh device`), then the warm-up Maestro session the job runs on it. */
-  const reboot = async () => {
-    device.id = (await $`timeout ${left()} ${nativeSh} device android`).text().trim().split('\n').pop() ?? ''
+  /**
+   * adb answers within 10 s, and by `recoverBy`, that the emulator is ready. With no time left to ask, the emulator
+   * counts as lost.
+   */
+  const online = async () => {
+    const seconds = Math.min(10, secondsLeft())
+    if (seconds < 1) return false
+    const state = await $`timeout -k 1 ${seconds} adb -s ${device.id} get-state`.quiet().nothrow()
+    return state.stdout.toString().trim() === 'device'
+  }
+  /**
+   * As the job's boot: `native.sh device`, which keeps our emulator only while adb sees it online with the name
+   * qa-android and cold-boots it otherwise, then the warm-up Maestro session the job runs on it. An adb reset ends the
+   * WebView stream, so it starts again.
+   */
+  const recover = async () => {
+    device.id = (await $`timeout -k 1 ${left()} ${nativeSh} device android`).text().trim().split('\n').pop() ?? ''
     // The job's last step saves the emulator's log from QA_DEVICE_ID.
     if (Bun.env.GITHUB_ENV) await appendFile(Bun.env.GITHUB_ENV, `QA_DEVICE_ID=${device.id}\n`)
-    await $`timeout ${left()} ${nativeSh} install android ${device.id} ${resolve(opts.apps.plain)}`
+    await $`timeout -k 1 ${left()} ${nativeSh} install android ${device.id} ${resolve(opts.apps.plain)}`
     const warmUp = join(tmpdir(), 'qa-warm-up.yaml')
     await Bun.write(warmUp, `appId: ${appId}\n---\n- launchApp\n`)
-    await $`timeout ${left()} maestro --udid ${device.id} test ${warmUp}`
+    await $`timeout -k 1 ${left()} maestro --udid ${device.id} test ${warmUp}`
       .env({ ...getDefaultEnvironment(), ...maestroEnv() })
       .nothrow()
-  }
-  const recover = async () => {
-    const wait = Math.min(reconnectSeconds, left())
-    const back = await $`timeout ${wait} adb -s ${device.id} wait-for-device`.quiet().nothrow()
-    if (back.exitCode !== 0) await reboot()
-    // An adb reset ends the stream, and a new emulator needs one of its own.
-    // Not quiet: `lost` drops the error, so adb's own message is the only reason the job log gets.
-    await $`timeout ${left()} ${nativeSh} resume-logs ${device.id} ${webviewLog}`
+    // Not quiet: `lost` drops the error, so native.sh's own message is the only reason the job log gets.
+    await $`timeout -k 1 ${left()} ${nativeSh} resume-logs ${device.id} ${webviewLog}`
   }
   /** Prints what may explain the loss and, once per leg, gets the emulator back. Always throws. */
   const lost = async (): Promise<never> => {
-    await $`${nativeSh} device-lost ${device.id}`.nothrow()
+    await $`timeout -k 1 ${left()} ${nativeSh} device-lost ${device.id}`.nothrow()
     if (device.recovered) throw new DeviceLost('emulator dropped off adb a second time in this leg')
     device.recovered = true
     try {

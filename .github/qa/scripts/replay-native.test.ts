@@ -237,12 +237,14 @@ echo "maestro flow" >> '${calls}'
 /**
  * Runs the Android flow once per entry of `flags`, after creating the files that entry names: `lost-<serial>` makes
  * adb lose that emulator, `drop-<serial>` makes adb lose it during Maestro's flow, `drop-tree-<serial>` during the
- * tree dump until `wait-for-device`, `flap-<serial>` makes adb lose it until `wait-for-device`, `blip-<serial>` fails
- * one install with adb's "not found" while adb still sees it, `full` fails the install on a device adb still sees,
- * `fail-flow` fails Maestro's flow, `hang` hangs the warm-up session. An unrelated emulator-5558 is always online; a
- * new boot of our AVD comes up as emulator-5556. A recovery must end `recoverIn` ms after the start, and `never`
- * passes no deadline, as fix-native does. Returns each run's result or what it threw, the calls with paths cut to
- * file names, stderr, what the WebView log and $GITHUB_ENV hold, and how long it took.
+ * tree dump until the next `adb devices`, `flap-<serial>` makes adb lose it until the next `adb devices`,
+ * `blip-<serial>` fails one install with adb's "not found" while adb still sees it, `other-<serial>` puts another AVD
+ * on that serial, `full` fails the install on a device adb still sees, `fail-flow` fails Maestro's flow, `hang` hangs
+ * the warm-up session, `hang-adb` hangs `adb get-state`, `dead-stream` makes the new WebView stream exit at once. An
+ * unrelated emulator-5558 is always online; a new boot of our AVD comes up as emulator-5556. A recovery must end
+ * `recoverIn` ms after the start, and `never` passes no deadline, as fix-native does. Returns each run's result or
+ * what it threw, the calls with paths cut to file names, stderr, what the WebView log and $GITHUB_ENV hold, and how
+ * many ms past the deadline the runs ended.
  */
 const androidRuns = (flags: (string | undefined)[], recoverIn: number | 'never' = 600_000) => {
   const dir = mkdtempSync(join(work, 'lost-'))
@@ -257,11 +259,17 @@ serial=$2
 lost() { [ -f "${dir}/lost-$serial" ] || [ -f "${dir}/flap-$serial" ]; }
 case "$*" in
   devices)
+    rm -f '${dir}'/flap-*
     printf 'List of devices attached\\nemulator-5558\\tdevice\\n'
+    [ -f '${dir}/lost-emulator-5554' ] || printf 'emulator-5554\\tdevice\\n'
     [ -f '${dir}/qa-emulator.pid' ] && printf 'emulator-5556\\tdevice\\n' ;;
-  *" emu avd name") [ "$serial" = emulator-5558 ] && echo pixel-other || echo qa-android ;;
-  *" get-state") lost && { echo "error: device '$2' not found" >&2; exit 1; }; echo device ;;
-  *" wait-for-device") rm -f "${dir}/flap-$serial"; lost && exit 1 ;;
+  *" getprop ro.boot.qemu.avd_name")
+    if [ "$serial" = emulator-5558 ] || [ -f "${dir}/other-$serial" ]; then echo pixel-other; else echo qa-android; fi ;;
+  *" get-state")
+    [ -f '${dir}/hang-adb' ] && exec sleep 30
+    lost && { echo "error: device '$2' not found" >&2; exit 1; }
+    echo device ;;
+  *" logcat -v epoch -T 1 "*) [ -f '${dir}/dead-stream' ] && { echo 'error: device offline'; exit 1; }; exec sleep 20 ;;
   *" install -r "*)
     lost && { echo "adb: device '$2' not found" >&2; exit 1; }
     [ -f "${dir}/blip-$serial" ] && { rm "${dir}/blip-$serial"; echo "adb: device '$2' not found" >&2; exit 1; }
@@ -299,13 +307,14 @@ exit 0
   const script = `
     import { writeFileSync } from 'node:fs'
     import { createRunFlow } from ${JSON.stringify(join(import.meta.dir, 'replay-native.ts'))}
+    const recoverBy = ${recoverIn === 'never' ? 'undefined' : `Date.now() + ${recoverIn}`}
     const runFlow = createRunFlow({
       platform: 'android',
       deviceId: 'emulator-5554',
       apps: { onboarding: 'on.apk', plain: 'plain.apk' },
       webviewLog: ${JSON.stringify(logs[0])},
       backendLog: ${JSON.stringify(logs[1])},
-      ${recoverIn === 'never' ? '' : `recoverBy: Date.now() + ${recoverIn},`}
+      recoverBy,
     })
     const results = []
     for (const [index, flag] of ${JSON.stringify(flags)}.entries()) {
@@ -317,9 +326,8 @@ exit 0
         results.push({ threw: error.constructor.name, message: error.message, retry: error.retry })
       }
     }
-    console.log(JSON.stringify(results))
+    console.log(JSON.stringify({ results, overrun: Date.now() - recoverBy }))
   `
-  const start = Date.now()
   const proc = Bun.spawnSync([process.execPath, '-e', script], {
     cwd: dir,
     env: {
@@ -330,12 +338,13 @@ exit 0
       GITHUB_ENV: githubEnv,
     },
   })
-  const took = Date.now() - start
-  const emulator = join(dir, 'qa-emulator.pid')
-  if (existsSync(emulator)) Bun.spawnSync(['kill', readFileSync(emulator, 'utf8').trim()])
+  for (const pidFile of [join(dir, 'qa-emulator.pid'), `${logs[0]}.pid`]) {
+    if (existsSync(pidFile)) Bun.spawnSync(['kill', readFileSync(pidFile, 'utf8').trim()])
+  }
+  // The boot and the warm-up print to stdout too, as they do in the job's log.
+  const { results, overrun } = JSON.parse(proc.stdout.toString().trim().split('\n').at(-1) ?? '')
   return {
-    // The boot and the warm-up print to stdout too, as they do in the job's log.
-    results: JSON.parse(proc.stdout.toString().trim().split('\n').at(-1) ?? ''),
+    results,
     calls: readFileSync(calls, 'utf8')
       .trim()
       .split('\n')
@@ -343,11 +352,14 @@ exit 0
     stderr: proc.stderr.toString(),
     webview: readFileSync(logs[0], 'utf8'),
     githubEnv: existsSync(githubEnv) ? readFileSync(githubEnv, 'utf8') : '',
-    took,
+    overrun,
   }
 }
 
+/** The call that starts the WebView stream again on `serial`, with its path cut as `androidRuns` cuts it. */
 const resumed = (serial: string) => `adb -s ${serial} logcat -v epoch -T 1 -s Console:*`
+// The tests that recover get 15 s: a recovery adds native.sh's device step, the warm-up and the stream's 1 s check
+// to the runs' probe waits.
 
 test('an Android run on an emulator adb lost boots a new one once, and the runs after it use that one', () => {
   // The first loss fails the install, the second the flow.
@@ -380,39 +392,61 @@ test('an Android run on an emulator adb lost boots a new one once, and the runs 
   expect(githubEnv).toBe('QA_DEVICE_ID=emulator-5556\n')
   // The lost run stops before its video is pulled.
   expect(calls.filter((line) => line.includes(' pull '))).toHaveLength(1)
-  // adb got its reconnect window only for the first loss, and only one emulator booted.
-  expect(calls.filter((line) => line.endsWith(' wait-for-device'))).toEqual(['adb -s emulator-5554 wait-for-device'])
+  // Only the first loss got a recovery.
   expect(calls.filter((line) => line.endsWith(' -G 64M'))).toHaveLength(1)
   expect(calls.filter((line) => line.endsWith(' logcat -c'))).toEqual([])
   expect(webview).toBe('I Tauri/Console: before the loss\n')
   expect(stderr).toContain('adb lost emulator-5554;')
   expect(stderr).toContain('adb lost emulator-5556;')
-})
+}, 15_000)
 
-test('an Android run on an emulator adb sees again within the reconnect window starts over on it, with no boot', () => {
+test('an Android run on an emulator adb sees again by the recovery starts over on it, with no boot', () => {
   const { results, calls, webview, githubEnv } = androidRuns(['flap-emulator-5554', undefined])
 
   expect(results).toEqual([{ threw: 'DeviceLost', message: 'emulator dropped off adb', retry: true }, { passed: true }])
-  // The stream starts again on the same emulator, keeping what it held, and the next run uses it.
-  expect(calls.filter((line) => / install -r | logcat -v epoch | -G 64M$/.test(line))).toEqual([
+  // The device step and the warm-up run on the same emulator, the stream starts again on it, keeping what it held,
+  // and the next run uses it.
+  expect(calls.filter((line) => / install -r | logcat -v epoch | -G 64M$|^emulator /.test(line))).toEqual([
+    'adb -s emulator-5554 install -r plain.apk',
+    'adb -s emulator-5554 logcat -b main,system,crash,events -G 64M',
     'adb -s emulator-5554 install -r plain.apk',
     resumed('emulator-5554'),
     'adb -s emulator-5554 install -r plain.apk',
   ])
   expect(webview).toBe('I Tauri/Console: before the loss\n')
-  expect(githubEnv).toBe('')
-})
+  expect(githubEnv).toBe('QA_DEVICE_ID=emulator-5554\n')
+}, 15_000)
 
 test("an install that failed on adb's not found counts as a loss, though adb sees the emulator again at once", () => {
   const { results, calls } = androidRuns(['blip-emulator-5554', undefined])
 
   expect(results).toEqual([{ threw: 'DeviceLost', message: 'emulator dropped off adb', retry: true }, { passed: true }])
-  expect(calls.filter((line) => / install -r | wait-for-device$|^emulator /.test(line))).toEqual([
+  expect(calls.filter((line) => / install -r |^emulator /.test(line))).toEqual([
     'adb -s emulator-5554 install -r plain.apk',
-    'adb -s emulator-5554 wait-for-device',
+    'adb -s emulator-5554 install -r plain.apk',
     'adb -s emulator-5554 install -r plain.apk',
   ])
-})
+}, 15_000)
+
+test('a recovery never reuses a serial that now runs another AVD, and boots ours instead', () => {
+  const { results, calls } = androidRuns(['blip-emulator-5554 other-emulator-5554', undefined])
+
+  expect(results).toEqual([{ threw: 'DeviceLost', message: 'emulator dropped off adb', retry: true }, { passed: true }])
+  expect(calls.filter((line) => / install -r |^emulator /.test(line))).toEqual([
+    'adb -s emulator-5554 install -r plain.apk',
+    'emulator -avd qa-android -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect',
+    'adb -s emulator-5556 install -r plain.apk',
+    'adb -s emulator-5556 install -r plain.apk',
+  ])
+}, 15_000)
+
+test('a recovery whose new WebView stream exits at once fails, and the loss ends the leg', () => {
+  const { results } = androidRuns(['lost-emulator-5554 dead-stream'])
+
+  expect(results).toEqual([
+    { threw: 'DeviceLost', message: 'emulator dropped off adb and could not be brought back', retry: false },
+  ])
+}, 15_000)
 
 test('a passed run whose tree dump fails on an emulator adb lost does not count, and starts over', () => {
   const { results, calls } = androidRuns(['drop-tree-emulator-5554', undefined])
@@ -420,23 +454,41 @@ test('a passed run whose tree dump fails on an emulator adb lost does not count,
   expect(results).toEqual([{ threw: 'DeviceLost', message: 'emulator dropped off adb', retry: true }, { passed: true }])
   // The lost run's video is never pulled.
   expect(calls.filter((line) => line.includes(' pull '))).toHaveLength(1)
-})
+}, 15_000)
 
 test('a recovery that would end past the deadline is cut there, and the loss ends the leg', () => {
   // The warm-up session hangs for 60 s; the leg has 3 s left.
-  const { results, took } = androidRuns(['lost-emulator-5554 hang'], 3_000)
+  const { results, overrun } = androidRuns(['lost-emulator-5554 hang'], 3_000)
 
   expect(results).toEqual([
     { threw: 'DeviceLost', message: expect.stringMatching(/^emulator dropped off adb/), retry: false },
   ])
-  expect(took).toBeLessThan(15_000)
+  expect(overrun).toBeLessThan(0)
 }, 20_000)
+
+// `adb get-state` hangs for 30 s, in the diagnostics after an install adb did not find, or in the probe after a
+// failed install; the leg has 3 s left.
+test.each([
+  ['diagnostics', 'lost-emulator-5554 hang-adb'],
+  ['adb probe', 'full hang-adb'],
+])('the %s after a loss end by the deadline, and the loss ends the leg', (_, flags) => {
+  const { results, overrun } = androidRuns([flags], 3_000)
+
+  expect(results).toEqual([
+    {
+      threw: 'DeviceLost',
+      message: 'emulator dropped off adb, and the leg has no time left to bring it back',
+      retry: false,
+    },
+  ])
+  expect(overrun).toBeLessThan(0)
+})
 
 test('a run with no recovery deadline, as fix-native has, fails on a lost emulator without probing adb', () => {
   const { results, calls } = androidRuns(['lost-emulator-5554'], 'never')
 
   expect(results).toEqual([{ threw: 'ShellError', message: expect.any(String) }])
-  expect(calls.filter((line) => / get-state$| wait-for-device$/.test(line))).toEqual([])
+  expect(calls.filter((line) => / get-state$| devices$/.test(line))).toEqual([])
 })
 
 test('a failed flow or install on an emulator adb still sees keeps its own outcome, with nothing recovered', () => {
@@ -446,6 +498,6 @@ test('a failed flow or install on an emulator adb still sees keeps its own outco
     { passed: false, error: 'Element not found: Continue' },
     { threw: 'ShellError', message: expect.any(String) },
   ])
-  expect(calls.filter((line) => / wait-for-device$| devices$| logcat -v epoch /.test(line))).toEqual([])
+  expect(calls.filter((line) => / devices$| logcat -v epoch /.test(line))).toEqual([])
   expect(stderr).not.toContain('adb lost')
 })

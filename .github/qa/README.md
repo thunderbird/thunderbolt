@@ -351,11 +351,13 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    does). When adb loses the emulator during a run's install, flow or tree dump, the run does not count. An install
    that fails with adb's `device '…' not found` counts as a loss even if adb sees the emulator again a moment later.
    `native.sh device-lost` prints what may explain the loss: the emulator process, free memory, OOM kills, and, for
-   each crash signature, how many lines of the emulator's log hold it. No line of that log is printed. adb then gets
-   30 s to reconnect; if it does not, the leg cold-boots a new `qa-android` emulator. The WebView stream starts again and appends to its
-   log, and the run starts over. A leg recovers only once, and the recovery must end before the leg's clock does: a
-   second loss, or a recovery that fails or runs out of time, marks the stack unhealthy. A fix's native check never
-   recovers. Each run ends with one `maestro hierarchy` of the screen it
+   each crash signature, how many lines of the emulator's log hold it. No line of that log is printed. The leg then
+   runs `native.sh device android` again, which keeps the emulator only while adb sees it online and its
+   `ro.boot.qemu.avd_name` is `qa-android`, and otherwise stops ours and cold-boots a new one. The WebView stream
+   starts again and appends to its log; a stream that has exited a second later fails the recovery. Then the run
+   starts over. A leg recovers only once, and the adb probe, the diagnostics and the recovery must all end before the
+   leg's clock does: a second loss, or a recovery that fails or runs out of time, marks the stack unhealthy. A fix's
+   native check never recovers. Each run ends with one `maestro hierarchy` of the screen it
    stopped on, for the tree's `unnamed-control` lines and, on Android, its `behind-keyboard` line; a screen the run only passed through, like the privacy step the harness
    clicks through, adds no tree line.
    A `layout` run fails when the probe (or a tree rule) logs the quoted `[qa-layout]` line during it, a `console-error`, `page-error` or `http-5xx` run when a new WebView or backend log

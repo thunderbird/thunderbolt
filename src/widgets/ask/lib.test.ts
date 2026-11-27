@@ -5,6 +5,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
   askStorageKey,
+  askMessageStateOf,
   collectAskEntriesFromCache,
   composerDraftForAnswers,
   evaluateAnswer,
@@ -136,65 +137,6 @@ describe('collectAskEntriesFromCache', () => {
   })
 })
 
-describe('formatAskResponsesNote', () => {
-  test('returns null with no entries', () => {
-    expect(formatAskResponsesNote([])).toBeNull()
-  })
-
-  test('reports option selections without a score or verdict', () => {
-    const note = formatAskResponsesNote([
-      { prompt: 'Q1', mode: 'single', selectedIds: ['a'], chosen: ['Paris'], matched: true },
-      { prompt: 'Q2', mode: 'single', selectedIds: ['b'], chosen: ['Thames'], matched: false },
-    ])
-    expect(note).toContain('"Q1" — chose "Paris"')
-    expect(note).toContain('"Q2" — chose "Thames"')
-    expect(note).not.toContain('correct')
-    expect(note).not.toContain('incorrect')
-    expect(note).not.toContain('Score:')
-  })
-
-  test('reports a choice selection', () => {
-    const note = formatAskResponsesNote([
-      { prompt: 'What next?', mode: 'choice', selectedIds: ['draft'], chosen: ['Draft a reply'], matched: null },
-    ])
-    expect(note).toContain('"What next?" — chose "Draft a reply"')
-  })
-
-  test('reports a multi-select (choices) response with every pick', () => {
-    const note = formatAskResponsesNote([
-      {
-        prompt: 'Which do you like?',
-        mode: 'choices',
-        selectedIds: ['a', 'b'],
-        chosen: ['Coffee', 'Tea'],
-        matched: null,
-      },
-    ])
-    expect(note).toContain('"Which do you like?" — chose "Coffee", "Tea"')
-  })
-
-  test('reports legacy free-text answers verbatim', () => {
-    const note = formatAskResponsesNote([
-      {
-        prompt: 'Define photosynthesis',
-        mode: 'free',
-        selectedIds: [],
-        chosen: ['Plants making food from light'],
-        matched: null,
-        text: 'Plants making food from light',
-      },
-    ])
-    expect(note).toContain('"Define photosynthesis" — answered "Plants making food from light"')
-  })
-
-  test('legacy free-text with no answer shows (no response)', () => {
-    const note = formatAskResponsesNote([
-      { prompt: 'Define X', mode: 'free', selectedIds: [], chosen: [], matched: null },
-    ])
-    expect(note).toContain('"Define X" — answered (no response)')
-  })
-})
-
 const entry = (prompt: string, mode: AskCacheEntry['mode'], chosen: string[]): AskCacheEntry => ({
   prompt,
   mode,
@@ -205,27 +147,24 @@ const entry = (prompt: string, mode: AskCacheEntry['mode'], chosen: string[]): A
 
 describe('turnTextForAnswers', () => {
   test('a lone ask sends its chosen option text(s), comma-joined, in any mode', () => {
-    expect(turnTextForAnswers([entry('What next?', 'choice', ['Draft a reply'])], 'skipped')).toBe('Draft a reply')
-    expect(turnTextForAnswers([entry('Like?', 'choices', ['Coffee', 'Tea'])], 'skipped')).toBe('Coffee, Tea')
-    expect(turnTextForAnswers([entry('Capital?', 'single', ['Paris'])], 'skipped')).toBe('Paris')
+    expect(turnTextForAnswers([entry('What next?', 'choice', ['Draft a reply'])])).toBe('Draft a reply')
+    expect(turnTextForAnswers([entry('Like?', 'choices', ['Coffee', 'Tea'])])).toBe('Coffee, Tea')
+    expect(turnTextForAnswers([entry('Capital?', 'single', ['Paris'])])).toBe('Paris')
   })
 
   test('a sequence sends one numbered line per question', () => {
     expect(
-      turnTextForAnswers(
-        [
-          entry('Which sends mail?', 'single', ['SMTP']),
-          entry('Pick the standards', 'multiple', ['OpenPGP', 'S/MIME']),
-        ],
-        'skipped',
-      ),
+      turnTextForAnswers([
+        entry('Which sends mail?', 'single', ['SMTP']),
+        entry('Pick the standards', 'multiple', ['OpenPGP', 'S/MIME']),
+      ]),
     ).toBe('1. Which sends mail? — SMTP\n2. Pick the standards — OpenPGP, S/MIME')
   })
 
   test('empty / whitespace-only answers send nothing', () => {
-    expect(turnTextForAnswers([entry('What next?', 'choice', [])], 'skipped')).toBeNull()
-    expect(turnTextForAnswers([entry('What next?', 'choice', ['   '])], 'skipped')).toBeNull()
-    expect(turnTextForAnswers([entry('A?', 'single', []), entry('B?', 'single', [' '])], 'skipped')).toBeNull()
+    expect(turnTextForAnswers([entry('What next?', 'choice', [])])).toBeNull()
+    expect(turnTextForAnswers([entry('What next?', 'choice', ['   '])])).toBeNull()
+    expect(turnTextForAnswers([entry('A?', 'single', []), entry('B?', 'single', [' '])])).toBeNull()
   })
 })
 
@@ -236,23 +175,18 @@ const other = (prompt: string, chosen: string[] = []): AskCacheEntry => ({
 })
 
 describe('turnTextForAnswers with skipped asks', () => {
-  test('a skipped ask keeps its line and number, answered with the given word', () => {
-    expect(
-      turnTextForAnswers(
-        [entry('A?', 'choice', ['Yes']), skipped('B?'), entry('C?', 'choice', ['No'])],
-        'übersprungen',
-      ),
-    ).toBe('1. A? — Yes\n2. B? — übersprungen\n3. C? — No')
-  })
-
-  test('a skipped last ask still gets its line', () => {
-    expect(turnTextForAnswers([entry('A?', 'choice', ['Yes']), skipped('B?')], 'skipped')).toBe(
-      '1. A? — Yes\n2. B? — skipped',
+  test('a skipped ask keeps its line and number, answered "skipped" in English (the turn is model-facing)', () => {
+    expect(turnTextForAnswers([entry('A?', 'choice', ['Yes']), skipped('B?'), entry('C?', 'choice', ['No'])])).toBe(
+      '1. A? — Yes\n2. B? — skipped\n3. C? — No',
     )
   })
 
+  test('a skipped last ask still gets its line', () => {
+    expect(turnTextForAnswers([entry('A?', 'choice', ['Yes']), skipped('B?')])).toBe('1. A? — Yes\n2. B? — skipped')
+  })
+
   test('skipping every ask still sends, so the model hears the user declined', () => {
-    expect(turnTextForAnswers([skipped('A?'), skipped('B?')], 'skipped')).toBe('1. A? — skipped\n2. B? — skipped')
+    expect(turnTextForAnswers([skipped('A?'), skipped('B?')])).toBe('1. A? — skipped\n2. B? — skipped')
   })
 })
 
@@ -269,9 +203,9 @@ describe('composerDraftForAnswers', () => {
     expect(
       composerDraftForAnswers(
         [entry('A?', 'choice', ['Yes']), other('B?'), skipped('C?'), other('D?', ['Tea'])],
-        'skipped',
+        'übersprungen',
       ),
-    ).toBe('1. A? — Yes\n2. B? — \n3. C? — skipped\n4. D? — Tea, ')
+    ).toBe('1. A? — Yes\n2. B? — \n3. C? — übersprungen\n4. D? — Tea, ')
   })
 
   test('hasOtherAnswer spots an "Other…" answer', () => {
@@ -280,12 +214,114 @@ describe('composerDraftForAnswers', () => {
   })
 })
 
-describe('formatAskResponsesNote with skipped and "Other…" answers', () => {
-  test('reports a skip and an answer the user typed in their reply', () => {
-    const note = formatAskResponsesNote([skipped('A?'), other('B?'), other('C?', ['Tea'])])
-    expect(note).toContain('"A?" — skipped')
-    expect(note).toContain('"B?" — answered in their own words in their reply')
-    expect(note).toContain('"C?" — chose "Tea" and answered in their own words in their reply')
+describe('askMessageStateOf', () => {
+  const choice = (prompt: string): AskData => ({ prompt, mode: 'choice', options: [{ id: 'a', text: 'A' }] })
+
+  test('pairs each ask with the answer saved under its key, leaving the rest unanswered', () => {
+    const asks = [choice('One?'), choice('Two?'), choice('One?')]
+    const keys = askStorageKeys(asks)
+    const state = askMessageStateOf(asks, { [keys[2]]: entry('One?', 'choice', ['A']), unrelated: { title: 'x' } })
+
+    expect(state.questions.map(({ ask, entry }) => [ask.prompt, entry?.chosen])).toEqual([
+      ['One?', undefined],
+      ['Two?', undefined],
+      ['One?', ['A']],
+    ])
+    expect(state.legacy).toEqual([])
+  })
+
+  test('keeps legacy free answers, which have no ask to pair with', () => {
+    const free: AskCacheEntry = {
+      prompt: 'Define X',
+      mode: 'free',
+      selectedIds: [],
+      chosen: [],
+      matched: null,
+      text: 'Y',
+    }
+    expect(askMessageStateOf([], { 'ask/Define X#1': free }).legacy).toEqual([free])
+  })
+})
+
+describe('formatAskResponsesNote', () => {
+  const graded = (prompt: string): AskData => ({
+    prompt,
+    mode: 'single',
+    options: [
+      { id: 'a', text: 'Paris', isCorrect: true },
+      { id: 'b', text: 'Lyon' },
+    ],
+  })
+  const open = (prompt: string): AskData => ({ prompt, mode: 'choices', options: [{ id: 'a', text: 'Tea' }] })
+
+  test('returns null when no message asked anything', () => {
+    expect(formatAskResponsesNote([])).toBeNull()
+    expect(formatAskResponsesNote([{ questions: [], legacy: [] }])).toBeNull()
+  })
+
+  test('lists every question of each asking message, in order, with its state', () => {
+    const note = formatAskResponsesNote([
+      {
+        questions: [
+          {
+            ask: graded('Capital of France?'),
+            entry: { ...entry('Capital of France?', 'single', ['Paris']), matched: true },
+          },
+          { ask: graded('Second city?'), entry: { ...entry('Second city?', 'single', ['Paris']), matched: false } },
+          { ask: open('Drinks?'), entry: skipped('Drinks?') },
+          { ask: open('Snacks?'), entry: other('Snacks?') },
+          { ask: open('Desserts?'), entry: other('Desserts?', ['Tea']) },
+          { ask: open('Music?'), entry: entry('Music?', 'choices', ['Tea']) },
+          { ask: open('Last one?') },
+        ],
+        legacy: [],
+      },
+      { questions: [], legacy: [] },
+      { questions: [{ ask: open('Later?') }], legacy: [] },
+    ])
+
+    expect(note).toBe(
+      [
+        '## Interactive questions',
+        'The current state of every interactive question (ask widget) in this conversation: one set per assistant message that asked them, in conversation order. It is authoritative: rely on it over the transcript, and never ask the user to re-enter an answer listed here.',
+        [
+          'Set 1:',
+          '1. "Capital of France?" — answered "Paris" (matches the designated answer)',
+          '2. "Second city?" — answered "Paris" (does not match the designated answer)',
+          '3. "Drinks?" — skipped',
+          '4. "Snacks?" — answered in their own words in their reply',
+          '5. "Desserts?" — chose "Tea" and answered the rest in their own words in their reply',
+          '6. "Music?" — answered "Tea"',
+          '7. "Last one?" — not answered yet',
+        ].join('\n'),
+        ['Set 2:', '1. "Later?" — not answered yet'].join('\n'),
+      ].join('\n\n'),
+    )
+  })
+
+  test('reports legacy free-text answers verbatim, and a blank one as no response', () => {
+    const free = (text?: string): AskCacheEntry => ({
+      prompt: 'Define X',
+      mode: 'free',
+      selectedIds: [],
+      chosen: [],
+      matched: null,
+      ...(text && { text }),
+    })
+    const note = formatAskResponsesNote([{ questions: [], legacy: [free('Plants making food'), free()] }])
+    expect(note).toContain('- "Define X" — answered "Plants making food"')
+    expect(note).toContain('- "Define X" — answered (no response)')
+  })
+
+  test('surfaces no score or verdict wording beyond the match marker', () => {
+    const note =
+      formatAskResponsesNote([
+        {
+          questions: [{ ask: graded('Q?'), entry: { ...entry('Q?', 'single', ['Lyon']), matched: false } }],
+          legacy: [],
+        },
+      ]) ?? ''
+    expect(note).not.toMatch(/correct|score/i)
   })
 })
 

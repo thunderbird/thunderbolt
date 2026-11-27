@@ -69,6 +69,10 @@ import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { handleSessionRejected } from '@/lib/session-rejected'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { ModelProfile, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
+import { getMessageCache } from '@/dal/chat-messages'
+import { getDb } from '@/db/database'
+import { isVoiceModeActive, voiceModeSystemNote } from '@/voice/voice-mode'
+import { askResponsesNoteFor, type ReadMessageCache } from '@/widgets/ask/message-asks'
 import { extractLastUserText, loadSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { getPlatform } from '@/lib/platform'
 import type { AppHarness, CompactionCheckpoint, PiModelDescriptor, SeedTurn } from '@shared/agent-core'
@@ -144,6 +148,8 @@ export type BuiltInAdapterOptions = {
   prepareConfig?: typeof prepareAiRequestConfig
   /** Attachment/history preparation injection for adapter-level tests. */
   prepareConversation?: typeof prepareBuiltInConversation
+  /** Message-cache reader for the ask note; tests inject one instead of a database. */
+  readMessageCache?: ReadMessageCache
   /** Attested-client seams for adapter tests. */
   getSystemTinfoilClient?: typeof getSystemTinfoilClient
   getTinfoilClient?: typeof getTinfoilClient
@@ -467,10 +473,14 @@ export const harnessSignature = (
   ])
 }
 
-/** Compose Pi's cacheable prompt prefix while keeping the per-send timestamp last. */
+/** Compose Pi's cacheable prompt prefix while keeping the per-send parts last: the
+ *  volatile prompt (timestamp), then `notes` (voice mode, the ask note). */
 // Unlike assembleBuiltInModelInput, ACP harness deliberately keeps Pi's single-string system prompt shape.
 // Exported so tests can assert the real stable prompt survives into this engine's shape.
-export const composeAppHarnessSystemPrompt = (config: AppHarnessSystemPromptConfig): string => {
+export const composeAppHarnessSystemPrompt = (
+  config: AppHarnessSystemPromptConfig,
+  notes: readonly string[] = [],
+): string => {
   const platform = getPlatform()
   const environment = platform === 'web' || platform === 'ios' || platform === 'android' ? platform : 'desktop'
   const clientIdentity = buildClientIdentityBlock({
@@ -478,8 +488,25 @@ export const composeAppHarnessSystemPrompt = (config: AppHarnessSystemPromptConf
     appVersion: import.meta.env.VITE_APP_VERSION,
   })
   const environmentBlock = config.supportsTools ? `\n\n${appHarnessEnvironmentPrompt}` : ''
-  return `${config.stableSystemPrompt}\n\n${clientIdentity}${environmentBlock}\n\n${config.volatileSystemPrompt}`
+  const volatile = [config.volatileSystemPrompt, ...notes].join('\n\n')
+  return `${config.stableSystemPrompt}\n\n${clientIdentity}${environmentBlock}\n\n${volatile}`
 }
+
+/**
+ * The per-send system notes the legacy pipeline adds after its volatile prompt
+ * (`buildVolatileSystemNotes` in `src/ai/fetch.ts`), for the harness: the voice
+ * self-context while voice is active, and the note on every ask in the thread.
+ * Skill instructions are not here: the harness prepends them to the prompt.
+ */
+const loadPerSendNotes = async (
+  messages: ThunderboltUIMessage[],
+  readMessageCache: ReadMessageCache,
+): Promise<string[]> => {
+  const askNote = await askResponsesNoteFor(messages, readMessageCache)
+  return [...(isVoiceModeActive() ? [voiceModeSystemNote] : []), ...(askNote ? [askNote] : [])]
+}
+
+const readMessageCacheFromDb: ReadMessageCache = async (messageId) => (await getMessageCache(getDb(), messageId))?.cache
 
 /** Build a thread's harness from the lazily-loaded engine and bind it to the
  *  thread's isolated workspace with resolved model + thinking level. Per-send app
@@ -493,9 +520,10 @@ const buildHarnessRecord = async (
   resolved: ResolvedPiModel,
   history: readonly SeedTurn[],
   config: AppHarnessSystemPromptConfig,
+  notes: readonly string[],
   compaction?: CompactionCheckpoint,
 ): Promise<HarnessRecord> => {
-  const systemPrompt = { current: composeAppHarnessSystemPrompt(config) }
+  const systemPrompt = { current: composeAppHarnessSystemPrompt(config, notes) }
   const harness = await agentCore.buildAppHarness({
     model: resolved.descriptor,
     systemPrompt: () => systemPrompt.current,
@@ -512,8 +540,9 @@ const prepareHarnessForSend = async (
   agentCore: AgentCoreModule,
   record: HarnessRecord,
   config: PreparedAiRequestConfig,
+  notes: readonly string[],
 ): Promise<void> => {
-  record.systemPrompt.current = composeAppHarnessSystemPrompt(config)
+  record.systemPrompt.current = composeAppHarnessSystemPrompt(config, notes)
   const tools = await agentCore.toPiAgentTools(config.toolset)
   const allTools = [...record.baseTools, ...tools]
   const activeToolNames = config.model.toolUsage === 0 ? [] : allTools.map((tool) => tool.name)
@@ -709,6 +738,7 @@ const fetchViaHarness = async (
   loadAgentCore: () => Promise<AgentCoreModule>,
   prepareConfig: typeof prepareAiRequestConfig,
   prepareConversation: typeof prepareBuiltInConversation,
+  readMessageCache: ReadMessageCache,
   tinfoilOptions: TinfoilClientOptions,
 ): Promise<Response> => {
   const debugTraceId = context.debugTranscriptTraceId
@@ -756,9 +786,12 @@ const fetchViaHarness = async (
     workspace: config.supportsTools,
   })
   init.signal?.throwIfAborted()
+  // Read every send, like the volatile prompt: an answer given since the last turn must reach this one.
+  const notes = await loadPerSendNotes(messages, readMessageCache)
+  init.signal?.throwIfAborted()
   if (debugTraceId) {
     recordDebugTranscriptSystemPrompts(context.threadId, debugTraceId, [
-      composeAppHarnessSystemPrompt(config),
+      composeAppHarnessSystemPrompt(config, notes),
       ...skillInstructions,
     ])
   }
@@ -777,7 +810,7 @@ const fetchViaHarness = async (
     previousUserId,
     () => {
       init.signal?.throwIfAborted()
-      return buildHarnessRecord(agentCore, context, resolved, history, config, compaction)
+      return buildHarnessRecord(agentCore, context, resolved, history, config, notes, compaction)
     },
     () => agentCore.removeAgentWorkspace(context.threadId),
   )
@@ -785,7 +818,7 @@ const fetchViaHarness = async (
   init.signal?.throwIfAborted()
   await record.harness.setReasoningEffort(context.reasoningEffort, resolved.thinkingLevel)
   init.signal?.throwIfAborted()
-  await prepareHarnessForSend(agentCore, record, config)
+  await prepareHarnessForSend(agentCore, record, config, notes)
   init.signal?.throwIfAborted()
   // Not fatal: workspace copies are a cache of IndexedDB and the prompt keeps the preview.
   const failures = await agentCore.writeAgentWorkspaceFiles(context.threadId, files)
@@ -940,6 +973,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
         loadAgentCore,
         prepareConfig,
         prepareConversation,
+        options.readMessageCache ?? readMessageCacheFromDb,
         options,
       )
     }
@@ -1009,7 +1043,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
       lastUserId,
       () => {
         init.signal?.throwIfAborted()
-        return buildHarnessRecord(agentCore, context, resolved, history, config, compaction)
+        return buildHarnessRecord(agentCore, context, resolved, history, config, [], compaction)
       },
       () => agentCore.removeAgentWorkspace(context.threadId),
     )
@@ -1024,7 +1058,8 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
     init.signal?.throwIfAborted()
     await record.harness.setReasoningEffort(context.reasoningEffort, resolved.thinkingLevel)
     init.signal?.throwIfAborted()
-    await prepareHarnessForSend(agentCore, record, config)
+    // Compaction summarises history; the per-send notes belong to a reply turn.
+    await prepareHarnessForSend(agentCore, record, config, [])
     init.signal?.throwIfAborted()
     const failures = await agentCore.writeAgentWorkspaceFiles(context.threadId, files)
     init.signal?.throwIfAborted()

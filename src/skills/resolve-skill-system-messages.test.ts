@@ -70,6 +70,11 @@ describe('extractLastUserText', () => {
     expect(extractLastUserText([userMessage('hello')])).toBe('hello')
   })
 
+  it('returns the empty string when the last user turn is an ask widget’s answers, not typed text', () => {
+    const answers = { ...userMessage('/meeting-notes'), metadata: { askAnswers: true } } as ThunderboltUIMessage
+    expect(extractLastUserText([userMessage('/weekly-review quiz me'), assistantMessage('q'), answers])).toBe('')
+  })
+
   it('returns the most recent user message text (ignores earlier ones)', () => {
     const messages = [userMessage('old'), assistantMessage('mid'), userMessage('new')]
     expect(extractLastUserText(messages)).toBe('new')

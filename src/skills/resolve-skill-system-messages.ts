@@ -5,6 +5,7 @@
 import { selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { skillInstruction } from '@/defaults/skills'
 import type { Skill, ThunderboltUIMessage } from '@/types'
+import { isAskAnswersMessage } from '@/widgets/ask/lib'
 import { parseSkillTokens } from './parse-skill-tokens'
 
 /**
@@ -68,13 +69,17 @@ export const loadSkillTokenInstructions = (
 /**
  * Walk `messages` from the end and return the concatenated text of the most
  * recent `user` message (its `text` parts joined by `\n`). Returns the empty
- * string if there is no user message.
+ * string if there is no user message, or if it is an ask widget's answers: those
+ * are option texts the model wrote, not the user's typed `/skill` tokens.
  */
 export const extractLastUserText = (messages: readonly ThunderboltUIMessage[]): string => {
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i]
     if (message?.role !== 'user') {
       continue
+    }
+    if (isAskAnswersMessage(message)) {
+      return ''
     }
     return message.parts
       .filter((p): p is { type: 'text'; text: string } => p.type === 'text')

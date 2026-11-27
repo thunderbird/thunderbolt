@@ -92,6 +92,8 @@ export type DebugTranscriptTurnV1 = {
   userMessageId: string | null
   assistantMessageId: string | null
   userPrompt: DebugTranscriptTextEventV1
+  /** The prompt is an ask widget's answers, sent as a user turn the app's transcript does not show. */
+  askAnswers?: true
   systemPrompts: DebugTranscriptSystemPromptV1[]
   assistantOutput: DebugTranscriptTextEventV1 | null
   toolCalls: DebugTranscriptToolCallV1[]

@@ -7,6 +7,7 @@ import type { ThunderboltUIMessage } from '@/types'
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useCurrentChatSession as useCurrentChatSession_default } from './chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
+import { isAskAnswersMessage } from '@/widgets/ask/lib'
 import { messageBookkeepingThrottleMs } from './chat-throttle'
 
 // Viewport positioning constants
@@ -144,7 +145,9 @@ export const useChatScrollHandler = ({
       disableAutoScroll()
       const userMessage = messages[messages.length - 1]
 
-      if (userMessage?.role === 'user') {
+      // An ask widget's answers are a hidden user turn with no element to pin, and
+      // the card the user just answered sits at the bottom: scroll there instead.
+      if (userMessage?.role === 'user' && !isAskAnswersMessage(userMessage)) {
         rawScrollToElement(`[data-message-id="${userMessage.id}"]`, userMessageViewportOffsetPx, true, true)
       } else {
         rawScrollToBottom(true, true)

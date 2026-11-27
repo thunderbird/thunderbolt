@@ -293,6 +293,57 @@ describe('FTS SQL end-to-end against real SQLite', () => {
     db.close()
   })
 
+  it('leaves hidden ask-answer messages out, whatever shape or state their metadata is in', () => {
+    const db = new Database(':memory:')
+    const messageTable = 'ps_data__chat_messages'
+    db.run(`CREATE TABLE ${messageTable} (id TEXT PRIMARY KEY, data TEXT)`)
+    db.run(buildCreateSql())
+    for (const statement of buildTriggerSql(configOf('message'), messageTable)) {
+      db.run(statement)
+    }
+    const insert = db.prepare(`INSERT INTO ${messageTable}(id, data) VALUES (?, ?)`)
+    const row = (metadata: unknown) =>
+      JSON.stringify({ content: 'Quizanswer text', chat_thread_id: 'chat', deleted_at: null, metadata })
+    const hits = () =>
+      (
+        db.query("SELECT id FROM search_index WHERE search_index MATCH 'quizanswer' ORDER BY id").all() as {
+          id: string
+        }[]
+      ).map(({ id }) => id)
+
+    // A drizzle JSON column arrives as a JSON string; a nested object must work too.
+    insert.run('hidden-string', row(JSON.stringify({ askAnswers: true })))
+    insert.run('hidden-object', row({ askAnswers: true }))
+    insert.run('plain', row(JSON.stringify({ modelId: 'm' })))
+    insert.run('no-metadata', row(null))
+    // Malformed metadata must not fail the write the trigger runs in.
+    insert.run('malformed', row('{not json'))
+    expect(hits()).toEqual(['malformed', 'no-metadata', 'plain'])
+
+    db.run(`UPDATE ${messageTable} SET data = ? WHERE id = ?`, [row(JSON.stringify({ askAnswers: true })), 'plain'])
+    expect(hits()).toEqual(['malformed', 'no-metadata'])
+    db.close()
+  })
+
+  it('backfills messages without the hidden ask-answer ones', () => {
+    const db = new Database(':memory:')
+    const messageTable = 'ps_data__chat_messages'
+    db.run(`CREATE TABLE ${messageTable} (id TEXT PRIMARY KEY, data TEXT)`)
+    db.run(buildCreateSql())
+    const data = { content: 'Quizanswer text', chat_thread_id: 'chat', deleted_at: null }
+    db.run(`INSERT INTO ${messageTable}(id, data) VALUES (?, ?)`, ['shown', JSON.stringify(data)])
+    db.run(`INSERT INTO ${messageTable}(id, data) VALUES (?, ?)`, [
+      'hidden',
+      JSON.stringify({ ...data, metadata: JSON.stringify({ askAnswers: true }) }),
+    ])
+    db.run(buildBackfillSql(configOf('message'), messageTable))
+
+    expect(db.query("SELECT id FROM search_index WHERE search_index MATCH 'quizanswer'").all()).toEqual([
+      { id: 'shown' },
+    ])
+    db.close()
+  })
+
   it('skips index writes when a deleted row only changes its deletion timestamp', () => {
     const db = makeDb()
     insertRow(db, 'm1', { name: 'Deleted', deleted_at: 'first timestamp' })

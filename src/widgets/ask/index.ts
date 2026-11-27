@@ -9,6 +9,7 @@ export {
   collectAskEntriesFromCache,
   evaluateAnswer,
   formatAskResponsesNote,
+  isAskAnswersMessage,
   optionLetter,
   type AskCacheEntry,
   type AskData,

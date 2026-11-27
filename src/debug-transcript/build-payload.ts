@@ -101,6 +101,7 @@ const assembleTurn = (
     userMessageId,
     assistantMessageId: assistant?.id ?? null,
     userPrompt: { text: messages.user ? textFromMessage(messages.user) : '', timestamp: null },
+    ...(messages.user?.metadata?.askAnswers && { askAnswers: true }),
     systemPrompts: attached?.systemPrompts ?? [],
     assistantOutput: assistantText ? { text: assistantText, timestamp: null } : null,
     toolCalls: messages.assistants.flatMap(extractDebugTranscriptToolCalls),

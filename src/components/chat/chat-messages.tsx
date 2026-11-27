@@ -25,6 +25,7 @@ import { selectDebugTranscriptsEnabled, useConfigStore } from '@/api/config-stor
 import type { ThunderboltUIMessage } from '@/types'
 import { useShowCompactionSummary } from '@/content-view/context'
 import { CompactionNotice } from '../context-usage'
+import { isAskAnswersMessage } from '@/widgets/ask/lib'
 
 const ShareDebugTranscriptAction = lazy(async () => {
   const module = await import('@/components/share-debug-transcript')
@@ -32,11 +33,12 @@ const ShareDebugTranscriptAction = lazy(async () => {
 })
 
 // A failed turn leaves an assistant message whose parts render nothing (e.g. a lone
-// `step-start`). It must not host the share action, or the button ends up floating
-// alone under an invisible bubble instead of beside the copy button of the last
-// message the user can actually see.
+// `step-start`), and an ask widget's answers go out as a hidden user turn. Neither
+// may host the share action, or the button ends up floating alone under an
+// invisible bubble instead of beside the copy button of the last message the user
+// can actually see.
 const rendersContent = (message: ThunderboltUIMessage) =>
-  message.role === 'user' || filterMessageParts(message.parts).length > 0
+  message.role === 'user' ? !isAskAnswersMessage(message) : filterMessageParts(message.parts).length > 0
 
 type ChatMessagesProps = {
   useChat?: typeof useChat_default
@@ -204,7 +206,9 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
                 />
               </PrivateSourcesContext>
             )}
-            {message.role === 'user' && (
+            {/* An ask widget's answers stay out of the transcript; the card shows them. They still
+                count as the last message, so the card locks (`hasReply`) and the turn shows as active. */}
+            {message.role === 'user' && !isAskAnswersMessage(message) && (
               <UserMessage
                 message={message}
                 lastMessageAction={message.id === shareActionHostId ? shareDebugTranscriptAction : undefined}

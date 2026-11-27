@@ -63,6 +63,8 @@ import type { AppHarness } from '@shared/agent-core'
 import { prepareBuiltInConversation, type BuiltInConversationDeps } from './built-in-conversation'
 import type { BuildAppHarnessOptions, PiModelDescriptor } from '@shared/agent-core'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
+import { askStorageKeys } from '@/widgets/ask/lib'
+import { collectMessageAsks } from '@/widgets/ask/message-asks'
 import { createPromptParts, type PromptParams } from '@/ai/prompt'
 import {
   FileError,
@@ -951,6 +953,117 @@ describe('createBuiltInAdapter persistent harness', () => {
 
     expect(activeToolNames).toEqual([[]])
     expect(aiFetch).toHaveBeenCalledTimes(0)
+  })
+
+  it('puts the note on every ask in the thread into the harness prompt, refreshed each send', async () => {
+    const model = {
+      id: 'model-1',
+      name: 'Claude',
+      provider: 'anthropic',
+      model: 'claude-opus-4-8',
+      apiKey: 'sk-a',
+      toolUsage: 1,
+    } as Model
+    const config = (index: number): PreparedAiRequestConfig => ({
+      model,
+      profile: null,
+      supportsTools: false,
+      sourceCollector: [],
+      toolset: {},
+      skills: [],
+      mcpToolsMetadata: undefined,
+      stableSystemPrompt: 'stable prompt',
+      volatileSystemPrompt: `timestamp ${index}`,
+      embeddedSurface: null,
+    })
+    let sends = 0
+    const prepareConfig = mock(async () => config(++sends))
+    let systemPrompt: (() => string) | undefined
+    const harness: AppHarness = {
+      ...compactionStub,
+      getTools: () => [],
+      getActiveTools: () => [],
+      steer: async () => {},
+      setTools: async () => {},
+      setActiveTools: async () => {},
+      prompt: async () => {},
+      waitForIdle: async () => {},
+      on: () => () => {},
+      abort: async () => ({ aborted: true }),
+      env: { remove: async () => {} },
+    } as never
+    const agentCore = {
+      isKnownAnthropicModel: () => true,
+      buildAppHarness: async (options: BuildAppHarnessOptions) => {
+        systemPrompt = options.systemPrompt as () => string
+        return harness
+      },
+      workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
+      writeAgentWorkspaceFiles: async () => [],
+      toPiAgentTools: async () => [],
+      piHarnessToUiMessageStream: (_harness: AgentHarness, runPrompt: () => Promise<void>) =>
+        new ReadableStream<Uint8Array>({
+          start: (controller) => {
+            void runPrompt().then(() => controller.close())
+          },
+        }),
+    } as never
+    const quiz = `<widget:ask mode="single" prompt="Which protocol sends mail?" options='[{"id":"a","text":"SMTP","isCorrect":true},{"id":"b","text":"IMAP"}]' />`
+    const [quizKey] = askStorageKeys(collectMessageAsks([quiz]).asks)
+    const caches: Record<string, Record<string, unknown>> = {}
+    const readMessageCache = mock(async (messageId: string) => caches[messageId])
+    const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
+      loadAgentCore: async () => agentCore,
+      prepareConfig: prepareConfig as NonNullable<BuiltInAdapterOptions['prepareConfig']>,
+      readMessageCache,
+    })
+    const context: AgentAdapterContext = {
+      threadId: 'thread-ask',
+      selectedModel: model,
+      mcpClients: [],
+      reconnectClient: async () => null,
+      httpClient: {},
+      getProxyFetch: () => noopFetch,
+      onAcpSessionId: async () => {},
+      regenerationRevision: 0,
+      webToolBudget: createWebToolBudget('auto'),
+    } as never
+    const send = async (messages: unknown[]) => {
+      const response = await adapter.fetch({ body: JSON.stringify({ messages }) }, context)
+      await response.text()
+    }
+    const quizMessage = { id: 'quiz', role: 'assistant', parts: [{ type: 'text', text: quiz }] }
+
+    // A thread without asks reads no cache and gets no note.
+    await send([{ id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hello' }] }])
+    expect(readMessageCache).not.toHaveBeenCalled()
+    expect(systemPrompt?.()).not.toContain('## Interactive questions')
+
+    await send([
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hello' }] },
+      quizMessage,
+      { id: 'u2', role: 'user', parts: [{ type: 'text', text: 'what did I answer?' }] },
+    ])
+    expect(systemPrompt?.()).toContain('1. "Which protocol sends mail?" — not answered yet')
+
+    caches.quiz = {
+      [quizKey]: {
+        prompt: 'Which protocol sends mail?',
+        mode: 'single',
+        selectedIds: ['a'],
+        chosen: ['SMTP'],
+        matched: true,
+      },
+    }
+    await send([
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hello' }] },
+      quizMessage,
+      { id: 'u3', role: 'user', parts: [{ type: 'text', text: 'what did I put for question 1?' }] },
+    ])
+    const prompt = systemPrompt?.() ?? ''
+    expect(prompt).toContain('1. "Which protocol sends mail?" — answered "SMTP" (matches the designated answer)')
+    // After the timestamp, so the cacheable prefix stays put.
+    expect(prompt.indexOf('timestamp 3')).toBeLessThan(prompt.indexOf('## Interactive questions'))
   })
 
   it('refreshes prompt/tools, rebuilds for regeneration, and applies the Pi web-budget floor', async () => {

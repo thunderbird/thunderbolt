@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { ThunderboltUIMessage } from '@/types'
+
 /**
  * Ask widget interaction modes:
  * - `single`   — exactly one designated answer (radio-style, graded)
@@ -77,6 +79,14 @@ export const evaluateAnswer = (data: AskData, selectedIds: Set<string>): boolean
 
 /** Maps an option index to its display letter (0 → "A", 1 → "B", ...). */
 export const optionLetter = (index: number): string => String.fromCharCode(65 + index)
+
+/**
+ * Whether a message is the hidden user turn that carries an ask widget's
+ * answers to the model. The transcript does not render it: the card is the
+ * visible record, and the user should not see their answers as typed text.
+ */
+export const isAskAnswersMessage = (message: Pick<ThunderboltUIMessage, 'role' | 'metadata'>): boolean =>
+  message.role === 'user' && message.metadata?.askAnswers === true
 
 /** Namespace prefix for ask entries stored in a message's cache blob. */
 export const askCachePrefix = 'ask'
@@ -162,37 +172,83 @@ export const collectAskEntriesFromCache = (cache: Record<string, unknown>): AskC
     .map(([, value]) => value)
     .filter(isAskCacheEntry)
 
+/** The asks of one assistant message, each paired with its saved answer, if any. */
+export type AskMessageState = {
+  /** Every ask in the message, in order. */
+  questions: { ask: AskData; entry?: AskCacheEntry }[]
+  /** Answers to legacy `free` asks, which are not in `questions` (they no longer render as asks). */
+  legacy: AskCacheEntry[]
+}
+
 /**
- * Renders the user's responses as a system note for the model, so it can refer
- * back to what the user chose or wrote without asking them to re-enter it.
- * Returns `null` when there are no responses.
+ * Pairs a message's asks (in message order, see `collectMessageAsks`) with the
+ * answers saved in its cache, by the same keys the widget saved them under.
  */
-export const formatAskResponsesNote = (entries: AskCacheEntry[]): string | null => {
-  if (entries.length === 0) {
+export const askMessageStateOf = (asks: AskData[], cache: Record<string, unknown>): AskMessageState => {
+  const keys = askStorageKeys(asks)
+  return {
+    questions: asks.map((ask, index) => {
+      const entry = cache[keys[index]]
+      return isAskCacheEntry(entry) ? { ask, entry } : { ask }
+    }),
+    legacy: collectAskEntriesFromCache(cache).filter((entry) => entry.mode === 'free'),
+  }
+}
+
+const quoted = (texts: string[]): string => texts.map((text) => `"${text}"`).join(', ')
+
+/** One question's state, in the model-facing note. */
+const questionState = (ask: AskData, entry: AskCacheEntry | undefined): string => {
+  if (!entry) {
+    return 'not answered yet'
+  }
+  if (entry.skipped) {
+    return 'skipped'
+  }
+  const chosen = quoted(entry.chosen)
+  if (entry.other) {
+    return chosen
+      ? `chose ${chosen} and answered the rest in their own words in their reply`
+      : 'answered in their own words in their reply'
+  }
+  const verdict = isGradedMode(ask.mode)
+    ? entry.matched
+      ? ' (matches the designated answer)'
+      : ' (does not match the designated answer)'
+    : ''
+  return `answered ${chosen || '(no response)'}${verdict}`
+}
+
+const legacyState = (entry: AskCacheEntry): string =>
+  entry.text && entry.text.length > 0 ? `answered "${entry.text}"` : 'answered (no response)'
+
+/**
+ * The state of every interactive question in the conversation, as a system
+ * note for the model: one set per assistant message that asked any, in order,
+ * listing each question with its answer, a skip, an answer the user typed in
+ * their reply, or that it is still unanswered (so the model knows where a quiz
+ * stands mid-way), plus whether a graded answer matched. Returns `null` when no
+ * message asked anything.
+ */
+export const formatAskResponsesNote = (messages: AskMessageState[]): string | null => {
+  const sets = messages.filter(({ questions, legacy }) => questions.length > 0 || legacy.length > 0)
+  if (sets.length === 0) {
     return null
   }
 
-  const lines = entries.map((entry) => {
-    if (entry.mode === 'free') {
-      const answer = entry.text && entry.text.length > 0 ? `"${entry.text}"` : '(no response)'
-      return `- "${entry.prompt}" — answered ${answer}`
-    }
-    if (entry.skipped) {
-      return `- "${entry.prompt}" — skipped`
-    }
-    const chosen = entry.chosen.map((c) => `"${c}"`).join(', ')
-    if (entry.other) {
-      const prefix = chosen ? `chose ${chosen} and ` : ''
-      return `- "${entry.prompt}" — ${prefix}answered in their own words in their reply`
-    }
-    return `- "${entry.prompt}" — chose ${chosen || '(no response)'}`
-  })
+  const blocks = sets.map(({ questions, legacy }, index) =>
+    [
+      `Set ${index + 1}:`,
+      ...questions.map(({ ask, entry }, number) => `${number + 1}. "${ask.prompt}" — ${questionState(ask, entry)}`),
+      ...legacy.map((entry) => `- "${entry.prompt}" — ${legacyState(entry)}`),
+    ].join('\n'),
+  )
 
   return [
-    '## User responses',
-    'The user responded to interactive prompts in this conversation. Use these if they refer back to their responses — do not ask them to re-enter their choices.',
-    ...lines,
-  ].join('\n')
+    '## Interactive questions',
+    'The current state of every interactive question (ask widget) in this conversation: one set per assistant message that asked them, in conversation order. It is authoritative: rely on it over the transcript, and never ask the user to re-enter an answer listed here.',
+    ...blocks,
+  ].join('\n\n')
 }
 
 const joinChosen = (chosen: string[]): string =>
@@ -223,13 +279,13 @@ const formatAnswers = (
 }
 
 /**
- * The user-turn text sent once every ask in a message is answered, or `null`
- * when there is nothing to send. A skipped ask keeps its line, answered with
- * `skippedText` (localized by the caller, since it shows in the user's bubble),
- * so the numbers always follow the questions.
+ * The text of the hidden answer turn sent once every ask in a message is
+ * answered, or `null` when there is nothing to send. A skipped ask keeps its
+ * line, answered "skipped", so the numbers always follow the questions. The
+ * turn is model-facing (never rendered), so the word stays English.
  */
-export const turnTextForAnswers = (entries: AskCacheEntry[], skippedText: string): string | null =>
-  formatAnswers(entries, (entry) => (entry.skipped ? skippedText : joinChosen(entry.chosen))) || null
+export const turnTextForAnswers = (entries: AskCacheEntry[]): string | null =>
+  formatAnswers(entries, (entry) => (entry.skipped ? 'skipped' : joinChosen(entry.chosen))) || null
 
 /** Whether any answer is an "Other…" the user still has to type. */
 export const hasOtherAnswer = (entries: AskCacheEntry[]): boolean => entries.some((entry) => entry.other)

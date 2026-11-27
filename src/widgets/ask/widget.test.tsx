@@ -17,7 +17,10 @@ import { eq } from 'drizzle-orm'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { ReactNode } from 'react'
-import { askStorageKey, askStorageKeys, type AskCacheEntry, type AskData } from './lib'
+import type { ThunderboltUIMessage } from '@/types'
+import { askStorageKey, askStorageKeys, formatAskResponsesNote, type AskCacheEntry, type AskData } from './lib'
+import { askDataOf } from './group'
+import { collectConversationAskStates } from './message-asks'
 import { AskSequence } from './widget'
 
 const messageId = 'assistant-quiz'
@@ -52,7 +55,7 @@ const quiz: AskData[] = [
 
 const initialChatState = useChatStore.getState()
 
-const sendMessage = mock(async (_: { text: string }) => {})
+const sendMessage = mock(async (_: { text: string; metadata?: { askAnswers?: true } }) => {})
 
 const Providers = ({ children }: { children: ReactNode }) => (
   <DatabaseProvider db={getDb()}>
@@ -156,6 +159,8 @@ describe('AskSequence', () => {
     await answer('IMAP')
     await waitUntil(() => sendMessage.mock.calls.length > 0)
     expect(sendMessage).toHaveBeenCalledTimes(1)
+    // A hidden user turn: the card is the visible record of the answers.
+    expect(sendMessage.mock.calls[0][0].metadata).toEqual({ askAnswers: true })
     expect(sendMessage.mock.calls[0][0].text).toBe(
       [
         '1. Which protocol sends mail? — SMTP',
@@ -321,6 +326,42 @@ describe('AskSequence', () => {
 
     renderQuiz()
     expect(await find('Question 2 of 3')).toBeTruthy()
+  })
+
+  it('a single question with no answer key shows no grade, saves matched: null, and the note gives no verdict', async () => {
+    const authored = {
+      prompt: 'Which word means mountain?',
+      mode: 'single' as const,
+      options: [
+        { id: 'yama', text: 'yama' },
+        { id: 'kawa', text: 'kawa' },
+      ],
+    }
+    const keyless = askDataOf(authored)
+    if (!keyless) {
+      throw new Error('expected an ask')
+    }
+    renderQuiz([keyless])
+
+    await answer('yama')
+    await waitUntil(() => sendMessage.mock.calls.length > 0)
+    expect(document.querySelector('[aria-live="polite"]')?.textContent).toBe('')
+    expect(screen.queryByRole('img', { name: "Doesn't match the answer" })).toBeNull()
+    expect(await waitForStoredAnswers(1)).toBe(1)
+    const cache = (await getMessageCache(getDb(), messageId))?.cache as Record<string, AskCacheEntry>
+    expect(cache[askStorageKey(authored)]).toMatchObject({ chosen: ['yama'], matched: null })
+
+    const markup = `<widget:ask mode="single" prompt="${authored.prompt}" options='${JSON.stringify(authored.options)}' />`
+    const message = {
+      id: messageId,
+      role: 'assistant',
+      parts: [{ type: 'text', text: markup }],
+    } as ThunderboltUIMessage
+    const note = formatAskResponsesNote(
+      await collectConversationAskStates([message], async (id) => (await getMessageCache(getDb(), id))?.cache),
+    )
+    expect(note).toContain(`1. "${authored.prompt}" — answered "yama"`)
+    expect(note).not.toContain('designated answer')
   })
 
   it('a lone graded ask sends its answer as a user turn', async () => {
@@ -594,6 +635,19 @@ describe('AskSequence', () => {
       expect(sendMessage).not.toHaveBeenCalled()
       expect(screen.queryByText('Got it, working on that next.')).toBeNull()
       expect(screen.queryByRole('alert')).toBeNull()
+
+      // The model learns it from the per-question note on the user's next send.
+      const markup = `<widget:ask mode="choice" prompt="${quiz[1].prompt}" options='${JSON.stringify(quiz[1].options)}' />`
+      const message = {
+        id: messageId,
+        role: 'assistant',
+        parts: [{ type: 'text', text: markup }],
+      } as ThunderboltUIMessage
+      const states = await collectConversationAskStates(
+        [message],
+        async (id) => (await getMessageCache(getDb(), id))?.cache,
+      )
+      expect(formatAskResponsesNote(states)).toContain(`1. "${quiz[1].prompt}" — answered "Filters"`)
     })
 
     it('still hands an "Other…" answer to the composer, but sends nothing itself', async () => {

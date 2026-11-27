@@ -280,6 +280,35 @@ describe('useChatScrollHandler', () => {
       })
     })
 
+    it('scrolls to the bottom, not to a hidden element, when the sent turn is an ask widget’s answers', () => {
+      const { mockUseAutoScroll, mockScrollToElement, mockScrollToBottom, mockDisableAutoScroll } =
+        createMockUseAutoScroll()
+      const messages = [
+        { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Quiz me' }] },
+        { id: 'asst-1', role: 'assistant', parts: [{ type: 'text', text: '<widget:ask …/>' }] },
+        { id: 'answers', role: 'user', parts: [{ type: 'text', text: 'SMTP' }], metadata: { askAnswers: true } },
+      ]
+      const { rerender } = renderHook(
+        ({ status }) =>
+          useChatScrollHandler({
+            useAutoScroll: mockUseAutoScroll,
+            useChat: createMockUseChat(status, messages),
+            useCurrentChatSession: createMockUseCurrentChatSession(),
+          }),
+        { initialProps: { status: 'idle' } },
+      )
+      mockScrollToElement.mockClear()
+      mockScrollToBottom.mockClear()
+
+      act(() => {
+        rerender({ status: 'submitted' })
+      })
+
+      expect(mockDisableAutoScroll).toHaveBeenCalledTimes(1)
+      expect(mockScrollToElement).not.toHaveBeenCalled()
+      expect(mockScrollToBottom).toHaveBeenCalledWith(true, true)
+    })
+
     describe('streaming start trigger', () => {
       it('does not scroll on submitted to streaming transition (viewport positioning handles this)', () => {
         // With viewport positioning, scrolling on submitted→streaming was removed

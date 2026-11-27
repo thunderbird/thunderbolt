@@ -286,6 +286,29 @@ describe('buildDebugTranscriptPayload', () => {
     ])
   })
 
+  it('keeps an ask widget’s hidden answer turn, flagged', () => {
+    const payload = buildDebugTranscriptPayload({
+      threadId: 'thread-1',
+      messages: [
+        { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Quiz me' }] },
+        { id: 'quiz', role: 'assistant', parts: [{ type: 'text', text: 'Question' }] },
+        { id: 'answers', role: 'user', parts: [{ type: 'text', text: 'SMTP' }], metadata: { askAnswers: true } },
+        { id: 'feedback', role: 'assistant', parts: [{ type: 'text', text: 'Right' }] },
+      ],
+      authSession: null,
+      appVersion: '1.2.3',
+      platform: 'web',
+      capturedAt: '2026-08-18T12:00:00.000Z',
+    })
+
+    expect(
+      payload.turns.map(({ userMessageId, userPrompt, askAnswers }) => ({ userMessageId, userPrompt, askAnswers })),
+    ).toEqual([
+      { userMessageId: 'user-1', userPrompt: { text: 'Quiz me', timestamp: null }, askAnswers: undefined },
+      { userMessageId: 'answers', userPrompt: { text: 'SMTP', timestamp: null }, askAnswers: true },
+    ])
+  })
+
   it('sanitizes the assembled payload before returning it', () => {
     const payload = buildDebugTranscriptPayload({
       threadId: 'thread-1',

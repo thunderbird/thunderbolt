@@ -539,6 +539,20 @@ describe('ChatMessages', () => {
     expectShareInUserActionRow(shareButton, 'user-1')
   })
 
+  it('hosts sharing on the card’s message, not on a hidden answer turn after it', async () => {
+    const shareButton = await renderWithSharingEnabled([
+      createTestMessage({ id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Quiz me' }] }),
+      createTestMessage({ id: 'quiz', role: 'assistant', parts: [{ type: 'text', text: 'Here is a question.' }] }),
+      createTestMessage({
+        id: 'answers',
+        role: 'user',
+        parts: [{ type: 'text', text: 'SMTP' }],
+        metadata: { askAnswers: true },
+      }),
+    ])
+    expect(shareButton.closest('[data-message-id]')).toHaveAttribute('data-message-id', 'quiz')
+  })
+
   describe('message filtering', () => {
     it('should skip OAuth retry messages and render other messages', () => {
       const messages: ThunderboltUIMessage[] = [
@@ -578,6 +592,41 @@ describe('ChatMessages', () => {
       // Other messages should still be visible
       expect(container.textContent).toContain('Regular message')
       expect(container.textContent).toContain('Response')
+    })
+  })
+
+  describe('ask widget answers', () => {
+    const renderThread = (messages: ThunderboltUIMessage[]) => {
+      const mockChatInstance = createMockChatInstance(messages)
+      hydrateStore({
+        chatInstance: mockChatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        models: [],
+        selectedModel: null,
+        triggerData: null,
+      })
+      return render(<ChatMessages useChat={createMockUseChat(mockChatInstance)} />, { wrapper: createTestWrapper() })
+    }
+
+    it('does not render the hidden answer turn, and the reply after it still renders', () => {
+      const { container } = renderThread([
+        createTestMessage({ id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Quiz me' }] }),
+        createTestMessage({ id: 'quiz', role: 'assistant', parts: [{ type: 'text', text: 'Here is a question.' }] }),
+        createTestMessage({
+          id: 'answers',
+          role: 'user',
+          parts: [{ type: 'text', text: '1. Which protocol sends mail? — SMTP' }],
+          metadata: { askAnswers: true },
+        }),
+        createTestMessage({ id: 'feedback', role: 'assistant', parts: [{ type: 'text', text: 'Nicely done.' }] }),
+      ])
+
+      expect(container.textContent).not.toContain('Which protocol sends mail? — SMTP')
+      expect(container.querySelector('[data-message-id="answers"]')).toBeNull()
+      expect(container.textContent).toContain('Quiz me')
+      expect(container.textContent).toContain('Nicely done.')
     })
   })
 

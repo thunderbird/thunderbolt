@@ -120,7 +120,7 @@ export const sequenceReducer = (state: SequenceState, action: SequenceAction): S
   }
 }
 
-/** How a skipped question is answered in the user turn, which shows in the user's own bubble. */
+/** How a skipped question reads in the "Other…" draft, which the user sends from the composer as their own message. */
 const skippedAnswer = msg`skipped`
 
 /**
@@ -214,7 +214,9 @@ export const useAskSequenceState = ({
 
   const send = async (turnText: string) => {
     try {
-      await chatInstance.sendMessage({ text: turnText })
+      // Hidden from the transcript: the card already shows the answers, and the
+      // user should not see them come back as text they typed.
+      await chatInstance.sendMessage({ text: turnText, metadata: { askAnswers: true } })
       // `sendMessage` catches a failed request itself and resolves with the
       // chat in error. The turn is in the thread by then, and the chat shows
       // its own error and retry: a widget retry would post it twice.
@@ -260,8 +262,7 @@ export const useAskSequenceState = ({
     // answer is saved, and the model reads it from the ask note on the next send.
     // The "Other…" hand-off still happens, since filling the composer sends nothing.
     const answers = messageAnswersOf(entries)
-    const turnText =
-      answers && !hasReply && !hasOtherAnswer(answers) ? turnTextForAnswers(answers, i18n._(skippedAnswer)) : null
+    const turnText = answers && !hasReply && !hasOtherAnswer(answers) ? turnTextForAnswers(answers) : null
     const finish = answers && hasOtherAnswer(answers) ? 'handed-off' : turnText ? 'sending' : null
     // A graded step stays on its feedback; anything else moves straight on.
     dispatch({
@@ -297,7 +298,7 @@ export const useAskSequenceState = ({
       dispatch({ type: 'HANDED_OFF' })
       return
     }
-    const turnText = turnTextForAnswers(answers, i18n._(skippedAnswer))
+    const turnText = turnTextForAnswers(answers)
     if (!turnText) {
       return
     }

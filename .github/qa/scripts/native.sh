@@ -59,7 +59,8 @@ android_abi=x86_64
 case $(uname -m) in arm64 | aarch64) android_abi=arm64-v8a ;; esac
 android_image="system-images;android-36;google_apis;$android_abi"
 avd=qa-android
-# The emulator's own log, its pid and the kernel's OOM kill count at its boot.
+# The emulator's pid and the kernel's OOM kill count at its boot. Each boot n also keeps its own log and exit status
+# (qa-emulator-<n>.log and qa-emulator-<n>.status).
 emulator_files=${TMPDIR:-/tmp}/qa-emulator
 crash_signatures=(fatal error crash abort assert segfault segmentation sigsegv sigabrt 'terminating on signal' killed
   'out of memory' kvm)
@@ -206,15 +207,39 @@ stop_emulator() {
   kill -9 "$pid" 2> /dev/null || true
 }
 
-# For each crash signature, how many lines of the emulator's log hold it. Counts only: this reaches the job log on
-# every leg, the real one too.
+# For each crash signature, how many lines of the latest boot's emulator log hold it. Counts only: this reaches the
+# job log on every leg, the real one too.
 crash_counts() {
   local signature count
   echo "lines of the emulator's log per crash signature:"
   for signature in "${crash_signatures[@]}"; do
-    count=$(grep -ciF -- "$signature" "$emulator_files.log" 2> /dev/null) || continue
+    count=$(grep -ciF -- "$signature" "$emulator_files-$(last_boot).log" 2> /dev/null) || continue
     echo "  $signature: $count"
   done
+}
+
+# The number of our emulator's latest boot in this job, 0 before the first.
+last_boot() {
+  local n=0
+  while [ -e "$emulator_files-$((n + 1)).log" ]; do n=$((n + 1)); done
+  echo "$n"
+}
+
+# Runs the emulator, records its pid, and once it ends writes how it ended to <status>, atomically. The caller starts
+# this in the background, so it outlives native.sh and device-lost can read how the emulator ended.
+watch_emulator() {
+  local status=$1 code=0
+  shift
+  "$@" &
+  echo $! > "$emulator_files.pid"
+  wait $! || code=$?
+  # bash reports a death by signal N as 128 + N; an exit code above 128 reads the same way.
+  if [ "$code" -gt 128 ]; then
+    echo "was killed by signal $((code - 128)) (SIG$(kill -l $((code - 128))))"
+  else
+    echo "exited with code $code"
+  fi > "$status.tmp"
+  mv "$status.tmp" "$status"
 }
 
 online_emulators() {
@@ -260,7 +285,7 @@ device_android() {
     mv "$config.tmp" "$config"
     echo "hw.keyboard=no" >> "$config"
   fi
-  local emulator_pid='' serial port
+  local status='' serial port boot
   serial=$(our_emulator)
   # Our AVD must be online: an offline row is an emulator adb lost, and waiting for it to come back would take the
   # whole 10-minute wait below.
@@ -269,16 +294,18 @@ device_android() {
     # adb names an emulator after its console port, so the boot waits for that serial and takes no other emulator.
     port=$(free_port)
     serial=emulator-$port
-    emulator -avd "$avd" -port "$port" -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect > "$emulator_files.log" 2>&1 &
-    emulator_pid=$!
-    echo "$emulator_pid" > "$emulator_files.pid"
+    boot=$(($(last_boot) + 1))
+    status=$emulator_files-$boot.status
+    # The watcher's output goes to the log too, so it never holds the caller's stdout or stderr open.
+    watch_emulator "$status" emulator -avd "$avd" -port "$port" -no-window -no-audio -no-snapshot -no-boot-anim \
+      -gpu swiftshader_indirect > "$emulator_files-$boot.log" 2>&1 &
     oom_kills > "$emulator_files.oom"
   fi
   # A dead emulator ends the wait at once.
   for _ in $(seq 300); do
-    if [ -n "$emulator_pid" ] && ! kill -0 "$emulator_pid" 2> /dev/null; then
+    if [ -n "$status" ] && [ -f "$status" ]; then
       crash_counts >&2
-      die "the emulator exited"
+      die "the emulator $(cat "$status")"
     fi
     grep -qxF "$serial" <<< "$(online_emulators)" && break
     sleep 2
@@ -312,16 +339,19 @@ device_android() {
 # emulator's log. adb gets its own hard kill: a nested `timeout` runs in a process group of its own, which the
 # caller's kill never reaches.
 device_lost() {
-  local serial=$1 seconds=$2 pid boot now
+  local serial=$1 seconds=$2 pid boot now status
   pid=$(cat "$emulator_files.pid" 2> /dev/null) || pid=
   boot=$(cat "$emulator_files.oom" 2> /dev/null) || boot=
   now=$(oom_kills)
+  status=$emulator_files-$(last_boot).status
   {
     echo "adb lost $serial; adb's state for it now: $(timeout -k 1 "$seconds" adb -s "$serial" get-state 2>&1 || true)"
-    if [ -n "$pid" ] && kill -0 "$pid" 2> /dev/null; then
+    if [ -f "$status" ]; then
+      echo "the emulator (pid ${pid:-unknown}) $(cat "$status")"
+    elif [ -n "$pid" ] && kill -0 "$pid" 2> /dev/null; then
       echo "the emulator (pid $pid) still runs"
     else
-      echo "the emulator (pid ${pid:-unknown}) is gone"
+      echo "the emulator (pid ${pid:-unknown}) is gone, with no exit status recorded"
     fi
     free -m 2> /dev/null || true
     if [ -n "$boot" ] && [ -n "$now" ]; then echo "OOM kills since the emulator booted: $((now - boot))"; fi

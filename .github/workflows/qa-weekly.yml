@@ -1038,6 +1038,8 @@ jobs:
           timeout -k 10s 120s adb -s "$QA_DEVICE_ID" logcat -d -v epoch -b main,system,crash,events \
             > "$RUNNER_TEMP/qa-logcat.log" || echo "::warning::The logcat dump ended early (exit $?)"
           cp /tmp/adb.*.log "$RUNNER_TEMP/qa-adb.log" || true
+          # The emulator's own output, one file per boot (native.sh device).
+          cp "${TMPDIR:-/tmp}"/qa-emulator-*.log "$RUNNER_TEMP/" || true
           cp -R ~/.maestro/tests "$RUNNER_TEMP/qa-maestro" || true
 
       - *sanitize
@@ -1054,6 +1056,7 @@ jobs:
             ${{ runner.temp }}/qa-webview.log
             ${{ runner.temp }}/qa-logcat.log
             ${{ runner.temp }}/qa-adb.log
+            ${{ runner.temp }}/qa-emulator-*.log
             ${{ runner.temp }}/qa-maestro/
           if-no-files-found: ignore
           retention-days: 7

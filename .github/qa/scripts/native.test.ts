@@ -249,12 +249,13 @@ exit 0
     })
     return { proc, booted: readFileSync(pidFile, 'utf8').trim() }
   }
-  return { bin, boot }
+  return { bin, dir, boot }
 }
 
 test('device android stops our emulator adb lost and boots a new one on the next console port, taking its serial', () => {
-  const { bin, boot } = offlineEmulator()
+  const { bin, dir, boot } = offlineEmulator()
   const ours = detached(`bash '${bin}/emulator' -avd qa-android -no-window`)
+  writeFileSync(join(dir, 'qa-emulator-1.log'), 'the boot adb lost\n')
 
   const { proc, booted } = boot(ours)
 
@@ -264,6 +265,9 @@ test('device android stops our emulator adb lost and boots a new one on the next
   expect(booted).not.toBe(ours)
   expect(running(booted)).toBe(true)
   expect(commandLine(booted)).toContain(' -avd qa-android -port 5556 ')
+  // The new boot logs to a file of its own.
+  expect(readFileSync(join(dir, 'qa-emulator-1.log'), 'utf8')).toBe('the boot adb lost\n')
+  expect(existsSync(join(dir, 'qa-emulator-2.log'))).toBe(true)
   stop(booted)
 })
 
@@ -284,9 +288,10 @@ type OtherEmulator = { serial: string; name: string; console?: string; booting?:
  * Boots our AVD beside `others`, emulators that run another AVD. Each one's name probe reads `name` (empty for an
  * image that does not set it) and its console answers `console` (nothing when unset). It is online from the start
  * or, with `booting`, from the boot's first poll. adb lists our boot as `ours` from its second poll, and its name
- * probe reads empty. `sleep` returns at once. Returns how the boot ended and the emulator's arguments.
+ * probe reads empty. `sleep` returns at once. After the boot the emulator gets `signal`. Returns how the boot ended,
+ * the emulator's arguments and the boot's status file.
  */
-const bootBeside = (ours: string, others: OtherEmulator[] = []) => {
+const bootBeside = (ours: string, others: OtherEmulator[] = [], signal = 'TERM') => {
   const dir = mkdtempSync(join(work, 'boot-'))
   const bin = join(dir, 'bin')
   mkdirSync(bin)
@@ -327,8 +332,15 @@ exit 0
       TMPDIR: dir,
     },
   })
-  stop(readFileSync(join(dir, 'qa-emulator.pid'), 'utf8').trim())
-  return { proc, args: readFileSync(join(dir, 'emulator-args'), 'utf8') }
+  Bun.spawnSync(['kill', `-${signal}`, readFileSync(join(dir, 'qa-emulator.pid'), 'utf8').trim()])
+  // The watcher writes the status once the emulator has ended.
+  const status = join(dir, 'qa-emulator-1.status')
+  for (let tries = 0; tries < 100 && !existsSync(status); tries++) Bun.sleepSync(20)
+  return {
+    proc,
+    args: readFileSync(join(dir, 'emulator-args'), 'utf8'),
+    status: readFileSync(status, 'utf8'),
+  }
 }
 
 test('device android boots our AVD on console port 5554 and takes emulator-5554, though its name reads empty', () => {
@@ -352,7 +364,17 @@ test('device android boots on the first free console port and never takes anothe
   expect(args).toStartWith('-avd qa-android -port 5558 ')
 })
 
-test("device-lost prints adb's state, whether the emulator runs and only counts from its log", () => {
+test.each([
+  ['SEGV', 11],
+  ['KILL', 9],
+])('the status file of a boot whose emulator gets SIG%s records that signal', (signal, number) => {
+  const { proc, status } = bootBeside('emulator-5554', [], signal)
+
+  expect(proc.exitCode).toBe(0)
+  expect(status).toBe(`was killed by signal ${number} (SIG${signal})\n`)
+})
+
+test("device-lost prints adb's state, how the emulator ended and only counts from the latest boot's log", () => {
   const dir = mkdtempSync(join(work, 'lost-'))
   const bin = join(dir, 'bin')
   mkdirSync(bin)
@@ -369,7 +391,11 @@ test("device-lost prints adb's state, whether the emulator runs and only counts 
     'WARNING      | Your GPU may have a bug',
     crashes[1],
   ]
-  writeFileSync(join(dir, 'qa-emulator.log'), `${log.join('\n')}\nINFO         | Boot completed in 41237 ms\n`)
+  // The first boot's emulator was stopped by the recovery; the second one crashed.
+  writeFileSync(join(dir, 'qa-emulator-1.log'), 'FATAL        | an earlier boot\n')
+  writeFileSync(join(dir, 'qa-emulator-1.status'), 'was killed by signal 15 (SIGTERM)\n')
+  writeFileSync(join(dir, 'qa-emulator-2.log'), `${log.join('\n')}\nINFO         | Boot completed in 41237 ms\n`)
+  writeFileSync(join(dir, 'qa-emulator-2.status'), 'was killed by signal 11 (SIGSEGV)\n')
 
   const proc = Bun.spawnSync(['bash', native, 'device-lost', 'emulator-5554', '10'], {
     env: { ...process.env, ...noPorts, PATH: `${bin}:${process.env.PATH}`, TMPDIR: dir },
@@ -379,7 +405,7 @@ test("device-lost prints adb's state, whether the emulator runs and only counts 
   expect(proc.exitCode).toBe(0)
   expect(proc.stdout.toString()).toBe('')
   expect(out).toStartWith("adb lost emulator-5554; adb's state for it now: error: device 'emulator-5554' not found\n")
-  expect(out).toContain(`the emulator (pid ${gone}) is gone\n`)
+  expect(out).toContain(`the emulator (pid ${gone}) was killed by signal 11 (SIGSEGV)\n`)
   expect(out.split("lines of the emulator's log per crash signature:\n")[1]).toBe(
     '  error: 1\n  terminating on signal: 1\n',
   )
@@ -408,8 +434,9 @@ test('a boot whose emulator exits prints only counts from its log, never its lin
 
   expect(proc.exitCode).toBe(2)
   expect(proc.stderr.toString()).toBe(
-    "lines of the emulator's log per crash signature:\n  fatal: 1\n  kvm: 1\nthe emulator exited\n",
+    "lines of the emulator's log per crash signature:\n  fatal: 1\n  kvm: 1\nthe emulator exited with code 1\n",
   )
+  expect(readFileSync(join(dir, 'qa-emulator-1.status'), 'utf8')).toBe('exited with code 1\n')
 })
 
 test('resume-logs appends a new stream and stops the old one only while its pid still writes the log', () => {

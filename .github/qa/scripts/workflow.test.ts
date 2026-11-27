@@ -1636,6 +1636,7 @@ describe('native jobs', () => {
       '${{ runner.temp }}/qa-webview.log',
       '${{ runner.temp }}/qa-logcat.log',
       '${{ runner.temp }}/qa-adb.log',
+      '${{ runner.temp }}/qa-emulator-*.log',
       '${{ runner.temp }}/qa-maestro/',
     ])
     expect(indexOf('replay-native', save)).toBeGreaterThan(indexOf('replay-native', 'Replay the repro flows and specs'))
@@ -1643,21 +1644,33 @@ describe('native jobs', () => {
   })
 
   test.skipIf(Bun.which('timeout') === null)(
-    'a logcat dump from a device that is gone stops at its deadline and keeps what it read',
+    "a logcat dump from a device that is gone stops at its deadline and keeps what it read, then copies each boot's log",
     () => {
       const temp = mkdtempSync(join(work, 'logcat-'))
       mkdirSync(join(temp, 'bin'))
+      mkdirSync(join(temp, 'tmp'))
       // Stands in for adb waiting on a device that never comes back.
       writeFileSync(join(temp, 'bin/adb'), '#!/bin/bash\necho "first line"\nexec sleep 30\n', { mode: 0o755 })
+      for (const boot of [1, 2]) writeFileSync(join(temp, `tmp/qa-emulator-${boot}.log`), `boot ${boot}\n`)
       const run = step('replay-native', "Save the emulator's, adb's and Maestro's logs").run ?? ''
       expect(run).toContain('timeout -k 10s 120s adb')
       const save = Bun.spawnSync(['bash', '-e', '-c', run.replace('-k 10s 120s', '-k 1s 1s')], {
-        env: { PATH: `${join(temp, 'bin')}:${process.env.PATH}`, RUNNER_TEMP: temp, HOME: temp, QA_DEVICE_ID: 'e-1' },
+        env: {
+          PATH: `${join(temp, 'bin')}:${process.env.PATH}`,
+          RUNNER_TEMP: temp,
+          HOME: temp,
+          TMPDIR: join(temp, 'tmp'),
+          QA_DEVICE_ID: 'e-1',
+        },
         timeout: 4000,
       })
       expect(save.exitCode).toBe(0)
       expect(save.stdout.toString()).toContain('::warning::The logcat dump ended early (exit 124)')
       expect(readFileSync(join(temp, 'qa-logcat.log'), 'utf8')).toBe('first line\n')
+      expect([1, 2].map((boot) => readFileSync(join(temp, `qa-emulator-${boot}.log`), 'utf8'))).toEqual([
+        'boot 1\n',
+        'boot 2\n',
+      ])
     },
   )
 

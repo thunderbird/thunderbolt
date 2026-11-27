@@ -353,8 +353,10 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    count. A probe that times out or prints nothing makes the run inconclusive, however much time the leg has left,
    and the leg goes on. An install that fails with adb's `device '…' not found` counts as a loss even if adb sees the
    emulator again a moment later.
-   `native.sh device-lost` prints what may explain the loss: the emulator process, free memory, OOM kills, and, for
-   each crash signature, how many lines of the emulator's log hold it. No line of that log is printed. The leg then
+   `native.sh device-lost` prints what may explain the loss: how the emulator process ended (its exit code or the
+   signal that killed it, which a small watcher process records in `qa-emulator-<boot>.status`) or that it still
+   runs, free memory, OOM kills, and, for each crash signature, how many lines of the emulator's log hold it. Each
+   boot writes its own log, `qa-emulator-<boot>.log`. No line of that log is printed. The leg then
    runs `native.sh device android` again, which keeps the emulator only while adb sees it online and its
    `ro.boot.qemu.avd_name` is `qa-android`. Otherwise it stops ours and cold-boots a new one on the first even console
    port from 5554 to 5584 where adb lists no emulator, online or offline. adb names an emulator after its console port,
@@ -1050,9 +1052,10 @@ stack depends on its AppArmor sysctl, KVM and emulator libraries, Playwright dep
   leg's setup, and every counted run installs the app again.
   When the replay fails, the job uploads the stack's and the WebView's logs as `qa-logs-replay-<leg>`. On Android
   it does so after every replay and adds the emulator's log (`qa-logcat.log`, read with `logcat -d` once the replay
-  is over, since a reset of adb's connection ends a stream), the adb server's log (`qa-adb.log`) and Maestro's debug
-  output for each session (`qa-maestro/<time>/`, with `maestro.log` and the commands). None of it is uploaded on
-  `android-real`, whose backend held the provider keys.
+  is over, since a reset of adb's connection ends a stream), the emulator program's own output for each boot
+  (`qa-emulator-<boot>.log`), the adb server's log (`qa-adb.log`) and Maestro's debug output for each session
+  (`qa-maestro/<time>/`, with `maestro.log` and the commands). None of it is uploaded on `android-real`, whose
+  backend held the provider keys.
 - The weekly **judge** adds the native legs' candidates to the web ones, like the sync and real legs. A dispatch of
   native sessions only still plans it, so its findings are judged, filed and fixed.
 - **verify-native-build** and **verify-native-run** check a native fix (see "Trust zones"). With no patched app,

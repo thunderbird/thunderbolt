@@ -241,8 +241,8 @@ echo "maestro flow" >> '${calls}'
  * `blip-<serial>` fails one install with adb's "not found" while adb still sees it, `other-<serial>` puts another AVD
  * on that serial, `full` fails the install on a device adb still sees, `fail-flow` fails Maestro's flow, `hang` hangs
  * the warm-up session, `hang-adb` hangs `adb get-state`, `mute-adb` makes its next call print nothing and fail,
- * `dead-stream` makes the new WebView stream exit at once. An unrelated emulator-5558 is always online; a new boot of
- * our AVD comes up as emulator-5556. A recovery must end `recoverIn` ms after the start (a negative value puts the
+ * `dead-stream` makes the new WebView stream exit at once. An unrelated emulator-5558 is always online, adb lists a
+ * lost emulator-5554 as offline, and a new boot of our AVD comes up as emulator-5556. A recovery must end `recoverIn` ms after the start (a negative value puts the
  * deadline before the runs), and `never` passes no deadline, as fix-native does. Maestro's tree dump always fails.
  * Returns each run's result or what it threw, the calls with paths cut to file names, stderr, what the WebView log and
  * $GITHUB_ENV hold, how many ms past the deadline the runs ended, and the pids of the `adb get-state` calls that hung.
@@ -262,7 +262,8 @@ case "$*" in
   devices)
     rm -f '${dir}'/flap-*
     printf 'List of devices attached\\nemulator-5558\\tdevice\\n'
-    [ -f '${dir}/lost-emulator-5554' ] || printf 'emulator-5554\\tdevice\\n'
+    if [ -f '${dir}/lost-emulator-5554' ]; then state=offline; else state=device; fi
+    printf 'emulator-5554\\t%s\\n' "$state"
     [ -f '${dir}/qa-emulator.pid' ] && printf 'emulator-5556\\tdevice\\n' ;;
   *" getprop ro.boot.qemu.avd_name")
     if [ "$serial" = emulator-5558 ] || [ -f "${dir}/other-$serial" ]; then echo pixel-other; else echo qa-android; fi ;;
@@ -390,9 +391,10 @@ test('an Android run on an emulator adb lost boots a new one once, and the runs 
     'adb -s emulator-5556 install -r plain.apk',
     'maestro --udid emulator-5556 test -e EMAIL flow.yaml',
   ])
-  // Our AVD cold-boots although another emulator is online, and the leg's last step reads the new serial.
+  // Our AVD cold-boots on the first console port with no emulator in adb's list, although another emulator is online,
+  // and the leg's last step reads the new serial.
   expect(calls.filter((line) => line.startsWith('emulator '))).toEqual([
-    'emulator -avd qa-android -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect',
+    'emulator -avd qa-android -port 5556 -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect',
   ])
   expect(githubEnv).toBe('QA_DEVICE_ID=emulator-5556\n')
   // The lost run stops before its video is pulled.
@@ -439,7 +441,7 @@ test('a recovery never reuses a serial that now runs another AVD, and boots ours
   expect(results).toEqual([{ threw: 'DeviceLost', message: 'emulator dropped off adb', retry: true }, { passed: true }])
   expect(calls.filter((line) => / install -r |^emulator /.test(line))).toEqual([
     'adb -s emulator-5554 install -r plain.apk',
-    'emulator -avd qa-android -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect',
+    'emulator -avd qa-android -port 5556 -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect',
     'adb -s emulator-5556 install -r plain.apk',
     'adb -s emulator-5556 install -r plain.apk',
   ])

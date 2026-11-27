@@ -221,30 +221,30 @@ online_emulators() {
   adb devices | sed -n 's/^\(emulator-[0-9]*\)[[:space:]]*device$/\1/p'
 }
 
-# True when the emulator's console names another AVD. No answer, an empty one or an error (KO) names none.
-other_avd() {
-  local named
-  named=$(timeout -k 1 5 adb -s "$1" emu avd name 2> /dev/null | tr -d '\r' | grep -vx -e OK -e '' -e 'KO.*') ||
-    return 1
-  ! grep -qx "$avd" <<< "$named"
-}
-
-# The online emulator that runs our AVD, if any. Another emulator on the same adb is not ours to use. With `booted`
-# and the serials online before we started ours, the only emulator that came online since counts as ours while its
-# name reads empty and its console names no other AVD, so an image that does not set the property cannot fail the
-# boot.
+# The online emulator that runs our AVD, if any. Another emulator on the same adb is not ours to use.
 our_emulator() {
-  local serials serial name
-  serials=$(online_emulators)
-  for serial in $serials; do
+  local serial name
+  for serial in $(online_emulators); do
     name=$(timeout -k 1 10 adb -s "$serial" shell getprop ro.boot.qemu.avd_name 2> /dev/null | tr -d '\r') || true
-    if grep -qx "$avd" <<< "$name" ||
-      { [ "${1:-}" = booted ] && [ -z "$name" ] && [ "$(grep -vxF -e "${2:-}" <<< "$serials")" = "$serial" ] &&
-        ! other_avd "$serial"; }; then
+    if grep -qx "$avd" <<< "$name"; then
       echo "$serial"
       return
     fi
   done
+}
+
+# The first even console port from 5554 to 5584 where adb lists no emulator. An offline row counts: the emulator adb
+# lost may still hold its port.
+free_port() {
+  local devices port
+  devices=$(adb devices)
+  for port in $(seq 5554 2 5584); do
+    if ! grep -q "^emulator-${port}[[:space:]]" <<< "$devices"; then
+      echo "$port"
+      return
+    fi
+  done
+  die "adb lists an emulator on every console port from 5554 to 5584"
 }
 
 device_android() {
@@ -260,14 +260,16 @@ device_android() {
     mv "$config.tmp" "$config"
     echo "hw.keyboard=no" >> "$config"
   fi
-  local emulator_pid='' serial before=''
+  local emulator_pid='' serial port
   serial=$(our_emulator)
   # Our AVD must be online: an offline row is an emulator adb lost, and waiting for it to come back would take the
   # whole 10-minute wait below.
   if [ -z "$serial" ]; then
     stop_emulator
-    before=$(online_emulators)
-    emulator -avd "$avd" -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect > "$emulator_files.log" 2>&1 &
+    # adb names an emulator after its console port, so the boot waits for that serial and takes no other emulator.
+    port=$(free_port)
+    serial=emulator-$port
+    emulator -avd "$avd" -port "$port" -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect > "$emulator_files.log" 2>&1 &
     emulator_pid=$!
     echo "$emulator_pid" > "$emulator_files.pid"
     oom_kills > "$emulator_files.oom"
@@ -278,11 +280,10 @@ device_android() {
       crash_counts >&2
       die "the emulator exited"
     fi
-    serial=$(our_emulator ${emulator_pid:+booted "$before"})
-    [ -n "$serial" ] && break
+    grep -qxF "$serial" <<< "$(online_emulators)" && break
     sleep 2
   done
-  [ -n "$serial" ] || die "no emulator came online"
+  grep -qxF "$serial" <<< "$(online_emulators)" || die "no emulator came online"
   for _ in $(seq 180); do
     [ "$(adb -s "$serial" shell getprop sys.boot_completed | tr -d '\r')" = 1 ] && break
     sleep 2

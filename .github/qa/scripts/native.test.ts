@@ -208,7 +208,13 @@ const detached = (command: string) =>
 /** Sends SIGTERM to each pid a test started, so nothing outlives the test. */
 const stop = (...pids: string[]) => Bun.spawnSync(['kill', ...pids])
 
-/** adb lists the emulator as offline while the pid file still names `previous`, the emulator of an earlier boot. */
+/** The command line `pid` runs. */
+const commandLine = (pid: string) => Bun.spawnSync(['ps', '-ww', '-o', 'args=', '-p', pid]).stdout.toString()
+
+/**
+ * adb lists emulator-5554, the emulator it lost, as offline, and a new boot as emulator-5556 once the pid file no
+ * longer names `previous`.
+ */
 const offlineEmulator = () => {
   const dir = mkdtempSync(join(work, 'offline-'))
   const bin = join(dir, 'bin')
@@ -219,9 +225,8 @@ const offlineEmulator = () => {
     `#!/bin/bash
 case "$*" in
   devices)
-    state=device
-    [ "$(cat '${pidFile}')" = "$(cat '${dir}/previous')" ] && state=offline
-    printf 'List of devices attached\\nemulator-5554\\t%s\\n' "$state" ;;
+    printf 'List of devices attached\\nemulator-5554\\toffline\\n'
+    [ "$(cat '${pidFile}')" = "$(cat '${dir}/previous')" ] || printf 'emulator-5556\\tdevice\\n' ;;
   *"getprop ro.boot.qemu.avd_name") printf 'qa-android\\r\\nOK\\r\\n' ;;
   *"getprop sys.boot_completed" | *"settings get global hide_error_dialogs") echo 1 ;;
 esac
@@ -247,17 +252,18 @@ exit 0
   return { bin, boot }
 }
 
-test('device android stops our emulator adb lost and boots a new one instead of waiting for its offline row', () => {
+test('device android stops our emulator adb lost and boots a new one on the next console port, taking its serial', () => {
   const { bin, boot } = offlineEmulator()
   const ours = detached(`bash '${bin}/emulator' -avd qa-android -no-window`)
 
   const { proc, booted } = boot(ours)
 
   expect(proc.exitCode).toBe(0)
-  expect(proc.stdout.toString()).toBe('emulator-5554\n')
+  expect(proc.stdout.toString()).toBe('emulator-5556\n')
   expect(running(ours)).toBe(false)
   expect(booted).not.toBe(ours)
   expect(running(booted)).toBe(true)
+  expect(commandLine(booted)).toContain(' -avd qa-android -port 5556 ')
   stop(booted)
 })
 
@@ -272,44 +278,44 @@ test('device android leaves alone a recorded pid that now runs another program',
   stop(other, booted)
 })
 
+type OtherEmulator = { serial: string; name: string; console?: string; booting?: boolean }
+
 /**
- * Boots our AVD, which adb lists as emulator-5554 from its second poll after the boot started; with `other`,
- * emulator-5560 runs another AVD of that name (empty for an image that does not set it), from the start or, with
- * `booting`, from the boot's first poll, and its console names `console`. emulator-5554's name probe reads empty for
- * its first `empty` calls, and its console never answers. `sleep` returns at once. Returns how the boot ended, how
- * many name probes emulator-5554 got, and the serials whose console was asked.
+ * Boots our AVD beside `others`, emulators that run another AVD. Each one's name probe reads `name` (empty for an
+ * image that does not set it) and its console answers `console` (nothing when unset). It is online from the start
+ * or, with `booting`, from the boot's first poll. adb lists our boot as `ours` from its second poll, and its name
+ * probe reads empty. `sleep` returns at once. Returns how the boot ended and the emulator's arguments.
  */
-const bootWithNameProbe = (empty: number, other?: { name: string; booting?: boolean; console?: string }) => {
-  const dir = mkdtempSync(join(work, 'name-'))
+const bootBeside = (ours: string, others: OtherEmulator[] = []) => {
+  const dir = mkdtempSync(join(work, 'boot-'))
   const bin = join(dir, 'bin')
-  const probes = join(dir, 'probes')
   mkdirSync(bin)
-  const otherRow = other ? "printf 'emulator-5560\\tdevice\\n'" : ''
+  const booted = `[ -f '${dir}/qa-emulator.pid' ]`
+  const rows = others.map(({ serial, booting }) => `${booting ? `${booted} && ` : ''}printf '${serial}\\tdevice\\n'`)
+  for (const { serial, name, console } of others) {
+    writeFileSync(join(dir, `name-${serial}`), name)
+    if (console) writeFileSync(join(dir, `console-${serial}`), `${console}\r\nOK\r\n`)
+  }
   writeFileSync(
     join(bin, 'adb'),
     `#!/bin/bash
 case "$*" in
   devices)
     printf 'List of devices attached\\n'
-    ${other?.booting ? `[ -f '${dir}/qa-emulator.pid' ] && ${otherRow}` : otherRow}
-    if [ -f '${dir}/qa-emulator.pid' ]; then
-      [ -f '${dir}/polled' ] && printf 'emulator-5554\\tdevice\\n'
+    ${rows.join('\n    ')}
+    if ${booted}; then
+      [ -f '${dir}/polled' ] && printf '${ours}\\tdevice\\n'
       : > '${dir}/polled'
     fi ;;
-  *"5560 shell getprop ro.boot.qemu.avd_name") printf '${other?.name}\\r\\n' ;;
-  *" emu avd name")
-    echo "$2" >> '${dir}/consoles'
-    [ "$2" = emulator-5560 ] && printf '${other?.console ?? ''}\\r\\nOK\\r\\n' ;;
-  *"getprop ro.boot.qemu.avd_name")
-    echo >> '${probes}'
-    if [ "$(wc -l < '${probes}')" -gt ${empty} ]; then printf 'qa-android\\r\\n'; else printf '\\r\\n'; fi ;;
+  *"getprop ro.boot.qemu.avd_name") cat "${dir}/name-$2" 2> /dev/null; printf '\\r\\n' ;;
+  *" emu avd name") cat "${dir}/console-$2" 2> /dev/null ;;
   *"getprop sys.boot_completed" | *"settings get global hide_error_dialogs") echo 1 ;;
 esac
 exit 0
 `,
   )
   writeFileSync(join(bin, 'avdmanager'), '#!/bin/bash\necho qa-android\n')
-  writeFileSync(join(bin, 'emulator'), '#!/bin/bash\nexec /bin/sleep 20\n')
+  writeFileSync(join(bin, 'emulator'), `#!/bin/bash\necho "$*" > '${dir}/emulator-args'\nexec /bin/sleep 20\n`)
   writeFileSync(join(bin, 'sleep'), '#!/bin/sh\n')
   for (const tool of ['adb', 'avdmanager', 'emulator', 'sleep']) chmodSync(join(bin, tool), 0o755)
   const proc = Bun.spawnSync(['bash', native, 'device', 'android'], {
@@ -322,46 +328,28 @@ exit 0
     },
   })
   stop(readFileSync(join(dir, 'qa-emulator.pid'), 'utf8').trim())
-  const consoles = join(dir, 'consoles')
-  return {
-    proc,
-    probes: readFileSync(probes, 'utf8').length,
-    consoles: existsSync(consoles) ? readFileSync(consoles, 'utf8').trim().split('\n') : [],
-  }
+  return { proc, args: readFileSync(join(dir, 'emulator-args'), 'utf8') }
 }
 
-test('device android waits out a name probe that reads empty for a moment, beside another AVD that boots with it', () => {
-  const { proc, probes } = bootWithNameProbe(2, { name: 'pixel-other', booting: true })
+test('device android boots our AVD on console port 5554 and takes emulator-5554, though its name reads empty', () => {
+  const { proc, args } = bootBeside('emulator-5554')
 
   expect(proc.exitCode).toBe(0)
   expect(proc.stdout.toString()).toBe('emulator-5554\n')
-  expect(probes).toBe(3)
+  expect(args).toStartWith('-avd qa-android -port 5554 ')
 })
 
-test('device android takes the only emulator after booting it, though neither its name probe nor its console answers', () => {
-  const { proc, probes, consoles } = bootWithNameProbe(999)
+test('device android boots on the first free console port and never takes another AVD, named or not', () => {
+  const { proc, args } = bootBeside('emulator-5558', [
+    { serial: 'emulator-5554', name: '' },
+    { serial: 'emulator-5556', name: 'pixel-other', console: 'pixel-other' },
+    // What a boot once took: an emulator that came online during it, with no name and a console that answers KO.
+    { serial: 'emulator-5560', name: '', console: 'KO: unknown command', booting: true },
+  ])
 
   expect(proc.exitCode).toBe(0)
-  expect(proc.stdout.toString()).toBe('emulator-5554\n')
-  expect(probes).toBe(1)
-  expect(consoles).toEqual(['emulator-5554'])
-})
-
-test('device android skips an unnamed emulator that came online during its boot when its console names another AVD', () => {
-  const { proc, probes, consoles } = bootWithNameProbe(1, { name: '', booting: true, console: 'other-avd' })
-
-  expect(proc.exitCode).toBe(0)
-  expect(proc.stdout.toString()).toBe('emulator-5554\n')
-  expect(probes).toBe(2)
-  expect(consoles).toEqual(['emulator-5560'])
-})
-
-test('device android never takes an emulator with no name that was online before its boot', () => {
-  const { proc, probes } = bootWithNameProbe(999, { name: '' })
-
-  expect(proc.exitCode).toBe(0)
-  expect(proc.stdout.toString()).toBe('emulator-5554\n')
-  expect(probes).toBe(1)
+  expect(proc.stdout.toString()).toBe('emulator-5558\n')
+  expect(args).toStartWith('-avd qa-android -port 5558 ')
 })
 
 test("device-lost prints adb's state, whether the emulator runs and only counts from its log", () => {

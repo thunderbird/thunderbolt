@@ -356,7 +356,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `native.sh device-lost` prints what may explain the loss: the emulator process, free memory, OOM kills, and, for
    each crash signature, how many lines of the emulator's log hold it. No line of that log is printed. The leg then
    runs `native.sh device android` again, which keeps the emulator only while adb sees it online and its
-   `ro.boot.qemu.avd_name` is `qa-android`, and otherwise stops ours and cold-boots a new one. The WebView stream
+   `ro.boot.qemu.avd_name` is `qa-android`. Otherwise it stops ours and cold-boots a new one on the first even console
+   port from 5554 to 5584 where adb lists no emulator, online or offline. adb names an emulator after its console port,
+   so the boot waits for that serial (`emulator-<port>`) and never takes another emulator. The WebView stream
    starts again and appends to its log; a stream that has exited a second later fails the recovery. Then the run
    starts over. A leg recovers only once, and the diagnostics and the recovery must end before the leg's clock does: a
    second loss, or a recovery that fails or runs out of time, marks the stack unhealthy. The adb probe gets its 10 s

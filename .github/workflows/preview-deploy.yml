@@ -182,6 +182,7 @@ jobs:
       # previews are the only place a reviewer can exercise the PAT path, but
       # nothing should switch it on for every PR implicitly.
       confidential_api_keys_enabled: ${{ vars.PREVIEW_CONFIDENTIAL_API_KEYS_ENABLED == 'true' }}
+      fork_preview: ${{ needs.resolve.outputs.is_fork == 'true' }}
       # Per-PR stacks read VPC/ALB/postgres/keycloak/powersync from the long-lived
       # `previews-shared` stack via Pulumi StackReference. The shared stack must
       # exist before this runs; deploy it once via the `Previews Shared Deploy`

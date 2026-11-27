@@ -289,11 +289,15 @@ realm config or different PowerSync sync rules must fall back to a monolithic de
 ### Fork previews: a maintainer dispatches them
 
 A fork PR's `pull_request` run gets no secrets, so it deploys nothing. After reading the
-change, a maintainer runs `preview-deploy.yml` with `workflow_dispatch` from `main` and the
-PR's `pr_number`. The fork's head goes into the images, but `main`'s workflow and Pulumi
-program deploy them, so a fork can change image contents but never the infrastructure
-code. A new push to the fork needs a new dispatch. Same-repo PRs deploy automatically:
-only collaborators with write access can push a branch here.
+change, a maintainer runs `preview-deploy.yml` with `workflow_dispatch` from `main`, the
+PR's `pr_number`, and the `head_sha` they reviewed; the run fails if the PR has moved past
+it. That commit goes into the images, but `main`'s workflow and Pulumi program deploy them,
+so a fork can change image contents but never the infrastructure code. A new push to the
+fork needs a new review and dispatch. A fork preview's backend gets no Exa, Tinfoil or
+email key, but it still holds the model provider keys, its own database's URL and the
+PowerSync signing secret every preview shares, so read the change as code that will run
+with them. Same-repo PRs deploy automatically: only collaborators
+with write access can push a branch here.
 
 ### Teardown: on close, hourly, and by hand
 
@@ -303,7 +307,7 @@ hand, goes through `stack-deploy.yml`'s `destroy` job, which runs
 `scripts/drop-preview-db.sh` before `pulumi destroy` because it needs the per-stack
 secrets and backend task definition the stack owns; destroy runs even if the drop fails,
 so a flaky drop cannot orphan an ALB and leak cost. A failed drop then fails the job, and
-the databases and slot it left need dropping by hand. The hourly cleanup sends a failure
+the databases, role and slot it left need dropping by hand. The hourly cleanup sends a failure
 notification; on PR close the failure shows only in that run and in the PR's preview
 comment, because `notify-on-failure.yml` alerts only for runs on `main`. One operation
 runs on a stack at a time, and a newer queued operation replaces one still waiting, so a
@@ -311,10 +315,9 @@ close-time destroy superseded by the hourly cleanup says so in the preview comme
 cleanup finishes the teardown. A PR that never had a preview gets no teardown
 comment.
 
-Pulumi does not remove the logical database that `deploy/docker/backend-entrypoint.sh`
-creates per PR at backend startup on the shared Postgres instance (when
-`POSTGRES_ADMIN_URL` is set). Left behind, its `__drizzle_migrations` hashes leak into the
-next deploy of the same PR number and `drizzle-kit` fails once a migration has been
+Pulumi does not remove the Postgres role and logical databases that the backend task's
+`db-init` container creates per PR on the shared Postgres instance. Left behind, the app
+database's `__drizzle_migrations` hashes leak into the next deploy of the same PR number and `drizzle-kit` fails once a migration has been
 re-edited.
 
 `preview-cleanup.yml` is the hourly safety net for a failed teardown, a PR closed out of
@@ -338,7 +341,7 @@ a teardown.
 | `crates/thunderbolt-acp-client/build.sh`                | You, by hand                                         | Regenerates `src/acp/iroh/pkg`; `--verify` reproduces the checksums             |
 | `crates/thunderbolt-acp-client/source-manifest.sh`      | `build.sh` and `ci.yml` `wasm-artifact` job          | Hashes current crate inputs for `SOURCES.txt`                                   |
 | `crates/thunderbolt-acp-client/source-manifest.test.sh` | `ci.yml` `wasm-artifact` job                         | Tests source drift and build failures without a wasm toolchain                  |
-| `scripts/drop-preview-db.sh`                            | `stack-deploy.yml` `destroy` job                     | Drops the per-PR logical database before `pulumi destroy`; idempotent           |
+| `scripts/drop-preview-db.sh`                            | `stack-deploy.yml` `destroy` job                     | Drops the per-PR databases and role before `pulumi destroy`; idempotent         |
 | `.github/scripts/review-orchestrator.mjs`               | `thunder-deep-review.yml`                            | All GitHub I/O for the review bot; unit-tested by `bun run test`                |
 | `.github/scripts/post-pr-metrics.cjs`                   | `pr-metrics.yml`                                     | Renders the metrics comment; unit-tested by `bun run test`                      |
 | `.github/scripts/post-eval-results.ts`                  | `evals.yml`                                          | Unit-tested by `bun run test`                                                   |

@@ -40,12 +40,12 @@ Owns only what genuinely differs per PR:
   `powersync-pr-<n>`) pointing at the shared ALB — `auth.shared.*` belongs to the
   shared stack
 - Per-PR Secrets Manager entries: Better Auth secret, OIDC client secret, debug
-  transcript upstream key, `DATABASE_URL`, `POSTGRES_ADMIN_URL`, PowerSync's
+  transcript upstream key, the Postgres role password, `DATABASE_URL`, PowerSync's
   storage URL and base64 JWT key
-- Per-PR Postgres databases on the shared instance: the app DB and PowerSync's
-  `<db>_ps_storage`, both created at backend startup, which also creates the
-  `powersync` publication after migrating. `scripts/drop-preview-db.sh` stops
-  PowerSync, drops its replication slot and both databases on teardown.
+- A per-PR Postgres role and two databases it owns on the shared instance: the app
+  DB and PowerSync's `<db>_ps_storage`, created with the `powersync` publication by
+  the backend task's `db-init` container. `scripts/drop-preview-db.sh` stops
+  PowerSync, drops its replication slot, both databases and the role on teardown.
 - Per-PR Keycloak OIDC client in the shared `thunderbolt` realm
 
 Reads shared infra via Pulumi `StackReference("previews-shared")`.
@@ -119,21 +119,27 @@ customer stacks remain on the monolithic path (see "Legacy escape hatch").
 
 ## Resolved design questions
 
-**Per-PR database provisioning — the backend entrypoint does it.** When
-`POSTGRES_ADMIN_URL` is set, `deploy/docker/backend-entrypoint.sh:45-65` connects as the
-admin on the default database, creates the per-stack database and its PowerSync storage
-database (`<db>_ps_storage`) if they do not already exist, then creates the `powersync`
-publication; the server applies migrations against `DATABASE_URL` when it starts. The name comes
+**Per-PR database provisioning — a `db-init` container does it.** The backend task's
+first container (`dbInitScript` in `src/per-pr-stack.ts`) runs `psql` as the superuser from a
+digest-pinned `postgres:18-alpine` image, so the PR's own images never see that password. On
+every task start it creates a role named after the database (`LOGIN REPLICATION`, nothing
+more), the per-stack database and its PowerSync storage database (`<db>_ps_storage`), both
+owned by that role, revokes `CONNECT` from `PUBLIC` on every database so only owners and
+superusers connect (Keycloak connects as the superuser), and creates the `powersync`
+publication, which needs a superuser. A database the superuser owns, left by a stack deployed
+before per-preview roles, is dropped and recreated. The backend starts once it exits 0 and
+applies migrations as the role, which therefore owns every table PowerSync replicates. The name comes
 from the Pulumi stack name with every non-alphanumeric character replaced by `_`
-(`preview-pr-846` → `preview_pr_846`, `dbNameFromStack` in `src/per-pr-stack.ts`), and
-both URLs reach the task as Secrets Manager entries. Teardown is `scripts/drop-preview-db.sh`, which `stack-deploy.yml`'s `destroy` job runs
+(`preview-pr-846` → `preview_pr_846`, `dbNameFromStack`), and both URLs reach the task as
+Secrets Manager entries. Teardown is `scripts/drop-preview-db.sh`, which `stack-deploy.yml`'s `destroy` job runs
 before `pulumi destroy` for every preview destroy (PR close, hourly orphan cleanup,
-manual): it stops the PR's PowerSync, drops its replication slot and both databases. As a
+manual): it stops the PR's PowerSync, then runs the `db-init` container with a command that
+drops its replication slot, both databases and the role. As a
 backstop the shared Postgres runs with `max_slot_wal_keep_size`, so a slot that escapes a
 failed drop stops pinning WAL. The
 alternatives considered were a Pulumi `command.local.Command` running `psql` through a
-private bastion task, and a Pulumi-triggered Lambda; both add a component the entrypoint
-does not.
+private bastion task, and a Pulumi-triggered Lambda; both add a component an init
+container does not.
 
 **Per-PR Keycloak OIDC client.** `src/per-pr-stack.ts:235` provisions
 `thunderbolt-app-<stack>` in the shared `thunderbolt` realm through a `@pulumi/keycloak`

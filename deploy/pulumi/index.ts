@@ -29,6 +29,7 @@ const version = config.require('version')
 const minAppVersion = config.get('minAppVersion') ?? ''
 const cliDeviceRegistrationEnabled = config.getBoolean('cliDeviceRegistrationEnabled') ?? false
 const confidentialApiKeysEnabled = config.getBoolean('confidentialApiKeysEnabled') ?? false
+const forkPreview = config.getBoolean('forkPreview') ?? false
 const branding = config.get('branding') ?? ''
 const email = {
   from: config.get('emailFrom'),
@@ -149,6 +150,7 @@ if (isSharedStack) {
     minAppVersion,
     cliDeviceRegistrationEnabled,
     confidentialApiKeysEnabled,
+    forkPreview,
     branding,
     email,
   })

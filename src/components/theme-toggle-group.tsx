@@ -33,16 +33,16 @@ export const ThemeToggleGroup = () => {
         setTheme(value)
         trackEvent('settings_theme_set', { theme: value })
       }}
-      className="justify-start rounded-lg"
+      className="max-w-full justify-start rounded-lg"
     >
       {themeOptions.map(({ value, ariaLabel, Icon, label }) => (
         <ToggleGroupItem
           key={value}
           value={value}
           aria-label={i18n._(ariaLabel)}
-          className="gap-2 px-4 cursor-pointer first:rounded-l-lg last:rounded-r-lg"
+          className="gap-2 px-2 sm:px-4 cursor-pointer first:rounded-l-lg last:rounded-r-lg"
         >
-          <Icon className="h-4 w-4" />
+          <Icon className="h-4 w-4 max-sm:hidden" />
           {i18n._(label)}
         </ToggleGroupItem>
       ))}

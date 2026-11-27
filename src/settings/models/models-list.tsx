@@ -72,7 +72,7 @@ export const ModelsList = ({
                     </Tooltip>
                   </TooltipProvider>
                 )}
-                <span className="truncate">{model.name}</span>
+                <span className="min-w-0 max-md:break-words md:truncate">{model.name}</span>
                 {!!model.isConfidential && <PrivateBadge />}
               </span>
             }

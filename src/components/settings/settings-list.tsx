@@ -107,11 +107,18 @@ export const SettingsSelectableRow = ({
       >
         {leading && <span className="flex shrink-0 items-center justify-center">{leading}</span>}
         <span className="min-w-0 flex-1">
-          <span className={cn('block truncate text-base font-medium', isDimmed && 'text-muted-foreground')}>
+          <span
+            className={cn(
+              'block text-base font-medium max-md:break-words md:truncate',
+              isDimmed && 'text-muted-foreground',
+            )}
+          >
             {title}
           </span>
           {subtitle && (
-            <span className="block truncate text-[length:var(--font-size-sm)] text-muted-foreground">{subtitle}</span>
+            <span className="block text-[length:var(--font-size-sm)] text-muted-foreground max-md:break-words md:truncate">
+              {subtitle}
+            </span>
           )}
         </span>
         {trailingIcon && <span className="flex shrink-0 items-center">{trailingIcon}</span>}

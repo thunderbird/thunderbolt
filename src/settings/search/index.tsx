@@ -94,7 +94,7 @@ const SearchSettingsPage = () => {
                 }}
                 title={
                   <span className="flex items-center gap-2">
-                    <span className="truncate">{connection.name}</span>
+                    <span className="min-w-0 max-md:break-words md:truncate">{connection.name}</span>
                     {connection.provider === 'tinfoil' && <PrivateBadge />}
                   </span>
                 }

@@ -9,7 +9,9 @@ import { expect, test } from './test'
 // Narrow enough that a non-shrinking model button overlaps the send button.
 test.use({ viewport: { width: 300, height: 700 } })
 
-test('a narrow composer truncates the model name instead of overflowing the send button', async ({ page }) => {
+test('a narrow composer wraps the model name instead of clipping it or overflowing the send button', async ({
+  page,
+}) => {
   await loginViaEmailCode(page)
   await page.locator('textarea').fill('Hello')
 
@@ -19,5 +21,5 @@ test('a narrow composer truncates the model name instead of overflowing the send
   const triggerBox = (await trigger.boundingBox())!
   const sendBox = (await page.getByRole('button', { name: 'Send message', exact: true }).boundingBox())!
   expect(triggerBox.x + triggerBox.width).toBeLessThanOrEqual(sendBox.x)
-  expect(await name.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
+  expect(await name.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(false)
 })

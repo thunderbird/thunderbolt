@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:
 import type { ComponentProps } from 'react'
 
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { createMockModel } from '@/test-utils/chat-store-mocks'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { ModelsList } from './models-list'
 
@@ -50,5 +51,12 @@ describe('ModelsList loading state', () => {
     const { container } = renderList({ isLoading: false })
     expect(container.querySelector('[aria-busy]')).toBeNull()
     expect(screen.getByText('No models configured')).toBeInTheDocument()
+  })
+})
+
+describe('ModelsList reflow', () => {
+  it('wraps the model name below md and truncates from md up', () => {
+    renderList({ models: [createMockModel({ id: 'long', name: 'Kimi K3.1 Pro' })] })
+    expect(screen.getByText('Kimi K3.1 Pro')).toHaveClass('max-md:break-words', 'md:truncate')
   })
 })

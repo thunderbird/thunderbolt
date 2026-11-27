@@ -32,6 +32,14 @@ describe('ThemeToggleGroup', () => {
     document.documentElement.classList.remove('light', 'dark')
   })
 
+  it('compacts the options on phones so the group fits at 320px', () => {
+    renderGroup()
+
+    const item = screen.getByRole('radio', { name: 'System theme' })
+    expect(item).toHaveClass('px-2', 'sm:px-4')
+    expect(item.querySelector('svg')).toHaveClass('max-sm:hidden')
+  })
+
   it('renders all three options with the current theme selected', () => {
     renderGroup()
 

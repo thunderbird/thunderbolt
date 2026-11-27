@@ -35,6 +35,15 @@ it('names the row button from its visible title and subtitle, visible text first
   expect(screen.getByRole('button', { name: 'Example Details' })).toBeInTheDocument()
 })
 
+describe('SettingsSelectableRow reflow', () => {
+  it('wraps long titles and subtitles below md and truncates from md up', () => {
+    render(<SettingsSelectableRow title="A long title" subtitle="A long subtitle" onSelect={() => {}} />)
+
+    expect(screen.getByText('A long title')).toHaveClass('max-md:break-words', 'md:truncate')
+    expect(screen.getByText('A long subtitle')).toHaveClass('max-md:break-words', 'md:truncate')
+  })
+})
+
 describe('settings scroll clearance', () => {
   it('keeps mobile list content behind the edge fades with safe-area runway', () => {
     const { container } = render(

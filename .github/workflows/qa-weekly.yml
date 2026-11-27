@@ -454,7 +454,13 @@ jobs:
           kill -9 $serve 2>/dev/null || true
           # shellcheck disable=SC2086
           kill $servers 2>/dev/null || true
-          for pid in $serve $servers; do while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done; done
+          # A server that ignores TERM gets KILL once the step is 30 s old, so it cannot hold the uploads back.
+          for pid in $serve $servers; do
+            while kill -0 "$pid" 2>/dev/null; do
+              if [ "$SECONDS" -ge 30 ]; then kill -9 "$pid" 2>/dev/null || true; break; fi
+              sleep 0.2
+            done
+          done
           if [ -n "$user" ]; then
             if pgrep -u "$user" > /dev/null; then sudo -n -u "$user" /usr/bin/kill -TERM -1; fi
             for _ in $(seq 150); do pgrep -u "$user" > /dev/null || exit 0; sleep 0.2; done
@@ -1022,11 +1028,12 @@ jobs:
             --leg "$LEG"
 
       # Read after the replay, not streamed: an adb reset ends a stream. The log buffer is grown at boot to hold
-      # a 6-hour leg.
+      # a 6-hour leg. adb waits forever for a device that is gone, so the dump has a deadline.
       - name: Save the emulator's, adb's and Maestro's logs
         if: always() && matrix.leg.platform == 'android' && !matrix.leg.real
         run: |
-          adb -s "$QA_DEVICE_ID" logcat -d -v epoch -b main,system,crash,events > "$RUNNER_TEMP/qa-logcat.log" || true
+          timeout -k 10s 120s adb -s "$QA_DEVICE_ID" logcat -d -v epoch -b main,system,crash,events \
+            > "$RUNNER_TEMP/qa-logcat.log" || echo "::warning::The logcat dump ended early (exit $?)"
           cp /tmp/adb.*.log "$RUNNER_TEMP/qa-adb.log" || true
           cp -R ~/.maestro/tests "$RUNNER_TEMP/qa-maestro" || true
 

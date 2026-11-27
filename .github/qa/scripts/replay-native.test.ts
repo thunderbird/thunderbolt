@@ -227,9 +227,10 @@ echo "maestro flow" >> '${calls}'
 
 /**
  * Runs the Android flow once per entry of `flags`, after creating that entry's file: `lost-<serial>` makes adb lose
- * that emulator, `drop-<serial>` makes adb lose it during Maestro's flow, `full` fails the install on a device adb
- * still sees, `fail-flow` fails Maestro's flow. A new boot comes up as emulator-5556. Returns each run's result or what it threw, the calls with paths cut to file names, and
- * stderr.
+ * that emulator, `drop-<serial>` makes adb lose it during Maestro's flow, `flap-<serial>` makes adb lose it until
+ * `wait-for-device`, `full` fails the install on a device adb still sees, `fail-flow` fails Maestro's flow. A new
+ * boot comes up as emulator-5556. Returns each run's result or what it threw, the calls with paths cut to file names,
+ * and stderr.
  */
 const androidRuns = (flags: (string | undefined)[]) => {
   const dir = mkdtempSync(join(work, 'lost-'))
@@ -241,11 +242,11 @@ const androidRuns = (flags: (string | undefined)[]) => {
     `#!/bin/bash
 echo "adb $*" >> '${calls}'
 serial=$2
-lost() { [ -f "${dir}/lost-$serial" ]; }
+lost() { [ -f "${dir}/lost-$serial" ] || [ -f "${dir}/flap-$serial" ]; }
 case "$*" in
   devices) printf 'List of devices attached\\nemulator-5556\\tdevice\\n' ;;
   *" get-state") lost && { echo "error: device '$2' not found" >&2; exit 1; }; echo device ;;
-  *" wait-for-device") lost && exit 1 ;;
+  *" wait-for-device") rm -f "${dir}/flap-$serial"; lost && exit 1 ;;
   *" install -r "*)
     lost && { echo "adb: device '$2' not found" >&2; exit 1; }
     [ -f '${dir}/full' ] && { echo 'Failure [INSTALL_FAILED_INSUFFICIENT_STORAGE]'; exit 1; } ;;
@@ -334,6 +335,18 @@ test('an Android run on an emulator adb lost boots a new one once, and the runs 
   expect(calls.filter((line) => line.endsWith(' -G 64M'))).toHaveLength(1)
   expect(stderr).toContain('adb lost emulator-5554;')
   expect(stderr).toContain('adb lost emulator-5556;')
+})
+
+test('an Android run on an emulator adb sees again within the reconnect window starts over on it, with no boot', () => {
+  const { results, calls } = androidRuns(['flap-emulator-5554', undefined])
+
+  expect(results).toEqual([{ threw: 'DeviceLost', message: 'emulator dropped off adb', retry: true }, { passed: true }])
+  // The stream starts again on the same emulator, and the next run uses it.
+  expect(calls.filter((line) => / install -r | logcat -c$| -G 64M$/.test(line))).toEqual([
+    'adb -s emulator-5554 install -r plain.apk',
+    'adb -s emulator-5554 logcat -c',
+    'adb -s emulator-5554 install -r plain.apk',
+  ])
 })
 
 test('a failed flow or install on an emulator adb still sees keeps its own outcome, with nothing recovered', () => {

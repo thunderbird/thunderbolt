@@ -96,8 +96,9 @@ export const createRunFlow = (opts: {
     const back = await $`timeout ${reconnectSeconds} adb -s ${device.id} wait-for-device`.quiet().nothrow()
     if (back.exitCode !== 0) await reboot()
     // An adb reset ends the stream, and a new emulator needs one of its own.
-    await $`${nativeSh} stop-logs ${webviewLog}`.quiet()
-    await $`${nativeSh} logs android ${device.id} ${webviewLog}`.quiet()
+    // Not quiet: `lost` drops the error, so adb's own message is the only reason the job log gets.
+    await $`${nativeSh} stop-logs ${webviewLog}`
+    await $`${nativeSh} logs android ${device.id} ${webviewLog}`
   }
   /** Prints what may explain the loss and, once per leg, gets the emulator back. Always throws. */
   const lost = async (): Promise<never> => {

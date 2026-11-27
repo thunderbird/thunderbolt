@@ -354,7 +354,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    and the leg goes on. An install that fails with adb's `device '…' not found` counts as a loss even if adb sees the
    emulator again a moment later.
    The leg first names the run in progress when adb lost the emulator (`control` or `<charter>/<finding id>`,
-   with the attempt) and its step (install, flow or tree dump). `native.sh device-lost` then prints what may explain
+   with the attempt) and its step (install, flow or tree dump). A finding whose file name is not a number shows as
+   `<charter>/sha256:<first 8 hex digits>`, since the explorer picks the name and it could hold app text.
+   `native.sh device-lost` then prints what may explain
    the loss: how the emulator process ended (its exit code or the signal that killed it, which a small watcher
    process records in `qa-emulator-<boot>.status`) or that it still runs, free memory, OOM kills, and, for each crash
    signature, how many lines of the emulator's log hold it. Each boot writes its own log, `qa-emulator-<boot>.log`.

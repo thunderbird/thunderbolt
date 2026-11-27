@@ -6,6 +6,7 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
+import { createHash } from 'node:crypto'
 import { readFile, rm } from 'node:fs/promises'
 import { basename, join, relative, resolve } from 'node:path'
 import { parseArgs, stripVTControlCharacters } from 'node:util'
@@ -126,7 +127,8 @@ export type FlowRun = {
 /**
  * Runs a checked flow on a freshly installed app. `run` is unique within one replay; `session` picks the build
  * (onboarding on for c1). `signIn` runs first in the same launch, and the flow runs only when it passed. `label`
- * names the run in the job log when its emulator is lost: `control` or `<charter>/<finding id>`, with the attempt.
+ * names the run in the job log when its emulator is lost: `control` or `<charter>/<finding id>`, with the attempt
+ * (`logName`).
  */
 export type RunFlow = (
   flowYaml: string,
@@ -772,6 +774,15 @@ const counter = () => {
 }
 
 /**
+ * A finding's name in the job log. The explorer picks the file name, and the prompt asks for a number. Any other name
+ * could carry app text on android-real, so it shows only as a short hash.
+ */
+const logName = ({ charterDir, id }: FindingFile) =>
+  /^\d+$/.test(id)
+    ? `${charterDir}/${id}`
+    : `${charterDir}/sha256:${createHash('sha256').update(id).digest('hex').slice(0, 8)}`
+
+/**
  * Runs `control/stack.yaml` three times, then each finding's checked flow three times, on fresh installs. A failed
  * control run stops the replay: the findings never run. A run whose driver never started, even on its retry, is
  * inconclusive and replaced like a finding's, but only while every finding's base runs still fit the leg. A control
@@ -811,7 +822,7 @@ const replayFlows = async (
     const failure = (run: FlowRun) => flowFailure(oracle, run)
     outcomes.set(
       file,
-      await threeRuns(device, flow, file.charterDir, failure, unreached(oracle), owed, { label: findingId(file) }),
+      await threeRuns(device, flow, file.charterDir, failure, unreached(oracle), owed, { label: logName(file) }),
     )
   }
   return { stackProblem: undefined, outcomes }

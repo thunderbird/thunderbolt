@@ -7,6 +7,7 @@
 | `ci.yml`                  | PR (any base branch) + push to `main`                              | Red check                | See the job table below         |
 | `e2e.yml`                 | PR (path-gated) + push to `main`                                   | Red check                | `bun run e2e`                   |
 | `security.yml`            | PR + push to `main`                                                | Red check                | n/a                             |
+| `codeql.yml`              | PR + push to `main` (Swift only when Swift files change) + weekly  | Code scanning alerts     | n/a                             |
 | `lint-pr-title.yml`       | PR opened / edited / synchronized                                  | Red check                | n/a                             |
 | `pr-metrics.yml`          | PR                                                                 | Advisory comment         | `bun run build && bun run size` |
 | `thunder-deep-review.yml` | PR, same-repo, non-draft, non-Dependabot                           | Advisory comment         | n/a                             |
@@ -23,6 +24,11 @@ Also part of the same machinery:
 | `images-publish.yml`          | Push to `main` under a path filter, or called by `preview-deploy` |
 | `image-scan.yml`              | After `images-publish` or `nightly-images` succeeds, plus manual  |
 | `evals.yml`, `test-build.yml` | Manual only                                                       |
+
+`codeql.yml` is CodeQL's advanced setup, so the repository's CodeQL setting must stay on Advanced
+(default setup and this workflow cannot both upload). It scans Actions, JavaScript/TypeScript, Python
+and Rust on every PR and push to `main`. Swift needs a macOS runner for about 18 minutes, so it runs
+only when a Swift file or the passkey plugin's Swift packages change, and on the Monday schedule.
 
 `image-scan.yml` runs Trivy over the six published `:latest` images and reports HIGH and CRITICAL
 findings that have a fix to code scanning, one category per image. Findings never fail the job. It covers

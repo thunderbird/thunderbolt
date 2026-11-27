@@ -96,7 +96,7 @@ const chatWithNewAgent = async (page: Page) => {
   await expect(page.getByTestId('agent-selector-trigger')).toContainText(agentName)
 
   await sendChatPrompt(page, 'First question')
-  await expect(page.getByText('Reply 1')).toBeVisible()
+  await expect(page.locator('[data-quotable-message-id]').getByText('Reply 1')).toBeVisible()
   await expect(page).toHaveURL(/\/chats\/[^/]+$/)
 }
 
@@ -114,7 +114,7 @@ const openAgentSettings = async (page: Page) => {
 const sendAgainFromOpenChat = async (page: Page) => {
   await page.goBack()
   await expect(page).toHaveURL(/\/chats\/[^/]+$/)
-  await expect(page.getByText('Reply 1')).toBeVisible()
+  await expect(page.locator('[data-quotable-message-id]').getByText('Reply 1')).toBeVisible()
   await sendChatPrompt(page, 'Second question')
   await expect(page.getByText(refusal)).toBeVisible()
 }

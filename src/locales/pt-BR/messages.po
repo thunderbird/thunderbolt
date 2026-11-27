@@ -117,6 +117,10 @@ msgstr "{accountLabel}, menu da conta"
 msgid "{agentName} can't take attachments. Remove the attached files to send."
 msgstr "{agentName} não aceita anexos. Remova os arquivos anexados para enviar."
 
+#: src/components/chat/chat-reply-announcer.tsx
+msgid "{agentName} is responding"
+msgstr "{agentName} está respondendo"
+
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "{agentName} receives this chat and manages its own model connection. This device has not verified the agent's execution environment."
 msgstr ""
@@ -3236,6 +3240,10 @@ msgstr "Avançar"
 msgid "Go to"
 msgstr "Ir para"
 
+#: src/components/chat/go-to-latest-response-button.tsx
+msgid "Go to latest response"
+msgstr "Ir para a resposta mais recente"
+
 #: src/components/chat/chat-ui-greeting.ts
 msgid "Good afternoon"
 msgstr "Boa tarde"
@@ -5015,6 +5023,22 @@ msgstr "Redefinindo…"
 #: src/components/ui/resizable.tsx
 msgid "Resize panels"
 msgstr "Redimensionar painéis"
+
+#: src/components/chat/assistant-message.tsx
+msgid "Response"
+msgstr "Resposta"
+
+#: src/components/chat/chat-reply-announcer.tsx
+msgid "Response failed"
+msgstr "A resposta falhou"
+
+#: src/components/chat/chat-reply-announcer.tsx
+msgid "Response ready"
+msgstr "Resposta pronta"
+
+#: src/components/chat/chat-reply-announcer.tsx
+msgid "Response stopped"
+msgstr "Resposta interrompida"
 
 #: src/components/update-notification.tsx
 msgid "Restart Now"

@@ -131,7 +131,9 @@ for (const { width, desktopSizing } of [
       await page.getByRole('button', { name: `${defaultModelOpus55.name} Thunderbolt`, exact: true }).click()
       await page.keyboard.press('Escape')
       await send.click()
-      await expect(page.getByText(fakeProviderReply, { exact: true })).toBeVisible()
+      await expect(
+        page.locator('[data-quotable-message-id]').getByText(fakeProviderReply, { exact: true }),
+      ).toBeVisible()
       await textarea.fill('Continue')
       if (desktopSizing) {
         // Only exercise native desktop CSS for geometry; opening a mobile JS

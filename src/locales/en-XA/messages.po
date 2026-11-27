@@ -110,6 +110,10 @@ msgstr ""
 msgid "{agentName} can't take attachments. Remove the attached files to send."
 msgstr ""
 
+#: src/components/chat/chat-reply-announcer.tsx
+msgid "{agentName} is responding"
+msgstr ""
+
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "{agentName} receives this chat and manages its own model connection. This device has not verified the agent's execution environment."
 msgstr ""
@@ -3217,6 +3221,10 @@ msgstr ""
 msgid "Go to"
 msgstr ""
 
+#: src/components/chat/go-to-latest-response-button.tsx
+msgid "Go to latest response"
+msgstr ""
+
 #: src/components/chat/chat-ui-greeting.ts
 msgid "Good afternoon"
 msgstr ""
@@ -4995,6 +5003,22 @@ msgstr ""
 
 #: src/components/ui/resizable.tsx
 msgid "Resize panels"
+msgstr ""
+
+#: src/components/chat/assistant-message.tsx
+msgid "Response"
+msgstr ""
+
+#: src/components/chat/chat-reply-announcer.tsx
+msgid "Response failed"
+msgstr ""
+
+#: src/components/chat/chat-reply-announcer.tsx
+msgid "Response ready"
+msgstr ""
+
+#: src/components/chat/chat-reply-announcer.tsx
+msgid "Response stopped"
 msgstr ""
 
 #: src/components/update-notification.tsx

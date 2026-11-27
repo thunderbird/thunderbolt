@@ -10,6 +10,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { getClock } from '@/testing-library'
 import { ContentViewProvider } from '@/content-view/context'
 import { AssistantMessage, mountMessageParts } from './assistant-message'
+import { responseHeadingId } from './latest-response'
 
 const createReasoningPart = (text: string): ReasoningUIPart =>
   ({
@@ -286,6 +287,21 @@ describe('AssistantMessage actions', () => {
     const copyButton = screen.getByRole('button', { name: /^Copy message/ })
     const shareButton = screen.getByRole('button', { name: 'Share transcript' })
     expect(copyButton.parentElement).toBe(shareButton.parentElement)
+
+    cleanup()
+  })
+
+  it('opens with a focusable "Response" heading for screen-reader navigation', () => {
+    render(
+      <AssistantMessage
+        message={{ id: 'assistant-1', role: 'assistant', parts: [{ type: 'text', text: 'Hi' }] }}
+        isStreaming={false}
+      />,
+    )
+
+    const heading = screen.getByRole('heading', { level: 2, name: 'Response' })
+    expect(heading.id).toBe(responseHeadingId('assistant-1'))
+    expect(heading.tabIndex).toBe(-1)
 
     cleanup()
   })

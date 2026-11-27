@@ -301,7 +301,9 @@ test('offline with an expired session copy, the app says it waits and opens on t
   await page.getByRole('button', { name: `${defaultModelOpus55.name} Thunderbolt`, exact: true }).click()
   await page.keyboard.press('Escape')
   await sendChatPrompt(page, 'A chat to come back to')
-  await expect(page.getByText(fakeProviderReply, { exact: true })).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('[data-quotable-message-id]').getByText(fakeProviderReply, { exact: true })).toBeVisible({
+    timeout: 30_000,
+  })
   const chatUrl = page.url()
   expect(chatUrl).toMatch(/\/chats\/[0-9a-f-]{36}$/)
 

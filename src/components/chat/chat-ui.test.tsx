@@ -136,4 +136,25 @@ describe('ChatUI model setup', () => {
       expect(sent).toContain('notes.txt')
     },
   )
+
+  it('offers "Go to latest response" only once the chat has a response', () => {
+    const { chat, rerender } = renderChat('provider connection')
+    expect(screen.queryByRole('button', { name: 'Go to latest response' })).toBeNull()
+
+    chat.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] },
+      { id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'Hello' }] },
+    ]
+    rerender(<ChatUI />)
+    expect(screen.getByRole('button', { name: 'Go to latest response' })).toBeInTheDocument()
+  })
+
+  it('keeps the reply live regions mounted, empty, on a new chat', () => {
+    const { container } = renderChat('provider connection')
+    const regions = container.querySelectorAll('.sr-only[role="status"], .sr-only[role="alert"]')
+    expect([...regions].map((region) => [region.getAttribute('role'), region.textContent])).toEqual([
+      ['status', ''],
+      ['alert', ''],
+    ])
+  })
 })

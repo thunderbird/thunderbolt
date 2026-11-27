@@ -103,6 +103,10 @@ msgstr "{accountLabel}、アカウントメニュー"
 msgid "{agentName} can't take attachments. Remove the attached files to send."
 msgstr "{agentName} は添付ファイルを受け付けません。送信するには添付ファイルを削除してください。"
 
+#: src/components/chat/chat-reply-announcer.tsx
+msgid "{agentName} is responding"
+msgstr "{agentName}が応答しています"
+
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "{agentName} receives this chat and manages its own model connection. This device has not verified the agent's execution environment."
 msgstr ""
@@ -3198,6 +3202,10 @@ msgstr "進む"
 msgid "Go to"
 msgstr "移動"
 
+#: src/components/chat/go-to-latest-response-button.tsx
+msgid "Go to latest response"
+msgstr "最新の応答へ移動"
+
 #: src/components/chat/chat-ui-greeting.ts
 msgid "Good afternoon"
 msgstr "こんにちは"
@@ -4977,6 +4985,22 @@ msgstr "リセットしています…"
 #: src/components/ui/resizable.tsx
 msgid "Resize panels"
 msgstr "パネルのサイズを変更"
+
+#: src/components/chat/assistant-message.tsx
+msgid "Response"
+msgstr "応答"
+
+#: src/components/chat/chat-reply-announcer.tsx
+msgid "Response failed"
+msgstr "応答に失敗しました"
+
+#: src/components/chat/chat-reply-announcer.tsx
+msgid "Response ready"
+msgstr "応答が完了しました"
+
+#: src/components/chat/chat-reply-announcer.tsx
+msgid "Response stopped"
+msgstr "応答を停止しました"
 
 #: src/components/update-notification.tsx
 msgid "Restart Now"

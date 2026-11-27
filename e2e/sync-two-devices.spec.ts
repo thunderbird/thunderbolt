@@ -76,7 +76,7 @@ test('chats and model reasoning preferences sync between devices without reloadi
 
     const title = `Sync check ${crypto.randomUUID().slice(0, 8)}`
     await sendChatPrompt(page, title)
-    await expect(page.getByText(fakeProviderReply)).toBeVisible()
+    await expect(page.locator('[data-quotable-message-id]').getByText(fakeProviderReply)).toBeVisible()
 
     await openSidebarOnMobile(secondPage)
     await expect(secondPage.getByText(title, { exact: true })).toBeVisible({ timeout: 60_000 })

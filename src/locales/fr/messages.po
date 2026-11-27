@@ -117,6 +117,10 @@ msgstr "{accountLabel}, menu du compte"
 msgid "{agentName} can't take attachments. Remove the attached files to send."
 msgstr "{agentName} n'accepte pas les pièces jointes. Retirez les fichiers joints pour envoyer."
 
+#: src/components/chat/chat-reply-announcer.tsx
+msgid "{agentName} is responding"
+msgstr "{agentName} est en train de répondre"
+
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "{agentName} receives this chat and manages its own model connection. This device has not verified the agent's execution environment."
 msgstr ""
@@ -3236,6 +3240,10 @@ msgstr "Suivant"
 msgid "Go to"
 msgstr "Aller à"
 
+#: src/components/chat/go-to-latest-response-button.tsx
+msgid "Go to latest response"
+msgstr "Aller à la dernière réponse"
+
 #: src/components/chat/chat-ui-greeting.ts
 msgid "Good afternoon"
 msgstr "Bonjour"
@@ -5015,6 +5023,22 @@ msgstr "Réinitialisation…"
 #: src/components/ui/resizable.tsx
 msgid "Resize panels"
 msgstr "Redimensionner les panneaux"
+
+#: src/components/chat/assistant-message.tsx
+msgid "Response"
+msgstr "Réponse"
+
+#: src/components/chat/chat-reply-announcer.tsx
+msgid "Response failed"
+msgstr "Échec de la réponse"
+
+#: src/components/chat/chat-reply-announcer.tsx
+msgid "Response ready"
+msgstr "Réponse prête"
+
+#: src/components/chat/chat-reply-announcer.tsx
+msgid "Response stopped"
+msgstr "Réponse arrêtée"
 
 #: src/components/update-notification.tsx
 msgid "Restart Now"

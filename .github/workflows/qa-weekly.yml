@@ -938,7 +938,11 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qa-replay-${{ matrix.leg.name }}
-          path: ${{ matrix.leg.out }}/
+          # simctl writes a video to <name>.mp4.sb-* and renames it once it stops. After a cancelled run that rename
+          # can land mid-upload, and the vanished file fails the upload.
+          path: |
+            ${{ matrix.leg.out }}/
+            !${{ matrix.leg.out }}/videos/*.mp4.sb-*
           retention-days: 7
 
   # Only android-real has an environment, for the provider keys its start step hands to another user's backend.
@@ -2131,7 +2135,10 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qa-verify-${{ matrix.check.fp }}-${{ matrix.check.platform }}
-          path: qa-out/verify/
+          # Without the videos simctl is still writing, as in the replay's upload.
+          path: |
+            qa-out/verify/
+            !qa-out/verify/videos/*.mp4.sb-*
           if-no-files-found: ignore
           retention-days: 7
 

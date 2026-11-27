@@ -4,7 +4,6 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { createHash } from 'node:crypto'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
@@ -25,6 +24,7 @@ import {
   replayEnv,
   screenshotTaken,
   verifyNativeFix,
+  withProgress,
   worstJudgeCost,
   type CreateMessage,
   type FlowRun,
@@ -1207,6 +1207,50 @@ describe('replay of native flows', () => {
     })
   })
 
+  test('only a layout finding asks the device for its tree, never the control or another oracle', async () => {
+    await writeNative(makeNative('laid-out', layout))
+    await writeNative(makeNative('asserted', assertFailed))
+    const asked = new Set<string>()
+    const flow = fakeFlow({}, [])
+
+    await replay(outDir, fakeRunner({}, []), qaDir, async (...args) => {
+      asked.add(`${/assertVisible: "?([^"\n]+)/.exec(args[0])?.[1]}: ${args[6]}`)
+      return flow(...args)
+    })
+
+    expect(asked).toEqual(new Set(['stack control: false', 'asserted: false', 'laid-out: true']))
+  })
+
+  test('prints one start and one end line per device run, naming it as a lost run is named', async () => {
+    // File names the explorer took from the app: a number (an account id), then words.
+    await Bun.write(join(outDir, session, 'findings/4821.json'), JSON.stringify(makeNative('numbered', assertFailed)))
+    await Bun.write(join(outDir, session, 'repro/numbered.yaml'), flowOf('numbered'))
+    await writeNative(makeNative('welcome-back-alice', assertFailed))
+    const driver = { passed: false, error: 'Unable to launch app: iOS driver not ready in time' }
+    const lines: string[] = []
+
+    await replay(
+      outDir,
+      fakeRunner({}, []),
+      qaDir,
+      withProgress(fakeFlow({ numbered: [driver] }, []), (line) => lines.push(line)),
+    )
+
+    // The driver's retry is a new run, and so a new video, within the same attempt.
+    const runs = [
+      ...[1, 2, 3].map((attempt) => `control, attempt ${attempt}`),
+      ...[1, 1, 2, 3].map((attempt) => `${session}/#1, attempt ${attempt}`),
+      ...[1, 2, 3].map((attempt) => `${session}/#2, attempt ${attempt}`),
+    ]
+    expect(lines.map((line) => line.replace(/after \d+ s/, 'after N s'))).toEqual(
+      runs.flatMap((label, index) => [
+        `run ${index + 1} started: ${label}`,
+        `run ${index + 1} ended after N s: ${label}`,
+      ]),
+    )
+    expect(lines.join('\n')).not.toMatch(/4821|alice/)
+  })
+
   describe('a run whose emulator dropped off adb', () => {
     const failed = { passed: false, error: 'Assertion is false: "always" is visible' }
     const again = new DeviceLost('emulator dropped off adb', true)
@@ -1229,12 +1273,9 @@ describe('replay of native flows', () => {
         throw loss
       }
     }
-    /** How the job log names a finding whose file name is not a number. */
-    const hashed = (name: string) => `${session}/sha256:${createHash('sha256').update(name).digest('hex').slice(0, 8)}`
-
-    test('names a lost finding in the job log by its numeric id, and by a hash of any other file name', async () => {
-      // The numbered file the prompt asks for, then a name the explorer picked from what the app showed.
-      await Bun.write(join(outDir, session, 'findings/1.json'), JSON.stringify(makeNative('numbered', assertFailed)))
+    test('names a lost finding in the job log by its place in the replay, never by its file name', async () => {
+      // File names the explorer took from the app: a number (an account id), then words.
+      await Bun.write(join(outDir, session, 'findings/4821.json'), JSON.stringify(makeNative('numbered', assertFailed)))
       await Bun.write(join(outDir, session, 'repro/numbered.yaml'), flowOf('numbered'))
       await writeNative(makeNative('welcome-back-alice', assertFailed))
       const calls: FlowCall[] = []
@@ -1242,8 +1283,8 @@ describe('replay of native flows', () => {
       await replay(outDir, fakeRunner({}, []), qaDir, losing(new Map([4, 5].map((n) => [n, again])), calls, {}))
 
       const lost = calls.map((call) => call.title).filter((title) => title.startsWith('lost'))
-      expect(lost).toEqual([`lost: ${session}/1, attempt 1`, `lost: ${hashed('welcome-back-alice')}, attempt 1`])
-      expect(lost.join('\n')).not.toContain('alice')
+      expect(lost).toEqual([`lost: ${session}/#1, attempt 1`, `lost: ${session}/#2, attempt 1`])
+      expect(lost.join('\n')).not.toMatch(/4821|alice/)
     })
 
     test('moves on to the next finding once the emulator is back, keeping the runs the lost one counted', async () => {
@@ -1257,7 +1298,7 @@ describe('replay of native flows', () => {
       expect(calls.map((call) => call.title)).toEqual([
         ...Array(3).fill('stack control'),
         'a-lost',
-        `lost: ${hashed('a-lost')}, attempt 2`,
+        `lost: ${session}/#1, attempt 2`,
         ...Array(3).fill('b-next'),
       ])
       expect(result.stack_unhealthy).toBeUndefined()
@@ -1310,7 +1351,7 @@ describe('replay of native flows', () => {
         'lost: control, attempt 1',
         ...Array(3).fill('stack control'),
         'always',
-        `lost: ${hashed('always')}, attempt 2`,
+        `lost: ${session}/#1, attempt 2`,
       ])
       expect(result.stack_unhealthy).toBe('emulator dropped off adb a second time in this leg')
       expect(result.confirmed).toEqual([])

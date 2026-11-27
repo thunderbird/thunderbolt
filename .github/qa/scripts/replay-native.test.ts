@@ -70,7 +70,9 @@ exit 0
       webviewLog: ${JSON.stringify(webviewLog)},
       backendLog: ${JSON.stringify(backendLog)},
     })
-    const run = await runFlow('- launchApp\\n', ${JSON.stringify(join(work, 'out'))}, 1, 'c2-chat-power-user-android')
+    // Android dumps the tree even for a run whose proof reads no tree line.
+    const run = await runFlow('- launchApp\\n', ${JSON.stringify(join(work, 'out'))}, 1, 'c2-chat-power-user-android',
+      undefined, undefined, false)
     console.log(JSON.stringify(run.layout))
   `
   // Relative app paths, as a caller may pass them, from a folder other than the one native.sh moves to.
@@ -101,8 +103,11 @@ exit 0
 const probeCheckbox = '[qa-layout] unnamed-control checkbox "#terms-agreement"'
 const probeButton = '[qa-layout] unnamed-control button "arrow-left icon after Connect Google"'
 
-/** Ends on the privacy step with the checkbox unlabeled; `failure` fails the sign-in or times out the flow's driver. */
-const iosRun = (failure: '' | 'sign-in' | 'driver') => {
+/**
+ * Ends on the privacy step with the checkbox unlabeled; `failure` fails the sign-in or times out the flow's driver.
+ * `needsTree` is passed on to the run when set.
+ */
+const iosRun = (failure: '' | 'sign-in' | 'driver', needsTree?: boolean) => {
   const dir = mkdtempSync(join(work, 'ios-'))
   const bin = join(dir, 'bin')
   const calls = join(dir, 'calls.log')
@@ -137,7 +142,7 @@ exit 0
       backendLog: ${JSON.stringify(logs[1])},
     })
     const run = await runFlow('- assertVisible: x\\n', ${JSON.stringify(join(dir, 'out'))}, 1, 'c1-first-run-ios',
-      '- extendedWaitUntil: Check your email\\n')
+      '- extendedWaitUntil: Check your email\\n', undefined, ${needsTree})
     console.log(JSON.stringify(run.layout))
   `
   const proc = Bun.spawnSync([process.execPath, '-e', script], {
@@ -157,6 +162,12 @@ test('an iOS run adds the tree line of the screen it ends on, read once after th
     layout: [probeButton, '[qa-layout] unnamed-control checkbox "after Data is stored securely on your device."'],
     maestro: ['maestro test', 'maestro test', 'maestro hierarchy'],
   }))
+
+test("an iOS run whose proof reads no tree line, as the control's or a non-layout finding's, skips the tree", () =>
+  expect(iosRun('', false)).toEqual({ layout: [probeButton], maestro: ['maestro test', 'maestro test'] }))
+
+test('an iOS run for a layout finding reads the tree', () =>
+  expect(iosRun('', true).maestro).toEqual(['maestro test', 'maestro test', 'maestro hierarchy']))
 
 test('an iOS run whose sign-in failed skips the tree, since it never counts', () =>
   expect(iosRun('sign-in')).toEqual({ layout: [], maestro: ['maestro test'] }))
@@ -324,7 +335,7 @@ exit 0
       for (const name of flag?.split(' ') ?? []) writeFileSync(${JSON.stringify(dir)} + '/' + name, '')
       try {
         const run = await runFlow('- launchApp\\n', ${JSON.stringify(join(dir, 'out'))}, index + 1, 'c2-chat-power-user-android',
-          undefined, 'c2-chat-power-user-android/f1, attempt ' + (index + 1))
+          undefined, 'c2-chat-power-user-android/#1, attempt ' + (index + 1))
         // Left out when empty, as error is when the run passed.
         const layout = run.layout.length > 0 ? run.layout : undefined
         results.push({ passed: run.passed, error: run.error, inconclusive: run.inconclusive, layout })
@@ -405,8 +416,8 @@ test('an Android run on an emulator adb lost boots a new one once, and the runs 
   expect(calls.filter((line) => line.endsWith(' logcat -c'))).toEqual([])
   expect(webview).toBe('I Tauri/Console: before the loss\n')
   // Each loss names its run and step before native.sh's diagnostics.
-  const install = 'adb lost the emulator during the install of c2-chat-power-user-android/f1, attempt 1\n'
-  const flow = 'adb lost the emulator during the flow of c2-chat-power-user-android/f1, attempt 3\n'
+  const install = 'adb lost the emulator during the install of c2-chat-power-user-android/#1, attempt 1\n'
+  const flow = 'adb lost the emulator during the flow of c2-chat-power-user-android/#1, attempt 3\n'
   expect(stderr.indexOf(install)).toBeGreaterThan(-1)
   expect(stderr.indexOf(install)).toBeLessThan(stderr.indexOf('adb lost emulator-5554;'))
   expect(stderr.indexOf(flow)).toBeGreaterThan(stderr.indexOf('adb lost emulator-5554;'))
@@ -467,7 +478,7 @@ test('a passed run whose tree dump fails on an emulator adb lost does not count,
   expect(results).toEqual([{ threw: 'DeviceLost', message: 'emulator dropped off adb', retry: true }, { passed: true }])
   // The lost run's video is never pulled.
   expect(calls.filter((line) => line.includes(' pull '))).toHaveLength(1)
-  expect(stderr).toContain('adb lost the emulator during the tree dump of c2-chat-power-user-android/f1, attempt 1\n')
+  expect(stderr).toContain('adb lost the emulator during the tree dump of c2-chat-power-user-android/#1, attempt 1\n')
 }, 15_000)
 
 test('a recovery that would end past the deadline is cut there, and the loss ends the leg', () => {

@@ -1643,6 +1643,25 @@ describe('native jobs', () => {
     expect(indexOf('replay-native', upload)).toBeGreaterThan(indexOf('replay-native', save))
   })
 
+  test('a replay or fix check uploads its folder without a video simctl is still writing', () => {
+    const replayPaths = ['${{ matrix.leg.out }}/', '!${{ matrix.leg.out }}/videos/*.mp4.sb-*']
+    for (const job of ['replay', 'replay-native']) {
+      expect({ job, paths: step(job, 'Upload the replay').with?.path?.split('\n').filter(Boolean) }).toEqual({
+        job,
+        paths: replayPaths,
+      })
+    }
+    const verify = steps('verify-native-run').find((s) => s.with?.name?.startsWith('qa-verify-'))
+    expect(verify?.with?.path?.split('\n').filter(Boolean)).toEqual([
+      'qa-out/verify/',
+      '!qa-out/verify/videos/*.mp4.sb-*',
+    ])
+    // The file whose rename failed run 46041417363's upload, and the video it became.
+    const excluded = new Bun.Glob(replayPaths[1].slice(1).replace('${{ matrix.leg.out }}', 'qa-out'))
+    expect(excluded.match('qa-out/videos/ios-c2-chat-power-user-ios-run-18.mp4.sb-641e2350-4gJpmI')).toBe(true)
+    expect(excluded.match('qa-out/videos/ios-c2-chat-power-user-ios-run-18.mp4')).toBe(false)
+  })
+
   test.skipIf(Bun.which('timeout') === null)(
     "a logcat dump from a device that is gone stops at its deadline and keeps what it read, then copies each boot's log",
     () => {
@@ -1694,7 +1713,7 @@ describe('native jobs', () => {
       run: 'cp -R ~/.maestro/tests qa-out/verify/maestro || true',
     })
     const upload = steps('verify-native-run').findIndex((s) => s.with?.name?.startsWith('qa-verify-'))
-    expect(steps('verify-native-run')[upload].with?.path).toBe('qa-out/verify/')
+    expect(steps('verify-native-run')[upload].with?.path?.split('\n')[0]).toBe('qa-out/verify/')
     expect(indexOf('verify-native-run', keep)).toBe(upload - 1)
     expect(indexOf('verify-native-run', keep)).toBeGreaterThan(
       indexOf('verify-native-run', 'Run the flow on the patched app'),

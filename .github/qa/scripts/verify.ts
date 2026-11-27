@@ -6,7 +6,6 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
-import { createHash } from 'node:crypto'
 import { readFile, rm } from 'node:fs/promises'
 import { basename, join, relative, resolve } from 'node:path'
 import { parseArgs, stripVTControlCharacters } from 'node:util'
@@ -127,8 +126,9 @@ export type FlowRun = {
 /**
  * Runs a checked flow on a freshly installed app. `run` is unique within one replay; `session` picks the build
  * (onboarding on for c1). `signIn` runs first in the same launch, and the flow runs only when it passed. `label`
- * names the run in the job log when its emulator is lost: `control` or `<charter>/<finding id>`, with the attempt
- * (`logName`).
+ * names the run in the job log (`withProgress`, and a lost emulator): `control` or `<charter>/#<n>` (n is the
+ * finding's place among the leg's device flows), with the attempt. `needsTree` false lets an iOS run skip the tree dump,
+ * which only a layout finding's proof reads.
  */
 export type RunFlow = (
   flowYaml: string,
@@ -137,6 +137,7 @@ export type RunFlow = (
   session: string,
   signIn?: string,
   label?: string,
+  needsTree?: boolean,
 ) => Promise<FlowRun>
 
 /** One Messages API call, injected so tests never reach the network. */
@@ -508,9 +509,10 @@ const endsOnBugAssertion = (yaml: string, oracle: Oracle | undefined) => {
 
 /**
  * `signIn` runs first in the same launch and its failure is never the bug: the harness's sign-in and, where a failed
- * flow is the bug, the steps before its assertion.
+ * flow is the bug, the steps before its assertion. `needsTree`: the proof reads the platform's tree, as only a layout
+ * finding's does.
  */
-type NativeFlow = { yaml: string; signIn?: string }
+type NativeFlow = { yaml: string; signIn?: string; needsTree: boolean }
 
 /** Serializes through the allow list, so only checked commands reach a device. */
 const serialize = (commands: unknown[], appId: string) => {
@@ -586,8 +588,9 @@ const withSignIn = async (
   const rest = split?.flow ?? flow
   const assertAt = failureIsBug(oracle) ? rest.findLastIndex((command) => !settle.safeParse(command).success) : -1
   const before = [...signIn, ...(split?.signIn ?? []), ...rest.slice(0, Math.max(assertAt, 0))]
-  if (before.length === 0) return { yaml: serialize(rest, appId) }
-  return { signIn: serialize(before, appId), yaml: serialize(rest.slice(Math.max(assertAt, 0)), appId) }
+  const needsTree = oracle?.type === 'layout'
+  if (before.length === 0) return { yaml: serialize(rest, appId), needsTree }
+  return { signIn: serialize(before, appId), yaml: serialize(rest.slice(Math.max(assertAt, 0)), appId), needsTree }
 }
 
 /** The flow replay ran: our own serialization, never the model's text, with any steps run first as a header. */
@@ -709,7 +712,7 @@ const unreached = (oracle: FindingFile['finding']['oracle']) =>
  */
 const threeRuns = async (
   { runFlow, outDir, next, clock }: Device,
-  { yaml, signIn }: NativeFlow,
+  { yaml, signIn, needsTree }: NativeFlow,
   session: string,
   failure: (run: FlowRun) => string | undefined,
   inconclusive?: (run: FlowRun) => boolean,
@@ -717,8 +720,9 @@ const threeRuns = async (
   { label = session, restartLost = false }: { label?: string; restartLost?: boolean } = {},
 ) => {
   const runOnce = async (named: string) => {
-    const first = await runFlow(yaml, outDir, next(), session, signIn, named)
-    return first.error?.includes(driverTimeout) ? runFlow(yaml, outDir, next(), session, signIn, named) : first
+    const once = () => runFlow(yaml, outDir, next(), session, signIn, named, needsTree)
+    const first = await once()
+    return first.error?.includes(driverTimeout) ? once() : first
   }
   /** Undefined when the emulator dropped off adb and is back. A lost run is never timed, so it does not size the leg. */
   const attempt = async (tries: number) => {
@@ -774,13 +778,21 @@ const counter = () => {
 }
 
 /**
- * A finding's name in the job log. The explorer picks the file name, and the prompt asks for a number. Any other name
- * could carry app text on android-real, so it shows only as a short hash.
+ * Prints a line when each run on the device starts and when it ends, with the run's number (its video's), how long it
+ * took and its `label`, so the job log shows where a slow or cut-short leg was. The label never holds app text.
  */
-const logName = ({ charterDir, id }: FindingFile) =>
-  /^\d+$/.test(id)
-    ? `${charterDir}/${id}`
-    : `${charterDir}/sha256:${createHash('sha256').update(id).digest('hex').slice(0, 8)}`
+export const withProgress =
+  (runFlow: RunFlow, log: (line: string) => void = console.log): RunFlow =>
+  async (...args) => {
+    const [, , run, session, , label = session] = args
+    const start = Date.now()
+    log(`run ${run} started: ${label}`)
+    try {
+      return await runFlow(...args)
+    } finally {
+      log(`run ${run} ended after ${Math.round((Date.now() - start) / 1000)} s: ${label}`)
+    }
+  }
 
 /**
  * Runs `control/stack.yaml` three times, then each finding's checked flow three times, on fresh installs. A failed
@@ -802,7 +814,7 @@ const replayFlows = async (
     if (!check.ok) throw new Error(`control/stack.yaml: ${check.problems.join('; ')}`)
     const { replay } = await threeRuns(
       device,
-      { yaml: check.yaml },
+      { yaml: check.yaml, needsTree: false },
       'control',
       (run) => (run.passed ? undefined : (run.error ?? 'the flow failed')),
       (run) => run.error?.includes(driverTimeout) === true,
@@ -820,10 +832,9 @@ const replayFlows = async (
     const { oracle } = file.finding
     const owed = 3 * (flows.size - 1 - index)
     const failure = (run: FlowRun) => flowFailure(oracle, run)
-    outcomes.set(
-      file,
-      await threeRuns(device, flow, file.charterDir, failure, unreached(oracle), owed, { label: logName(file) }),
-    )
+    // The explorer picks the file name, and on android-real even a number in it can come from the app.
+    const label = `${file.charterDir}/#${index + 1}`
+    outcomes.set(file, await threeRuns(device, flow, file.charterDir, failure, unreached(oracle), owed, { label }))
   }
   return { stackProblem: undefined, outcomes }
 }
@@ -1417,15 +1428,17 @@ if (import.meta.main) {
     if (!device || !app || !onboarding || !webviewLog || !backendLog) {
       throw new Error('--native needs --device, --app, --app-onboarding, QA_WEBVIEW_LOG and QA_BACKEND_LOG')
     }
-    return createRunFlow({
-      platform,
-      deviceId: device,
-      apps: { onboarding, plain: app },
-      webviewLog,
-      backendLog,
-      leg: values.leg,
-      recoverBy,
-    })
+    return withProgress(
+      createRunFlow({
+        platform,
+        deviceId: device,
+        apps: { onboarding, plain: app },
+        webviewLog,
+        backendLog,
+        leg: values.leg,
+        recoverBy,
+      }),
+    )
   }
   if (step === 'fix-native') {
     const { fp, flow, session, result: resultFile, original, native: platform, app } = values

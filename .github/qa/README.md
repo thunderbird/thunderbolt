@@ -344,7 +344,11 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    text changes, so its `width` or `below` still holds, and a text the flow itself types is left alone. The fix
    check runs flows through the same rewrite. `verify.ts replay --native` runs it 3 times through `replay-native.ts`,
    each time on a fresh install (the onboarding build for c1, the plain one otherwise), with a video under
-   `<out>/videos/`. `control/stack.yaml` runs 3 times first on the plain build; one failure marks the stack unhealthy
+   `<out>/videos/`. The job log gets a line when each run starts and another when it ends. Both carry the run's
+   number (the one in its video's name) and the name a run gets when adb loses the emulator (below), and the end line
+   says how long the run took, so a slow or cut-short leg shows where it was. simctl writes a video as
+   `<name>.mp4.sb-*` and renames it when the recording stops. The uploads leave those files out, since a rename during
+   an upload fails it. `control/stack.yaml` runs 3 times first on the plain build; one failure marks the stack unhealthy
    and no flow runs. A control run whose iOS driver did not start, even on its retry, is inconclusive and replaced like
    a finding's run, up to 3 extra runs; a control left with fewer than 3 counted runs also marks the stack unhealthy. On
    Android the install also maps the stack's ports into the emulator again and warms the app up (as `native.sh install`
@@ -353,9 +357,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    count. A probe that times out or prints nothing makes the run inconclusive, however much time the leg has left,
    and the leg goes on. An install that fails with adb's `device '…' not found` counts as a loss even if adb sees the
    emulator again a moment later.
-   The leg first names the run in progress when adb lost the emulator (`control` or `<charter>/<finding id>`,
-   with the attempt) and its step (install, flow or tree dump). A finding whose file name is not a number shows as
-   `<charter>/sha256:<first 8 hex digits>`, since the explorer picks the name and it could hold app text.
+   The leg first names the run in progress when adb lost the emulator (`control` or `<charter>/#<n>`, with the
+   attempt) and its step (install, flow or tree dump). `n` is the finding's place among the leg's device flows. The
+   file name is left out, since the explorer picks it and even a number in it could come from the app.
    `native.sh device-lost` then prints what may explain
    the loss: how the emulator process ended (its exit code or the signal that killed it, which a small watcher
    process records in `qa-emulator-<boot>.status`) or that it still runs, free memory, OOM kills, and, for each crash
@@ -375,7 +379,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    even after the clock has run out, from the wrap-up minutes, so a run that ends that late keeps its own outcome while
    adb sees the emulator. A fix's native check never recovers. Each run ends with one `maestro hierarchy` of the screen it
    stopped on, for the tree's `unnamed-control` lines and, on Android, its `behind-keyboard` line; a screen the run only passed through, like the privacy step the harness
-   clicks through, adds no tree line.
+   clicks through, adds no tree line. Only a `layout` proof reads tree lines, so an iOS run skips the dump for the
+   control and for any other oracle, to save the leg's time. Android always dumps, since a failed dump is one way a
+   lost emulator shows.
    A `layout` run fails when the probe (or a tree rule) logs the quoted `[qa-layout]` line during it, a `console-error`, `page-error` or `http-5xx` run when a new WebView or backend log
    line holds the evidence (cut at the console mark and normalized like the fingerprint), any other run when the flow
    fails. Both sides are compared as the gate showed them to the explorer (`cleanLogLine` in `sanitize.ts`: secrets

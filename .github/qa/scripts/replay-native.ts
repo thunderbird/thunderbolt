@@ -65,7 +65,8 @@ export const videoPath = (outDir: string, leg: string | undefined, session: stri
 /**
  * Each run uninstalls and reinstalls the app, so no session or draft from an earlier run is left. Android caps a
  * recording at 3 minutes, and its install goes through `native.sh install`, which warms the app up. `layout` gets the
- * tree's lines for the last screen and loses the probe's lines the tree owns (`keepsProbeLine`), as in the gate.
+ * tree's lines for the last screen and loses the probe's lines the tree owns (`keepsProbeLine`), as in the gate. An iOS
+ * run reads the tree only when `needsTree`, which is the default.
  * With `recoverBy`, an Android install, flow or tree dump that fails while adb says it lost the emulator throws
  * `DeviceLost`. When adb gives no clear answer, the run comes back `inconclusive` instead.
  */
@@ -159,7 +160,7 @@ export const createRunFlow = (opts: {
           inconclusive: true,
         }
       : lost(phase, label)
-  return async (flowYaml, outDir, run, session, signIn, label = session): Promise<FlowRun> => {
+  return async (flowYaml, outDir, run, session, signIn, label = session, needsTree = true): Promise<FlowRun> => {
     const deviceId = device.id
     // Absolute, because native.sh moves to the repo root before it reads the path.
     const app = resolve(session.startsWith('c1-first-run-') ? opts.apps.onboarding : opts.apps.plain)
@@ -214,8 +215,10 @@ export const createRunFlow = (opts: {
     const output = stripVTControlCharacters(`${result.stdout}${result.stderr}`).trim()
     const driverFailed = result.exitCode !== 0 && output.includes(driverTimeout)
     await Bun.sleep(probeWaitMs)
-    // A run that never counts skips the dump, which would only eat into the leg's time.
-    const tree = signInFailed || driverFailed ? [] : await treeLines(deviceId, platform)
+    // A run that never counts skips the dump, which would only eat into the leg's time. So does an iOS run whose proof
+    // reads no tree line. Android keeps it: a failed dump is one way a lost emulator shows.
+    const skipTree = signInFailed || driverFailed || (ios && !needsTree)
+    const tree = skipTree ? [] : await treeLines(deviceId, platform)
     // A dump that failed because adb lost the emulator would let even a passed run count with no layout evidence.
     const afterTree = recovers && !tree ? await probe() : 'online'
     if (afterTree !== 'online') return drop(afterTree, 'tree dump')

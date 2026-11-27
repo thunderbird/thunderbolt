@@ -1434,7 +1434,10 @@ describe('replay of native flows', () => {
     expect(asWritten(stack)).toEqual([...(await readSignIn()), landing('Ask me anything…')])
     const calibration = asWritten(await Bun.file(join(import.meta.dir, '../control/native-control.yaml')).text())
     const signIn = await readSignIn()
-    const enterEmail = signIn.findIndex((command) => z.object({ retry: z.unknown() }).safeParse(command).success)
+    const enterEmail = signIn.findIndex(
+      (command) =>
+        z.object({ retry: z.unknown() }).safeParse(command).success && JSON.stringify(command).includes('"Email"'),
+    )
     // Calibration must reach the same email screen through the real setup chooser before focusing the field.
     expect(calibration.slice(0, -2)).toEqual(signIn.slice(0, enterEmail))
   })

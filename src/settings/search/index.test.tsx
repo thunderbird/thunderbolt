@@ -82,7 +82,7 @@ it.each(['not_configured', 'workspace_disabled', 'unknown'] as const)(
     await act(async () => {
       await getClock().tickAsync(100)
     })
-    expect(screen.queryByRole('button', { name: 'Open Otari without search' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Otari without search/ })).toBeNull()
     expect(useSearchProviderStore.getState().connectionId).toBe(id)
   },
 )
@@ -96,7 +96,7 @@ it('checks each Otari instance separately and discovers search enabled later wit
   }))
   const view = renderPage()
   await waitForElement(() => screen.queryByRole('switch', { name: 'Use Search enabled' }))
-  expect(screen.queryByRole('button', { name: 'Open No search' })).toBeNull()
+  expect(screen.queryByRole('button', { name: /^No search/ })).toBeNull()
   fireEvent.click(screen.getByRole('switch', { name: 'Use Search enabled' }))
   expect(useSearchProviderStore.getState().connectionId).toBe(available)
   view.unmount()
@@ -115,7 +115,7 @@ it('lists named connections without models or inline credential fields and prese
   expect(useSearchProviderStore.getState().connectionId).toBe(personal)
   expect((await getProviderCredentials(getDb(), work))?.apiKey).toBe('secret-Work search')
   expect((await getProviderCredentials(getDb(), personal))?.apiKey).toBe('secret-Personal search')
-  fireEvent.click(screen.getByRole('button', { name: 'Open Work search' }))
+  fireEvent.click(screen.getByRole('button', { name: /^Work search/ }))
   expect(screen.queryByLabelText('API key')).toBeNull()
   expect(await openManageMenu()).toHaveAttribute('href', '/settings/connections')
 })
@@ -129,7 +129,7 @@ it('shows the shared OAuth connection summary and keeps management in the header
     credentials: { access_token: 'test-token' },
   })
   const { triggerChange } = renderPage()
-  fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Open Team search' })))
+  fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: /^Team search/ })))
   expect(screen.getByRole('status')).toHaveTextContent('Connected to Otari')
   expect(screen.getByRole('status')).toHaveTextContent('https://otari.example/api/v1')
   expect(screen.queryByRole('button', { name: 'Manage connection' })).toBeNull()
@@ -219,14 +219,14 @@ it('continues an existing Otari connection to its search availability details', 
   expect(screen.getByRole('heading', { name: 'Inference only' })).toBeVisible()
 })
 
-it.each(['New Search Connection', 'Open Existing search', 'Edit', 'Remove'])(
+it.each(['New Search Connection', 'Existing search', 'Edit', 'Remove'])(
   'cancels pending Otari authorization when navigating to %s',
   async (destination) => {
     await save('exa', 'Existing search')
     spyOn(platform, 'isTauri').mockReturnValue(false)
     const start = spyOn(otariBrowser, 'startOtariBrowserConnection').mockResolvedValue()
     renderPage()
-    await waitForElement(() => screen.queryByRole('button', { name: 'Open Existing search' }))
+    await waitForElement(() => screen.queryByRole('button', { name: /^Existing search/ }))
     fireEvent.click(screen.getByRole('button', { name: 'New Search Connection' }))
     fireEvent.click(screen.getByRole('button', { name: 'Otari Models and search' }))
     fireEvent.click(screen.getByRole('button', { name: 'Connect Otari' }))
@@ -235,10 +235,10 @@ it.each(['New Search Connection', 'Open Existing search', 'Edit', 'Remove'])(
     const signal = start.mock.calls[0][2]
     expect(signal.aborted).toBe(false)
     if (destination === 'Edit' || destination === 'Remove') {
-      fireEvent.contextMenu(screen.getByRole('button', { name: 'Open Existing search' }))
+      fireEvent.contextMenu(screen.getByRole('button', { name: /^Existing search/ }))
       fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: destination })))
     } else {
-      fireEvent.click(screen.getByRole('button', { name: destination }))
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${destination}`) }))
     }
     expect(signal.aborted).toBe(true)
     expect(screen.queryByRole('button', { name: 'Cancel connection' })).not.toBeInTheDocument()
@@ -273,7 +273,7 @@ it.each(['Edit', 'Remove'] as const)('%s opens the shared connection aside witho
       tables: ['provider_connections', 'provider_connection_secrets'],
     },
   )
-  fireEvent.contextMenu(await waitForElement(() => screen.queryByRole('button', { name: 'Open Work Exa' })))
+  fireEvent.contextMenu(await waitForElement(() => screen.queryByRole('button', { name: /^Work Exa/ })))
   fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: action })))
   expect(JSON.parse(screen.getByTestId('connection-request').textContent!)).toMatchObject({
     kind: 'connection',
@@ -289,7 +289,7 @@ it('filters named connections and cloud search, and clears the filter', async ()
   useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1', localMode: false })
   setAuthToken('session')
   renderPage()
-  await waitForElement(() => screen.queryByRole('button', { name: 'Open Research' }))
+  await waitForElement(() => screen.queryByRole('button', { name: /^Research/ }))
   fireEvent.click(screen.getByRole('button', { name: 'Search' }))
   const input = screen.getByPlaceholderText('Search connections')
   expect(input).toHaveFocus()
@@ -298,23 +298,23 @@ it('filters named connections and cloud search, and clears the filter', async ()
     await act(async () => {
       await getClock().tickAsync(100)
     })
-    expect(screen.getByRole('button', { name: 'Open Research' })).toBeVisible()
-    expect(screen.queryByRole('button', { name: 'Open Private workspace' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Open Thunderbolt' })).toBeNull()
+    expect(screen.getByRole('button', { name: /^Research/ })).toBeVisible()
+    expect(screen.queryByRole('button', { name: /^Private workspace/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Thunderbolt' })).toBeNull()
   }
   fireEvent.change(input, { target: { value: 'Thunderbolt' } })
   await act(async () => {
     await getClock().tickAsync(100)
   })
-  expect(screen.getByRole('button', { name: 'Open Thunderbolt' })).toBeVisible()
-  expect(screen.queryByRole('button', { name: 'Open Research' })).toBeNull()
+  expect(screen.getByRole('button', { name: 'Thunderbolt' })).toBeVisible()
+  expect(screen.queryByRole('button', { name: /^Research/ })).toBeNull()
   fireEvent.change(input, { target: { value: 'no match' } })
   await act(async () => {
     await getClock().tickAsync(100)
   })
   expect(screen.getByText('No matching connections.')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: 'Clear search' }))
-  expect(screen.getByRole('button', { name: 'Open Research' })).toBeVisible()
-  expect(screen.getByRole('button', { name: 'Open Private workspace' })).toBeVisible()
-  expect(screen.getByRole('button', { name: 'Open Thunderbolt' })).toBeVisible()
+  expect(screen.getByRole('button', { name: /^Research/ })).toBeVisible()
+  expect(screen.getByRole('button', { name: /^Private workspace/ })).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Thunderbolt' })).toBeVisible()
 })

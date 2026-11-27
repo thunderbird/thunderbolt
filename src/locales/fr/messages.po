@@ -4324,8 +4324,8 @@ msgstr "Disponible uniquement dans les conversations privées."
 #. placeholder {0}: connection.name
 #: src/components/settings/agents/agent-row.tsx
 #: src/settings/search/index.tsx
-msgid "Open {0}"
-msgstr ""
+#~ msgid "Open {0}"
+#~ msgstr ""
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Open {appName} on a trusted device and approve this one in Settings → Devices."
@@ -4336,20 +4336,20 @@ msgstr "Ouvrez {appName} sur un appareil de confiance et approuvez celui-ci dans
 #~ msgstr "Ouvrez {appName} sur l'un de vos appareils de confiance et allez dans Paramètres → Appareils pour approuver cet appareil."
 
 #: src/settings/models/models-list.tsx
-msgid "Open {modelName}"
-msgstr "Ouvrir {modelName}"
+#~ msgid "Open {modelName}"
+#~ msgstr "Ouvrir {modelName}"
 
 #: src/settings/search/index.tsx
 #~ msgid "Open {name}"
 #~ msgstr ""
 
 #: src/skills/library-row.tsx
-msgid "Open {skillName}"
-msgstr "Ouvrir {skillName}"
+#~ msgid "Open {skillName}"
+#~ msgstr "Ouvrir {skillName}"
 
 #: src/settings/connections/connections-list.tsx
-msgid "Open {title}"
-msgstr "Ouvrir {title}"
+#~ msgid "Open {title}"
+#~ msgstr "Ouvrir {title}"
 
 #: src/mini-apps/mini-app-chat-banner.tsx
 msgid "Open app"
@@ -4409,12 +4409,12 @@ msgid "Open the store to check for updates."
 msgstr "Ouvrez la boutique pour rechercher des mises à jour."
 
 #: src/settings/search/index.tsx
-msgid "Open Thunderbolt"
-msgstr ""
+#~ msgid "Open Thunderbolt"
+#~ msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
-msgid "Open Thunderbolt CLI"
-msgstr "Ouvrir la CLI Thunderbolt"
+#~ msgid "Open Thunderbolt CLI"
+#~ msgstr "Ouvrir la CLI Thunderbolt"
 
 #: src/settings/connections/new-connection-picker.tsx
 #~ msgid "OpenAI-compatible"

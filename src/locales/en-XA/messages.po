@@ -4305,8 +4305,8 @@ msgstr ""
 #. placeholder {0}: connection.name
 #: src/components/settings/agents/agent-row.tsx
 #: src/settings/search/index.tsx
-msgid "Open {0}"
-msgstr ""
+#~ msgid "Open {0}"
+#~ msgstr ""
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Open {appName} on a trusted device and approve this one in Settings → Devices."
@@ -4317,20 +4317,20 @@ msgstr ""
 #~ msgstr ""
 
 #: src/settings/models/models-list.tsx
-msgid "Open {modelName}"
-msgstr ""
+#~ msgid "Open {modelName}"
+#~ msgstr ""
 
 #: src/settings/search/index.tsx
 #~ msgid "Open {name}"
 #~ msgstr ""
 
 #: src/skills/library-row.tsx
-msgid "Open {skillName}"
-msgstr ""
+#~ msgid "Open {skillName}"
+#~ msgstr ""
 
 #: src/settings/connections/connections-list.tsx
-msgid "Open {title}"
-msgstr ""
+#~ msgid "Open {title}"
+#~ msgstr ""
 
 #: src/mini-apps/mini-app-chat-banner.tsx
 msgid "Open app"
@@ -4390,12 +4390,12 @@ msgid "Open the store to check for updates."
 msgstr ""
 
 #: src/settings/search/index.tsx
-msgid "Open Thunderbolt"
-msgstr ""
+#~ msgid "Open Thunderbolt"
+#~ msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
-msgid "Open Thunderbolt CLI"
-msgstr ""
+#~ msgid "Open Thunderbolt CLI"
+#~ msgstr ""
 
 #: src/settings/connections/new-connection-picker.tsx
 #~ msgid "OpenAI-compatible"

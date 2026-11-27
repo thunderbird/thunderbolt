@@ -26,7 +26,6 @@ const meta = {
   ],
   args: {
     title: 'Research assistant',
-    ariaLabel: 'Open Research assistant',
     onSelect: fn(),
   },
 } satisfies Meta<typeof SettingsSelectableRow>
@@ -46,7 +45,6 @@ export const RowStates: Story = {
           isSelected
           trailing={<Switch aria-label="Enable Research assistant" defaultChecked />}
           onSelect={fn()}
-          ariaLabel="Open Research assistant"
         />
         <SettingsSelectableRow
           title="Writing assistant"
@@ -54,7 +52,6 @@ export const RowStates: Story = {
           leading={<Zap className="size-5" />}
           trailing={<Switch aria-label="Enable Writing assistant" />}
           onSelect={fn()}
-          ariaLabel="Open Writing assistant"
         />
         <SettingsSelectableRow
           title="Unavailable assistant"
@@ -62,7 +59,6 @@ export const RowStates: Story = {
           leading={<Bot className="size-5" />}
           isDimmed
           onSelect={fn()}
-          ariaLabel="Open Unavailable assistant"
         />
       </SettingsListBody>
     </SettingsListPane>

@@ -81,7 +81,7 @@ test.describe.serial('THU-874 — models plaintext injection', () => {
     // injected one — have rendered). This is the sync barrier that makes the
     // absence assertion below deterministic rather than racing the download.
     await page.goto('/settings/models')
-    const modelRows = page.getByRole('button', { name: /^Open / })
+    const modelRows = page.locator('button[aria-pressed]')
     await expect(modelRows.first()).toBeVisible({ timeout: 30_000 })
     let previousCount = -1
     await expect

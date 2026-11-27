@@ -128,7 +128,7 @@ describe('ConnectionsList empty state', () => {
     { isEnabled: false, isConnected: false },
   ])('treats a Thunderbolt-only list as populated (%j)', (state) => {
     renderList({ integrations: [{ ...thunderbolt, ...state }] })
-    expect(screen.getByRole('button', { name: 'Open Thunderbolt' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Thunderbolt' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'No connections yet' })).not.toBeInTheDocument()
     expect(screen.queryByText('Add your first server')).not.toBeInTheDocument()
   })
@@ -139,14 +139,14 @@ describe('ConnectionsList empty state', () => {
     { enabled: 1, connected: false },
   ])('treats a provider-only list as populated (%j)', (state) => {
     renderList({ aiProviders: [{ ...provider, ...state }] })
-    expect(screen.getByRole('button', { name: 'Open Work Otari' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Work Otari/ })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'No connections yet' })).not.toBeInTheDocument()
     expect(screen.queryByText('Add your first server')).not.toBeInTheDocument()
   })
 
   it.each([0, 1])('treats an MCP-only list as populated even when disconnected (enabled: %i)', (enabled) => {
     renderList({ servers: [{ ...server, enabled }] })
-    expect(screen.getByRole('button', { name: 'Open Team tools' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Team tools/ })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'No connections yet' })).not.toBeInTheDocument()
     expect(screen.queryByText('Add your first server')).not.toBeInTheDocument()
   })

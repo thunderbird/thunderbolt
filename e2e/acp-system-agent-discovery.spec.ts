@@ -65,7 +65,7 @@ test.describe('ACP system agent discovery', () => {
 
     // The detail panel for a system agent is read-only: no ⋯ management menu
     // (which is where Remove lives for custom agents).
-    await systemRow.getByRole('button', { name: 'Open RAG Chat' }).click()
+    await systemRow.getByRole('button', { name: /^RAG Chat/ }).click()
     await expect(page.getByRole('button', { name: /^Close(?: details)?$/ })).toBeVisible()
     await expect(page.getByRole('button', { name: 'More' })).toHaveCount(0)
 

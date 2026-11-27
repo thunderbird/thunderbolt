@@ -31,7 +31,7 @@ test('the model calls an MCP tool through the proxy and displays its result', as
   await page.getByRole('button', { name: 'Test connection' }).click()
   await expect(page.getByText('Connection successful!')).toBeVisible({ timeout: 30_000 })
   await page.getByRole('button', { name: 'Add Server' }).click()
-  await page.getByRole('button', { name: 'Open Test Echo', exact: true }).click()
+  await page.getByRole('button', { name: /^Test Echo/ }).click()
   // Like the probe, readiness includes initialization and tool discovery on this fresh connection.
   await expect(page.getByRole('button', { name: /Available Tools/ })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('Connected', { exact: true })).toBeVisible()

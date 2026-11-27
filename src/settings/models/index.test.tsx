@@ -71,7 +71,7 @@ describe('ModelsPage reactivity', () => {
       isSystem: 0,
     })
     renderModelsPage()
-    await waitForElement(() => screen.queryByRole('button', { name: 'Open Work assistant' }))
+    await waitForElement(() => screen.queryByRole('button', { name: /^Work assistant/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Search' }))
     const input = screen.getByPlaceholderText('Search models')
     expect(input).toHaveFocus()
@@ -80,8 +80,8 @@ describe('ModelsPage reactivity', () => {
       await act(async () => {
         await getClock().tickAsync(100)
       })
-      expect(screen.getByRole('button', { name: 'Open Work assistant' })).toBeVisible()
-      expect(screen.queryByRole('button', { name: 'Open Other assistant' })).toBeNull()
+      expect(screen.getByRole('button', { name: /^Work assistant/ })).toBeVisible()
+      expect(screen.queryByRole('button', { name: /^Other assistant/ })).toBeNull()
     }
     fireEvent.change(input, { target: { value: 'no match' } })
     await act(async () => {
@@ -90,8 +90,8 @@ describe('ModelsPage reactivity', () => {
     expect(screen.getByText('No matching models.')).toBeVisible()
     expect(screen.queryByText('No models configured')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Search' }))
-    expect(screen.getByRole('button', { name: 'Open Work assistant' })).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Open Other assistant' })).toBeVisible()
+    expect(screen.getByRole('button', { name: /^Work assistant/ })).toBeVisible()
+    expect(screen.getByRole('button', { name: /^Other assistant/ })).toBeVisible()
   })
 
   it('edits from the context menu and confirms removal before soft deleting', async () => {
@@ -106,7 +106,7 @@ describe('ModelsPage reactivity', () => {
       isSystem: 0,
     })
     renderModelsPage()
-    const row = await waitForElement(() => screen.queryByRole('button', { name: 'Open Menu model' }))
+    const row = await waitForElement(() => screen.queryByRole('button', { name: /^Menu model/ }))
     fireEvent.contextMenu(row)
     fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: 'Edit' })))
     expect(await waitForElement(() => screen.queryByRole('heading', { name: 'Edit Model' }))).toBeVisible()
@@ -245,7 +245,7 @@ describe('add model form', () => {
     const list = spyOn(modelsList, 'ModelsList')
     try {
       renderModelsPage()
-      await waitForElement(() => screen.queryByRole('button', { name: 'Open Saved model' }))
+      await waitForElement(() => screen.queryByRole('button', { name: /^Saved model/ }))
       fireEvent.click(screen.getByRole('button', { name: 'New Model' }))
       fireEvent.click(await waitForElement(() => screen.queryByRole('combobox', { name: 'Connection' })))
       fireEvent.click(await waitForElement(() => screen.queryByRole('option', { name: /Catalog account/ })))
@@ -263,8 +263,8 @@ describe('add model form', () => {
       expect(screen.getByRole('checkbox', { name: 'Second model' })).toBeChecked()
       expect(list).not.toHaveBeenCalled()
       expect(fetch).toHaveBeenCalledTimes(1)
-      expect(screen.getByRole('button', { name: 'Open Saved model' })).toBeVisible()
-      fireEvent.click(screen.getByRole('button', { name: 'Open Saved model' }))
+      expect(screen.getByRole('button', { name: /^Saved model/ })).toBeVisible()
+      fireEvent.click(screen.getByRole('button', { name: /^Saved model/ }))
       expect(screen.queryByRole('textbox', { name: 'Search models' })).toBeNull()
       fireEvent.click(screen.getByRole('button', { name: 'New Model' }))
       fireEvent.click(await waitForElement(() => screen.queryByRole('combobox', { name: 'Connection' })))
@@ -321,7 +321,7 @@ describe('model card action menu', () => {
 
   /** Open the row detail, then its Radix actions menu (pointerdown, not click). */
   const openMenuForModel = async (modelName: string) => {
-    fireEvent.click(screen.getByRole('button', { name: `Open ${modelName}` }))
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${modelName}`) }))
     await act(async () => {
       fireEvent.pointerDown(screen.getByLabelText('More'), { button: 0 })
     })
@@ -389,7 +389,7 @@ describe('model card action menu', () => {
     expect(within(card).queryByLabelText('More')).not.toBeInTheDocument()
     expect(within(card).getByRole('switch', { name: 'Disable Concise Model' })).toBeInTheDocument()
 
-    fireEvent.click(within(card).getByRole('button', { name: 'Open Concise Model' }))
+    fireEvent.click(within(card).getByRole('button', { name: /^Concise Model/ }))
 
     expect(screen.getByText('gpt-detail-only')).toBeInTheDocument()
     expect(screen.getByLabelText('More')).toBeInTheDocument()

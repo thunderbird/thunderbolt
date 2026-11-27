@@ -41,8 +41,6 @@ const ConnectionRow = ({
   onSelect: () => void
   trailing: ReactNode
 }) => {
-  const { t } = useLingui()
-
   return (
     <SettingsSelectableRow
       contextMenu={contextMenu}
@@ -51,7 +49,6 @@ const ConnectionRow = ({
       isSelected={isActive}
       isDimmed={isDimmed}
       onSelect={onSelect}
-      ariaLabel={t`Open ${title}`}
       trailing={trailing}
     />
   )

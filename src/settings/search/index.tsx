@@ -99,7 +99,6 @@ const SearchSettingsPage = () => {
                   </span>
                 }
                 subtitle={canSupplySearch(connection) ? undefined : t`Connect or enable this connection to use search`}
-                ariaLabel={t`Open ${connection.name}`}
                 isSelected={page.panel === connection.id}
                 onSelect={() => selectPanel(connection.id)}
                 leading={
@@ -125,7 +124,6 @@ const SearchSettingsPage = () => {
               <SettingsSelectableRow
                 contextMenu={{}}
                 title="Thunderbolt"
-                ariaLabel={t`Open Thunderbolt`}
                 isSelected={page.panel === 'cloud'}
                 onSelect={() => selectPanel('cloud')}
                 leading={<ModelProviderIconTile model={{ provider: 'thunderbolt', isSystem: 1 }} />}

@@ -40,7 +40,7 @@ describe('ThunderboltCliRow', () => {
     const onOpen = mock(() => {})
     renderRow({ onOpen })
 
-    const row = screen.getByRole('button', { name: 'Open Thunderbolt CLI' })
+    const row = screen.getByRole('button', { name: /^Thunderbolt CLI/ })
     expect(row).toBeInTheDocument()
     expect(screen.getByText('Your agent · runs in your terminal')).toBeInTheDocument()
 
@@ -50,12 +50,12 @@ describe('ThunderboltCliRow', () => {
 
   it('marks the row as selected while its panel is open', () => {
     renderRow({ isSelected: true })
-    expect(screen.getByRole('button', { name: 'Open Thunderbolt CLI' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /^Thunderbolt CLI/ })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('renders on web builds (install guide lives in the detail)', () => {
     renderRow({ isTauriEnv: false })
-    expect(screen.getByRole('button', { name: 'Open Thunderbolt CLI' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Thunderbolt CLI/ })).toBeInTheDocument()
   })
 
   it('renders nothing on unsupported Tauri platforms', () => {

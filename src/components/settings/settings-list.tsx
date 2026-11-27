@@ -71,7 +71,6 @@ type SettingsSelectableRowProps = Omit<ComponentProps<typeof Card>, 'onSelect' |
   isSelected?: boolean
   isDimmed?: boolean
   onSelect: () => void
-  ariaLabel: string
 }
 
 /** Shared settings row with a full-height trailing-control lane. */
@@ -85,7 +84,6 @@ export const SettingsSelectableRow = ({
   isSelected = false,
   isDimmed = false,
   onSelect,
-  ariaLabel,
   className,
   ...props
 }: SettingsSelectableRowProps) => {
@@ -100,7 +98,6 @@ export const SettingsSelectableRow = ({
     >
       <button
         type="button"
-        aria-label={ariaLabel}
         aria-pressed={isSelected}
         onClick={onSelect}
         className={cn(

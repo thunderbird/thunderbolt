@@ -650,7 +650,7 @@ describe('provider connection form', () => {
       expect(screen.getByRole('status')).toHaveTextContent(/Connected to/)
       expect(screen.getByRole('status')).not.toHaveTextContent('My account')
       expect(screen.queryByLabelText('Name')).toBeNull()
-      expect(screen.queryByRole('button', { name: 'Open My account' })).toBeNull()
+      expect(screen.queryByRole('button', { name: /^My account/ })).toBeNull()
       expect(screen.queryByRole('button', { name: /Connect / })).toBeNull()
       expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull()
       expect(screen.getByRole('status').closest('form')).toBeNull()

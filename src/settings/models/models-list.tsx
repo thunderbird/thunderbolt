@@ -54,7 +54,6 @@ export const ModelsList = ({
               model.isSystem === 1 ? {} : { onEdit: () => onEdit(model.id), onRemove: () => onRemove(model.id) }
             }
             onSelect={() => onSelect(model.id)}
-            ariaLabel={t`Open ${modelName}`}
             isSelected={activeModelId === model.id}
             leading={<ModelProviderIconTile model={model} />}
             title={

@@ -112,7 +112,7 @@ describe('AgentList', () => {
 
     render(<AgentList agents={[builtInAgent, customAgent]} onOpenAgent={onOpenAgent} />)
 
-    fireEvent.click(screen.getByRole('button', { name: `Open ${customAgent.name}` }))
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${customAgent.name}`) }))
 
     expect(onOpenAgent).toHaveBeenCalledTimes(1)
     expect(onOpenAgent.mock.calls[0][0].id).toBe(customAgent.id)
@@ -121,8 +121,14 @@ describe('AgentList', () => {
   it('marks the open row as selected', () => {
     render(<AgentList agents={[builtInAgent, customAgent]} selectedId={customAgent.id} onOpenAgent={noop} />)
 
-    expect(screen.getByRole('button', { name: `Open ${customAgent.name}` })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: `Open ${builtInAgent.name}` })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: new RegExp(`^${customAgent.name}`) })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(screen.getByRole('button', { name: new RegExp(`^${builtInAgent.name}`) })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
   })
 
   it('shows a Disabled suffix on disabled custom agents', () => {

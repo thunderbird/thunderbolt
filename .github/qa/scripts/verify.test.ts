@@ -19,6 +19,7 @@ import {
   legStartOf,
   nativeExitCode,
   nativeJobMinutes,
+  nativeVerdictLine,
   oracleOf,
   replay,
   replayEnv,
@@ -1999,6 +2000,29 @@ describe('native fix verification', () => {
     expect([fixed, stillBroken, neverBroken].map(nativeExitCode)).toEqual([0, 4, 3])
   })
 
+  // The job log is public, and a failed run's error can quote the patched app's text.
+  test('the command prints the verdict without its error', async () => {
+    const shown = { layout: ['[qa-layout] ready', nameLine] }
+    const verdict = await verifyNativeFix({
+      ...base,
+      oracle: layout,
+      patched: device([shown]),
+      original: device([shown, shown, shown]),
+    })
+
+    expect(verdict.error).toContain('Enter your name')
+    expect(JSON.parse(nativeVerdictLine(verdict))).toEqual({
+      fp: 'ab12cd34',
+      platform: 'ios',
+      runs: 3,
+      failed: 1,
+      passed: false,
+      inconclusive: false,
+      failsWithout: true,
+      passesWith: false,
+    })
+  })
+
   test('passes only when no patched run shows the bug, and replaces a run that never reached the screen', async () => {
     const clean = await verifyNativeFix({ ...base, oracle: layout, patched: device([]) })
     expect(clean).toEqual({ fp: 'ab12cd34', platform: 'ios', runs: 3, failed: 0, passed: true, inconclusive: false })
@@ -2681,7 +2705,9 @@ describe('judge', () => {
     const written = async (): Promise<Verified> => Bun.file(join(outDir, 'verified.json')).json()
 
     test('on a rate limit defers only its own finding, and the rest keep their verdicts', async () => {
-      await writeBoth()
+      // A file name the explorer picked, which the warning must not repeat: it names the finding's place instead.
+      const numbered = { ...candidate('broken'), id: '4821' }
+      await writeCandidates({ confirmed: [candidate('fine'), numbered], flaky: [], observations: [], dropped: [] })
       const lines: string[] = []
 
       const result = await judge(outDir, failing(apiError(429, 'rate limited\n::error::injected')), qaDir, (line) =>
@@ -2689,9 +2715,9 @@ describe('judge', () => {
       )
 
       expect(result.confirmed.map((file) => file.id)).toEqual(['fine'])
-      expect(result.deferred).toEqual([brokenDeferred])
+      expect(result.deferred).toEqual([{ ...brokenDeferred, file: numbered }])
       expect(lines).toEqual([
-        '::warning::the judge call for c2-chat-desktop/broken failed: 429 rate limited ::error::injected',
+        '::warning::the judge call for c2-chat-desktop/#2 failed: 429 rate limited ::error::injected',
       ])
       expect((await written()).confirmed).toHaveLength(1)
     })

@@ -872,6 +872,12 @@ export type NativeVerify = {
 export const nativeExitCode = (verdict: Pick<NativeVerify, 'passed' | 'inconclusive'>) =>
   verdict.passed ? 0 : verdict.inconclusive ? 3 : 4
 
+/** The line `verify.ts fix-native` prints: the verdict without `error`, which can quote the patched app's text. */
+export const nativeVerdictLine = (verdict: NativeVerify) => {
+  const { fp, platform, runs, failed, passed, inconclusive, failsWithout, passesWith } = verdict
+  return JSON.stringify({ fp, platform, runs, failed, passed, inconclusive, failsWithout, passesWith })
+}
+
 /** The fix agent's visual check has no finding, so only its own Maestro assertions fail a run. */
 const checkFailure = (run: FlowRun) =>
   run.passed || run.error?.includes(driverTimeout) ? undefined : (run.error ?? 'the flow failed')
@@ -1358,8 +1364,10 @@ export const judge = async (
       reason instanceof Anthropic.APIConnectionError ||
       (reason instanceof Anthropic.APIError && reason.status !== undefined && transientStatus(reason.status))
     const error = reason instanceof Error ? reason.message : String(reason)
+    // The explorer picks the file name, so the warning names the finding by its place among the judged ones.
+    const label = `${candidate.charterDir}/#${i + 1}`
     // One line, so the message cannot start another workflow command.
-    log(`::warning::the judge call for ${findingId(candidate)} failed: ${error.replace(/\s+/g, ' ').slice(0, 300)}`)
+    log(`::warning::the judge call for ${label} failed: ${error.replace(/\s+/g, ' ').slice(0, 300)}`)
     deferred.push({ file: candidate, step: 'judge', reason: 'the judge call failed' })
     failures.push({ transient })
     return []
@@ -1458,7 +1466,7 @@ if (import.meta.main) {
       ...proof,
     })
     await Bun.write(resultFile, JSON.stringify(verdict, null, 2))
-    console.log(JSON.stringify(verdict))
+    console.log(nativeVerdictLine(verdict))
     process.exit(nativeExitCode(verdict))
   }
   const legStart = legStartOf(Bun.env.QA_LEG_START)

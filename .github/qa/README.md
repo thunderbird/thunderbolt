@@ -348,8 +348,23 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    and no flow runs. A control run whose iOS driver did not start, even on its retry, is inconclusive and replaced like
    a finding's run, up to 3 extra runs; a control left with fewer than 3 counted runs also marks the stack unhealthy. On
    Android the install also maps the stack's ports into the emulator again and warms the app up (as `native.sh install`
-   does). Each run ends with one `maestro hierarchy` of the screen it stopped on, for the tree's `unnamed-control` lines
-   and, on Android, its `behind-keyboard` line; a screen the run only passed through, like the privacy step the harness
+   does). When a run's install, flow or tree dump fails, the leg asks adb about the emulator (`get-state`). The leg
+   treats the emulator as lost only when adb answers that it is not found or offline, and the run then does not
+   count. A probe that times out or prints nothing makes the run inconclusive, however much time the leg has left,
+   and the leg goes on. An install that fails with adb's `device '…' not found` counts as a loss even if adb sees the
+   emulator again a moment later.
+   `native.sh device-lost` prints what may explain the loss: the emulator process, free memory, OOM kills, and, for
+   each crash signature, how many lines of the emulator's log hold it. No line of that log is printed. The leg then
+   runs `native.sh device android` again, which keeps the emulator only while adb sees it online and its
+   `ro.boot.qemu.avd_name` is `qa-android`. Otherwise it stops ours and cold-boots a new one on the first even console
+   port from 5554 to 5584 where adb lists no emulator, online or offline. adb names an emulator after its console port,
+   so the boot waits for that serial (`emulator-<port>`) and never takes another emulator. The WebView stream
+   starts again and appends to its log; a stream that has exited a second later fails the recovery. Then the run
+   starts over. A leg recovers only once, and the diagnostics and the recovery must end before the leg's clock does: a
+   second loss, or a recovery that fails or runs out of time, marks the stack unhealthy. The adb probe gets its 10 s
+   even after the clock has run out, from the wrap-up minutes, so a run that ends that late keeps its own outcome while
+   adb sees the emulator. A fix's native check never recovers. Each run ends with one `maestro hierarchy` of the screen it
+   stopped on, for the tree's `unnamed-control` lines and, on Android, its `behind-keyboard` line; a screen the run only passed through, like the privacy step the harness
    clicks through, adds no tree line.
    A `layout` run fails when the probe (or a tree rule) logs the quoted `[qa-layout]` line during it, a `console-error`, `page-error` or `http-5xx` run when a new WebView or backend log
    line holds the evidence (cut at the console mark and normalized like the fingerprint), any other run when the flow

@@ -14,6 +14,9 @@
 #   native.sh system-image                                      Android only: install the emulator and the AVD's
 #                                                               system image, retrying once after a failed download
 #   native.sh device <platform>                                 boot a device, print its id on stdout
+#   native.sh device-lost <device> <seconds>                    Android only: print what may explain why adb lost
+#                                                               the emulator, for the job log; adb's own answer
+#                                                               gets <seconds>
 #   native.sh install <platform> <device> <app-path>            on Android also reverse the stack's ports again and
 #                                                               open the app until a launch gets past the storage
 #                                                               check, up to 4 launches of $QA_WARM_SECONDS (30)
@@ -25,6 +28,9 @@
 #                                                               it once; the first gets until 60 s after its start,
 #                                                               the replacement 60 s of its own
 #   native.sh stop-logs <file>
+#   native.sh resume-logs <device> <file>                       Android only: after adb lost the device, stream
+#                                                               again into <file>, appending from the newest line;
+#                                                               fails when the new stream exits within a second
 #   native.sh control <platform> <device> [out-dir]             run the positive control on the control build
 #                                                               installed on <device>; exit 0 when the layout check
 #                                                               reports the covered Email field
@@ -52,6 +58,11 @@ stack_ports="$QA_BACKEND_PORT $QA_PROVIDER_PORT $QA_MCP_PORT $QA_GOOGLE_PORT ${p
 android_abi=x86_64
 case $(uname -m) in arm64 | aarch64) android_abi=arm64-v8a ;; esac
 android_image="system-images;android-36;google_apis;$android_abi"
+avd=qa-android
+# The emulator's own log, its pid and the kernel's OOM kill count at its boot.
+emulator_files=${TMPDIR:-/tmp}/qa-emulator
+crash_signatures=(fatal error crash abort assert segfault segmentation sigsegv sigabrt 'terminating on signal' killed
+  'out of memory' kvm)
 
 die() {
   echo "$*" >&2
@@ -177,10 +188,69 @@ hide_error_dialogs() {
     die "the emulator ignored hide_error_dialogs, so a system error dialog can cover the app during a flow"
 }
 
+# Empty without /proc (macOS).
+oom_kills() {
+  awk '$1 == "oom_kill" { print $2 }' /proc/vmstat 2> /dev/null || true
+}
+
+# Our emulator from an earlier boot, which adb lost. Only while its pid still runs our AVD: a pid can be reused.
+stop_emulator() {
+  local pid
+  pid=$(cat "$emulator_files.pid" 2> /dev/null) || return 0
+  [[ $(ps -ww -o args= -p "$pid" 2> /dev/null) == *" -avd $avd "* ]] || return 0
+  kill "$pid" 2> /dev/null || return 0
+  for _ in $(seq 20); do
+    kill -0 "$pid" 2> /dev/null || return 0
+    sleep 0.5
+  done
+  kill -9 "$pid" 2> /dev/null || true
+}
+
+# For each crash signature, how many lines of the emulator's log hold it. Counts only: this reaches the job log on
+# every leg, the real one too.
+crash_counts() {
+  local signature count
+  echo "lines of the emulator's log per crash signature:"
+  for signature in "${crash_signatures[@]}"; do
+    count=$(grep -ciF -- "$signature" "$emulator_files.log" 2> /dev/null) || continue
+    echo "  $signature: $count"
+  done
+}
+
+online_emulators() {
+  adb devices | sed -n 's/^\(emulator-[0-9]*\)[[:space:]]*device$/\1/p'
+}
+
+# The online emulator that runs our AVD, if any. Another emulator on the same adb is not ours to use.
+our_emulator() {
+  local serial name
+  for serial in $(online_emulators); do
+    name=$(timeout -k 1 10 adb -s "$serial" shell getprop ro.boot.qemu.avd_name 2> /dev/null | tr -d '\r') || true
+    if grep -qx "$avd" <<< "$name"; then
+      echo "$serial"
+      return
+    fi
+  done
+}
+
+# The first even console port from 5554 to 5584 where adb lists no emulator. An offline row counts: the emulator adb
+# lost may still hold its port.
+free_port() {
+  local devices port
+  devices=$(adb devices)
+  for port in $(seq 5554 2 5584); do
+    if ! grep -q "^emulator-${port}[[:space:]]" <<< "$devices"; then
+      echo "$port"
+      return
+    fi
+  done
+  die "adb lists an emulator on every console port from 5554 to 5584"
+}
+
 device_android() {
   export ANDROID_AVD_HOME=${ANDROID_AVD_HOME:-$HOME/.android/avd}
   mkdir -p "$ANDROID_AVD_HOME"
-  local avd=qa-android avds devices
+  local avds
   # Captured first: `grep -q` closing the pipe early fails the producer under pipefail.
   avds=$(avdmanager list avd -c)
   if ! grep -qx "$avd" <<< "$avds"; then
@@ -190,24 +260,30 @@ device_android() {
     mv "$config.tmp" "$config"
     echo "hw.keyboard=no" >> "$config"
   fi
-  local emulator_pid=
-  devices=$(adb devices)
-  if ! grep -q '^emulator-' <<< "$devices"; then
-    emulator -avd "$avd" -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect > /tmp/qa-emulator.log 2>&1 &
+  local emulator_pid='' serial port
+  serial=$(our_emulator)
+  # Our AVD must be online: an offline row is an emulator adb lost, and waiting for it to come back would take the
+  # whole 10-minute wait below.
+  if [ -z "$serial" ]; then
+    stop_emulator
+    # adb names an emulator after its console port, so the boot waits for that serial and takes no other emulator.
+    port=$(free_port)
+    serial=emulator-$port
+    emulator -avd "$avd" -port "$port" -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect > "$emulator_files.log" 2>&1 &
     emulator_pid=$!
+    echo "$emulator_pid" > "$emulator_files.pid"
+    oom_kills > "$emulator_files.oom"
   fi
   # A dead emulator ends the wait at once.
-  local serial=
   for _ in $(seq 300); do
     if [ -n "$emulator_pid" ] && ! kill -0 "$emulator_pid" 2> /dev/null; then
-      tail -30 /tmp/qa-emulator.log >&2
+      crash_counts >&2
       die "the emulator exited"
     fi
-    serial=$(adb devices | sed -n '/^emulator-[0-9]*[[:space:]]*device$/{s/[[:space:]].*//p;q;}')
-    [ -n "$serial" ] && break
+    grep -qxF "$serial" <<< "$(online_emulators)" && break
     sleep 2
   done
-  [ -n "$serial" ] || die "no emulator came online"
+  grep -qxF "$serial" <<< "$(online_emulators)" || die "no emulator came online"
   for _ in $(seq 180); do
     [ "$(adb -s "$serial" shell getprop sys.boot_completed | tr -d '\r')" = 1 ] && break
     sleep 2
@@ -230,6 +306,27 @@ device_android() {
     adb -s "$serial" push "$file" /sdcard/Download/ >&2 || echo "warning: could not push $(basename "$file") to the emulator" >&2
   done
   echo "$serial"
+}
+
+# Safe on every leg, the real one too: nothing here holds a key or what the app showed, and only counts leave the
+# emulator's log. adb gets its own hard kill: a nested `timeout` runs in a process group of its own, which the
+# caller's kill never reaches.
+device_lost() {
+  local serial=$1 seconds=$2 pid boot now
+  pid=$(cat "$emulator_files.pid" 2> /dev/null) || pid=
+  boot=$(cat "$emulator_files.oom" 2> /dev/null) || boot=
+  now=$(oom_kills)
+  {
+    echo "adb lost $serial; adb's state for it now: $(timeout -k 1 "$seconds" adb -s "$serial" get-state 2>&1 || true)"
+    if [ -n "$pid" ] && kill -0 "$pid" 2> /dev/null; then
+      echo "the emulator (pid $pid) still runs"
+    else
+      echo "the emulator (pid ${pid:-unknown}) is gone"
+    fi
+    free -m 2> /dev/null || true
+    if [ -n "$boot" ] && [ -n "$now" ]; then echo "OOM kills since the emulator booted: $((now - boot))"; fi
+    crash_counts
+  } >&2
 }
 
 # Starts the iOS stream into a fresh <file> and records its pid. It starts right after the
@@ -322,6 +419,23 @@ stop_logs() {
   rm -f "$1.pid" "$1.start"
 }
 
+# Unlike `logs`, it neither clears the device's log nor empties <file>, so what came before the loss stays in both.
+# The old stream is stopped only while its pid still writes <file>: adb's reset may have ended it long ago, and a pid
+# can be reused. Without /proc (macOS) it is left running. The command fails when the new stream has exited a second
+# later.
+resume_logs() {
+  local device=$1 file=$2 pid stream
+  pid=$(cat "$file.pid" 2> /dev/null) || pid=
+  if [ -n "$pid" ] && [ "/proc/$pid/fd/1" -ef "$file" ]; then kill "$pid" 2> /dev/null || true; fi
+  # -T 1 starts at the newest buffered entry, so earlier runs' lines are not streamed again. That one entry can show
+  # up twice in <file> when it matches the tag filter.
+  adb -s "$device" logcat -v epoch -T 1 -s 'Tauri/Console:*' >> "$file" 2>&1 &
+  stream=$!
+  echo "$stream" > "$file.pid"
+  sleep 1
+  kill -0 "$stream" 2> /dev/null || die "the new WebView log stream exited at once"
+}
+
 # Exits 0 only when the keyboard is open and the probe logged focus-covered for the Email field. The flow, log and
 # hierarchy stay in <out-dir>.
 control() {
@@ -394,7 +508,7 @@ verify_run() {
     --session "$session" --result "$result" ${original:+--original "$original"}
 }
 
-usage="usage: $0 config <platform> <out-json> [control] | build <platform> <out-dir> [onboarding] [control] | system-image | device <platform> | install <platform> <device> <app-path> | logs <platform> <device> <file> | wait-logs <device> <file> | stop-logs <file> | control <platform> <device> [out-dir] | verify-build <platform> <patch> <session> <out-dir> | verify-run <platform> <device> <app> <flow> <session> <out-json> [original-app]"
+usage="usage: $0 config <platform> <out-json> [control] | build <platform> <out-dir> [onboarding] [control] | system-image | device <platform> | device-lost <device> <seconds> | install <platform> <device> <app-path> | logs <platform> <device> <file> | wait-logs <device> <file> | stop-logs <file> | resume-logs <device> <file> | control <platform> <device> [out-dir] | verify-build <platform> <patch> <session> <out-dir> | verify-run <platform> <device> <app> <flow> <session> <out-json> [original-app]"
 [ $# -ge 1 ] || die "$usage"
 command=$1
 shift
@@ -411,6 +525,16 @@ fi
 if [ "$command" = wait-logs ]; then
   [ $# -eq 2 ] || die "$usage"
   wait_logs "$@"
+  exit
+fi
+if [ "$command" = device-lost ]; then
+  [ $# -eq 2 ] || die "$usage"
+  device_lost "$@"
+  exit
+fi
+if [ "$command" = resume-logs ]; then
+  [ $# -eq 2 ] || die "$usage"
+  resume_logs "$@"
   exit
 fi
 [ $# -ge 1 ] || die "$usage"

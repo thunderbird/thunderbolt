@@ -12,6 +12,7 @@ import { lintReproSpec, type RawFinding } from './findings'
 import type { TranscriptMessage } from './report'
 import { checkMaestroFlow } from './maestro-flow'
 import { measureNative, parseInspectScreen } from '../native-layout'
+import { DeviceLost } from './replay-native'
 import {
   groupFindings,
   judge,
@@ -1202,6 +1203,89 @@ describe('replay of native flows', () => {
 
       expect(result.stack_unhealthy).toBe(`control flow failed 1/3 runs: ${failed.error}`)
       expect(result.confirmed).toEqual([])
+    })
+  })
+
+  describe('a run whose emulator dropped off adb', () => {
+    const failed = { passed: false, error: 'Assertion is false: "always" is visible' }
+    const again = new DeviceLost('emulator dropped off adb', true)
+    const final = new DeviceLost('emulator dropped off adb a second time in this leg')
+    /** Throws the loss queued for each call number, as `createRunFlow` does, and otherwise answers as `fakeFlow`. */
+    const losing = (losses: Map<number, DeviceLost>, calls: FlowCall[]): RunFlow => {
+      const flow = fakeFlow({ always: [failed, failed, failed] }, calls)
+      const counted = { n: 0 }
+      return async (...args) => {
+        const loss = losses.get(++counted.n)
+        if (!loss) return flow(...args)
+        calls.push({ title: 'lost', run: args[2], session: args[3] })
+        throw loss
+      }
+    }
+
+    test('starts over once the emulator is back, and only the run that ended counts', async () => {
+      await writeNative(makeNative('always', assertFailed))
+      const calls: FlowCall[] = []
+
+      const result = await replay(outDir, fakeRunner({}, []), qaDir, losing(new Map([[5, again]]), calls))
+
+      expect(calls.map((call) => call.title)).toEqual([
+        ...Array(3).fill('stack control'),
+        'always',
+        'lost',
+        'always',
+        'always',
+      ])
+      expect(result.stack_unhealthy).toBeUndefined()
+      expect(result.confirmed.map(({ id, replay }) => [id, replay])).toEqual([
+        ['always', { failed: 3, runs: 3, error: failed.error }],
+      ])
+    })
+
+    test('marks the stack unhealthy when it is lost for good, and no finding counts', async () => {
+      await writeNative(makeNative('always', assertFailed))
+      const calls: FlowCall[] = []
+
+      const result = await replay(
+        outDir,
+        fakeRunner({}, []),
+        qaDir,
+        losing(
+          new Map([
+            [1, again],
+            [6, final],
+          ]),
+          calls,
+        ),
+      )
+
+      expect(calls.map((call) => call.title)).toEqual(['lost', ...Array(3).fill('stack control'), 'always', 'lost'])
+      expect(result.stack_unhealthy).toBe('emulator dropped off adb a second time in this leg')
+      expect(result.confirmed).toEqual([])
+      expect(result.dropped.map((entry) => [entry.file.id, entry.gate, entry.reason])).toEqual([
+        ['always', 'replay', 'stack unhealthy'],
+      ])
+    })
+
+    test('counts a run adb never answered about as inconclusive, and the leg keeps its findings', async () => {
+      for (const title of ['a-early', 'b-late']) await writeNative(makeNative(title, assertFailed))
+      const silent = { passed: false, inconclusive: true, error: 'adb gave no clear answer about the emulator' }
+      const flow = fakeFlow({ 'a-early': [failed, failed, failed], 'b-late': [failed, failed, silent] }, [])
+      const clock = { now: 10 * 60_000 }
+      const slow: RunFlow = async (...args) => {
+        clock.now += 8 * 60_000
+        return flow(...args)
+      }
+
+      const result = await replay(outDir, fakeRunner({}, []), qaDir, slow, () => clock.now, ninetyMinuteLeg)
+
+      expect(result.stack_unhealthy).toBeUndefined()
+      expect(result.confirmed.map(({ id, replay }) => [id, replay])).toEqual([
+        ['a-early', { failed: 3, runs: 3, error: failed.error }],
+      ])
+      // The extra run that would replace it does not fit the leg.
+      expect(result.flaky.map(({ id, replay }) => [id, replay])).toEqual([
+        ['b-late', { failed: 2, runs: 2, inconclusive: 1, error: failed.error, reason: outOfTime }],
+      ])
     })
   })
 

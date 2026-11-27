@@ -34,7 +34,7 @@ import {
 } from './findings'
 import { fakeProviderReply, unsupportedRequestMarker } from '../../../e2e/fake-provider'
 import { checkMaestroFlow, flowVars, maestroEnv } from './maestro-flow'
-import { createRunFlow } from './replay-native'
+import { createRunFlow, DeviceLost } from './replay-native'
 import { cleanLogLine } from './sanitize'
 import type { TranscriptMessage } from './report'
 
@@ -120,6 +120,8 @@ export type FlowRun = {
   layout: string[]
   logs: string[]
   signInFailed?: boolean
+  /** The run never counts, as when adb gave no clear answer about the emulator. */
+  inconclusive?: boolean
 }
 /**
  * Runs a checked flow on a freshly installed app. `run` is unique within one replay; `session` picks the build
@@ -634,15 +636,21 @@ const flowFailure = (oracle: FindingFile['finding']['oracle'], run: FlowRun) => 
 }
 
 /**
+ * The epoch ms by which a native leg's runs, and a recovery from a lost emulator, must end. A run that ends later
+ * may still spend 11 s on each adb probe (two at most), and that comes out of the wrap-up minutes after it.
+ */
+const legEnd = (legStart: number) =>
+  legStart + (nativeJobMinutes - nativeWrapUpMinutes - nativeDriverStartupMinutes) * 60_000
+
+/**
  * A native leg's time: `fits(n)` says whether n more runs end before the job's timeout, counted from `legStart`
  * so the setup is on the clock. A run lasts as long as the longest `time` has seen after the first, at least
  * `nativeRunEstimateMinutes`. The wrap-up and one driver retry stay free; only iOS retries, but Android keeps the
  * margin so the clock needs no platform.
  */
 const legClock = (now: () => number, legStart: number) => {
-  const minute = 60_000
-  const end = legStart + (nativeJobMinutes - nativeWrapUpMinutes - nativeDriverStartupMinutes) * minute
-  const state = { longest: nativeRunEstimateMinutes * minute, warm: false }
+  const end = legEnd(legStart)
+  const state = { longest: nativeRunEstimateMinutes * 60_000, warm: false }
   return {
     fits: (runs: number) => now() + state.longest * runs <= end,
     time: async <T>(run: () => Promise<T>) => {
@@ -686,9 +694,11 @@ const unreached = (oracle: FindingFile['finding']['oracle']) =>
 
 /**
  * Runs a checked flow three times. A run whose driver did not start is run once more and only the second try counts.
- * A run `inconclusive` marks, or whose harness sign-in failed, does not count and is replaced, up to `extraRuns`
- * times. With `owed` (the base runs the leg's later findings still need) a run starts only when the clock fits it,
- * and an extra run only when it also fits those, so an early finding's reruns never take a later finding's runs.
+ * A run `inconclusive` marks, one that marks itself inconclusive, or one whose harness sign-in failed, does not count
+ * and is replaced, up to `extraRuns` times. With `owed` (the base runs the leg's later findings still need) a run
+ * starts only when the clock fits it, and an extra run only when it also fits those, so an early finding's reruns
+ * never take a later finding's runs.
+ * A run whose emulator dropped off adb never counts, and starts over once the emulator is back (`DeviceLost`).
  */
 const threeRuns = async (
   { runFlow, outDir, next, clock }: Device,
@@ -702,14 +712,28 @@ const threeRuns = async (
     const first = await runFlow(yaml, outDir, next(), session, signIn)
     return first.error?.includes(driverTimeout) ? runFlow(yaml, outDir, next(), session, signIn) : first
   }
+  /** Undefined when the emulator dropped off adb and is back. A lost run is never timed, so it does not size the leg. */
+  const attempt = async () => {
+    try {
+      return await (clock ? clock.time(runOnce) : runOnce())
+    } catch (error) {
+      if (error instanceof DeviceLost && error.retry) return undefined
+      throw error
+    }
+  }
   const outcome: Outcome = { replay: { failed: 0, runs: 0 }, artifacts: {} }
   for (let tries = 0; outcome.replay.runs < 3 && tries < 3 + extraRuns; tries++) {
     if (clock && owed !== undefined && !clock.fits(1 + (tries < 3 ? 0 : owed))) {
       outcome.replay.reason = `out of time: another run might not end before the leg's ${nativeJobMinutes}-minute timeout`
       break
     }
-    const run = await (clock ? clock.time(runOnce) : runOnce())
-    if (run.signInFailed || inconclusive?.(run)) {
+    const run = await attempt()
+    // The same try starts over on the emulator that is back, once the clock fits it again.
+    if (!run) {
+      tries--
+      continue
+    }
+    if (run.signInFailed || run.inconclusive || inconclusive?.(run)) {
       outcome.replay.inconclusive = (outcome.replay.inconclusive ?? 0) + 1
       continue
     }
@@ -777,6 +801,16 @@ const replayFlows = async (
     )
   }
   return { stackProblem: undefined, outcomes }
+}
+
+/** An emulator lost for good fails the leg the way a failed control does, so none of its findings counts. */
+const replayOnDevice = async (...args: Parameters<typeof replayFlows>) => {
+  try {
+    return await replayFlows(...args)
+  } catch (error) {
+    if (!(error instanceof DeviceLost)) throw error
+    return { stackProblem: error.message, outcomes: new Map<FindingFile, Outcome>() }
+  }
 }
 
 /** `native.sh verify-run`'s result for one patch on one platform, as `qa-out/fix/<fp>.verify.json` reads. */
@@ -1037,7 +1071,7 @@ export const replay = async (
     }
   }
   if (replayedFlows.size > 0 && runFlow) {
-    const native = await replayFlows(outDir, qaDir, replayedFlows, runFlow, clock)
+    const native = await replayOnDevice(outDir, qaDir, replayedFlows, runFlow, clock)
     if (native.stackProblem) stackProblems.push(native.stackProblem)
     for (const file of replayedFlows.keys()) outcomes.set(file, native.outcomes.get(file) ?? noRuns)
   }
@@ -1351,7 +1385,7 @@ if (import.meta.main) {
     'fix-native --out <dir> --native ios|android --device <id> --app <patched app> --fp <fp> --flow <flow> ' +
     '--session <session> --result <json> [--original <app>], with QA_WEBVIEW_LOG and QA_BACKEND_LOG set for --native'
   if (step !== 'replay' && step !== 'judge' && step !== 'fix-native') throw new Error(usage)
-  const nativeFlows = (app = values.app, onboarding = values['app-onboarding']) => {
+  const nativeFlows = (app = values.app, onboarding = values['app-onboarding'], recoverBy?: number) => {
     const { native: platform, device } = values
     const { QA_WEBVIEW_LOG: webviewLog, QA_BACKEND_LOG: backendLog } = Bun.env
     if (platform !== 'ios' && platform !== 'android') throw new Error(`--native must be ios or android: ${platform}`)
@@ -1365,6 +1399,7 @@ if (import.meta.main) {
       webviewLog,
       backendLog,
       leg: values.leg,
+      recoverBy,
     })
   }
   if (step === 'fix-native') {
@@ -1388,12 +1423,20 @@ if (import.meta.main) {
     console.log(JSON.stringify(verdict))
     process.exit(nativeExitCode(verdict))
   }
+  const legStart = legStartOf(Bun.env.QA_LEG_START)
   const result =
     step === 'judge'
       ? await judge(values.out)
       : values.native === undefined
         ? await replay(values.out)
-        : await replay(values.out, undefined, undefined, nativeFlows(), Date.now, legStartOf(Bun.env.QA_LEG_START))
+        : await replay(
+            values.out,
+            undefined,
+            undefined,
+            nativeFlows(values.app, values['app-onboarding'], legEnd(legStart)),
+            Date.now,
+            legStart,
+          )
   console.log(
     `confirmed ${result.confirmed.length}, flaky ${result.flaky.length}, ` +
       `observations ${result.observations.length}, dropped ${result.dropped.length}, ` +

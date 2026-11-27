@@ -167,6 +167,7 @@ test("the harness's sign-in runs first in the same install, and when it fails th
 case "$*" in
   *"shell pidof "*) echo 4129 ;;
   *"logcat -d --pid=4129"*) echo 'I Tauri/Console: Msg: [init] step1_create_app_dir: 399ms' ;;
+  *" get-state") echo device ;;
 esac
 exit 0
 `,
@@ -222,4 +223,126 @@ echo "maestro flow" >> '${calls}'
     result: { passed: false, signInFailed: true, error: 'Assertion is false: "Check your email" is visible' },
     maestro: ['maestro sign-in'],
   })
+})
+
+/**
+ * Runs the Android flow once per entry of `flags`, after creating that entry's file: `lost-<serial>` makes adb lose
+ * that emulator, `drop-<serial>` makes adb lose it during Maestro's flow, `full` fails the install on a device adb
+ * still sees, `fail-flow` fails Maestro's flow. A new boot comes up as emulator-5556. Returns each run's result or what it threw, the calls with paths cut to file names, and
+ * stderr.
+ */
+const androidRuns = (flags: (string | undefined)[]) => {
+  const dir = mkdtempSync(join(work, 'lost-'))
+  const bin = join(dir, 'bin')
+  const calls = join(dir, 'calls.log')
+  mkdirSync(bin)
+  writeFileSync(
+    join(bin, 'adb'),
+    `#!/bin/bash
+echo "adb $*" >> '${calls}'
+serial=$2
+lost() { [ -f "${dir}/lost-$serial" ]; }
+case "$*" in
+  devices) printf 'List of devices attached\\nemulator-5556\\tdevice\\n' ;;
+  *" get-state") lost && { echo "error: device '$2' not found" >&2; exit 1; }; echo device ;;
+  *" wait-for-device") lost && exit 1 ;;
+  *" install -r "*)
+    lost && { echo "adb: device '$2' not found" >&2; exit 1; }
+    [ -f '${dir}/full' ] && { echo 'Failure [INSTALL_FAILED_INSUFFICIENT_STORAGE]'; exit 1; } ;;
+  *"shell pidof "*) echo 4129 ;;
+  *"logcat -d --pid=4129"*) echo 'I Tauri/Console: Msg: [init] step1_create_app_dir: 399ms' ;;
+  *"getprop sys.boot_completed" | *"settings get global hide_error_dialogs") echo 1 ;;
+esac
+exit 0
+`,
+  )
+  writeFileSync(
+    join(bin, 'maestro'),
+    `#!/bin/bash
+echo "maestro $*" >> '${calls}'
+[ "$3" = test ] || exit 1
+[ -f "${dir}/drop-$2" ] && [ "$4" = -e ] && { : > "${dir}/lost-$2"; echo "device '$2' not found"; exit 1; }
+[ -f '${dir}/fail-flow' ] && [ "$4" = -e ] && { echo 'Element not found: Continue'; exit 1; }
+exit 0
+`,
+  )
+  writeFileSync(join(bin, 'avdmanager'), '#!/bin/bash\necho qa-android\n')
+  for (const tool of ['adb', 'maestro', 'avdmanager']) chmodSync(join(bin, tool), 0o755)
+  const logs = [join(dir, 'webview.log'), join(dir, 'backend.log')]
+  for (const file of logs) writeFileSync(file, '')
+  const script = `
+    import { writeFileSync } from 'node:fs'
+    import { createRunFlow } from ${JSON.stringify(join(import.meta.dir, 'replay-native.ts'))}
+    const runFlow = createRunFlow({
+      platform: 'android',
+      deviceId: 'emulator-5554',
+      apps: { onboarding: 'on.apk', plain: 'plain.apk' },
+      webviewLog: ${JSON.stringify(logs[0])},
+      backendLog: ${JSON.stringify(logs[1])},
+    })
+    const results = []
+    for (const [index, flag] of ${JSON.stringify(flags)}.entries()) {
+      if (flag) writeFileSync(${JSON.stringify(dir)} + '/' + flag, '')
+      try {
+        const run = await runFlow('- launchApp\\n', ${JSON.stringify(join(dir, 'out'))}, index + 1, 'c2-chat-power-user-android')
+        results.push({ passed: run.passed, error: run.error })
+      } catch (error) {
+        results.push({ threw: error.constructor.name, message: error.message, retry: error.retry })
+      }
+    }
+    console.log(JSON.stringify(results))
+  `
+  const proc = Bun.spawnSync([process.execPath, '-e', script], {
+    cwd: dir,
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, ANDROID_AVD_HOME: join(dir, 'avd'), TMPDIR: dir },
+  })
+  return {
+    // The boot and the warm-up print to stdout too, as they do in the job's log.
+    results: JSON.parse(proc.stdout.toString().trim().split('\n').at(-1) ?? ''),
+    calls: readFileSync(calls, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => line.replace(/EMAIL=\S+/, 'EMAIL').replace(/\S*\//g, '')),
+    stderr: proc.stderr.toString(),
+  }
+}
+
+test('an Android run on an emulator adb lost boots a new one once, and the runs after it use that one', () => {
+  // The first loss fails the install, the second the flow.
+  const { results, calls, stderr } = androidRuns(['lost-emulator-5554', undefined, 'drop-emulator-5556'])
+
+  expect(results).toEqual([
+    { threw: 'DeviceLost', message: 'emulator dropped off adb', retry: true },
+    { passed: true },
+    { threw: 'DeviceLost', message: 'emulator dropped off adb a second time in this leg', retry: false },
+  ])
+  // The new emulator gets the job's warm-up session and the WebView stream before the run starts over on it.
+  expect(calls.filter((line) => / install -r | logcat -c$|^maestro .* test /.test(line))).toEqual([
+    'adb -s emulator-5554 install -r plain.apk',
+    'adb -s emulator-5556 install -r plain.apk',
+    'maestro --udid emulator-5556 test qa-warm-up.yaml',
+    'adb -s emulator-5556 logcat -c',
+    'adb -s emulator-5556 install -r plain.apk',
+    'maestro --udid emulator-5556 test -e EMAIL flow.yaml',
+    'adb -s emulator-5556 install -r plain.apk',
+    'maestro --udid emulator-5556 test -e EMAIL flow.yaml',
+  ])
+  // The lost run stops before its video is pulled.
+  expect(calls.filter((line) => line.includes(' pull '))).toHaveLength(1)
+  // adb got its reconnect window only for the first loss, and only one emulator booted.
+  expect(calls.filter((line) => line.endsWith(' wait-for-device'))).toEqual(['adb -s emulator-5554 wait-for-device'])
+  expect(calls.filter((line) => line.endsWith(' -G 64M'))).toHaveLength(1)
+  expect(stderr).toContain('adb lost emulator-5554;')
+  expect(stderr).toContain('adb lost emulator-5556;')
+})
+
+test('a failed flow or install on an emulator adb still sees keeps its own outcome, with nothing recovered', () => {
+  const { results, calls, stderr } = androidRuns(['fail-flow', 'full'])
+
+  expect(results).toEqual([
+    { passed: false, error: 'Element not found: Continue' },
+    { threw: 'ShellError', message: expect.any(String) },
+  ])
+  expect(calls.filter((line) => / wait-for-device$| devices$| logcat -c$/.test(line))).toEqual([])
+  expect(stderr).not.toContain('adb lost')
 })

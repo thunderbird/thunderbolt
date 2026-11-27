@@ -348,8 +348,11 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    and no flow runs. A control run whose iOS driver did not start, even on its retry, is inconclusive and replaced like
    a finding's run, up to 3 extra runs; a control left with fewer than 3 counted runs also marks the stack unhealthy. On
    Android the install also maps the stack's ports into the emulator again and warms the app up (as `native.sh install`
-   does). Each run ends with one `maestro hierarchy` of the screen it stopped on, for the tree's `unnamed-control` lines
-   and, on Android, its `behind-keyboard` line; a screen the run only passed through, like the privacy step the harness
+   does). When adb loses the emulator during a run, the run does not count. `native.sh device-lost` prints what may
+   explain the loss (the emulator process, free memory, OOM kills, crash lines from the emulator's log). adb then gets
+   30 s to reconnect; if it does not, the leg cold-boots a new emulator. Either way the run starts over. A leg recovers
+   only once: a second loss marks the stack unhealthy. Each run ends with one `maestro hierarchy` of the screen it
+   stopped on, for the tree's `unnamed-control` lines and, on Android, its `behind-keyboard` line; a screen the run only passed through, like the privacy step the harness
    clicks through, adds no tree line.
    A `layout` run fails when the probe (or a tree rule) logs the quoted `[qa-layout]` line during it, a `console-error`, `page-error` or `http-5xx` run when a new WebView or backend log
    line holds the evidence (cut at the console mark and normalized like the fingerprint), any other run when the flow

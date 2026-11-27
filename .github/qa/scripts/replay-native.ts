@@ -21,6 +21,20 @@ const probeWaitMs = 1200
 const nativeSh = join(import.meta.dir, 'native.sh')
 const driverTimeout = 'iOS driver not ready in time'
 const androidVideo = '/sdcard/qa-replay.mp4'
+/** How long adb gets to see a lost emulator again before a new one is booted. */
+const reconnectSeconds = 30
+
+/**
+ * Thrown by an Android run whose emulator dropped off adb, so the run never counts. With `retry` the emulator is back
+ * (or a new one stands in) and the run can start again; that happens once per leg, and a second loss ends the leg.
+ */
+export class DeviceLost extends Error {
+  readonly retry: boolean
+  constructor(message: string, retry = false) {
+    super(message)
+    this.retry = retry
+  }
+}
 
 /** A line still being written is left out. */
 const linesFrom = async (file: string, start: number) => {
@@ -51,6 +65,7 @@ export const videoPath = (outDir: string, leg: string | undefined, session: stri
  * Each run uninstalls and reinstalls the app, so no session or draft from an earlier run is left. Android caps a
  * recording at 3 minutes, and its install goes through `native.sh install`, which warms the app up. `layout` gets the
  * tree's lines for the last screen and loses the probe's lines the tree owns (`keepsProbeLine`), as in the gate.
+ * On Android, an install or a flow that fails while adb no longer sees the emulator throws `DeviceLost`.
  */
 export const createRunFlow = (opts: {
   platform: 'ios' | 'android'
@@ -61,18 +76,57 @@ export const createRunFlow = (opts: {
   /** The replay leg's name, in each video's name. */
   leg?: string
 }): RunFlow => {
-  const { platform, deviceId, webviewLog, backendLog, leg } = opts
+  const { platform, webviewLog, backendLog, leg } = opts
   const { appId } = platformOf(platform)
   if (!appId) throw new Error(`platforms.json has no app for ${platform}`)
   const ios = platform === 'ios'
+  const device = { id: opts.deviceId, recovered: false }
+  /** adb answers within 10 s that the emulator is ready, not offline or missing. */
+  const online = async () =>
+    (await $`timeout 10 adb -s ${device.id} get-state`.quiet().nothrow()).stdout.toString().trim() === 'device'
+  /** As the job's boot: a new emulator (`native.sh device`), then the warm-up Maestro session the job runs on it. */
+  const reboot = async () => {
+    device.id = (await $`${nativeSh} device android`).text().trim().split('\n').pop() ?? ''
+    await $`${nativeSh} install android ${device.id} ${resolve(opts.apps.plain)}`
+    const warmUp = join(tmpdir(), 'qa-warm-up.yaml')
+    await Bun.write(warmUp, `appId: ${appId}\n---\n- launchApp\n`)
+    await $`maestro --udid ${device.id} test ${warmUp}`.env({ ...getDefaultEnvironment(), ...maestroEnv() }).nothrow()
+  }
+  const recover = async () => {
+    const back = await $`timeout ${reconnectSeconds} adb -s ${device.id} wait-for-device`.quiet().nothrow()
+    if (back.exitCode !== 0) await reboot()
+    // An adb reset ends the stream, and a new emulator needs one of its own.
+    await $`${nativeSh} stop-logs ${webviewLog}`.quiet()
+    await $`${nativeSh} logs android ${device.id} ${webviewLog}`.quiet()
+  }
+  /** Prints what may explain the loss and, once per leg, gets the emulator back. Always throws. */
+  const lost = async (): Promise<never> => {
+    await $`${nativeSh} device-lost ${device.id}`.nothrow()
+    if (device.recovered) throw new DeviceLost('emulator dropped off adb a second time in this leg')
+    device.recovered = true
+    const recovered = await recover().then(
+      () => true,
+      () => false,
+    )
+    throw recovered
+      ? new DeviceLost('emulator dropped off adb', true)
+      : new DeviceLost('emulator dropped off adb and could not be brought back')
+  }
   return async (flowYaml, outDir, run, session, signIn): Promise<FlowRun> => {
+    const deviceId = device.id
     // Absolute, because native.sh moves to the repo root before it reads the path.
     const app = resolve(session.startsWith('c1-first-run-') ? opts.apps.onboarding : opts.apps.plain)
     if (ios) {
       await $`xcrun simctl uninstall ${deviceId} ${appId}`.quiet().nothrow()
       await $`xcrun simctl install ${deviceId} ${app}`.quiet()
     } else {
-      await $`${nativeSh} install android ${deviceId} ${app}`.quiet()
+      try {
+        await $`${nativeSh} install android ${deviceId} ${app}`.quiet()
+      } catch (error) {
+        // adb fails the install at once when it has lost the emulator.
+        if (await online()) throw error
+        await lost()
+      }
     }
     const dir = await mkdtemp(join(tmpdir(), 'qa-flow-'))
     await mkdir(join(outDir, 'videos'), { recursive: true })
@@ -98,6 +152,12 @@ export const createRunFlow = (opts: {
     const signedIn = signIn === undefined ? undefined : await maestro('sign-in.yaml', signIn)
     const signInFailed = signedIn !== undefined && signedIn.exitCode !== 0
     const result = signedIn && signInFailed ? signedIn : await maestro('flow.yaml', flowYaml)
+    if (!ios && result.exitCode !== 0 && !(await online())) {
+      recorder.kill()
+      await recorder.exited
+      await rm(dir, { recursive: true, force: true })
+      await lost()
+    }
     const output = stripVTControlCharacters(`${result.stdout}${result.stderr}`).trim()
     const driverFailed = result.exitCode !== 0 && output.includes(driverTimeout)
     await Bun.sleep(probeWaitMs)

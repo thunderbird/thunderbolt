@@ -34,7 +34,7 @@ import {
 } from './findings'
 import { fakeProviderReply, unsupportedRequestMarker } from '../../../e2e/fake-provider'
 import { checkMaestroFlow, flowVars, maestroEnv } from './maestro-flow'
-import { createRunFlow } from './replay-native'
+import { createRunFlow, DeviceLost } from './replay-native'
 import { cleanLogLine } from './sanitize'
 import type { TranscriptMessage } from './report'
 
@@ -689,6 +689,7 @@ const unreached = (oracle: FindingFile['finding']['oracle']) =>
  * A run `inconclusive` marks, or whose harness sign-in failed, does not count and is replaced, up to `extraRuns`
  * times. With `owed` (the base runs the leg's later findings still need) a run starts only when the clock fits it,
  * and an extra run only when it also fits those, so an early finding's reruns never take a later finding's runs.
+ * A run whose emulator dropped off adb never counts, and starts over once the emulator is back (`DeviceLost`).
  */
 const threeRuns = async (
   { runFlow, outDir, next, clock }: Device,
@@ -702,13 +703,27 @@ const threeRuns = async (
     const first = await runFlow(yaml, outDir, next(), session, signIn)
     return first.error?.includes(driverTimeout) ? runFlow(yaml, outDir, next(), session, signIn) : first
   }
+  /** Undefined when the emulator dropped off adb and is back. A lost run is never timed, so it does not size the leg. */
+  const attempt = async () => {
+    try {
+      return await (clock ? clock.time(runOnce) : runOnce())
+    } catch (error) {
+      if (error instanceof DeviceLost && error.retry) return undefined
+      throw error
+    }
+  }
   const outcome: Outcome = { replay: { failed: 0, runs: 0 }, artifacts: {} }
   for (let tries = 0; outcome.replay.runs < 3 && tries < 3 + extraRuns; tries++) {
     if (clock && owed !== undefined && !clock.fits(1 + (tries < 3 ? 0 : owed))) {
       outcome.replay.reason = `out of time: another run might not end before the leg's ${nativeJobMinutes}-minute timeout`
       break
     }
-    const run = await (clock ? clock.time(runOnce) : runOnce())
+    const run = await attempt()
+    // The same try starts over on the emulator that is back, once the clock fits it again.
+    if (!run) {
+      tries--
+      continue
+    }
     if (run.signInFailed || inconclusive?.(run)) {
       outcome.replay.inconclusive = (outcome.replay.inconclusive ?? 0) + 1
       continue
@@ -777,6 +792,16 @@ const replayFlows = async (
     )
   }
   return { stackProblem: undefined, outcomes }
+}
+
+/** An emulator lost for good fails the leg the way a failed control does, so none of its findings counts. */
+const replayOnDevice = async (...args: Parameters<typeof replayFlows>) => {
+  try {
+    return await replayFlows(...args)
+  } catch (error) {
+    if (!(error instanceof DeviceLost)) throw error
+    return { stackProblem: error.message, outcomes: new Map<FindingFile, Outcome>() }
+  }
 }
 
 /** `native.sh verify-run`'s result for one patch on one platform, as `qa-out/fix/<fp>.verify.json` reads. */
@@ -1037,7 +1062,7 @@ export const replay = async (
     }
   }
   if (replayedFlows.size > 0 && runFlow) {
-    const native = await replayFlows(outDir, qaDir, replayedFlows, runFlow, clock)
+    const native = await replayOnDevice(outDir, qaDir, replayedFlows, runFlow, clock)
     if (native.stackProblem) stackProblems.push(native.stackProblem)
     for (const file of replayedFlows.keys()) outcomes.set(file, native.outcomes.get(file) ?? noRuns)
   }

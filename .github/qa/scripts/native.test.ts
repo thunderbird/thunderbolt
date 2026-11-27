@@ -196,6 +196,109 @@ test('device android reverses the stack ports it is configured with', () => {
   )
 })
 
+/** Runs until it is stopped, like an emulator. */
+const emulatorStub = "#!/bin/bash\nsleep 20 &\ntrap 'kill $!; exit 0' TERM\nwait\n"
+/** Starts `command` in the background of a shell that exits, as an earlier step leaves the emulator, and returns its pid. */
+const detached = (command: string) =>
+  Bun.spawnSync(['bash', '-c', `${command} > /dev/null 2>&1 & echo $!`])
+    .stdout.toString()
+    .trim()
+const stop = (...pids: string[]) => Bun.spawnSync(['kill', ...pids])
+
+/** adb lists the emulator as offline while the pid file still names `previous`, the emulator of an earlier boot. */
+const offlineEmulator = () => {
+  const dir = mkdtempSync(join(work, 'offline-'))
+  const bin = join(dir, 'bin')
+  const pidFile = join(dir, 'qa-emulator.pid')
+  mkdirSync(bin)
+  writeFileSync(
+    join(bin, 'adb'),
+    `#!/bin/bash
+case "$*" in
+  devices)
+    state=device
+    [ "$(cat '${pidFile}')" = "$(cat '${dir}/previous')" ] && state=offline
+    printf 'List of devices attached\\nemulator-5554\\t%s\\n' "$state" ;;
+  *"getprop sys.boot_completed" | *"settings get global hide_error_dialogs") echo 1 ;;
+esac
+exit 0
+`,
+  )
+  writeFileSync(join(bin, 'avdmanager'), '#!/bin/bash\necho qa-android\n')
+  writeFileSync(join(bin, 'emulator'), emulatorStub)
+  for (const tool of ['adb', 'avdmanager', 'emulator']) chmodSync(join(bin, tool), 0o755)
+  const boot = (previous: string) => {
+    for (const file of [pidFile, join(dir, 'previous')]) writeFileSync(file, `${previous}\n`)
+    const proc = Bun.spawnSync(['bash', native, 'device', 'android'], {
+      env: {
+        ...process.env,
+        ...noPorts,
+        PATH: `${bin}:${process.env.PATH}`,
+        ANDROID_AVD_HOME: join(dir, 'avd'),
+        TMPDIR: dir,
+      },
+    })
+    return { proc, booted: readFileSync(pidFile, 'utf8').trim() }
+  }
+  return { bin, boot }
+}
+
+test('device android stops our emulator adb lost and boots a new one instead of waiting for its offline row', () => {
+  const { bin, boot } = offlineEmulator()
+  const ours = detached(`bash '${bin}/emulator' -avd qa-android -no-window`)
+
+  const { proc, booted } = boot(ours)
+
+  expect(proc.exitCode).toBe(0)
+  expect(proc.stdout.toString()).toBe('emulator-5554\n')
+  expect(running(ours)).toBe(false)
+  expect(booted).not.toBe(ours)
+  expect(running(booted)).toBe(true)
+  stop(booted)
+})
+
+test('device android leaves alone a recorded pid that now runs another program', () => {
+  const { boot } = offlineEmulator()
+  const other = detached('sleep 10')
+
+  const { proc, booted } = boot(other)
+
+  expect(proc.exitCode).toBe(0)
+  expect(running(other)).toBe(true)
+  stop(other, booted)
+})
+
+test("device-lost prints adb's state, whether the emulator runs and only the crash lines of its log", () => {
+  const dir = mkdtempSync(join(work, 'lost-'))
+  const bin = join(dir, 'bin')
+  mkdirSync(bin)
+  writeFileSync(join(bin, 'adb'), `#!/bin/bash\necho "error: device '$2' not found" >&2\nexit 1\n`, { mode: 0o755 })
+  const gone = Bun.spawnSync(['true']).pid
+  writeFileSync(join(dir, 'qa-emulator.pid'), `${gone}\n`)
+  const crashes = [
+    'ERROR        | Failed to open the gRPC port',
+    'qemu-system-x86_64: terminating on signal 15 from pid 2319',
+  ]
+  const log = [
+    'INFO         | Android emulator version 36.1.9.0',
+    crashes[0],
+    'WARNING      | Your GPU may have a bug',
+    crashes[1],
+  ]
+  writeFileSync(join(dir, 'qa-emulator.log'), `${log.join('\n')}\nINFO         | Boot completed in 41237 ms\n`)
+
+  const proc = Bun.spawnSync(['bash', native, 'device-lost', 'emulator-5554'], {
+    env: { ...process.env, ...noPorts, PATH: `${bin}:${process.env.PATH}`, TMPDIR: dir },
+  })
+  const out = proc.stderr.toString()
+
+  expect(proc.exitCode).toBe(0)
+  expect(proc.stdout.toString()).toBe('')
+  expect(out).toStartWith("adb lost emulator-5554; adb's state for it now: error: device 'emulator-5554' not found\n")
+  expect(out).toContain(`the emulator (pid ${gone}) is gone\n`)
+  expect(out.split("crash lines in the emulator's log:\n")[1]).toBe(`${crashes.join('\n')}\n`)
+})
+
 /**
  * An SDK whose sdkmanager fails its first `failures` installs the way a corrupt download does, leaving a partial
  * download and a half-written image behind. Each install logs whether the previous attempt's leftovers are still there.

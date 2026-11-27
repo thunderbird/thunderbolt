@@ -3741,6 +3741,10 @@ msgstr "MCP サーバー"
 msgid "Medium"
 msgstr ""
 
+#: src/components/ui/prompt-input.tsx
+msgid "Message"
+msgstr "メッセージ"
+
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
 msgid "Message Simulator"

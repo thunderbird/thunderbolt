@@ -56,7 +56,7 @@ const assistantCopyButtons = (page: Page) =>
 const ask = async (page: Page, prompt: string) => {
   const copyButtons = assistantCopyButtons(page)
   const before = await copyButtons.count()
-  await page.getByPlaceholder('Ask me anything…').fill(prompt)
+  await page.getByRole('textbox', { name: 'Message' }).fill(prompt)
   await page.getByRole('button', { name: 'Send message' }).click()
   await test.expect(copyButtons).toHaveCount(before + 1, { timeout: 180_000 })
   // The copy button appears while the turn is still streaming; wait for it to really end.

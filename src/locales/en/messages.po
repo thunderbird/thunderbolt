@@ -3760,6 +3760,10 @@ msgstr "MCP servers"
 msgid "Medium"
 msgstr "Medium"
 
+#: src/components/ui/prompt-input.tsx
+msgid "Message"
+msgstr "Message"
+
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
 msgid "Message Simulator"

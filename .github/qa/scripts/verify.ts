@@ -127,8 +127,8 @@ export type FlowRun = {
 /**
  * Runs a checked flow on a freshly installed app. `run` is unique within one replay; `session` picks the build
  * (onboarding on for c1). `signIn` runs first in the same launch, and the flow runs only when it passed. `label`
- * names the run in the job log when its emulator is lost: `control` or `<charter>/<finding id>`, with the attempt
- * (`logName`).
+ * names the run in the job log (`withProgress`, and a lost emulator): `control` or `<charter>/<finding id>`, with the
+ * attempt (`logName`).
  */
 export type RunFlow = (
   flowYaml: string,
@@ -783,6 +783,23 @@ const logName = ({ charterDir, id }: FindingFile) =>
     : `${charterDir}/sha256:${createHash('sha256').update(id).digest('hex').slice(0, 8)}`
 
 /**
+ * Prints a line when each run on the device starts and when it ends, with the run's number (its video's), how long it
+ * took and its `label`, so the job log shows where a slow or cut-short leg was. The label never holds app text.
+ */
+export const withProgress =
+  (runFlow: RunFlow, log: (line: string) => void = console.log): RunFlow =>
+  async (...args) => {
+    const [, , run, session, , label = session] = args
+    const start = Date.now()
+    log(`run ${run} started: ${label}`)
+    try {
+      return await runFlow(...args)
+    } finally {
+      log(`run ${run} ended after ${Math.round((Date.now() - start) / 1000)} s: ${label}`)
+    }
+  }
+
+/**
  * Runs `control/stack.yaml` three times, then each finding's checked flow three times, on fresh installs. A failed
  * control run stops the replay: the findings never run. A run whose driver never started, even on its retry, is
  * inconclusive and replaced like a finding's, but only while every finding's base runs still fit the leg. A control
@@ -1417,15 +1434,17 @@ if (import.meta.main) {
     if (!device || !app || !onboarding || !webviewLog || !backendLog) {
       throw new Error('--native needs --device, --app, --app-onboarding, QA_WEBVIEW_LOG and QA_BACKEND_LOG')
     }
-    return createRunFlow({
-      platform,
-      deviceId: device,
-      apps: { onboarding, plain: app },
-      webviewLog,
-      backendLog,
-      leg: values.leg,
-      recoverBy,
-    })
+    return withProgress(
+      createRunFlow({
+        platform,
+        deviceId: device,
+        apps: { onboarding, plain: app },
+        webviewLog,
+        backendLog,
+        leg: values.leg,
+        recoverBy,
+      }),
+    )
   }
   if (step === 'fix-native') {
     const { fp, flow, session, result: resultFile, original, native: platform, app } = values

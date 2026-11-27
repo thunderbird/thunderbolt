@@ -344,9 +344,11 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    text changes, so its `width` or `below` still holds, and a text the flow itself types is left alone. The fix
    check runs flows through the same rewrite. `verify.ts replay --native` runs it 3 times through `replay-native.ts`,
    each time on a fresh install (the onboarding build for c1, the plain one otherwise), with a video under
-   `<out>/videos/`. simctl writes a video as `<name>.mp4.sb-*` and renames it when the recording stops. The uploads
-   leave those files out, since a rename during an upload fails it. `control/stack.yaml` runs 3 times first on the
-   plain build; one failure marks the stack unhealthy
+   `<out>/videos/`. The job log gets a line when each run starts and another when it ends. Both carry the run's
+   number (the one in its video's name) and the name a run gets when adb loses the emulator (below), and the end line
+   says how long the run took, so a slow or cut-short leg shows where it was. simctl writes a video as
+   `<name>.mp4.sb-*` and renames it when the recording stops. The uploads leave those files out, since a rename during
+   an upload fails it. `control/stack.yaml` runs 3 times first on the plain build; one failure marks the stack unhealthy
    and no flow runs. A control run whose iOS driver did not start, even on its retry, is inconclusive and replaced like
    a finding's run, up to 3 extra runs; a control left with fewer than 3 counted runs also marks the stack unhealthy. On
    Android the install also maps the stack's ports into the emulator again and warms the app up (as `native.sh install`

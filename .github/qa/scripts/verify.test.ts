@@ -25,6 +25,7 @@ import {
   replayEnv,
   screenshotTaken,
   verifyNativeFix,
+  withProgress,
   worstJudgeCost,
   type CreateMessage,
   type FlowRun,
@@ -1205,6 +1206,36 @@ describe('replay of native flows', () => {
       expect(result.stack_unhealthy).toBe(`control flow failed 1/3 runs: ${failed.error}`)
       expect(result.confirmed).toEqual([])
     })
+  })
+
+  test('prints one start and one end line per device run, naming it as a lost run is named', async () => {
+    // The numbered file the prompt asks for, then a name the explorer picked from what the app showed.
+    await Bun.write(join(outDir, session, 'findings/1.json'), JSON.stringify(makeNative('numbered', assertFailed)))
+    await Bun.write(join(outDir, session, 'repro/numbered.yaml'), flowOf('numbered'))
+    await writeNative(makeNative('welcome-back-alice', assertFailed))
+    const driver = { passed: false, error: 'Unable to launch app: iOS driver not ready in time' }
+    const lines: string[] = []
+
+    await replay(
+      outDir,
+      fakeRunner({}, []),
+      qaDir,
+      withProgress(fakeFlow({ numbered: [driver] }, []), (line) => lines.push(line)),
+    )
+
+    const hashed = `${session}/sha256:${createHash('sha256').update('welcome-back-alice').digest('hex').slice(0, 8)}`
+    // The driver's retry is a new run, and so a new video, within the same attempt.
+    const runs = [
+      ...[1, 2, 3].map((attempt) => `control, attempt ${attempt}`),
+      ...[1, 1, 2, 3].map((attempt) => `${session}/1, attempt ${attempt}`),
+      ...[1, 2, 3].map((attempt) => `${hashed}, attempt ${attempt}`),
+    ]
+    expect(lines.map((line) => line.replace(/after \d+ s/, 'after N s'))).toEqual(
+      runs.flatMap((label, index) => [
+        `run ${index + 1} started: ${label}`,
+        `run ${index + 1} ended after N s: ${label}`,
+      ]),
+    )
   })
 
   describe('a run whose emulator dropped off adb', () => {

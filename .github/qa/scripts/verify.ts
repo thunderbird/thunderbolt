@@ -700,10 +700,10 @@ const unreached = (oracle: FindingFile['finding']['oracle']) =>
  * and is replaced, up to `extraRuns` times. With `owed` (the base runs the leg's later findings still need) a run
  * starts only when the clock fits it, and an extra run only when it also fits those, so an early finding's reruns
  * never take a later finding's runs.
- * A run whose emulator dropped off adb never counts (`DeviceLost`). Once the emulator is back, the control starts that
- * run over, because findings run only after the control has 3 passing runs. A finding stops there and keeps the runs
- * it already counted. Its own flow may be what brought the emulator down, and a second loss ends the leg. `label`
- * names the run in the job log.
+ * A run whose emulator dropped off adb never counts (`DeviceLost`). Once the emulator is back, `restartLost` starts
+ * that run over. The control sets it, because findings run only after it has 3 passing runs. Without it the flow
+ * stops there and keeps the runs it already counted: a finding's own flow may be what brought the emulator down, and
+ * a second loss ends the leg. `label` names the run in the job log.
  */
 const threeRuns = async (
   { runFlow, outDir, next, clock }: Device,
@@ -712,7 +712,7 @@ const threeRuns = async (
   failure: (run: FlowRun) => string | undefined,
   inconclusive?: (run: FlowRun) => boolean,
   owed?: number,
-  label = session,
+  { label = session, restartLost = false }: { label?: string; restartLost?: boolean } = {},
 ) => {
   const runOnce = async (named: string) => {
     const first = await runFlow(yaml, outDir, next(), session, signIn, named)
@@ -735,8 +735,8 @@ const threeRuns = async (
       break
     }
     const run = await attempt(tries)
-    // The control's same try starts over on the emulator that is back, once the clock fits it again.
-    if (!run && session === 'control') {
+    // The same try starts over on the emulator that is back, once the clock fits it again.
+    if (!run && restartLost) {
       tries--
       continue
     }
@@ -796,6 +796,7 @@ const replayFlows = async (
       (run) => (run.passed ? undefined : (run.error ?? 'the flow failed')),
       (run) => run.error?.includes(driverTimeout) === true,
       3 * flows.size,
+      { restartLost: true },
     )
     const problem =
       replay.failed > 0
@@ -810,7 +811,7 @@ const replayFlows = async (
     const failure = (run: FlowRun) => flowFailure(oracle, run)
     outcomes.set(
       file,
-      await threeRuns(device, flow, file.charterDir, failure, unreached(oracle), owed, findingId(file)),
+      await threeRuns(device, flow, file.charterDir, failure, unreached(oracle), owed, { label: findingId(file) }),
     )
   }
   return { stackProblem: undefined, outcomes }

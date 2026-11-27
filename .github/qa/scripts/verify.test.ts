@@ -1959,6 +1959,23 @@ describe('native fix verification', () => {
     expect(runs).toEqual([1, 2, 3, 4])
   })
 
+  test('a fix check whose session is named control does not start a lost run over', async () => {
+    const runs: number[] = []
+    const lostOnce: RunFlow = async (...args) => {
+      if (runs.length === 0) {
+        runs.push(args[2])
+        throw new DeviceLost('emulator dropped off adb', true)
+      }
+      return device([], runs)(...args)
+    }
+
+    const result = await verifyNativeFix({ ...base, session: 'control', oracle: layout, patched: lostOnce })
+
+    expect(runs).toEqual([1])
+    expect(result).toMatchObject({ runs: 0, failed: 0, passed: false, inconclusive: true })
+    expect(result.error).toBe('the emulator was lost while this flow ran')
+  })
+
   test('a failure-oracle flow failing before its last command is replaced, and never shows the bug without it', async () => {
     const asserted = { type: 'assert-failed', evidence: 'the name step never shows' }
     const steps = { ...base, flow: '- launchApp\n- tapOn: Continue\n- assertVisible: What should we call you?\n' }

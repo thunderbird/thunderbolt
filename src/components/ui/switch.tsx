@@ -14,7 +14,8 @@ import { cn } from '@/lib/utils'
  * left — so the dot's size and its 2px gap to the border are identical for OFF,
  * ON, and DISABLED. Only COLOR changes between states:
  *  - OFF      → `bg-input` track (`bg-secondary` in dark mode) with a
- *               `border-border` outline.
+ *               `border-border-strong` outline (3:1 against card and page,
+ *               WCAG 1.4.11) and a `bg-border-strong` thumb in light mode.
  *  - ON       → a muted amber→raspberry gradient with a light thumb, reading
  *               unambiguously as "on" without competing with nearby content.
  *  - DISABLED → dimmed, keeps the outline.
@@ -38,14 +39,15 @@ const Switch = ({ className, onCheckedChange, ...props }: ComponentProps<typeof 
         'peer inline-flex h-[var(--switch-track-height)] w-[var(--switch-track-width)] shrink-0 cursor-pointer items-center rounded-full border p-[2px] shadow-xs transition-colors outline-none',
         // OFF (default): filled track + visible outline. Dark uses secondary —
         // --color-input is a faint translucent field fill there, too weak for
-        // a control that must read as a solid track.
-        'border-border bg-input dark:bg-secondary',
+        // a control that must read as a solid track. The outline uses
+        // border-strong because plain border is ~1.2:1 on the card in light mode.
+        'border-border-strong bg-input dark:bg-secondary',
         // ON — a lower-saturation version of the brand gradient in both modes.
         'data-[state=checked]:border-transparent data-[state=checked]:bg-brand-muted data-[state=checked]:bg-origin-border',
         'data-[state=checked]:[background-image:var(--gradient-brand-muted)]',
         // Focus + disabled (disabled keeps its outline).
         'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring',
-        'disabled:cursor-not-allowed disabled:border-border disabled:opacity-50',
+        'disabled:cursor-not-allowed disabled:border-border-strong disabled:opacity-50',
         className,
       )}
       {...props}
@@ -56,7 +58,7 @@ const Switch = ({ className, onCheckedChange, ...props }: ComponentProps<typeof 
           'pointer-events-none block size-[var(--switch-thumb-size)] rounded-full bg-background shadow-sm ring-0 transition-transform',
           'data-[state=unchecked]:translate-x-0 data-[state=checked]:translate-x-[var(--switch-thumb-translate)]',
           'data-[state=checked]:bg-brand-foreground',
-          'dark:data-[state=unchecked]:bg-foreground',
+          'data-[state=unchecked]:bg-border-strong dark:data-[state=unchecked]:bg-foreground',
         )}
       />
     </SwitchPrimitive.Root>

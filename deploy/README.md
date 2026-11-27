@@ -506,6 +506,8 @@ Builds and pushes all Docker images + the Helm chart to GHCR.
 
 A caller can pass `tag_override` to tag the images with something other than the `package.json` version — the preview deploys use `pr-<n>-<sha>`. Setting it also skips the `:latest` tag and the Helm chart push, so a preview build never moves the pointers a real release owns.
 
+Builds reuse layers from a per-image `:buildcache` tag. Only runs that publish `:latest` write it, so preview builds read it but never feed it; for a fresh build by hand, dispatch Nightly Images, which rebuilds every layer.
+
 ### Stack Deploy
 
 **File**: `.github/workflows/stack-deploy.yml`
@@ -576,7 +578,7 @@ The deploy job runs under GitHub's `preview` environment so that env-scoped secr
 
 ### Preview Environments
 
-Four workflows give every pull request a disposable stack on Fargate, reachable at five Cloudflare subdomains under `preview.thunderbolt.io` (marketing, app, api, auth, powersync).
+Four workflows give each pull request that changes a preview input (the image sources, `deploy/pulumi/`, `preview-deploy.yml`, `images-publish.yml` and `stack-deploy.yml`; see `paths` in `preview-deploy.yml`) a disposable stack on Fargate, reachable at five Cloudflare subdomains under `preview.thunderbolt.io` (marketing, app, api, auth, powersync).
 
 **`preview-deploy.yml`** builds the PR's images through `images-publish.yml` with a `pr-<n>-<sha>` tag, then calls `stack-deploy.yml` with `stack_name: preview-pr-<n>` and `shared_stack_name: previews-shared`, and leaves a sticky comment carrying the URL. Same-repo PRs deploy on `pull_request` with no human gate, because only collaborators with write access can push a branch to this repository. Fork PRs go through `pull_request_target` behind the `fork-preview-approval` environment, so a maintainer approves every push: under that trigger the workflow file and the Pulumi program are both read from `main`, meaning a fork can change the images but never the infrastructure code that deploys them. The approval job fails unless that environment has required reviewers, so a fork preview cannot deploy through an unprotected or missing environment.
 
@@ -590,7 +592,7 @@ Four workflows give every pull request a disposable stack on Fargate, reachable 
 
 **File**: `.github/workflows/nightly-images.yml`
 
-Nightly at 5:00 UTC (midnight EST), rebuilds and publishes the `main`-branch images to GHCR (version tag, `:latest`, and Helm chart) by calling `images-publish.yml`. Since `images-publish.yml` also runs on every push to `main` touching the paths listed above, this scheduled run only adds value on quiet days — refreshing images when the source hasn't changed (e.g. upstream base-image / security updates).
+Nightly at 5:00 UTC (midnight EST), rebuilds and publishes the `main`-branch images to GHCR (version tag, `:latest`, and Helm chart) by calling `images-publish.yml` without the layer cache. Pushes to `main` reuse cached layers, including their apt/apk upgrades, so this is the build that picks up base-image and OS package updates; images pushed from `main` can carry packages up to about a day old until it refreshes the cache.
 
 **Triggers**:
 

@@ -112,8 +112,8 @@ The shared stack is deployed by `.github/workflows/previews-shared-deploy.yml` â
 `workflow_dispatch`, plus a Monday 07:00 UTC `pulumi up` that doubles as the drift check
 (it should be a no-op when nothing has drifted).
 
-Every PR preview is on the shared model: `.github/workflows/preview-deploy.yml:164` passes
-`shared_stack_name: previews-shared` unconditionally, and `stack-deploy.yml:228` turns that
+Every PR preview is on the shared model: `.github/workflows/preview-deploy.yml`'s `deploy` job passes
+`shared_stack_name: previews-shared` unconditionally, and `stack-deploy.yml`'s `deploy` job turns that
 input into `pulumi config set sharedStackName`. `dev`, `jkab-org/demo`, and enterprise
 customer stacks remain on the monolithic path (see "Legacy escape hatch").
 

@@ -3,10 +3,10 @@ name: Nightly Images
 # Nightly rebuild + publish of the main-branch Docker images to GHCR (package.json
 # version tag, :latest, and the Helm chart).
 #
-# images-publish.yml already runs on every push to main that touches
-# deploy/**, backend/**, src/**, or package.json. This scheduled run only adds
-# value on quiet days — it refreshes images when main hasn't changed those paths
-# (e.g. picking up upstream base-image / security updates).
+# Pushes to main reuse cached layers, including their apt/apk upgrades, so this
+# uncached run is the one that picks up base-image and OS package updates. Images
+# pushed from main can carry packages up to about a day old until it refreshes
+# the cache.
 
 on:
   schedule:
@@ -23,6 +23,9 @@ jobs:
     # auto-provided to reusable workflows via this job's `permissions` block. Passing
     # the whole repo secret set would violate least privilege for no benefit.
     uses: ./.github/workflows/images-publish.yml
+    with:
+      # Rebuild every layer to pick up base-image and package upgrades; this also refreshes the layer cache.
+      no_cache: true
 
   notify:
     needs: publish

@@ -102,6 +102,25 @@ it('publishes marketing images when the website, its docs, or its build workflow
   }
 })
 
+it('caches image layers that only :latest publishes write, and nightly rebuilds fresh', () => {
+  const images = Bun.YAML.parse(
+    readFileSync(join(import.meta.dir, '../.github/workflows/images-publish.yml'), 'utf8'),
+  ) as { jobs: { publish: { steps: { name?: string; with?: Record<string, string> }[] } } }
+  const builds = images.jobs.publish.steps.filter((step) => step.name?.startsWith('Build and push '))
+  expect(builds).toHaveLength(6)
+  for (const build of builds) {
+    const cache = `thunderbolt-${build.name?.replace('Build and push ', '')}:buildcache`
+    expect(build.with?.['no-cache']).toBe('${{ inputs.no_cache == true }}')
+    expect(build.with?.['cache-from']).toBe(`type=registry,ref=\${{ env.IMAGE_PREFIX }}/${cache}`)
+    expect(build.with?.['cache-to']).toStartWith("${{ steps.version.outputs.publish_latest == 'true' && ")
+    expect(build.with?.['cache-to']).toContain(`ref={0}/${cache},`)
+  }
+  const nightly = Bun.YAML.parse(
+    readFileSync(join(import.meta.dir, '../.github/workflows/nightly-images.yml'), 'utf8'),
+  ) as { jobs: { publish: { with?: object } } }
+  expect(nightly.jobs.publish.with).toEqual({ no_cache: true })
+})
+
 it('checks both serving images when their Dockerfile changes', () => {
   const serving = Bun.YAML.parse(
     readFileSync(join(import.meta.dir, '../.github/workflows/frontend-serving.yml'), 'utf8'),

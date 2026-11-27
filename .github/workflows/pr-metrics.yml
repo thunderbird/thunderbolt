@@ -5,6 +5,7 @@ on:
     types: [opened, synchronize, reopened]
 
 permissions:
+  actions: read # find this head's Preview Deploy run
   contents: read
   pull-requests: write
 
@@ -98,9 +99,21 @@ jobs:
       # Poll for readiness before running Lighthouse; a queued deploy may outlast this wait.
       - name: Wait for app preview
         id: preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           URL="https://app-pr-${{ github.event.pull_request.number }}.preview.thunderbolt.io"
           echo "url=$URL" >> $GITHUB_OUTPUT
+          # Preview Deploy is path-gated: with no run for this head and nothing serving yet
+          # (a preview forced by dispatch would be), no preview is coming.
+          RUNS=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/preview-deploy.yml/runs?event=pull_request&head_sha=$HEAD_SHA" --jq .total_count)
+          LIVE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$URL" 2>/dev/null)
+          if [ "$RUNS" = 0 ] && [ "$LIVE" != "200" ]; then
+            echo "No Preview Deploy run for $HEAD_SHA — skipping Lighthouse."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           for i in $(seq 1 30); do
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$URL" 2>/dev/null)
             if [ "$STATUS" = "200" ]; then

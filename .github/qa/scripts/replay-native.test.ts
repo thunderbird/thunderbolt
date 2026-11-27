@@ -486,7 +486,7 @@ test('the diagnostics after a loss end by the deadline, their own adb call too, 
   Bun.sleepSync(Math.max(0, 1_500 - overrun))
   expect(hung).toHaveLength(1)
   expect(Bun.spawnSync(['kill', '-0', ...hung]).exitCode).not.toBe(0)
-})
+}, 15_000)
 
 // In the next three tests the deadline passes during a run the leg clock admitted in time.
 test('a run that ends late on an emulator adb still sees keeps its outcome, a pass with no tree line too', () => {

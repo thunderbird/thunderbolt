@@ -100,6 +100,16 @@ describe('AgentsSettingsPage — availability', () => {
     }
   })
 
+  it('marks the list busy while the agent queries load and drops it once they settle', async () => {
+    const { container } = renderPage(createMockAuthClient({ session: authedSession }))
+    expect(container.querySelector('[aria-busy="true"]')).toBeInTheDocument()
+
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(container.querySelector('[aria-busy]')).toBeNull()
+  })
+
   it('opens the detail panel when a row is clicked and closes it again', () => {
     const authClient = createMockAuthClient({ session: authedSession })
     renderPage(authClient)

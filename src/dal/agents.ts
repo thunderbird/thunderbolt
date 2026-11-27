@@ -73,25 +73,29 @@ export const getAllAgents = (db: AnyDrizzleDatabase) =>
 export const getAllSystemAgents = (db: AnyDrizzleDatabase) =>
   db.select().from(agentsSystemTable).orderBy(asc(agentsSystemTable.name))
 
-/** Live hook for custom (synced) agents. Returns `Agent[]` in visual order. */
-export const useAgents = (): Agent[] => {
+const useAgentsQuery = () => {
   const db = useDatabase()
-  const { data = [] } = useQuery({
+  const { data = [], isLoading } = useQuery({
     queryKey: ['agents'],
     query: toCompilableQuery(getAllAgents(db)),
   })
-  return data.map(customRowToAgent)
+  return { agents: data.map(customRowToAgent), isLoading }
 }
 
-/** Live hook for local-only system agents (hydrated by `refreshSystemAgents`). */
-export const useSystemAgents = (): Agent[] => {
+const useSystemAgentsQuery = () => {
   const db = useDatabase()
-  const { data = [] } = useQuery({
+  const { data = [], isLoading } = useQuery({
     queryKey: ['agents-system'],
     query: toCompilableQuery(getAllSystemAgents(db)),
   })
-  return data.map(systemRowToAgent)
+  return { agents: data.map(systemRowToAgent), isLoading }
 }
+
+/** Live hook for custom (synced) agents. Returns `Agent[]` in visual order. */
+export const useAgents = (): Agent[] => useAgentsQuery().agents
+
+/** Live hook for local-only system agents (hydrated by `refreshSystemAgents`). */
+export const useSystemAgents = (): Agent[] => useSystemAgentsQuery().agents
 
 /** Visual-order composer: built-in first, then system (alpha), then customs (alpha).
  *  Extracted from `useAllAgents` so the ordering rule is unit-testable without
@@ -118,17 +122,27 @@ export const loadAllAgents = async (
   return composeAllAgents(systemRows.map(systemRowToAgent), customRows.map(customRowToAgent), options)
 }
 
-/** Combined list hook: built-in first (unless disabled by deployment), then
- *  system (alpha), then customs (alpha). Matches the Settings/Agents visual order. */
-export const useAllAgents = (): Agent[] => {
+/** Combined list hook that also reports whether either underlying query is still
+ *  resolving, so the Settings/Agents list can mark itself busy. Order matches
+ *  {@link composeAllAgents}. */
+export const useAllAgentsState = (): { agents: Agent[]; isLoading: boolean } => {
   const includeBuiltIn = useConfigCapability(selectBuiltInAgentEnabled)
   // `builtInAgent.name` reads the app name live, so the same object stays current
   // wherever it is held (the chat store keeps the selected agent by reference;
   // a copy with the name baked in would go stale there). The value is unused:
   // subscribing re-renders every agent list when `/config` renames the app.
   useAppName()
-  return composeAllAgents(useSystemAgents(), useAgents(), { includeBuiltIn })
+  const system = useSystemAgentsQuery()
+  const custom = useAgentsQuery()
+  return {
+    agents: composeAllAgents(system.agents, custom.agents, { includeBuiltIn }),
+    isLoading: system.isLoading || custom.isLoading,
+  }
 }
+
+/** Combined list hook: built-in first (unless disabled by deployment), then
+ *  system (alpha), then customs (alpha). Matches the Settings/Agents visual order. */
+export const useAllAgents = (): Agent[] => useAllAgentsState().agents
 
 /**
  * Whether the client may still connect to `agent` or send it a prompt. An open

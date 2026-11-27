@@ -145,7 +145,7 @@ takes the ticket. Fix it anyway, so the person starts from your patch.
 
 ## Check your work
 
-Run all three and make them pass:
+Run these and make them pass:
 
 - `bunx playwright test --config .github/qa/playwright.config.ts <spec>`, with the task's `spec` path (your check's
   path in a visual task, `qa-out/fix-<fp>/repro/web.spec.ts` in a native task when you wrote one) and no other
@@ -153,17 +153,19 @@ Run all three and make them pass:
   other form is blocked (the app is already running and serves your working tree). When `specs` or `realSpecs` is
   not empty, also run each list as one command: every path of the list, in its order, separated by spaces (for
   example `bunx playwright test --config .github/qa/playwright.config.ts qa-out/a/repro/1.spec.ts qa-out/b/repro/2.spec.ts`)
-- `bun run check`
-- `bun run test`, plus `bun run test:backend` when you changed `backend/`
+- `bun .github/qa/scripts/fix.ts changed-tests` when you added or changed a unit test. It runs only the test files
+  you added or changed, each from its own folder (`src/`, `shared/`, `backend/` or `cli/`). Run it with your fix
+  undone to see the regression test fail, then with the fix to see it pass (rule 8).
 
-Run the spec before you change anything too, to see it fail. `bun run test 2>&1 | grep -A8 '(fail)'` shows
-only the failures.
+Run the spec before you change anything too, to see it fail. You cannot run the full test suites, the type check or
+the lint. After your session the workflow runs them on a fresh runner, on the tree your PR would hold, and opens no
+PR when one fails.
 
 ## Review your diff
 
-When the three commands pass, load the `simplify` skill with the Skill tool, naming the files you changed as its
+When your checks pass, load the `simplify` skill with the Skill tool, naming the files you changed as its
 argument. Git is not available, so its first step, `git diff`, is refused: that is expected. Apply what it finds to the
-code you changed only, then run the three commands again. Then re-read the code you changed, rule by rule, against the docs
+code you changed only, then run the same checks again. Then re-read the code you changed, rule by rule, against the docs
 from rule 1 and fix every deviation. Load no other skill.
 
 If `simplify` does not load, do these steps by hand on the files you changed:
@@ -208,4 +210,4 @@ a Conventional Commits title of your change, `<type>: <what the change does>`, w
 characters. Describe the change, not the symptom: `fix: name the file preview's download and close buttons`, not
 `fix: download button has no accessible name`. Without the file, or in another form, the title is the finding's title.
 
-End with two or three sentences: what was wrong, what you changed, and the result of the three commands.
+End with two or three sentences: what was wrong, what you changed, and the result of your checks.

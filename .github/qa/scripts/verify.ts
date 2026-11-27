@@ -120,7 +120,7 @@ export type FlowRun = {
   layout: string[]
   logs: string[]
   signInFailed?: boolean
-  /** The run never counts, as when adb gave no answer about the emulator once the leg had no time left. */
+  /** The run never counts, as when adb gave no clear answer about the emulator. */
   inconclusive?: boolean
 }
 /**

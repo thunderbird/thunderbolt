@@ -240,12 +240,12 @@ echo "maestro flow" >> '${calls}'
  * tree dump until the next `adb devices`, `flap-<serial>` makes adb lose it until the next `adb devices`,
  * `blip-<serial>` fails one install with adb's "not found" while adb still sees it, `other-<serial>` puts another AVD
  * on that serial, `full` fails the install on a device adb still sees, `fail-flow` fails Maestro's flow, `hang` hangs
- * the warm-up session, `hang-adb` hangs `adb get-state`, `dead-stream` makes the new WebView stream exit at once. An
- * unrelated emulator-5558 is always online; a new boot of our AVD comes up as emulator-5556. A recovery must end
- * `recoverIn` ms after the start (a negative value puts the deadline before the runs), and `never` passes no
- * deadline, as fix-native does. Maestro's tree dump always fails. Returns each run's result or what it threw, the
- * calls with paths cut to file names, stderr, what the WebView log and $GITHUB_ENV hold, how many ms past the
- * deadline the runs ended, and the pids of the `adb get-state` calls that hung.
+ * the warm-up session, `hang-adb` hangs `adb get-state`, `mute-adb` makes its next call print nothing and fail,
+ * `dead-stream` makes the new WebView stream exit at once. An unrelated emulator-5558 is always online; a new boot of
+ * our AVD comes up as emulator-5556. A recovery must end `recoverIn` ms after the start (a negative value puts the
+ * deadline before the runs), and `never` passes no deadline, as fix-native does. Maestro's tree dump always fails.
+ * Returns each run's result or what it threw, the calls with paths cut to file names, stderr, what the WebView log and
+ * $GITHUB_ENV hold, how many ms past the deadline the runs ended, and the pids of the `adb get-state` calls that hung.
  */
 const androidRuns = (flags: (string | undefined)[], recoverIn: number | 'never' = 600_000) => {
   const dir = mkdtempSync(join(work, 'lost-'))
@@ -268,6 +268,7 @@ case "$*" in
     if [ "$serial" = emulator-5558 ] || [ -f "${dir}/other-$serial" ]; then echo pixel-other; else echo qa-android; fi ;;
   *" get-state")
     [ -f '${dir}/hang-adb' ] && { echo $$ >> '${dir}/hung'; exec sleep 30; }
+    [ -f '${dir}/mute-adb' ] && { rm '${dir}/mute-adb'; exit 1; }
     lost && { echo "error: device '$2' not found" >&2; exit 1; }
     echo device ;;
   *" logcat -v epoch -T 1 "*) [ -f '${dir}/dead-stream' ] && { echo 'error: device offline'; exit 1; }; exec sleep 20 ;;
@@ -511,15 +512,25 @@ test('a run that ends late on an emulator adb lost ends the leg, after asking ad
   expect(calls).toContain('adb -s emulator-5554 get-state')
 }, 15_000)
 
-test('a run that ends late while adb never answers is inconclusive, and the leg goes on', () => {
-  const { results, overrun } = androidRuns(['fail-flow hang-adb'], -1_000)
+test('a run whose adb probe times out is inconclusive though the leg has time left, and nothing is recovered', () => {
+  // After the probe's 10 s the leg has about 5 s left, too few for a recovery to finish.
+  const { results, calls, overrun } = androidRuns(['fail-flow hang-adb'], 16_000)
+
+  expect(results).toEqual([{ passed: false, error: 'adb gave no clear answer about the emulator', inconclusive: true }])
+  expect(calls.filter((line) => / devices$| -G 64M$|^emulator /.test(line))).toEqual([])
+  expect(overrun).toBeLessThan(0)
+}, 20_000)
+
+test('a run whose adb probe prints nothing is inconclusive, and the next run uses the same emulator', () => {
+  // Its probe follows the tree dump, which always fails here.
+  const { results, calls } = androidRuns(['mute-adb', undefined])
 
   expect(results).toEqual([
-    { passed: false, error: "adb never answered about the emulator after the leg's deadline", inconclusive: true },
+    { passed: false, error: 'adb gave no clear answer about the emulator', inconclusive: true },
+    { passed: true },
   ])
-  // The probe gets its 10 s past the deadline, and no more.
-  expect(overrun).toBeLessThan(15_000)
-}, 20_000)
+  expect(calls.filter((line) => / devices$| -G 64M$|^emulator /.test(line))).toEqual([])
+})
 
 test('a run with no recovery deadline, as fix-native has, fails on a lost emulator without probing adb', () => {
   const { results, calls } = androidRuns(['lost-emulator-5554'], 'never')

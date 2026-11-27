@@ -1268,7 +1268,7 @@ describe('replay of native flows', () => {
 
     test('counts a run adb never answered about as inconclusive, and the leg keeps its findings', async () => {
       for (const title of ['a-early', 'b-late']) await writeNative(makeNative(title, assertFailed))
-      const silent = { passed: false, inconclusive: true, error: "adb never answered after the leg's deadline" }
+      const silent = { passed: false, inconclusive: true, error: 'adb gave no clear answer about the emulator' }
       const flow = fakeFlow({ 'a-early': [failed, failed, failed], 'b-late': [failed, failed, silent] }, [])
       const clock = { now: 10 * 60_000 }
       const slow: RunFlow = async (...args) => {

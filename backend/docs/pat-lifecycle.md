@@ -63,4 +63,4 @@ curl --fail-with-body --silent --show-error \
 
 Deletion revokes the key immediately. For a suspected compromise, revoke, replace the stored `THUNDERBOLT_TOKEN`, and issue a new key. `thunderbolt logout` only revokes the stored web session and its bound CLI device; it cannot remove a token from the process environment or revoke that PAT remotely.
 
-API-key sessions and disabled per-key rate limiting are deliberate for headless automation. Account and IP-level limits still apply.
+API-key sessions carry a generous per-key rate limit (300 requests/minute) sized for headless automation. Account and IP-level limits still apply.

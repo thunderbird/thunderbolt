@@ -654,13 +654,15 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       // for the key's owner when an `x-api-key` header is present, so a key authenticates as the
       // account that created it — the escape hatch when the interactive device grant can't run.
       // The plugin's per-key rate limit defaults to 10 requests/day, which is unusable for
-      // automation; disable it and rely on the account/IP-level limits already in this stack.
-      // A leaked PAT is mitigated by expiry and revoking the key (same posture as a
-      // compromised device). Installed plugin runtime interprets defaultExpiresIn as seconds.
+      // automation; use a generous per-minute budget when deployment rate limiting is enabled.
+      // PAT traffic keeps a per-credential throttle on top of the account/IP-level limits (the
+      // Better Auth IP limiter is in-memory and single-instance only). A leaked PAT is further
+      // mitigated by expiry and revoking the key (same posture as a compromised device).
+      // Installed plugin runtime interprets defaultExpiresIn as seconds.
       apiKey({
         enableSessionForAPIKeys: true,
         keyExpiration: { defaultExpiresIn: settings.apiKeyDefaultExpiresInSeconds },
-        rateLimit: { enabled: false },
+        rateLimit: { enabled: settings.rateLimitEnabled, timeWindow: 60_000, maxRequests: 300 },
       }),
       // Changing the RP ID orphans every registered passkey. `origin` comes from
       // the trusted-origins list plus the Android app's signing-key origins, never

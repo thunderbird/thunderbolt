@@ -39,7 +39,7 @@ it('backs up API keys and metadata while excluding all OAuth credentials', async
   // JSON table order is not authoritative; metadata still precedes credential validation.
   const { provider_connection_secrets: connectionSecrets, ...metadataTables } = backup.tables
   const reordered = { ...backup, tables: { provider_connection_secrets: connectionSecrets, ...metadataTables } }
-  await importUserData(getDb(), reordered, { id: 'other-user' })
+  await importUserData(getDb(), reordered, { id: 'other-user', email: null, deviceId: 'device-1' })
   expect(await getProviderCredentials(getDb(), id)).toMatchObject({ apiKey: 'test-api-key' })
   expect(await getProviderCredentials(getDb(), 'oauth:otari')).toBeNull()
 })
@@ -74,7 +74,7 @@ it('does not import OAuth tokens even if a backup explicitly includes them', asy
     },
   }
   await resetTestDatabase()
-  await importUserData(getDb(), forged, { id: 'user' })
+  await importUserData(getDb(), forged, { id: 'user', email: null, deviceId: 'device-1' })
   expect(await getProviderCredentials(getDb(), 'oauth:otari')).toBeNull()
 })
 
@@ -90,7 +90,9 @@ it('rejects a backup whose API key is bound to a different server', async () => 
   const connection = backup.tables.provider_connections[0] as { url: string }
   connection.url = 'https://different.example/v1'
   await resetTestDatabase()
-  await expect(importUserData(getDb(), backup, { id: 'user' })).rejects.toThrow('do not match')
+  await expect(importUserData(getDb(), backup, { id: 'user', email: null, deviceId: 'device-1' })).rejects.toThrow(
+    'do not match',
+  )
 })
 
 it.each(['private-key-fragment', '{"apiKey":"private-key-fragment",}', '[]', 'null', '{"apiKey":42}'])(
@@ -106,7 +108,7 @@ it.each(['private-key-fragment', '{"apiKey":"private-key-fragment",}', '[]', 'nu
     const secret = backup.tables.provider_connection_secrets[0] as { credentials: string }
     secret.credentials = credentials
     await resetTestDatabase()
-    const importing = importUserData(getDb(), backup, { id: 'user' })
+    const importing = importUserData(getDb(), backup, { id: 'user', email: null, deviceId: 'device-1' })
     await expect(importing).rejects.toBeInstanceOf(ImportFormatError)
     await expect(importing).rejects.toThrow(/^Invalid provider API key backup\.$/)
     expect(await getProviderConnections(getDb())).toEqual([])
@@ -154,7 +156,9 @@ it.each(invalidMetadata)('rejects %s in imported connections and rolls back all 
     { ...row, ...values },
   ]
   await resetTestDatabase()
-  await expect(importUserData(getDb(), backup, { id: 'user' })).rejects.toBeInstanceOf(ImportFormatError)
+  await expect(
+    importUserData(getDb(), backup, { id: 'user', email: null, deviceId: 'device-1' }),
+  ).rejects.toBeInstanceOf(ImportFormatError)
   expect(await getProviderConnections(getDb())).toEqual([])
 })
 
@@ -171,7 +175,7 @@ it('round-trips a keyless local connection with nullable timestamps', async () =
   metadata.createdAt = null
   metadata.updatedAt = null
   await resetTestDatabase()
-  await importUserData(getDb(), backup, { id: 'user' })
+  await importUserData(getDb(), backup, { id: 'user', email: null, deviceId: 'device-1' })
   expect(await getProviderCredentials(getDb(), id)).toMatchObject({ apiKey: '' })
 })
 
@@ -190,6 +194,6 @@ it('round-trips a migrated custom connection while retaining its noncanonical le
   expect(backup.tables.provider_connections).toMatchObject([{ url: 'http://localhost:11434/v1' }])
   expect(backup.tables.models).toMatchObject([{ url: legacyUrl }])
   await resetTestDatabase()
-  await importUserData(getDb(), backup, { id: 'user' })
+  await importUserData(getDb(), backup, { id: 'user', email: null, deviceId: 'device-1' })
   expect(await getProviderCredentials(getDb(), 'legacy-model:legacy')).toMatchObject({ apiKey: 'local-key' })
 })

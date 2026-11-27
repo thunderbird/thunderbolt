@@ -8,7 +8,7 @@ import type { DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dial
 import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { Sidebar as SidebarRoot, useSidebar } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { useDatabase } from '@/contexts'
+import { useAuth, useDatabase } from '@/contexts'
 import { deleteChatThread, getAllChatThreads, updateChatThread } from '@/dal'
 import { useCreateNewChat } from '@/hooks/use-create-new-chat'
 import { useDeleteNonProjectChats } from '@/hooks/use-delete-non-project-chats'
@@ -22,6 +22,8 @@ import { useQuery } from '@powersync/tanstack-react-query'
 import { useCallback, useMemo, useRef } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router'
 import { ChatSidebarContent } from './chat-sidebar'
+import { ExportChatErrorNotice } from './export-chat-error-notice'
+import { useExportChat } from './use-export-chat'
 import { SettingsSidebarContent } from './settings-sidebar'
 import { useSidebarSection } from './use-sidebar-section'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
@@ -95,6 +97,17 @@ export default function Sidebar() {
     },
     [renameMutate],
   )
+
+  const authClient = useAuth()
+  const { data: session } = authClient.useSession()
+  const {
+    exportChat,
+    errorMessage: exportErrorMessage,
+    dismissError: dismissExportError,
+  } = useExportChat(db, {
+    id: session?.user?.id ?? '',
+    email: session?.user?.email ?? null,
+  })
 
   const deleteAllChats = useDeleteNonProjectChats()
   const deleteAllChatsMutation = useMutation({
@@ -177,11 +190,13 @@ export default function Sidebar() {
             onTasksClick={() => handleNavigate('/tasks')}
             onMiniAppClick={(appId) => handleNavigate(miniAppPath(appId))}
             onRename={handleRename}
+            onExport={exportChat}
             onChatClick={handleChatClick}
             onSearchClick={openSearchPalette}
           />
         )}
       </TooltipProvider>
+      <ExportChatErrorNotice errorMessage={exportErrorMessage} onDismiss={dismissExportError} />
     </SidebarRoot>
   )
 }

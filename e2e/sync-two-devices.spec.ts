@@ -6,6 +6,7 @@ import type { Page } from '@playwright/test'
 import { defaultModelOpus55 } from '../shared/defaults/models'
 import { completeFirstDeviceSetup, finishAdditionalDeviceSetup, startAdditionalDeviceSetup } from './e2ee/helpers'
 import { fakeProviderReply } from './fake-provider'
+import { importBackup } from './import-backup'
 import { collectPageErrors, loginViaEmailCode, openSidebarOnMobile, sendChatPrompt } from './helpers'
 import { expect, isolateProviderRequests, test } from './test'
 
@@ -80,6 +81,39 @@ test('chats and model reasoning preferences sync between devices without reloadi
 
     await openSidebarOnMobile(secondPage)
     await expect(secondPage.getByText(title, { exact: true })).toBeVisible({ timeout: 60_000 })
+
+    // A chat file from another account reuses this chat's id. The import keeps it apart under ids of its own, and
+    // those reach the other device; the original ids would have overwritten this chat instead.
+    await expect(page).toHaveURL(/\/chats\/(?!new$)[^/]+$/)
+    const chatId = new URL(page.url()).pathname.split('/').pop()
+    const importedTitle = `Imported chat ${crypto.randomUUID().slice(0, 8)}`
+    await importBackup(page, {
+      format: 'thunderbolt-export',
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      user: { id: 'another-account', email: 'another-account@example.com' },
+      tables: {
+        chat_threads: [{ id: chatId, title: importedTitle, deletedAt: null }],
+        chat_messages: [
+          {
+            id: crypto.randomUUID(),
+            chatThreadId: chatId,
+            parentId: null,
+            role: 'user',
+            content: importedTitle,
+            parts: [{ type: 'text', text: importedTitle }],
+            deletedAt: null,
+          },
+        ],
+      },
+    })
+    await expect(secondPage.getByText(importedTitle, { exact: true })).toBeVisible({ timeout: 60_000 })
+    await expect(secondPage.getByText(title, { exact: true })).toBeVisible()
+    // The messages follow the thread under their new ids.
+    await secondPage.getByRole('button', { name: importedTitle, exact: true }).click()
+    await expect(secondPage.locator('[data-message-id]').getByText(importedTitle, { exact: true })).toBeVisible({
+      timeout: 60_000,
+    })
     expect(errors).toEqual([])
     expect(secondErrors).toEqual([])
   } finally {

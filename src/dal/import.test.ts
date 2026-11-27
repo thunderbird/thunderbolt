@@ -28,6 +28,7 @@ import {
   parseMcpCredentialSummary,
   setMcpServerCredentials,
 } from './mcp-secrets'
+import { getChatMessages, getLastMessage } from './chat-messages'
 import { createMcpServerWithCredentials } from './mcp-servers'
 import { createModel, getModel } from './models'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
@@ -40,15 +41,20 @@ afterAll(async () => {
   await teardownTestDatabase()
 })
 
-const envelope = (tables: Record<string, unknown[]>): unknown => ({
+const currentUser = { id: 'current-user', email: null, deviceId: 'device-1' }
+const signedOut = { id: null, email: null, deviceId: 'device-1' }
+
+/** Exported by the importing account unless `user` says otherwise, so a single-chat file keeps its ids. */
+const envelope = (
+  tables: Record<string, unknown[]>,
+  user: { id: string; email: string | null } = { id: currentUser.id, email: 'u1@example.com' },
+): unknown => ({
   format: exportFormat,
   schemaVersion: exportSchemaVersion,
   exportedAt: '2026-06-16T00:00:00.000Z',
-  user: { id: 'user-1', email: 'u1@example.com' },
+  user,
   tables,
 })
-
-const currentUser = { id: 'current-user' }
 
 describe('Import DAL', () => {
   beforeEach(async () => {
@@ -489,16 +495,16 @@ describe('Import DAL', () => {
     it.each(['insert', 'replace'])('keeps signed-out %s imports unowned', async (operation) => {
       const db = getDb()
       if (operation === 'replace') {
-        await db.insert(chatThreadsTable).values({ id: 'thread-1', title: 'Old', userId: 'previous-owner' })
+        await db.insert(tasksTable).values({ id: 'task-1', item: 'Old', userId: 'previous-owner' })
       }
       await importUserData(
         db,
-        envelope({ chat_threads: [{ id: 'thread-1', title: 'Restored', userId: 'exported-owner' }] }),
-        { id: null },
+        envelope({ tasks: [{ id: 'task-1', item: 'Restored', userId: 'exported-owner' }] }, { id: '', email: null }),
+        signedOut,
       )
 
-      const row = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 'thread-1')).get()
-      expect(row?.title).toBe('Restored')
+      const row = await db.select().from(tasksTable).where(eq(tasksTable.id, 'task-1')).get()
+      expect(row?.item).toBe('Restored')
       expect(row?.userId).toBeNull()
     })
 
@@ -561,6 +567,172 @@ describe('Import DAL', () => {
       const row = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 'thread-1')).get()
       expect(row?.title).toBe('Imported')
       expect(row?.userId).toBe(currentUser.id)
+    })
+  })
+
+  describe('single-chat files', () => {
+    const otherAccount = { id: 'other-user', email: 'other@example.com' }
+    const chat = {
+      chat_threads: [{ id: 'thread-1', title: 'Shared', projectId: 'project-1', deletedAt: null }],
+      chat_messages: [
+        { id: 'm1', chatThreadId: 'thread-1', role: 'user', parentId: null, content: 'hi' },
+        { id: 'm2', chatThreadId: 'thread-1', role: 'assistant', parentId: 'm1', content: 'hello' },
+      ],
+    }
+
+    it('keeps the ids of a chat exported by the same account', async () => {
+      const db = getDb()
+      await db.insert(chatThreadsTable).values({ id: 'thread-1', title: 'Old', deletedAt: '2026-06-01' })
+      await importUserData(db, envelope(chat), currentUser)
+
+      const threads = await db.select().from(chatThreadsTable)
+      expect(threads).toHaveLength(1)
+      expect(threads[0]).toMatchObject({ id: 'thread-1', title: 'Shared', projectId: 'project-1', deletedAt: null })
+    })
+
+    it('gives a chat from another account ids of its own, keeping the message tree', async () => {
+      const db = getDb()
+      await importUserData(db, envelope(chat, otherAccount), currentUser)
+
+      const [thread] = await db.select().from(chatThreadsTable)
+      expect(thread.id).toBe('673ee6ac-8f18-5962-a6ed-42c4858dcdab')
+      expect(thread).toMatchObject({ title: 'Shared', projectId: null, userId: currentUser.id })
+      const rows = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.chatThreadId, thread.id))
+      const first = rows.find((row) => row.content === 'hi')
+      const second = rows.find((row) => row.content === 'hello')
+      expect(first?.id).not.toBe('m1')
+      expect(first?.parentId).toBeNull()
+      expect(second?.parentId).toBe(first?.id)
+    })
+
+    it('keeps the ids of a chat exported under the same email by a recreated account', async () => {
+      const db = getDb()
+      await importUserData(db, envelope(chat, { id: 'deleted-account', email: 'Me@example.com' }), {
+        ...currentUser,
+        email: 'me@example.com',
+      })
+
+      expect((await db.select().from(chatThreadsTable)).map((row) => row.id)).toEqual(['thread-1'])
+    })
+
+    it.each([
+      ['a signed-out export imported signed in', { id: '', email: null }, currentUser],
+      ['a signed-in export imported signed out', { id: currentUser.id, email: 'me@example.com' }, signedOut],
+      ['a signed-out export imported signed out', { id: '', email: null }, signedOut],
+    ])('copies %s, since no account ties the two', async (_case, exportedBy, importer) => {
+      const db = getDb()
+      await importUserData(db, envelope(chat, exportedBy), importer)
+
+      const threads = await db.select().from(chatThreadsTable)
+      expect(threads).toHaveLength(1)
+      expect(threads[0].id).not.toBe('thread-1')
+    })
+
+    it('keys a chat copied in while signed out to this device', async () => {
+      const db = getDb()
+      await importUserData(db, envelope(chat, { id: '', email: null }), signedOut)
+
+      const [thread] = await db.select().from(chatThreadsTable)
+      expect(thread.id).toBe('20f44588-4c37-5d65-aa52-0053ed697756')
+      expect(thread.userId).toBeNull()
+    })
+
+    it('copies a chat from a file that names no exporting account', async () => {
+      const db = getDb()
+      await importUserData(db, { format: exportFormat, schemaVersion: exportSchemaVersion, tables: chat }, currentUser)
+
+      const threads = await db.select().from(chatThreadsTable)
+      expect(threads).toHaveLength(1)
+      expect(threads[0].id).not.toBe('thread-1')
+    })
+
+    it('copies a chat from another email even when the user ids match', async () => {
+      const db = getDb()
+      await importUserData(db, envelope(chat, { id: currentUser.id, email: 'other@example.com' }), {
+        ...currentUser,
+        email: 'me@example.com',
+      })
+
+      const threads = await db.select().from(chatThreadsTable)
+      expect(threads).toHaveLength(1)
+      expect(threads[0].id).not.toBe('thread-1')
+    })
+
+    it.each([
+      ['from another account', otherAccount],
+      ['from this account', { id: currentUser.id, email: null }],
+    ])('writes only the chat of a marked chat file %s, ignoring its other tables', async (_case, exportedBy) => {
+      const db = getDb()
+      await db.insert(modelsTable).values({ id: 'model-1', name: 'Mine', provider: 'custom', url: 'https://mine.test' })
+      const marked = {
+        format: exportFormat,
+        schemaVersion: exportSchemaVersion,
+        kind: 'chat',
+        user: exportedBy,
+        tables: {
+          ...chat,
+          tasks: [{ id: 'task-1', item: 'Extra' }],
+          models: [{ id: 'model-1', name: 'Hijacked', provider: 'custom', url: 'https://attacker.test' }],
+        },
+      }
+      const result = await importUserData(db, marked, currentUser)
+
+      expect(await db.select().from(chatThreadsTable)).toHaveLength(1)
+      expect(await db.select().from(tasksTable)).toHaveLength(0)
+      expect((await db.select().from(modelsTable).where(eq(modelsTable.id, 'model-1')).get())?.url).toBe(
+        'https://mine.test',
+      )
+      expect(result.ignoredTableNames.sort()).toEqual(['models', 'tasks'])
+      expect(Object.keys(result.tables).sort()).toEqual(['chat_messages', 'chat_threads'])
+    })
+
+    it('lists a copied chat in its original order, continuing from its last message', async () => {
+      const db = getDb()
+      // uuid v7 ids, as the app writes them: the copy must keep their time order.
+      const ids = [
+        '019a1b2c-3d4e-7000-8000-00000000000a',
+        '019a1b2c-3d4e-7001-8000-000000000001',
+        '019a1b2c-3d4f-7000-8000-000000000005',
+      ]
+      const threadId = '019a1b2c-3d4d-7000-8000-000000000000'
+      const ordered = {
+        chat_threads: [{ id: threadId, title: 'Ordered', deletedAt: null }],
+        chat_messages: ids.map((id, index) => ({
+          id,
+          chatThreadId: threadId,
+          role: index % 2 ? 'assistant' : 'user',
+          parentId: ids[index - 1] ?? null,
+          content: `message ${index}`,
+          deletedAt: null,
+        })),
+      }
+      await importUserData(db, envelope(ordered, otherAccount), currentUser)
+
+      const [thread] = await db.select().from(chatThreadsTable)
+      const messages = await getChatMessages(db, thread.id)
+      expect(messages.map((message) => message.content)).toEqual(['message 0', 'message 1', 'message 2'])
+      expect((await getLastMessage(db, thread.id))?.id).toBe(messages[2].id)
+    })
+
+    it('updates the copy when the same foreign chat is imported again', async () => {
+      const db = getDb()
+      await importUserData(db, envelope(chat, otherAccount), currentUser)
+      await importUserData(db, envelope(chat, otherAccount), currentUser)
+
+      expect(await db.select().from(chatThreadsTable)).toHaveLength(1)
+      expect(await db.select().from(chatMessagesTable)).toHaveLength(2)
+    })
+
+    it('keeps the ids of a full backup from another account', async () => {
+      const db = getDb()
+      await importUserData(
+        db,
+        envelope({ ...chat, tasks: [{ id: 'task-1', item: 'Do it' }] }, otherAccount),
+        currentUser,
+      )
+
+      const threads = await db.select().from(chatThreadsTable)
+      expect(threads.map((row) => row.id)).toEqual(['thread-1'])
     })
   })
 
@@ -634,8 +806,24 @@ describe('Import DAL', () => {
       expect(bad?.exportedAtLabel).toBeNull()
     })
 
+    it('describes a single-chat file and leaves a full backup without a chat', () => {
+      const chatFile = envelope({
+        chat_threads: [{ id: 'thread-1', title: 'Shared' }],
+        chat_messages: [{ id: 'm1', chatThreadId: 'thread-1' }],
+      })
+      expect(summarizeExportEnvelope(chatFile, currentUser)?.chat).toEqual({
+        title: 'Shared',
+        messageCount: 1,
+        isCopy: false,
+      })
+      expect(summarizeExportEnvelope(chatFile, { id: 'someone-else', email: null })?.chat?.isCopy).toBe(true)
+      expect(
+        summarizeExportEnvelope(envelope({ chat_threads: [{ id: 'thread-1' }], tasks: [{ id: 'task-1' }] }))?.chat,
+      ).toBeNull()
+    })
+
     describe('accountMismatch', () => {
-      it('is false when no currentUserEmail is provided', () => {
+      it('is false when the importing user has no email', () => {
         expect(summarizeExportEnvelope(envelope({}))?.accountMismatch).toBe(false)
       })
 
@@ -647,16 +835,24 @@ describe('Import DAL', () => {
           user: { id: 'user-1', email: null },
           tables: {},
         }
-        expect(summarizeExportEnvelope(payload, 'someone@example.com')?.accountMismatch).toBe(false)
+        expect(summarizeExportEnvelope(payload, { id: null, email: 'someone@example.com' })?.accountMismatch).toBe(
+          false,
+        )
       })
 
       it('is false when the emails match (case-insensitively)', () => {
-        expect(summarizeExportEnvelope(envelope({}), 'u1@example.com')?.accountMismatch).toBe(false)
-        expect(summarizeExportEnvelope(envelope({}), 'U1@Example.COM')?.accountMismatch).toBe(false)
+        expect(summarizeExportEnvelope(envelope({}), { id: null, email: 'u1@example.com' })?.accountMismatch).toBe(
+          false,
+        )
+        expect(summarizeExportEnvelope(envelope({}), { id: null, email: 'U1@Example.COM' })?.accountMismatch).toBe(
+          false,
+        )
       })
 
       it('is true when both emails are present and differ', () => {
-        expect(summarizeExportEnvelope(envelope({}), 'someone-else@example.com')?.accountMismatch).toBe(true)
+        expect(
+          summarizeExportEnvelope(envelope({}), { id: null, email: 'someone-else@example.com' })?.accountMismatch,
+        ).toBe(true)
       })
     })
   })

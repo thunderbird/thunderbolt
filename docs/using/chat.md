@@ -116,6 +116,14 @@ A conversation is titled automatically from your first message. Drag a chat onto
 
 Projects group related chats and add instructions every chat in the project inherits. A chat in a project can also search the project's other chats when the model needs earlier context. Deleting a project does not delete its chats; they are returned to the ungrouped list. See [Projects](./projects.md).
 
+**Export** in a chat's `⋯` menu (or its right-click or long-press menu) saves that one conversation as a JSON file, for example to send to support or to someone else.
+
+- **Reading it back:** **Settings → Preferences → Data → Import Data** reads the file. Only the chat is imported, whatever else the file holds.
+- **Your own chat, while signed in:** importing it updates the chat with the file's version and brings it back if you deleted it. Messages the file doesn't have stay.
+- **Someone else's chat, or any import while signed out:** importing it adds a copy to your chats. Importing the same file again updates that copy, as long as you stay in the same account (or, signed out, on the same device).
+- **What the file includes:** the whole conversation, with tool calls and their results, and your email address and account id, which tell your own chats apart from someone else's.
+- **Not in the file:** attached files, and the full addresses of the MCP servers the chat used.
+
 Search (`Cmd/Ctrl + K`) runs entirely on the device, so your query is never sent anywhere. Matching is on keywords rather than meaning: try the wording you used at the time. See [Search](./search.md).
 
 Conversations are stored on the device first. If sync is enabled they appear on your other devices, encrypted end to end when you turn that on. Deleting a chat removes it everywhere you are signed in.

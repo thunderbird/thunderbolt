@@ -16,7 +16,7 @@ import { useLongPress } from '@/hooks/use-long-press'
 import { useDraggable } from '@dnd-kit/core'
 import { chatDragId, type ChatDragData } from '@/projects/chat-drop'
 import { cn } from '@/lib/utils'
-import { FolderInput, Loader2, MoreVertical, Pencil, Trash2 } from 'lucide-react'
+import { Download, FolderInput, Loader2, MoreVertical, Pencil, Trash2 } from 'lucide-react'
 import { memo, useReducer, useRef, type ComponentType, type MouseEventHandler, type ReactNode } from 'react'
 import type { ChatListItemProps } from './types'
 import { useChatStore } from '@/chats/chat-store'
@@ -87,12 +87,13 @@ type MenuItemComponent = ComponentType<{
   children?: ReactNode
 }>
 
-/** The same Rename/Delete actions back the context menu and desktop `⋯`
- *  dropdown — only the Radix item primitive differs. */
+/** The same Rename/Move/Export/Delete actions back the context menu and desktop
+ *  `⋯` dropdown — only the Radix item primitive differs. */
 const ChatItemActions = ({
   Item,
   onRename,
   onMove,
+  onExport,
   onDelete,
   deleteLabel,
   isDeletePending,
@@ -101,6 +102,7 @@ const ChatItemActions = ({
   onRename: () => void
   /** Absent where chats cannot be moved into projects (minimal mode). */
   onMove?: () => void
+  onExport: () => void
   onDelete: () => void
   deleteLabel: ReactNode
   isDeletePending: boolean
@@ -116,6 +118,10 @@ const ChatItemActions = ({
         <Trans>Move</Trans>
       </Item>
     )}
+    <Item onClick={onExport} className="cursor-pointer">
+      <Download className="size-4 mr-2" />
+      <Trans>Export</Trans>
+    </Item>
     <Item onClick={onDelete} disabled={isDeletePending} className="cursor-pointer">
       {deleteLabel}
     </Item>
@@ -133,6 +139,7 @@ export const ChatListItem = memo(
     onChatClick,
     onRename,
     onMoveToProject,
+    onExport,
     useChat = useChat_default,
   }: ChatListItemComponentProps) => {
     const { i18n, t } = useLingui()
@@ -186,6 +193,7 @@ export const ChatListItem = memo(
       isOpeningDialogRef.current = true
       onMoveToProject(thread.id, thread.projectId ?? null)
     }
+    const startExport = () => onExport(thread.id)
     const startDelete = () => {
       isOpeningDialogRef.current = true
       threadIdRef.current = thread.id
@@ -281,6 +289,11 @@ export const ChatListItem = memo(
                     },
                   ]),
               {
+                label: t`Export`,
+                icon: <Download className="size-4" />,
+                onSelect: startExport,
+              },
+              {
                 label: t`Delete`,
                 icon: deleteIcon,
                 onSelect: startDelete,
@@ -351,6 +364,7 @@ export const ChatListItem = memo(
                   Item={ContextMenuItem}
                   onRename={startRename}
                   onMove={minimalMode ? undefined : startMove}
+                  onExport={startExport}
                   onDelete={startDelete}
                   deleteLabel={deleteLabel}
                   isDeletePending={deleteChatMutation.isPending}
@@ -367,6 +381,7 @@ export const ChatListItem = memo(
                   Item={DropdownMenuItem}
                   onRename={startRename}
                   onMove={minimalMode ? undefined : startMove}
+                  onExport={startExport}
                   onDelete={startDelete}
                   deleteLabel={deleteLabel}
                   isDeletePending={deleteChatMutation.isPending}

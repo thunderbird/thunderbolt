@@ -45,6 +45,8 @@ export type ChatListProps = {
   onRename: (threadId: string, title: string) => void
   /** Open the project picker for a chat. The sidebar owns the dialog. */
   onMoveToProject: (threadId: string, currentProjectId: string | null) => void
+  /** Save the chat as a JSON file. */
+  onExport: (threadId: string) => void
 }
 
 export type ChatListItemProps = {
@@ -57,4 +59,5 @@ export type ChatListItemProps = {
   onChatClick: (threadId: string, miniAppId: string | null) => void
   onRename: (threadId: string, title: string) => void
   onMoveToProject: (threadId: string, currentProjectId: string | null) => void
+  onExport: (threadId: string) => void
 }

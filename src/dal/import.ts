@@ -10,6 +10,7 @@ import { eq } from 'drizzle-orm'
 import { getTableConfig, type SQLiteColumn, type SQLiteTable } from 'drizzle-orm/sqlite-core'
 import { exportFormat, exportSchemaVersion, exportedTableNames, includedTables, type IncludedTableName } from './export'
 import { bindCredentialDestinations } from './credential-destinations'
+import { chatTablesOf, detectChatImport, rekeyChat, type ChatFileSummary } from './chat-import'
 import { providerConnectionsTable } from '@/db/tables'
 import { credentialBinding } from '@/providers/credentials'
 import { providerTypes } from '@/providers/types'
@@ -179,12 +180,55 @@ export type ExportSummary = {
   /** Email of the exporting user, or null if it's missing / not a string. */
   sourceEmail: string | null
   /**
-   * `true` when both `sourceEmail` and `currentUserEmail` are present and
-   * differ (case-insensitively). The UI uses this to flag a cross-account
+   * `true` when both `sourceEmail` and the importing user's email are present
+   * and differ (case-insensitively). The UI uses this to flag a cross-account
    * import in the confirm dialog. Stays `false` when either side is missing
    * — better to under-warn than to false-positive on legacy exports.
    */
   accountMismatch: boolean
+  /** The chat the file holds when it holds exactly one, so the dialog can say so. Null for a full backup. */
+  chat: ChatFileImport | null
+}
+
+/** An account as an export names it or a session knows it; signed out, both are null. */
+type AccountIdentity = { id: string | null; email: string | null }
+
+/** The importing user, plus this device's id, which keys a chat copied in while signed out. */
+type ImportingUser = AccountIdentity & { deviceId: string }
+
+/** A single-chat file, and whether importing it adds a copy under new ids rather than updating the chat in place. */
+type ChatFileImport = ChatFileSummary & { isCopy: boolean }
+
+const emailsMatch = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase()
+
+/** The exporting account named in a file's `user`, with missing and empty values as null. */
+const sourceIdentity = (exportedBy: unknown): AccountIdentity => {
+  const nonEmpty = (value: unknown) => (typeof value === 'string' && value ? value : null)
+  return isRecord(exportedBy)
+    ? { id: nonEmpty(exportedBy.id), email: nonEmpty(exportedBy.email) }
+    : { id: null, email: null }
+}
+
+/**
+ * Whether the file came from the importing account. Emails decide when both sides have one, as for
+ * `accountMismatch`: an account deleted and recreated gets a new id, but its old rows went with the deletion, so their
+ * ids are free again. Otherwise only equal, non-empty user ids match. A signed-out side never matches, because rows
+ * made while signed out are uploaded by whichever account signs in first, and their ids may already be owned.
+ *
+ * The file states its own exporter, so this is a claim, not proof. A forged claim only keeps the file's own ids.
+ */
+const isSameAccount = (exportedBy: unknown, currentUser: AccountIdentity): boolean => {
+  const source = sourceIdentity(exportedBy)
+  if (source.email && currentUser.email) {
+    return emailsMatch(source.email, currentUser.email)
+  }
+  return source.id !== null && source.id === currentUser.id
+}
+
+/** The single chat a file holds, if it holds one, and whether it imports as a copy. Shared by preview and import. */
+const chatFileImport = (payload: Record<string, unknown>, currentUser: AccountIdentity): ChatFileImport | null => {
+  const chat = isRecord(payload.tables) ? detectChatImport(payload.tables, payload.kind) : null
+  return chat && { ...chat, isCopy: !isSameAccount(payload.user, currentUser) }
 }
 
 /**
@@ -196,15 +240,16 @@ export type ExportSummary = {
  * having to re-implement envelope checks; the full
  * {@link importUserData} validator covers the same ground at write time.
  *
- * Pass `currentUserEmail` to enable cross-account detection — the returned
- * `accountMismatch` flag is set when the envelope's email and the session
- * email both exist and differ. Email (not `user.id`) is the comparison
- * field: better-auth assigns a new id when an account is deleted and
- * recreated, but the same human's email stays stable.
+ * Pass `currentUser` to enable cross-account detection. `accountMismatch`
+ * is set when the envelope's email and the session email both exist and
+ * differ; email (not `user.id`) is its comparison field, because better-auth
+ * assigns a new id when an account is deleted and recreated, but the same
+ * human's email stays stable. `chat` describes a single-chat file; its
+ * `isCopy` follows {@link isSameAccount}, which falls back to user ids.
  */
 export const summarizeExportEnvelope = (
   payload: unknown,
-  currentUserEmail: string | null = null,
+  currentUser: AccountIdentity = { id: null, email: null },
 ): ExportSummary | null => {
   if (!isRecord(payload)) {
     return null
@@ -229,10 +274,10 @@ export const summarizeExportEnvelope = (
           return Number.isNaN(parsed.getTime()) ? null : getFormatters(getActiveLocale()).date(parsed)
         })()
       : null
-  const sourceEmail = isRecord(payload.user) && typeof payload.user.email === 'string' ? payload.user.email : null
+  const { email: sourceEmail } = sourceIdentity(payload.user)
   const accountMismatch =
-    sourceEmail !== null && currentUserEmail !== null && sourceEmail.toLowerCase() !== currentUserEmail.toLowerCase()
-  return { totalRows, exportedAtLabel, sourceEmail, accountMismatch }
+    sourceEmail !== null && currentUser.email !== null && !emailsMatch(sourceEmail, currentUser.email)
+  return { totalRows, exportedAtLabel, sourceEmail, accountMismatch, chat: chatFileImport(payload, currentUser) }
 }
 
 /**
@@ -277,6 +322,11 @@ const sanitizeRowForImport = (
  *   points elsewhere no longer reads it.
  * - **Atomic.** Wrapped in a single `db.transaction`; any per-row failure
  *   rolls back every preceding write in this call.
+ * - **A single-chat file writes only the chat.** Its other tables are listed in `ignoredTableNames`, so a file shown
+ *   as "one chat" can't change settings, models or servers. If {@link isSameAccount} doesn't tie it to the importing
+ *   account, the chat gets ids of its own (see {@link rekeyChat}), keyed by the user, or by the device when signed
+ *   out, because the backend would drop rows whose ids another account owns. Re-importing under the same key updates
+ *   the copy.
  * - **Forward-compatible.** Table keys the importer doesn't recognize (e.g.
  *   tables added in a future schemaVersion) are surfaced in
  *   `ignoredTableNames` but otherwise ignored.
@@ -288,7 +338,7 @@ const sanitizeRowForImport = (
 export const importUserData = async (
   db: AnyDrizzleDatabase,
   payload: unknown,
-  currentUser: { id: string | null },
+  currentUser: ImportingUser,
 ): Promise<ImportResult> => {
   if (!isRecord(payload)) {
     throw new ImportFormatError('Import file is not a JSON object.')
@@ -307,8 +357,19 @@ export const importUserData = async (
     throw new ImportFormatError('Import file is missing the `tables` object.')
   }
 
-  const fileTables = payload.tables
-  const ignoredTableNames: string[] = []
+  const chat = chatFileImport(payload, currentUser)
+  // The prefix keeps a device key from ever equalling a user id.
+  const ownerKey = currentUser.id ?? `device:${currentUser.deviceId}`
+  const fileTables = !chat
+    ? payload.tables
+    : chat.isCopy
+      ? rekeyChat(payload.tables, ownerKey)
+      : chatTablesOf(payload.tables)
+  const ignoredTableNames: string[] = chat
+    ? Object.entries(payload.tables)
+        .filter(([name, rows]) => !(name in fileTables) && Array.isArray(rows) && rows.length > 0)
+        .map(([name]) => name)
+    : []
   const tableCounts: Partial<Record<IncludedTableName, { upserted: number }>> = {}
 
   await db.transaction(async (tx) => {

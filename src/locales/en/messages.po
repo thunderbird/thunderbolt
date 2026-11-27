@@ -93,6 +93,14 @@ msgstr[1] "# tools"
 #~ msgstr[0] "Ask about it"
 #~ msgstr[1] "Ask about them"
 
+#. placeholder {0}: pendingChat.messageCount
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7BThis+file+contains+the+chat+%E2%80%9C%7BpendingChatTitle%7D%E2%80%9D+with+%23+message.%7D+other+%7BThis+file+contains+the+chat+%E2%80%9C%7BpendingChatTitle%7D%E2%80%9D+with+%23+messages.%7D%7D&pluralize_on=0
+#: src/settings/preferences.tsx
+msgid "This file contains the chat “{pendingChatTitle}” with # message."
+msgid_plural "This file contains the chat “{pendingChatTitle}” with # messages."
+msgstr[0] "This file contains the chat “{pendingChatTitle}” with # message."
+msgstr[1] "This file contains the chat “{pendingChatTitle}” with # messages."
+
 #. placeholder {0}: app.name
 #: src/mini-apps/mini-app-page.tsx
 msgid "{0} is only available on desktop"
@@ -2031,6 +2039,10 @@ msgstr "Couldn't download the update: {error}"
 msgid "Couldn't download the update."
 msgstr "Couldn't download the update."
 
+#: src/layout/sidebar/export-chat-error-notice.tsx
+msgid "Couldn't export the chat: {reason}"
+msgstr "Couldn't export the chat: {reason}"
+
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Couldn't get a code."
 msgstr "Couldn't get a code."
@@ -2951,6 +2963,10 @@ msgstr "Exit voice mode"
 msgid "Expand Sidebar"
 msgstr "Expand Sidebar"
 
+#: src/layout/sidebar/chat-list-item.tsx
+msgid "Export"
+msgstr "Export"
+
 #: src/settings/preferences.tsx
 msgid "Export all of your data as JSON."
 msgstr "Export all of your data as JSON."
@@ -3309,6 +3325,10 @@ msgstr "I agree to the <0>Privacy Policy</0> and <1>Terms of Service</1>."
 msgid "I have saved my recovery phrase"
 msgstr "I have saved my recovery phrase"
 
+#: src/settings/preferences.tsx
+msgid "If this chat is already here, it's updated with the file's version and synced to your other devices."
+msgstr "If this chat is already here, it's updated with the file's version and synced to your other devices."
+
 #: src/components/provider-authorization-result.tsx
 #~ msgid "If this window stays open, you can safely close the tab."
 #~ msgstr "If this window stays open, you can safely close the tab."
@@ -3354,12 +3374,28 @@ msgid "Import this backup?"
 msgstr "Import this backup?"
 
 #: src/settings/preferences.tsx
+msgid "Import this chat?"
+msgstr "Import this chat?"
+
+#: src/settings/preferences.tsx
 msgid "Import Your Data"
 msgstr "Import Your Data"
 
 #: src/settings/preferences.tsx
 msgid "Import your data from previously exported JSON."
 msgstr "Import your data from previously exported JSON."
+
+#: src/settings/preferences.tsx
+msgid "Imported a copy of the chat “{pendingChatTitle}”."
+msgstr "Imported a copy of the chat “{pendingChatTitle}”."
+
+#: src/settings/preferences.tsx
+msgid "Imported the chat “{pendingChatTitle}”."
+msgstr "Imported the chat “{pendingChatTitle}”."
+
+#: src/settings/preferences.tsx
+msgid "Importing it adds a copy of this chat."
+msgstr "Importing it adds a copy of this chat."
 
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/preferences.tsx
@@ -6009,6 +6045,10 @@ msgstr "The AI provider took too long to respond. Try again."
 msgid "The app's web content stopped unexpectedly more than once. Automatic reloads have been paused."
 msgstr "The app's web content stopped unexpectedly more than once. Automatic reloads have been paused."
 
+#: src/layout/sidebar/use-export-chat.ts
+msgid "The chat could not be read on this device."
+msgstr "The chat could not be read on this device."
+
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "The chat will be retained by the {recipient} team."
 msgstr "The chat will be retained by the {recipient} team."
@@ -6222,6 +6262,10 @@ msgstr "This chat session, including the messages you sent and the responses fro
 #: src/components/chat/chat-prompt-input.tsx
 msgid "This chat uses {agentName}, which is not available on this platform."
 msgstr "This chat uses {agentName}, which is not available on this platform."
+
+#: src/settings/preferences.tsx
+msgid "This chat was exported by a different account ({importSourceEmail})."
+msgstr "This chat was exported by a different account ({importSourceEmail})."
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "This code expired."

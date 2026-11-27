@@ -1272,6 +1272,10 @@ jobs:
       - *setup-bun
       - *restore-bun
       - *install
+      # `fix.ts changed-tests` runs the agent's cli/ tests from cli/, as verify-tests does.
+      - &install-cli
+        name: Install the CLI's dependencies
+        run: cd cli && bun install --frozen-lockfile
       - *restore-browsers
       - *install-browsers
       - *download-replay
@@ -1419,7 +1423,7 @@ jobs:
             --setting-sources user
             --permission-mode dontAsk
             --tools "Read,Glob,Grep,Edit,Write,Bash,Skill"
-            --allowedTools "Read,Glob,Grep,Edit(**),Skill(simplify),Bash(bun run check),Bash(bun run test:*),Bash(bun run test:backend),Bash(bun run i18n:extract),Bash(bun db generate),Bash(cd backend && bun db generate),${{ matrix.task.spec && format('Bash(bunx playwright test --config .github/qa/playwright.config.ts {0}),', matrix.task.spec) || '' }}${{ matrix.task.specs[0] && format('Bash(bunx playwright test --config .github/qa/playwright.config.ts {0}),', join(matrix.task.specs, ' ')) || '' }}${{ matrix.task.realSpecs[0] && format('Bash(bunx playwright test --config .github/qa/playwright.config.ts {0}),', join(matrix.task.realSpecs, ' ')) || '' }}Bash(bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-${{ matrix.task.fp }}/repro/check.spec.ts),Bash(bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-${{ matrix.task.fp }}/repro/web.spec.ts)"
+            --allowedTools "Read,Glob,Grep,Edit(**),Skill(simplify),Bash(bun .github/qa/scripts/fix.ts changed-tests),Bash(bun run i18n:extract),Bash(bun db generate),Bash(cd backend && bun db generate),${{ matrix.task.spec && format('Bash(bunx playwright test --config .github/qa/playwright.config.ts {0}),', matrix.task.spec) || '' }}${{ matrix.task.specs[0] && format('Bash(bunx playwright test --config .github/qa/playwright.config.ts {0}),', join(matrix.task.specs, ' ')) || '' }}${{ matrix.task.realSpecs[0] && format('Bash(bunx playwright test --config .github/qa/playwright.config.ts {0}),', join(matrix.task.realSpecs, ' ')) || '' }}Bash(bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-${{ matrix.task.fp }}/repro/check.spec.ts),Bash(bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-${{ matrix.task.fp }}/repro/web.spec.ts)"
             --disallowedTools "Bash(git:*)" WebFetch WebSearch "Edit(.git/**)" "Edit(.github/**)" "Edit(e2e/**)"
               "Edit(deploy/pulumi/**)" "Edit(**/vite.config.*)" "Edit(**/playwright.config.*)" "Edit(**/playwright.*.config.*)"
               "Edit(scripts/chrome*)" "Edit(scripts/install-chrome*)" "Edit(**/tsconfig*.json)"
@@ -2219,9 +2223,7 @@ jobs:
       - *setup-bun
       - *restore-bun
       - *install
-      - &install-cli
-        name: Install the CLI's dependencies
-        run: cd cli && bun install --frozen-lockfile
+      - *install-cli
       # This attempt's fix output only, by pattern: when the fix job ran in an earlier attempt there is none, the
       # check fails, and publish hands the ticket to a person.
       - &download-fix

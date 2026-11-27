@@ -649,6 +649,13 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    session's init message names them) and extend the denies. After the merge, the first fix session's transcript
    should show the `simplify` load, with no other skill.
 
+   The session's test command is `bun .github/qa/scripts/fix.ts changed-tests`. It runs only the unit test files
+   the working tree changes or adds, grouped by `testRuns` as in `verify-tests`, and the fix job installs the CLI's
+   dependencies for it. The session cannot run `bun run check` or the full suites, which `verify-checks` runs on a
+   fresh runner. In run 45957881824 GitHub lost a fix job's runner about two minutes after the session's 60-minute
+   cap, with the stack still up. That session was allowed to run the full suites (about 11,000 tests) next to the
+   stack on the 4-CPU runner, and that load probably starved the runner, though nothing proves it.
+
 7. **report** (`report.ts summary`): the job summary. `report.ts fix-prs` adds a "Recent QA fix PRs" section, read
    from GitHub alone (`pull-requests: read`). It covers the fix PRs among the newest 100 PRs of the app
    `thunderbolt-automation-agent`, this run's included. A PR whose first commit is the bot's is right first time when
@@ -1402,8 +1409,8 @@ Never run on GitHub (only locally, or read in the action's code):
   `verify-native-run` and `publish` with a real patched app and verdict; `verify-real`; c7 on Android with the
   `android-sync` and `android-real` legs; every charter but c1 and the free session on both platforms; and a full
   `replay-native` leg under the `QA_LEG_START` clock;
-- the fix agent's `Edit(**)` rule with its deny list, the two `bun db generate` rules, and the visual check's runs in
-  the fix job;
+- the fix agent's `Edit(**)` rule with its deny list, the two `bun db generate` rules, the `fix.ts changed-tests`
+  rule (its git call inside the sandbox included), and the visual check's runs in the fix job;
 - `verify-tests` and the passes: the `qa-pass-*` uploads under their `if:`, and `publish` listing them through the
   API with `actions: read`, and the run attempt in their names on a re-run. `fix.ts tests` ran locally on a scratch
   repo. The test user ran in an Ubuntu 24.04 container on Docker Desktop, as a user with passwordless sudo: after
@@ -1443,7 +1450,7 @@ Also:
   them.
 - A scheduled run acts as the user who last edited the cron line. `claude-code-action` refuses bot actors, so
   that must be a person.
-- The fix agent can still run any code (its `bun run test` runs test files it writes), but without the Anthropic
+- The fix agent can still run any code (its `fix.ts changed-tests` runs test files it writes), but without the Anthropic
   key in that code's environment. The boundary is that the fix job holds no write token and a person reviews the
   draft PR.
 - On CLI 2.1.285, `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` forces the permission mode from `dontAsk` to `default`. With

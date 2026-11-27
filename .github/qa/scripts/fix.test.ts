@@ -25,9 +25,11 @@ import {
   type Run,
   needsUnitTest,
   noLinks,
+  runChangedTests,
   runGate,
   runTestsCapturing,
   testFailed,
+  type TestRun,
   testRuns,
   whyNoSpec,
   wrap,
@@ -1362,6 +1364,49 @@ describe('testRuns', () => {
   test('finds nothing to run in a patch that only deletes a test or changes no unit test', () => {
     expect(testRuns([{ path: 'src/gone.test.ts', status: 'D' }])).toEqual([])
     expect(testRuns([{ path: 'src-tauri/src/lib.rs', status: 'M' }])).toEqual([])
+  })
+})
+
+describe('runChangedTests', () => {
+  const repo = () => join(dir, 'repo')
+  const runChanged = async (exitCode: (cwd: string) => number = () => 0) => {
+    const runs: TestRun[] = []
+    const lines: string[] = []
+    const exec = async (cmd: string[], cwd: string) => {
+      runs.push({ cwd, cmd })
+      return exitCode(cwd)
+    }
+    const code = await runChangedTests({ repoDir: repo(), run: runIn(repo()), exec, log: (line) => lines.push(line) })
+    return { code, runs, lines }
+  }
+
+  test('runs no Bun when the working tree changes no test file', async () => {
+    await initRepo(repo(), { 'src/chat.ts': 'old\n', 'src/chat.test.ts': 'test\n' })
+    await writeFile(join(repo(), 'src/chat.ts'), 'new\n')
+    expect(await runChanged()).toEqual({
+      code: 0,
+      runs: [],
+      lines: [
+        'fix: the patch adds or changes no unit test file (`*.test.ts` or `*.test.tsx` under `src/`, `shared/`, ' +
+          '`backend/` or `cli/`), so no test ran',
+      ],
+    })
+  })
+
+  test('runs a changed src test and a new backend test from their trees, and fails when one fails', async () => {
+    await initRepo(repo(), { 'src/lib/title.test.ts': 'old\n', 'src/gone.test.ts': 'test\n', 'src/chat.test.ts': '' })
+    await writeFile(join(repo(), 'src/lib/title.test.ts'), 'new\n')
+    await rm(join(repo(), 'src/gone.test.ts'))
+    await put(join(repo(), 'backend/src/app.test.ts'), 'test\n')
+    const bunTest = ['bun', 'test', '--timeout', '5000']
+    expect(await runChanged((cwd) => (cwd.endsWith('backend') ? 1 : 0))).toEqual({
+      code: 1,
+      runs: [
+        { cwd: join(repo(), 'src'), cmd: [...bunTest, './lib/title.test.ts'] },
+        { cwd: join(repo(), 'backend'), cmd: [...bunTest, './src/app.test.ts'] },
+      ],
+      lines: [],
+    })
   })
 })
 

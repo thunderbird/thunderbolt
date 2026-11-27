@@ -599,6 +599,34 @@ const noTestReason =
 const runTests = (cmd: string[], cwd: string) =>
   Bun.spawn(cmd, { cwd, stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' }).exited
 
+type ChangedTestsOptions = {
+  repoDir?: string
+  run?: Run
+  exec?: (cmd: string[], cwd: string) => Promise<number>
+  log?: (line: string) => void
+}
+
+/**
+ * Runs the unit test files the working tree changes or adds (untracked ones), one `bun test` per tree as `testRuns`
+ * builds it. Returns 1 when any run fails, else 0. The fix agent runs its own tests with it, since it cannot run git;
+ * verify-checks runs the full suites on a fresh runner.
+ */
+export const runChangedTests = async ({
+  repoDir = '.',
+  run = runCommand,
+  exec = runTests,
+  log = console.log,
+}: ChangedTestsOptions = {}) => {
+  const listed = await run(['git', 'ls-files', '-z', '--modified', '--others', '--exclude-standard'], { cwd: repoDir })
+  // `--modified` also lists a deleted file.
+  const paths = listed.split('\0').filter((path) => path && existsSync(join(repoDir, path)))
+  const runs = testRuns(paths.map((path) => ({ path, status: 'M' })))
+  if (!runs.length) log(`fix: ${noTestReason}, so no test ran`)
+  const codes: number[] = []
+  for (const { cwd, cmd } of runs) codes.push(await exec(cmd, join(repoDir, cwd)))
+  return codes.some((code) => code !== 0) ? 1 : 0
+}
+
 /** A finished test run: its exit code and everything it printed. */
 export type TestResult = { code: number; output: string }
 
@@ -1411,10 +1439,12 @@ if (import.meta.main) {
     })
     // As for the tests: the pass rests on this exit code alone.
     process.exitCode = failed ? 1 : 0
+  } else if (positionals[0] === 'changed-tests') {
+    process.exitCode = await runChangedTests()
   } else {
     throw new Error(
       'usage: fix.ts route --out DIR [--live] | fix.ts publish --out DIR --fp FP [--live] | ' +
-        'fix.ts tests|gate --out DIR --fp FP',
+        'fix.ts tests|gate --out DIR --fp FP | fix.ts changed-tests',
     )
   }
 }

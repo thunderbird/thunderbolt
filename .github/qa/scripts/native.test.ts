@@ -273,24 +273,29 @@ test('device android leaves alone a recorded pid that now runs another program',
 })
 
 /**
- * Boots our AVD, which adb lists as emulator-5554 once the boot has started; with `other`, emulator-5560 runs another
- * AVD beside it from the start. emulator-5554's name probe reads empty for its first `empty` calls. `sleep` returns
- * at once. Returns how the boot ended and how many name probes emulator-5554 got.
+ * Boots our AVD, which adb lists as emulator-5554 from its second poll after the boot started; with `other`,
+ * emulator-5560 runs another AVD of that name (empty for an image that does not set it), from the start or, with
+ * `booting`, from the boot's first poll. emulator-5554's name probe reads empty for its first `empty` calls. `sleep`
+ * returns at once. Returns how the boot ended and how many name probes emulator-5554 got.
  */
-const bootWithNameProbe = (empty: number, other: boolean) => {
+const bootWithNameProbe = (empty: number, other?: { name: string; booting?: boolean }) => {
   const dir = mkdtempSync(join(work, 'name-'))
   const bin = join(dir, 'bin')
   const probes = join(dir, 'probes')
   mkdirSync(bin)
+  const otherRow = other ? "printf 'emulator-5560\\tdevice\\n'" : ''
   writeFileSync(
     join(bin, 'adb'),
     `#!/bin/bash
 case "$*" in
   devices)
     printf 'List of devices attached\\n'
-    ${other ? "printf 'emulator-5560\\tdevice\\n'" : ''}
-    [ -f '${dir}/qa-emulator.pid' ] && printf 'emulator-5554\\tdevice\\n' ;;
-  *"5560 shell getprop ro.boot.qemu.avd_name") printf 'pixel-other\\r\\n' ;;
+    ${other?.booting ? `[ -f '${dir}/qa-emulator.pid' ] && ${otherRow}` : otherRow}
+    if [ -f '${dir}/qa-emulator.pid' ]; then
+      [ -f '${dir}/polled' ] && printf 'emulator-5554\\tdevice\\n'
+      : > '${dir}/polled'
+    fi ;;
+  *"5560 shell getprop ro.boot.qemu.avd_name") printf '${other?.name}\\r\\n' ;;
   *"getprop ro.boot.qemu.avd_name")
     echo >> '${probes}'
     if [ "$(wc -l < '${probes}')" -gt ${empty} ]; then printf 'qa-android\\r\\n'; else printf '\\r\\n'; fi ;;
@@ -316,8 +321,8 @@ exit 0
   return { proc, probes: readFileSync(probes, 'utf8').length }
 }
 
-test('device android waits out a name probe that reads empty for a moment, beside another AVD', () => {
-  const { proc, probes } = bootWithNameProbe(2, true)
+test('device android waits out a name probe that reads empty for a moment, beside another AVD that boots with it', () => {
+  const { proc, probes } = bootWithNameProbe(2, { name: 'pixel-other', booting: true })
 
   expect(proc.exitCode).toBe(0)
   expect(proc.stdout.toString()).toBe('emulator-5554\n')
@@ -325,7 +330,15 @@ test('device android waits out a name probe that reads empty for a moment, besid
 })
 
 test('device android takes the only emulator after booting it, though its name probe never answers', () => {
-  const { proc, probes } = bootWithNameProbe(999, false)
+  const { proc, probes } = bootWithNameProbe(999)
+
+  expect(proc.exitCode).toBe(0)
+  expect(proc.stdout.toString()).toBe('emulator-5554\n')
+  expect(probes).toBe(1)
+})
+
+test('device android never takes an emulator with no name that was online before its boot', () => {
+  const { proc, probes } = bootWithNameProbe(999, { name: '' })
 
   expect(proc.exitCode).toBe(0)
   expect(proc.stdout.toString()).toBe('emulator-5554\n')

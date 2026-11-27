@@ -216,15 +216,20 @@ crash_counts() {
   done
 }
 
+online_emulators() {
+  adb devices | sed -n 's/^\(emulator-[0-9]*\)[[:space:]]*device$/\1/p'
+}
+
 # The online emulator that runs our AVD, if any. Another emulator on the same adb is not ours to use. With `booted`
-# (we just started ours), the only online emulator counts as ours while its name reads empty, so an image that does
-# not set the property cannot fail the boot.
+# and the serials online before we started ours, the only emulator that came online since counts as ours while its
+# name reads empty, so an image that does not set the property cannot fail the boot.
 our_emulator() {
   local serials serial name
-  serials=$(adb devices | sed -n 's/^\(emulator-[0-9]*\)[[:space:]]*device$/\1/p')
+  serials=$(online_emulators)
   for serial in $serials; do
     name=$(timeout -k 1 10 adb -s "$serial" shell getprop ro.boot.qemu.avd_name 2> /dev/null | tr -d '\r') || true
-    if grep -qx "$avd" <<< "$name" || { [ "${1:-}" = booted ] && [ -z "$name" ] && [ "$serials" = "$serial" ]; }; then
+    if grep -qx "$avd" <<< "$name" ||
+      { [ "${1:-}" = booted ] && [ -z "$name" ] && [ "$(grep -vxF -e "${2:-}" <<< "$serials")" = "$serial" ]; }; then
       echo "$serial"
       return
     fi
@@ -244,12 +249,13 @@ device_android() {
     mv "$config.tmp" "$config"
     echo "hw.keyboard=no" >> "$config"
   fi
-  local emulator_pid='' serial
+  local emulator_pid='' serial before=''
   serial=$(our_emulator)
   # Our AVD must be online: an offline row is an emulator adb lost, and waiting for it to come back would take the
   # whole 10-minute wait below.
   if [ -z "$serial" ]; then
     stop_emulator
+    before=$(online_emulators)
     emulator -avd "$avd" -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect > "$emulator_files.log" 2>&1 &
     emulator_pid=$!
     echo "$emulator_pid" > "$emulator_files.pid"
@@ -261,7 +267,7 @@ device_android() {
       crash_counts >&2
       die "the emulator exited"
     fi
-    serial=$(our_emulator ${emulator_pid:+booted})
+    serial=$(our_emulator ${emulator_pid:+booted "$before"})
     [ -n "$serial" ] && break
     sleep 2
   done

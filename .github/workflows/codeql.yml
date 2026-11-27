@@ -1,0 +1,101 @@
+name: CodeQL
+
+# Advanced setup, replacing the repository's CodeQL default setup (Settings → Code
+# security → CodeQL must be set to Advanced, or the uploads are rejected). Same
+# languages, build modes, query suite and categories as default setup, so existing
+# alerts carry over. The one difference: Swift needs a macOS runner for ~18 min and
+# the repo has a handful of Swift files, so it runs only when they change, plus weekly.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 3 * * 1' # Monday 03:00 UTC, outside PR hours
+  workflow_dispatch:
+
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      swift: ${{ steps.filter.outputs.swift }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v3
+        id: filter
+        with:
+          filters: |
+            swift:
+              - '**/*.swift'
+              - 'src-tauri/plugins/tauri-plugin-passkey/ios/**'
+              - 'src-tauri/plugins/tauri-plugin-passkey/swift-lib/**'
+              - '.github/workflows/codeql.yml'
+
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [actions, javascript-typescript, python, rust]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: github/codeql-action/init@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          dependency-caching: true
+
+      - uses: github/codeql-action/analyze@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
+        with:
+          category: /language:${{ matrix.language }}
+
+  analyze-swift:
+    name: Analyze (swift)
+    needs: changes
+    # The schedule and dispatch skip `changes`, so they always scan.
+    if: ${{ !cancelled() && (needs.changes.outputs.swift == 'true' || needs.changes.result == 'skipped') }}
+    runs-on: macos-latest
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: github/codeql-action/init@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
+        with:
+          languages: swift
+          build-mode: autobuild
+          dependency-caching: true
+
+      - uses: github/codeql-action/autobuild@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
+
+      - uses: github/codeql-action/analyze@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
+        with:
+          category: /language:swift

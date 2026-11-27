@@ -13,6 +13,10 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#: src/components/modification-indicator.tsx
+msgid ", modified"
+msgstr ""
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "\"{filename}\" is too large (max {maxMegabytes}MB)."
 msgstr ""
@@ -3859,8 +3863,8 @@ msgid "Moderate snow fall"
 msgstr ""
 
 #: src/components/modification-indicator.tsx
-msgid "Modified item"
-msgstr ""
+#~ msgid "Modified item"
+#~ msgstr ""
 
 #: src/settings/models/model-detail.tsx
 msgid "Modified model"

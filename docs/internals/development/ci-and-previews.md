@@ -21,6 +21,7 @@ Also part of the same machinery:
 | `preview-cleanup.yml`         | Hourly cron                                                       |
 | `previews-shared-deploy.yml`  | Manual, plus Mondays 07:00 UTC                                    |
 | `nightly-images.yml`          | 05:00 UTC                                                         |
+| `ghcr-cleanup.yml`            | Daily 06:30 UTC (+ manual dry run)                                |
 | `images-publish.yml`          | Push to `main` under a path filter, or called by `preview-deploy` |
 | `image-scan.yml`              | After `images-publish` or `nightly-images` succeeds, plus manual  |
 | `evals.yml`, `test-build.yml` | Manual only                                                       |
@@ -331,6 +332,17 @@ band, or an open PR idle beyond `max_age_days` (default 3).
 
 Both accept a `pr_number` via `workflow_dispatch`, to redeploy after a failed run or force
 a teardown.
+
+### Image cleanup
+
+`ghcr-cleanup.yml` runs daily on the six `thunderbolt-*` GHCR packages. It deletes `pr-*`
+tags older than 14 days, except those of open PRs and of PRs labelled `preview:persist`,
+then untagged images older than 90 days that no tagged image uses. Release, `latest` and
+`buildcache` tags are never selected. Untagged images wait longer because an ECS service
+pins the digest it deployed, so one not redeployed since its tag moved still needs that
+image to replace its tasks. A `workflow_dispatch` is a dry run unless `dry_run` is
+unticked. Deleting needs the repository to hold the Admin role under each package's
+Manage Actions access.
 
 ## Scripts the pipeline depends on
 

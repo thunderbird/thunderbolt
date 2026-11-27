@@ -379,7 +379,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    even after the clock has run out, from the wrap-up minutes, so a run that ends that late keeps its own outcome while
    adb sees the emulator. A fix's native check never recovers. Each run ends with one `maestro hierarchy` of the screen it
    stopped on, for the tree's `unnamed-control` lines and, on Android, its `behind-keyboard` line; a screen the run only passed through, like the privacy step the harness
-   clicks through, adds no tree line.
+   clicks through, adds no tree line. Only a `layout` proof reads tree lines, so an iOS run skips the dump for the
+   control and for any other oracle, to save the leg's time. Android always dumps, since a failed dump is one way a
+   lost emulator shows.
    A `layout` run fails when the probe (or a tree rule) logs the quoted `[qa-layout]` line during it, a `console-error`, `page-error` or `http-5xx` run when a new WebView or backend log
    line holds the evidence (cut at the console mark and normalized like the fingerprint), any other run when the flow
    fails. Both sides are compared as the gate showed them to the explorer (`cleanLogLine` in `sanitize.ts`: secrets

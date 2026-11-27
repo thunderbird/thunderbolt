@@ -1208,6 +1208,20 @@ describe('replay of native flows', () => {
     })
   })
 
+  test('only a layout finding asks the device for its tree, never the control or another oracle', async () => {
+    await writeNative(makeNative('laid-out', layout))
+    await writeNative(makeNative('asserted', assertFailed))
+    const asked = new Set<string>()
+    const flow = fakeFlow({}, [])
+
+    await replay(outDir, fakeRunner({}, []), qaDir, async (...args) => {
+      asked.add(`${/assertVisible: "?([^"\n]+)/.exec(args[0])?.[1]}: ${args[6]}`)
+      return flow(...args)
+    })
+
+    expect(asked).toEqual(new Set(['stack control: false', 'asserted: false', 'laid-out: true']))
+  })
+
   test('prints one start and one end line per device run, naming it as a lost run is named', async () => {
     // The numbered file the prompt asks for, then a name the explorer picked from what the app showed.
     await Bun.write(join(outDir, session, 'findings/1.json'), JSON.stringify(makeNative('numbered', assertFailed)))

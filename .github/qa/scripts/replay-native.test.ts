@@ -70,7 +70,9 @@ exit 0
       webviewLog: ${JSON.stringify(webviewLog)},
       backendLog: ${JSON.stringify(backendLog)},
     })
-    const run = await runFlow('- launchApp\\n', ${JSON.stringify(join(work, 'out'))}, 1, 'c2-chat-power-user-android')
+    // Android dumps the tree even for a run whose proof reads no tree line.
+    const run = await runFlow('- launchApp\\n', ${JSON.stringify(join(work, 'out'))}, 1, 'c2-chat-power-user-android',
+      undefined, undefined, false)
     console.log(JSON.stringify(run.layout))
   `
   // Relative app paths, as a caller may pass them, from a folder other than the one native.sh moves to.
@@ -101,8 +103,11 @@ exit 0
 const probeCheckbox = '[qa-layout] unnamed-control checkbox "#terms-agreement"'
 const probeButton = '[qa-layout] unnamed-control button "arrow-left icon after Connect Google"'
 
-/** Ends on the privacy step with the checkbox unlabeled; `failure` fails the sign-in or times out the flow's driver. */
-const iosRun = (failure: '' | 'sign-in' | 'driver') => {
+/**
+ * Ends on the privacy step with the checkbox unlabeled; `failure` fails the sign-in or times out the flow's driver.
+ * `needsTree` is passed on to the run when set.
+ */
+const iosRun = (failure: '' | 'sign-in' | 'driver', needsTree?: boolean) => {
   const dir = mkdtempSync(join(work, 'ios-'))
   const bin = join(dir, 'bin')
   const calls = join(dir, 'calls.log')
@@ -137,7 +142,7 @@ exit 0
       backendLog: ${JSON.stringify(logs[1])},
     })
     const run = await runFlow('- assertVisible: x\\n', ${JSON.stringify(join(dir, 'out'))}, 1, 'c1-first-run-ios',
-      '- extendedWaitUntil: Check your email\\n')
+      '- extendedWaitUntil: Check your email\\n', undefined, ${needsTree})
     console.log(JSON.stringify(run.layout))
   `
   const proc = Bun.spawnSync([process.execPath, '-e', script], {
@@ -157,6 +162,12 @@ test('an iOS run adds the tree line of the screen it ends on, read once after th
     layout: [probeButton, '[qa-layout] unnamed-control checkbox "after Data is stored securely on your device."'],
     maestro: ['maestro test', 'maestro test', 'maestro hierarchy'],
   }))
+
+test("an iOS run whose proof reads no tree line, as the control's or a non-layout finding's, skips the tree", () =>
+  expect(iosRun('', false)).toEqual({ layout: [probeButton], maestro: ['maestro test', 'maestro test'] }))
+
+test('an iOS run for a layout finding reads the tree', () =>
+  expect(iosRun('', true).maestro).toEqual(['maestro test', 'maestro test', 'maestro hierarchy']))
 
 test('an iOS run whose sign-in failed skips the tree, since it never counts', () =>
   expect(iosRun('sign-in')).toEqual({ layout: [], maestro: ['maestro test'] }))

@@ -228,14 +228,15 @@ last_boot() {
 # Runs the emulator, records its pid, and once it ends writes how it ended to <status>, atomically. The caller starts
 # this in the background, so it outlives native.sh and device-lost can read how the emulator ended.
 watch_emulator() {
-  local status=$1 code=0
+  local status=$1 code=0 name
   shift
   "$@" &
   echo $! > "$emulator_files.pid"
   wait $! || code=$?
-  # bash reports a death by signal N as 128 + N; an exit code above 128 reads the same way.
-  if [ "$code" -gt 128 ]; then
-    echo "was killed by signal $((code - 128)) (SIG$(kill -l $((code - 128))))"
+  # bash reports a death by signal N as 128 + N, which `kill -l` names. An exit code that also names a signal, such as
+  # 139, reads the same way; one that names none, such as 255, stays an exit code.
+  if [ "$code" -gt 128 ] && name=$(kill -l "$code" 2> /dev/null); then
+    echo "was killed by signal $((code - 128)) (SIG$name)"
   else
     echo "exited with code $code"
   fi > "$status.tmp"

@@ -412,14 +412,15 @@ test("device-lost prints adb's state, how the emulator ended and only counts fro
   for (const line of crashes) expect(out).not.toContain(line)
 })
 
-test('a boot whose emulator exits prints only counts from its log, never its lines', () => {
+// 255 is what an exit(-1) leaves, and names no signal.
+test.each([1, 255])('a boot whose emulator exits %d prints that code and only counts from its log', (code) => {
   const dir = mkdtempSync(join(work, 'exited-'))
   const bin = join(dir, 'bin')
   mkdirSync(bin)
   writeFileSync(join(bin, 'adb'), '#!/bin/bash\n[ "$1" = devices ] && echo "List of devices attached"\nexit 0\n')
   writeFileSync(join(bin, 'avdmanager'), '#!/bin/bash\necho qa-android\n')
   const fatal = 'FATAL        | KVM is not available for the user who asked: /dev/kvm'
-  writeFileSync(join(bin, 'emulator'), `#!/bin/bash\necho '${fatal}'\nexit 1\n`)
+  writeFileSync(join(bin, 'emulator'), `#!/bin/bash\necho '${fatal}'\nexit ${code}\n`)
   for (const tool of ['adb', 'avdmanager', 'emulator']) chmodSync(join(bin, tool), 0o755)
 
   const proc = Bun.spawnSync(['bash', native, 'device', 'android'], {
@@ -434,9 +435,9 @@ test('a boot whose emulator exits prints only counts from its log, never its lin
 
   expect(proc.exitCode).toBe(2)
   expect(proc.stderr.toString()).toBe(
-    "lines of the emulator's log per crash signature:\n  fatal: 1\n  kvm: 1\nthe emulator exited with code 1\n",
+    `lines of the emulator's log per crash signature:\n  fatal: 1\n  kvm: 1\nthe emulator exited with code ${code}\n`,
   )
-  expect(readFileSync(join(dir, 'qa-emulator-1.status'), 'utf8')).toBe('exited with code 1\n')
+  expect(readFileSync(join(dir, 'qa-emulator-1.status'), 'utf8')).toBe(`exited with code ${code}\n`)
 })
 
 test('resume-logs appends a new stream and stops the old one only while its pid still writes the log', () => {

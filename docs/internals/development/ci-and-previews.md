@@ -301,7 +301,8 @@ push a branch here, and their previews deploy automatically.
 
 ### Teardown: on close, hourly, and by hand
 
-`preview-destroy.yml` fires on PR close. Every preview destroy, on close, hourly or by
+`preview-destroy.yml` fires when a same-repo PR closes. A fork PR's close event gets no
+secrets, so the hourly cleanup removes a fork's stack instead. Every preview destroy, on close, hourly or by
 hand, goes through `stack-deploy.yml`'s `destroy` job, which runs
 `scripts/drop-preview-db.sh` before `pulumi destroy` because it needs the per-stack
 secrets and backend task definition the stack owns; destroy runs even if the drop fails,

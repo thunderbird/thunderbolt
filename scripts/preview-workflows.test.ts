@@ -330,6 +330,20 @@ describe('preview deploy path gate', () => {
 })
 
 describe('preview teardown', () => {
+  it('tears down same-repo PRs on close and leaves fork PRs to the hourly cleanup', () => {
+    const teardown = loadWorkflow('preview-destroy.yml')
+    expect(teardown.on.pull_request?.types).toEqual(['closed'])
+    const runs = (event: string, headRepo: string | null) =>
+      evaluate(teardown.jobs['resolve-pr']?.if ?? 'true', {
+        'github.event_name': event,
+        'github.event.pull_request.head.repo.full_name': headRepo,
+        'github.repository': 'acme/repo',
+      }) === true
+    expect(runs('pull_request', 'acme/repo')).toBe(true)
+    expect(runs('pull_request', 'someone/fork')).toBe(false)
+    expect(runs('workflow_dispatch', null)).toBe(true)
+  })
+
   it('only rewrites an existing preview comment', () => {
     const comment = loadWorkflow('preview-destroy.yml').jobs.comment?.steps?.find((step) =>
       step.uses?.startsWith('marocchino/sticky-pull-request-comment@'),

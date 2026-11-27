@@ -582,7 +582,7 @@ Four workflows give each pull request that changes a preview input (the image so
 
 **`preview-deploy.yml`** builds the PR's images through `images-publish.yml` with a `pr-<n>-<sha>` tag, then calls `stack-deploy.yml` with `stack_name: preview-pr-<n>` and `shared_stack_name: previews-shared`, and leaves a sticky comment carrying the URL. Same-repo PRs deploy on `pull_request` with no human gate, because only collaborators with write access can push a branch to this repository. Fork PRs go through `pull_request_target` behind the `fork-preview-approval` environment, so a maintainer approves every push: under that trigger the workflow file and the Pulumi program are both read from `main`, meaning a fork can change the images but never the infrastructure code that deploys them. The approval job fails unless that environment has required reviewers, so a fork preview cannot deploy through an unprotected or missing environment.
 
-**`preview-destroy.yml`** tears the stack down on `pull_request_target: closed`. It uses `pull_request_target` rather than `pull_request` so credentials are available when a fork PR closes; no approval gate is needed because nothing from the fork is checked out.
+**`preview-destroy.yml`** tears the stack down when a same-repo PR closes. A fork PR's close event gets no secrets, so `preview-cleanup.yml` removes a fork's stack within the hour.
 
 **`preview-cleanup.yml`** is the hourly safety net for stacks the destroy path missed — a failed teardown, a PR closed out of band, or an open PR idle past `max_age_days` (default 3). The `preview:persist` label opts a PR's stack out, and `workflow_dispatch` takes a `dry_run` input that lists what would go without destroying it.
 

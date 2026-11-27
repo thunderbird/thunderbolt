@@ -1845,7 +1845,7 @@ describe('caches', () => {
       .map((s) => JSON.stringify({ path: s.with?.path, key: s.with?.key }))
   const saving = /^actions\/cache(\/save)?@/
 
-  test('only build and cache-system-image save caches, and every cache another job restores is one of theirs', () => {
+  test('only build and cache-system-image save with actions/cache, and every restored cache is one of theirs', () => {
     const savers = ['build', 'cache-system-image']
     expect(Object.keys(jobs).filter((job) => cacheSteps(job, saving).length > 0)).toEqual(savers)
     const saved = savers.flatMap((job) => cacheSteps(job, saving))
@@ -1862,6 +1862,16 @@ describe('caches', () => {
     )
     expect(setups.length).toBeGreaterThan(0)
     for (const { job, noCache } of setups) expect({ job, noCache: String(noCache) }).toEqual({ job, noCache: 'true' })
+  })
+
+  test("setup-java's Gradle cache, also saved in a post step, is on only in the Android build-native job", () => {
+    const gradle = "${{ github.job == 'build-native' && env.QA_PLATFORM == 'android' && 'gradle' || '' }}"
+    const setups = Object.entries(jobs).flatMap(([job, { steps = [] }]) =>
+      steps.filter((s) => s.uses?.startsWith('actions/setup-java@')).map((s) => ({ job, cache: s.with?.cache })),
+    )
+    expect(setups.map(({ job }) => job)).toContain('build-native')
+    for (const { job, cache } of setups) expect({ job, cache }).toEqual({ job, cache: gradle })
+    expect(jobs['build-native'].env?.QA_PLATFORM).toBe('${{ matrix.target.platform }}')
   })
 
   test('cache-system-image caches the image native.sh installs, before untrusted code, and device jobs restore it', async () => {

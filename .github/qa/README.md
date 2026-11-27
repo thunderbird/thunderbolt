@@ -130,7 +130,8 @@ only when its key matches, which a forger can arrange for a lockfile change that
 the fixed Android system image key once the cache has evicted that entry. The agent also writes the unit tests that
 `verify-tests` runs, and its tests decide what that check sees.
 
-Only `build` and `cache-system-image` save caches, because they run before any untrusted code. Every other job only
+Only `build`, `cache-system-image` and the Android `build-native` job save caches, because they run before any
+untrusted code; `build-native` saves `setup-java`'s Gradle cache, which no other job turns on. Every other job only
 restores them with `actions/cache/restore`, `native-control` included, so no job saves a cache after code a model
 wrote ran (the forged cache entry above is the exception). `setup-bun` runs with `no-cache: true`: its own cache save
 is a post step, after the job's steps, which in most jobs include model-written code.

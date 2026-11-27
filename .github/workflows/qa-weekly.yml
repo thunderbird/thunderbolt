@@ -6,10 +6,11 @@ name: QA weekly
 #
 # Trust zones: explore and replay run untrusted, model-written input, so they hold no Linear key and no write
 # token. The replay step holds no secret at all: in the real-AI leg the provider keys sit with a backend that runs as
-# another OS user, and the job's own user loses root first. Only build and cache-system-image save caches, because
-# they run before any untrusted code; every other job only restores them, and setup-bun's own cache is off because
-# its save runs after the job's steps. The jobs that check a fix's patch hold no secret, except verify-real, whose
-# provider keys go to a backend from a fresh checkout that never ran the patch.
+# another OS user, and the job's own user loses root first. Only build, cache-system-image and the Android build-native
+# job (setup-java's Gradle cache) save caches, because they run before any untrusted code; every other job only
+# restores them, and setup-bun's own cache is off because its save runs after the job's steps. The jobs that check a
+# fix's patch hold no secret, except verify-real, whose provider keys go to a backend from a fresh checkout that never
+# ran the patch.
 #
 # Linux jobs are pinned to ubuntu-24.04, not ubuntu-latest: the stack relies on that image's AppArmor sysctl, KVM
 # and emulator libraries, Playwright dependencies and qa-dev user. Moving to a newer image is a deliberate change.
@@ -597,6 +598,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+          # Maven Central rate-limits cold runners. The save runs after the job's steps, so only build-native has it on.
+          cache: ${{ github.job == 'build-native' && env.QA_PLATFORM == 'android' && 'gradle' || '' }}
       - &native-build-tools
         name: Install the native build tools
         run: |

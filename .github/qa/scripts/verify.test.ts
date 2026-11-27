@@ -1210,35 +1210,65 @@ describe('replay of native flows', () => {
     const failed = { passed: false, error: 'Assertion is false: "always" is visible' }
     const again = new DeviceLost('emulator dropped off adb', true)
     const final = new DeviceLost('emulator dropped off adb a second time in this leg')
-    /** Throws the loss queued for each call number, as `createRunFlow` does, and otherwise answers as `fakeFlow`. */
-    const losing = (losses: Map<number, DeviceLost>, calls: FlowCall[]): RunFlow => {
-      const flow = fakeFlow({ always: [failed, failed, failed] }, calls)
+    /**
+     * Throws the loss queued for each call number, as `createRunFlow` does, and otherwise answers as `fakeFlow`. A lost
+     * call is recorded with the label the run got.
+     */
+    const losing = (
+      losses: Map<number, DeviceLost>,
+      calls: FlowCall[],
+      results: Record<string, Partial<FlowRun>[]> = { always: [failed, failed, failed] },
+    ): RunFlow => {
+      const flow = fakeFlow(results, calls)
       const counted = { n: 0 }
       return async (...args) => {
         const loss = losses.get(++counted.n)
         if (!loss) return flow(...args)
-        calls.push({ title: 'lost', run: args[2], session: args[3] })
+        calls.push({ title: `lost: ${args[5]}`, run: args[2], session: args[3] })
         throw loss
       }
     }
 
-    test('starts over once the emulator is back, and only the run that ended counts', async () => {
-      await writeNative(makeNative('always', assertFailed))
+    test('moves on to the next finding once the emulator is back, keeping the runs the lost one counted', async () => {
+      for (const title of ['a-lost', 'b-next']) await writeNative(makeNative(title, assertFailed))
       const calls: FlowCall[] = []
+      const results = { 'a-lost': [failed], 'b-next': [failed, failed, failed] }
 
-      const result = await replay(outDir, fakeRunner({}, []), qaDir, losing(new Map([[5, again]]), calls))
+      const result = await replay(outDir, fakeRunner({}, []), qaDir, losing(new Map([[5, again]]), calls, results))
 
+      // The flow that was running when the emulator went down never runs again.
       expect(calls.map((call) => call.title)).toEqual([
         ...Array(3).fill('stack control'),
-        'always',
-        'lost',
-        'always',
-        'always',
+        'a-lost',
+        `lost: ${session}/a-lost, attempt 2`,
+        ...Array(3).fill('b-next'),
       ])
       expect(result.stack_unhealthy).toBeUndefined()
       expect(result.confirmed.map(({ id, replay }) => [id, replay])).toEqual([
-        ['always', { failed: 3, runs: 3, error: failed.error }],
+        ['b-next', { failed: 3, runs: 3, error: failed.error }],
       ])
+      const reason = 'the emulator was lost while this flow ran'
+      expect(result.flaky.map(({ id, replay }) => [id, replay])).toEqual([
+        ['a-lost', { failed: 1, runs: 1, inconclusive: 1, error: failed.error, reason }],
+      ])
+    })
+
+    test('starts a control run it lost over, and the control still needs 3 passing runs', async () => {
+      await writeNative(makeNative('always', assertFailed))
+      const calls: FlowCall[] = []
+      const failure = 'Assertion is false: "Ask anything" is visible'
+      const results = { 'stack control': [{}, { passed: false, error: failure }], always: [failed, failed, failed] }
+
+      const result = await replay(outDir, fakeRunner({}, []), qaDir, losing(new Map([[2, again]]), calls, results))
+
+      expect(calls.map((call) => call.title)).toEqual([
+        'stack control',
+        'lost: control, attempt 2',
+        'stack control',
+        'stack control',
+      ])
+      expect(result.stack_unhealthy).toBe(`control flow failed 1/3 runs: ${failure}`)
+      expect(result.confirmed).toEqual([])
     })
 
     test('marks the stack unhealthy when it is lost for good, and no finding counts', async () => {
@@ -1258,7 +1288,13 @@ describe('replay of native flows', () => {
         ),
       )
 
-      expect(calls.map((call) => call.title)).toEqual(['lost', ...Array(3).fill('stack control'), 'always', 'lost'])
+      // The control run it lost starts over and the control still counts 3 runs; the second loss ends the leg.
+      expect(calls.map((call) => call.title)).toEqual([
+        'lost: control, attempt 1',
+        ...Array(3).fill('stack control'),
+        'always',
+        `lost: ${session}/always, attempt 2`,
+      ])
       expect(result.stack_unhealthy).toBe('emulator dropped off adb a second time in this leg')
       expect(result.confirmed).toEqual([])
       expect(result.dropped.map((entry) => [entry.file.id, entry.gate, entry.reason])).toEqual([

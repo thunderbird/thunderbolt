@@ -323,7 +323,8 @@ exit 0
     for (const [index, flag] of ${JSON.stringify(flags)}.entries()) {
       for (const name of flag?.split(' ') ?? []) writeFileSync(${JSON.stringify(dir)} + '/' + name, '')
       try {
-        const run = await runFlow('- launchApp\\n', ${JSON.stringify(join(dir, 'out'))}, index + 1, 'c2-chat-power-user-android')
+        const run = await runFlow('- launchApp\\n', ${JSON.stringify(join(dir, 'out'))}, index + 1, 'c2-chat-power-user-android',
+          undefined, 'c2-chat-power-user-android/f1, attempt ' + (index + 1))
         // Left out when empty, as error is when the run passed.
         const layout = run.layout.length > 0 ? run.layout : undefined
         results.push({ passed: run.passed, error: run.error, inconclusive: run.inconclusive, layout })
@@ -403,8 +404,13 @@ test('an Android run on an emulator adb lost boots a new one once, and the runs 
   expect(calls.filter((line) => line.endsWith(' -G 64M'))).toHaveLength(1)
   expect(calls.filter((line) => line.endsWith(' logcat -c'))).toEqual([])
   expect(webview).toBe('I Tauri/Console: before the loss\n')
-  expect(stderr).toContain('adb lost emulator-5554;')
-  expect(stderr).toContain('adb lost emulator-5556;')
+  // Each loss names its run and step before native.sh's diagnostics.
+  const install = 'adb lost the emulator during the install of c2-chat-power-user-android/f1, attempt 1\n'
+  const flow = 'adb lost the emulator during the flow of c2-chat-power-user-android/f1, attempt 3\n'
+  expect(stderr.indexOf(install)).toBeGreaterThan(-1)
+  expect(stderr.indexOf(install)).toBeLessThan(stderr.indexOf('adb lost emulator-5554;'))
+  expect(stderr.indexOf(flow)).toBeGreaterThan(stderr.indexOf('adb lost emulator-5554;'))
+  expect(stderr.indexOf(flow)).toBeLessThan(stderr.indexOf('adb lost emulator-5556;'))
 }, 15_000)
 
 test('an Android run on an emulator adb sees again by the recovery starts over on it, with no boot', () => {
@@ -455,12 +461,13 @@ test('a recovery whose new WebView stream exits at once fails, and the loss ends
   ])
 }, 15_000)
 
-test('a passed run whose tree dump fails on an emulator adb lost does not count, and starts over', () => {
-  const { results, calls } = androidRuns(['drop-tree-emulator-5554', undefined])
+test('a passed run whose tree dump fails on an emulator adb lost does not count, and the leg goes on', () => {
+  const { results, calls, stderr } = androidRuns(['drop-tree-emulator-5554', undefined])
 
   expect(results).toEqual([{ threw: 'DeviceLost', message: 'emulator dropped off adb', retry: true }, { passed: true }])
   // The lost run's video is never pulled.
   expect(calls.filter((line) => line.includes(' pull '))).toHaveLength(1)
+  expect(stderr).toContain('adb lost the emulator during the tree dump of c2-chat-power-user-android/f1, attempt 1\n')
 }, 15_000)
 
 test('a recovery that would end past the deadline is cut there, and the loss ends the leg', () => {

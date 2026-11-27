@@ -125,7 +125,8 @@ export type FlowRun = {
 }
 /**
  * Runs a checked flow on a freshly installed app. `run` is unique within one replay; `session` picks the build
- * (onboarding on for c1). `signIn` runs first in the same launch, and the flow runs only when it passed.
+ * (onboarding on for c1). `signIn` runs first in the same launch, and the flow runs only when it passed. `label`
+ * names the run in the job log when its emulator is lost: `control` or `<charter>/<finding id>`, with the attempt.
  */
 export type RunFlow = (
   flowYaml: string,
@@ -133,6 +134,7 @@ export type RunFlow = (
   run: number,
   session: string,
   signIn?: string,
+  label?: string,
 ) => Promise<FlowRun>
 
 /** One Messages API call, injected so tests never reach the network. */
@@ -698,7 +700,10 @@ const unreached = (oracle: FindingFile['finding']['oracle']) =>
  * and is replaced, up to `extraRuns` times. With `owed` (the base runs the leg's later findings still need) a run
  * starts only when the clock fits it, and an extra run only when it also fits those, so an early finding's reruns
  * never take a later finding's runs.
- * A run whose emulator dropped off adb never counts, and starts over once the emulator is back (`DeviceLost`).
+ * A run whose emulator dropped off adb never counts (`DeviceLost`). Once the emulator is back, the control starts that
+ * run over, because findings run only after the control has 3 passing runs. A finding stops there and keeps the runs
+ * it already counted. Its own flow may be what brought the emulator down, and a second loss ends the leg. `label`
+ * names the run in the job log.
  */
 const threeRuns = async (
   { runFlow, outDir, next, clock }: Device,
@@ -707,15 +712,17 @@ const threeRuns = async (
   failure: (run: FlowRun) => string | undefined,
   inconclusive?: (run: FlowRun) => boolean,
   owed?: number,
+  label = session,
 ) => {
-  const runOnce = async () => {
-    const first = await runFlow(yaml, outDir, next(), session, signIn)
-    return first.error?.includes(driverTimeout) ? runFlow(yaml, outDir, next(), session, signIn) : first
+  const runOnce = async (named: string) => {
+    const first = await runFlow(yaml, outDir, next(), session, signIn, named)
+    return first.error?.includes(driverTimeout) ? runFlow(yaml, outDir, next(), session, signIn, named) : first
   }
   /** Undefined when the emulator dropped off adb and is back. A lost run is never timed, so it does not size the leg. */
-  const attempt = async () => {
+  const attempt = async (tries: number) => {
+    const named = `${label}, attempt ${tries + 1}`
     try {
-      return await (clock ? clock.time(runOnce) : runOnce())
+      return await (clock ? clock.time(() => runOnce(named)) : runOnce(named))
     } catch (error) {
       if (error instanceof DeviceLost && error.retry) return undefined
       throw error
@@ -727,11 +734,16 @@ const threeRuns = async (
       outcome.replay.reason = `out of time: another run might not end before the leg's ${nativeJobMinutes}-minute timeout`
       break
     }
-    const run = await attempt()
-    // The same try starts over on the emulator that is back, once the clock fits it again.
-    if (!run) {
+    const run = await attempt(tries)
+    // The control's same try starts over on the emulator that is back, once the clock fits it again.
+    if (!run && session === 'control') {
       tries--
       continue
+    }
+    if (!run) {
+      outcome.replay.inconclusive = (outcome.replay.inconclusive ?? 0) + 1
+      outcome.replay.reason = 'the emulator was lost while this flow ran'
+      break
     }
     if (run.signInFailed || run.inconclusive || inconclusive?.(run)) {
       outcome.replay.inconclusive = (outcome.replay.inconclusive ?? 0) + 1
@@ -795,9 +807,10 @@ const replayFlows = async (
   for (const [index, [file, flow]] of [...flows].entries()) {
     const { oracle } = file.finding
     const owed = 3 * (flows.size - 1 - index)
+    const failure = (run: FlowRun) => flowFailure(oracle, run)
     outcomes.set(
       file,
-      await threeRuns(device, flow, file.charterDir, (run) => flowFailure(oracle, run), unreached(oracle), owed),
+      await threeRuns(device, flow, file.charterDir, failure, unreached(oracle), owed, findingId(file)),
     )
   }
   return { stackProblem: undefined, outcomes }

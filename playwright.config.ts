@@ -315,21 +315,15 @@ export default defineConfig({
       },
     },
     // --- Admin frontend ---
-    {
-      command: `bun run dev -- --port ${adminVitePort}`,
-      url: `http://localhost:${adminVitePort}`,
-      reuseExistingServer: !isCI,
-      timeout: 120_000,
-      env: {
-        VITE_AUTH_MODE: 'sso',
-        VITE_SKIP_ONBOARDING: 'true',
-        VITE_THUNDERBOLT_CLOUD_URL: `http://localhost:${adminBackendPort}/v1`,
-      },
-    },
+    frontendServer('admin', adminVitePort, {
+      VITE_AUTH_MODE: 'sso',
+      VITE_SKIP_ONBOARDING: 'true',
+      VITE_THUNDERBOLT_CLOUD_URL: `http://localhost:${adminBackendPort}/v1`,
+    }),
     // --- Admin backend ---
     {
       // Teed so specs can read the dev log, e.g. an invitation's link (`readInviteUrl`).
-      command: `cd backend && bun run --watch src/index.ts 2>&1 | tee ../${adminBackendLog}`,
+      command: `${backendCommand} 2>&1 | tee ../${adminBackendLog}`,
       url: `http://localhost:${adminBackendPort}/v1/health`,
       reuseExistingServer: !isCI,
       timeout: 120_000,

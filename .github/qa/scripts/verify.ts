@@ -6,7 +6,6 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
-import { createHash } from 'node:crypto'
 import { readFile, rm } from 'node:fs/promises'
 import { basename, join, relative, resolve } from 'node:path'
 import { parseArgs, stripVTControlCharacters } from 'node:util'
@@ -127,8 +126,9 @@ export type FlowRun = {
 /**
  * Runs a checked flow on a freshly installed app. `run` is unique within one replay; `session` picks the build
  * (onboarding on for c1). `signIn` runs first in the same launch, and the flow runs only when it passed. `label`
- * names the run in the job log (`withProgress`, and a lost emulator): `control` or `<charter>/<finding id>`, with the
- * attempt (`logName`). `needsTree` false lets an iOS run skip the tree dump, which only a layout finding's proof reads.
+ * names the run in the job log (`withProgress`, and a lost emulator): `control` or `<charter>/#<n>` (n is the
+ * finding's place in the leg's replay order), with the attempt. `needsTree` false lets an iOS run skip the tree dump,
+ * which only a layout finding's proof reads.
  */
 export type RunFlow = (
   flowYaml: string,
@@ -778,15 +778,6 @@ const counter = () => {
 }
 
 /**
- * A finding's name in the job log. The explorer picks the file name, and the prompt asks for a number. Any other name
- * could carry app text on android-real, so it shows only as a short hash.
- */
-const logName = ({ charterDir, id }: FindingFile) =>
-  /^\d+$/.test(id)
-    ? `${charterDir}/${id}`
-    : `${charterDir}/sha256:${createHash('sha256').update(id).digest('hex').slice(0, 8)}`
-
-/**
  * Prints a line when each run on the device starts and when it ends, with the run's number (its video's), how long it
  * took and its `label`, so the job log shows where a slow or cut-short leg was. The label never holds app text.
  */
@@ -841,10 +832,9 @@ const replayFlows = async (
     const { oracle } = file.finding
     const owed = 3 * (flows.size - 1 - index)
     const failure = (run: FlowRun) => flowFailure(oracle, run)
-    outcomes.set(
-      file,
-      await threeRuns(device, flow, file.charterDir, failure, unreached(oracle), owed, { label: logName(file) }),
-    )
+    // The explorer picks the file name, and on android-real even a number in it can come from the app.
+    const label = `${file.charterDir}/#${index + 1}`
+    outcomes.set(file, await threeRuns(device, flow, file.charterDir, failure, unreached(oracle), owed, { label }))
   }
   return { stackProblem: undefined, outcomes }
 }

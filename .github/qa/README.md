@@ -353,14 +353,24 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    count. A probe that times out or prints nothing makes the run inconclusive, however much time the leg has left,
    and the leg goes on. An install that fails with adb's `device '…' not found` counts as a loss even if adb sees the
    emulator again a moment later.
-   `native.sh device-lost` prints what may explain the loss: the emulator process, free memory, OOM kills, and, for
-   each crash signature, how many lines of the emulator's log hold it. No line of that log is printed. The leg then
+   The leg first names the run in progress when adb lost the emulator (`control` or `<charter>/<finding id>`,
+   with the attempt) and its step (install, flow or tree dump). A finding whose file name is not a number shows as
+   `<charter>/sha256:<first 8 hex digits>`, since the explorer picks the name and it could hold app text.
+   `native.sh device-lost` then prints what may explain
+   the loss: how the emulator process ended (its exit code or the signal that killed it, which a small watcher
+   process records in `qa-emulator-<boot>.status`) or that it still runs, free memory, OOM kills, and, for each crash
+   signature, how many lines of the emulator's log hold it. Each boot writes its own log, `qa-emulator-<boot>.log`.
+   No line of that log is printed. The leg then
    runs `native.sh device android` again, which keeps the emulator only while adb sees it online and its
    `ro.boot.qemu.avd_name` is `qa-android`. Otherwise it stops ours and cold-boots a new one on the first even console
    port from 5554 to 5584 where adb lists no emulator, online or offline. adb names an emulator after its console port,
    so the boot waits for that serial (`emulator-<port>`) and never takes another emulator. The WebView stream
-   starts again and appends to its log; a stream that has exited a second later fails the recovery. Then the run
-   starts over. A leg recovers only once, and the diagnostics and the recovery must end before the leg's clock does: a
+   starts again and appends to its log; a stream that has exited a second later fails the recovery. A lost control
+   run then starts over, and the control still needs 3 passing runs before any finding runs. A finding does not run
+   its flow again, since that flow may be what brought the emulator down. The lost run counts as inconclusive, the
+   runs it already counted stay, its reason reads `the emulator was lost while this flow ran`, and the leg moves on to
+   the next finding. Such a finding is reported as flaky and never filed, even when its flow brings the emulator down
+   every time. A leg recovers only once, and the diagnostics and the recovery must end before the leg's clock does: a
    second loss, or a recovery that fails or runs out of time, marks the stack unhealthy. The adb probe gets its 10 s
    even after the clock has run out, from the wrap-up minutes, so a run that ends that late keeps its own outcome while
    adb sees the emulator. A fix's native check never recovers. Each run ends with one `maestro hierarchy` of the screen it
@@ -1050,9 +1060,10 @@ stack depends on its AppArmor sysctl, KVM and emulator libraries, Playwright dep
   leg's setup, and every counted run installs the app again.
   When the replay fails, the job uploads the stack's and the WebView's logs as `qa-logs-replay-<leg>`. On Android
   it does so after every replay and adds the emulator's log (`qa-logcat.log`, read with `logcat -d` once the replay
-  is over, since a reset of adb's connection ends a stream), the adb server's log (`qa-adb.log`) and Maestro's debug
-  output for each session (`qa-maestro/<time>/`, with `maestro.log` and the commands). None of it is uploaded on
-  `android-real`, whose backend held the provider keys.
+  is over, since a reset of adb's connection ends a stream), the emulator program's own output for each boot
+  (`qa-emulator-<boot>.log`), the adb server's log (`qa-adb.log`) and Maestro's debug output for each session
+  (`qa-maestro/<time>/`, with `maestro.log` and the commands). None of it is uploaded on `android-real`, whose
+  backend held the provider keys.
 - The weekly **judge** adds the native legs' candidates to the web ones, like the sync and real legs. A dispatch of
   native sessions only still plans it, so its findings are judged, filed and fixed.
 - **verify-native-build** and **verify-native-run** check a native fix (see "Trust zones"). With no patched app,

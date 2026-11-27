@@ -239,7 +239,7 @@ only deploys for PRs that change a preview input ([Previews are path-gated](#gat
 | Render (auto)           | `https://thunderbolt-pr-<n>.onrender.com`                                     | The web app, deployed by Render                                                                 | Quick UI checks                                                                                                                                          |
 | Pulumi stack on Fargate | `app-pr-<n>.preview.thunderbolt.io` (plus `api-pr-<n>`, `thunderbolt-pr-<n>`) | The PR's own backend, frontend and marketing services, with their own logical Postgres database | Sync, SSO, migrations, cross-device behaviour and signed-out Lighthouse scores; use the [performance harness](performance.md) for signed-in measurements |
 
-Fork PRs get the Pulumi preview only after a maintainer approves the run (see
+Fork PRs get the Pulumi preview only when a maintainer dispatches one (see
 [Preview lifecycle](#preview-lifecycle)).
 
 ### Render preview
@@ -286,18 +286,14 @@ Each PR gets its own OIDC client in the shared Keycloak realm, so a PR needing d
 realm config or different PowerSync sync rules must fall back to a monolithic deploy with
 `shared_stack_name` empty ([SHARED.md](../../../deploy/pulumi/SHARED.md)).
 
-### Fork PRs need approval on every push
+### Fork previews: a maintainer dispatches them
 
-They deploy through `pull_request_target` behind the `fork-preview-approval` environment,
-so a maintainer approves **every push**, not every PR; that is why a fork preview sits
-pending. Under that trigger the workflow file and the Pulumi program come from `main`, so
-a fork can change image contents but never the infrastructure code. The approval job's
-name shows the commit SHA the run will build.
-
-The approval job fails unless the environment has required reviewers. GitHub creates a
-missing environment with no rules, and an environment without reviewers would let the job
-start unapproved. Same-repo PRs skip this gate: only collaborators with write access can
-push a branch here, and their previews deploy automatically.
+A fork PR's `pull_request` run gets no secrets, so it deploys nothing. After reading the
+change, a maintainer runs `preview-deploy.yml` with `workflow_dispatch` from `main` and the
+PR's `pr_number`. The fork's head goes into the images, but `main`'s workflow and Pulumi
+program deploy them, so a fork can change image contents but never the infrastructure
+code. A new push to the fork needs a new dispatch. Same-repo PRs deploy automatically:
+only collaborators with write access can push a branch here.
 
 ### Teardown: on close, hourly, and by hand
 

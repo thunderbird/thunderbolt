@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   # Same-repo PR code receives CI-scoped provider keys under accepted collaborator trust.
-  # Fork support awaits a protected pull_request_target + approve-fork environment gate.
+  # Fork PRs never run this job.
   pr-smoke:
     if: (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'smoke' || inputs.suite == 'both'))
     runs-on: ubuntu-latest

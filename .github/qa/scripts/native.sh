@@ -221,16 +221,26 @@ online_emulators() {
   adb devices | sed -n 's/^\(emulator-[0-9]*\)[[:space:]]*device$/\1/p'
 }
 
+# True when the emulator's console names another AVD. No answer, an empty one or an error (KO) names none.
+other_avd() {
+  local named
+  named=$(timeout -k 1 5 adb -s "$1" emu avd name 2> /dev/null | tr -d '\r' | grep -vx -e OK -e '' -e 'KO.*') ||
+    return 1
+  ! grep -qx "$avd" <<< "$named"
+}
+
 # The online emulator that runs our AVD, if any. Another emulator on the same adb is not ours to use. With `booted`
 # and the serials online before we started ours, the only emulator that came online since counts as ours while its
-# name reads empty, so an image that does not set the property cannot fail the boot.
+# name reads empty and its console names no other AVD, so an image that does not set the property cannot fail the
+# boot.
 our_emulator() {
   local serials serial name
   serials=$(online_emulators)
   for serial in $serials; do
     name=$(timeout -k 1 10 adb -s "$serial" shell getprop ro.boot.qemu.avd_name 2> /dev/null | tr -d '\r') || true
     if grep -qx "$avd" <<< "$name" ||
-      { [ "${1:-}" = booted ] && [ -z "$name" ] && [ "$(grep -vxF -e "${2:-}" <<< "$serials")" = "$serial" ]; }; then
+      { [ "${1:-}" = booted ] && [ -z "$name" ] && [ "$(grep -vxF -e "${2:-}" <<< "$serials")" = "$serial" ] &&
+        ! other_avd "$serial"; }; then
       echo "$serial"
       return
     fi

@@ -3,8 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { SparkFooter } from '../spark/spark-footer'
-import { SiteHeader } from '../spark/site-header'
-import type { DownloadRelease } from '../download/downloads'
+import { SparkHeader } from '../spark/spark-header'
 import { useContactFormState } from './use-contact-form-state'
 
 const contactEndpoint = import.meta.env.PUBLIC_CONTACT_ENDPOINT ?? ''
@@ -16,17 +15,15 @@ const labelClass = 'block text-sm font-medium text-secondary-foreground mb-1.5'
 
 export const ContactPage = ({
   endpoint = contactEndpoint,
-  release,
 }: {
   endpoint?: string
-  release: DownloadRelease
 }) => {
   const { submission, isPending, handleSubmit } = useContactFormState(endpoint)
 
   if (submission?.status === 'success') {
     return (
       <div className="flex min-h-screen flex-col bg-background">
-        <SiteHeader currentPage="Contact" release={release} />
+        <SparkHeader currentPage="Contact" />
         <main className="flex flex-1 flex-col items-center justify-center px-6 py-24">
           <img src="/enterprise/thunderbolt-logo.png" alt="Thunderbolt" className="size-12" />
           <h1
@@ -50,7 +47,7 @@ export const ContactPage = ({
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <SiteHeader currentPage="Contact" release={release} />
+      <SparkHeader currentPage="Contact" />
       <main className="mx-auto w-full max-w-[640px] flex-1 px-6 pt-16 pb-24">
         <a
           href="/"

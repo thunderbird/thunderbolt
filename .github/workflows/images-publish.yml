@@ -20,8 +20,8 @@ on:
         type: string
         required: false
         default: 'linux/amd64,linux/arm64'
-      no_cache:
-        description: 'Build every layer fresh, ignoring the registry layer cache (the nightly rebuild sets this to pick up base-image and package upgrades).'
+      write_cache:
+        description: 'Export this build to the :buildcache tags that preview builds reuse (the nightly rebuild sets this).'
         type: boolean
         default: false
     outputs:
@@ -119,8 +119,10 @@ jobs:
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # -- Build and push Docker images --
-      # Each image reads its :buildcache layer cache. Only runs that publish :latest
-      # write it, so a preview build (which may be a fork's code) never feeds main's images.
+      # Production builds (those that publish :latest) never use a layer cache, so every
+      # push to main picks up base-image and package upgrades. Preview builds read the
+      # :buildcache tags, which only the nightly rebuild writes, so a preview build (which
+      # may be a fork's code) never feeds another build.
 
       - name: Build and push frontend
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
@@ -128,9 +130,9 @@ jobs:
           context: .
           file: deploy/docker/frontend.Dockerfile
           push: true
-          no-cache: ${{ inputs.no_cache == true }}
+          no-cache: ${{ steps.version.outputs.publish_latest == 'true' }}
           cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}/thunderbolt-frontend:buildcache
-          cache-to: ${{ steps.version.outputs.publish_latest == 'true' && format('type=registry,ref={0}/thunderbolt-frontend:buildcache,mode=max,image-manifest=true,oci-mediatypes=true', env.IMAGE_PREFIX) || '' }}
+          cache-to: ${{ inputs.write_cache && steps.version.outputs.publish_latest == 'true' && format('type=registry,ref={0}/thunderbolt-frontend:buildcache,mode=max,image-manifest=true,oci-mediatypes=true', env.IMAGE_PREFIX) || '' }}
           # Buildx's container driver attaches provenance attestations by
           # default. Suppress them so the index carries only the two platform
           # manifests, matching what the previous docker driver published.
@@ -151,9 +153,9 @@ jobs:
           context: .
           file: deploy/docker/backend.Dockerfile
           push: true
-          no-cache: ${{ inputs.no_cache == true }}
+          no-cache: ${{ steps.version.outputs.publish_latest == 'true' }}
           cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}/thunderbolt-backend:buildcache
-          cache-to: ${{ steps.version.outputs.publish_latest == 'true' && format('type=registry,ref={0}/thunderbolt-backend:buildcache,mode=max,image-manifest=true,oci-mediatypes=true', env.IMAGE_PREFIX) || '' }}
+          cache-to: ${{ inputs.write_cache && steps.version.outputs.publish_latest == 'true' && format('type=registry,ref={0}/thunderbolt-backend:buildcache,mode=max,image-manifest=true,oci-mediatypes=true', env.IMAGE_PREFIX) || '' }}
           # Buildx's container driver attaches provenance attestations by
           # default. Suppress them so the index carries only the two platform
           # manifests, matching what the previous docker driver published.
@@ -171,9 +173,9 @@ jobs:
           context: .
           file: deploy/docker/postgres.Dockerfile
           push: true
-          no-cache: ${{ inputs.no_cache == true }}
+          no-cache: ${{ steps.version.outputs.publish_latest == 'true' }}
           cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}/thunderbolt-postgres:buildcache
-          cache-to: ${{ steps.version.outputs.publish_latest == 'true' && format('type=registry,ref={0}/thunderbolt-postgres:buildcache,mode=max,image-manifest=true,oci-mediatypes=true', env.IMAGE_PREFIX) || '' }}
+          cache-to: ${{ inputs.write_cache && steps.version.outputs.publish_latest == 'true' && format('type=registry,ref={0}/thunderbolt-postgres:buildcache,mode=max,image-manifest=true,oci-mediatypes=true', env.IMAGE_PREFIX) || '' }}
           # Buildx's container driver attaches provenance attestations by
           # default. Suppress them so the index carries only the two platform
           # manifests, matching what the previous docker driver published.
@@ -191,9 +193,9 @@ jobs:
           context: .
           file: deploy/docker/keycloak.Dockerfile
           push: true
-          no-cache: ${{ inputs.no_cache == true }}
+          no-cache: ${{ steps.version.outputs.publish_latest == 'true' }}
           cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}/thunderbolt-keycloak:buildcache
-          cache-to: ${{ steps.version.outputs.publish_latest == 'true' && format('type=registry,ref={0}/thunderbolt-keycloak:buildcache,mode=max,image-manifest=true,oci-mediatypes=true', env.IMAGE_PREFIX) || '' }}
+          cache-to: ${{ inputs.write_cache && steps.version.outputs.publish_latest == 'true' && format('type=registry,ref={0}/thunderbolt-keycloak:buildcache,mode=max,image-manifest=true,oci-mediatypes=true', env.IMAGE_PREFIX) || '' }}
           # Buildx's container driver attaches provenance attestations by
           # default. Suppress them so the index carries only the two platform
           # manifests, matching what the previous docker driver published.
@@ -211,9 +213,9 @@ jobs:
           context: .
           file: deploy/docker/powersync.Dockerfile
           push: true
-          no-cache: ${{ inputs.no_cache == true }}
+          no-cache: ${{ steps.version.outputs.publish_latest == 'true' }}
           cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}/thunderbolt-powersync:buildcache
-          cache-to: ${{ steps.version.outputs.publish_latest == 'true' && format('type=registry,ref={0}/thunderbolt-powersync:buildcache,mode=max,image-manifest=true,oci-mediatypes=true', env.IMAGE_PREFIX) || '' }}
+          cache-to: ${{ inputs.write_cache && steps.version.outputs.publish_latest == 'true' && format('type=registry,ref={0}/thunderbolt-powersync:buildcache,mode=max,image-manifest=true,oci-mediatypes=true', env.IMAGE_PREFIX) || '' }}
           # Buildx's container driver attaches provenance attestations by
           # default. Suppress them so the index carries only the two platform
           # manifests, matching what the previous docker driver published.
@@ -245,9 +247,9 @@ jobs:
           context: .
           file: deploy/docker/marketing.Dockerfile
           push: true
-          no-cache: ${{ inputs.no_cache == true }}
+          no-cache: ${{ steps.version.outputs.publish_latest == 'true' }}
           cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}/thunderbolt-marketing:buildcache
-          cache-to: ${{ steps.version.outputs.publish_latest == 'true' && format('type=registry,ref={0}/thunderbolt-marketing:buildcache,mode=max,image-manifest=true,oci-mediatypes=true', env.IMAGE_PREFIX) || '' }}
+          cache-to: ${{ inputs.write_cache && steps.version.outputs.publish_latest == 'true' && format('type=registry,ref={0}/thunderbolt-marketing:buildcache,mode=max,image-manifest=true,oci-mediatypes=true', env.IMAGE_PREFIX) || '' }}
           # Buildx's container driver attaches provenance attestations by
           # default. Suppress them so the index carries only the two platform
           # manifests, matching what the previous docker driver published.

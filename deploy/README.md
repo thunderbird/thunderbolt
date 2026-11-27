@@ -330,16 +330,16 @@ helm install thunderbolt . -n thunderbolt --create-namespace \
 
 See `deploy/k8s/values.yaml` for all configurable values. Key ones:
 
-| Value               | Default            | Description                                  |
-| ------------------- | ------------------ | -------------------------------------------- |
-| `appUrl`            | `http://localhost` | Base URL for CORS, auth callbacks, redirects |
-| `imagePullSecrets`  | `[]`               | Registry pull secrets                        |
-| `frontend.replicas` | `1`                | Frontend replica count                       |
-| `backend.replicas`  | `1`                | Backend replica count                        |
-| `postgres.storage`  | `5Gi`              | Postgres PVC size                            |
-| `ingress.enabled`   | `true`             | Create Ingress resource                      |
+| Value               | Default            | Description                                                                                              |
+| ------------------- | ------------------ | -------------------------------------------------------------------------------------------------------- |
+| `appUrl`            | `http://localhost` | Base URL for CORS, auth callbacks, redirects                                                             |
+| `imagePullSecrets`  | `[]`               | Registry pull secrets                                                                                    |
+| `frontend.replicas` | `1`                | Frontend replica count                                                                                   |
+| `backend.replicas`  | `1`                | Backend replica count                                                                                    |
+| `postgres.storage`  | `5Gi`              | Postgres PVC size                                                                                        |
+| `ingress.enabled`   | `true`             | Create Ingress resource                                                                                  |
 | `ingress.className` | `nginx`            | Defaults to `nginx` for existing installations. Set `traefik-nginx` for the supplied Traefik controller. |
-| `ingress.host`      | `""`               | Set for production (empty = default rule)    |
+| `ingress.host`      | `""`               | Set for production (empty = default rule)                                                                |
 
 ### Known caveats
 
@@ -356,7 +356,7 @@ Deploy to AWS using Pulumi. Supports two platforms from the same project:
 | Platform    | Infrastructure                | Persistence    | Best For                          |
 | ----------- | ----------------------------- | -------------- | --------------------------------- |
 | **fargate** | ECS Fargate + ALB + Cloud Map | EFS            | Serverless, no cluster management |
-| **k8s**     | EKS + Traefik           | EBS (gp3 PVCs) | Teams with Kubernetes expertise   |
+| **k8s**     | EKS + Traefik                 | EBS (gp3 PVCs) | Teams with Kubernetes expertise   |
 
 ### Prerequisites
 
@@ -506,7 +506,7 @@ Builds and pushes all Docker images + the Helm chart to GHCR.
 
 A caller can pass `tag_override` to tag the images with something other than the `package.json` version — the preview deploys use `pr-<n>-<sha>`. Setting it also skips the `:latest` tag and the Helm chart push, so a preview build never moves the pointers a real release owns.
 
-Builds reuse layers from a per-image `:buildcache` tag. Only runs that publish `:latest` write it, so preview builds read it but never feed it; for a fresh build by hand, dispatch Nightly Images, which rebuilds every layer.
+Builds that publish `:latest` never use a layer cache. Preview builds (those with `tag_override`) reuse layers from a per-image `:buildcache` tag that only Nightly Images writes, so a preview build never feeds another build.
 
 ### Stack Deploy
 
@@ -592,7 +592,7 @@ Four workflows give each pull request that changes a preview input (the image so
 
 **File**: `.github/workflows/nightly-images.yml`
 
-Nightly at 5:00 UTC (midnight EST), rebuilds and publishes the `main`-branch images to GHCR (version tag, `:latest`, and Helm chart) by calling `images-publish.yml` without the layer cache. Pushes to `main` reuse cached layers, including their apt/apk upgrades, so this is the build that picks up base-image and OS package updates; images pushed from `main` can carry packages up to about a day old until it refreshes the cache.
+Nightly at 5:00 UTC (midnight EST), rebuilds and publishes the `main`-branch images to GHCR (version tag, `:latest`, and Helm chart) by calling `images-publish.yml`. Like every build that publishes `:latest`, it ignores the layer cache, and it is the only build that refreshes the `:buildcache` tags preview builds read.
 
 **Triggers**:
 

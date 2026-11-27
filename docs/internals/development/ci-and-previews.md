@@ -266,11 +266,11 @@ rules and Cloudflare CNAMEs for those, while Keycloak and PowerSync belong to th
 stack on `*.shared.preview.thunderbolt.io`. Sign in to the shared Keycloak realm with
 `demo@thunderbolt.io` / `demo`.
 
-Image builds reuse layers from a per-image `:buildcache` tag in GHCR. Only the runs that
-publish `:latest` (push to `main`, nightly, plain dispatch) write it; previews only read it,
-so a fork's build never feeds layers into `main`'s images. The nightly build ignores the
-cache and rebuilds every layer, which picks up base-image and package upgrades and refreshes
-the cache.
+Preview image builds reuse layers from a per-image `:buildcache` tag in GHCR. Only the
+nightly build writes it, after rebuilding every layer from scratch; previews only read it, so
+a fork's build never feeds another build. Production builds (those that publish `:latest`:
+push to `main`, nightly, plain dispatch) never use the cache, so every one of them picks up
+base-image and package upgrades.
 
 ## Preview lifecycle
 

@@ -102,7 +102,7 @@ it('publishes marketing images when the website, its docs, or its build workflow
   }
 })
 
-it('caches image layers that only :latest publishes write, and nightly rebuilds fresh', () => {
+it('builds production images without a cache, and only nightly writes the preview cache', () => {
   const images = Bun.YAML.parse(
     readFileSync(join(import.meta.dir, '../.github/workflows/images-publish.yml'), 'utf8'),
   ) as { jobs: { publish: { steps: { name?: string; with?: Record<string, string> }[] } } }
@@ -110,15 +110,17 @@ it('caches image layers that only :latest publishes write, and nightly rebuilds 
   expect(builds).toHaveLength(6)
   for (const build of builds) {
     const cache = `thunderbolt-${build.name?.replace('Build and push ', '')}:buildcache`
-    expect(build.with?.['no-cache']).toBe('${{ inputs.no_cache == true }}')
+    expect(build.with?.['no-cache']).toBe("${{ steps.version.outputs.publish_latest == 'true' }}")
     expect(build.with?.['cache-from']).toBe(`type=registry,ref=\${{ env.IMAGE_PREFIX }}/${cache}`)
-    expect(build.with?.['cache-to']).toStartWith("${{ steps.version.outputs.publish_latest == 'true' && ")
+    expect(build.with?.['cache-to']).toStartWith(
+      "${{ inputs.write_cache && steps.version.outputs.publish_latest == 'true' && ",
+    )
     expect(build.with?.['cache-to']).toContain(`ref={0}/${cache},`)
   }
   const nightly = Bun.YAML.parse(
     readFileSync(join(import.meta.dir, '../.github/workflows/nightly-images.yml'), 'utf8'),
   ) as { jobs: { publish: { with?: object } } }
-  expect(nightly.jobs.publish.with).toEqual({ no_cache: true })
+  expect(nightly.jobs.publish.with).toEqual({ write_cache: true })
 })
 
 it('checks both serving images when their Dockerfile changes', () => {

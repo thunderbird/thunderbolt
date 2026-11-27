@@ -42,6 +42,7 @@ const fakeAdb = ({ ignoresSettings = false, refusesBroadcast = false } = {}) => 
 echo "$*" >> '${calls}'
 case "$*" in
   devices) printf 'List of devices attached\\nemulator-5554\\tdevice\\n' ;;
+  *" emu avd name") printf 'qa-android\\r\\nOK\\r\\n' ;;
   *"getprop sys.boot_completed") echo 1 ;;
   *"test -d /sdcard/Android")
     [ -f '${bin}/mounted' ] && exit 0
@@ -219,6 +220,7 @@ case "$*" in
     state=device
     [ "$(cat '${pidFile}')" = "$(cat '${dir}/previous')" ] && state=offline
     printf 'List of devices attached\\nemulator-5554\\t%s\\n' "$state" ;;
+  *" emu avd name") printf 'qa-android\\r\\nOK\\r\\n' ;;
   *"getprop sys.boot_completed" | *"settings get global hide_error_dialogs") echo 1 ;;
 esac
 exit 0
@@ -268,7 +270,7 @@ test('device android leaves alone a recorded pid that now runs another program',
   stop(other, booted)
 })
 
-test("device-lost prints adb's state, whether the emulator runs and only the crash lines of its log", () => {
+test("device-lost prints adb's state, whether the emulator runs and only counts from its log", () => {
   const dir = mkdtempSync(join(work, 'lost-'))
   const bin = join(dir, 'bin')
   mkdirSync(bin)
@@ -296,7 +298,69 @@ test("device-lost prints adb's state, whether the emulator runs and only the cra
   expect(proc.stdout.toString()).toBe('')
   expect(out).toStartWith("adb lost emulator-5554; adb's state for it now: error: device 'emulator-5554' not found\n")
   expect(out).toContain(`the emulator (pid ${gone}) is gone\n`)
-  expect(out.split("crash lines in the emulator's log:\n")[1]).toBe(`${crashes.join('\n')}\n`)
+  expect(out.split("lines of the emulator's log per crash signature:\n")[1]).toBe(
+    '  error: 1\n  terminating on signal: 1\n',
+  )
+  for (const line of crashes) expect(out).not.toContain(line)
+})
+
+test('a boot whose emulator exits prints only counts from its log, never its lines', () => {
+  const dir = mkdtempSync(join(work, 'exited-'))
+  const bin = join(dir, 'bin')
+  mkdirSync(bin)
+  writeFileSync(join(bin, 'adb'), '#!/bin/bash\n[ "$1" = devices ] && echo "List of devices attached"\nexit 0\n')
+  writeFileSync(join(bin, 'avdmanager'), '#!/bin/bash\necho qa-android\n')
+  const fatal = 'FATAL        | KVM is not available for the user who asked: /dev/kvm'
+  writeFileSync(join(bin, 'emulator'), `#!/bin/bash\necho '${fatal}'\nexit 1\n`)
+  for (const tool of ['adb', 'avdmanager', 'emulator']) chmodSync(join(bin, tool), 0o755)
+
+  const proc = Bun.spawnSync(['bash', native, 'device', 'android'], {
+    env: {
+      ...process.env,
+      ...noPorts,
+      PATH: `${bin}:${process.env.PATH}`,
+      ANDROID_AVD_HOME: join(dir, 'avd'),
+      TMPDIR: dir,
+    },
+  })
+
+  expect(proc.exitCode).toBe(2)
+  expect(proc.stderr.toString()).toBe(
+    "lines of the emulator's log per crash signature:\n  fatal: 1\n  kvm: 1\nthe emulator exited\n",
+  )
+})
+
+test('resume-logs appends a new stream and stops the old one only while its pid still runs logcat', () => {
+  const dir = mkdtempSync(join(work, 'resume-'))
+  const bin = join(dir, 'bin')
+  const calls = join(dir, 'calls.log')
+  mkdirSync(bin)
+  // A stream runs until it is stopped.
+  const stream = `#!/bin/bash\necho "$*" >> '${calls}'\nsleep 20 &\ntrap 'kill $!; exit 0' TERM\nwait\n`
+  writeFileSync(join(bin, 'adb'), stream, { mode: 0o755 })
+  const file = join(dir, 'webview.log')
+  const before = '1764200000.123  4129  4129 I Tauri/Console: before the loss\n'
+  writeFileSync(file, before)
+  /** Records `old` as the stream's pid, resumes, and returns the new stream's pid. */
+  const resume = (old: string) => {
+    writeFileSync(`${file}.pid`, `${old}\n`)
+    const proc = Bun.spawnSync(['bash', native, 'resume-logs', 'emulator-5556', file], {
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+    })
+    expect(proc.exitCode).toBe(0)
+    return readFileSync(`${file}.pid`, 'utf8').trim()
+  }
+  const other = detached('sleep 10')
+
+  const first = resume(other)
+  const second = resume(first)
+
+  expect(running(other)).toBe(true)
+  expect(running(first)).toBe(false)
+  expect(running(second)).toBe(true)
+  expect(readFileSync(file, 'utf8')).toBe(before)
+  expect(readFileSync(calls, 'utf8')).toBe('-s emulator-5556 logcat -v epoch -T 1 -s Tauri/Console:*\n'.repeat(2))
+  stop(other, second)
 })
 
 /**

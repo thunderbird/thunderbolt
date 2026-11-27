@@ -7,7 +7,7 @@
 
 import { getDefaultEnvironment } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { $ } from 'bun'
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { appendFile, mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { stripVTControlCharacters } from 'node:util'
@@ -26,7 +26,8 @@ const reconnectSeconds = 30
 
 /**
  * Thrown by an Android run whose emulator dropped off adb, so the run never counts. With `retry` the emulator is back
- * (or a new one stands in) and the run can start again; that happens once per leg, and a second loss ends the leg.
+ * (or a new one stands in) and the run can start again; that happens once per leg. A second loss, or a recovery that
+ * fails or would end past the leg's deadline, ends the leg.
  */
 export class DeviceLost extends Error {
   readonly retry: boolean
@@ -47,14 +48,14 @@ const linesFrom = async (file: string, start: number) => {
 
 /**
  * As in the gate: the Android WebView never sees the keyboard, so a field behind it shows only in
- * `maestro hierarchy`, and a control's accessible name comes from the platform's tree.
+ * `maestro hierarchy`, and a control's accessible name comes from the platform's tree. Undefined when the dump failed.
  */
 const treeLines = async (deviceId: string, platform: 'ios' | 'android') => {
   const dump = await $`maestro --udid ${deviceId} hierarchy`
     .env({ ...getDefaultEnvironment(), ...maestroEnv() })
     .quiet()
     .nothrow()
-  return dump.exitCode === 0 ? measureNative(parseHierarchy(dump.stdout.toString()), platform).problems : []
+  return dump.exitCode === 0 ? measureNative(parseHierarchy(dump.stdout.toString()), platform).problems : undefined
 }
 
 /** The leg and the session keep a video apart: the judge and the file job merge every replay leg into one folder. */
@@ -65,7 +66,8 @@ export const videoPath = (outDir: string, leg: string | undefined, session: stri
  * Each run uninstalls and reinstalls the app, so no session or draft from an earlier run is left. Android caps a
  * recording at 3 minutes, and its install goes through `native.sh install`, which warms the app up. `layout` gets the
  * tree's lines for the last screen and loses the probe's lines the tree owns (`keepsProbeLine`), as in the gate.
- * On Android, an install or a flow that fails while adb no longer sees the emulator throws `DeviceLost`.
+ * With `recoverBy`, an Android install, flow or tree dump that fails while adb no longer sees the emulator throws
+ * `DeviceLost`.
  */
 export const createRunFlow = (opts: {
   platform: 'ios' | 'android'
@@ -75,43 +77,59 @@ export const createRunFlow = (opts: {
   backendLog: string
   /** The replay leg's name, in each video's name. */
   leg?: string
+  /**
+   * The epoch ms by which a recovery from a lost emulator must end, so the leg still has time to save its results.
+   * Unset, as for fix-native (whose patched and original apps would both need the new emulator), nothing is recovered.
+   */
+  recoverBy?: number
 }): RunFlow => {
-  const { platform, webviewLog, backendLog, leg } = opts
+  const { platform, webviewLog, backendLog, leg, recoverBy } = opts
   const { appId } = platformOf(platform)
   if (!appId) throw new Error(`platforms.json has no app for ${platform}`)
   const ios = platform === 'ios'
+  const recovers = !ios && recoverBy !== undefined
   const device = { id: opts.deviceId, recovered: false }
   /** adb answers within 10 s that the emulator is ready, not offline or missing. */
   const online = async () =>
     (await $`timeout 10 adb -s ${device.id} get-state`.quiet().nothrow()).stdout.toString().trim() === 'device'
+  /** The seconds left before `recoverBy`, for each recovery step's `timeout`, so a hung step ends there. */
+  const left = () => {
+    const seconds = Math.floor(((recoverBy ?? 0) - Date.now()) / 1000)
+    if (seconds < 1) throw new DeviceLost('emulator dropped off adb, and the leg has no time left to bring it back')
+    return seconds
+  }
   /** As the job's boot: a new emulator (`native.sh device`), then the warm-up Maestro session the job runs on it. */
   const reboot = async () => {
-    device.id = (await $`${nativeSh} device android`).text().trim().split('\n').pop() ?? ''
-    await $`${nativeSh} install android ${device.id} ${resolve(opts.apps.plain)}`
+    device.id = (await $`timeout ${left()} ${nativeSh} device android`).text().trim().split('\n').pop() ?? ''
+    // The job's last step saves the emulator's log from QA_DEVICE_ID.
+    if (Bun.env.GITHUB_ENV) await appendFile(Bun.env.GITHUB_ENV, `QA_DEVICE_ID=${device.id}\n`)
+    await $`timeout ${left()} ${nativeSh} install android ${device.id} ${resolve(opts.apps.plain)}`
     const warmUp = join(tmpdir(), 'qa-warm-up.yaml')
     await Bun.write(warmUp, `appId: ${appId}\n---\n- launchApp\n`)
-    await $`maestro --udid ${device.id} test ${warmUp}`.env({ ...getDefaultEnvironment(), ...maestroEnv() }).nothrow()
+    await $`timeout ${left()} maestro --udid ${device.id} test ${warmUp}`
+      .env({ ...getDefaultEnvironment(), ...maestroEnv() })
+      .nothrow()
   }
   const recover = async () => {
-    const back = await $`timeout ${reconnectSeconds} adb -s ${device.id} wait-for-device`.quiet().nothrow()
+    const wait = Math.min(reconnectSeconds, left())
+    const back = await $`timeout ${wait} adb -s ${device.id} wait-for-device`.quiet().nothrow()
     if (back.exitCode !== 0) await reboot()
     // An adb reset ends the stream, and a new emulator needs one of its own.
     // Not quiet: `lost` drops the error, so adb's own message is the only reason the job log gets.
-    await $`${nativeSh} stop-logs ${webviewLog}`
-    await $`${nativeSh} logs android ${device.id} ${webviewLog}`
+    await $`timeout ${left()} ${nativeSh} resume-logs ${device.id} ${webviewLog}`
   }
   /** Prints what may explain the loss and, once per leg, gets the emulator back. Always throws. */
   const lost = async (): Promise<never> => {
     await $`${nativeSh} device-lost ${device.id}`.nothrow()
     if (device.recovered) throw new DeviceLost('emulator dropped off adb a second time in this leg')
     device.recovered = true
-    const recovered = await recover().then(
-      () => true,
-      () => false,
-    )
-    throw recovered
-      ? new DeviceLost('emulator dropped off adb', true)
-      : new DeviceLost('emulator dropped off adb and could not be brought back')
+    try {
+      await recover()
+    } catch (error) {
+      if (error instanceof DeviceLost) throw error
+      throw new DeviceLost('emulator dropped off adb and could not be brought back')
+    }
+    throw new DeviceLost('emulator dropped off adb', true)
   }
   return async (flowYaml, outDir, run, session, signIn): Promise<FlowRun> => {
     const deviceId = device.id
@@ -124,8 +142,9 @@ export const createRunFlow = (opts: {
       try {
         await $`${nativeSh} install android ${deviceId} ${app}`.quiet()
       } catch (error) {
-        // adb fails the install at once when it has lost the emulator.
-        if (await online()) throw error
+        // adb fails the install at once when it has lost the emulator, and may see it again by the time it is asked.
+        const notFound = error instanceof $.ShellError && /device '[^']+' not found/.test(error.stderr.toString())
+        if (!recovers || (!notFound && (await online()))) throw error
         await lost()
       }
     }
@@ -153,17 +172,21 @@ export const createRunFlow = (opts: {
     const signedIn = signIn === undefined ? undefined : await maestro('sign-in.yaml', signIn)
     const signInFailed = signedIn !== undefined && signedIn.exitCode !== 0
     const result = signedIn && signInFailed ? signedIn : await maestro('flow.yaml', flowYaml)
-    if (!ios && result.exitCode !== 0 && !(await online())) {
+    /** The run never counts: what it recorded is dropped before the emulator is brought back. */
+    const drop = async () => {
       recorder.kill()
       await recorder.exited
       await rm(dir, { recursive: true, force: true })
-      await lost()
+      return lost()
     }
+    if (recovers && result.exitCode !== 0 && !(await online())) await drop()
     const output = stripVTControlCharacters(`${result.stdout}${result.stderr}`).trim()
     const driverFailed = result.exitCode !== 0 && output.includes(driverTimeout)
     await Bun.sleep(probeWaitMs)
     // A run that never counts skips the dump, which would only eat into the leg's time.
     const tree = signInFailed || driverFailed ? [] : await treeLines(deviceId, platform)
+    // A dump that failed because adb lost the emulator would let even a passed run count with no layout evidence.
+    if (recovers && !tree && !(await online())) await drop()
     if (ios) recorder.kill('SIGINT')
     else await $`adb -s ${deviceId} shell pkill -INT screenrecord`.quiet().nothrow()
     await recorder.exited
@@ -184,7 +207,7 @@ export const createRunFlow = (opts: {
           .filter((line) => line.includes('[qa-layout]'))
           .map((line) => line.slice(line.indexOf('[qa-layout]')).trim())
           .filter((line) => keepsProbeLine(line, platform)),
-        ...tree,
+        ...(tree ?? []),
       ],
       logs: [
         ...webview.filter((line) => !line.includes('[qa-layout]')).map((line) => `webview: ${line}`),

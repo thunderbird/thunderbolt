@@ -633,6 +633,10 @@ const flowFailure = (oracle: FindingFile['finding']['oracle'], run: FlowRun) => 
   return run.error ?? 'the flow failed'
 }
 
+/** The epoch ms by which a native leg's runs, and a recovery from a lost emulator, must end. */
+const legEnd = (legStart: number) =>
+  legStart + (nativeJobMinutes - nativeWrapUpMinutes - nativeDriverStartupMinutes) * 60_000
+
 /**
  * A native leg's time: `fits(n)` says whether n more runs end before the job's timeout, counted from `legStart`
  * so the setup is on the clock. A run lasts as long as the longest `time` has seen after the first, at least
@@ -640,9 +644,8 @@ const flowFailure = (oracle: FindingFile['finding']['oracle'], run: FlowRun) => 
  * margin so the clock needs no platform.
  */
 const legClock = (now: () => number, legStart: number) => {
-  const minute = 60_000
-  const end = legStart + (nativeJobMinutes - nativeWrapUpMinutes - nativeDriverStartupMinutes) * minute
-  const state = { longest: nativeRunEstimateMinutes * minute, warm: false }
+  const end = legEnd(legStart)
+  const state = { longest: nativeRunEstimateMinutes * 60_000, warm: false }
   return {
     fits: (runs: number) => now() + state.longest * runs <= end,
     time: async <T>(run: () => Promise<T>) => {
@@ -1376,7 +1379,7 @@ if (import.meta.main) {
     'fix-native --out <dir> --native ios|android --device <id> --app <patched app> --fp <fp> --flow <flow> ' +
     '--session <session> --result <json> [--original <app>], with QA_WEBVIEW_LOG and QA_BACKEND_LOG set for --native'
   if (step !== 'replay' && step !== 'judge' && step !== 'fix-native') throw new Error(usage)
-  const nativeFlows = (app = values.app, onboarding = values['app-onboarding']) => {
+  const nativeFlows = (app = values.app, onboarding = values['app-onboarding'], recoverBy?: number) => {
     const { native: platform, device } = values
     const { QA_WEBVIEW_LOG: webviewLog, QA_BACKEND_LOG: backendLog } = Bun.env
     if (platform !== 'ios' && platform !== 'android') throw new Error(`--native must be ios or android: ${platform}`)
@@ -1390,6 +1393,7 @@ if (import.meta.main) {
       webviewLog,
       backendLog,
       leg: values.leg,
+      recoverBy,
     })
   }
   if (step === 'fix-native') {
@@ -1413,12 +1417,20 @@ if (import.meta.main) {
     console.log(JSON.stringify(verdict))
     process.exit(nativeExitCode(verdict))
   }
+  const legStart = legStartOf(Bun.env.QA_LEG_START)
   const result =
     step === 'judge'
       ? await judge(values.out)
       : values.native === undefined
         ? await replay(values.out)
-        : await replay(values.out, undefined, undefined, nativeFlows(), Date.now, legStartOf(Bun.env.QA_LEG_START))
+        : await replay(
+            values.out,
+            undefined,
+            undefined,
+            nativeFlows(values.app, values['app-onboarding'], legEnd(legStart)),
+            Date.now,
+            legStart,
+          )
   console.log(
     `confirmed ${result.confirmed.length}, flaky ${result.flaky.length}, ` +
       `observations ${result.observations.length}, dropped ${result.dropped.length}, ` +

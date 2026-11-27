@@ -348,10 +348,14 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    and no flow runs. A control run whose iOS driver did not start, even on its retry, is inconclusive and replaced like
    a finding's run, up to 3 extra runs; a control left with fewer than 3 counted runs also marks the stack unhealthy. On
    Android the install also maps the stack's ports into the emulator again and warms the app up (as `native.sh install`
-   does). When adb loses the emulator during a run, the run does not count. `native.sh device-lost` prints what may
-   explain the loss (the emulator process, free memory, OOM kills, crash lines from the emulator's log). adb then gets
-   30 s to reconnect; if it does not, the leg cold-boots a new emulator. Either way the run starts over. A leg recovers
-   only once: a second loss marks the stack unhealthy. Each run ends with one `maestro hierarchy` of the screen it
+   does). When adb loses the emulator during a run's install, flow or tree dump, the run does not count. An install
+   that fails with adb's `device '…' not found` counts as a loss even if adb sees the emulator again a moment later.
+   `native.sh device-lost` prints what may explain the loss: the emulator process, free memory, OOM kills, and, for
+   each crash signature, how many lines of the emulator's log hold it. No line of that log is printed. adb then gets
+   30 s to reconnect; if it does not, the leg cold-boots a new `qa-android` emulator. The WebView stream starts again and appends to its
+   log, and the run starts over. A leg recovers only once, and the recovery must end before the leg's clock does: a
+   second loss, or a recovery that fails or runs out of time, marks the stack unhealthy. A fix's native check never
+   recovers. Each run ends with one `maestro hierarchy` of the screen it
    stopped on, for the tree's `unnamed-control` lines and, on Android, its `behind-keyboard` line; a screen the run only passed through, like the privacy step the harness
    clicks through, adds no tree line.
    A `layout` run fails when the probe (or a tree rule) logs the quoted `[qa-layout]` line during it, a `console-error`, `page-error` or `http-5xx` run when a new WebView or backend log

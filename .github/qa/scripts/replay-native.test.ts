@@ -242,9 +242,10 @@ echo "maestro flow" >> '${calls}'
  * on that serial, `full` fails the install on a device adb still sees, `fail-flow` fails Maestro's flow, `hang` hangs
  * the warm-up session, `hang-adb` hangs `adb get-state`, `dead-stream` makes the new WebView stream exit at once. An
  * unrelated emulator-5558 is always online; a new boot of our AVD comes up as emulator-5556. A recovery must end
- * `recoverIn` ms after the start, and `never` passes no deadline, as fix-native does. Returns each run's result or
- * what it threw, the calls with paths cut to file names, stderr, what the WebView log and $GITHUB_ENV hold, and how
- * many ms past the deadline the runs ended.
+ * `recoverIn` ms after the start (a negative value puts the deadline before the runs), and `never` passes no
+ * deadline, as fix-native does. Maestro's tree dump always fails. Returns each run's result or what it threw, the
+ * calls with paths cut to file names, stderr, what the WebView log and $GITHUB_ENV hold, how many ms past the
+ * deadline the runs ended, and the pids of the `adb get-state` calls that hung.
  */
 const androidRuns = (flags: (string | undefined)[], recoverIn: number | 'never' = 600_000) => {
   const dir = mkdtempSync(join(work, 'lost-'))
@@ -266,7 +267,7 @@ case "$*" in
   *" getprop ro.boot.qemu.avd_name")
     if [ "$serial" = emulator-5558 ] || [ -f "${dir}/other-$serial" ]; then echo pixel-other; else echo qa-android; fi ;;
   *" get-state")
-    [ -f '${dir}/hang-adb' ] && exec sleep 30
+    [ -f '${dir}/hang-adb' ] && { echo $$ >> '${dir}/hung'; exec sleep 30; }
     lost && { echo "error: device '$2' not found" >&2; exit 1; }
     echo device ;;
   *" logcat -v epoch -T 1 "*) [ -f '${dir}/dead-stream' ] && { echo 'error: device offline'; exit 1; }; exec sleep 20 ;;
@@ -321,7 +322,9 @@ exit 0
       for (const name of flag?.split(' ') ?? []) writeFileSync(${JSON.stringify(dir)} + '/' + name, '')
       try {
         const run = await runFlow('- launchApp\\n', ${JSON.stringify(join(dir, 'out'))}, index + 1, 'c2-chat-power-user-android')
-        results.push({ passed: run.passed, error: run.error })
+        // Left out when empty, as error is when the run passed.
+        const layout = run.layout.length > 0 ? run.layout : undefined
+        results.push({ passed: run.passed, error: run.error, inconclusive: run.inconclusive, layout })
       } catch (error) {
         results.push({ threw: error.constructor.name, message: error.message, retry: error.retry })
       }
@@ -353,6 +356,7 @@ exit 0
     webview: readFileSync(logs[0], 'utf8'),
     githubEnv: existsSync(githubEnv) ? readFileSync(githubEnv, 'utf8') : '',
     overrun,
+    hung: existsSync(join(dir, 'hung')) ? readFileSync(join(dir, 'hung'), 'utf8').trim().split('\n') : [],
   }
 }
 
@@ -466,13 +470,9 @@ test('a recovery that would end past the deadline is cut there, and the loss end
   expect(overrun).toBeLessThan(0)
 }, 20_000)
 
-// `adb get-state` hangs for 30 s, in the diagnostics after an install adb did not find, or in the probe after a
-// failed install; the leg has 3 s left.
-test.each([
-  ['diagnostics', 'lost-emulator-5554 hang-adb'],
-  ['adb probe', 'full hang-adb'],
-])('the %s after a loss end by the deadline, and the loss ends the leg', (_, flags) => {
-  const { results, overrun } = androidRuns([flags], 3_000)
+test('the diagnostics after a loss end by the deadline, their own adb call too, and the loss ends the leg', () => {
+  // `adb get-state` hangs for 30 s in the diagnostics after an install adb did not find; the leg has 3 s left.
+  const { results, overrun, hung } = androidRuns(['lost-emulator-5554 hang-adb'], 3_000)
 
   expect(results).toEqual([
     {
@@ -482,7 +482,44 @@ test.each([
     },
   ])
   expect(overrun).toBeLessThan(0)
+  // The adb call gets the same hard kill as the step around it, which ends 1 s after the deadline at the latest.
+  Bun.sleepSync(Math.max(0, 1_500 - overrun))
+  expect(hung).toHaveLength(1)
+  expect(Bun.spawnSync(['kill', '-0', ...hung]).exitCode).not.toBe(0)
 })
+
+// In the next three tests the deadline passes during a run the leg clock admitted in time.
+test('a run that ends late on an emulator adb still sees keeps its outcome, a pass with no tree line too', () => {
+  const { results, calls } = androidRuns([undefined, 'fail-flow'], -1_000)
+
+  expect(results).toEqual([{ passed: true }, { passed: false, error: 'Element not found: Continue' }])
+  // Each failed tree dump, and the failed flow, asked adb once.
+  expect(calls.filter((line) => line.endsWith(' get-state'))).toHaveLength(3)
+  expect(calls.filter((line) => line.includes(' pull '))).toHaveLength(2)
+})
+
+test('a run that ends late on an emulator adb lost ends the leg, after asking adb', () => {
+  const { results, calls } = androidRuns(['drop-emulator-5554'], -1_000)
+
+  expect(results).toEqual([
+    {
+      threw: 'DeviceLost',
+      message: 'emulator dropped off adb, and the leg has no time left to bring it back',
+      retry: false,
+    },
+  ])
+  expect(calls).toContain('adb -s emulator-5554 get-state')
+}, 15_000)
+
+test('a run that ends late while adb never answers is inconclusive, and the leg goes on', () => {
+  const { results, overrun } = androidRuns(['fail-flow hang-adb'], -1_000)
+
+  expect(results).toEqual([
+    { passed: false, error: "adb never answered about the emulator after the leg's deadline", inconclusive: true },
+  ])
+  // The probe gets its 10 s past the deadline, and no more.
+  expect(overrun).toBeLessThan(15_000)
+}, 20_000)
 
 test('a run with no recovery deadline, as fix-native has, fails on a lost emulator without probing adb', () => {
   const { results, calls } = androidRuns(['lost-emulator-5554'], 'never')

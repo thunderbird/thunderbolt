@@ -120,6 +120,8 @@ export type FlowRun = {
   layout: string[]
   logs: string[]
   signInFailed?: boolean
+  /** The run never counts, as when adb gave no answer about the emulator once the leg had no time left. */
+  inconclusive?: boolean
 }
 /**
  * Runs a checked flow on a freshly installed app. `run` is unique within one replay; `session` picks the build
@@ -633,7 +635,10 @@ const flowFailure = (oracle: FindingFile['finding']['oracle'], run: FlowRun) => 
   return run.error ?? 'the flow failed'
 }
 
-/** The epoch ms by which a native leg's runs, and a recovery from a lost emulator, must end. */
+/**
+ * The epoch ms by which a native leg's runs, and a recovery from a lost emulator, must end. A run that ends later
+ * may still spend 11 s on each adb probe (two at most), and that comes out of the wrap-up minutes after it.
+ */
 const legEnd = (legStart: number) =>
   legStart + (nativeJobMinutes - nativeWrapUpMinutes - nativeDriverStartupMinutes) * 60_000
 
@@ -689,9 +694,10 @@ const unreached = (oracle: FindingFile['finding']['oracle']) =>
 
 /**
  * Runs a checked flow three times. A run whose driver did not start is run once more and only the second try counts.
- * A run `inconclusive` marks, or whose harness sign-in failed, does not count and is replaced, up to `extraRuns`
- * times. With `owed` (the base runs the leg's later findings still need) a run starts only when the clock fits it,
- * and an extra run only when it also fits those, so an early finding's reruns never take a later finding's runs.
+ * A run `inconclusive` marks, one that marks itself inconclusive, or one whose harness sign-in failed, does not count
+ * and is replaced, up to `extraRuns` times. With `owed` (the base runs the leg's later findings still need) a run
+ * starts only when the clock fits it, and an extra run only when it also fits those, so an early finding's reruns
+ * never take a later finding's runs.
  * A run whose emulator dropped off adb never counts, and starts over once the emulator is back (`DeviceLost`).
  */
 const threeRuns = async (
@@ -727,7 +733,7 @@ const threeRuns = async (
       tries--
       continue
     }
-    if (run.signInFailed || inconclusive?.(run)) {
+    if (run.signInFailed || run.inconclusive || inconclusive?.(run)) {
       outcome.replay.inconclusive = (outcome.replay.inconclusive ?? 0) + 1
       continue
     }

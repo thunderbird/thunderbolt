@@ -1265,6 +1265,28 @@ describe('replay of native flows', () => {
         ['always', 'replay', 'stack unhealthy'],
       ])
     })
+
+    test('counts a run adb never answered about as inconclusive, and the leg keeps its findings', async () => {
+      for (const title of ['a-early', 'b-late']) await writeNative(makeNative(title, assertFailed))
+      const silent = { passed: false, inconclusive: true, error: "adb never answered after the leg's deadline" }
+      const flow = fakeFlow({ 'a-early': [failed, failed, failed], 'b-late': [failed, failed, silent] }, [])
+      const clock = { now: 10 * 60_000 }
+      const slow: RunFlow = async (...args) => {
+        clock.now += 8 * 60_000
+        return flow(...args)
+      }
+
+      const result = await replay(outDir, fakeRunner({}, []), qaDir, slow, () => clock.now, ninetyMinuteLeg)
+
+      expect(result.stack_unhealthy).toBeUndefined()
+      expect(result.confirmed.map(({ id, replay }) => [id, replay])).toEqual([
+        ['a-early', { failed: 3, runs: 3, error: failed.error }],
+      ])
+      // The extra run that would replace it does not fit the leg.
+      expect(result.flaky.map(({ id, replay }) => [id, replay])).toEqual([
+        ['b-late', { failed: 2, runs: 2, inconclusive: 1, error: failed.error, reason: outOfTime }],
+      ])
+    })
   })
 
   test('a log oracle fails a run when a new log line holds the evidence, whatever the run-specific noise', async () => {

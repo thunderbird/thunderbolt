@@ -14,8 +14,9 @@
 #   native.sh system-image                                      Android only: install the emulator and the AVD's
 #                                                               system image, retrying once after a failed download
 #   native.sh device <platform>                                 boot a device, print its id on stdout
-#   native.sh device-lost <device>                              Android only: print what may explain why adb lost
-#                                                               the emulator, for the job log
+#   native.sh device-lost <device> <seconds>                    Android only: print what may explain why adb lost
+#                                                               the emulator, for the job log; adb's own answer
+#                                                               gets <seconds>
 #   native.sh install <platform> <device> <app-path>            on Android also reverse the stack's ports again and
 #                                                               open the app until a launch gets past the storage
 #                                                               check, up to 4 launches of $QA_WARM_SECONDS (30)
@@ -297,14 +298,15 @@ device_android() {
 }
 
 # Safe on every leg, the real one too: nothing here holds a key or what the app showed, and only counts leave the
-# emulator's log.
+# emulator's log. adb gets its own hard kill: a nested `timeout` runs in a process group of its own, which the
+# caller's kill never reaches.
 device_lost() {
-  local serial=$1 pid boot now
+  local serial=$1 seconds=$2 pid boot now
   pid=$(cat "$emulator_files.pid" 2> /dev/null) || pid=
   boot=$(cat "$emulator_files.oom" 2> /dev/null) || boot=
   now=$(oom_kills)
   {
-    echo "adb lost $serial; adb's state for it now: $(timeout 10 adb -s "$serial" get-state 2>&1 || true)"
+    echo "adb lost $serial; adb's state for it now: $(timeout -k 1 "$seconds" adb -s "$serial" get-state 2>&1 || true)"
     if [ -n "$pid" ] && kill -0 "$pid" 2> /dev/null; then
       echo "the emulator (pid $pid) still runs"
     else
@@ -495,7 +497,7 @@ verify_run() {
     --session "$session" --result "$result" ${original:+--original "$original"}
 }
 
-usage="usage: $0 config <platform> <out-json> [control] | build <platform> <out-dir> [onboarding] [control] | system-image | device <platform> | device-lost <device> | install <platform> <device> <app-path> | logs <platform> <device> <file> | wait-logs <device> <file> | stop-logs <file> | resume-logs <device> <file> | control <platform> <device> [out-dir] | verify-build <platform> <patch> <session> <out-dir> | verify-run <platform> <device> <app> <flow> <session> <out-json> [original-app]"
+usage="usage: $0 config <platform> <out-json> [control] | build <platform> <out-dir> [onboarding] [control] | system-image | device <platform> | device-lost <device> <seconds> | install <platform> <device> <app-path> | logs <platform> <device> <file> | wait-logs <device> <file> | stop-logs <file> | resume-logs <device> <file> | control <platform> <device> [out-dir] | verify-build <platform> <patch> <session> <out-dir> | verify-run <platform> <device> <app> <flow> <session> <out-json> [original-app]"
 [ $# -ge 1 ] || die "$usage"
 command=$1
 shift
@@ -515,8 +517,8 @@ if [ "$command" = wait-logs ]; then
   exit
 fi
 if [ "$command" = device-lost ]; then
-  [ $# -eq 1 ] || die "$usage"
-  device_lost "$1"
+  [ $# -eq 2 ] || die "$usage"
+  device_lost "$@"
   exit
 fi
 if [ "$command" = resume-logs ]; then

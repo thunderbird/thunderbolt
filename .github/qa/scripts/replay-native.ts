@@ -65,7 +65,7 @@ export const videoPath = (outDir: string, leg: string | undefined, session: stri
  * recording at 3 minutes, and its install goes through `native.sh install`, which warms the app up. `layout` gets the
  * tree's lines for the last screen and loses the probe's lines the tree owns (`keepsProbeLine`), as in the gate.
  * With `recoverBy`, an Android install, flow or tree dump that fails while adb no longer sees the emulator throws
- * `DeviceLost`.
+ * `DeviceLost`. When adb gives no answer and the leg has no time left, the run comes back `inconclusive` instead.
  */
 export const createRunFlow = (opts: {
   platform: 'ios' | 'android'
@@ -96,14 +96,15 @@ export const createRunFlow = (opts: {
     return seconds
   }
   /**
-   * adb answers within 10 s, and by `recoverBy`, that the emulator is ready. With no time left to ask, the emulator
-   * counts as lost.
+   * What adb says of the emulator: 'online' when it is ready, 'lost', or 'silent' when adb gave no answer in 10 s.
+   * The probe gets its 10 s even past `recoverBy`, out of the wrap-up time the leg keeps after it, so a run that ends
+   * late still learns whether its failure was the emulator's.
    */
-  const online = async () => {
-    const seconds = Math.min(10, secondsLeft())
-    if (seconds < 1) return false
-    const state = await $`timeout -k 1 ${seconds} adb -s ${device.id} get-state`.quiet().nothrow()
-    return state.stdout.toString().trim() === 'device'
+  const probe = async () => {
+    const state = await $`timeout -k 1 10 adb -s ${device.id} get-state`.quiet().nothrow()
+    // timeout exits 124 when it stopped adb, 137 when adb also needed the kill.
+    if (state.exitCode === 124 || state.exitCode === 137) return 'silent'
+    return state.stdout.toString().trim() === 'device' ? 'online' : 'lost'
   }
   /**
    * As the job's boot: `native.sh device`, which keeps our emulator only while adb sees it online with the name
@@ -125,7 +126,8 @@ export const createRunFlow = (opts: {
   }
   /** Prints what may explain the loss and, once per leg, gets the emulator back. Always throws. */
   const lost = async (): Promise<never> => {
-    await $`timeout -k 1 ${left()} ${nativeSh} device-lost ${device.id}`.nothrow()
+    const seconds = left()
+    await $`timeout -k 1 ${seconds} ${nativeSh} device-lost ${device.id} ${Math.min(10, seconds)}`.nothrow()
     if (device.recovered) throw new DeviceLost('emulator dropped off adb a second time in this leg')
     device.recovered = true
     try {
@@ -136,6 +138,20 @@ export const createRunFlow = (opts: {
     }
     throw new DeviceLost('emulator dropped off adb', true)
   }
+  /**
+   * The run never counts. When adb gave no answer and the leg has no time left to bring the emulator back, the run is
+   * inconclusive and the leg goes on; otherwise `lost` throws.
+   */
+  const uncounted = (state: 'lost' | 'silent') =>
+    state === 'silent' && secondsLeft() < 1
+      ? {
+          passed: false,
+          error: "adb never answered about the emulator after the leg's deadline",
+          layout: [],
+          logs: [],
+          inconclusive: true,
+        }
+      : lost()
   return async (flowYaml, outDir, run, session, signIn): Promise<FlowRun> => {
     const deviceId = device.id
     // Absolute, because native.sh moves to the repo root before it reads the path.
@@ -149,8 +165,10 @@ export const createRunFlow = (opts: {
       } catch (error) {
         // adb fails the install at once when it has lost the emulator, and may see it again by the time it is asked.
         const notFound = error instanceof $.ShellError && /device '[^']+' not found/.test(error.stderr.toString())
-        if (!recovers || (!notFound && (await online()))) throw error
-        await lost()
+        if (!recovers) throw error
+        const state = notFound ? 'lost' : await probe()
+        if (state === 'online') throw error
+        return uncounted(state)
       }
     }
     const dir = await mkdtemp(join(tmpdir(), 'qa-flow-'))
@@ -178,20 +196,22 @@ export const createRunFlow = (opts: {
     const signInFailed = signedIn !== undefined && signedIn.exitCode !== 0
     const result = signedIn && signInFailed ? signedIn : await maestro('flow.yaml', flowYaml)
     /** The run never counts: what it recorded is dropped before the emulator is brought back. */
-    const drop = async () => {
+    const drop = async (state: 'lost' | 'silent') => {
       recorder.kill()
       await recorder.exited
       await rm(dir, { recursive: true, force: true })
-      return lost()
+      return uncounted(state)
     }
-    if (recovers && result.exitCode !== 0 && !(await online())) await drop()
+    const afterFlow = recovers && result.exitCode !== 0 ? await probe() : 'online'
+    if (afterFlow !== 'online') return drop(afterFlow)
     const output = stripVTControlCharacters(`${result.stdout}${result.stderr}`).trim()
     const driverFailed = result.exitCode !== 0 && output.includes(driverTimeout)
     await Bun.sleep(probeWaitMs)
     // A run that never counts skips the dump, which would only eat into the leg's time.
     const tree = signInFailed || driverFailed ? [] : await treeLines(deviceId, platform)
     // A dump that failed because adb lost the emulator would let even a passed run count with no layout evidence.
-    if (recovers && !tree && !(await online())) await drop()
+    const afterTree = recovers && !tree ? await probe() : 'online'
+    if (afterTree !== 'online') return drop(afterTree)
     if (ios) recorder.kill('SIGINT')
     else await $`adb -s ${deviceId} shell pkill -INT screenrecord`.quiet().nothrow()
     await recorder.exited

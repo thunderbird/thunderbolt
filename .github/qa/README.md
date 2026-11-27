@@ -355,9 +355,10 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    runs `native.sh device android` again, which keeps the emulator only while adb sees it online and its
    `ro.boot.qemu.avd_name` is `qa-android`, and otherwise stops ours and cold-boots a new one. The WebView stream
    starts again and appends to its log; a stream that has exited a second later fails the recovery. Then the run
-   starts over. A leg recovers only once, and the adb probe, the diagnostics and the recovery must all end before the
-   leg's clock does: a second loss, or a recovery that fails or runs out of time, marks the stack unhealthy. A fix's
-   native check never recovers. Each run ends with one `maestro hierarchy` of the screen it
+   starts over. A leg recovers only once, and the diagnostics and the recovery must end before the leg's clock does: a
+   second loss, or a recovery that fails or runs out of time, marks the stack unhealthy. The adb probe gets its 10 s
+   even after the clock has run out, from the wrap-up minutes. A run that ends that late keeps its own outcome while
+   adb sees the emulator, and is inconclusive when adb does not answer. A fix's native check never recovers. Each run ends with one `maestro hierarchy` of the screen it
    stopped on, for the tree's `unnamed-control` lines and, on Android, its `behind-keyboard` line; a screen the run only passed through, like the privacy step the harness
    clicks through, adds no tree line.
    A `layout` run fails when the probe (or a tree rule) logs the quoted `[qa-layout]` line during it, a `console-error`, `page-error` or `http-5xx` run when a new WebView or backend log

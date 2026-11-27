@@ -364,7 +364,7 @@ test("device-lost prints adb's state, whether the emulator runs and only counts 
   ]
   writeFileSync(join(dir, 'qa-emulator.log'), `${log.join('\n')}\nINFO         | Boot completed in 41237 ms\n`)
 
-  const proc = Bun.spawnSync(['bash', native, 'device-lost', 'emulator-5554'], {
+  const proc = Bun.spawnSync(['bash', native, 'device-lost', 'emulator-5554', '10'], {
     env: { ...process.env, ...noPorts, PATH: `${bin}:${process.env.PATH}`, TMPDIR: dir },
   })
   const out = proc.stderr.toString()

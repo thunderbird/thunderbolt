@@ -1642,21 +1642,24 @@ describe('native jobs', () => {
     expect(indexOf('replay-native', upload)).toBeGreaterThan(indexOf('replay-native', save))
   })
 
-  test('a logcat dump from a device that is gone stops at its deadline and keeps what it read', () => {
-    const temp = mkdtempSync(join(work, 'logcat-'))
-    mkdirSync(join(temp, 'bin'))
-    // Stands in for adb waiting on a device that never comes back.
-    writeFileSync(join(temp, 'bin/adb'), '#!/bin/bash\necho "first line"\nexec sleep 30\n', { mode: 0o755 })
-    const run = step('replay-native', "Save the emulator's, adb's and Maestro's logs").run ?? ''
-    expect(run).toContain('timeout -k 10s 120s adb')
-    const save = Bun.spawnSync(['bash', '-e', '-c', run.replace('-k 10s 120s', '-k 1s 1s')], {
-      env: { PATH: `${join(temp, 'bin')}:${process.env.PATH}`, RUNNER_TEMP: temp, HOME: temp, QA_DEVICE_ID: 'e-1' },
-      timeout: 4000,
-    })
-    expect(save.exitCode).toBe(0)
-    expect(save.stdout.toString()).toContain('::warning::The logcat dump ended early (exit 124)')
-    expect(readFileSync(join(temp, 'qa-logcat.log'), 'utf8')).toBe('first line\n')
-  })
+  test.skipIf(Bun.which('timeout') === null)(
+    'a logcat dump from a device that is gone stops at its deadline and keeps what it read',
+    () => {
+      const temp = mkdtempSync(join(work, 'logcat-'))
+      mkdirSync(join(temp, 'bin'))
+      // Stands in for adb waiting on a device that never comes back.
+      writeFileSync(join(temp, 'bin/adb'), '#!/bin/bash\necho "first line"\nexec sleep 30\n', { mode: 0o755 })
+      const run = step('replay-native', "Save the emulator's, adb's and Maestro's logs").run ?? ''
+      expect(run).toContain('timeout -k 10s 120s adb')
+      const save = Bun.spawnSync(['bash', '-e', '-c', run.replace('-k 10s 120s', '-k 1s 1s')], {
+        env: { PATH: `${join(temp, 'bin')}:${process.env.PATH}`, RUNNER_TEMP: temp, HOME: temp, QA_DEVICE_ID: 'e-1' },
+        timeout: 4000,
+      })
+      expect(save.exitCode).toBe(0)
+      expect(save.stdout.toString()).toContain('::warning::The logcat dump ended early (exit 124)')
+      expect(readFileSync(join(temp, 'qa-logcat.log'), 'utf8')).toBe('first line\n')
+    },
+  )
 
   test("Android's replay and fix check start Maestro's driver once, before the console stream a reset would end", () => {
     const warmUp = "Start Maestro's driver on the emulator"

@@ -7,7 +7,11 @@ import { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, wr
 import { tmpdir } from 'os'
 import { join } from 'path'
 
-type Step = { uses?: string; run?: string; with?: { only_update?: boolean; message?: string } }
+type Step = {
+  uses?: string
+  run?: string
+  with?: { only_update?: boolean; message?: string; 'persist-credentials'?: boolean }
+}
 
 type Concurrency = { group: string; 'cancel-in-progress': boolean }
 
@@ -215,6 +219,27 @@ describe('preview deploy trust policy', () => {
       expect(events).not.toContain('pull_request_target')
     },
   )
+})
+
+describe('checkout credentials', () => {
+  const workflowFiles = readdirSync(join(repoRoot, '.github/workflows')).filter((file) => file.endsWith('.yml'))
+  const checkouts = workflowFiles.flatMap((file) =>
+    Object.entries(loadWorkflow(file).jobs).flatMap(([job, definition]) =>
+      (definition?.steps ?? [])
+        .filter((step) => step.uses?.startsWith('actions/checkout@'))
+        .map((step) => ({ at: `${file} ${job}`, persists: step.with?.['persist-credentials'] !== false })),
+    ),
+  )
+
+  // Only jobs that push or tag with git keep the token in .git/config.
+  it('keeps credentials only in the jobs that push', () => {
+    expect(
+      checkouts
+        .filter((checkout) => checkout.persists)
+        .map((checkout) => checkout.at)
+        .sort(),
+    ).toEqual(['create-version-tag.yml create_tag', 'evals.yml scheduled-full', 'version-bump.yml version_bump'])
+  })
 })
 
 /** GitHub's `paths` filter for one file: patterns apply in order, `!` excludes, the last match wins. */

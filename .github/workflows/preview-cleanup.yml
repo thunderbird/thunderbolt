@@ -49,6 +49,8 @@ jobs:
       dry_run: ${{ steps.scan.outputs.dry_run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # ubuntu-26.04 ships without the Pulumi CLI; with no `command` the action only installs it.
       - name: Install Pulumi CLI

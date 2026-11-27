@@ -127,7 +127,7 @@ export type FlowRun = {
  * Runs a checked flow on a freshly installed app. `run` is unique within one replay; `session` picks the build
  * (onboarding on for c1). `signIn` runs first in the same launch, and the flow runs only when it passed. `label`
  * names the run in the job log (`withProgress`, and a lost emulator): `control` or `<charter>/#<n>` (n is the
- * finding's place in the leg's replay order), with the attempt. `needsTree` false lets an iOS run skip the tree dump,
+ * finding's place among the leg's device flows), with the attempt. `needsTree` false lets an iOS run skip the tree dump,
  * which only a layout finding's proof reads.
  */
 export type RunFlow = (

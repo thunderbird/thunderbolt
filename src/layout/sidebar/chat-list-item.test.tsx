@@ -116,10 +116,20 @@ describe('ChatListItem in minimal mode', () => {
 })
 
 describe('ChatListItem', () => {
+  it('names the overflow button after its chat', () => {
+    renderWithProviders(createProps())
+    expect(screen.getByRole('button', { name: 'More options for My Chat' })).toBeInTheDocument()
+  })
+
+  it('names the overflow button of an untitled chat', () => {
+    renderWithProviders(createProps({ thread: { ...createProps().thread, title: null } }))
+    expect(screen.getByRole('button', { name: 'More options for Untitled chat' })).toBeInTheDocument()
+  })
+
   it('opens the overflow menu by keyboard without navigating to the chat', async () => {
     const onChatClick = mock()
     renderWithProviders(createProps({ onChatClick }))
-    fireEvent.keyDown(screen.getByRole('button', { name: 'More' }), { key: 'Enter' })
+    fireEvent.keyDown(screen.getByRole('button', { name: /^More options for/ }), { key: 'Enter' })
     expect(await waitForElement(() => screen.queryByText('Rename'))).toBeInTheDocument()
     expect(screen.getByText('Move')).toBeInTheDocument()
     expect(onChatClick).not.toHaveBeenCalled()

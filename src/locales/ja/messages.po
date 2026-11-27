@@ -3864,9 +3864,17 @@ msgid "Modified model"
 msgstr "変更されたモデル"
 
 #: src/components/settings/detail-actions-menu.tsx
-#: src/layout/sidebar/chat-list-item.tsx
 msgid "More"
 msgstr "その他"
+
+#. placeholder {0}: project.name
+#: src/projects/project-actions.tsx
+msgid "More options for {0}"
+msgstr "{0} のその他のオプション"
+
+#: src/layout/sidebar/chat-list-item.tsx
+msgid "More options for {displayTitle}"
+msgstr "{displayTitle} のその他のオプション"
 
 #: src/layout/sidebar/chat-list-item.tsx
 #: src/projects/move-chat-to-project-dialog.tsx

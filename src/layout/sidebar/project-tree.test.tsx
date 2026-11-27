@@ -157,7 +157,8 @@ it.each(['context', 'overflow', 'mobile'])(
     expect(screen.queryByRole('button', { name: 'New chat in Research' })).not.toBeInTheDocument()
 
     if (menu === 'overflow') {
-      fireEvent.keyDown(screen.getByRole('button', { name: 'More' }), { key: 'Enter' })
+      expect(screen.getByRole('button', { name: 'More options for Research' })).toBeInTheDocument()
+      fireEvent.keyDown(screen.getByRole('button', { name: /^More options for/ }), { key: 'Enter' })
     } else {
       fireEvent.contextMenu(folder)
     }
@@ -450,14 +451,14 @@ it.each(['context', 'overflow', 'mobile'])('offers the same working project acti
   render(tree(false, isMobile), { wrapper: createWrapper() })
   const folder = await waitForElement(() => screen.queryByRole('button', { name: 'Research' }))
   if (isMobile) {
-    expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^More options for/ })).not.toBeInTheDocument()
   }
   const actionRole = isMobile ? 'button' : 'menuitem'
   const openMenu = async () => {
     if (menu === 'context' || isMobile) {
       fireEvent.contextMenu(folder)
     } else {
-      fireEvent.keyDown(screen.getByRole('button', { name: 'More' }), { key: 'Enter' })
+      fireEvent.keyDown(screen.getByRole('button', { name: /^More options for/ }), { key: 'Enter' })
     }
     await waitForElement(() => screen.queryByRole(actionRole, { name: 'Edit' }))
   }

@@ -67,7 +67,7 @@ test.describe('ACP system agent discovery', () => {
     // (which is where Remove lives for custom agents).
     await systemRow.getByRole('button', { name: /^RAG Chat/ }).click()
     await expect(page.getByRole('button', { name: /^Close(?: details)?$/ })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'More' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'More', exact: true })).toHaveCount(0)
 
     expect(errors).toHaveLength(0)
   })

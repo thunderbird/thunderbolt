@@ -141,7 +141,7 @@ test.describe('ACP disabled or deleted agent', () => {
     await chatWithNewAgent(page)
 
     await openAgentSettings(page)
-    await page.getByRole('button', { name: 'More' }).click()
+    await page.getByRole('button', { name: 'More', exact: true }).click()
     await page.getByRole('menuitem', { name: 'Delete agent' }).click()
     await page.getByRole('alertdialog').getByRole('button', { name: 'Delete agent' }).click()
     await expect(page.getByRole('button', { name: new RegExp(`^${agentName}`) })).toHaveCount(0)

@@ -1745,6 +1745,17 @@ describe('native jobs', () => {
     const globs = paths.map((path) => new Bun.Glob(path.replace('${{ runner.temp }}/qa-emulator-diagnostics/', '')))
     expect(readdirSync(out).every((file) => globs.some((glob) => glob.match(file)))).toBe(true)
     expect(globs.some((glob) => glob.match('qa-emulator-1.log'))).toBe(false)
+
+    // A native.sh whose signatures the step cannot read fails the step instead of reporting no crash.
+    const unreadable = mkdtempSync(join(work, 'diagnostics-unreadable-'))
+    mkdirSync(join(unreadable, '.github/qa/scripts'), { recursive: true })
+    writeFileSync(join(unreadable, '.github/qa/scripts/native.sh'), 'signatures=(crash)\n')
+    const failed = Bun.spawnSync(['bash', '-e', '-c', step('replay-native', save).run ?? ''], {
+      cwd: unreadable,
+      env: { PATH: process.env.PATH, RUNNER_TEMP: temp, TMPDIR: join(temp, 'tmp') },
+    })
+    expect(failed.exitCode).toBe(1)
+    expect(failed.stderr.toString()).toContain('could not read crash_signatures and routine_lines from native.sh')
   })
 
   test('a replay or fix check uploads its folder without a video simctl is still writing', () => {

@@ -1055,6 +1055,11 @@ jobs:
           mkdir -p "$out"
           # device-lost's crash signatures and the lines it leaves out, read from native.sh so the two cannot drift.
           eval "$(sed -n -e '/^crash_signatures=(/,/)$/p' -e '/^routine_lines=/p' .github/qa/scripts/native.sh)"
+          # A renamed variable would leave the filter with nothing to look for, and every crash would go unreported.
+          if [ "${#crash_signatures[@]}" -eq 0 ] || [ -z "${routine_lines:-}" ]; then
+            echo "::error::could not read crash_signatures and routine_lines from native.sh" >&2
+            exit 1
+          fi
           for log in "${TMPDIR:-/tmp}"/qa-emulator-*.log; do
             [ -f "$log" ] || continue
             {

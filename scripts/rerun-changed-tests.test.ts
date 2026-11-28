@@ -12,6 +12,8 @@ const changed = [
   'shared/defaults/models.test.ts',
   'shared/agent-core/src/loop.test.ts',
   'scripts/thunderbot/select.test.ts',
+  'deploy/config/nginx.test.ts',
+  'deploy/config/marketing-nginx.test.ts',
   '.github/scripts/post-pr-metrics.test.js',
   'e2e/helpers.test.ts',
   'e2e/oidc-login.spec.ts',
@@ -63,6 +65,10 @@ describe('selectChangedTests', () => {
       'shared/reasoning-effort.test.tsx',
     ]
     expect(selectChangedTests(outside, 'frontend')).toEqual([])
+  })
+
+  it('selects only the nginx test for the Docker-backed step', () => {
+    expect(selectChangedTests(changed, 'docker')).toEqual([{ cwd: '.', files: ['deploy/config/nginx.test.ts'] }])
   })
 
   it('selects only the Office script suites for the office job', () => {

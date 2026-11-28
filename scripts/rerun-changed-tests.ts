@@ -6,7 +6,7 @@ import { join, relative } from 'node:path'
 import packageJson from '../package.json'
 
 /** A CI test job whose changed test files get re-run five times on pull requests. */
-export type Scope = 'frontend' | 'office' | 'backend'
+export type Scope = 'frontend' | 'docker' | 'office' | 'backend'
 
 /** Test files to run from one working directory, as paths relative to it. */
 export type TestGroup = { cwd: string; files: string[] }
@@ -45,10 +45,11 @@ export const parseTestScript = (script: string): GroupRule[] =>
     })
 
 // Each scope mirrors what its CI step runs, so a file is re-run from the cwd (and bunfig preload) it
-// normally runs under. The frontend list is read from `test:ci` itself; the Office and backend steps run
-// every test file under their tree.
+// normally runs under. The frontend and Docker lists are read from `test:ci` and `test:docker` themselves;
+// the Office and backend steps run every test file under their tree.
 const rules: Record<Scope, GroupRule[]> = {
   frontend: parseTestScript(packageJson.scripts['test:ci']),
+  docker: parseTestScript(packageJson.scripts['test:docker']),
   office: [{ cwd: 'src', include: [officeScriptTest] }],
   backend: [
     {

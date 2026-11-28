@@ -123,6 +123,7 @@ Declare the loader in the `routeChunkLoaders` map in `src/app.tsx` and derive th
 | `backend/`                                               | `bun run test:backend`                                       |
 | Public website (`web/`)                                  | `cd web && bun run test && bun run typecheck`                |
 | Demo recording/export helpers                           | `bun run test:demo-videos` (prepared Python/FFmpeg environment) |
+| `deploy/config/nginx.test.ts` (needs a local Docker)     | `bun run test:docker`                                        |
 | `cli/`                                                   | `cd cli && bun run test`                                     |
 | Playwright specs in `e2e/`                               | `bun run e2e`                                                |
 

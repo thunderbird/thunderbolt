@@ -66,14 +66,15 @@ local set (type-check, lint, format-check, license-check).
 | Suite        | CI command                                               | Per-test timeout in CI         |
 | ------------ | -------------------------------------------------------- | ------------------------------ |
 | Frontend     | `bun run test:ci` (`RERUN_EACH` = 1 on PRs, 5 on `main`) | Disabled (`--timeout 3600000`) |
+| Docker       | `bun run test:docker` (same)                             | Disabled (`--timeout 3600000`) |
 | Office       | `bun run test:office:ci` (same)                          | Disabled (`--timeout 3600000`) |
 | Backend      | `bun test … --rerun-each ${RERUN_EACH:-1}` (same)        | Disabled (`--timeout 3600000`) |
 | `agent-core` | `bun run test:agent-core:5x`                             | 5s                             |
 | CLI          | `cd cli && bun run test:5x`                              | 5s                             |
 | Backend WS   | `bun run test:backend:ws` (once, ≤5 attempts)            | Disabled (`--timeout 3600000`) |
 
-- On pull requests the frontend, Office and backend suites run once, then
-  `bun scripts/rerun-changed-tests.ts <frontend|office|backend>` re-runs only the test files the
+- On pull requests the frontend, Docker, Office and backend suites run once, then
+  `bun scripts/rerun-changed-tests.ts <frontend|docker|office|backend>` re-runs only the test files the
   PR changed, 5x. A new flake almost always lives in a changed test, and running everything 5x
   was most of the critical path. Push to `main` still runs every suite 5x.
 - `bun run test` is not what CI runs: `--randomize` plus the 5x repeat catches

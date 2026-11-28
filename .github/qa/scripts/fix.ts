@@ -825,6 +825,7 @@ export const prChecks: PrCheck[] = [
       'backend/lingui.config.ts',
     ],
   },
+  // ci.yml's Docker-backed test steps stay out: `stack.sh lock` removes Docker, and the fix's PR still runs them.
   { name: 'typescript: Run tests', run: 'bun run test:ci', paths: ['src/', 'shared/', 'scripts/'] },
   {
     name: 'typescript: Re-run changed tests (5x)',

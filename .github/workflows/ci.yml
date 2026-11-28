@@ -240,9 +240,18 @@ jobs:
           RERUN_EACH: ${{ github.event_name == 'push' && 5 || 1 }}
         run: bun run test:ci
 
+      - name: Run Docker-backed tests
+        env:
+          RERUN_EACH: ${{ github.event_name == 'push' && 5 || 1 }}
+        run: bun run test:docker
+
       - name: Re-run changed tests (5x)
         if: github.event_name == 'pull_request'
         run: bun scripts/rerun-changed-tests.ts frontend
+
+      - name: Re-run changed Docker-backed tests (5x)
+        if: github.event_name == 'pull_request'
+        run: bun scripts/rerun-changed-tests.ts docker
 
       - name: Check performance harness
         run: bun run test:performance

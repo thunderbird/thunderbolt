@@ -168,10 +168,8 @@ const OnboardingWizard = ({ isOpen, isMobile }: { isOpen: boolean; isMobile: boo
       <DialogDescription className="sr-only">
         <Trans>Complete the setup process to get started with {appName}</Trans>
       </DialogDescription>
-      <div
-        className={cn('flex h-full flex-col items-center', !isMobile && 'pb-6 pt-8')}
-        style={isMobile ? { paddingBottom: 'var(--kb, 0px)' } : undefined}
-      >
+      {/* No keyboard inset here: on mobile the modal surface already reserves it through --modal-bottom-inset. */}
+      <div className={cn('flex h-full flex-col items-center', !isMobile && 'pb-6 pt-8')}>
         <div className="relative flex w-full shrink-0 items-center justify-center px-4 pb-2">
           <StepIndicators currentStep={stepIndex + 1} totalSteps={totalSteps} />
         </div>

@@ -1063,15 +1063,15 @@ jobs:
           for log in "${TMPDIR:-/tmp}"/qa-emulator-*.log; do
             [ -f "$log" ] || continue
             {
-              # The first match only: the emulator logs both before the guest starts, so the match cannot be guest text.
-              grep -m1 -oE 'Android emulator version [0-9.]+' "$log" || true
-              grep -m1 -oE '(vulkan|gles)_mode_selected:[A-Za-z0-9_]+' "$log" || true
+              # Only from the emulator's own start-up records, logged before the guest starts, so no guest text matches.
+              grep -m1 -E '^INFO +\| Android emulator version ' "$log" | grep -oE 'Android emulator version [0-9.]+' || true
+              grep -m1 -E '^INFO +\| emuglConfig_init: ' "$log" | grep -oE '(vulkan|gles)_mode_selected:[A-Za-z0-9_]+' || true
               for signature in "${crash_signatures[@]}"; do
                 grep -niF -- "$signature" "$log" | grep -vE -- "$routine_lines" |
                   sed "s/:.*/: $signature/; s/^/line /" || true
               done
-              # native.sh's watcher writes the status once the emulator exits.
-              [ -f "${log%.log}.status" ] || echo "still running when the diagnostics were saved"
+              # native.sh's watcher writes the status once the emulator exits, and a recovery's deadline can stop both.
+              [ -f "${log%.log}.status" ] || echo "no exit status: the emulator still ran, or its watcher was stopped too"
             } > "$out/$(basename "$log" .log).filtered.log"
           done
           cp "${TMPDIR:-/tmp}"/qa-emulator-*.status "$out/" || true

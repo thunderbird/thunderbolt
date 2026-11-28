@@ -1707,7 +1707,12 @@ describe('native jobs', () => {
     writeFileSync(join(temp, 'tmp/qa-emulator-1.log'), `${log.join('\n')}\n`)
     writeFileSync(join(temp, 'tmp/qa-emulator-1.status'), 'was killed by signal 11 (SIGSEGV)\n')
     // A boot whose emulator still runs has no status yet, and a log with nothing to report does not fail the step.
-    writeFileSync(join(temp, 'tmp/qa-emulator-2.log'), 'INFO         | Increasing RAM size to 2560MB\n')
+    // Without its start-up records, a guest-given name shaped like them is not taken for the version or renderer.
+    const second = [
+      'INFO         | Increasing RAM size to 2560MB',
+      "INFO         | Created VkInstance:0x1 for application:'vulkan_mode_selected:guesttext Android emulator version 9' engine:'x'.",
+    ]
+    writeFileSync(join(temp, 'tmp/qa-emulator-2.log'), `${second.join('\n')}\n`)
     // From the repo root, where the step reads native.sh's crash signatures.
     const proc = Bun.spawnSync(['bash', '-e', '-c', step('replay-native', save).run ?? ''], {
       cwd: join(import.meta.dir, '../../..'),
@@ -1740,7 +1745,7 @@ describe('native jobs', () => {
     )
     expect(readFileSync(join(out, 'qa-emulator-1.status'), 'utf8')).toBe('was killed by signal 11 (SIGSEGV)\n')
     expect(readFileSync(join(out, 'qa-emulator-2.filtered.log'), 'utf8')).toBe(
-      'still running when the diagnostics were saved\n',
+      'no exit status: the emulator still ran, or its watcher was stopped too\n',
     )
     const globs = paths.map((path) => new Bun.Glob(path.replace('${{ runner.temp }}/qa-emulator-diagnostics/', '')))
     expect(readdirSync(out).every((file) => globs.some((glob) => glob.match(file)))).toBe(true)

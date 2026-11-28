@@ -46,7 +46,7 @@ type Step = {
 type Job = {
   steps?: Step[]
   uses?: string
-  'timeout-minutes'?: number
+  'timeout-minutes'?: number | string
   if?: string
   needs?: string | string[]
   permissions?: unknown
@@ -72,6 +72,12 @@ const step = (job: string, name: string) => {
   return found
 }
 const indexOf = (job: string, name: string) => steps(job).findIndex((s) => s.name === name)
+/** The minutes a `matrix.check.platform == 'ios' && <ios> || <other>` expression gives on `platform`; a number as is. */
+const minutesOn = (minutes: Job['timeout-minutes'], platform: 'android' | 'ios') => {
+  const split = /^\$\{\{ matrix\.check\.platform == 'ios' && (\d+) \|\| (\d+) \}\}$/.exec(String(minutes))
+  if (!split) return Number(minutes ?? 0)
+  return Number(platform === 'ios' ? split[1] : split[2])
+}
 /** The steps of `job` whose text mentions `needle`, with the key it sits under. */
 const mentions = (job: string, needle: string) =>
   steps(job).flatMap((s) =>
@@ -1583,19 +1589,22 @@ test("a native replay leg's base runs fit its timeout, since a timeout loses eve
   expect(steps('replay-native')[0].run).toBe('echo "QA_LEG_START=$(date +%s)" >> "$GITHUB_ENV"')
 })
 
-test('a native fix check outlasts a driver retry and a replaced run, since a timeout leaves its ticket without a PR', () => {
-  // The slowest check: boot, install and three runs of the iOS onboarding flow, about 6 minutes a run.
-  const checkMinutes = 26
-  const runMinutes = 6
-  expect(jobs['verify-native-run']['timeout-minutes']).toBeGreaterThan(
-    checkMinutes + runMinutes + nativeDriverStartupMinutes,
-  )
+test('a native fix check outlasts a driver retry and replaced runs, since a timeout leaves its ticket without a PR', () => {
+  const timeout = jobs['verify-native-run']['timeout-minutes']
+  expect(minutesOn(timeout, 'android')).toBe(60)
+  expect(minutesOn(timeout, 'ios')).toBe(90)
+  // One app's 3 runs and 3 replacements on a slow macOS runner (run 46118924495): about 9 minutes of setup, 16 for
+  // the cold first run, 8.5 for each run after it, and one driver retry. They must end before the run step's
+  // 82-minute deadline. A check that also runs the app without the patch has 3 runs on each app, about the same sum,
+  // but its 6 tries on each app (about 119 minutes) do not fit, so on a slow runner it can still end inconclusive.
+  const [setup, firstRun, laterRun] = [9, 16, 8.5]
+  expect(setup + firstRun + 5 * laterRun + nativeDriverStartupMinutes).toBeLessThan(82)
 })
 
 test("the iOS log stream outlasts a replay leg, since a run after it ends sees no line and can't prove a bug", () => {
   const nativeSh = readFileSync(join(import.meta.dir, 'native.sh'), 'utf8')
   const hours = Number(/log stream .* --timeout (\d+)h/.exec(nativeSh)?.[1])
-  expect(hours * 60).toBeGreaterThan(jobs['replay-native']['timeout-minutes'] ?? 0)
+  expect(hours * 60).toBeGreaterThan(minutesOn(jobs['replay-native']['timeout-minutes'], 'ios'))
 })
 
 describe('native jobs', () => {
@@ -1735,8 +1744,12 @@ describe('native jobs', () => {
     )
   })
 
-  /** Runs the fix check's run step with `native.sh` replaced by `script`, the job having started `startedAgo` s ago. */
-  const runStepWith = (script: string, startedAgo = 0) => {
+  /**
+   * Runs the fix check's run step on `platform` with `native.sh` replaced by `script`, the job having started
+   * `startedAgo` s ago.
+   */
+  const runStepWith = (script: string, startedAgo = 0, platform: 'android' | 'ios' = 'android') => {
+    const run = step('verify-native-run', 'Run the flow on the patched app')
     const now = 1_700_000_000
     const temp = mkdtempSync(join(work, 'verify-run-'))
     mkdirSync(join(temp, '.github/qa/scripts'), { recursive: true })
@@ -1754,19 +1767,17 @@ describe('native jobs', () => {
     })
     const output = join(temp, 'output')
     writeFileSync(output, '')
-    const proc = Bun.spawnSync(
-      ['bash', '-e', '-c', step('verify-native-run', 'Run the flow on the patched app').run ?? ''],
-      {
-        cwd: temp,
-        env: {
-          PATH: `${join(temp, 'bin')}:${process.env.PATH}`,
-          RUNNER_TEMP: temp,
-          GITHUB_OUTPUT: output,
-          QA_FP: 'fp1',
-          QA_LEG_START: String(now - startedAgo),
-        },
+    const proc = Bun.spawnSync(['bash', '-e', '-c', run.run ?? ''], {
+      cwd: temp,
+      env: {
+        PATH: `${join(temp, 'bin')}:${process.env.PATH}`,
+        RUNNER_TEMP: temp,
+        GITHUB_OUTPUT: output,
+        QA_FP: 'fp1',
+        QA_LEG_START: String(now - startedAgo),
+        JOB_TIMEOUT_MINUTES: String(minutesOn(run.env?.JOB_TIMEOUT_MINUTES, platform)),
       },
-    )
+    })
     return { code: proc.exitCode, output: readFileSync(output, 'utf8'), dir: temp }
   }
 
@@ -1796,18 +1807,28 @@ describe('native jobs', () => {
     )
   })
 
-  test("the fix check's run stops, every process of it, 52 minutes into the job, and counts as inconclusive", () => {
-    // The deadline counts from the job's first step, so the setup before the run is on the clock.
-    expect(steps('verify-native-run')[0].run).toBe('echo "QA_LEG_START=$(date +%s)" >> "$GITHUB_ENV"')
-    const started = performance.now()
-    const { code, output, dir } = runStepWith('sleep 30 & echo $! > child.pid\nwait', 52 * 60 - 1)
-    expect({ code, output }).toEqual({ code: 3, output: 'inconclusive=true\n' })
-    expect(performance.now() - started).toBeLessThan(4000)
-    const child = Number(readFileSync(join(dir, 'child.pid'), 'utf8'))
-    expect(() => process.kill(child, 0)).toThrow()
-    // A run that ends in time keeps its own verdict, the deadline long ahead of it.
-    expect(runStepWith('exit 0', 52 * 60 - 30).code).toBe(0)
-  })
+  test.each([
+    ['android', 52],
+    ['ios', 82],
+  ] as const)(
+    "on %s the fix check's run stops, every process of it, %d minutes in, as inconclusive",
+    (platform, minutes) => {
+      // The deadline counts from the job's first step, so the setup before the run is on the clock.
+      expect(steps('verify-native-run')[0].run).toBe('echo "QA_LEG_START=$(date +%s)" >> "$GITHUB_ENV"')
+      // ...and back from the job's timeout, which the step gets as its own copy.
+      expect(jobs['verify-native-run']['timeout-minutes']).toBe(
+        step('verify-native-run', 'Run the flow on the patched app').env?.JOB_TIMEOUT_MINUTES,
+      )
+      const started = performance.now()
+      const { code, output, dir } = runStepWith('sleep 30 & echo $! > child.pid\nwait', minutes * 60 - 1, platform)
+      expect({ code, output }).toEqual({ code: 3, output: 'inconclusive=true\n' })
+      expect(performance.now() - started).toBeLessThan(4000)
+      const child = Number(readFileSync(join(dir, 'child.pid'), 'utf8'))
+      expect(() => process.kill(child, 0)).toThrow()
+      // A run that ends in time keeps its own verdict, the deadline long ahead of it.
+      expect(runStepWith('exit 0', minutes * 60 - 30, platform).code).toBe(0)
+    },
+  )
 
   test("the fix check's run stops at once when the deadline has already passed", () => {
     // performance.now, since Date.now stays frozen while a synchronous spawn blocks the test.
@@ -2162,7 +2183,8 @@ test('every job but the reusable notify call has a timeout and read-only permiss
     return { contents: 'read' }
   }
   for (const [name, job] of Object.entries(jobs).filter(([, job]) => !job.uses)) {
-    expect({ name, timeout: (job['timeout-minutes'] ?? 0) > 0 }).toEqual({ name, timeout: true })
+    const timeout = Math.min(minutesOn(job['timeout-minutes'], 'android'), minutesOn(job['timeout-minutes'], 'ios'))
+    expect({ name, timeout: timeout > 0 }).toEqual({ name, timeout: true })
     // app-check gets its token from the app, so it asks the runner for no permissions at all (see the next test).
     if (name === 'app-check') continue
     const permissions = permissionsOf(name)

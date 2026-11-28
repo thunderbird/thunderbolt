@@ -579,8 +579,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    app showed the bug, or the unpatched one passed the fix agent's visual check), or else inconclusive. A real-AI
    repro flow that shows nothing on the fake AI without the patch is inconclusive too: it cannot judge the patch.
    `verify.ts fix-native` exits 0, 4 or 3 for these, and `native.sh verify-run` exits 3 as well when the iOS stream
-   never attaches; any other error of `native.sh` exits 2. The run step stops a run still going 52 minutes into the
-   job and counts it as a 3, so the verdict and the logs still go up before the job's 60-minute timeout. It records a
+   never attaches; any other error of `native.sh` exits 2. The job times out after 60 minutes on Android and 90 on
+   iOS, where some macOS runners take about 8 minutes a run. The run step stops a run still going 8 minutes before
+   that (52 or 82 minutes into the job) and counts it as a 3, so the verdict and the logs still go up. It records a
    4 or a 3 in its own output (a crash of Bun exits 1 and is recorded as neither), and on that and the step's failed
    outcome the job uploads `qa-native-failed-<fp>-<platform>-<run attempt>` or
    `qa-inconclusive-<fp>-<platform>-<run attempt>`, straight

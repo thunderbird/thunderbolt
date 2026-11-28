@@ -2003,7 +2003,9 @@ jobs:
     needs: [build, build-native, file, verify-native-build]
     if: ${{ !cancelled() && needs.file.outputs.plan != '' && fromJSON(needs.file.outputs.plan).verifyNative[0] != null }}
     runs-on: ${{ matrix.check.platform == 'ios' && 'macos-latest' || 'ubuntu-24.04' }}
-    timeout-minutes: 60 # an iOS onboarding check takes about 26 minutes; a retried or replaced run must still fit
+    # An iOS onboarding check takes about 26 minutes on a fast macOS runner. On a slow one a run takes about 8.5
+    # minutes and setup about 9, and three runs plus three replacements must still fit.
+    timeout-minutes: ${{ matrix.check.platform == 'ios' && 90 || 60 }}
     permissions:
       contents: read
     strategy:
@@ -2070,9 +2072,9 @@ jobs:
       - *warm-up-maestro
       # Exits 0 when the patch passes, 3 when too few runs reached the screen to tell, 4 when it fails, and anything
       # else on the pipeline's own errors (a crash of Bun is 1). The pass below rests on this step's outcome, and the
-      # inconclusive and failure markers on the code this step's shell records. A run still going 52 minutes into
-      # the job is stopped and counts as inconclusive, so its marker and the logs still go up before the job's
-      # 60-minute timeout.
+      # inconclusive and failure markers on the code this step's shell records. A run still going 8 minutes before
+      # the job's timeout (52 minutes into the job on Android, 82 on iOS) is stopped and counts as inconclusive, so
+      # its marker and the logs still go up before the timeout.
       - name: Run the flow on the patched app
         id: run
         if: env.QA_NO_DEVICE != 'true'
@@ -2081,6 +2083,8 @@ jobs:
           FLOW: ${{ matrix.check.flow }}
           SESSION: ${{ matrix.check.session }}
           ORIGINAL: ${{ matrix.check.unpatched && format('{0}/apps/original/{1}', runner.temp, env.QA_APP_FILE) || '' }}
+          # The job's timeout-minutes, which no context exposes to a step.
+          JOB_TIMEOUT_MINUTES: ${{ matrix.check.platform == 'ios' && 90 || 60 }}
         run: |
           code=0
           # macOS has no timeout(1). Job control gives the run its own process group, so the deadline stops all of it.
@@ -2089,7 +2093,7 @@ jobs:
             "$FLOW" "$SESSION" "qa-out/verify/$QA_FP.$QA_PLATFORM.json" ${ORIGINAL:+"$ORIGINAL"} &
           run=$!
           # Kept off the step's output: the group kill below can miss a sleep caught mid-fork, which must hold no pipe.
-          left=$(( QA_LEG_START + 52 * 60 - $(date +%s) ))
+          left=$(( QA_LEG_START + (JOB_TIMEOUT_MINUTES - 8) * 60 - $(date +%s) ))
           { sleep $(( left > 0 ? left : 0 )) && kill -TERM -- "-$run"; } < /dev/null > /dev/null 2>&1 &
           deadline=$!
           wait "$run" || code=$?

@@ -388,12 +388,14 @@ test("device-lost prints adb's state, how the emulator ended and the numbers of 
   const gone = Bun.spawnSync(['true']).pid
   writeFileSync(join(dir, 'qa-emulator.pid'), `${gone}\n`)
   const crash = 'FATAL        | VK_ERROR_DEVICE_LOST in vkQueueSubmit'
-  // Run 46041417363's boot that segfaulted: the crash reporter's set-up on every boot, and bash's report of the
-  // signal, both of which match a signature. The crash line is made up: that boot logged none.
+  // Run 46041417363's boot that segfaulted: the crash reporter's set-up on every boot, a Vulkan instance with the
+  // guest's application and engine names, and bash's report of the signal, all of which match a signature. The crash
+  // line is made up: that boot logged none.
   const log = [
     'INFO         | Android emulator version 37.3.10.0 (build_id 16970787) (CL:N/A)',
     'INFO         | Storing crashdata in: /tmp/android-runner/emu-crash-37.3.10.db, detection is enabled for process: 3178',
     'INFO         | Boot completed in 42209 ms',
+    "INFO         | Created VkInstance:0x55a03678f000 for application:'Crash Reporter' engine:'Fatal Engine'.",
     crash,
     '.github/qa/scripts/native.sh: line 235:  3178 Segmentation fault      (core dumped) "$@"',
   ]
@@ -413,7 +415,7 @@ test("device-lost prints adb's state, how the emulator ended and the numbers of 
   expect(out).toStartWith("adb lost emulator-5554; adb's state for it now: error: device 'emulator-5554' not found\n")
   expect(out).toContain(`the emulator (pid ${gone}) was killed by signal 11 (SIGSEGV)\n`)
   expect(out.split("crash lines in the emulator's log of boot 2 (qa-emulator-2.log), by signature:\n")[1]).toBe(
-    '  fatal: line 4\n  error: line 4\n',
+    '  fatal: line 5\n  error: line 5\n',
   )
   expect(out).not.toContain('VK_ERROR_DEVICE_LOST')
 })

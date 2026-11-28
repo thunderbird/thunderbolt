@@ -64,9 +64,11 @@ avd=qa-android
 emulator_files=${TMPDIR:-/tmp}/qa-emulator
 crash_signatures=(fatal error crash abort assert segfault segmentation sigsegv sigabrt 'terminating on signal' killed
   'out of memory' kvm)
-# Lines that match a signature without being a crash line: the crash reporter's set-up, which every boot logs, and
-# bash's report of the signal that ended the emulator, which the boot's .status file already records.
-routine_lines='Storing crashdata in|: line [0-9]+: +[0-9]+ .*"\$@"$'
+# Lines that match a signature without being a crash line: the crash reporter's set-up, which every boot logs, the
+# line for each Vulkan instance the guest creates, which quotes the application and engine names the guest reports,
+# and bash's report of the signal that ended the emulator, which the boot's .status file already records. It stays
+# on one line because the workflow's diagnostics step reads it with sed.
+routine_lines='Storing crashdata in|VkInstance:[^ ]* for application:|: line [0-9]+: +[0-9]+ .*"\$@"$'
 
 die() {
   echo "$*" >&2

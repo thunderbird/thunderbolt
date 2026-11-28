@@ -64,15 +64,19 @@ avd=qa-android
 emulator_files=${TMPDIR:-/tmp}/qa-emulator
 crash_signatures=(fatal error crash abort assert segfault segmentation sigsegv sigabrt 'terminating on signal' killed
   'out of memory' kvm)
+# Lines that match a signature without being a crash line: the crash reporter's set-up, which every boot logs, and
+# bash's report of the signal that ended the emulator, which the boot's .status file already records.
+routine_lines='Storing crashdata in|: line [0-9]+: +[0-9]+ .*"\$@"$'
 
 die() {
   echo "$*" >&2
   exit 2
 }
 
-# adb drops the mappings when its connection to the device resets.
+# adb drops the mappings when its connection to the device resets. adb prints each mapped port, which would land in
+# the job log as bare numbers right under device-lost's report.
 reverse_ports() {
-  for port in $stack_ports; do adb -s "$1" reverse "tcp:$port" "tcp:$port" >&2; done
+  for port in $stack_ports; do adb -s "$1" reverse "tcp:$port" "tcp:$port" > /dev/null; done
 }
 
 # The Android build keeps its own identifier: the dev one points the Gradle project at a package directory that does
@@ -207,15 +211,25 @@ stop_emulator() {
   kill -9 "$pid" 2> /dev/null || true
 }
 
-# For each crash signature, how many lines of the latest boot's emulator log hold it. Counts only: this reaches the
-# job log on every leg, the real one too.
-crash_counts() {
-  local signature count
-  echo "lines of the emulator's log per crash signature:"
+# For each crash signature, the numbers of the latest boot's emulator log lines that hold it, routine lines left out.
+# Line numbers only: this reaches the job log on every leg, the real one too.
+crash_lines() {
+  local boot log signature lines found=''
+  boot=$(last_boot)
+  log=$emulator_files-$boot.log
+  echo "crash lines in the emulator's log of boot $boot ($(basename "$log")), by signature:"
   for signature in "${crash_signatures[@]}"; do
-    count=$(grep -ciF -- "$signature" "$emulator_files-$(last_boot).log" 2> /dev/null) || continue
-    echo "  $signature: $count"
+    lines=$(grep -niF -- "$signature" "$log" 2> /dev/null | grep -vE -- "$routine_lines" |
+      sed 's/:.*//; s/^/line /' | paste -sd, -) || continue
+    found=1
+    echo "  $signature: ${lines//,/, }"
   done
+  [ -n "$found" ] || echo "  none"
+}
+
+# Pkg.Revision from the source.properties in <dir>, the SDK package's version, or "unknown".
+pkg_revision() {
+  sed -n 's/^Pkg\.Revision=//p' "$1/source.properties" 2> /dev/null | grep . || echo unknown
 }
 
 # The number of our emulator's latest boot in this job, 0 before the first.
@@ -297,6 +311,9 @@ device_android() {
     serial=emulator-$port
     boot=$(($(last_boot) + 1))
     status=$emulator_files-$boot.status
+    # Neither is pinned, so an SDK update or a refreshed system image cache shows here.
+    echo "boot $boot: emulator $(pkg_revision "$(dirname "$(command -v emulator)")"), $android_image revision" \
+      "$(pkg_revision "${ANDROID_HOME:-}/${android_image//;//}")" >&2
     # The watcher's output goes to the log too, so it never holds the caller's stdout or stderr open.
     watch_emulator "$status" emulator -avd "$avd" -port "$port" -no-window -no-audio -no-snapshot -no-boot-anim \
       -gpu swiftshader_indirect > "$emulator_files-$boot.log" 2>&1 &
@@ -305,7 +322,7 @@ device_android() {
   # A dead emulator ends the wait at once.
   for _ in $(seq 300); do
     if [ -n "$status" ] && [ -f "$status" ]; then
-      crash_counts >&2
+      crash_lines >&2
       die "the emulator $(cat "$status")"
     fi
     grep -qxF "$serial" <<< "$(online_emulators)" && break
@@ -336,8 +353,8 @@ device_android() {
   echo "$serial"
 }
 
-# Safe on every leg, the real one too: nothing here holds a key or what the app showed, and only counts leave the
-# emulator's log. adb gets its own hard kill: a nested `timeout` runs in a process group of its own, which the
+# Safe on every leg, the real one too: nothing here holds a key or what the app showed, and only line numbers leave
+# the emulator's log. How the emulator ended comes from its .status file. adb gets its own hard kill: a nested `timeout` runs in a process group of its own, which the
 # caller's kill never reaches.
 device_lost() {
   local serial=$1 seconds=$2 pid boot now status
@@ -356,7 +373,7 @@ device_lost() {
     fi
     free -m 2> /dev/null || true
     if [ -n "$boot" ] && [ -n "$now" ]; then echo "OOM kills since the emulator booted: $((now - boot))"; fi
-    crash_counts
+    crash_lines
   } >&2
 }
 

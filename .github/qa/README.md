@@ -363,8 +363,12 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `native.sh device-lost` then prints what may explain
    the loss: how the emulator process ended (its exit code or the signal that killed it, which a small watcher
    process records in `qa-emulator-<boot>.status`) or that it still runs, free memory, OOM kills, and, for each crash
-   signature, how many lines of the emulator's log hold it. Each boot writes its own log, `qa-emulator-<boot>.log`.
-   No line of that log is printed. The leg then
+   signature, the numbers of the lines of the latest boot's log that hold it. Each boot writes its own log,
+   `qa-emulator-<boot>.log`. No line of that log is printed. Two kinds of line that match a signature are left out:
+   the emulator's `Storing crashdata in` line, which every boot logs, and bash's own report of the signal that ended
+   the emulator (`Segmentation fault (core dumped) "$@"`). The status file says how the emulator ended. Each cold
+   boot also prints the emulator's version and the system image's revision (`Pkg.Revision` from each package's
+   `source.properties`), so an SDK update or a refreshed image cache shows in the job log. The leg then
    runs `native.sh device android` again, which keeps the emulator only while adb sees it online and its
    `ro.boot.qemu.avd_name` is `qa-android`. Otherwise it stops ours and cold-boots a new one on the first even console
    port from 5554 to 5584 where adb lists no emulator, online or offline. adb names an emulator after its console port,

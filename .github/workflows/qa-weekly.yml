@@ -1056,9 +1056,9 @@ jobs:
           mkdir -p "$out"
           keep='Android emulator version|Graphics (backend|Adapter|API Version)|Guest GLES Driver|_mode_selected'
           keep+='|ICD set to|Selecting Vulkan device|boot properties|androidboot\.|Boot completed'
-          # native.sh's crash signatures.
-          keep+='|fatal|error|crash|abort|assert|segfault|segmentation|sigsegv|sigabrt|terminating on signal'
-          keep+='|killed|out of memory|kvm'
+          # The crash signatures device-lost reports, read from native.sh so the two cannot drift.
+          eval "$(sed -n '/^crash_signatures=(/,/)$/p' .github/qa/scripts/native.sh)"
+          keep+=$(printf '|%s' "${crash_signatures[@]}")
           for log in "${TMPDIR:-/tmp}"/qa-emulator-*.log; do
             [ -f "$log" ] || continue
             grep -niE "$keep" "$log" | grep -viE 'adb public key|adb\.pubkey|application:|engine:' \

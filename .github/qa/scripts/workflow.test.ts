@@ -1707,7 +1707,9 @@ describe('native jobs', () => {
     writeFileSync(join(temp, 'tmp/qa-emulator-1.status'), 'was killed by signal 11 (SIGSEGV)\n')
     // A boot with nothing to keep still gets its (empty) file, and does not fail the step.
     writeFileSync(join(temp, 'tmp/qa-emulator-2.log'), 'INFO         | Increasing RAM size to 2560MB\n')
+    // From the repo root, where the step reads native.sh's crash signatures.
     const proc = Bun.spawnSync(['bash', '-e', '-c', step('replay-native', save).run ?? ''], {
+      cwd: join(import.meta.dir, '../../..'),
       env: { PATH: process.env.PATH, RUNNER_TEMP: temp, TMPDIR: join(temp, 'tmp') },
     })
 

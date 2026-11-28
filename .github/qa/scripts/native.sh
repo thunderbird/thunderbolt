@@ -356,8 +356,8 @@ device_android() {
 }
 
 # Safe on every leg, the real one too: nothing here holds a key or what the app showed, and only line numbers leave
-# the emulator's log. How the emulator ended comes from its .status file. adb gets its own hard kill: a nested `timeout` runs in a process group of its own, which the
-# caller's kill never reaches.
+# the emulator's log. How the emulator ended comes from its .status file. adb gets its own hard kill: a nested
+# `timeout` runs in a process group of its own, which the caller's kill never reaches.
 device_lost() {
   local serial=$1 seconds=$2 pid boot now status
   pid=$(cat "$emulator_files.pid" 2> /dev/null) || pid=

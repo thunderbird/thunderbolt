@@ -1045,24 +1045,29 @@ jobs:
           # The emulator's own output, one file per boot (native.sh device).
           cp "${TMPDIR:-/tmp}"/qa-emulator-*.log "$RUNNER_TEMP/" || true
           cp -R ~/.maestro/tests "$RUNNER_TEMP/qa-maestro" || true
-      # The real leg uploads none of its logs, only what explains a lost emulator: each boot's exit status and the
-      # lines of its log that give the emulator's version, renderer, boot properties or a crash, numbered as
-      # device-lost prints them. The filter drops the runner's adb key and the Vulkan application and engine names
-      # the guest reports.
+      # The real leg uploads no text from its logs, only what explains a lost emulator: each boot's exit status, the
+      # emulator's version and renderer, and each crash line as `line <n>: <signature>`, numbered as device-lost
+      # prints them.
       - name: Save the emulator's diagnostics
         if: always() && matrix.leg.platform == 'android' && matrix.leg.real
         run: |
           out=$RUNNER_TEMP/qa-emulator-diagnostics
           mkdir -p "$out"
-          keep='Android emulator version|Graphics (backend|Adapter|API Version)|Guest GLES Driver|_mode_selected'
-          keep+='|ICD set to|Selecting Vulkan device|boot properties|androidboot\.|Boot completed'
-          # The crash signatures device-lost reports, read from native.sh so the two cannot drift.
-          eval "$(sed -n '/^crash_signatures=(/,/)$/p' .github/qa/scripts/native.sh)"
-          keep+=$(printf '|%s' "${crash_signatures[@]}")
+          # device-lost's crash signatures and the lines it leaves out, read from native.sh so the two cannot drift.
+          eval "$(sed -n -e '/^crash_signatures=(/,/)$/p' -e '/^routine_lines=/p' .github/qa/scripts/native.sh)"
           for log in "${TMPDIR:-/tmp}"/qa-emulator-*.log; do
             [ -f "$log" ] || continue
-            grep -niE "$keep" "$log" | grep -viE 'adb public key|adb\.pubkey|application:|engine:' \
-              > "$out/$(basename "$log" .log).filtered.log" || true
+            {
+              # The first match only: the emulator logs both before the guest starts, so the match cannot be guest text.
+              grep -m1 -oE 'Android emulator version [0-9.]+' "$log" || true
+              grep -m1 -oE '(vulkan|gles)_mode_selected:[A-Za-z0-9_]+' "$log" || true
+              for signature in "${crash_signatures[@]}"; do
+                grep -niF -- "$signature" "$log" | grep -vE -- "$routine_lines" |
+                  sed "s/:.*/: $signature/; s/^/line /" || true
+              done
+              # native.sh's watcher writes the status once the emulator exits.
+              [ -f "${log%.log}.status" ] || echo "still running when the diagnostics were saved"
+            } > "$out/$(basename "$log" .log).filtered.log"
           done
           cp "${TMPDIR:-/tmp}"/qa-emulator-*.status "$out/" || true
 

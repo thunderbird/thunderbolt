@@ -1080,9 +1080,10 @@ stack depends on its AppArmor sysctl, KVM and emulator libraries, Playwright dep
   (`qa-emulator-<boot>.log`), the adb server's log (`qa-adb.log`) and Maestro's debug output for each session
   (`qa-maestro/<time>/`, with `maestro.log` and the commands). None of it is uploaded on `android-real`, whose
   backend held the provider keys. That leg uploads `qa-emulator-replay-android-real` instead: each boot's
-  `qa-emulator-<boot>.status` and `qa-emulator-<boot>.filtered.log`, which keeps only the lines of the boot's log
-  that give the emulator's version, its renderer, the boot properties or a crash signature, with their line numbers.
-  The filter drops the runner's adb public key and the Vulkan application and engine names the guest reports.
+  `qa-emulator-<boot>.status` and `qa-emulator-<boot>.filtered.log`, which holds no text of the boot's log. It gives
+  the emulator's version, the renderer it selected (`vulkan_mode_selected` and `gles_mode_selected`) and, for each
+  line that holds a crash signature, `line <n>: <signature>`. It skips the same lines `device-lost` skips. A boot
+  whose emulator still ran when the diagnostics were saved has no status file yet, and its filtered log says so.
 - The weekly **judge** adds the native legs' candidates to the web ones, like the sync and real legs. A dispatch of
   native sessions only still plans it, so its findings are judged, filed and fixed.
 - **verify-native-build** and **verify-native-run** check a native fix (see "Trust zones"). With no patched app,

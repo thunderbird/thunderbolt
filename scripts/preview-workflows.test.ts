@@ -7,7 +7,11 @@ import { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, wr
 import { tmpdir } from 'os'
 import { join } from 'path'
 
-type Step = { uses?: string; run?: string; with?: { only_update?: boolean; message?: string } }
+type Step = {
+  uses?: string
+  run?: string
+  with?: { only_update?: boolean; message?: string; 'persist-credentials'?: boolean }
+}
 
 type Concurrency = { group: string; 'cancel-in-progress': boolean }
 
@@ -15,7 +19,6 @@ type Job = {
   name?: string
   needs?: string | string[]
   if?: string
-  environment?: string
   uses?: string
   with?: { ref?: string; tag_override?: string }
   concurrency?: Concurrency
@@ -36,20 +39,17 @@ const loadWorkflow = (file: string) =>
 
 const workflow = loadWorkflow('preview-deploy.yml')
 const { jobs } = workflow
-const approveFork = jobs['approve-fork']
 
 const fakeBin = mkdtempSync(join(tmpdir(), 'preview-workflow-'))
 afterAll(() => rmSync(fakeBin, { recursive: true, force: true }))
 
-// Answers `gh pr view` from FAKE_HEAD_*, and any other call with FAKE_GH_BODY / FAKE_GH_STATUS.
+// Answers `gh pr view` from FAKE_HEAD_*.
 writeFileSync(
   join(fakeBin, 'gh'),
   `#!/bin/sh
-echo "$*" >> "$FAKE_GH_LOG"
 case "$*" in
   *headRefOid*) echo "$FAKE_HEAD_SHA" ;;
   *headRepository*) echo "$FAKE_HEAD_REPO" ;;
-  *) printf '%s' "$FAKE_GH_BODY"; exit "\${FAKE_GH_STATUS:-0}" ;;
 esac
 `,
 )
@@ -58,16 +58,13 @@ chmodSync(join(fakeBin, 'gh'), 0o755)
 /** Runs a workflow `run:` script the way Actions does (`bash -e`), with `gh` stubbed. */
 const runScript = (script: string, env: Record<string, string>) => {
   const outputFile = join(fakeBin, `output-${crypto.randomUUID()}`)
-  const ghLog = join(fakeBin, `gh-${crypto.randomUUID()}`)
   writeFileSync(outputFile, '')
-  writeFileSync(ghLog, '')
   const result = Bun.spawnSync(['bash', '-e', '-c', script], {
     env: {
       ...process.env,
       ...env,
       PATH: `${fakeBin}:${process.env.PATH}`,
       GITHUB_OUTPUT: outputFile,
-      FAKE_GH_LOG: ghLog,
     },
   })
   const outputs = Object.fromEntries(
@@ -76,7 +73,7 @@ const runScript = (script: string, env: Record<string, string>) => {
       .filter(Boolean)
       .map((line) => line.split('=', 2) as [string, string]),
   )
-  return { exitCode: result.exitCode, outputs, ghCalls: readFileSync(ghLog, 'utf8') }
+  return { exitCode: result.exitCode, outputs }
 }
 
 type ExpressionContext = { [path: string]: string | number | boolean | null }
@@ -99,12 +96,16 @@ const interpolate = (template: string, context: ExpressionContext) =>
   template.replace(/\$\{\{(.*?)\}\}/g, (_, expression: string) => String(evaluate(expression, context)))
 
 const resolveScript = jobs.resolve?.steps?.find((step) => step.run?.includes('EVENT_NAME'))?.run ?? ''
-const approvalScript = approveFork?.steps?.find((step) => step.run?.includes('environments/'))?.run ?? ''
 
 const eventHeadSha = 'a'.repeat(40)
 const dispatchHeadSha = 'b'.repeat(40)
 
-const resolveFor = (event: string, headRepo: string) =>
+/** Runs resolve; a fork dispatch passes the current head as the reviewed SHA unless told otherwise. */
+const resolveFor = (
+  event: string,
+  headRepo: string,
+  reviewedSha = event === 'workflow_dispatch' && headRepo !== 'acme/repo' ? dispatchHeadSha : '',
+) =>
   runScript(resolveScript, {
     EVENT_NAME: event,
     EVENT_PR_NUMBER: event === 'workflow_dispatch' ? '' : '42',
@@ -112,21 +113,20 @@ const resolveFor = (event: string, headRepo: string) =>
     EVENT_HEAD_REPO: event === 'workflow_dispatch' ? '' : headRepo,
     EVENT_BASE_REPO: 'acme/repo',
     INPUT_PR_NUMBER: event === 'workflow_dispatch' ? '42' : '',
+    INPUT_HEAD_SHA: reviewedSha,
     FAKE_HEAD_SHA: dispatchHeadSha,
     FAKE_HEAD_REPO: headRepo,
   })
 
-/** Whether the approval job runs, and whether publish and deploy follow, for one resolve result. */
-const gate = (resolved: { proceed?: string; is_fork?: string }, approvalResult: string, { cancelled = false } = {}) => {
+/** Whether publish and deploy run for one resolve result. */
+const gate = (resolved: { proceed?: string; is_fork?: string }, { cancelled = false } = {}) => {
   const context = {
     'needs.resolve.outputs.proceed': resolved.proceed ?? '',
     'needs.resolve.outputs.is_fork': resolved.is_fork ?? '',
-    'needs.approve-fork.result': approvalResult,
     'needs.publish.result': 'success',
     'cancelled()': cancelled,
   }
   return {
-    approvalRuns: evaluate(approveFork?.if ?? 'false', context) === true,
     publishes: evaluate(jobs.publish?.if ?? 'false', context) === true,
     deploys: evaluate(jobs.deploy?.if ?? 'false', context) === true,
   }
@@ -136,11 +136,9 @@ describe('preview deploy trust policy', () => {
   it.each([
     ['pull_request', 'acme/repo', 'true', 'false'],
     ['pull_request', 'someone/fork', 'false', undefined],
-    ['pull_request_target', 'someone/fork', 'true', 'true'],
-    ['pull_request_target', 'acme/repo', 'false', undefined],
     ['workflow_dispatch', 'acme/repo', 'true', 'false'],
     ['workflow_dispatch', 'someone/fork', 'true', 'true'],
-  ])('routes %s from %s to exactly one run', (event, headRepo, proceed, isFork) => {
+  ])('routes %s from %s', (event, headRepo, proceed, isFork) => {
     const { exitCode, outputs } = resolveFor(event, headRepo)
     expect(exitCode).toBe(0)
     expect(outputs.proceed).toBe(proceed)
@@ -150,66 +148,56 @@ describe('preview deploy trust policy', () => {
   it.each([
     ['pull_request', 'acme/repo'],
     ['workflow_dispatch', 'acme/repo'],
-  ])('deploys a same-repo PR on %s without waiting for approval', (event, headRepo) => {
-    const resolved = resolveFor(event, headRepo).outputs
-    expect(gate(resolved, 'skipped')).toEqual({ approvalRuns: false, publishes: true, deploys: true })
+  ])('deploys a same-repo PR on %s', (event, headRepo) => {
+    expect(gate(resolveFor(event, headRepo).outputs)).toEqual({ publishes: true, deploys: true })
+  })
+
+  it('deploys a fork PR only from a dispatch', () => {
+    expect(gate(resolveFor('pull_request', 'someone/fork').outputs).publishes).toBe(false)
+    expect(gate(resolveFor('workflow_dispatch', 'someone/fork').outputs)).toEqual({ publishes: true, deploys: true })
   })
 
   it.each([
-    ['pull_request_target', 'someone/fork'],
-    ['workflow_dispatch', 'someone/fork'],
-  ])('holds a fork PR on %s for manual approval', (event, headRepo) => {
-    const resolved = resolveFor(event, headRepo).outputs
-    expect(gate(resolved, 'success')).toEqual({ approvalRuns: true, publishes: true, deploys: true })
-    for (const result of ['skipped', 'failure', 'cancelled']) {
-      expect(gate(resolved, result).publishes).toBe(false)
-    }
-    expect(approveFork?.environment).toBe('fork-preview-approval')
-  })
-
-  it('deploys nothing for the no-op runs', () => {
-    expect(gate(resolveFor('pull_request', 'someone/fork').outputs, 'skipped').publishes).toBe(false)
-    expect(gate(resolveFor('pull_request_target', 'acme/repo').outputs, 'skipped').publishes).toBe(false)
+    ['no reviewed SHA', 'someone/fork', ''],
+    ['a fork PR that moved past the reviewed SHA', 'someone/fork', eventHeadSha],
+    ['a same-repo PR that moved past the given SHA', 'acme/repo', eventHeadSha],
+  ])('fails a dispatch with %s', (_, headRepo, reviewedSha) => {
+    const { exitCode, outputs } = resolveFor('workflow_dispatch', headRepo, reviewedSha)
+    expect(exitCode).not.toBe(0)
+    expect(outputs.proceed).toBeUndefined()
   })
 
   it('stops publishing and deploying once a newer push cancels the run', () => {
     const internal = resolveFor('pull_request', 'acme/repo').outputs
-    const fork = resolveFor('pull_request_target', 'someone/fork').outputs
-    expect(gate(internal, 'skipped', { cancelled: true })).toMatchObject({ publishes: false, deploys: false })
-    expect(gate(fork, 'success', { cancelled: true })).toMatchObject({ publishes: false, deploys: false })
+    const fork = resolveFor('workflow_dispatch', 'someone/fork').outputs
+    expect(gate(internal, { cancelled: true })).toMatchObject({ publishes: false, deploys: false })
+    expect(gate(fork, { cancelled: true })).toMatchObject({ publishes: false, deploys: false })
   })
 
-  it('runs no PR code before the approval', () => {
-    for (const job of [jobs.resolve, approveFork]) {
-      expect(job?.uses).toBeUndefined()
-      expect(job?.steps?.filter((step) => step.uses)).toEqual([])
-    }
+  it('resolve runs no action', () => {
+    expect(jobs.resolve?.uses).toBeUndefined()
+    expect(jobs.resolve?.steps?.filter((step) => step.uses)).toEqual([])
   })
 
-  it('builds and tags exactly the head SHA the reviewer is shown', () => {
+  it('builds and tags the resolved head SHA', () => {
     const headSha = '${{ needs.resolve.outputs.head_sha }}'
-    expect(approveFork?.name).toContain(headSha)
     expect(jobs.publish?.with?.ref).toBe(headSha)
     expect(jobs.publish?.with?.tag_override).toContain(headSha)
 
-    expect(resolveFor('pull_request_target', 'someone/fork').outputs.head_sha).toBe(eventHeadSha)
+    expect(resolveFor('pull_request', 'acme/repo').outputs.head_sha).toBe(eventHeadSha)
     expect(resolveFor('workflow_dispatch', 'someone/fork').outputs.head_sha).toBe(dispatchHeadSha)
   })
 
   it('makes a new push start a new run', () => {
-    for (const event of ['pull_request', 'pull_request_target']) {
-      expect(workflow.on[event]?.types).toEqual(expect.arrayContaining(['synchronize', 'reopened']))
-    }
+    expect(workflow.on.pull_request?.types).toEqual(expect.arrayContaining(['synchronize', 'reopened']))
     expect(workflow.concurrency['cancel-in-progress']).toBe(true)
   })
 
   // Every run that can deploy shares one group, so a push cancels them all, dispatched ones included.
   it.each([
     ['a same-repo pull_request', 'deploy', 'pull_request', 'acme/repo'],
-    ['a fork pull_request_target', 'deploy', 'pull_request_target', 'someone/fork'],
     ['a dispatch', 'deploy', 'workflow_dispatch', null],
-    ['the no-op fork pull_request', 'pull_request', 'pull_request', 'someone/fork'],
-    ['the no-op same-repo pull_request_target', 'pull_request_target', 'pull_request_target', 'acme/repo'],
+    ['the no-op fork pull_request', 'fork', 'pull_request', 'someone/fork'],
   ])('puts %s in the %s group', (_, group, event, headRepo) => {
     const dispatch = event === 'workflow_dispatch'
     expect(
@@ -222,41 +210,35 @@ describe('preview deploy trust policy', () => {
       }),
     ).toBe(`preview-pr-42-${group}`)
   })
+
+  it.each(readdirSync(join(repoRoot, '.github/workflows')).filter((file) => file.endsWith('.yml')))(
+    '%s does not trigger on pull_request_target',
+    (file) => {
+      const on: unknown = loadWorkflow(file).on
+      const events = typeof on === 'string' ? [on] : Array.isArray(on) ? on : Object.keys(on ?? {})
+      expect(events).not.toContain('pull_request_target')
+    },
+  )
 })
 
-/** The parts of GitHub's "get an environment" response (or its 404 body) the check reads. */
-type EnvironmentResponse = {
-  protection_rules?: { type: string; reviewers?: { type: string; reviewer: { slug: string } }[] }[]
-  message?: string
-}
+describe('checkout credentials', () => {
+  const workflowFiles = readdirSync(join(repoRoot, '.github/workflows')).filter((file) => file.endsWith('.yml'))
+  const checkouts = workflowFiles.flatMap((file) =>
+    Object.entries(loadWorkflow(file).jobs).flatMap(([job, definition]) =>
+      (definition?.steps ?? [])
+        .filter((step) => step.uses?.startsWith('actions/checkout@'))
+        .map((step) => ({ at: `${file} ${job}`, persists: step.with?.['persist-credentials'] !== false })),
+    ),
+  )
 
-describe('fork approval environment check', () => {
-  const runCheck = (body: EnvironmentResponse, status = 0) =>
-    runScript(approvalScript, { REPO: 'acme/repo', FAKE_GH_BODY: JSON.stringify(body), FAKE_GH_STATUS: String(status) })
-
-  const reviewers = { type: 'required_reviewers', reviewers: [{ type: 'Team', reviewer: { slug: 'maintainers' } }] }
-
-  it('reads the environment the approval job uses', () => {
-    expect(runCheck({ protection_rules: [reviewers] }).ghCalls).toBe(
-      `api repos/acme/repo/environments/${approveFork?.environment}\n`,
-    )
-  })
-
-  it('passes when required reviewers protect the environment', () => {
-    expect(runCheck({ protection_rules: [{ type: 'branch_policy' }, reviewers] }).exitCode).toBe(0)
-  })
-
-  it.each([
-    ['has no rules', { protection_rules: [] }, 0],
-    [
-      'only has a wait timer and a branch policy',
-      { protection_rules: [{ type: 'wait_timer' }, { type: 'branch_policy' }] },
-      0,
-    ],
-    ['lists no reviewers', { protection_rules: [{ type: 'required_reviewers', reviewers: [] }] }, 0],
-    ['does not exist', { message: 'Not Found' }, 1],
-  ])('fails closed when the environment %s', (_, body, status) => {
-    expect(runCheck(body, status).exitCode).not.toBe(0)
+  // Only jobs that push or tag with git keep the token in .git/config.
+  it('keeps credentials only in the jobs that push', () => {
+    expect(
+      checkouts
+        .filter((checkout) => checkout.persists)
+        .map((checkout) => checkout.at)
+        .sort(),
+    ).toEqual(['create-version-tag.yml create_tag', 'evals.yml scheduled-full', 'version-bump.yml version_bump'])
   })
 })
 
@@ -295,9 +277,9 @@ const dockerfileInputs = () => {
 describe('preview deploy path gate', () => {
   const paths = workflow.on.pull_request?.paths ?? []
 
-  it('gates both PR events on the same inputs and keeps dispatch as the override', () => {
+  it('gates pull_request on the preview inputs and keeps dispatch as the override', () => {
     expect(paths.length).toBeGreaterThan(0)
-    expect(workflow.on.pull_request_target?.paths).toEqual(paths)
+    expect(workflow.on.pull_request_target).toBeUndefined()
     expect(workflow.on.workflow_dispatch?.inputs).toHaveProperty('pr_number')
   })
 
@@ -329,7 +311,30 @@ describe('preview deploy path gate', () => {
   })
 })
 
+describe('release image path gate', () => {
+  const paths = loadWorkflow('images-publish.yml').on.push?.paths ?? []
+
+  it.each(dockerfileInputs())('rebuilds the images on main when %s changes', (source) => {
+    const file = statSync(join(repoRoot, source)).isDirectory() ? `${source}/x` : source
+    expect(matchesPaths(paths, file)).toBe(true)
+  })
+})
+
 describe('preview teardown', () => {
+  it('tears down same-repo PRs on close and leaves fork PRs to the hourly cleanup', () => {
+    const teardown = loadWorkflow('preview-destroy.yml')
+    expect(teardown.on.pull_request?.types).toEqual(['closed'])
+    const runs = (event: string, headRepo: string | null) =>
+      evaluate(teardown.jobs['resolve-pr']?.if ?? 'true', {
+        'github.event_name': event,
+        'github.event.pull_request.head.repo.full_name': headRepo,
+        'github.repository': 'acme/repo',
+      }) === true
+    expect(runs('pull_request', 'acme/repo')).toBe(true)
+    expect(runs('pull_request', 'someone/fork')).toBe(false)
+    expect(runs('workflow_dispatch', null)).toBe(true)
+  })
+
   it('only rewrites an existing preview comment', () => {
     const comment = loadWorkflow('preview-destroy.yml').jobs.comment?.steps?.find((step) =>
       step.uses?.startsWith('marocchino/sticky-pull-request-comment@'),

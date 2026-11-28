@@ -50,6 +50,8 @@ export type PerPrStackArgs = {
   cliDeviceRegistrationEnabled: boolean
   /** Lets a personal access token reach the confidential (Tinfoil) routes. */
   confidentialApiKeysEnabled: boolean
+  /** A maintainer-dispatched fork PR: its backend gets no Exa or Tinfoil key. */
+  forkPreview: boolean
   /** Operator branding JSON (env: BRANDING). Empty ships the default look. */
   branding: string
   /** Optional transactional email delivery, configured per stack. */
@@ -70,11 +72,45 @@ export type PerPrStackOutputs = {
 /** Stable priority offset for per-PR listener rules. Shared stack uses 1-99. */
 const PR_RULE_PRIORITY_BASE = 100
 
-/** Derive a per-stack DB name from the Pulumi stack name (`preview-pr-846` → `preview_pr_846`). */
+/** Derive a per-stack DB (and role) name from the Pulumi stack name (`preview-pr-846` → `preview_pr_846`). */
 const dbNameFromStack = (stackName: string): string => stackName.replace(/[^a-z0-9]/gi, '_').toLowerCase()
 
-/** PowerSync bucket storage DB for a per-stack DB. Must match `backend-entrypoint.sh` and `drop-preview-db.sh`. */
+/** PowerSync bucket storage DB for a per-stack DB. Must match `dbInitScript` and `drop-preview-db.sh`. */
 const powersyncStorageDbName = (dbName: string): string => `${dbName}_ps_storage`
+
+/** Same major as the shared Postgres; pinned to the multi-arch index digest. */
+const postgresClientImage =
+  'public.ecr.aws/docker/library/postgres:18-alpine@sha256:0115267ab5a509022df9319c77be365cef335adb71556c75f60f5360ee247e71'
+
+/**
+ * Creates the preview's role (named after its DB) and both of its databases, owned by that
+ * role, then the `powersync` publication. Runs as the superuser in the backend task's
+ * `db-init` container, the only place the superuser password reaches. The role owns the database
+ * it connects into, so `PGOPTIONS` pins `search_path` past any objects or defaults it planted there.
+ */
+const dbInitScript = String.raw`set -eu
+until pg_isready -q; do sleep 2; done
+psql -v ON_ERROR_STOP=1 -v db="$PREVIEW_DB" -v pw="$PREVIEW_DB_PASSWORD" <<'SQL'
+-- Previews deploying at once would otherwise race on the same catalog rows below.
+SELECT pg_advisory_lock(hashtext('preview-db-init'));
+SELECT format('CREATE ROLE %I LOGIN REPLICATION', :'db') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'db') \gexec
+ALTER ROLE :"db" WITH LOGIN REPLICATION NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD :'pw';
+-- Databases the superuser created before per-preview roles: preview data is disposable, so start over.
+SELECT EXISTS (SELECT FROM pg_database WHERE datname IN (:'db', :'db' || '_ps_storage') AND datdba <> (SELECT oid FROM pg_roles WHERE rolname = :'db')) AS stale \gset
+\if :stale
+SELECT pg_terminate_backend(active_pid, 5000) FROM pg_replication_slots WHERE database = :'db' AND active_pid IS NOT NULL;
+SELECT pg_drop_replication_slot(slot_name) FROM pg_replication_slots WHERE database = :'db';
+SELECT format('DROP DATABASE IF EXISTS %I WITH (FORCE)', d) FROM unnest(ARRAY[:'db', :'db' || '_ps_storage']) AS d \gexec
+\endif
+SELECT format('CREATE DATABASE %I OWNER %I', d, :'db') FROM unnest(ARRAY[:'db', :'db' || '_ps_storage']) AS d WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = d) \gexec
+-- Only a database's owner and superusers may connect, so no preview reaches another's data.
+-- Keycloak connects as the superuser, which bypasses this.
+SELECT format('REVOKE CONNECT, TEMPORARY ON DATABASE %I FROM PUBLIC', datname) FROM pg_database WHERE NOT datistemplate \gexec
+\connect :"db"
+-- FOR ALL TABLES needs a superuser, so the role cannot create it; it also covers tables migrations add later.
+SELECT 'CREATE PUBLICATION powersync FOR ALL TABLES' WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_publication WHERE pubname = 'powersync') \gexec
+SQL
+`
 
 /**
  * Hash the stack name to a small offset for ALB rule priorities. Pulumi-managed
@@ -330,32 +366,34 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
     return s.arn
   })()
 
-  // DATABASE_URL points at the per-PR DB on shared Postgres. The backend's entrypoint
-  // (deploy/docker/backend-entrypoint.sh) creates the DB on first run if it doesn't
-  // exist using POSTGRES_ADMIN_URL.
+  // The backend and PowerSync connect as the preview's own role, never the superuser.
+  const dbRolePassword = new random.RandomPassword(`${name}-db-role-password`, {
+    length: 48,
+    special: false,
+  }).result
+  const dbRolePasswordSecret = new aws.secretsmanager.Secret(`${name}-db-role-password`, {
+    tags: { Name: `${name}-db-role-password` },
+  })
+  new aws.secretsmanager.SecretVersion(`${name}-db-role-password-version`, {
+    secretId: dbRolePasswordSecret.id,
+    secretString: dbRolePassword,
+  })
+
   const databaseUrlSecret = new aws.secretsmanager.Secret(`${name}-database-url`, {
     tags: { Name: `${name}-database-url` },
   })
   new aws.secretsmanager.SecretVersion(`${name}-database-url-version`, {
     secretId: databaseUrlSecret.id,
-    secretString: pulumi.interpolate`postgresql://postgres:${shared.postgresPassword}@${shared.postgresHost}:${shared.postgresPort}/${dbName}`,
+    secretString: pulumi.interpolate`postgresql://${dbName}:${dbRolePassword}@${shared.postgresHost}:${shared.postgresPort}/${dbName}`,
   })
 
-  const postgresAdminUrlSecret = new aws.secretsmanager.Secret(`${name}-postgres-admin-url`, {
-    tags: { Name: `${name}-postgres-admin-url` },
-  })
-  new aws.secretsmanager.SecretVersion(`${name}-postgres-admin-url-version`, {
-    secretId: postgresAdminUrlSecret.id,
-    secretString: pulumi.interpolate`postgresql://postgres:${shared.postgresPassword}@${shared.postgresHost}:${shared.postgresPort}/postgres`,
-  })
-
-  // PowerSync's bucket storage DB, created by the backend entrypoint.
+  // PowerSync's bucket storage DB, created by the backend task's db-init container.
   const powersyncStorageUrlSecret = new aws.secretsmanager.Secret(`${name}-powersync-storage-url`, {
     tags: { Name: `${name}-powersync-storage-url` },
   })
   new aws.secretsmanager.SecretVersion(`${name}-powersync-storage-url-version`, {
     secretId: powersyncStorageUrlSecret.id,
-    secretString: pulumi.interpolate`postgresql://postgres:${shared.postgresPassword}@${shared.postgresHost}:${shared.postgresPort}/${powersyncStorageDbName(dbName)}`,
+    secretString: pulumi.interpolate`postgresql://${dbName}:${dbRolePassword}@${shared.postgresHost}:${shared.postgresPort}/${powersyncStorageDbName(dbName)}`,
   })
 
   // PowerSync takes the shared JWT secret base64-encoded, which ECS can't do on
@@ -384,7 +422,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
             betterAuthSecretArn,
             debugTranscriptKeySecret.arn,
             databaseUrlSecret.arn,
-            postgresAdminUrlSecret.arn,
+            dbRolePasswordSecret.arn,
             powersyncStorageUrlSecret.arn,
             powersyncJwtKeySecret.arn,
             oidcClientSecretArn,
@@ -393,8 +431,8 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
             shared.anthropicApiKeySecretArn,
             shared.fireworksApiKeySecretArn,
             shared.thunderboltInferenceApiKeySecretArn,
-            shared.exaApiKeySecretArn,
-            shared.tinfoilApiKeySecretArn,
+            shared.postgresAdminPasswordSecretArn,
+            ...(args.forkPreview ? [] : [shared.exaApiKeySecretArn, shared.tinfoilApiKeySecretArn]),
           ],
         },
       ],
@@ -412,7 +450,8 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
   const marketingUrl = pulumi.interpolate`https://${args.hostnames.marketing}`
   const powersyncUrl = pulumi.interpolate`https://${args.hostnames.powersync}`
 
-  const email = createBackendEmail(name, execRole.name, args.email)
+  // A fork preview runs fork-built code, so it gets no key to send mail from our domain.
+  const email = createBackendEmail(name, execRole.name, args.forkPreview ? undefined : args.email)
   const beTaskDef = new aws.ecs.TaskDefinition(`${name}-be-task`, {
     family: `${name}-backend`,
     requiresCompatibilities: ['FARGATE'],
@@ -423,9 +462,30 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
     taskRoleArn: taskRole.arn,
     containerDefinitions: pulumi.jsonStringify([
       {
+        name: 'db-init',
+        image: postgresClientImage,
+        essential: false,
+        entryPoint: ['sh', '-c'],
+        command: [dbInitScript],
+        environment: [
+          { name: 'PGHOST', value: shared.postgresHost },
+          { name: 'PGPORT', value: pulumi.interpolate`${shared.postgresPort}` },
+          { name: 'PGUSER', value: 'postgres' },
+          { name: 'PGDATABASE', value: 'postgres' },
+          { name: 'PREVIEW_DB', value: dbName },
+          { name: 'PGOPTIONS', value: '-c search_path=pg_catalog,pg_temp' },
+        ],
+        secrets: [
+          { name: 'PGPASSWORD', valueFrom: shared.postgresAdminPasswordSecretArn },
+          { name: 'PREVIEW_DB_PASSWORD', valueFrom: dbRolePasswordSecret.arn },
+        ],
+        logConfiguration: logConfig('db-init'),
+      },
+      {
         name: 'backend',
         image: beImage,
         essential: true,
+        dependsOn: [{ containerName: 'db-init', condition: 'SUCCESS' }],
         environment: [
           ...email.environment,
           { name: 'NODE_ENV', value: 'production' },
@@ -470,7 +530,6 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
         secrets: [
           ...email.secrets,
           { name: 'DATABASE_URL', valueFrom: databaseUrlSecret.arn },
-          { name: 'POSTGRES_ADMIN_URL', valueFrom: postgresAdminUrlSecret.arn },
           { name: 'OIDC_CLIENT_SECRET', valueFrom: oidcClientSecretArn },
           { name: 'BETTER_AUTH_SECRET', valueFrom: betterAuthSecretArn },
           { name: 'DEBUG_TRANSCRIPT_UPSTREAM_KEY', valueFrom: debugTranscriptKeySecret.arn },
@@ -478,8 +537,12 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
           { name: 'ANTHROPIC_API_KEY', valueFrom: shared.anthropicApiKeySecretArn },
           { name: 'FIREWORKS_API_KEY', valueFrom: shared.fireworksApiKeySecretArn },
           { name: 'THUNDERBOLT_INFERENCE_API_KEY', valueFrom: shared.thunderboltInferenceApiKeySecretArn },
-          { name: 'EXA_API_KEY', valueFrom: shared.exaApiKeySecretArn },
-          { name: 'TINFOIL_API_KEY', valueFrom: shared.tinfoilApiKeySecretArn },
+          ...(args.forkPreview
+            ? []
+            : [
+                { name: 'EXA_API_KEY', valueFrom: shared.exaApiKeySecretArn },
+                { name: 'TINFOIL_API_KEY', valueFrom: shared.tinfoilApiKeySecretArn },
+              ]),
         ],
         portMappings: [{ containerPort: 8000 }],
         logConfiguration: logConfig('backend'),
@@ -571,10 +634,9 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
   )
 
   // Built from this PR's commit, so a sync-config change is exercised by its own
-  // preview. Replicates the per-PR DB as the postgres superuser, which already
-  // holds REPLICATION and reads every table; the backend entrypoint creates the
-  // storage DB and the `powersync` publication. Until it has, PowerSync exits
-  // and ECS restarts it.
+  // preview. Replicates the per-PR DB as the preview's role, which owns it and
+  // holds REPLICATION; the backend task's db-init container creates both DBs and
+  // the `powersync` publication. Until it has, PowerSync exits and ECS restarts it.
   const psTaskDef = new aws.ecs.TaskDefinition(`${name}-ps-task`, {
     family: `${name}-powersync`,
     requiresCompatibilities: ['FARGATE'],

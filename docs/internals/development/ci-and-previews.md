@@ -21,6 +21,7 @@ Also part of the same machinery:
 | `preview-cleanup.yml`         | Hourly cron                                                       |
 | `previews-shared-deploy.yml`  | Manual, plus Mondays 07:00 UTC                                    |
 | `nightly-images.yml`          | 05:00 UTC                                                         |
+| `ghcr-cleanup.yml`            | Daily 06:30 UTC (+ manual dry run)                                |
 | `images-publish.yml`          | Push to `main` under a path filter, or called by `preview-deploy` |
 | `image-scan.yml`              | After `images-publish` or `nightly-images` succeeds, plus manual  |
 | `evals.yml`, `test-build.yml` | Manual only                                                       |
@@ -239,7 +240,7 @@ only deploys for PRs that change a preview input ([Previews are path-gated](#gat
 | Render (auto)           | `https://thunderbolt-pr-<n>.onrender.com`                                     | The web app, deployed by Render                                                                 | Quick UI checks                                                                                                                                          |
 | Pulumi stack on Fargate | `app-pr-<n>.preview.thunderbolt.io` (plus `api-pr-<n>`, `thunderbolt-pr-<n>`) | The PR's own backend, frontend and marketing services, with their own logical Postgres database | Sync, SSO, migrations, cross-device behaviour and signed-out Lighthouse scores; use the [performance harness](performance.md) for signed-in measurements |
 
-Fork PRs get the Pulumi preview only after a maintainer approves the run (see
+Fork PRs get the Pulumi preview only when a maintainer dispatches one (see
 [Preview lifecycle](#preview-lifecycle)).
 
 ### Render preview
@@ -286,27 +287,28 @@ Each PR gets its own OIDC client in the shared Keycloak realm, so a PR needing d
 realm config or different PowerSync sync rules must fall back to a monolithic deploy with
 `shared_stack_name` empty ([SHARED.md](../../../deploy/pulumi/SHARED.md)).
 
-### Fork PRs need approval on every push
+### Fork previews: a maintainer dispatches them
 
-They deploy through `pull_request_target` behind the `fork-preview-approval` environment,
-so a maintainer approves **every push**, not every PR; that is why a fork preview sits
-pending. Under that trigger the workflow file and the Pulumi program come from `main`, so
-a fork can change image contents but never the infrastructure code. The approval job's
-name shows the commit SHA the run will build.
-
-The approval job fails unless the environment has required reviewers. GitHub creates a
-missing environment with no rules, and an environment without reviewers would let the job
-start unapproved. Same-repo PRs skip this gate: only collaborators with write access can
-push a branch here, and their previews deploy automatically.
+A fork PR's `pull_request` run gets no secrets, so it deploys nothing. After reading the
+change, a maintainer runs `preview-deploy.yml` with `workflow_dispatch` from `main`, the
+PR's `pr_number`, and the `head_sha` they reviewed; the run fails if the PR has moved past
+it. That commit goes into the images, but `main`'s workflow and Pulumi program deploy them,
+so a fork can change image contents but never the infrastructure code. A new push to the
+fork needs a new review and dispatch. A fork preview's backend gets no Exa, Tinfoil or
+email key, but it still holds the model provider keys, its own database's URL and the
+PowerSync signing secret every preview shares, so read the change as code that will run
+with them. Same-repo PRs deploy automatically: only collaborators
+with write access can push a branch here.
 
 ### Teardown: on close, hourly, and by hand
 
-`preview-destroy.yml` fires on PR close. Every preview destroy, on close, hourly or by
+`preview-destroy.yml` fires when a same-repo PR closes. A fork PR's close event gets no
+secrets, so the hourly cleanup removes a fork's stack instead. Every preview destroy, on close, hourly or by
 hand, goes through `stack-deploy.yml`'s `destroy` job, which runs
 `scripts/drop-preview-db.sh` before `pulumi destroy` because it needs the per-stack
 secrets and backend task definition the stack owns; destroy runs even if the drop fails,
 so a flaky drop cannot orphan an ALB and leak cost. A failed drop then fails the job, and
-the databases and slot it left need dropping by hand. The hourly cleanup sends a failure
+the databases, role and slot it left need dropping by hand. The hourly cleanup sends a failure
 notification; on PR close the failure shows only in that run and in the PR's preview
 comment, because `notify-on-failure.yml` alerts only for runs on `main`. One operation
 runs on a stack at a time, and a newer queued operation replaces one still waiting, so a
@@ -314,10 +316,9 @@ close-time destroy superseded by the hourly cleanup says so in the preview comme
 cleanup finishes the teardown. A PR that never had a preview gets no teardown
 comment.
 
-Pulumi does not remove the logical database that `deploy/docker/backend-entrypoint.sh`
-creates per PR at backend startup on the shared Postgres instance (when
-`POSTGRES_ADMIN_URL` is set). Left behind, its `__drizzle_migrations` hashes leak into the
-next deploy of the same PR number and `drizzle-kit` fails once a migration has been
+Pulumi does not remove the Postgres role and logical databases that the backend task's
+`db-init` container creates per PR on the shared Postgres instance. Left behind, the app
+database's `__drizzle_migrations` hashes leak into the next deploy of the same PR number and `drizzle-kit` fails once a migration has been
 re-edited.
 
 `preview-cleanup.yml` is the hourly safety net for a failed teardown, a PR closed out of
@@ -332,6 +333,17 @@ band, or an open PR idle beyond `max_age_days` (default 3).
 Both accept a `pr_number` via `workflow_dispatch`, to redeploy after a failed run or force
 a teardown.
 
+### Image cleanup
+
+`ghcr-cleanup.yml` runs daily on the six `thunderbolt-*` GHCR packages. It deletes `pr-*`
+tags older than 14 days, except those of open PRs and of PRs labelled `preview:persist`,
+then untagged images older than 90 days that no tagged image uses. Release, `latest` and
+`buildcache` tags are never selected. Untagged images wait longer because an ECS service
+pins the digest it deployed, so one not redeployed since its tag moved still needs that
+image to replace its tasks. A `workflow_dispatch` is a dry run unless `dry_run` is
+unticked. Deleting needs the repository to hold the Admin role under each package's
+Manage Actions access.
+
 ## Scripts the pipeline depends on
 
 | Script                                                  | Invoked by                                           | Notes                                                                           |
@@ -341,7 +353,7 @@ a teardown.
 | `crates/thunderbolt-acp-client/build.sh`                | You, by hand                                         | Regenerates `src/acp/iroh/pkg`; `--verify` reproduces the checksums             |
 | `crates/thunderbolt-acp-client/source-manifest.sh`      | `build.sh` and `ci.yml` `wasm-artifact` job          | Hashes current crate inputs for `SOURCES.txt`                                   |
 | `crates/thunderbolt-acp-client/source-manifest.test.sh` | `ci.yml` `wasm-artifact` job                         | Tests source drift and build failures without a wasm toolchain                  |
-| `scripts/drop-preview-db.sh`                            | `stack-deploy.yml` `destroy` job                     | Drops the per-PR logical database before `pulumi destroy`; idempotent           |
+| `scripts/drop-preview-db.sh`                            | `stack-deploy.yml` `destroy` job                     | Drops the per-PR databases and role before `pulumi destroy`; idempotent         |
 | `.github/scripts/review-orchestrator.mjs`               | `thunder-deep-review.yml`                            | All GitHub I/O for the review bot; unit-tested by `bun run test`                |
 | `.github/scripts/post-pr-metrics.cjs`                   | `pr-metrics.yml`                                     | Renders the metrics comment; unit-tested by `bun run test`                      |
 | `.github/scripts/post-eval-results.ts`                  | `evals.yml`                                          | Unit-tested by `bun run test`                                                   |

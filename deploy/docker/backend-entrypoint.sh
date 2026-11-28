@@ -11,19 +11,15 @@ if [ "$IS_PULL_REQUEST" = "true" ] && [ -n "$RENDER_EXTERNAL_URL" ]; then
   export CORS_ORIGINS="${CORS_ORIGINS:+${CORS_ORIGINS},}${RENDER_EXTERNAL_URL}"
 fi
 
-# Shared-postgres preview model (THU-495): when POSTGRES_ADMIN_URL is set, this
-# backend is one of many PR previews sharing a single Postgres instance. Each PR
-# gets its own logical database named after the stack (e.g. `pr_846`). The Pulumi
-# per-pr stack passes:
-#   - DATABASE_URL: postgres://...:.../pr_846
-#   - POSTGRES_ADMIN_URL: postgres://postgres:.../postgres   (admin on default DB)
-# We connect to admin first, ensure the per-stack DB and its PowerSync storage DB
-# (`<db>_ps_storage`) exist, then create the `powersync` publication the PR's own
+# When POSTGRES_ADMIN_URL is set (an admin URL on the server's default DB), we
+# connect to admin first, ensure the DATABASE_URL database and its PowerSync
+# storage DB (`<db>_ps_storage`) exist, then create the `powersync` publication
 # PowerSync replicates from. `FOR ALL TABLES` also covers tables created later,
 # so it can precede the migrations the server applies when it starts.
+# Pulumi previews no longer set it: their backend task's db-init container does this.
 #
-# Legacy stacks (POSTGRES_ADMIN_URL unset) skip this entirely: they have a
-# dedicated Postgres container with the target DB pre-created at boot.
+# Without POSTGRES_ADMIN_URL this is skipped entirely: the target DB is expected
+# to exist already.
 if [ -n "$POSTGRES_ADMIN_URL" ]; then
   WAIT_URL="$POSTGRES_ADMIN_URL"
 else

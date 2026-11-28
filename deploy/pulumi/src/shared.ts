@@ -91,13 +91,6 @@ export type SharedStackOutputs = {
   postgresHost: pulumi.Output<string>
   postgresPort: pulumi.Output<number>
   postgresAdminPasswordSecretArn: pulumi.Output<string>
-  /**
-   * Plaintext postgres admin password, sourced from the shared stack's
-   * `random.RandomPassword`. Exported so per-PR stacks can `pulumi.interpolate`
-   * it into DATABASE_URL strings without round-tripping through Secrets Manager
-   * at preview time. Pulumi state is encrypted at rest so this is safe.
-   */
-  postgresPassword: pulumi.Output<string>
   /** Per-PR backends sign JWTs with this; per-PR PowerSync verifies. Same secret across all PRs. */
   powersyncJwtSecretArn: pulumi.Output<string>
   /** Per-PR backends fetch tokens from `${keycloakIssuerUrl}/.well-known/...`. */
@@ -115,7 +108,7 @@ export type SharedStackOutputs = {
    * Admin password for the Keycloak admin API. Exposed in plaintext through
    * StackReference (encrypted at rest in Pulumi state) so per-PR stacks can
    * construct the keycloak.Provider without a Secrets Manager round-trip at
-   * preview time. Same pattern as `postgresPassword`.
+   * preview time.
    */
   keycloakAdminPassword: pulumi.Output<string>
 
@@ -551,7 +544,6 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
     postgresHost: pulumi.output(`postgres.${NAMESPACE_DOMAIN}`),
     postgresPort: pulumi.output(5432),
     postgresAdminPasswordSecretArn: postgresPasswordSecret.arn,
-    postgresPassword: args.postgresPassword,
     powersyncJwtSecretArn: powersyncJwtSecretSecret.arn,
     keycloakIssuerUrl: pulumi.interpolate`${kcAuthUrl}/realms/${keycloakRealm}`,
     keycloakUrl: kcAuthUrl,
@@ -596,7 +588,6 @@ export const loadSharedStackOutputs = (ref: pulumi.StackReference): SharedStackO
     postgresHost: get<string>('postgresHost'),
     postgresPort: get<number>('postgresPort'),
     postgresAdminPasswordSecretArn: get<string>('postgresAdminPasswordSecretArn'),
-    postgresPassword: get<string>('postgresPassword'),
     powersyncJwtSecretArn: get<string>('powersyncJwtSecretArn'),
     keycloakIssuerUrl: get<string>('keycloakIssuerUrl'),
     keycloakUrl: get<string>('keycloakUrl'),

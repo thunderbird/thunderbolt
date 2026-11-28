@@ -7,8 +7,9 @@
 # -----------------------------------------------------------------------------
 # drop-preview-db.sh
 # -----------------------------------------------------------------------------
-# Drops the per-stack logical Postgres databases for a PR preview environment:
-# the app DB and its PowerSync storage DB (`<db>_ps_storage`).
+# Drops the per-stack logical Postgres databases for a PR preview environment,
+# the app DB and its PowerSync storage DB (`<db>_ps_storage`), and the
+# preview's own Postgres role.
 #
 # The shared-postgres preview model (THU-495) gives each PR its own logical DB
 # (e.g. `preview_pr_851`) on a single shared Postgres instance. Pulumi destroy
@@ -19,10 +20,9 @@
 #
 # This script runs as part of `Preview Destroy` *before* `pulumi destroy`,
 # while the per-stack secrets and backend task definition still exist. It
-# stops the stack's PowerSync service, registers a one-off task definition
-# derived from the backend's, overrides the entryPoint to bypass the
-# migrate-on-boot logic, and drops PowerSync's replication slots and both
-# databases against `POSTGRES_ADMIN_URL`. A stopped Fargate task rarely closes its
+# stops the stack's PowerSync service, registers a one-off task definition from
+# the backend task's `db-init` container (the only one holding the superuser
+# password), and drops PowerSync's replication slots, both databases and the role. A stopped Fargate task rarely closes its
 # replication connection cleanly, so Postgres keeps the slot active until its WAL
 # sender times out; the drop ends that connection first. A slot left behind would block the
 # drop and pin WAL on the shared instance.
@@ -89,13 +89,30 @@ trap 'rm -rf "$WORKDIR"' EXIT
 aws ecs describe-task-definition --task-definition "$TASKDEF" --region "$AWS_REGION" \
   --query 'taskDefinition' > "$WORKDIR/source.json"
 
-DROP_CMD='bun -e '\''import postgres from "postgres"; const target = new URL(process.env.DATABASE_URL); const dbName = target.pathname.replace(/^\//, ""); if (!/^[a-zA-Z0-9_]+$/.test(dbName)) { console.error("refusing drop on invalid name:", dbName); process.exit(1); } const admin = postgres(process.env.POSTGRES_ADMIN_URL); await admin`SELECT pg_terminate_backend(active_pid, 5000) FROM pg_replication_slots WHERE database = ${dbName} AND active_pid IS NOT NULL`; const slots = await admin`SELECT slot_name FROM pg_replication_slots WHERE database = ${dbName}`; for (const { slot_name } of slots) { console.log("dropping slot", slot_name); await admin`SELECT pg_drop_replication_slot(${slot_name})`; } for (const name of [dbName, dbName + "_ps_storage"]) { console.log("dropping", name); await admin.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`); } await admin.end(); console.log("done")'\'
-
-jq --arg cmd "$DROP_CMD" --arg family "tb-${STACK}-db-drop" '
-  {containerDefinitions, family: $family, taskRoleArn, executionRoleArn, networkMode, requiresCompatibilities, cpu, memory}
-  | .containerDefinitions[0].entryPoint = ["sh", "-c"]
-  | .containerDefinitions[0].command = [$cmd]
-' "$WORKDIR/source.json" > "$WORKDIR/drop-taskdef.json"
+if jq -e '.containerDefinitions | any(.name == "db-init")' "$WORKDIR/source.json" >/dev/null; then
+  read -r -d '' DROP_CMD <<'EOF' || true
+psql -v ON_ERROR_STOP=1 -v db="$PREVIEW_DB" <<'SQL'
+-- Same lock as db-init, whose REVOKE would fail on a database dropped mid-statement.
+SELECT pg_advisory_lock(hashtext('preview-db-init'));
+SELECT pg_terminate_backend(active_pid, 5000) FROM pg_replication_slots WHERE database = :'db' AND active_pid IS NOT NULL;
+SELECT pg_drop_replication_slot(slot_name) FROM pg_replication_slots WHERE database = :'db';
+SELECT format('DROP DATABASE IF EXISTS %I WITH (FORCE)', d) FROM unnest(ARRAY[:'db', :'db' || '_ps_storage']) AS d \gexec
+DROP ROLE IF EXISTS :"db";
+SQL
+EOF
+  jq --arg cmd "$DROP_CMD" --arg family "tb-${STACK}-db-drop" '
+    {containerDefinitions, family: $family, taskRoleArn, executionRoleArn, networkMode, requiresCompatibilities, cpu, memory}
+    | .containerDefinitions |= map(select(.name == "db-init") | .essential = true | .command = [$cmd])
+  ' "$WORKDIR/source.json" > "$WORKDIR/drop-taskdef.json"
+else
+  # Stacks deployed before per-preview roles: the backend container holds POSTGRES_ADMIN_URL.
+  DROP_CMD='bun -e '\''import postgres from "postgres"; const target = new URL(process.env.DATABASE_URL); const dbName = target.pathname.replace(/^\//, ""); if (!/^[a-zA-Z0-9_]+$/.test(dbName)) { console.error("refusing drop on invalid name:", dbName); process.exit(1); } const admin = postgres(process.env.POSTGRES_ADMIN_URL, { max: 1 }); await admin`SELECT pg_advisory_lock(hashtext(${"preview-db-init"}))`; await admin`SELECT pg_terminate_backend(active_pid, 5000) FROM pg_replication_slots WHERE database = ${dbName} AND active_pid IS NOT NULL`; const slots = await admin`SELECT slot_name FROM pg_replication_slots WHERE database = ${dbName}`; for (const { slot_name } of slots) { console.log("dropping slot", slot_name); await admin`SELECT pg_drop_replication_slot(${slot_name})`; } for (const name of [dbName, dbName + "_ps_storage"]) { console.log("dropping", name); await admin.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`); } await admin.end(); console.log("done")'\'
+  jq --arg cmd "$DROP_CMD" --arg family "tb-${STACK}-db-drop" '
+    {containerDefinitions, family: $family, taskRoleArn, executionRoleArn, networkMode, requiresCompatibilities, cpu, memory}
+    | .containerDefinitions[0].entryPoint = ["sh", "-c"]
+    | .containerDefinitions[0].command = [$cmd]
+  ' "$WORKDIR/source.json" > "$WORKDIR/drop-taskdef.json"
+fi
 
 DROP_TASKDEF=$(aws ecs register-task-definition --cli-input-json "file://$WORKDIR/drop-taskdef.json" --region "$AWS_REGION" \
   --query 'taskDefinition.taskDefinitionArn' --output text)
@@ -118,9 +135,9 @@ EXIT_CODE=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK_ARN" --re
 log "Drop task exit code: $EXIT_CODE"
 
 TASK_ID="${TASK_ARN##*/}"
-LOG_GROUP=$(jq -r '.containerDefinitions[0].logConfiguration.options."awslogs-group"' "$WORKDIR/source.json")
-LOG_PREFIX=$(jq -r '.containerDefinitions[0].logConfiguration.options."awslogs-stream-prefix"' "$WORKDIR/source.json")
-CONTAINER_NAME=$(jq -r '.containerDefinitions[0].name' "$WORKDIR/source.json")
+LOG_GROUP=$(jq -r '.containerDefinitions[0].logConfiguration.options."awslogs-group"' "$WORKDIR/drop-taskdef.json")
+LOG_PREFIX=$(jq -r '.containerDefinitions[0].logConfiguration.options."awslogs-stream-prefix"' "$WORKDIR/drop-taskdef.json")
+CONTAINER_NAME=$(jq -r '.containerDefinitions[0].name' "$WORKDIR/drop-taskdef.json")
 log "--- task logs ---"
 aws logs get-log-events \
   --log-group-name "$LOG_GROUP" \

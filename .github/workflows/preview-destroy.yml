@@ -4,15 +4,12 @@ name: Preview Destroy
 # Also supports manual teardown via workflow_dispatch (e.g. to clean up an orphan
 # or force-destroy a stack outside normal PR lifecycle).
 #
-# Uses `pull_request_target` (rather than `pull_request`) so we have secrets
-# available for fork-PR closures — fork-PR previews are now deployed via the
-# pull_request_target path in preview-deploy.yml, and need to be torn down
-# the same way. No approval gate needed on destroy: no fork code is checked
-# out (we run our own scripts from main against the stack name), so there's
-# nothing untrusted executing with credentials.
+# Same-repo PRs tear down on close. A fork PR's close event has no secrets, so
+# its stack (only exists if a maintainer dispatched one) is removed by the
+# hourly preview-cleanup.yml.
 
 on:
-  pull_request_target:
+  pull_request:
     types: [closed]
     branches: [main]
   workflow_dispatch:
@@ -29,6 +26,8 @@ permissions:
 
 jobs:
   resolve-pr:
+    # A fork PR's close event gets no secrets; the hourly preview-cleanup.yml removes its stack.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     outputs:
       pr_number: ${{ steps.resolve.outputs.pr_number }}
@@ -44,10 +43,6 @@ jobs:
           else
             echo "pr_number=$PR_NUMBER_FROM_EVENT" >> $GITHUB_OUTPUT
           fi
-          # No fork gate: destroys are idempotent (drop-preview-db.sh exits
-          # cleanly if the stack's resources are missing; Pulumi destroy
-          # likewise no-ops on already-gone resources), and fork-PR previews
-          # are now real things that need teardown on close.
 
   # stack-deploy's destroy job drops the PR's databases before `pulumi destroy`.
   destroy:

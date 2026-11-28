@@ -9,20 +9,12 @@ name: Preview Deploy
 #   auth-pr-{N}.preview.thunderbolt.io          → keycloak OIDC
 #   powersync-pr-{N}.preview.thunderbolt.io     → powersync
 #
-# Fork PRs are supported via the `pull_request_target` trigger, gated behind
-# the `fork-preview-approval` environment so a maintainer must explicitly
-# approve each run (including each new push). Internal (same-repo) PRs use
-# `pull_request` and deploy automatically: only collaborators with write access
+# Same-repo PRs deploy on `pull_request`: only collaborators with write access
 # can push a branch here, and they are trusted with the preview credentials.
-#
-# Trust boundary: under `pull_request_target`, the workflow file is read from
-# main (so a fork cannot modify how the deploy behaves) and the default
-# `actions/checkout` in `stack-deploy.yml` picks up main's Pulumi program —
-# meaning fork PRs deploy main's infrastructure code with the fork's built
-# images. The maintainer-approval gate is the human check on what's in those
-# images; nothing on the runner ever executes fork shell scripts with secrets.
-#
-# Also supports workflow_dispatch for manual testing from any branch.
+# A fork PR's `pull_request` run has no secrets and deploys nothing. A
+# maintainer deploys a fork preview with workflow_dispatch (pr_number and the
+# head_sha they reviewed) from main: that run builds that commit into the
+# images, but the workflow file and Pulumi program come from the dispatched ref.
 
 on:
   pull_request:
@@ -30,7 +22,7 @@ on:
     branches: [main]
     # Only PRs that change what the preview images or stack are built from.
     # Test-only changes never trigger one. workflow_dispatch forces one for any PR.
-    paths: &preview-inputs
+    paths:
       - 'deploy/docker/*.Dockerfile'
       - 'deploy/docker/backend-entrypoint.sh'
       - 'deploy/docker/postgres-init/**'
@@ -76,24 +68,21 @@ on:
       - 'e2e/preview-smoke.spec.ts'
       - 'scripts/chrome.ts'
       - '!**/*.test.*'
-  pull_request_target:
-    types: [opened, synchronize, reopened]
-    branches: [main]
-    paths: *preview-inputs
   workflow_dispatch:
     inputs:
       pr_number:
         description: 'PR number to deploy a preview for'
         type: string
         required: true
+      head_sha:
+        description: 'Head commit you reviewed (required for a fork PR; the run fails if the PR has moved on)'
+        type: string
+        required: false
 
 concurrency:
-  # Runs that can deploy (same-repo pull_request, fork pull_request_target, dispatch)
-  # share the `deploy` group, so a new push cancels any pending or running deploy of
-  # the old head, approved or not. Each PR event also leaves a no-op run (fork
-  # pull_request, same-repo pull_request_target); it keeps its event name as its
-  # group so it cannot cancel the real one.
-  group: preview-pr-${{ github.event.pull_request.number || inputs.pr_number }}-${{ (github.event_name == 'pull_request') == (github.event.pull_request.head.repo.full_name != github.repository) && github.event_name || 'deploy' }}
+  # Same-repo pushes and dispatches share `deploy`, so a push cancels an older deploy, dispatched ones
+  # included. A fork's no-op pull_request runs stay in their own group so they cannot cancel a dispatch.
+  group: preview-pr-${{ github.event.pull_request.number || inputs.pr_number }}-${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'fork' || 'deploy' }}
   cancel-in-progress: true
 
 permissions:
@@ -121,14 +110,9 @@ jobs:
           EVENT_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           EVENT_BASE_REPO: ${{ github.repository }}
           INPUT_PR_NUMBER: ${{ inputs.pr_number }}
+          INPUT_HEAD_SHA: ${{ inputs.head_sha }}
         run: |
           set -euo pipefail
-          # Both pull_request and pull_request_target fire for every PR. We
-          # claim each event for exactly one path so the same PR doesn't try
-          # to deploy twice:
-          #   pull_request         → handle ONLY internal (same-repo) PRs
-          #   pull_request_target  → handle ONLY fork PRs (with approval gate)
-          #   workflow_dispatch    → handle either; forks still hit the gate
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             PR_NUM="$INPUT_PR_NUMBER"
             HEAD_SHA=$(gh pr view "$PR_NUM" --repo "$EVENT_BASE_REPO" --json headRefOid -q .headRefOid)
@@ -144,15 +128,19 @@ jobs:
             IS_FORK=true
           fi
 
+          # A fork PR's pull_request run has no secrets; a maintainer deploys it with workflow_dispatch.
           if [ "$EVENT_NAME" = "pull_request" ] && [ "$IS_FORK" = "true" ]; then
-            echo "proceed=false" >> $GITHUB_OUTPUT
-            echo "Fork PR — pull_request_target will handle this; exiting."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Fork PR: a maintainer can deploy its preview with workflow_dispatch (pr_number=$PR_NUM, head_sha=$HEAD_SHA)."
             exit 0
           fi
-          if [ "$EVENT_NAME" = "pull_request_target" ] && [ "$IS_FORK" = "false" ]; then
-            echo "proceed=false" >> $GITHUB_OUTPUT
-            echo "Internal PR — pull_request already handled this; exiting."
-            exit 0
+
+          # Pin a fork dispatch to the commit the maintainer reviewed, not whatever was pushed since.
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && { [ "$IS_FORK" = "true" ] || [ -n "$INPUT_HEAD_SHA" ]; }; then
+            if [ "$INPUT_HEAD_SHA" != "$HEAD_SHA" ]; then
+              echo "::error::PR #$PR_NUM head is $HEAD_SHA, not the reviewed head_sha '${INPUT_HEAD_SHA}'. Review the new commits and dispatch again."
+              exit 1
+            fi
           fi
 
           echo "pr_number=$PR_NUM" >> $GITHUB_OUTPUT
@@ -161,43 +149,10 @@ jobs:
           echo "proceed=true" >> $GITHUB_OUTPUT
           echo "PR #$PR_NUM @ $HEAD_SHA (fork=$IS_FORK, event=$EVENT_NAME)"
 
-  approve-fork:
-    # Required-reviewer gate for fork PRs. Configure required reviewers on the
-    # `fork-preview-approval` environment in repo Settings → Environments.
-    # Each new push to a fork PR re-enters this gate (concurrency cancels the
-    # prior pending run), so approval is per-commit, not per-PR. The name carries
-    # the SHA so the reviewer sees exactly which commit they approve.
-    name: 'Approve fork preview of PR #${{ needs.resolve.outputs.pr_number }} at ${{ needs.resolve.outputs.head_sha }}'
-    needs: resolve
-    if: needs.resolve.outputs.proceed == 'true' && needs.resolve.outputs.is_fork == 'true'
-    runs-on: ubuntu-latest
-    environment: fork-preview-approval
-    permissions:
-      actions: read # read the environment's protection rules
-    steps:
-      - name: Require reviewers on the approval environment
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          # GitHub creates a missing environment without rules, and an environment
-          # without reviewers starts this job unapproved. Fail closed in both cases.
-          gh api "repos/$REPO/environments/fork-preview-approval" \
-            | jq -e 'any(.protection_rules[]; .type == "required_reviewers" and (.reviewers | length) > 0)' >/dev/null \
-            || { echo "::error::The fork-preview-approval environment must have required reviewers."; exit 1; }
-
   publish:
-    needs: [resolve, approve-fork]
-    # Runs when resolve told us to proceed AND either:
-    #   - approve-fork ran and succeeded (fork path), OR
-    #   - approve-fork was skipped for a same-repo PR (internal path; no gate needed)
+    needs: resolve
     # !cancelled() rather than always(): a run cancelled by a newer push must not deploy.
-    if: |
-      !cancelled() &&
-      needs.resolve.outputs.proceed == 'true' &&
-      (needs.approve-fork.result == 'success' ||
-        (needs.approve-fork.result == 'skipped' && needs.resolve.outputs.is_fork == 'false'))
+    if: ${{ !cancelled() && needs.resolve.outputs.proceed == 'true' }}
     uses: ./.github/workflows/images-publish.yml
     with:
       # Preview stacks run on amd64 Fargate; skip the emulated arm64 build.
@@ -227,6 +182,7 @@ jobs:
       # previews are the only place a reviewer can exercise the PAT path, but
       # nothing should switch it on for every PR implicitly.
       confidential_api_keys_enabled: ${{ vars.PREVIEW_CONFIDENTIAL_API_KEYS_ENABLED == 'true' }}
+      fork_preview: ${{ needs.resolve.outputs.is_fork == 'true' }}
       # Per-PR stacks read VPC/ALB/postgres/keycloak/powersync from the long-lived
       # `previews-shared` stack via Pulumi StackReference. The shared stack must
       # exist before this runs; deploy it once via the `Previews Shared Deploy`
@@ -253,8 +209,10 @@ jobs:
     permissions:
       contents: read
     steps:
-      # Keep the default base ref under pull_request_target: never run fork code.
+      # Default ref: the merge commit of a same-repo PR, or the dispatched ref, so a fork's code never runs here.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -317,4 +275,4 @@ jobs:
 
             Stack: `preview-pr-${{ needs.resolve.outputs.pr_number }}` · Commit: `${{ needs.resolve.outputs.head_sha }}`
 
-            Auto-destroys on PR close/merge. Login via the bundled Keycloak realm — `demo@thunderbolt.io` / `demo` by default.
+            Destroyed when the PR closes (fork previews by the hourly cleanup). Login via the bundled Keycloak realm — `demo@thunderbolt.io` / `demo` by default.

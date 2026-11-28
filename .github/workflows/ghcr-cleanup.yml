@@ -1,0 +1,81 @@
+name: GHCR Cleanup
+
+# Daily: deletes preview image tags (pr-<n>-<sha>) older than 14 days, except those of open PRs and of
+# PRs labelled preview:persist, then untagged images older than 90 days that no tagged image uses.
+# Only pr-* tags are selected, so release, latest and buildcache tags are never deleted.
+# A dispatch is a dry run unless dry_run is unticked.
+
+on:
+  schedule:
+    - cron: '30 6 * * *' # after nightly-images (05:00 UTC)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'List what would be deleted without deleting it'
+        type: boolean
+        default: true
+
+concurrency:
+  group: ghcr-cleanup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: read # gh pr list
+    env:
+      PACKAGES: thunderbolt/thunderbolt-frontend,thunderbolt/thunderbolt-backend,thunderbolt/thunderbolt-postgres,thunderbolt/thunderbolt-keycloak,thunderbolt/thunderbolt-powersync,thunderbolt/thunderbolt-marketing
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+    steps:
+      - name: List the preview tags to keep
+        id: keep
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Open PRs may have a running preview; persist-labelled ones keep theirs after closing.
+          # Separate assignments, so a failed lookup stops the job instead of shrinking the keep list.
+          open=$(gh pr list -R "$GITHUB_REPOSITORY" --state open --limit 1000 --json number -q '.[].number')
+          persist=$(gh pr list -R "$GITHUB_REPOSITORY" --state all --label preview:persist --limit 1000 --json number -q '.[].number')
+          numbers=$(printf '%s\n%s\n' "$open" "$persist" | sort -un)
+          echo "tags=$(for n in $numbers; do echo "pr-$n-*"; done | paste -sd, -)" >> "$GITHUB_OUTPUT"
+
+      - name: Delete old preview tags
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          packages: ${{ env.PACKAGES }}
+          delete-tags: pr-*
+          exclude-tags: ${{ steps.keep.outputs.tags }}
+          delete-untagged: false
+          older-than: 14 days
+          dry-run: ${{ env.DRY_RUN }}
+
+      # Untagged images wait longer: an ECS service pins the digest of the image it deployed, so a
+      # service not redeployed since its tag moved would fail to replace its tasks.
+      - name: Delete old untagged images
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          packages: ${{ env.PACKAGES }}
+          delete-untagged: true
+          older-than: 90 days
+          validate: true
+          dry-run: ${{ env.DRY_RUN }}
+
+  notify:
+    needs: cleanup
+    if: ${{ always() && !cancelled() && (needs.cleanup.result == 'success' || needs.cleanup.result == 'failure') }}
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/notify-on-failure.yml
+    with:
+      conclusion: ${{ needs.cleanup.result == 'failure' && 'failure' || 'success' }}
+    secrets:
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}

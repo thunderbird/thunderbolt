@@ -52,10 +52,26 @@ on:
       - '.github/workflows/images-publish.yml'
       - 'backend/**'
       - 'src/**'
-      - 'shared/defaults/models.ts'
-      - 'shared/inference-usage.ts'
+      - 'shared/**'
+      - 'public/**'
+      - '.storybook/**'
       - 'scripts/prune-unreachable-deps.ts'
+      - 'scripts/copy-powersync-assets.ts'
+      - 'scripts/webkit-compat.ts'
+      - 'scripts/tinfoil-search-relay.ts'
+      - 'scripts/exa-relay.ts'
+      - 'scripts/office-sandbox-script.ts'
+      - 'scripts/strip-dangling-source-maps.ts'
+      - 'scripts/e2e-source-modules.ts'
       - 'package.json'
+      - 'bun.lock'
+      - 'index.html'
+      - 'webview-recovery.html'
+      - 'vite.config.ts'
+      - 'lingui.config.ts'
+      - 'tsconfig.json'
+      - 'tsconfig.node.json'
+      - 'components.json'
 
 env:
   REGISTRY: ghcr.io
@@ -72,19 +88,15 @@ jobs:
       version: ${{ steps.version.outputs.version }}
 
     steps:
-      # Note: when invoked from preview-deploy.yml under pull_request_target, this
-      # checks out a fork's ref. That ref is consumed only as Docker build context
-      # (docker/build-push-action runs in a sandboxed daemon, not on the runner)
-      # and the caller workflow gates this job behind a maintainer-approval
-      # environment. The version step below reads package.json from the checkout
-      # but routes the value through a $GITHUB_OUTPUT → env var, never interpolated
-      # into a shell with ${{ }} syntax. checkout v7 refuses fork refs under
-      # pull_request_target without the explicit opt-in below; it is safe here
-      # because of the sandboxing and approval gating described above.
+      # Under a maintainer's dispatch of preview-deploy.yml, `ref` may be a fork PR's head.
+      # It is used only as Docker build context (docker/build-push-action runs in a
+      # sandboxed daemon, not on the runner). The version step below reads package.json
+      # from the checkout but routes the value through $GITHUB_OUTPUT → env var, never
+      # interpolated into a shell with ${{ }} syntax.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ inputs.ref || github.ref }}
-          allow-unsafe-pr-checkout: true
 
       - name: Resolve version
         id: version

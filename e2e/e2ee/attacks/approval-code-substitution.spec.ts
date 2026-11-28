@@ -95,6 +95,16 @@ test.describe('Short-code approval under a key-substituting server', () => {
         sessionId: forgedSessionId,
         commitment: await createApprovalCommitment(forgedContext, forgedReveal),
       }
+      // A2 serves each device its own view, but one row stands in for both: hold the pending device's
+      // polls while the row shows the trusted device the forged session.
+      let showPendingDevice!: () => void
+      const pendingView = new Promise<void>((resolve) => (showPendingDevice = resolve))
+      await device.page.route('**/v1/devices/me/approval-session', async (route) => {
+        if (route.request().method() === 'GET') {
+          await pendingView
+        }
+        await route.continue().catch(() => {}) // the app's 10s deadline may have aborted a held poll; it retries
+      })
       await writeApprovalSession(deviceId, { ...forged, challenge: null, challengerDeviceId: null, reveal: null })
 
       const releases: string[] = []
@@ -114,8 +124,9 @@ test.describe('Short-code approval under a key-substituting server', () => {
         reveal: null,
         challengerDeviceId: challenged.challengerDeviceId,
       })
-      // The device polls for the challenge, shows its code, then posts its reveal. Wait on the code first, so
-      // the 20s database budget covers that one POST rather than the device's polling under load.
+      showPendingDevice()
+      // The device shows its code, then posts its reveal. Wait on the code first, so the 20s database
+      // budget covers that one POST.
       const shownCode = device.page.getByLabel('Approval code', { exact: true })
       await expect(shownCode).toHaveText(/^\d{2}$/, { timeout: 30_000 })
       const pendingCode = (await shownCode.textContent())!

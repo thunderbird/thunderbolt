@@ -23,9 +23,19 @@ const chooseChatAction = async (page: Page, title: string, action: string) => {
   await page.getByRole(isMobile(page) ? 'button' : 'menuitem', { name: action, exact: true }).click()
 }
 
+/**
+ * Opens the given sidebar section and leaves the page as it is. Navigation stays in-app: a private WebKit context
+ * has no OPFS, so its database lives in memory, and a page load empties it unless sync has restored it.
+ */
+const openSidebarSection = async (page: Page, section: 'Chats' | 'Settings') => {
+  await openSidebarOnMobile(page)
+  await page.getByRole('navigation', { name: 'Sidebar sections' }).getByRole('button', { name: section }).click()
+}
+
 /** Picks the file in Settings → Preferences → Data → Import Data and confirms the single-chat dialog. */
 const importChatFile = async (page: Page, contents: string, fromEmail: string) => {
-  await page.goto('/settings/preferences')
+  await openSidebarSection(page, 'Settings')
+  await page.getByRole('button', { name: 'Preferences', exact: true }).click()
   await page.locator('input[type="file"][accept="application/json,.json"]').setInputFiles({
     name: 'chat.json',
     mimeType: 'application/json',
@@ -39,12 +49,6 @@ const importChatFile = async (page: Page, contents: string, fromEmail: string) =
   await expect(dialog.getByText(/it's updated/)).toHaveCount(0)
   await dialog.getByRole('button', { name: 'Import', exact: true }).click()
   await expect(page.locator('#import-data-success')).toBeVisible({ timeout: 60_000 })
-}
-
-/** Leaves Settings, whose sidebar lists settings pages, for the chat list. */
-const openChatList = async (page: Page) => {
-  await page.goto('/')
-  await openSidebarOnMobile(page)
 }
 
 test('a chat exported from its menu imports into another account as a copy, once', async ({
@@ -89,7 +93,7 @@ test('a chat exported from its menu imports into another account as a copy, once
 
     await importChatFile(pageB, contents, emailA)
     await expect(pageB.locator('#import-data-success')).toHaveText(`Imported a copy of the chat “${title}”.`)
-    await openChatList(pageB)
+    await openSidebarSection(pageB, 'Chats')
     await pageB.getByRole('button', { name: title, exact: true }).click()
     await expect(pageB.locator('[data-message-id]').getByText(title, { exact: true })).toBeVisible()
     await expect(pageB.locator('[data-quotable-message-id]').last()).toContainText(fakeProviderReply)
@@ -98,7 +102,7 @@ test('a chat exported from its menu imports into another account as a copy, once
 
     // Importing the same file again updates the copy rather than adding a second one.
     await importChatFile(pageB, contents, emailA)
-    await openChatList(pageB)
+    await openSidebarSection(pageB, 'Chats')
     await expect(pageB.getByRole('button', { name: title, exact: true })).toHaveCount(1)
     expect(errorsB).toEqual([])
   } finally {

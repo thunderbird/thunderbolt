@@ -1045,6 +1045,36 @@ jobs:
           # The emulator's own output, one file per boot (native.sh device).
           cp "${TMPDIR:-/tmp}"/qa-emulator-*.log "$RUNNER_TEMP/" || true
           cp -R ~/.maestro/tests "$RUNNER_TEMP/qa-maestro" || true
+      # The real leg uploads no text from its logs, only what explains a lost emulator: each boot's exit status, the
+      # emulator's version and renderer, and each crash line as `line <n>: <signature>`, numbered as device-lost
+      # prints them.
+      - name: Save the emulator's diagnostics
+        if: always() && matrix.leg.platform == 'android' && matrix.leg.real
+        run: |
+          out=$RUNNER_TEMP/qa-emulator-diagnostics
+          mkdir -p "$out"
+          # device-lost's crash signatures and the lines it leaves out, read from native.sh so the two cannot drift.
+          eval "$(sed -n -e '/^crash_signatures=(/,/)$/p' -e '/^routine_lines=/p' .github/qa/scripts/native.sh)"
+          # A renamed variable would leave the filter with nothing to look for, and every crash would go unreported.
+          if [ "${#crash_signatures[@]}" -eq 0 ] || [ -z "${routine_lines:-}" ]; then
+            echo "::error::could not read crash_signatures and routine_lines from native.sh" >&2
+            exit 1
+          fi
+          for log in "${TMPDIR:-/tmp}"/qa-emulator-*.log; do
+            [ -f "$log" ] || continue
+            {
+              # Only from the emulator's own start-up records, logged before the guest starts, so no guest text matches.
+              grep -m1 -E '^INFO +\| Android emulator version ' "$log" | grep -oE 'Android emulator version [0-9.]+' || true
+              grep -m1 -E '^INFO +\| emuglConfig_init: ' "$log" | grep -oE '(vulkan|gles)_mode_selected:[A-Za-z0-9_]+' || true
+              for signature in "${crash_signatures[@]}"; do
+                grep -niF -- "$signature" "$log" | grep -vE -- "$routine_lines" |
+                  sed "s/:.*/: $signature/; s/^/line /" || true
+              done
+              # native.sh's watcher writes the status once the emulator exits, and a recovery's deadline can stop both.
+              [ -f "${log%.log}.status" ] || echo "no exit status: the emulator still ran, or its watcher was stopped too"
+            } > "$out/$(basename "$log" .log).filtered.log"
+          done
+          cp "${TMPDIR:-/tmp}"/qa-emulator-*.status "$out/" || true
 
       - *sanitize
       - *upload-replay
@@ -1062,6 +1092,16 @@ jobs:
             ${{ runner.temp }}/qa-adb.log
             ${{ runner.temp }}/qa-emulator-*.log
             ${{ runner.temp }}/qa-maestro/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload the emulator's diagnostics
+        if: always() && matrix.leg.platform == 'android' && matrix.leg.real
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-emulator-replay-${{ matrix.leg.name }}
+          path: |
+            ${{ runner.temp }}/qa-emulator-diagnostics/qa-emulator-*.status
+            ${{ runner.temp }}/qa-emulator-diagnostics/qa-emulator-*.filtered.log
           if-no-files-found: ignore
           retention-days: 7
 

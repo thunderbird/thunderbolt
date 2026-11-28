@@ -363,8 +363,13 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `native.sh device-lost` then prints what may explain
    the loss: how the emulator process ended (its exit code or the signal that killed it, which a small watcher
    process records in `qa-emulator-<boot>.status`) or that it still runs, free memory, OOM kills, and, for each crash
-   signature, how many lines of the emulator's log hold it. Each boot writes its own log, `qa-emulator-<boot>.log`.
-   No line of that log is printed. The leg then
+   signature, the numbers of the lines of the latest boot's log that hold it. Each boot writes its own log,
+   `qa-emulator-<boot>.log`. No line of that log is printed. Three kinds of line that match a signature are left out:
+   the emulator's `Storing crashdata in` line, which every boot logs, its `Created VkInstance` lines, which carry the
+   application and engine names the guest reports, and bash's own report of the signal that ended the emulator
+   (`Segmentation fault (core dumped) "$@"`). The status file says how the emulator ended. Each cold
+   boot also prints the emulator's version and the system image's revision (`Pkg.Revision` from each package's
+   `source.properties`), so an SDK update or a refreshed image cache shows in the job log. The leg then
    runs `native.sh device android` again, which keeps the emulator only while adb sees it online and its
    `ro.boot.qemu.avd_name` is `qa-android`. Otherwise it stops ours and cold-boots a new one on the first even console
    port from 5554 to 5584 where adb lists no emulator, online or offline. adb names an emulator after its console port,
@@ -1074,7 +1079,12 @@ stack depends on its AppArmor sysctl, KVM and emulator libraries, Playwright dep
   is over, since a reset of adb's connection ends a stream), the emulator program's own output for each boot
   (`qa-emulator-<boot>.log`), the adb server's log (`qa-adb.log`) and Maestro's debug output for each session
   (`qa-maestro/<time>/`, with `maestro.log` and the commands). None of it is uploaded on `android-real`, whose
-  backend held the provider keys.
+  backend held the provider keys. That leg uploads `qa-emulator-replay-android-real` instead: each boot's
+  `qa-emulator-<boot>.status` and `qa-emulator-<boot>.filtered.log`, which holds no text of the boot's log. It gives
+  the emulator's version, the renderer it selected (`vulkan_mode_selected` and `gles_mode_selected`) and, for each
+  line that holds a crash signature, `line <n>: <signature>`. It skips the same lines `device-lost` skips. The
+  version and the renderer come only from the emulator's own start-up lines. A boot with no status file, because its
+  emulator still ran or a recovery's deadline stopped its watcher too, says so in its filtered log.
 - The weekly **judge** adds the native legs' candidates to the web ones, like the sync and real legs. A dispatch of
   native sessions only still plans it, so its findings are judged, filed and fixed.
 - **verify-native-build** and **verify-native-run** check a native fix (see "Trust zones"). With no patched app,

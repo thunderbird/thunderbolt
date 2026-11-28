@@ -56,6 +56,8 @@ case "$*" in
   *"am broadcast "*)
     ${refusesBroadcast ? 'echo "java.lang.SecurityException: permission denied" >&2; exit 1' : 'exit 0'} ;;
   *"push "*sample.png*) echo "adb: error: failed to copy: Operation not permitted" >&2; exit 1 ;;
+  # adb prints the port it mapped.
+  *" reverse "*) echo "\${4#tcp:}" ;;
 esac
 exit 0
 `
@@ -186,16 +188,20 @@ test('device android fails when the emulator does not keep hide_error_dialogs, b
   expect(log).not.toContain(' push ')
 })
 
-test('device android reverses the stack ports it is configured with', () => {
+test('device android reverses the stack ports it is configured with, and keeps the ports adb prints out of the job log', () => {
   const { env, calls } = fakeAdb()
   const ports = { QA_BACKEND_PORT: '8105', QA_PROVIDER_PORT: '9978', QA_MCP_PORT: '9979', QA_GOOGLE_PORT: '9980' }
-  Bun.spawnSync(['bash', native, 'device', 'android'], { env: { ...process.env, ...noPorts, ...env, ...ports } })
+  const proc = Bun.spawnSync(['bash', native, 'device', 'android'], {
+    env: { ...process.env, ...noPorts, ...env, ...ports },
+  })
   const reversed = readFileSync(calls, 'utf8')
     .split('\n')
     .filter((line) => line.includes(' reverse '))
   expect(reversed).toEqual(
     ['8105', '9978', '9979', '9980', '18081'].map((port) => `-s emulator-5554 reverse tcp:${port} tcp:${port}`),
   )
+  // A recovery's boot runs right after device-lost, so a bare port there read as part of its report.
+  expect(proc.stderr.toString()).not.toMatch(/^\d+$/m)
 })
 
 /** Runs until it is stopped, like an emulator. */
@@ -374,27 +380,29 @@ test.each([
   expect(status).toBe(`was killed by signal ${number} (SIG${signal})\n`)
 })
 
-test("device-lost prints adb's state, how the emulator ended and only counts from the latest boot's log", () => {
+test("device-lost prints adb's state, how the emulator ended and the numbers of the latest boot's crash lines", () => {
   const dir = mkdtempSync(join(work, 'lost-'))
   const bin = join(dir, 'bin')
   mkdirSync(bin)
   writeFileSync(join(bin, 'adb'), `#!/bin/bash\necho "error: device '$2' not found" >&2\nexit 1\n`, { mode: 0o755 })
   const gone = Bun.spawnSync(['true']).pid
   writeFileSync(join(dir, 'qa-emulator.pid'), `${gone}\n`)
-  const crashes = [
-    'ERROR        | Failed to open the gRPC port',
-    'qemu-system-x86_64: terminating on signal 15 from pid 2319',
-  ]
+  const crash = 'FATAL        | VK_ERROR_DEVICE_LOST in vkQueueSubmit'
+  // Run 46041417363's boot that segfaulted: the crash reporter's set-up on every boot, a Vulkan instance with the
+  // guest's application and engine names, and bash's report of the signal, all of which match a signature. The crash
+  // line is made up: that boot logged none.
   const log = [
-    'INFO         | Android emulator version 36.1.9.0',
-    crashes[0],
-    'WARNING      | Your GPU may have a bug',
-    crashes[1],
+    'INFO         | Android emulator version 37.3.10.0 (build_id 16970787) (CL:N/A)',
+    'INFO         | Storing crashdata in: /tmp/android-runner/emu-crash-37.3.10.db, detection is enabled for process: 3178',
+    'INFO         | Boot completed in 42209 ms',
+    "INFO         | Created VkInstance:0x55a03678f000 for application:'Crash Reporter' engine:'Fatal Engine'.",
+    crash,
+    '.github/qa/scripts/native.sh: line 235:  3178 Segmentation fault      (core dumped) "$@"',
   ]
   // The first boot's emulator was stopped by the recovery; the second one crashed.
   writeFileSync(join(dir, 'qa-emulator-1.log'), 'FATAL        | an earlier boot\n')
   writeFileSync(join(dir, 'qa-emulator-1.status'), 'was killed by signal 15 (SIGTERM)\n')
-  writeFileSync(join(dir, 'qa-emulator-2.log'), `${log.join('\n')}\nINFO         | Boot completed in 41237 ms\n`)
+  writeFileSync(join(dir, 'qa-emulator-2.log'), `${log.join('\n')}\n`)
   writeFileSync(join(dir, 'qa-emulator-2.status'), 'was killed by signal 11 (SIGSEGV)\n')
 
   const proc = Bun.spawnSync(['bash', native, 'device-lost', 'emulator-5554', '10'], {
@@ -406,14 +414,14 @@ test("device-lost prints adb's state, how the emulator ended and only counts fro
   expect(proc.stdout.toString()).toBe('')
   expect(out).toStartWith("adb lost emulator-5554; adb's state for it now: error: device 'emulator-5554' not found\n")
   expect(out).toContain(`the emulator (pid ${gone}) was killed by signal 11 (SIGSEGV)\n`)
-  expect(out.split("lines of the emulator's log per crash signature:\n")[1]).toBe(
-    '  error: 1\n  terminating on signal: 1\n',
+  expect(out.split("crash lines in the emulator's log of boot 2 (qa-emulator-2.log), by signature:\n")[1]).toBe(
+    '  fatal: line 5\n  error: line 5\n',
   )
-  for (const line of crashes) expect(out).not.toContain(line)
+  expect(out).not.toContain('VK_ERROR_DEVICE_LOST')
 })
 
 // 255 is what an exit(-1) leaves, and names no signal.
-test.each([1, 255])('a boot whose emulator exits %d prints that code and only counts from its log', (code) => {
+test.each([1, 255])('a boot names its emulator and image versions, and one exiting %d prints that code', (code) => {
   const dir = mkdtempSync(join(work, 'exited-'))
   const bin = join(dir, 'bin')
   mkdirSync(bin)
@@ -422,6 +430,12 @@ test.each([1, 255])('a boot whose emulator exits %d prints that code and only co
   const fatal = 'FATAL        | KVM is not available for the user who asked: /dev/kvm'
   writeFileSync(join(bin, 'emulator'), `#!/bin/bash\necho '${fatal}'\nexit ${code}\n`)
   for (const tool of ['adb', 'avdmanager', 'emulator']) chmodSync(join(bin, tool), 0o755)
+  // As the SDK lays them out: the emulator package beside its binary, the image under system-images.
+  writeFileSync(join(bin, 'source.properties'), 'Pkg.Desc=Android Emulator\nPkg.Revision=37.3.10\n')
+  const image = `system-images;android-36;google_apis;${process.arch === 'arm64' ? 'arm64-v8a' : 'x86_64'}`
+  const imageDir = join(dir, 'sdk', ...image.split(';'))
+  mkdirSync(imageDir, { recursive: true })
+  writeFileSync(join(imageDir, 'source.properties'), 'AndroidVersion.ApiLevel=36\nPkg.Revision=7\n')
 
   const proc = Bun.spawnSync(['bash', native, 'device', 'android'], {
     env: {
@@ -429,13 +443,16 @@ test.each([1, 255])('a boot whose emulator exits %d prints that code and only co
       ...noPorts,
       PATH: `${bin}:${process.env.PATH}`,
       ANDROID_AVD_HOME: join(dir, 'avd'),
+      ANDROID_HOME: join(dir, 'sdk'),
       TMPDIR: dir,
     },
   })
 
   expect(proc.exitCode).toBe(2)
   expect(proc.stderr.toString()).toBe(
-    `lines of the emulator's log per crash signature:\n  fatal: 1\n  kvm: 1\nthe emulator exited with code ${code}\n`,
+    `boot 1: emulator 37.3.10, ${image} revision 7\n` +
+      "crash lines in the emulator's log of boot 1 (qa-emulator-1.log), by signature:\n" +
+      `  fatal: line 1\n  kvm: line 1\nthe emulator exited with code ${code}\n`,
   )
   expect(readFileSync(join(dir, 'qa-emulator-1.status'), 'utf8')).toBe(`exited with code ${code}\n`)
 })

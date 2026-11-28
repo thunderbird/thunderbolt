@@ -1663,6 +1663,106 @@ describe('native jobs', () => {
     expect(indexOf('replay-native', upload)).toBeGreaterThan(indexOf('replay-native', save))
   })
 
+  test("the real Android leg uploads each boot's exit status and a filtered emulator log, nothing else of its logs", () => {
+    const save = "Save the emulator's diagnostics"
+    const uploadName = "Upload the emulator's diagnostics"
+    const upload = step('replay-native', uploadName)
+    const realAndroid = "always() && matrix.leg.platform == 'android' && matrix.leg.real"
+    expect(step('replay-native', save).if).toBe(realAndroid)
+    expect(upload.if).toBe(realAndroid)
+    expect(upload.with?.name).toBe('qa-emulator-replay-${{ matrix.leg.name }}')
+    const paths = upload.with?.path?.split('\n').filter(Boolean) ?? []
+    expect(paths).toEqual([
+      '${{ runner.temp }}/qa-emulator-diagnostics/qa-emulator-*.status',
+      '${{ runner.temp }}/qa-emulator-diagnostics/qa-emulator-*.filtered.log',
+    ])
+    expect(indexOf('replay-native', save)).toBeGreaterThan(indexOf('replay-native', 'Replay the repro flows and specs'))
+    expect(indexOf('replay-native', uploadName)).toBeGreaterThan(indexOf('replay-native', save))
+    // The replay's own folder, sanitized, is the only other upload the real leg runs.
+    const onReal = steps('replay-native').filter(
+      (s) => s.uses?.startsWith('actions/upload-artifact@') && !s.if?.includes('!matrix.leg.real'),
+    )
+    expect(onReal.map(label)).toEqual(['Upload the replay', uploadName])
+
+    const temp = mkdtempSync(join(work, 'diagnostics-'))
+    mkdirSync(join(temp, 'tmp'))
+    // Shaped on run 46041417363's first boot, which segfaulted, with made-up text that must not leave the log: a
+    // crash line quoting the guest, an environment value and an adb key wrapped over two lines, each holding crash
+    // signatures, and a Vulkan instance whose guest-given names hold them too.
+    const log = [
+      'INFO         | Android emulator version 37.3.10.0 (build_id 16970787) (CL:N/A)',
+      'INFO         | Graphics backend: gfxstream',
+      'INFO         | emuglConfig_init: vulkan_mode_selected:swiftshader gles_mode_selected:swiftshader',
+      'INFO         | Storing crashdata in: /tmp/android-runner/emu-crash-37.3.10.db, detection is enabled for process: 3178',
+      'INFO         | Sending adb public key [QAAAAFakeKeyKvmErrorAbortFakeKey',
+      'FakeKeyFatalFakeKey== runner@fv-az1]',
+      'INFO         | Userspace boot properties:',
+      'INFO         |   androidboot.hardware.vulkan=ranchu',
+      'WARNING      | Error reading QA_PROVIDER_KEY=sk-fake-provider-secret from the environment',
+      'INFO         | Boot completed in 42209 ms',
+      "INFO         | Created VkInstance:0x55a03678f000 for application:'Crash Reporter' engine:'Fatal Engine'.",
+      "FATAL        | Abort: the guest said 'my private chat message'",
+      '.github/qa/scripts/native.sh: line 235:  3178 Segmentation fault      (core dumped) "$@"',
+    ]
+    writeFileSync(join(temp, 'tmp/qa-emulator-1.log'), `${log.join('\n')}\n`)
+    writeFileSync(join(temp, 'tmp/qa-emulator-1.status'), 'was killed by signal 11 (SIGSEGV)\n')
+    // A boot whose emulator still runs has no status yet, and a log with nothing to report does not fail the step.
+    // Without its start-up records, a guest-given name shaped like them is not taken for the version or renderer.
+    const second = [
+      'INFO         | Increasing RAM size to 2560MB',
+      "INFO         | Created VkInstance:0x1 for application:'vulkan_mode_selected:guesttext Android emulator version 9' engine:'x'.",
+    ]
+    writeFileSync(join(temp, 'tmp/qa-emulator-2.log'), `${second.join('\n')}\n`)
+    // From the repo root, where the step reads native.sh's crash signatures.
+    const proc = Bun.spawnSync(['bash', '-e', '-c', step('replay-native', save).run ?? ''], {
+      cwd: join(import.meta.dir, '../../..'),
+      env: { PATH: process.env.PATH, RUNNER_TEMP: temp, TMPDIR: join(temp, 'tmp') },
+    })
+
+    expect(proc.stderr.toString()).toBe('')
+    expect(proc.exitCode).toBe(0)
+    const out = join(temp, 'qa-emulator-diagnostics')
+    expect(readdirSync(out).sort()).toEqual([
+      'qa-emulator-1.filtered.log',
+      'qa-emulator-1.status',
+      'qa-emulator-2.filtered.log',
+    ])
+    // No text of the log, and no line device-lost leaves out: the crash reporter's, the Vulkan instance's and bash's.
+    expect(readFileSync(join(out, 'qa-emulator-1.filtered.log'), 'utf8')).toBe(
+      [
+        'Android emulator version 37.3.10.0',
+        'vulkan_mode_selected:swiftshader',
+        'gles_mode_selected:swiftshader',
+        'line 6: fatal',
+        'line 12: fatal',
+        'line 5: error',
+        'line 9: error',
+        'line 5: abort',
+        'line 12: abort',
+        'line 5: kvm',
+        '',
+      ].join('\n'),
+    )
+    expect(readFileSync(join(out, 'qa-emulator-1.status'), 'utf8')).toBe('was killed by signal 11 (SIGSEGV)\n')
+    expect(readFileSync(join(out, 'qa-emulator-2.filtered.log'), 'utf8')).toBe(
+      'no exit status: the emulator still ran, or its watcher was stopped too\n',
+    )
+    const globs = paths.map((path) => new Bun.Glob(path.replace('${{ runner.temp }}/qa-emulator-diagnostics/', '')))
+    expect(readdirSync(out).every((file) => globs.some((glob) => glob.match(file)))).toBe(true)
+    expect(globs.some((glob) => glob.match('qa-emulator-1.log'))).toBe(false)
+
+    // A native.sh whose signatures the step cannot read fails the step instead of reporting no crash.
+    const unreadable = mkdtempSync(join(work, 'diagnostics-unreadable-'))
+    mkdirSync(join(unreadable, '.github/qa/scripts'), { recursive: true })
+    writeFileSync(join(unreadable, '.github/qa/scripts/native.sh'), 'signatures=(crash)\n')
+    const failed = Bun.spawnSync(['bash', '-e', '-c', step('replay-native', save).run ?? ''], {
+      cwd: unreadable,
+      env: { PATH: process.env.PATH, RUNNER_TEMP: temp, TMPDIR: join(temp, 'tmp') },
+    })
+    expect(failed.exitCode).toBe(1)
+    expect(failed.stderr.toString()).toContain('could not read crash_signatures and routine_lines from native.sh')
+  })
+
   test('a replay or fix check uploads its folder without a video simctl is still writing', () => {
     const replayPaths = ['${{ matrix.leg.out }}/', '!${{ matrix.leg.out }}/videos/*.mp4.sb-*']
     for (const job of ['replay', 'replay-native']) {

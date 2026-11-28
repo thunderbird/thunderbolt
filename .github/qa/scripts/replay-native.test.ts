@@ -406,7 +406,7 @@ test('an Android run on an emulator adb lost boots a new one once, and the runs 
   // Our AVD cold-boots on the first console port with no emulator in adb's list, although another emulator is online,
   // and the leg's last step reads the new serial.
   expect(calls.filter((line) => line.startsWith('emulator '))).toEqual([
-    'emulator -avd qa-android -port 5556 -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect',
+    'emulator -avd qa-android -port 5556 -no-window -no-audio -no-snapshot -no-boot-anim -gpu lavapipe',
   ])
   expect(githubEnv).toBe('QA_DEVICE_ID=emulator-5556\n')
   // The lost run stops before its video is pulled.
@@ -458,7 +458,7 @@ test('a recovery never reuses a serial that now runs another AVD, and boots ours
   expect(results).toEqual([{ threw: 'DeviceLost', message: 'emulator dropped off adb', retry: true }, { passed: true }])
   expect(calls.filter((line) => / install -r |^emulator /.test(line))).toEqual([
     'adb -s emulator-5554 install -r plain.apk',
-    'emulator -avd qa-android -port 5556 -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect',
+    'emulator -avd qa-android -port 5556 -no-window -no-audio -no-snapshot -no-boot-anim -gpu lavapipe',
     'adb -s emulator-5556 install -r plain.apk',
     'adb -s emulator-5556 install -r plain.apk',
   ])

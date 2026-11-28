@@ -1045,6 +1045,26 @@ jobs:
           # The emulator's own output, one file per boot (native.sh device).
           cp "${TMPDIR:-/tmp}"/qa-emulator-*.log "$RUNNER_TEMP/" || true
           cp -R ~/.maestro/tests "$RUNNER_TEMP/qa-maestro" || true
+      # The real leg uploads none of its logs, only what explains a lost emulator: each boot's exit status and the
+      # lines of its log that give the emulator's version, renderer, boot properties or a crash, numbered as
+      # device-lost prints them. The filter drops the runner's adb key and the Vulkan application and engine names
+      # the guest reports.
+      - name: Save the emulator's diagnostics
+        if: always() && matrix.leg.platform == 'android' && matrix.leg.real
+        run: |
+          out=$RUNNER_TEMP/qa-emulator-diagnostics
+          mkdir -p "$out"
+          keep='Android emulator version|Graphics (backend|Adapter|API Version)|Guest GLES Driver|_mode_selected'
+          keep+='|ICD set to|Selecting Vulkan device|boot properties|androidboot\.|Boot completed'
+          # native.sh's crash signatures.
+          keep+='|fatal|error|crash|abort|assert|segfault|segmentation|sigsegv|sigabrt|terminating on signal'
+          keep+='|killed|out of memory|kvm'
+          for log in "${TMPDIR:-/tmp}"/qa-emulator-*.log; do
+            [ -f "$log" ] || continue
+            grep -niE "$keep" "$log" | grep -viE 'adb public key|adb\.pubkey|application:|engine:' \
+              > "$out/$(basename "$log" .log).filtered.log" || true
+          done
+          cp "${TMPDIR:-/tmp}"/qa-emulator-*.status "$out/" || true
 
       - *sanitize
       - *upload-replay
@@ -1062,6 +1082,16 @@ jobs:
             ${{ runner.temp }}/qa-adb.log
             ${{ runner.temp }}/qa-emulator-*.log
             ${{ runner.temp }}/qa-maestro/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload the emulator's diagnostics
+        if: always() && matrix.leg.platform == 'android' && matrix.leg.real
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-emulator-replay-${{ matrix.leg.name }}
+          path: |
+            ${{ runner.temp }}/qa-emulator-diagnostics/qa-emulator-*.status
+            ${{ runner.temp }}/qa-emulator-diagnostics/qa-emulator-*.filtered.log
           if-no-files-found: ignore
           retention-days: 7
 

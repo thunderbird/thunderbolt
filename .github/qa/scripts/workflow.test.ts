@@ -1663,6 +1663,71 @@ describe('native jobs', () => {
     expect(indexOf('replay-native', upload)).toBeGreaterThan(indexOf('replay-native', save))
   })
 
+  test("the real Android leg uploads each boot's exit status and a filtered emulator log, nothing else of its logs", () => {
+    const save = "Save the emulator's diagnostics"
+    const uploadName = "Upload the emulator's diagnostics"
+    const upload = step('replay-native', uploadName)
+    const realAndroid = "always() && matrix.leg.platform == 'android' && matrix.leg.real"
+    expect(step('replay-native', save).if).toBe(realAndroid)
+    expect(upload.if).toBe(realAndroid)
+    expect(upload.with?.name).toBe('qa-emulator-replay-${{ matrix.leg.name }}')
+    const paths = upload.with?.path?.split('\n').filter(Boolean) ?? []
+    expect(paths).toEqual([
+      '${{ runner.temp }}/qa-emulator-diagnostics/qa-emulator-*.status',
+      '${{ runner.temp }}/qa-emulator-diagnostics/qa-emulator-*.filtered.log',
+    ])
+    expect(indexOf('replay-native', save)).toBeGreaterThan(indexOf('replay-native', 'Replay the repro flows and specs'))
+    expect(indexOf('replay-native', uploadName)).toBeGreaterThan(indexOf('replay-native', save))
+    // The replay's own folder, sanitized, is the only other upload the real leg runs.
+    const onReal = steps('replay-native').filter(
+      (s) => s.uses?.startsWith('actions/upload-artifact@') && !s.if?.includes('!matrix.leg.real'),
+    )
+    expect(onReal.map(label)).toEqual(['Upload the replay', uploadName])
+
+    const temp = mkdtempSync(join(work, 'diagnostics-'))
+    mkdirSync(join(temp, 'tmp'))
+    // A made-up key that holds crash signatures, so only the second filter keeps it out.
+    const key = 'QAAAAFakeKeyKvmErrorAbortFakeKeyFakeKey== runner@fv-az1'
+    // Shaped on run 46041417363's first boot, which segfaulted.
+    const log = [
+      'INFO         | Android emulator version 37.3.10.0 (build_id 16970787) (CL:N/A)',
+      'INFO         | Graphics backend: gfxstream',
+      'INFO         | Increasing RAM size to 2560MB',
+      'INFO         | emuglConfig_init: vulkan_mode_selected:swiftshader gles_mode_selected:swiftshader',
+      'INFO         | Storing crashdata in: /tmp/android-runner/emu-crash-37.3.10.db, detection is enabled for process: 3178',
+      `INFO         | Sending adb public key [${key}]`,
+      'INFO         | Userspace boot properties:',
+      'INFO         |   androidboot.hardware.vulkan=ranchu',
+      `INFO         |   androidboot.qemu.adb.pubkey=${key}`,
+      'INFO         | Boot completed in 42209 ms',
+      "INFO         | Created VkInstance:0x55a03678f000 for application:'Crash Reporter' engine:'Fatal Engine'.",
+      '.github/qa/scripts/native.sh: line 235:  3178 Segmentation fault      (core dumped) "$@"',
+    ]
+    writeFileSync(join(temp, 'tmp/qa-emulator-1.log'), `${log.join('\n')}\n`)
+    writeFileSync(join(temp, 'tmp/qa-emulator-1.status'), 'was killed by signal 11 (SIGSEGV)\n')
+    // A boot with nothing to keep still gets its (empty) file, and does not fail the step.
+    writeFileSync(join(temp, 'tmp/qa-emulator-2.log'), 'INFO         | Increasing RAM size to 2560MB\n')
+    const proc = Bun.spawnSync(['bash', '-e', '-c', step('replay-native', save).run ?? ''], {
+      env: { PATH: process.env.PATH, RUNNER_TEMP: temp, TMPDIR: join(temp, 'tmp') },
+    })
+
+    expect(proc.stderr.toString()).toBe('')
+    expect(proc.exitCode).toBe(0)
+    const out = join(temp, 'qa-emulator-diagnostics')
+    expect(readdirSync(out).sort()).toEqual([
+      'qa-emulator-1.filtered.log',
+      'qa-emulator-1.status',
+      'qa-emulator-2.filtered.log',
+    ])
+    const kept = [1, 2, 4, 5, 7, 8, 10, 12].map((n) => `${n}:${log[n - 1]}\n`).join('')
+    expect(readFileSync(join(out, 'qa-emulator-1.filtered.log'), 'utf8')).toBe(kept)
+    expect(readFileSync(join(out, 'qa-emulator-1.status'), 'utf8')).toBe('was killed by signal 11 (SIGSEGV)\n')
+    expect(readFileSync(join(out, 'qa-emulator-2.filtered.log'), 'utf8')).toBe('')
+    const globs = paths.map((path) => new Bun.Glob(path.replace('${{ runner.temp }}/qa-emulator-diagnostics/', '')))
+    expect(readdirSync(out).every((file) => globs.some((glob) => glob.match(file)))).toBe(true)
+    expect(globs.some((glob) => glob.match('qa-emulator-1.log'))).toBe(false)
+  })
+
   test('a replay or fix check uploads its folder without a video simctl is still writing', () => {
     const replayPaths = ['${{ matrix.leg.out }}/', '!${{ matrix.leg.out }}/videos/*.mp4.sb-*']
     for (const job of ['replay', 'replay-native']) {

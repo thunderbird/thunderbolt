@@ -2058,6 +2058,70 @@ describe('native fix verification', () => {
     expect(result.error).toBe('the emulator was lost while this flow ran')
   })
 
+  /** Each run takes the next queued result; once none is left, adb loses the emulator for good. */
+  const losesAfter = (results: Partial<FlowRun>[], runs: number[] = []): RunFlow => {
+    const queue = [...results]
+    return async (_yaml, _outDir, run) => {
+      runs.push(run)
+      const next = queue.shift()
+      if (!next) throw new DeviceLost('emulator dropped off adb')
+      return { passed: true, layout: ['[qa-layout] ready'], logs: [], ...next }
+    }
+  }
+  const lost = 'the emulator was lost while this flow ran'
+
+  test('a lost emulator stops the check on both apps, and the check is inconclusive', async () => {
+    const asserted = { type: 'assert-failed', evidence: 'the name step never shows' }
+    const patchedRuns: number[] = []
+    const originalRuns: number[] = []
+    const onPatched = await verifyNativeFix({
+      ...base,
+      oracle: asserted,
+      patched: losesAfter([{}], patchedRuns),
+      original: device([], originalRuns),
+    })
+    expect(onPatched).toMatchObject({ runs: 1, failed: 0, passed: false, inconclusive: true, error: lost })
+    expect(nativeExitCode(onPatched)).toBe(3)
+    expect(patchedRuns).toEqual([1, 2])
+    expect(originalRuns).toEqual([])
+
+    const unpatchedRuns: number[] = []
+    const onOriginal = await verifyNativeFix({
+      ...base,
+      oracle: asserted,
+      patched: device([]),
+      original: losesAfter([failed], unpatchedRuns),
+    })
+    expect(onOriginal).toMatchObject({
+      runs: 3,
+      failed: 0,
+      passesWith: true,
+      failsWithout: false,
+      passed: false,
+      inconclusive: true,
+      error: lost,
+    })
+    expect(nativeExitCode(onOriginal)).toBe(3)
+    expect(unpatchedRuns).toEqual([4, 5])
+  })
+
+  test('a lost emulator keeps a failure that a counted run already showed', async () => {
+    const asserted = { type: 'assert-failed', evidence: 'the name step never shows' }
+    const originalRuns: number[] = []
+    const shown = await verifyNativeFix({
+      ...base,
+      oracle: asserted,
+      patched: losesAfter([failed]),
+      original: device([], originalRuns),
+    })
+    expect(shown).toMatchObject({ runs: 1, failed: 1, inconclusive: false, error: failed.error })
+    expect(originalRuns).toEqual([])
+    // Without the patch the fix agent's visual check passed once, so it proves nothing.
+    const checkPassed = await verifyNativeFix({ ...base, patched: device([]), original: losesAfter([{}]) })
+    expect(checkPassed).toMatchObject({ failsWithout: false, passed: false, inconclusive: false })
+    expect([shown, checkPassed].map(nativeExitCode)).toEqual([4, 4])
+  })
+
   test('a failure-oracle flow failing before its last command is replaced, and never shows the bug without it', async () => {
     const asserted = { type: 'assert-failed', evidence: 'the name step never shows' }
     const steps = { ...base, flow: '- launchApp\n- tapOn: Continue\n- assertVisible: What should we call you?\n' }

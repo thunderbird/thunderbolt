@@ -377,7 +377,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    every time. A leg recovers only once, and the diagnostics and the recovery must end before the leg's clock does: a
    second loss, or a recovery that fails or runs out of time, marks the stack unhealthy. The adb probe gets its 10 s
    even after the clock has run out, from the wrap-up minutes, so a run that ends that late keeps its own outcome while
-   adb sees the emulator. A fix's native check never recovers. Each run ends with one `maestro hierarchy` of the screen it
+   adb sees the emulator. A fix's native check asks adb the same way but never recovers. A loss ends its runs on both
+   apps and keeps the runs already counted, so the check is inconclusive (exit 3) unless one of them decided the
+   verdict. Each run ends with one `maestro hierarchy` of the screen it
    stopped on, for the tree's `unnamed-control` lines and, on Android, its `behind-keyboard` line; a screen the run only passed through, like the privacy step the harness
    clicks through, adds no tree line. Only a `layout` proof reads tree lines, so an iOS run skips the dump for the
    control and for any other oracle, to save the leg's time. Android always dumps, since a failed dump is one way a

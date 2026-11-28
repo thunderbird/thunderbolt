@@ -542,30 +542,46 @@ test('a run whose adb probe times out is inconclusive though the leg has time le
 }, 20_000)
 
 test('a run whose adb probe prints nothing is inconclusive, and the next run uses the same emulator', () => {
-  // Its probe follows the tree dump, which always fails here.
-  const { results, calls } = androidRuns(['mute-adb', undefined])
+  for (const recoverIn of [600_000, 'never'] as const) {
+    // Its probe follows the tree dump, which always fails here.
+    const { results, calls } = androidRuns(['mute-adb', undefined], recoverIn)
 
-  expect(results).toEqual([
-    { passed: false, error: 'adb gave no clear answer about the emulator', inconclusive: true },
-    { passed: true },
-  ])
-  expect(calls.filter((line) => / devices$| -G 64M$|^emulator /.test(line))).toEqual([])
-})
+    expect(results).toEqual([
+      { passed: false, error: 'adb gave no clear answer about the emulator', inconclusive: true },
+      { passed: true },
+    ])
+    expect(calls.filter((line) => / devices$| -G 64M$|^emulator /.test(line))).toEqual([])
+  }
+}, 15_000)
 
-test('a run with no recovery deadline, as fix-native has, fails on a lost emulator without probing adb', () => {
-  const { results, calls } = androidRuns(['lost-emulator-5554'], 'never')
+test('with no recovery deadline, as fix-native has, a loss at each step ends the runs, and nothing is recovered', () => {
+  for (const [flag, phase] of [
+    ['lost-emulator-5554', 'install'],
+    ['drop-emulator-5554', 'flow'],
+    ['drop-tree-emulator-5554', 'tree dump'],
+  ]) {
+    const { results, calls, stderr } = androidRuns([flag], 'never')
 
-  expect(results).toEqual([{ threw: 'ShellError', message: expect.any(String) }])
-  expect(calls.filter((line) => / get-state$| devices$/.test(line))).toEqual([])
-})
+    expect({ phase, results }).toEqual({
+      phase,
+      results: [{ threw: 'DeviceLost', message: 'emulator dropped off adb', retry: false }],
+    })
+    // An install adb did not find needs no probe.
+    expect(calls.includes('adb -s emulator-5554 get-state')).toBe(phase !== 'install')
+    expect(calls.filter((line) => / devices$| -G 64M$|^emulator | pull /.test(line))).toEqual([])
+    expect(stderr).toContain(`adb lost the emulator during the ${phase} of c2-chat-power-user-android/#1, attempt 1\n`)
+  }
+}, 15_000)
 
 test('a failed flow or install on an emulator adb still sees keeps its own outcome, with nothing recovered', () => {
-  const { results, calls, stderr } = androidRuns(['fail-flow', 'full'])
+  for (const recoverIn of [600_000, 'never'] as const) {
+    const { results, calls, stderr } = androidRuns(['fail-flow', 'full'], recoverIn)
 
-  expect(results).toEqual([
-    { passed: false, error: 'Element not found: Continue' },
-    { threw: 'ShellError', message: expect.any(String) },
-  ])
-  expect(calls.filter((line) => / devices$| logcat -v epoch /.test(line))).toEqual([])
-  expect(stderr).not.toContain('adb lost')
-})
+    expect(results).toEqual([
+      { passed: false, error: 'Element not found: Continue' },
+      { threw: 'ShellError', message: expect.any(String) },
+    ])
+    expect(calls.filter((line) => / devices$| logcat -v epoch /.test(line))).toEqual([])
+    expect(stderr).not.toContain('adb lost')
+  }
+}, 15_000)

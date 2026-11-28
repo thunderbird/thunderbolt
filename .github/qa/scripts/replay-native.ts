@@ -27,7 +27,7 @@ type Phase = 'install' | 'flow' | 'tree dump'
 /**
  * Thrown by an Android run whose emulator dropped off adb, so the run never counts. With `retry` the emulator is back
  * (or a new one stands in) and the leg can go on; that happens once per leg. A second loss, or a recovery that fails
- * or would end past the leg's deadline, ends the leg.
+ * or would end past the leg's deadline, ends the leg. So does any loss when the run has no `recoverBy`.
  */
 export class DeviceLost extends Error {
   readonly retry: boolean
@@ -67,8 +67,8 @@ export const videoPath = (outDir: string, leg: string | undefined, session: stri
  * recording at 3 minutes, and its install goes through `native.sh install`, which warms the app up. `layout` gets the
  * tree's lines for the last screen and loses the probe's lines the tree owns (`keepsProbeLine`), as in the gate. An iOS
  * run reads the tree only when `needsTree`, which is the default.
- * With `recoverBy`, an Android install, flow or tree dump that fails while adb says it lost the emulator throws
- * `DeviceLost`. When adb gives no clear answer, the run comes back `inconclusive` instead.
+ * An Android install, flow or tree dump that fails while adb says it lost the emulator throws `DeviceLost`. With
+ * `recoverBy` the emulator is brought back first. When adb gives no clear answer, the run comes back `inconclusive`.
  */
 export const createRunFlow = (opts: {
   platform: 'ios' | 'android'
@@ -80,7 +80,8 @@ export const createRunFlow = (opts: {
   leg?: string
   /**
    * The epoch ms by which a recovery from a lost emulator must end, so the leg still has time to save its results.
-   * Unset, as for fix-native (whose patched and original apps would both need the new emulator), nothing is recovered.
+   * Unset, as for fix-native (whose patched and original apps would both need the new emulator), a loss is still
+   * detected, but nothing is recovered.
    */
   recoverBy?: number
 }): RunFlow => {
@@ -88,7 +89,6 @@ export const createRunFlow = (opts: {
   const { appId } = platformOf(platform)
   if (!appId) throw new Error(`platforms.json has no app for ${platform}`)
   const ios = platform === 'ios'
-  const recovers = !ios && recoverBy !== undefined
   const device = { id: opts.deviceId, recovered: false }
   /**
    * The `timeout` of each step after a loss, so a hung step is killed by `recoverBy`: the whole seconds before it, less
@@ -129,11 +129,12 @@ export const createRunFlow = (opts: {
     await $`timeout -k 1 ${left()} ${nativeSh} resume-logs ${device.id} ${webviewLog}`
   }
   /**
-   * Prints the run and step during which adb lost the emulator and what may explain the loss, then, once per leg, gets
-   * the emulator back. Always throws.
+   * Prints the run and step during which adb lost the emulator. With `recoverBy` it then prints what may explain the
+   * loss and, once per leg, gets the emulator back. Always throws.
    */
   const lost = async (phase: Phase, label: string): Promise<never> => {
     console.error(`adb lost the emulator during the ${phase} of ${label}`)
+    if (recoverBy === undefined) throw new DeviceLost('emulator dropped off adb')
     const seconds = left()
     await $`timeout -k 1 ${seconds} ${nativeSh} device-lost ${device.id} ${Math.min(10, seconds)}`.nothrow()
     if (device.recovered) throw new DeviceLost('emulator dropped off adb a second time in this leg')
@@ -147,8 +148,8 @@ export const createRunFlow = (opts: {
     throw new DeviceLost('emulator dropped off adb', true)
   }
   /**
-   * The run never counts. A loss adb states starts a recovery (`lost` throws). Without a clear answer the run is
-   * inconclusive and the leg goes on.
+   * The run never counts. A loss adb states throws (`lost`). Without a clear answer the run is inconclusive and the
+   * leg goes on.
    */
   const uncounted = (state: 'lost' | 'unclear', phase: Phase, label: string) =>
     state === 'unclear'
@@ -173,7 +174,6 @@ export const createRunFlow = (opts: {
       } catch (error) {
         // adb fails the install at once when it has lost the emulator, and may see it again by the time it is asked.
         const notFound = error instanceof $.ShellError && /device '[^']+' not found/.test(error.stderr.toString())
-        if (!recovers) throw error
         const state = notFound ? 'lost' : await probe()
         if (state === 'online') throw error
         return uncounted(state, 'install', label)
@@ -210,7 +210,7 @@ export const createRunFlow = (opts: {
       await rm(dir, { recursive: true, force: true })
       return uncounted(state, phase, label)
     }
-    const afterFlow = recovers && result.exitCode !== 0 ? await probe() : 'online'
+    const afterFlow = !ios && result.exitCode !== 0 ? await probe() : 'online'
     if (afterFlow !== 'online') return drop(afterFlow, 'flow')
     const output = stripVTControlCharacters(`${result.stdout}${result.stderr}`).trim()
     const driverFailed = result.exitCode !== 0 && output.includes(driverTimeout)
@@ -220,7 +220,7 @@ export const createRunFlow = (opts: {
     const skipTree = signInFailed || driverFailed || (ios && !needsTree)
     const tree = skipTree ? [] : await treeLines(deviceId, platform)
     // A dump that failed because adb lost the emulator would let even a passed run count with no layout evidence.
-    const afterTree = recovers && !tree ? await probe() : 'online'
+    const afterTree = !ios && !tree ? await probe() : 'online'
     if (afterTree !== 'online') return drop(afterTree, 'tree dump')
     if (ios) recorder.kill('SIGINT')
     else await $`adb -s ${deviceId} shell pkill -INT screenrecord`.quiet().nothrow()

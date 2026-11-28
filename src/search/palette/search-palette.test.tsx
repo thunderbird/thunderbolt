@@ -186,6 +186,16 @@ describe('SearchPalette commands', () => {
     expect(screen.getByRole('option', { name: /All agents/ })).toBeInTheDocument()
   })
 
+  it('names the search input after the palette on desktop and mobile', () => {
+    renderPalette()
+    expect(screen.getByRole('combobox', { name: 'Search' })).toBeInTheDocument()
+    cleanup()
+
+    forceMobileViewport()
+    renderPalette()
+    expect(screen.getByRole('combobox', { name: 'Search' })).toBeInTheDocument()
+  })
+
   it('navigates and tracks the run event for a "to" command', async () => {
     buildCommands = () => [
       { id: 'nav-agents', title: 'All agents', icon: Bot, section: 'navigation', to: '/settings/agents' },

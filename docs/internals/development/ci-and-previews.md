@@ -43,6 +43,7 @@ Release workflows: [RELEASE.md](../../../RELEASE.md).
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | `typescript`    | Always                                                                                                                                      | `tsc --noEmit`, `bun run lint`, `bun run test:ci`                                     |
 | `office`        | `src/office/**`, the files its suites load eagerly, the build and test config; every push                                                   | `bun run test:office:ci`: the Office script suites, apart from `test:ci`              |
+| `main-metrics`  | Push to `main` only                                                                                                                         | Source-map build and PostHog upload, then the `pr-metrics.yml` coverage/size baseline |
 | `backend`       | Always                                                                                                                                      | Backend type-check, lint, tests, WS suite, `./server` smoke (OTEL off and on)         |
 | `small-checks`  | `deploy/pulumi/**`, `deploy/k8s/**`, `miniapps/**`, or `ci.yml`                                                                             | Pulumi type-check and tests, `helm lint` + `helm unittest`, miniapps lint/types/tests |
 | `localization`  | `src/**`, `shared/**`, i18n/build config, `backend/src/emails/**`, `bun.lock`                                                               | `bun run i18n:check`, a catalog-compiling build, the macro tripwire                   |
@@ -51,7 +52,7 @@ Release workflows: [RELEASE.md](../../../RELEASE.md).
 | `wasm-artifact` | `src/acp/iroh/pkg/**`, crate inputs, source-manifest tests, or `ci.yml`                                                                     | Staleness gate, source-manifest tests, `SOURCES.txt` and `CHECKSUMS.txt` verification |
 | `rust`          | `src-tauri/**` Rust sources/manifests or `crates/**`                                                                                        | The RUSTSEC tripwire, then `cargo build`/`clippy -D warnings`/`test`                  |
 
-Only `typescript` and `backend` run on every PR; the rest are gated by `detect-changes`
+Only `typescript` and `backend` run on every PR; `main-metrics` never runs on one, and the rest are gated by `detect-changes`
 (`dorny/paths-filter`), so **"CI passed" can mean "your job never ran"**. `agent-core` runs
 on `macos-latest`: WebKit's Linux build lacks the OPFS storage API.
 
@@ -81,7 +82,7 @@ local set (type-check, lint, format-check, license-check).
 - `bun run test` is not what CI runs: `--randomize` plus the 5x repeat catches
   order-dependent and one-in-fifty failures. Reproduce with the `:5x` script.
 - The disabled timeout (Bun's `--timeout 0` hangs async tests) leans on step and job caps:
-  5 minutes per Backend WS attempt, 10 on the backend test step, 15 on the `backend` job and 20 on
+  5 minutes per Backend WS attempt, 10 on the backend test step, 15 on the `backend` job and 30 on
   `typescript` and `office`. Local `test` and `test:backend` keep the 5-second timeout.
 
 ### Why the WebSocket suite is excluded
@@ -204,8 +205,9 @@ gzipped bundle size, test coverage, Lighthouse scores.
 - Nothing is enforced: neither entry declares a `limit`, so the mechanism is the comment's
   delta colouring (red above +50 KB, yellow above +10 KB) on the entry chunk that
   [AGENTS.md's code-splitting rules](../../../AGENTS.md) protect.
-- The baseline is a cache entry written on every push to `main` (`pr-metrics-main-<sha>`),
-  with a `pr-metrics-main-` prefix fallback, so a base commit with no entry is compared
+- The baseline is a cache entry written on every push to `main` (`pr-metrics-main-<sha>`) by
+  `ci.yml`'s `main-metrics` job, which runs the same `bun test --cwd=src --coverage` command as
+  the PR side. A `pr-metrics-main-` prefix fallback compares a base commit with no entry
   against an earlier `main` build.
 - Lighthouse is advisory: [`lighthouserc.js`](../../../lighthouserc.js) sets every assertion
   to `warn` and reports the median of three runs. It scores the **Pulumi app preview's

@@ -2130,9 +2130,17 @@ describe('native fix verification', () => {
     // Without the patch the fix agent's visual check passed once, so it proves nothing.
     const checkPassed = await verifyNativeFix({ ...base, patched: device([]), original: losesAfter([{}]) })
     expect(checkPassed).toMatchObject({ failsWithout: false, passed: false, inconclusive: false })
-    // The check passing without the patch decided it, so the loss after it is not given as the reason.
-    expect(checkPassed.error).toBeUndefined()
-    expect([shown, checkPassed].map(nativeExitCode)).toEqual([4, 4])
+    // The check passing without the patch decided it: not the loss after it, nor a short patched leg.
+    const checkPassedLine = 'the visual check passed on the app without the patch'
+    expect(checkPassed.error).toBe(checkPassedLine)
+    const unclear = { inconclusive: true }
+    const shortThenCheckPassed = await verifyNativeFix({
+      ...base,
+      patched: device([{}, {}, unclear, unclear, unclear, unclear]),
+      original: losesAfter([{}]),
+    })
+    expect(shortThenCheckPassed).toMatchObject({ runs: 2, inconclusive: false, error: checkPassedLine })
+    expect([shown, checkPassed, shortThenCheckPassed].map(nativeExitCode)).toEqual([4, 4, 4])
   })
 
   test('a failure-oracle flow failing before its last command is replaced, and never shows the bug without it', async () => {

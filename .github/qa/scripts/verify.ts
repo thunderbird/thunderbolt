@@ -946,11 +946,15 @@ export const verifyNativeFix = async (
   // A real-AI repro flow may simply not show its bug on the fake AI; only the agent's own check can be wrong.
   const checkPassesUnpatched = oracle === undefined && unpatched.replay.failed < unpatched.replay.runs
   const inconclusive = !passed && failed === 0 && !checkPassesUnpatched
-  // A run that showed the bug or passed the check without the patch decided the verdict, not the loss.
-  const lostWithout = !checkPassesUnpatched && unpatched.replay.reason === emulatorLost
+  // The cause that decided the verdict comes first: the bug on the patched app, then the check passing without it.
+  const cause = checkPassesUnpatched
+    ? 'the visual check passed on the app without the patch'
+    : unpatched.replay.reason === emulatorLost
+      ? emulatorLost
+      : reason
   return {
     ...result,
-    error: error ?? (lostWithout ? emulatorLost : reason),
+    error: error ?? cause,
     failsWithout,
     passesWith,
     passed,

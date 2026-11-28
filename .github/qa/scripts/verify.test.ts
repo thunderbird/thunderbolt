@@ -2103,6 +2103,17 @@ describe('native fix verification', () => {
     })
     expect(nativeExitCode(onOriginal)).toBe(3)
     expect(unpatchedRuns).toEqual([4, 5])
+
+    // The patched app's shortfall is not why the check stopped: the loss on the original app is.
+    const unclear = { inconclusive: true }
+    const shortThenLost = await verifyNativeFix({
+      ...base,
+      oracle: asserted,
+      patched: device([{}, {}, unclear, unclear, unclear, unclear]),
+      original: losesAfter([failed]),
+    })
+    expect(shortThenLost).toMatchObject({ runs: 2, failed: 0, passed: false, inconclusive: true, error: lost })
+    expect(nativeExitCode(shortThenLost)).toBe(3)
   })
 
   test('a lost emulator keeps a failure that a counted run already showed', async () => {
@@ -2119,6 +2130,8 @@ describe('native fix verification', () => {
     // Without the patch the fix agent's visual check passed once, so it proves nothing.
     const checkPassed = await verifyNativeFix({ ...base, patched: device([]), original: losesAfter([{}]) })
     expect(checkPassed).toMatchObject({ failsWithout: false, passed: false, inconclusive: false })
+    // The check passing without the patch decided it, so the loss after it is not given as the reason.
+    expect(checkPassed.error).toBeUndefined()
     expect([shown, checkPassed].map(nativeExitCode)).toEqual([4, 4])
   })
 

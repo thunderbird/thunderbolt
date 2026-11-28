@@ -276,6 +276,10 @@ jobs:
     if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     timeout-minutes: 120
+    env:
+      # 2.13.0 crashed the iOS driver mid-flow. Bump only after a passing nightly on the new version.
+      MAESTRO_VERSION: 2.12.1
+      MAESTRO_SHA256: 54dbb0716425626604973cbb374c585ca30272375d9ce15177a1152765ddd9d7
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -290,7 +294,12 @@ jobs:
           bun install --frozen-lockfile
           cd backend && bun install --frozen-lockfile
           rustup target add aarch64-apple-ios-sim
-          brew install mobile-dev-inc/tap/maestro
+          curl -fsSL -o "$RUNNER_TEMP/maestro.zip" \
+            "https://github.com/mobile-dev-inc/maestro/releases/download/cli-$MAESTRO_VERSION/maestro.zip"
+          # shasum: macOS has no sha256sum.
+          echo "$MAESTRO_SHA256  $RUNNER_TEMP/maestro.zip" | shasum -a 256 -c -
+          unzip -q "$RUNNER_TEMP/maestro.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/maestro/bin" >> "$GITHUB_PATH"
 
       - name: Check native service cleanup
         run: bash e2e/native-smoke/services.test.sh

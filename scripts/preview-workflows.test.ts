@@ -311,6 +311,15 @@ describe('preview deploy path gate', () => {
   })
 })
 
+describe('release image path gate', () => {
+  const paths = loadWorkflow('images-publish.yml').on.push?.paths ?? []
+
+  it.each(dockerfileInputs())('rebuilds the images on main when %s changes', (source) => {
+    const file = statSync(join(repoRoot, source)).isDirectory() ? `${source}/x` : source
+    expect(matchesPaths(paths, file)).toBe(true)
+  })
+})
+
 describe('preview teardown', () => {
   it('tears down same-repo PRs on close and leaves fork PRs to the hourly cleanup', () => {
     const teardown = loadWorkflow('preview-destroy.yml')

@@ -61,6 +61,7 @@ const fixture = (
     supportsTools: true,
     sourceCollector: [],
     mcpToolsMetadata: undefined,
+    connectionToolNames: new Set<string>(),
     skills: [],
     stableSystemPrompt: 'Help finish the task.',
     volatileSystemPrompt: 'Today.',

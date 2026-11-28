@@ -87,6 +87,7 @@ import {
   UnsupportedFunctionalityError,
   wrapLanguageModel,
   type Tool,
+  type StepResult,
   type ToolSet,
 } from 'ai'
 import type { MCPClient, NamedMCPClient, ReconnectClient } from '@/lib/mcp-provider'
@@ -95,6 +96,13 @@ import { withTimeout } from '@/lib/timeout'
 import { smoothStreamWordDelayMs } from '@/chats/chat-throttle'
 import type { SkillDefinition } from '@shared/agent-core/skills'
 import { sanitizeToolPrefix } from '@shared/mcp-tool-names'
+import {
+  createLoadToolsTool,
+  loadedToolNamesFromCalls,
+  loadedToolNamesFromHistory,
+  loadToolsToolName,
+  selectActiveToolNames,
+} from './load-tools-tool'
 import { detectStreamChunk } from './smooth-chunking'
 import { createMessageMetadata } from './message-metadata'
 
@@ -196,8 +204,11 @@ const defaultMcpReconnectTimeoutMs = 3_000
  * Programming errors propagate, unless the server's wait has already timed out.
  * After prefixing, a name that still collides with an already-registered tool is
  * skipped (first-registered wins) as a safety net. The returned `summary` lists
- * `- <prefix> (<n> tools)` per server (undefined when no MCP tools were added),
- * injected into the system prompt.
+ * `- <prefix>: <tool>, <tool>, …` per server (undefined when no MCP tools were
+ * added), injected into the system prompt so the model can load tools by name.
+ *
+ * `connectionToolNames` lists every merged tool. `load_tools` is reserved: no
+ * connection tool may take that name, so the caller can register it afterwards.
  *
  * Also returns `mcpTools`, mapping each namespaced tool name (`<prefix>_<tool>`)
  * to its owning server's `{ name, url }` plus the bare `toolName`. This is the
@@ -212,28 +223,33 @@ export const mergeMcpTools = async (
   mcpClients: NamedMCPClient[],
   reconnectClient: ReconnectClient,
   { reconnectTimeoutMs = defaultMcpReconnectTimeoutMs }: { reconnectTimeoutMs?: number } = {},
-): Promise<{ toolset: Record<string, Tool>; summary?: string; mcpTools: UIMessageMetadata['mcpTools'] }> => {
+): Promise<{
+  toolset: Record<string, Tool>
+  summary?: string
+  mcpTools: UIMessageMetadata['mcpTools']
+  connectionToolNames: ReadonlySet<string>
+}> => {
   const takenPrefixes = new Set<string>()
   const mcpServerEntries: string[] = []
   const mcpTools: NonNullable<UIMessageMetadata['mcpTools']> = {}
 
   /** Prefix and merge one server's tools, recording each into `mcpTools` and
-   *  returning how many were added. */
+   *  returning the names added. */
   const addTools = (
     prefix: string,
     server: { name: string; url: string },
     tools: Awaited<ReturnType<MCPClient['tools']>>,
-  ): number => {
-    let added = 0
+  ): string[] => {
+    const added: string[] = []
     for (const [name, tool] of Object.entries(tools)) {
       const prefixedName = `${prefix}_${name}`
-      if (toolset[prefixedName]) {
+      if (toolset[prefixedName] || prefixedName === loadToolsToolName) {
         console.warn(`MCP tool "${prefixedName}" from "${server.name}" conflicts with an existing tool and was skipped`)
         continue
       }
       toolset[prefixedName] = tool as Tool
       mcpTools[prefixedName] = { name: server.name, url: server.url, toolName: name }
-      added++
+      added.push(prefixedName)
     }
     return added
   }
@@ -304,15 +320,17 @@ export const mergeMcpTools = async (
   const discovered = await Promise.all(servers.map(({ entry }) => discover(entry)))
   servers.forEach(({ entry, prefix }, i) => {
     const added = addTools(prefix, { name: entry.name, url: entry.url }, discovered[i])
-    if (added > 0) {
-      mcpServerEntries.push(`- ${prefix} (${added} ${added === 1 ? 'tool' : 'tools'})`)
+    if (added.length > 0) {
+      mcpServerEntries.push(`- ${prefix}: ${added.join(', ')}`)
     }
   })
 
+  const connectionToolNames = new Set(Object.keys(mcpTools))
   return {
     toolset,
     summary: mcpServerEntries.length > 0 ? mcpServerEntries.join('\n') : undefined,
-    mcpTools: Object.keys(mcpTools).length > 0 ? mcpTools : undefined,
+    mcpTools: connectionToolNames.size > 0 ? mcpTools : undefined,
+    connectionToolNames,
   }
 }
 
@@ -564,6 +582,8 @@ export type PreparedAiRequestConfig = {
   readonly toolset: Record<string, Tool>
   readonly skills: readonly RequestSkillDefinition[]
   readonly mcpToolsMetadata: UIMessageMetadata['mcpTools']
+  /** MCP connection tools: registered in `toolset` but inactive until `load_tools` loads them. */
+  readonly connectionToolNames: ReadonlySet<string>
   readonly stableSystemPrompt: string
   /** Per-send tail of the system prompt: the date/time, plus the open Mini App's
    *  current view when that is the surface the model is answering about. */
@@ -760,8 +780,11 @@ export const prepareAiRequestConfig = async ({
   telemetry?.startPhase('mcp_discovery')
   const merged = supportsTools
     ? await mergeMcpTools(appToolset, mcpClients, reconnectClient)
-    : { toolset: appToolset, summary: undefined, mcpTools: undefined }
+    : { toolset: appToolset, summary: undefined, mcpTools: undefined, connectionToolNames: new Set<string>() }
   telemetry?.endPhase('mcp_discovery')
+  if (merged.connectionToolNames.size > 0) {
+    merged.toolset[loadToolsToolName] = createLoadToolsTool(merged.connectionToolNames)
+  }
   const miniAppContextNote =
     miniAppContextPromise && miniApp ? buildMiniAppContextNote(miniApp, await miniAppContextPromise) : null
 
@@ -823,6 +846,7 @@ export const prepareAiRequestConfig = async ({
     toolset: merged.toolset,
     skills,
     mcpToolsMetadata: merged.mcpTools,
+    connectionToolNames: merged.connectionToolNames,
     stableSystemPrompt: prompt.stablePrompt,
     // The note rides the volatile prompt rather than a separate field so every
     // engine that composes stable + volatile (this file and the ACP harness)
@@ -912,6 +936,7 @@ export const aiFetchStreamingResponse = async ({
     toolset,
     skills,
     mcpToolsMetadata,
+    connectionToolNames,
     stableSystemPrompt,
     volatileSystemPrompt,
     embeddedSurface,
@@ -931,6 +956,16 @@ export const aiFetchStreamingResponse = async ({
   }
 
   const activeNudges = getNudgeMessagesFromProfile(profile)
+  const historyLoadedTools = loadedToolNamesFromHistory(messages, connectionToolNames)
+  /** Every tool except connection tools not yet loaded in this chat or turn. */
+  const selectStepActiveTools = (steps: readonly StepResult<ToolSet>[]): string[] =>
+    selectActiveToolNames(Object.keys(toolset), connectionToolNames, [
+      ...historyLoadedTools,
+      ...loadedToolNamesFromCalls(
+        steps.flatMap((step) => step.toolResults),
+        connectionToolNames,
+      ),
+    ])
 
   try {
     const baseModel = await createModel(model, getProxyFetch)
@@ -1007,16 +1042,20 @@ export const aiFetchStreamingResponse = async ({
           if (isFinalStep(steps.length, maxSteps)) {
             console.info(`Final step ${stepNumber} - telling model to wrap it up...`)
           }
-          return buildStepOverrides({
-            steps,
-            messages: stepMessages,
-            currentSystemPrompt: input.system,
-            profile,
-            maxSteps,
-            nudgeThreshold,
-            activeNudges,
-            webBudgetProbe: webToolBudget?.probe,
-          })
+          // Overrides spread last so the final step's `activeTools: []` wins.
+          return {
+            activeTools: selectStepActiveTools(steps),
+            ...buildStepOverrides({
+              steps,
+              messages: stepMessages,
+              currentSystemPrompt: input.system,
+              profile,
+              maxSteps,
+              nudgeThreshold,
+              activeNudges,
+              webBudgetProbe: webToolBudget?.probe,
+            }),
+          }
         },
 
         abortSignal,

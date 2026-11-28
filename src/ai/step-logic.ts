@@ -115,7 +115,7 @@ export const buildStepOverrides = <TMessage>({
   if (isFinalStep(steps.length, maxSteps)) {
     return {
       system: citationSystem,
-      activeTools: [] as never[],
+      activeTools: [],
       messages: [...messages, { role: 'user' as const, content: activeNudges.finalStep }],
     }
   }

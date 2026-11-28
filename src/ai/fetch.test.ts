@@ -315,7 +315,7 @@ describe('mergeMcpTools', () => {
 
     expect(Object.keys(toolset).sort()).toEqual(['render_get_service', 'render_list_services'])
     expect(toolset.render_list_services).toEqual(tool('ls'))
-    expect(summary).toBe('- render (2 tools)')
+    expect(summary).toBe('- render: render_list_services, render_get_service')
   })
 
   it('merges tools from every client — no reconnect on the happy path', async () => {
@@ -340,7 +340,7 @@ describe('mergeMcpTools', () => {
     expect(toolset.render_deploy).toEqual(tool('first'))
     expect(toolset.render_2_deploy).toEqual(tool('second'))
     expect(Object.keys(toolset).sort()).toEqual(['render_2_deploy', 'render_deploy'])
-    expect(summary).toBe('- render (1 tool)\n- render_2 (1 tool)')
+    expect(summary).toBe('- render: render_deploy\n- render_2: render_2_deploy')
   })
 
   it('reserves generated prefixes so a server that sanitizes to one is bumped again (no collision)', async () => {
@@ -370,8 +370,8 @@ describe('mergeMcpTools', () => {
     expect(merged).toBe(toolset)
     expect(merged.render_search).toBe(builtIn)
     expect(Object.keys(merged).sort()).toEqual(['render_list', 'render_search'])
-    // Only the one tool that actually merged is counted.
-    expect(summary).toBe('- render (1 tool)')
+    // Only the tool that actually merged is listed.
+    expect(summary).toBe('- render: render_list')
   })
 
   it.each([
@@ -399,7 +399,7 @@ describe('mergeMcpTools', () => {
     const result = await mergeMcpTools({ app: builtIn }, [dropped, healthy], reconnect)
 
     expect(result.toolset).toEqual({ app: builtIn, render_alpha: tool('fresh'), github_beta: tool('b') })
-    expect(result.summary).toBe('- render (1 tool)\n- github (1 tool)')
+    expect(result.summary).toBe('- render: render_alpha\n- github: github_beta')
     expect(Object.keys(result.mcpTools!)).toEqual(['render_alpha', 'github_beta'])
     expect(result.mcpTools!.render_alpha).toEqual({
       name: 'render',
@@ -426,7 +426,7 @@ describe('mergeMcpTools', () => {
     const result = await mergeMcpTools({ app: tool('app') }, [dropped, healthy], reconnect)
 
     expect(result.toolset).toEqual({ app: tool('app'), github_beta: tool('b') })
-    expect(result.summary).toBe('- github (1 tool)')
+    expect(result.summary).toBe('- github: github_beta')
     expect(reconnect).toHaveBeenCalledTimes(1)
     expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('skipping its tools for this send'), second)
   })
@@ -478,7 +478,7 @@ describe('mergeMcpTools', () => {
     const result = await mergeMcpTools({}, [reconnecting], reconnect)
 
     expect(result.toolset).toEqual({ render_alpha: tool('fresh') })
-    expect(result.summary).toBe('- render (1 tool)')
+    expect(result.summary).toBe('- render: render_alpha')
     expect(reconnect).not.toHaveBeenCalled()
   })
 
@@ -572,7 +572,7 @@ describe('mergeMcpTools', () => {
     await getClock().tickAsync(20)
     const result = await merging
 
-    expect(result.summary).toBe('- render (1 tool)\n- github (1 tool)')
+    expect(result.summary).toBe('- render: render_alpha\n- github: github_alpha')
     expect(Object.keys(result.mcpTools!)).toEqual(['render_alpha', 'github_alpha'])
   })
 
@@ -1367,6 +1367,36 @@ describe('prepareAiRequestConfig — web search availability', () => {
     },
   )
 
+  it('registers load_tools and lists connection tool names only when a connection contributes tools', async () => {
+    const withTools = await prepareAiRequestConfig({
+      modelId,
+      httpClient,
+      mcpClients: [named('notion', async () => ({ search: tool('s'), fetch: tool('f') }))],
+    })
+    expect(withTools.toolset.load_tools).toBeDefined()
+    expect([...withTools.connectionToolNames]).toEqual(['notion_search', 'notion_fetch'])
+    expect(withTools.stableSystemPrompt).toContain('- notion: notion_search, notion_fetch')
+
+    const empty = await prepareAiRequestConfig({ modelId, httpClient, mcpClients: [named('notion', async () => ({}))] })
+    expect(empty.toolset.load_tools).toBeUndefined()
+    expect(empty.connectionToolNames.size).toBe(0)
+  })
+
+  it('keeps load_tools when a connection exposes a tool that would prefix to the same name', async () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const config = await prepareAiRequestConfig({
+        modelId,
+        httpClient,
+        mcpClients: [named('load', async () => ({ tools: tool('shadow'), other: tool('o') }))],
+      })
+      expect(config.toolset.load_tools).not.toEqual(tool('shadow'))
+      expect([...config.connectionToolNames]).toEqual(['load_other'])
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
   it('drops unavailable MCP tools from the next request and restores them after discovery recovers', async () => {
     const externalTool = { ...tool('web-search'), description: 'Search the public web for current news.' }
     const discover = mock(async () => ({ web_search: externalTool }))
@@ -1381,6 +1411,7 @@ describe('prepareAiRequestConfig — web search availability', () => {
     try {
       const disconnected = await prepare()
       expect(disconnected.toolset.external_web_search).toBeUndefined()
+      expect(disconnected.toolset.load_tools).toBeUndefined()
       expect(disconnected.mcpToolsMetadata).toBeUndefined()
       expect(disconnected.stableSystemPrompt).toContain(unavailableSearch)
       expect(disconnected.stableSystemPrompt).not.toContain('## Connected MCP Servers')

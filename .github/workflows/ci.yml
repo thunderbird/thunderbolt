@@ -190,10 +190,10 @@ jobs:
 
   typescript:
     runs-on: ubuntu-latest
-    # Happy path is a few minutes; the GitHub default is 360min (6h). A 20min cap
-    # kills a CPU-starved runner ~18x sooner and frees the cancel-in-progress slot
-    # instead of blocking the concurrency group for hours.
-    timeout-minutes: 20
+    # A push to main runs the suite 5x, so it takes well over a pull request's few minutes. The GitHub
+    # default is 360min (6h); a 30min cap kills a CPU-starved runner 12x sooner and frees the
+    # cancel-in-progress slot instead of blocking the concurrency group for hours.
+    timeout-minutes: 30
     permissions:
       pull-requests: write
       contents: read
@@ -259,9 +259,47 @@ jobs:
       - name: Check performance harness
         run: bun run test:performance
 
-      # Upload source maps to PostHog only for main branch
+  # Main-only: the production build with source maps for PostHog, and the coverage and bundle-size
+  # baseline that pr-metrics.yml compares pull requests against. A job of its own, in parallel with
+  # typescript, because the coverage run includes the Office suites and takes several minutes.
+  # It does not wait for typescript on purpose: a red commit's source maps and bundle size are still
+  # right, and a test timeout no longer leaves the commit without a baseline.
+  main-metrics:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          # Node 22.19+ for `bun run build`; see the typescript job.
+          node-version: '22'
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
       - name: Build application with source maps
-        if: github.ref == 'refs/heads/main'
         run: bun run build
         env:
           NODE_ENV: production
@@ -269,7 +307,6 @@ jobs:
           ENABLE_SOURCEMAP: 'true'
 
       - name: Inject & upload source maps to PostHog
-        if: github.ref == 'refs/heads/main'
         uses: PostHog/upload-source-maps@e798a054427efc710af080354f8450d3c154c584 # v0.4.6
         with:
           directory: dist
@@ -277,11 +314,9 @@ jobs:
           cli-token: ${{ secrets.POSTHOG_CLI_TOKEN }}
 
       - name: Delete source maps after upload
-        if: github.ref == 'refs/heads/main'
         run: find dist -name '*.map' -delete
 
       - name: Compute and save metrics baseline
-        if: github.ref == 'refs/heads/main'
         run: |
           bun test --cwd=src --timeout 3600000 --coverage 2>&1 | tee /tmp/coverage.txt || true
           COVERAGE=$(grep -E "All files" /tmp/coverage.txt | grep -oE '[0-9]+\.[0-9]+' | head -1)
@@ -291,7 +326,6 @@ jobs:
           printf '{"bundleSize":%s,"coverage":"%s"}\n' "${BUNDLE:-0}" "${COVERAGE:-N/A}" > .metrics-baseline/metrics.json
 
       - name: Cache metrics baseline
-        if: github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .metrics-baseline
@@ -305,7 +339,7 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.office == 'true' || github.event_name == 'push'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:

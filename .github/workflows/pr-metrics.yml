@@ -16,7 +16,7 @@ concurrency:
 jobs:
   metrics:
     runs-on: ubuntu-latest
-    # 20min cap matches ci.yml `typescript` job — bounds the whole run (coverage
+    # 20min cap matches ci.yml `main-metrics` job — bounds the whole run (coverage
     # test, size-limit build, app preview wait, Lighthouse) so a hang can't
     # burn GitHub's 6h default.
     timeout-minutes: 20

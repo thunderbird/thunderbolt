@@ -688,6 +688,7 @@ type Device = { runFlow: RunFlow; outDir: string; next: () => number; clock?: Le
 
 /** Runs past the three that replace inconclusive ones, per finding. */
 const extraRuns = 3
+const emulatorLost = 'the emulator was lost while this flow ran'
 
 /**
  * A native `layout` or log-oracle run whose flow failed without showing the quoted line never reached the screen
@@ -708,7 +709,8 @@ const unreached = (oracle: FindingFile['finding']['oracle']) =>
  * A run whose emulator dropped off adb never counts (`DeviceLost`). Once the emulator is back, `restartLost` starts
  * that run over. The control sets it, because findings run only after it has 3 passing runs. Without it the flow
  * stops there and keeps the runs it already counted: a finding's own flow may be what brought the emulator down, and
- * a second loss ends the leg. `label` names the run in the job log.
+ * a second loss ends the leg. `keepLost` (a fix's check, which never brings the emulator back) stops the flow the same
+ * way on a loss that would end the leg. `label` names the run in the job log.
  */
 const threeRuns = async (
   { runFlow, outDir, next, clock }: Device,
@@ -717,7 +719,11 @@ const threeRuns = async (
   failure: (run: FlowRun) => string | undefined,
   inconclusive?: (run: FlowRun) => boolean,
   owed?: number,
-  { label = session, restartLost = false }: { label?: string; restartLost?: boolean } = {},
+  {
+    label = session,
+    restartLost = false,
+    keepLost = false,
+  }: { label?: string; restartLost?: boolean; keepLost?: boolean } = {},
 ) => {
   const runOnce = async (named: string) => {
     const once = () => runFlow(yaml, outDir, next(), session, signIn, named, needsTree)
@@ -730,7 +736,7 @@ const threeRuns = async (
     try {
       return await (clock ? clock.time(() => runOnce(named)) : runOnce(named))
     } catch (error) {
-      if (error instanceof DeviceLost && error.retry) return undefined
+      if (error instanceof DeviceLost && (error.retry || keepLost)) return undefined
       throw error
     }
   }
@@ -748,7 +754,7 @@ const threeRuns = async (
     }
     if (!run) {
       outcome.replay.inconclusive = (outcome.replay.inconclusive ?? 0) + 1
-      outcome.replay.reason = 'the emulator was lost while this flow ran'
+      outcome.replay.reason = emulatorLost
       break
     }
     if (run.signInFailed || run.inconclusive || inconclusive?.(run)) {
@@ -899,6 +905,8 @@ type Oracle = FindingFile['finding']['oracle']
  * is verified here on the fake AI: its flow must fail without the patch to prove anything.
  * A verdict that is not a pass is `inconclusive` unless a run that reached the screen failed it: the patched app
  * showed the bug, or the unpatched one passed the fix agent's visual check.
+ * A lost emulator (`DeviceLost`, which this check never recovers from) stops the runs on both apps. The runs already
+ * counted stay, so the verdict is inconclusive unless one of them failed it.
  */
 export const verifyNativeFix = async (
   opts: { fp: string; platform: string; session: string; flow: string; outDir: string; patched: RunFlow } & (
@@ -923,19 +931,35 @@ export const verifyNativeFix = async (
     !run.layout.some((line) => /\[qa-layout\] ready\b/.test(line))
   const unseen = (run: FlowRun) => bug(run) === undefined && (!run.passed || silent(run))
   const flow = await withSignIn(check.yaml, session, appId, oracle)
-  const patched = await threeRuns({ runFlow: opts.patched, outDir, next }, flow, session, bug, unseen)
+  const threeOn = (runFlow: RunFlow) =>
+    threeRuns({ runFlow, outDir, next }, flow, session, bug, unseen, undefined, { keepLost: true })
+  const patched = await threeOn(opts.patched)
   const { failed, runs, error, reason } = patched.replay
   // A run whose harness sign-in failed does not count, so a patch that breaks sign-in cannot pass on no runs.
   const passesWith = failed === 0 && runs === 3
   const result = { fp, platform, runs, failed, passed: passesWith, error: error ?? reason }
-  if (!original) return { ...result, inconclusive: !passesWith && failed === 0 }
-  const unpatched = await threeRuns({ runFlow: original, outDir, next }, flow, session, bug, unseen)
+  // The original app would run on the same lost emulator.
+  if (!original || reason === emulatorLost) return { ...result, inconclusive: !passesWith && failed === 0 }
+  const unpatched = await threeOn(original)
   const failsWithout = unpatched.replay.runs === 3 && unpatched.replay.failed === 3
   const passed = failsWithout && passesWith
   // A real-AI repro flow may simply not show its bug on the fake AI; only the agent's own check can be wrong.
   const checkPassesUnpatched = oracle === undefined && unpatched.replay.failed < unpatched.replay.runs
   const inconclusive = !passed && failed === 0 && !checkPassesUnpatched
-  return { ...result, failsWithout, passesWith, passed, inconclusive }
+  // The cause that decided the verdict comes first: the bug on the patched app, then the check passing without it.
+  const cause = checkPassesUnpatched
+    ? 'the visual check passed on the app without the patch'
+    : unpatched.replay.reason === emulatorLost
+      ? emulatorLost
+      : reason
+  return {
+    ...result,
+    error: error ?? cause,
+    failsWithout,
+    passesWith,
+    passed,
+    inconclusive,
+  }
 }
 
 /**

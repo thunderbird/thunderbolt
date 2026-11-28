@@ -139,6 +139,10 @@ msgstr "{appName} が {providerName} メールとカレンダーへの接続を�
 msgid "{appName} will use it across the app. You can change it later in Preferences."
 msgstr "{appName} はアプリ全体でこの言語を使用します。後で環境設定から変更できます。"
 
+#: src/widgets/ask/review.tsx
+msgid "{chosen}, and Other (in your message)"
+msgstr "{chosen}、その他（メッセージ内）"
+
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+chat%7D+other+%7B%23+chats%7D%7D&pluralize_on=count
 #: src/projects/index.tsx
 #~ msgid "# chat"
@@ -2602,6 +2606,11 @@ msgstr "距離の単位"
 msgid "Do not ask again"
 msgstr "今後は確認しない"
 
+#: src/widgets/ask/display.tsx
+#: src/widgets/ask/review.tsx
+msgid "Doesn't match the answer"
+msgstr "回答と一致しません"
+
 #: src/components/onboarding/onboarding-celebration-step.tsx
 msgid "Donate anonymous usage data"
 msgstr ""
@@ -3095,6 +3104,10 @@ msgstr ""
 #: src/settings/devices.tsx
 msgid "Finish securing after revoking {deviceName}"
 msgstr ""
+
+#: src/widgets/ask/display.tsx
+msgid "Finish your answer in the message box."
+msgstr "メッセージ欄で回答を完成させてください。"
 
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "First device setup"
@@ -3728,6 +3741,11 @@ msgstr "マップグラフ"
 msgid "Maps can’t be displayed here — WebGL is disabled or unavailable in this browser."
 msgstr "このブラウザでは WebGL が無効か利用できないため、地図を表示できません。"
 
+#: src/widgets/ask/display.tsx
+#: src/widgets/ask/review.tsx
+msgid "Matches the answer"
+msgstr "回答と一致します"
+
 #: src/components/chat/attestation/attestation-details.tsx
 msgid "Matching measurements"
 msgstr ""
@@ -3987,6 +4005,14 @@ msgstr "新しいタブ"
 #: src/tasks/index.tsx
 msgid "New Task"
 msgstr "新しいタスク"
+
+#: src/widgets/ask/display.tsx
+msgid "Next"
+msgstr "次へ"
+
+#: src/widgets/ask/step-control.tsx
+msgid "Next question"
+msgstr "次の質問"
 
 #: src/components/ui/agent-selector/agent-selector.tsx
 msgid "No agents found"
@@ -4477,9 +4503,17 @@ msgstr ""
 msgid "Otari web search isn’t available. Configure a search provider in Otari to use it here."
 msgstr ""
 
+#: src/widgets/ask/review.tsx
+msgid "Other (in your message)"
+msgstr "その他（メッセージ内）"
+
 #: src/components/onboarding/onboarding-model-step.tsx
 msgid "Other provider"
 msgstr ""
+
+#: src/widgets/ask/display.tsx
+msgid "Other…"
+msgstr "その他…"
 
 #: src/widgets/connect-integration/widget.tsx
 msgid "Outlook & Calendar"
@@ -4657,6 +4691,10 @@ msgstr "このファイル形式はプレビューできません。ダウンロ
 msgid "Preview webview is only available in the desktop app"
 msgstr "Webview のプレビューはデスクトップアプリでのみ利用できます"
 
+#: src/widgets/ask/step-control.tsx
+msgid "Previous question"
+msgstr "前の質問"
+
 #: src/settings/models/model-detail.tsx
 msgid "Privacy"
 msgstr "プライバシー"
@@ -4720,6 +4758,10 @@ msgstr "Web アプリでは、ブラウザーの CORS 制限を回避するた�
 #: src/projects/project-form.tsx
 msgid "Q3 planning"
 msgstr "第 3 四半期の計画"
+
+#: src/widgets/ask/step-control.tsx
+msgid "Question {currentStep} of {totalSteps}"
+msgstr "{totalSteps}問中{currentStep}問目"
 
 #: src/lib/tray.ts
 msgid "Quit"
@@ -5303,6 +5345,10 @@ msgstr ""
 msgid "Security notice"
 msgstr ""
 
+#: src/widgets/ask/display.tsx
+msgid "See all answers"
+msgstr "すべての回答を表示"
+
 #: src/voice/speakable.ts
 msgid "See the document on screen."
 msgstr "画面のドキュメントをご覧ください。"
@@ -5710,8 +5756,18 @@ msgid "Skills are reusable instruction templates you summon in chat with <0>/nam
 msgstr "スキルは再利用できる指示のテンプレートで、チャットで <0>/name</0> と入力して呼び出せます。"
 
 #: src/components/onboarding/onboarding-action-buttons.tsx
+#: src/widgets/ask/display.tsx
 msgid "Skip"
 msgstr "スキップ"
+
+#: src/widgets/ask/use-ask-sequence-state.ts
+msgid "skipped"
+msgstr "スキップ済み"
+
+#: src/widgets/ask/display.tsx
+#: src/widgets/ask/review.tsx
+msgid "Skipped"
+msgstr "スキップ済み"
 
 #: src/skills/slash-popup.tsx
 msgid "Slash commands"
@@ -6777,6 +6833,7 @@ msgstr "信頼済みのデバイス"
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/content-view/viewer-load-failure.tsx
 #: src/webview-recovery/index.ts
+#: src/widgets/ask/display.tsx
 msgid "Try again"
 msgstr "再試行"
 
@@ -7542,6 +7599,14 @@ msgstr "あなたのエージェント"
 #: src/components/onboarding/onboarding-name-step.tsx
 msgid "Your AI assistant will use this name to address you personally."
 msgstr "AI アシスタントがこの名前であなたに呼びかけます。"
+
+#: src/widgets/ask/review.tsx
+msgid "Your answers"
+msgstr "あなたの回答"
+
+#: src/widgets/ask/display.tsx
+msgid "Your answers couldn’t be sent."
+msgstr "回答を送信できませんでした。"
 
 #: src/settings/search/index.tsx
 #~ msgid "Your API key"

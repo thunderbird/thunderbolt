@@ -58,6 +58,21 @@ const bodyExpr = (cfg: SearchEntityConfig, dataExpr: string): string =>
 const notSoftDeleted = (dataExpr: string): string => `${jsonExtract(dataExpr, softDeleteColumn)} IS NULL`
 
 /**
+ * Predicate that keeps only rows the index should hold: not soft-deleted, and
+ * not flagged hidden by {@link SearchEntityConfig.hiddenWhen}. The flag lives in
+ * a JSON column, read only when it parses (`json_extract` throws on malformed
+ * JSON, which would fail the write the trigger runs in).
+ */
+const isIndexable = (cfg: SearchEntityConfig, dataExpr: string): string => {
+  if (!cfg.hiddenWhen) {
+    return notSoftDeleted(dataExpr)
+  }
+  const column = jsonExtract(dataExpr, cfg.hiddenWhen.field)
+  const hidden = `(CASE WHEN json_valid(${column}) THEN json_extract(${column}, '${cfg.hiddenWhen.path}') END) IS 1`
+  return `${notSoftDeleted(dataExpr)} AND NOT (${hidden})`
+}
+
+/**
  * The `CREATE VIRTUAL TABLE` statement for the unified FTS5 index. `id`,
  * `entity_type`, and `parent_id` are UNINDEXED (stored, not tokenized); `title`
  * and `body` are tokenized with unicode61.
@@ -88,7 +103,7 @@ export const buildCreateSql = (): string =>
  * The three `AFTER INSERT/UPDATE/DELETE` triggers that keep {@link searchIndexTable}
  * in sync with one entity's internal backing table. Rows are scoped by the
  * literal `entity_type` so deletes never touch another entity's hits. The insert
- * is conditional on {@link notSoftDeleted} (a `SELECT … WHERE` yields zero rows
+ * is conditional on {@link isIndexable} (a `SELECT … WHERE` yields zero rows
  * for a soft-deleted record), so on UPDATE the delete-then-insert pair hard-deletes
  * the index entry when `deleted_at` becomes set, and re-adds it if it's cleared.
  * @param internalName - The `ps_data__*` / `ps_data_local__*` backing table.
@@ -98,16 +113,16 @@ export const buildTriggerSql = (cfg: SearchEntityConfig, internalName: string): 
   const insert =
     `INSERT INTO ${searchIndexTable}(${indexColumns}) SELECT ` +
     `NEW.id, '${cfg.type}', ${parentExpr(cfg, 'NEW.data')}, ${titleExpr(cfg, 'NEW.data')}, ${bodyExpr(cfg, 'NEW.data')} ` +
-    `WHERE ${notSoftDeleted('NEW.data')}`
+    `WHERE ${isIndexable(cfg, 'NEW.data')}`
   const remove = `DELETE FROM ${searchIndexTable} WHERE id = OLD.id AND entity_type = '${cfg.type}'`
   // Metadata/cache/context writes must not scan and rebuild the FTS row. Compare
-  // the rendered index values, including NULLs and soft-delete visibility.
+  // the rendered index values, including NULLs and visibility (soft delete, hidden flag).
   const indexChanged = [
     'OLD.id IS NOT NEW.id',
     ...[titleExpr, parentExpr, bodyExpr].map(
       (expression) => `(${expression(cfg, 'OLD.data')}) IS NOT (${expression(cfg, 'NEW.data')})`,
     ),
-    `(${notSoftDeleted('OLD.data')}) IS NOT (${notSoftDeleted('NEW.data')})`,
+    `(${isIndexable(cfg, 'OLD.data')}) IS NOT (${isIndexable(cfg, 'NEW.data')})`,
   ].join(' OR ')
   return [
     `CREATE TRIGGER ${names.insert} AFTER INSERT ON ${internalName} BEGIN ${insert}; END`,
@@ -118,12 +133,12 @@ export const buildTriggerSql = (cfg: SearchEntityConfig, internalName: string): 
 
 /**
  * The one-shot `INSERT … SELECT` that backfills existing rows of one entity,
- * skipping soft-deleted rows.
+ * skipping soft-deleted and hidden rows.
  */
 export const buildBackfillSql = (cfg: SearchEntityConfig, internalName: string): string =>
   `INSERT INTO ${searchIndexTable}(${indexColumns}) SELECT ` +
   `id, '${cfg.type}', ${parentExpr(cfg, 'data')}, ${titleExpr(cfg, 'data')}, ${bodyExpr(cfg, 'data')} ` +
-  `FROM ${internalName} WHERE ${notSoftDeleted('data')}`
+  `FROM ${internalName} WHERE ${isIndexable(cfg, 'data')}`
 
 /** Drops the previous index generation: every entity trigger, then the table. */
 export const buildDropSql = (): string[] => {

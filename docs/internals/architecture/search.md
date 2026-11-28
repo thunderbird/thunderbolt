@@ -61,17 +61,20 @@ fields from its JSON `data` blob with `json_extract`.
   `json_extract(NEW.data, '$.deleted_at') IS NULL`: setting `deleted_at` removes the row, clearing
   it restores the row.
 - Tables without that column always index, since `json_extract` yields `NULL`.
+- An entity with `hiddenWhen` also skips rows whose JSON column holds `true` at that path, checked
+  only when the column parses as JSON so a malformed value cannot fail the write. Messages use it to
+  leave out an ask widget's hidden answer turn (`metadata.askAnswers`), which no hit could lead to.
 
 ### When it rebuilds
 
-`createSearchIndex` ([`src/search/fts-setup.ts:146`](../../../src/search/fts-setup.ts#L146)) runs at
+`createSearchIndex` ([`src/search/fts-setup.ts:171`](../../../src/search/fts-setup.ts#L171)) runs at
 boot as init step `step2d_build_search_index`, before the data steps and best-effort: a failed build
 logs and boot continues with a stale or empty palette (see
 [app-initialization.md](app-initialization.md#the-search-index)). Two gates make it idempotent:
 
 | Gate          | Check                                                                                                                                                                               |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Version       | `searchIndexVersion` ([`src/search/registry.ts:135`](../../../src/search/registry.ts#L135)), recorded in `search_index_meta`; a mismatch drops the previous generation and rebuilds |
+| Version       | `searchIndexVersion` ([`src/search/registry.ts:155`](../../../src/search/registry.ts#L155)), recorded in `search_index_meta`; a mismatch drops the previous generation and rebuilds |
 | Trigger count | `searchEntities.length * 3` live triggers must exist                                                                                                                                |
 
 The trigger count exists because PowerSync can drop and recreate its internal tables (a resync, a

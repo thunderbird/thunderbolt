@@ -3,11 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 export { Ask } from './display'
+export { groupAskSequences, messageAsksOf, type AskSequencePart } from './group'
 export { instructions } from './instructions'
 export {
   collectAskEntriesFromCache,
   evaluateAnswer,
   formatAskResponsesNote,
+  isAskAnswersMessage,
   optionLetter,
   type AskCacheEntry,
   type AskData,
@@ -16,4 +18,4 @@ export {
 } from './lib'
 export { parse, schema } from './schema'
 export type { AskWidget, CacheData } from './schema'
-export { AskWidget as Component } from './widget'
+export { AskSequence, AskWidget as Component, Skeleton } from './widget'

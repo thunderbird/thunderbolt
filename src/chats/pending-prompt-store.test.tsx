@@ -19,7 +19,13 @@ afterEach(() => setState({ promptsByThread: {} }))
 /** Lets the effect-phase handover in `useConsumePendingPrompt` settle. */
 const flushMicrotasks = () => new Promise<void>((resolve) => queueMicrotask(resolve))
 
-const Consumer = ({ threadId, onConsume }: { threadId: string; onConsume: (prompt: string) => void }) => {
+const Consumer = ({
+  threadId,
+  onConsume,
+}: {
+  threadId: string
+  onConsume: (prompt: string, options: { focus?: boolean }) => void
+}) => {
   useConsumePendingPrompt(threadId, onConsume)
   return null
 }
@@ -28,13 +34,16 @@ describe('pending-prompt-store', () => {
   test('setPendingPrompt stores per thread without touching other threads', () => {
     setPendingPrompt('t1', 'explain this')
     setPendingPrompt('t2', 'and this')
-    expect(getState().promptsByThread).toEqual({ t1: 'explain this', t2: 'and this' })
+    expect(getState().promptsByThread).toEqual({
+      t1: { text: 'explain this', focus: false },
+      t2: { text: 'and this', focus: false },
+    })
   })
 
   test('a later prompt for the same thread replaces the earlier one', () => {
     setPendingPrompt('t1', 'first')
     setPendingPrompt('t1', 'second')
-    expect(getState().promptsByThread.t1).toBe('second')
+    expect(getState().promptsByThread.t1?.text).toBe('second')
   })
 
   test('clearPrompt removes the thread entry entirely', () => {
@@ -52,7 +61,21 @@ describe('useConsumePendingPrompt', () => {
     render(<Consumer threadId="t1" onConsume={onConsume} />)
     await flushMicrotasks()
 
-    expect(onConsume).toHaveBeenCalledWith('explain this chart')
+    expect(onConsume).toHaveBeenCalledWith('explain this chart', { focus: false })
+  })
+
+  test('asks for focus only when the proposer did, and drops the request with the prompt', async () => {
+    const onConsume = mock()
+    render(<Consumer threadId="t1" onConsume={onConsume} />)
+
+    setPendingPrompt('t1', '1. Which topics? — ', { focus: true })
+    await flushMicrotasks()
+    expect(onConsume).toHaveBeenLastCalledWith('1. Which topics? — ', { focus: true })
+    expect(getState().promptsByThread.t1).toBeUndefined()
+
+    setPendingPrompt('t1', 'from an app')
+    await flushMicrotasks()
+    expect(onConsume).toHaveBeenLastCalledWith('from an app', { focus: false })
   })
 
   test('delivers a prompt queued while the consumer is already mounted', async () => {
@@ -64,7 +87,7 @@ describe('useConsumePendingPrompt', () => {
     setPendingPrompt('t1', 'now what?')
     await flushMicrotasks()
 
-    expect(onConsume).toHaveBeenCalledWith('now what?')
+    expect(onConsume).toHaveBeenCalledWith('now what?', { focus: false })
   })
 
   test('clears the prompt once delivered, so a remount does not resurrect it', async () => {
@@ -90,7 +113,7 @@ describe('useConsumePendingPrompt', () => {
     await flushMicrotasks()
 
     expect(onConsume).not.toHaveBeenCalled()
-    expect(getState().promptsByThread.t2).toBe('not for you')
+    expect(getState().promptsByThread.t2?.text).toBe('not for you')
   })
 
   test('delivers the same text twice when it is proposed again', async () => {

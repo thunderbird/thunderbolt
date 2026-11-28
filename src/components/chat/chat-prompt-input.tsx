@@ -450,9 +450,10 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
     // racing with the microtask could silently discard the user's text.
     const inputRef = useRef(input)
     inputRef.current = input
+    const formRef = useRef<HTMLFormElement>(null)
     /*
      * Composer text proposed from outside this subtree (a Mini App's
-     * `ui/open-chat`). Delivered once and dropped.
+     * `ui/open-chat`, an ask widget's "Other…"). Delivered once and dropped.
      *
      * Merged into the draft rather than replacing it, and read through
      * `inputRef` so the merge sees what is in the composer at delivery time
@@ -460,10 +461,17 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
      * behaviour and it silently ate whatever the user had typed when an app
      * decided to propose something.
      */
-    useConsumePendingPrompt(chatThreadId, (prompt) =>
-      setInput(mergeIntoDraft(foldPendingSigils(inputRef.current), prompt)),
-    )
-    const formRef = useRef<HTMLFormElement>(null)
+    useConsumePendingPrompt(chatThreadId, (prompt, { focus }) => {
+      setInput(mergeIntoDraft(foldPendingSigils(inputRef.current), prompt))
+      if (focus) {
+        // After the commit, so the caret lands at the end of the merged text.
+        requestAnimationFrame(() => {
+          const textarea = formRef.current?.querySelector('textarea') ?? null
+          textarea?.focus()
+          collapseTextSelectionToEnd(textarea)
+        })
+      }
+    })
     // Discovered lazily — the form ref is set after the first render, and we
     // need a stable ref to pass to `useSlashCommand` so it can focus / set
     // selection after inserting a token. Keeping a single ref (rather than

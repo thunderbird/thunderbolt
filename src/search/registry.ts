@@ -31,6 +31,11 @@ export type SearchEntityConfig = {
   bodyFields: string[]
   /** Field holding the parent id used to build the route, or null. */
   parentIdField: string | null
+  /**
+   * A JSON column and path that, when `true`, keep a row out of the index — for
+   * rows the UI never shows, so a hit could not lead anywhere.
+   */
+  hiddenWhen?: { field: string; path: string }
   icon: LucideIcon
   /** Builds the router path for a hit from its id and optional parent id. */
   route: (args: { id: string; parentId: string | null }) => string
@@ -57,6 +62,8 @@ export const searchEntities: SearchEntityConfig[] = [
     titleField: null,
     bodyFields: ['content'],
     parentIdField: 'chat_thread_id',
+    // An ask widget's answers go to the model as a user turn the transcript hides.
+    hiddenWhen: { field: 'metadata', path: '$.askAnswers' },
     icon: MessageSquareText,
     route: ({ parentId }) => `/chats/${parentId}`,
   },
@@ -142,6 +149,7 @@ export const minimalModeHiddenEntityTypes: ReadonlySet<SearchEntityType> = new S
  * one. (Started at 1; bumped to 2 for the soft-delete guard + the snake_case
  * message-parent fix, which changed the triggers and backfill; 3 adds projects;
  * 4 changes the tokenizer to `unicode61 remove_diacritics 2` and drops porter;
- * 5 skips FTS updates when indexed values and soft-delete visibility are unchanged.)
+ * 5 skips FTS updates when indexed values and soft-delete visibility are unchanged;
+ * 6 leaves hidden ask-answer messages out, see {@link SearchEntityConfig.hiddenWhen}.)
  */
-export const searchIndexVersion = 5
+export const searchIndexVersion = 6

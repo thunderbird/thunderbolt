@@ -5,7 +5,9 @@
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
-import { act, render } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
+import { type ChatSession, useChatStore } from '@/chats/chat-store'
+import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import type { TextUIPart } from 'ai'
 import { afterAll, beforeAll, describe, expect, it, spyOn } from 'bun:test'
 import { ExternalLinkDialogProvider } from './markdown-utils'
@@ -112,6 +114,49 @@ describe('streaming widgets', () => {
     rerender(<TextPart messageId="widget" part={{ type: 'text', text: 'Replacement answer', state: 'done' }} />)
     expect(container.textContent).toBe('Replacement answer')
   })
+
+  it('keeps a finished part’s asks as placeholders until the whole message stops streaming', async () => {
+    const text = `<widget:ask mode="single" prompt="Which protocol sends mail?" options='[{"id":"a","text":"SMTP","isCorrect":true},{"id":"b","text":"IMAP"}]' />`
+    const part: TextUIPart = { type: 'text', text, state: 'done' }
+    const initialChatState = useChatStore.getState()
+    const session = { id: 'ask-session', chatInstance: { sendMessage: async () => {} } } as unknown as ChatSession
+    useChatStore.setState({ currentSessionId: 'ask-session', sessions: new Map([['ask-session', session]]) })
+    const Provider = createTestProvider()
+    const { container, rerender, unmount } = render(<TextPart messageId="ask" part={part} isStreaming />, {
+      wrapper: Provider,
+    })
+    try {
+      expect(container.querySelector('.animate-pulse')).not.toBeNull()
+      expect(container.textContent).not.toContain('Which protocol sends mail?')
+
+      rerender(<TextPart messageId="ask" part={part} isStreaming={false} />)
+      expect(await waitForElement(() => screen.queryByText('Which protocol sends mail?'))).toBeTruthy()
+    } finally {
+      unmount()
+      useChatStore.setState(initialChatState, true)
+    }
+  })
+
+  it('re-renders a finished part holding an ask when a reply arrives, so its answers lock', () => {
+    const reveal = spyOn(smoothText, 'useSmoothText')
+    const text = `<widget:ask mode="choice" prompt="Next?" options='[{"id":"a","text":"A"},{"id":"b","text":"B"}]' />`
+    const part: TextUIPart = { type: 'text', text, state: 'done' }
+    const initialChatState = useChatStore.getState()
+    const session = { id: 'reply-session', chatInstance: { sendMessage: async () => {} } } as unknown as ChatSession
+    useChatStore.setState({ currentSessionId: 'reply-session', sessions: new Map([['reply-session', session]]) })
+    const { rerender, unmount } = render(<TextPart part={part} messageId="reply" />, { wrapper: createTestProvider() })
+    try {
+      const initial = reveal.mock.calls.length
+      rerender(<TextPart part={{ ...part }} messageId="reply" />)
+      expect(reveal.mock.calls.length).toBe(initial)
+      rerender(<TextPart part={{ ...part }} messageId="reply" hasReply />)
+      expect(reveal.mock.calls.length).toBe(initial + 1)
+    } finally {
+      unmount()
+      reveal.mockRestore()
+      useChatStore.setState(initialChatState, true)
+    }
+  })
 })
 
 // Every Markdown image renders as its alt text (markdown-image.tsx), whatever the turn's sources allow.
@@ -151,7 +196,7 @@ it('leaves completed text parts stable when another part streams, and updates te
     const { rerender, container } = render(<TextPart part={part} messageId="stable" isStreaming />)
     const initial = reveal.mock.calls.length
     for (const isStreaming of [true, false, undefined, ...Array.from({ length: 20 }, (_, index) => index % 2 === 0)]) {
-      rerender(<TextPart part={{ ...part }} messageId="stable" isStreaming={isStreaming} />)
+      rerender(<TextPart part={{ ...part }} messageId="stable" isStreaming={isStreaming} hasReply={!isStreaming} />)
     }
     expect(reveal.mock.calls.length).toBe(initial)
     const sources = [{ index: 1, url: 'https://example.com', title: 'Source', toolName: 'search' }]

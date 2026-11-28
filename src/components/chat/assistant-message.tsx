@@ -19,6 +19,7 @@ import type { SourceMetadata } from '@/types/source'
 import type { TextUIPart } from 'ai'
 import { memo, useMemo, type ReactNode } from 'react'
 import { ArtifactMessagePart } from './artifact-message-part'
+import { collectMessageAsks } from '@/widgets/ask/message-asks'
 import { CopyMessageButton } from './copy-message-button'
 import { CreatedFileVersionGroup } from './created-file-version-group'
 import { ReasoningGroup } from './reasoning-group'
@@ -35,6 +36,8 @@ type AssistantMessageProps = {
   holdFiles?: boolean
   isLastMessage?: boolean
   isLastAssistantMessage?: boolean
+  /** A later message exists in the thread, which locks this message's ask answers. */
+  hasReply?: boolean
   lastAssistantAction?: ReactNode
   activity?: ReactNode
 }
@@ -68,6 +71,7 @@ export const mountMessageParts = (
   sources?: SourceMetadata[],
   haystackReferences?: HaystackReferenceMeta[],
   mcpTools?: UIMessageMetadata['mcpTools'],
+  hasReply = false,
 ) => {
   const partElements: ReactNode[] = []
   // File chips are not counted, so holding them back never moves another part's animation class.
@@ -96,6 +100,14 @@ export const mountMessageParts = (
     const kind = partKind(part)
     return kind === 'text' || kind === 'tool' || kind === 'created_files'
   })
+
+  // Asks are only interactive once the message has finished streaming, so collect them then.
+  const messageAsks = isStreaming
+    ? null
+    : collectMessageAsks(
+        groupedParts.filter((part) => partKind(part) === 'text').map((part) => (part as TextUIPart).text),
+      )
+  let textPartIndex = 0
 
   // Count the source parts consumed by each group. Folding a synthetic file row
   // then leaves the identities of the surrounding message parts intact.
@@ -141,7 +153,8 @@ export const mountMessageParts = (
         )
         break
       }
-      case 'text':
+      case 'text': {
+        const askOffset = messageAsks?.offsets[textPartIndex++]
         appendPart(
           <TextPart
             part={part as TextUIPart}
@@ -149,10 +162,14 @@ export const mountMessageParts = (
             messageId={messageId}
             sources={sources}
             haystackReferences={haystackReferences}
+            messageAsks={messageAsks?.asks}
+            askOffset={askOffset}
+            hasReply={hasReply}
           />,
           partIndex,
         )
         break
+      }
       case 'tool':
         appendPart(<ArtifactMessagePart part={part as ToolOrDynamicToolUIPart} />, partIndex)
         break
@@ -170,6 +187,7 @@ export const AssistantMessage = memo(
     holdFiles = false,
     isLastMessage = false,
     isLastAssistantMessage = false,
+    hasReply = false,
     lastAssistantAction,
     activity,
   }: AssistantMessageProps) => {
@@ -204,6 +222,7 @@ export const AssistantMessage = memo(
           sources,
           haystackReferences,
           mcpTools,
+          hasReply,
         ),
       [
         groupedParts,
@@ -214,6 +233,7 @@ export const AssistantMessage = memo(
         sources,
         haystackReferences,
         mcpTools,
+        hasReply,
       ],
     )
 
@@ -277,6 +297,7 @@ export const AssistantMessage = memo(
       prevProps.holdFiles === nextProps.holdFiles &&
       prevProps.isLastMessage === nextProps.isLastMessage &&
       prevProps.isLastAssistantMessage === nextProps.isLastAssistantMessage &&
+      prevProps.hasReply === nextProps.hasReply &&
       prevProps.lastAssistantAction === nextProps.lastAssistantAction &&
       prevProps.activity === nextProps.activity
     )

@@ -40,7 +40,7 @@ import { getActiveLocale } from '@/i18n/active-locale'
 import { extractLastUserText, loadSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { createSkillTool, selectEnabledSkillDefinitions, type RequestSkillDefinition } from '@/skills/skill-tool'
 import { isVoiceModeActive, voiceModeSystemNote } from '@/voice/voice-mode'
-import { collectAskEntriesFromCache, formatAskResponsesNote } from '@/widgets/ask/lib'
+import { askResponsesNoteFor } from '@/widgets/ask/message-asks'
 import { getDb } from '@/db/database'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { hydrateAttachmentsAsFileParts } from '@/lib/attachments'
@@ -1100,30 +1100,14 @@ export const aiFetchStreamingResponse = async ({
       return kind ? JSON.stringify({ error: message, kind }) : message
     }
 
-    // Surface the user's persisted ask-widget responses (stored in each
-    // assistant message's cache) so the model can refer back to what the user
-    // chose or wrote without asking them to re-enter it. Reading every
-    // assistant message's cache only pays off when an ask widget was actually
-    // rendered, so guard on the tag — conversations without one (the common
-    // case) skip the per-message DB reads entirely.
-    const conversationHasAsk = messages.some(
-      (message) =>
-        message.role === 'assistant' &&
-        message.parts.some((part) => part.type === 'text' && part.text.includes('<widget:ask')),
+    // Surface the state of every ask-widget question — answered, skipped, or
+    // still open — so the model knows where a quiz stands and never asks the
+    // user to re-enter an answer. Only messages that render an ask pay for the
+    // cache read, so conversations without one (the common case) skip the DB.
+    const askResponsesNote = await askResponsesNoteFor(
+      messages,
+      async (messageId) => (await getMessageCache(db, messageId))?.cache,
     )
-    const askEntries = conversationHasAsk
-      ? (
-          await Promise.all(
-            messages
-              .filter((message) => message.role === 'assistant')
-              .map(async (message) => {
-                const stored = await getMessageCache(db, message.id)
-                return stored?.cache ? collectAskEntriesFromCache(stored.cache) : []
-              }),
-          )
-        ).flat()
-      : []
-    const askResponsesNote = formatAskResponsesNote(askEntries)
     // Voice turns reuse this same send path; when voice is active, include the
     // voice self-context so the model knows it's speaking aloud, keeps replies
     // brief, and answers about itself instead of web-searching its own identity.

@@ -189,6 +189,8 @@ export type UIMessageMetadata = {
   acpContextUsage?: AcpContextUsage
   /** An explicit agent command, sent verbatim without prompt decoration. */
   acpCommand?: 'compact'
+  /** An ask widget's answers, sent as a user turn the transcript does not show (the card is the visible record). */
+  askAnswers?: true
   modelId?: string
   /** Correlates a persisted turn with its richer session-scoped debug capture. */
   debugTranscript?: DebugTranscriptMessageMetadataV1

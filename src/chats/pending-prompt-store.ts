@@ -9,9 +9,10 @@ import { create } from 'zustand'
  * One-shot composer text waiting to be delivered to a chat, keyed by thread id.
  *
  * The sibling of `usePendingQuotesStore` for whole prompts rather than
- * quote chips: a caller outside the composer's subtree — today a Mini App's
- * `ui/open-chat`, which may arrive before the chat pane has mounted — proposes
- * text, and the composer picks it up whenever it next renders for that thread.
+ * quote chips: a caller outside the composer's subtree — a Mini App's
+ * `ui/open-chat`, which may arrive before the chat pane has mounted, or an ask
+ * widget handing over an "Other…" answer — proposes text, and the composer
+ * picks it up whenever it next renders for that thread.
  *
  * It deliberately does *not* write `draft:<id>` in localStorage. That was the
  * first attempt and it delivered nothing: `useDraftInput` reads storage only in
@@ -19,16 +20,25 @@ import { create } from 'zustand'
  * saw the write — and an unsaved chat runs with `persist: false`, so it never
  * reads storage at all. In-memory and keyed by thread, like the quotes channel.
  */
+export type PendingPromptOptions = {
+  /** Also focus the composer, caret at the end of the text (an ask widget's "Other…"). */
+  focus?: boolean
+}
+
+export type PendingPrompt = { text: string; focus: boolean }
+
 type PendingPromptStore = {
-  promptsByThread: Record<string, string>
-  setPrompt: (threadId: string, prompt: string) => void
+  promptsByThread: Record<string, PendingPrompt>
+  setPrompt: (threadId: string, prompt: string, options?: PendingPromptOptions) => void
   clearPrompt: (threadId: string) => void
 }
 
 export const usePendingPromptStore = create<PendingPromptStore>((set) => ({
   promptsByThread: {},
-  setPrompt: (threadId, prompt) =>
-    set((state) => ({ promptsByThread: { ...state.promptsByThread, [threadId]: prompt } })),
+  setPrompt: (threadId, prompt, options) =>
+    set((state) => ({
+      promptsByThread: { ...state.promptsByThread, [threadId]: { text: prompt, focus: options?.focus ?? false } },
+    })),
   clearPrompt: (threadId) =>
     set((state) => {
       const next = { ...state.promptsByThread }
@@ -37,9 +47,9 @@ export const usePendingPromptStore = create<PendingPromptStore>((set) => ({
     }),
 }))
 
-/** Propose composer text for a thread from outside React. */
-export const setPendingPrompt = (threadId: string, prompt: string) =>
-  usePendingPromptStore.getState().setPrompt(threadId, prompt)
+/** Propose composer text for a thread from outside React; `focus` also puts the caret at its end. */
+export const setPendingPrompt = (threadId: string, prompt: string, options?: PendingPromptOptions) =>
+  usePendingPromptStore.getState().setPrompt(threadId, prompt, options)
 
 /**
  * Merge a proposed prompt into whatever the composer already holds.
@@ -79,22 +89,26 @@ export const mergeIntoDraft = (draft: string, prompt: string): string => {
  * re-seeded every time the composer remounted for that thread, resurrecting
  * text the user had already deleted.
  */
-export const useConsumePendingPrompt = (threadId: string, onConsume: (prompt: string) => void): void => {
+export const useConsumePendingPrompt = (
+  threadId: string,
+  onConsume: (prompt: string, options: PendingPromptOptions) => void,
+): void => {
   const prompt = usePendingPromptStore((state) => state.promptsByThread[threadId] ?? null)
-  const deliver = useEffectEvent((value: string) => onConsume(value))
+  const deliver = useEffectEvent(({ text, focus }: PendingPrompt) => onConsume(text, { focus }))
   /*
    * What has already been handed over.
    *
    * The effect is not enough on its own: StrictMode mounts, unmounts and
    * remounts, so the effect body runs twice against the same value and
-   * delivered the prompt twice. The marker is reset when the store goes empty
-   * — which happens immediately after a delivery — so the *same* text proposed
-   * again later is still a new delivery rather than a duplicate.
+   * delivered the prompt twice. It holds the delivered entry itself, and is
+   * reset when the store goes empty — which happens immediately after a
+   * delivery — so the *same* text proposed again later is still a new delivery
+   * rather than a duplicate.
    *
    * Written here rather than during render, which is the whole point: a render
    * React abandons leaves nothing behind.
    */
-  const deliveredRef = useRef<string | null>(null)
+  const deliveredRef = useRef<PendingPrompt | null>(null)
 
   useEffect(() => {
     if (prompt === null) {

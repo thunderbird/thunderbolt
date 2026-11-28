@@ -71,14 +71,47 @@ const preferenceAnswers: AskData = {
   ],
 }
 
-/** One designated answer — radio-style, revealed on submit. */
+/** One designated answer — radio-style, graded on the tap. */
 export const SingleAnswer: Story = { args: singleAnswer }
 
-/** Multiple designated answers — checkbox-style, all-or-nothing match. */
+/** Multiple designated answers — checkbox-style, graded on Submit, all-or-nothing match. */
 export const MultipleAnswers: Story = { args: multipleAnswers }
 
-/** No designated answer — an open prompt where the choice itself is the action. */
+/** No designated answer — the pick shows first and Submit (Next mid-quiz) commits it; "Other…" hands it to the composer. */
 export const NoDesignatedAnswer: Story = { args: noDesignatedAnswer }
 
 /** No designated answer, multi-select — a preference/opinion question. */
 export const PreferenceMultiSelect: Story = { args: preferenceAnswers }
+
+/** A step inside a multi-question quiz — the wizard supplies the `‹ Question N of M ›` step control. */
+export const SequenceStep: Story = {
+  args: { ...singleAnswer, progress: { step: 2, total: 4 }, onPrevious: () => {}, onNext: () => {} },
+}
+
+/** An answered graded step revisited with ‹ — read-only, its result still showing. */
+export const RevisitedGradedStep: Story = {
+  args: {
+    ...singleAnswer,
+    initialSelectedIds: ['imap'],
+    initialSubmitted: true,
+    progress: { step: 1, total: 4 },
+    onNext: () => {},
+  },
+}
+
+/** An optional question in a sequence — Skip doesn't hold up the rest. */
+export const OptionalStep: Story = {
+  args: { ...preferenceAnswers, canSkip: true, progress: { step: 3, total: 4 }, onPrevious: () => {} },
+}
+
+/** The answered last step of a quiz — "See all answers" sits on the left of the action row. */
+export const LastStepAnswered: Story = {
+  args: {
+    ...preferenceAnswers,
+    initialSelectedIds: ['product'],
+    initialSubmitted: true,
+    progress: { step: 4, total: 4 },
+    onPrevious: () => {},
+    onReview: () => {},
+  },
+}

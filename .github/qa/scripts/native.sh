@@ -315,8 +315,10 @@ device_android() {
     echo "boot $boot: emulator $(pkg_revision "$(dirname "$(command -v emulator)")"), $android_image revision" \
       "$(pkg_revision "${ANDROID_HOME:-}/${android_image//;//}")" >&2
     # The watcher's output goes to the log too, so it never holds the caller's stdout or stderr open.
+    # swiftshader_indirect is deprecated and segfaulted mid-flow. If lavapipe crashes too, -gpu swangle is next:
+    # https://issuetracker.google.com/issues/583903265
     watch_emulator "$status" emulator -avd "$avd" -port "$port" -no-window -no-audio -no-snapshot -no-boot-anim \
-      -gpu swiftshader_indirect > "$emulator_files-$boot.log" 2>&1 &
+      -gpu lavapipe > "$emulator_files-$boot.log" 2>&1 &
     oom_kills > "$emulator_files.oom"
   fi
   # A dead emulator ends the wait at once.

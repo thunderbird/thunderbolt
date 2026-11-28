@@ -621,7 +621,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    that writes into the checkout fails the gate for every task. The full Playwright suite, the builds, the
    browser and native checks, the segregated WebSocket tests (flaky by design; ci.yml retries them) and the Helm,
    miniapps, Rust, wasm and QA jobs are left out: too slow, or on paths a fix seldom touches (`verify-native-build`
-   compiles a native fix's Rust, but nothing lints it). The gate is skipped when the fix job left a diagnosis or no
+   compiles a native fix's Rust, but nothing lints it). The typescript job's Docker-backed steps
+   (`bun run test:docker` and its 5x re-run) are left out too, because `stack.sh lock` removes Docker; the fix's PR
+   still runs them in CI. The gate is skipped when the fix job left a diagnosis or no
    patch, or a visual task has no check: publish hands those tickets to a person anyway. A failed check is the
    pipeline's: the job's summary names the ticket and the check, no PR opens, the ticket gets no write, and
    publish's summary says it was left for a later run. `publish` needs a pass from every platform in `verifyNative`

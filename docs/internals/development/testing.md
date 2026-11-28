@@ -33,6 +33,9 @@ bun run test:backend:watch
 bun run e2e
 bun run e2e:headed   # with a visible browser
 
+# Run the app's nginx test in a container (needs a local Docker, see "Frontend HTTP serving")
+bun run test:docker
+
 # Run the Helm chart tests (needs Helm and the helm-unittest plugin, see "Helm chart tests")
 helm unittest deploy/k8s
 ```
@@ -462,7 +465,7 @@ Then run `helm unittest deploy/k8s`.
 
 The `Frontend Serving` workflow runs the deployed nginx configurations in isolated containers:
 
-- `nginx.test.ts` covers the app: missing-chunk recovery, immutable asset caching, app-shell revalidation, cross-origin isolation headers, and source-map blocking. It is also part of `bun run test`.
+- `nginx.test.ts` covers the app: missing-chunk recovery, immutable asset caching, app-shell revalidation, cross-origin isolation headers, and source-map blocking. It needs Docker on the same machine, so `bun run test` leaves it out. Run it with `bun run test:docker`, which CI's `typescript` job runs as its own step.
 - `marketing-nginx.test.ts` covers the website's release endpoint against a stand-in for GitHub: starting without DNS, one shared lookup, what reaches GitHub and what comes back, background refresh, and each way a lookup can fail. It takes about half a minute, so it runs only here.
 
 Run both locally with Docker available:

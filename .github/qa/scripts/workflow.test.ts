@@ -1381,6 +1381,17 @@ describe('verify-checks', () => {
       expect({ name, run: source?.run?.trim() }).toEqual({ name, run: script.trim() })
     }
   })
+
+  test("leaves out ci.yml's Docker-backed test steps, since stack.sh lock removes Docker", () => {
+    const typescript =
+      (Bun.YAML.parse(readFileSync(ciWorkflow, 'utf8')) as { jobs: Record<string, Job> }).jobs.typescript.steps ?? []
+    expect(
+      ['Run Docker-backed tests', 'Re-run changed Docker-backed tests (5x)'].map(
+        (name) => typescript.find((s) => s.name === name)?.run,
+      ),
+    ).toEqual(['bun run test:docker', 'bun scripts/rerun-changed-tests.ts docker'])
+    expect(prChecks.filter((c) => c.run.includes('docker'))).toEqual([])
+  })
 })
 
 describe('publish', () => {

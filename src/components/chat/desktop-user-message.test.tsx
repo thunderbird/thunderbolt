@@ -25,7 +25,7 @@ it('right-aligns the last-message action after the copy button', () => {
     </ContentViewProvider>,
   )
 
-  const copyButton = screen.getByRole('button', { name: 'Copy message' })
+  const copyButton = screen.getByRole('button', { name: /^Copy message/ })
   const shareButton = screen.getByRole('button', { name: 'Share transcript' })
   expect(copyButton.parentElement).toBe(shareButton.parentElement)
   expect(copyButton.parentElement).toHaveClass(

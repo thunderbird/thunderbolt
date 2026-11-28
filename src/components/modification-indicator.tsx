@@ -6,7 +6,7 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
-import { type ElementType, type ReactNode, useState } from 'react'
+import { type ElementType, type ReactNode, useId, useState } from 'react'
 
 type ModificationIndicatorProps = {
   /**
@@ -32,8 +32,8 @@ type ModificationIndicatorProps = {
   className?: string
   /**
    * Optional DOM id, forwarded to the label's inner text node (not the outer
-   * element, which carries a state `aria-label` like "Modified item" that would
-   * otherwise mask the text). Lets a control reference this label via
+   * element or the trigger button, whose hidden ", modified" suffix would
+   * otherwise be read with it). Lets a control reference this label via
    * `aria-labelledby` so screen readers announce the label text — and, if the
    * control also self-references, its current value.
    */
@@ -49,8 +49,8 @@ type ModificationIndicatorProps = {
    */
   confirmMessage?: string
   /**
-   * Optional custom aria-label for the indicator
-   * @default "Modified item"
+   * Optional custom text announced after the label, as ", <ariaLabel>"
+   * @default ", modified"
    */
   ariaLabel?: string
   /**
@@ -80,10 +80,14 @@ export const ModificationIndicator = ({
   requireConfirmation = false,
 }: ModificationIndicatorProps) => {
   const { t } = useLingui()
+  const generatedId = useId()
+  const textId = id ?? `${generatedId}-text`
+  const suffixId = `${generatedId}-suffix`
   const [isPopoverOpen, setIsPopoverOpen] = useState(false)
   const customMessage = customMessageProp ?? t`You've customized this setting.`
   const confirmMessage = confirmMessageProp ?? t`Are you sure? You will lose any changes that you made.`
-  const ariaLabel = ariaLabelProp ?? t`Modified item`
+  // Announced after the visible text so the button's name starts with its label (WCAG 2.5.3)
+  const modifiedSuffix = ariaLabelProp ? `, ${ariaLabelProp}` : t`, modified`
   const [showConfirmation, setShowConfirmation] = useState(false)
 
   const handleResetClick = () => {
@@ -128,26 +132,36 @@ export const ModificationIndicator = ({
 
   return (
     <Popover open={isPopoverOpen} onOpenChange={handlePopoverChange}>
-      <PopoverTrigger asChild>
-        <Component className={className} aria-label={ariaLabel} htmlFor={undefined}>
-          {/* A border can't take a gradient, so the modified underline is a
+      <Component className={className}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            // An enclosing <label> would otherwise supply the name, looping back through this button
+            aria-labelledby={`${textId} ${suffixId}`}
+            className="rounded-sm focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {/* A border can't take a gradient, so the modified underline is a
               bottom-anchored 2px background strip painted through the (still
               transparent) border — [background-origin:border-box] pushes it
               into the border area so it sits exactly where the border-b-2
               would. Hover thickens the strip for feedback since there's no
               hover color to swap to. */}
-          <span
-            id={id}
-            className={cn(
-              underlineClasses,
-              'cursor-pointer border-transparent bg-bottom bg-no-repeat transition-[background-size]',
-              '[background-image:var(--gradient-brand)] [background-origin:border-box] [background-size:100%_2px] hover:[background-size:100%_3px]',
-            )}
-          >
-            {children}
-          </span>
-        </Component>
-      </PopoverTrigger>
+            <span
+              id={textId}
+              className={cn(
+                underlineClasses,
+                'cursor-pointer border-transparent bg-bottom bg-no-repeat transition-[background-size]',
+                '[background-image:var(--gradient-brand)] [background-origin:border-box] [background-size:100%_2px] hover:[background-size:100%_3px]',
+              )}
+            >
+              {children}
+            </span>
+            <span id={suffixId} className="sr-only">
+              {modifiedSuffix}
+            </span>
+          </button>
+        </PopoverTrigger>
+      </Component>
       <PopoverContent align="start" side="bottom" className="w-[240px] p-0">
         <div className="flex flex-col">
           {/* Body */}

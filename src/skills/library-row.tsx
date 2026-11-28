@@ -61,7 +61,6 @@ export const LibraryRow = ({
       isSelected={isActive}
       isDimmed={!enabled}
       onSelect={() => onSelect(skill.id)}
-      ariaLabel={t`Open ${skillName}`}
       trailing={
         <Switch
           checked={enabled}

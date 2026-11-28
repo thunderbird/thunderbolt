@@ -12,13 +12,13 @@ describe('PageSearch', () => {
     const onSearch = mock((_value: string) => {})
     render(
       <PageSearch onSearch={onSearch}>
-        <PageSearch.Button />
+        <PageSearch.Button label="Search items" />
         <PageSearch.Input placeholder="Search items" onSearch={onSearch} />
       </PageSearch>,
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Search items' }))
     fireEvent.change(screen.getByPlaceholderText('Search items'), { target: { value: 'stale query' } })
-    fireEvent.click(screen.getByRole('button', { name: action === 'clear' ? 'Clear search' : 'Search' }))
+    fireEvent.click(screen.getByRole('button', { name: action === 'clear' ? 'Clear search' : 'Search items' }))
     expect(onSearch).toHaveBeenLastCalledWith('')
     await act(async () => {
       await getClock().tickAsync(100)
@@ -40,7 +40,7 @@ describe('PageSearch', () => {
   it('adds space below the input only while search is open', () => {
     render(
       <PageSearch onSearch={() => {}}>
-        <PageSearch.Button />
+        <PageSearch.Button label="Search items" />
         <PageSearch.Input placeholder="Search items" onSearch={() => {}} />
       </PageSearch>,
     )
@@ -51,7 +51,7 @@ describe('PageSearch', () => {
     expect(wrapper).toHaveAttribute('aria-hidden', 'true')
     expect(screen.getByPlaceholderText('Search items')).toHaveAttribute('tabindex', '-1')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Search items' }))
     expect(wrapper).toHaveClass('pb-2')
     expect(wrapper).not.toHaveClass('pb-0')
     expect(wrapper).toHaveAttribute('aria-hidden', 'false')

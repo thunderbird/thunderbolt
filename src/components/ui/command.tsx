@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useLingui } from '@lingui/react/macro'
-import { type ComponentProps } from 'react'
+import { type ComponentProps, useRef } from 'react'
 import { Command as CommandPrimitive } from 'cmdk'
 import { SearchIcon } from 'lucide-react'
 
@@ -45,6 +45,7 @@ const CommandDialog = ({
 }) => {
   const { t } = useLingui()
   const { isMobile } = useIsMobile()
+  const openerRef = useRef<HTMLElement | null>(null)
   const dialogTitle = title ?? t`Command Palette`
   const dialogDescription = description ?? t`Search for a command to run…`
 
@@ -85,10 +86,6 @@ const CommandDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange} {...props}>
-      <DialogHeader className="sr-only">
-        <DialogTitle>{dialogTitle}</DialogTitle>
-        <DialogDescription>{dialogDescription}</DialogDescription>
-      </DialogHeader>
       <DialogContent
         className={cn(
           'overflow-hidden p-0',
@@ -99,7 +96,25 @@ const CommandDialog = ({
           className,
         )}
         showCloseButton={showCloseButton}
+        // The palette has no trigger element for Radix to restore focus to, so
+        // remember the opener and hand focus back to it on close.
+        onOpenAutoFocus={() => {
+          openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault()
+          // Only restore when nothing else claimed focus: a command may have
+          // moved it to an input or modal, and that must not be stolen back.
+          const opener = openerRef.current
+          if (opener?.isConnected && (!document.activeElement || document.activeElement === document.body)) {
+            opener.focus()
+          }
+        }}
       >
+        <DialogHeader className="sr-only">
+          <DialogTitle>{dialogTitle}</DialogTitle>
+          <DialogDescription>{dialogDescription}</DialogDescription>
+        </DialogHeader>
         {command}
       </DialogContent>
     </Dialog>
@@ -116,7 +131,7 @@ const CommandInput = ({ className, ...props }: ComponentProps<typeof CommandPrim
       <CommandPrimitive.Input
         data-slot="command-input"
         className={cn(
-          'placeholder:text-muted-foreground flex h-10 w-full rounded-lg bg-transparent py-3 text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50',
+          'placeholder:text-muted-foreground flex h-10 w-full rounded-lg bg-transparent py-3 text-[length:var(--font-size-body)] outline-hidden disabled:cursor-not-allowed disabled:opacity-50',
           className,
         )}
         {...props}

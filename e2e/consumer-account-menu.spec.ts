@@ -17,7 +17,7 @@ for (const viewport of [
       const errors = collectPageErrors(page)
       const email = await loginViaEmailCode(page)
       await openSidebarOnMobile(page)
-      const trigger = page.getByRole('button', { name: 'Account menu', exact: true })
+      const trigger = page.getByRole('button', { name: 'Account menu' })
       await page.keyboard.press('Tab')
       await trigger.focus()
       await expect

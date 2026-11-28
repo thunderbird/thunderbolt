@@ -67,7 +67,7 @@ const SearchSettingsPage = () => {
         <SettingsListPane className="gap-6 md:pb-12">
           <PageSearch onSearch={setSearch}>
             <PageHeader title={t`Search`}>
-              <PageSearch.Button />
+              <PageSearch.Button label={t`Search connections`} />
               <PageCreateAction label={t`New Search Connection`} onClick={() => selectPanel('new')} />
             </PageHeader>
             <PageSearch.Input placeholder={t`Search connections`} onSearch={setSearch} />
@@ -94,12 +94,11 @@ const SearchSettingsPage = () => {
                 }}
                 title={
                   <span className="flex items-center gap-2">
-                    <span className="truncate">{connection.name}</span>
+                    <span className="min-w-0 max-md:break-words md:truncate">{connection.name}</span>
                     {connection.provider === 'tinfoil' && <PrivateBadge />}
                   </span>
                 }
                 subtitle={canSupplySearch(connection) ? undefined : t`Connect or enable this connection to use search`}
-                ariaLabel={t`Open ${connection.name}`}
                 isSelected={page.panel === connection.id}
                 onSelect={() => selectPanel(connection.id)}
                 leading={
@@ -125,7 +124,6 @@ const SearchSettingsPage = () => {
               <SettingsSelectableRow
                 contextMenu={{}}
                 title="Thunderbolt"
-                ariaLabel={t`Open Thunderbolt`}
                 isSelected={page.panel === 'cloud'}
                 onSelect={() => selectPanel('cloud')}
                 leading={<ModelProviderIconTile model={{ provider: 'thunderbolt', isSystem: 1 }} />}

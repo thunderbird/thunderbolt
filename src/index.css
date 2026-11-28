@@ -77,7 +77,7 @@
   --color-secondary: #f0ede6;
   --color-secondary-foreground: #262120;
   --color-muted: #f0ede6;
-  --color-muted-foreground: #7f7870;
+  --color-muted-foreground: #736c64;
   /* Hover/selected tint. Deliberately low-saturation: at these near-white
      lightness levels a yellow-warm beige reads as a color change rather than
      a shading change, which makes hovers feel louder than they are. Keep it
@@ -115,7 +115,7 @@
   /* Darker sibling of --color-border for focused-input borders — same warm
      hue, stepped-down lightness, so focus reads as "border, but firmer"
      instead of a black outline. */
-  --color-border-strong: #bfb4a3;
+  --color-border-strong: #8c8170;
   --color-input: #e5dfd5;
   --color-ring: #393530;
   --color-chart-1: oklch(0.646 0.222 41.116);
@@ -706,7 +706,7 @@
 @layer base {
   * {
     border-color: var(--color-border);
-    outline-color: oklch(from var(--color-ring) l c h / 0.5);
+    outline-color: var(--color-ring);
   }
   body {
     background-color: var(--color-background);

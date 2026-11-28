@@ -212,6 +212,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
             onSelect={onTextareaSelect}
             onScroll={hasTextareaHooks ? handleScroll : undefined}
             onPaste={onTextareaPaste}
+            aria-label={t`Message`}
             placeholder={placeholder ?? t`Say something…`}
             minHeight={42}
             maxHeight={240}

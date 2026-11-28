@@ -13,6 +13,10 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#: src/components/modification-indicator.tsx
+msgid ", modified"
+msgstr ""
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "\"{filename}\" is too large (max {maxMegabytes}MB)."
 msgstr ""
@@ -106,8 +110,16 @@ msgstr[1] ""
 msgid "{0} is only available on desktop"
 msgstr ""
 
+#: src/components/sidebar-footer.tsx
+msgid "{accountLabel}, account menu"
+msgstr ""
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "{agentName} can't take attachments. Remove the attached files to send."
+msgstr ""
+
+#: src/components/chat/chat-reply-announcer.tsx
+msgid "{agentName} is responding"
 msgstr ""
 
 #: src/components/chat/attestation/use-attestation-display.ts
@@ -166,6 +178,14 @@ msgid "One skill references this. If you disable it, that skill may no longer re
 msgid_plural "# skills reference this. If you disable it, they may no longer resolve."
 msgstr[0] ""
 msgstr[1] ""
+
+#: src/components/chat/citation-badge.tsx
+msgid "{displayName} {additionalCount}, view all sources"
+msgstr ""
+
+#: src/components/chat/citation-badge.tsx
+msgid "{displayName}, view source"
+msgstr ""
 
 #. js-lingui:icu=%7BenabledSkills%2C+plural%2C+one+%7B%23+skill%7D+other+%7B%23+skills%7D%7D&pluralize_on=enabledSkills
 #: src/components/settings/agents/agent-detail.tsx
@@ -823,6 +843,10 @@ msgstr ""
 msgid "Back to App"
 msgstr ""
 
+#: src/widgets/connect-integration/widget.tsx
+msgid "Back to providers"
+msgstr ""
+
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Bar chart"
 msgstr ""
@@ -962,6 +986,7 @@ msgstr ""
 msgid "Charts and pictures"
 msgstr ""
 
+#: src/components/chat/chat-ui.tsx
 #: src/mini-apps/mini-app-page.tsx
 msgid "Chat"
 msgstr ""
@@ -1777,6 +1802,10 @@ msgstr ""
 
 #: src/components/chat/copy-message-button.tsx
 msgid "Copy message"
+msgstr ""
+
+#: src/components/chat/copy-message-button.tsx
+msgid "Copy message: {excerpt}"
 msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
@@ -3208,6 +3237,10 @@ msgstr ""
 msgid "Go to"
 msgstr ""
 
+#: src/components/chat/go-to-latest-response-button.tsx
+msgid "Go to latest response"
+msgstr ""
+
 #: src/components/chat/chat-ui-greeting.ts
 msgid "Good afternoon"
 msgstr ""
@@ -3771,6 +3804,10 @@ msgstr ""
 msgid "Medium"
 msgstr ""
 
+#: src/components/ui/prompt-input.tsx
+msgid "Message"
+msgstr ""
+
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
 msgid "Message Simulator"
@@ -3874,16 +3911,24 @@ msgid "Moderate snow fall"
 msgstr ""
 
 #: src/components/modification-indicator.tsx
-msgid "Modified item"
-msgstr ""
+#~ msgid "Modified item"
+#~ msgstr ""
 
 #: src/settings/models/model-detail.tsx
 msgid "Modified model"
 msgstr ""
 
 #: src/components/settings/detail-actions-menu.tsx
-#: src/layout/sidebar/chat-list-item.tsx
 msgid "More"
+msgstr ""
+
+#. placeholder {0}: project.name
+#: src/projects/project-actions.tsx
+msgid "More options for {0}"
+msgstr ""
+
+#: src/layout/sidebar/chat-list-item.tsx
+msgid "More options for {displayTitle}"
 msgstr ""
 
 #: src/layout/sidebar/chat-list-item.tsx
@@ -4304,8 +4349,8 @@ msgstr ""
 #. placeholder {0}: connection.name
 #: src/components/settings/agents/agent-row.tsx
 #: src/settings/search/index.tsx
-msgid "Open {0}"
-msgstr ""
+#~ msgid "Open {0}"
+#~ msgstr ""
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Open {appName} on a trusted device and approve this one in Settings → Devices."
@@ -4316,20 +4361,20 @@ msgstr ""
 #~ msgstr ""
 
 #: src/settings/models/models-list.tsx
-msgid "Open {modelName}"
-msgstr ""
+#~ msgid "Open {modelName}"
+#~ msgstr ""
 
 #: src/settings/search/index.tsx
 #~ msgid "Open {name}"
 #~ msgstr ""
 
 #: src/skills/library-row.tsx
-msgid "Open {skillName}"
-msgstr ""
+#~ msgid "Open {skillName}"
+#~ msgstr ""
 
 #: src/settings/connections/connections-list.tsx
-msgid "Open {title}"
-msgstr ""
+#~ msgid "Open {title}"
+#~ msgstr ""
 
 #: src/mini-apps/mini-app-chat-banner.tsx
 msgid "Open app"
@@ -4389,12 +4434,12 @@ msgid "Open the store to check for updates."
 msgstr ""
 
 #: src/settings/search/index.tsx
-msgid "Open Thunderbolt"
-msgstr ""
+#~ msgid "Open Thunderbolt"
+#~ msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
-msgid "Open Thunderbolt CLI"
-msgstr ""
+#~ msgid "Open Thunderbolt CLI"
+#~ msgstr ""
 
 #: src/settings/connections/new-connection-picker.tsx
 #~ msgid "OpenAI-compatible"
@@ -5000,6 +5045,26 @@ msgstr ""
 msgid "Resetting…"
 msgstr ""
 
+#: src/components/ui/resizable.tsx
+msgid "Resize panels"
+msgstr ""
+
+#: src/components/chat/assistant-message.tsx
+msgid "Response"
+msgstr ""
+
+#: src/components/chat/chat-reply-announcer.tsx
+msgid "Response failed"
+msgstr ""
+
+#: src/components/chat/chat-reply-announcer.tsx
+msgid "Response ready"
+msgstr ""
+
+#: src/components/chat/chat-reply-announcer.tsx
+msgid "Response stopped"
+msgstr ""
+
 #: src/components/update-notification.tsx
 msgid "Restart Now"
 msgstr ""
@@ -5177,9 +5242,7 @@ msgstr ""
 msgid "Scroll to bottom"
 msgstr ""
 
-#: src/components/ui/page-search.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
-#: src/layout/sidebar/sidebar-header-actions.tsx
 #: src/search/commands/navigation.ts
 #: src/search/palette/search-palette.tsx
 #: src/settings/connections/new-connection-picker.tsx
@@ -5238,6 +5301,10 @@ msgstr ""
 msgid "Search emoji"
 msgstr ""
 
+#: src/layout/sidebar/sidebar-header-actions.tsx
+msgid "Search everything"
+msgstr ""
+
 #: src/components/ui/command.tsx
 msgid "Search for a command to run…"
 msgstr ""
@@ -5283,6 +5350,10 @@ msgstr ""
 #: src/components/chat/chat-skills-bar.tsx
 #: src/skills/skills-list.tsx
 msgid "Search skills"
+msgstr ""
+
+#: src/tasks/index.tsx
+msgid "Search tasks"
 msgstr ""
 
 #: src/tasks/index.tsx
@@ -5566,6 +5637,7 @@ msgid "Showing 50 of {totalCount} tasks"
 msgstr ""
 
 #: src/components/external-link-toggle-group.tsx
+#: src/layout/sidebar/index.tsx
 msgid "Sidebar"
 msgstr ""
 

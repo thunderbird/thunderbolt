@@ -42,6 +42,7 @@ export const ProjectActions = ({
     <DetailActionsMenu
       side="right"
       align="start"
+      label={t`More options for ${project.name}`}
       triggerClassName={triggerClassName}
       onCloseAutoFocus={handleCloseAutoFocus}
     >

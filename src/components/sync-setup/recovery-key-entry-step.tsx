@@ -66,7 +66,7 @@ export const RecoveryKeyEntryStep = ({
             onKeyDown={handleKeyDown}
             placeholder={t`word1 word2 word3 ...`}
             rows={4}
-            className={`w-full rounded-lg border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring ${
+            className={`w-full rounded-lg border bg-background px-3 py-2 text-sm max-md:text-[length:var(--font-size-body)] resize-none focus:outline-none focus:ring-2 focus:ring-ring ${
               error ? 'border-destructive' : 'border-input'
             }`}
             autoFocus

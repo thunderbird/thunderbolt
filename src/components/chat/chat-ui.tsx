@@ -21,8 +21,11 @@ import { useChatAutomation } from '@/chats/use-chat-automation'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { AppLogo } from '../app-logo'
 import { getGreeting } from './chat-ui-greeting'
-import { useLingui } from '@lingui/react/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { ChatContentReady } from './chat-content-ready'
+import { ChatReplyAnnouncer } from './chat-reply-announcer'
+import { GoToLatestResponseButton } from './go-to-latest-response-button'
+import { findLatestResponseId } from './latest-response'
 
 const MiniAppApprovalHost = lazy(() =>
   import('@/mini-apps/mini-app-approval-host').then((module) => ({ default: module.MiniAppApprovalHost })),
@@ -105,9 +108,15 @@ export default function ChatUI() {
   }, [hasMessages, scrollToBottom])
 
   const showModelSetup = modelNeedsSetup && !hasMessages
+  const latestResponseId = findLatestResponseId(messages)
 
   return (
     <div className="h-full w-full" style={{ paddingBottom: 'var(--kb, 0px)' }}>
+      <h1 className="sr-only">
+        <Trans>Chat</Trans>
+      </h1>
+      {/* Mounted for the chat's whole life so the regions exist before their first update. */}
+      <ChatReplyAnnouncer />
       {showModelSetup && (
         <div className="flex h-full w-full items-center justify-center overflow-y-auto p-6">
           <ChatModelSetup />
@@ -227,7 +236,12 @@ export default function ChatUI() {
                 </Suspense>
               )}
             </div>
-            <m.div className="w-full max-w-[696px] min-w-[268px] rounded-2xl" layout transition={firstSendTween}>
+            <m.div
+              className="relative w-full max-w-[696px] min-w-[268px] rounded-2xl"
+              layout
+              transition={firstSendTween}
+            >
+              {latestResponseId && <GoToLatestResponseButton messageId={latestResponseId} />}
               <ChatPromptInput />
               {!hasMessages && <ChatContentReady />}
             </m.div>

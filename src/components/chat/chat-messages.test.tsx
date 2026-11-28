@@ -225,7 +225,7 @@ describe('ChatMessages', () => {
         wrapper: createTestWrapper(),
       })
 
-      expect(screen.getByRole('button', { name: 'View source: Earlier Page' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Earlier Page, view source' })).toBeInTheDocument()
       expect(container.querySelector('pre')?.textContent).toContain('x = arr[1]')
       expect(container.textContent).not.toContain('CITE')
     })
@@ -310,7 +310,7 @@ describe('ChatMessages', () => {
       expect(container.textContent).toContain('Private source')
       expect(container.textContent).toContain('New source')
       // The new turn's [1] still refers to its own source, and a portal inherits the policy.
-      fireEvent.click(getByRole('button', { name: 'View source: Public site' }))
+      fireEvent.click(getByRole('button', { name: 'Public site, view source' }))
       expect(document.querySelector('[role="dialog"]')?.textContent).toContain('New source')
       expect(document.querySelector('[role="dialog"] img')).toBeNull()
       expect(messages[4].metadata?.sources).toHaveLength(1)
@@ -512,7 +512,7 @@ describe('ChatMessages', () => {
 
   const expectShareInUserActionRow = (shareButton: HTMLElement, messageId: string) => {
     expect(shareButton.closest('[data-message-id]')).toHaveAttribute('data-message-id', messageId)
-    expect(shareButton.previousElementSibling).toHaveAccessibleName('Copy message')
+    expect(shareButton.previousElementSibling).toHaveAccessibleName(/^Copy message/)
     expect(shareButton.parentElement).toHaveClass(
       'ml-auto',
       'w-fit',

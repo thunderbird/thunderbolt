@@ -122,7 +122,7 @@ env:
 - retry:
     maxRetries: 2
     commands:
-      - tapOn: Ask me anything…
+      - tapOn: "Message|Ask me anything…"
       - eraseText
       - inputText: Please greet me briefly.
       - assertVisible:
@@ -242,7 +242,7 @@ env:
 - retry:
     maxRetries: 2
     commands:
-      - tapOn: Ask me anything…
+      - tapOn: "Message|Ask me anything…"
       - eraseText
       - inputText: Please greet me briefly.
       - assertVisible:

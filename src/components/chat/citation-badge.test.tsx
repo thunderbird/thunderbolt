@@ -129,6 +129,18 @@ describe('CitationBadge', () => {
     expect(container.querySelector('button')?.textContent).toContain('First Site')
   })
 
+  it('names the chip with its visible text first', () => {
+    renderStandalone(
+      <CitationBadge
+        sources={[
+          { id: '1', title: 'First', url: 'https://a.com', siteName: 'Site A', isPrimary: true },
+          { id: '2', title: 'Second', url: 'https://b.com', siteName: 'Site B' },
+        ]}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Site A +1, view all sources' })).toBeInTheDocument()
+  })
+
   it('opens mobile sources in the canonical bottom drawer', () => {
     forceMobileViewport()
     const sources: CitationSource[] = [
@@ -137,7 +149,7 @@ describe('CitationBadge', () => {
     ]
     renderStandalone(<CitationBadge sources={sources} />)
 
-    fireEvent.click(screen.getByRole('button', { name: /View 2 sources/ }))
+    fireEvent.click(screen.getByRole('button', { name: /view all sources/ }))
 
     const drawer = screen.getByText('2 sources').closest('[data-slot="drawer-content"]')
     expect(drawer).toHaveAttribute('data-swipe-direction', 'down')

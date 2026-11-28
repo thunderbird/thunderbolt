@@ -82,6 +82,13 @@ describe('buildBrandingCss', () => {
     expect(vars['--color-sidebar-foreground']).toBe('var(--color-foreground)')
   })
 
+  it('derives border-strong at the mix that keeps control edges above 3:1', () => {
+    const vars = light({ background: '#f1f5f9' })
+    expect(vars['--color-border-strong']).toBe(
+      'color-mix(in oklch, var(--color-background), var(--color-foreground) 50%)',
+    )
+  })
+
   it('lifts dark-mode surfaces toward the foreground, not white', () => {
     const vars = declarationsOf(buildBrandingCss({ cssVars: { dark: { background: '#0f172a' } } }), 'html.dark')
     expect(vars['--color-card']).toBe('color-mix(in oklch, var(--color-background), var(--color-foreground) 7%)')

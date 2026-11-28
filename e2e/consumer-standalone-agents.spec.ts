@@ -36,17 +36,17 @@ for (const viewport of [
         },
       })
       await page.goto('/settings/agents')
-      await page.getByRole('button', { name: 'Open Imported local agent', exact: true }).click()
+      await page.getByRole('button', { name: /^Imported local agent/ }).click()
       await page.getByLabel('Name', { exact: true }).fill('Renamed imported agent')
       await page.getByRole('button', { name: 'Save', exact: true }).click()
       await expect(page.getByRole('heading', { name: 'Renamed imported agent', exact: true })).toBeVisible()
 
       await page.reload()
-      await page.getByRole('button', { name: 'Open Renamed imported agent', exact: true }).click()
+      await page.getByRole('button', { name: /^Renamed imported agent/ }).click()
       await page.getByRole('button', { name: 'More', exact: true }).click()
       await page.getByRole('menuitem', { name: 'Delete agent', exact: true }).click()
       await page.getByRole('button', { name: 'Delete agent', exact: true }).click()
-      await expect(page.getByRole('button', { name: 'Open Renamed imported agent', exact: true })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: /^Renamed imported agent/ })).toHaveCount(0)
     })
 
     test('adds, edits, and removes a custom agent without signing in', async ({ page }) => {
@@ -76,19 +76,19 @@ for (const viewport of [
       await page.getByRole('button', { name: 'Test connection', exact: true }).click()
       await page.getByRole('button', { name: 'Add Agent', exact: true }).click()
 
-      await page.getByRole('button', { name: 'Open Local test agent', exact: true }).click()
+      await page.getByRole('button', { name: /^Local test agent/ }).click()
       await page.getByLabel('Name', { exact: true }).fill('Renamed local agent')
       await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Renamed local agent')
       await page.getByRole('button', { name: 'Save', exact: true }).click()
       await expect(page.getByRole('heading', { name: 'Renamed local agent', exact: true })).toBeVisible()
 
       await page.reload()
-      await page.getByRole('button', { name: 'Open Renamed local agent', exact: true }).click()
+      await page.getByRole('button', { name: /^Renamed local agent/ }).click()
       await page.getByRole('button', { name: 'More', exact: true }).click()
       await page.getByRole('menuitem', { name: 'Delete agent', exact: true }).click()
       await page.getByRole('button', { name: 'Delete agent', exact: true }).click()
-      await expect(page.getByRole('button', { name: 'Open Renamed local agent', exact: true })).toHaveCount(0)
-      await expect(page.getByRole('button', { name: 'Open Thunderbolt', exact: true })).toBeVisible()
+      await expect(page.getByRole('button', { name: /^Renamed local agent/ })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: /^Thunderbolt(?! CLI)/ })).toBeVisible()
     })
   })
 }

@@ -143,7 +143,7 @@ for (const viewport of [
     }) => {
       await prepareCatalog(page, 500, 50)
       await page.goto('/settings/models')
-      await expect(page.getByRole('button', { name: 'Open Saved model 1', exact: true })).toBeVisible()
+      await expect(page.getByRole('button', { name: /^Saved model 1/ })).toBeVisible()
       const openCatalog = async () => {
         await page.getByRole('button', { name: 'New Model', exact: true }).click()
         await page.getByRole('combobox', { name: 'Connection', exact: true }).click()
@@ -180,8 +180,8 @@ for (const viewport of [
       await first.check()
       await page.getByRole('button', { name: 'Add models', exact: true }).click()
       await expect(catalog).toBeHidden()
-      await expect(page.getByRole('button', { name: 'Open Catalog model 1', exact: true })).toBeVisible()
-      await expect(page.getByRole('button', { name: 'Open Saved model 1', exact: true })).toBeVisible()
+      await expect(page.getByRole('button', { name: /^Catalog model 1/ })).toBeVisible()
+      await expect(page.getByRole('button', { name: /^Saved model 1/ })).toBeVisible()
     })
   })
 }

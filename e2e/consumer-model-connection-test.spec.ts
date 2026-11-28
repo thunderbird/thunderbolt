@@ -65,8 +65,8 @@ test('a slow local model shows the loading state and then passes the test', asyn
   )
 
   await page.goto('/settings/models')
-  await page.getByRole('button', { name: `Open ${modelName}`, exact: true }).click()
-  await page.getByRole('button', { name: 'More' }).click()
+  await page.getByRole('button', { name: new RegExp(`^${modelName}`) }).click()
+  await page.getByRole('button', { name: 'More', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Edit' }).click()
   await page.getByRole('button', { name: 'Test model', exact: true }).click()
 

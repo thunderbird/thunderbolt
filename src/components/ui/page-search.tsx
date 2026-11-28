@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useLingui } from '@lingui/react/macro'
 import { createContext, useContext, useRef, useState, type ChangeEvent, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { Search } from 'lucide-react'
@@ -70,8 +69,8 @@ export const PageSearch = ({ onSearch, children }: PageSearchProps) => {
   )
 }
 
-const PageSearchButton = () => {
-  const { t } = useLingui()
+/** `label` names the control for assistive tech, so each page says what it searches (e.g. "Search models"). */
+const PageSearchButton = ({ label }: { label: string }) => {
   const { open, toggle } = usePageSearchContext()
   const { isMobile } = useIsMobile()
   const portalTarget = useMobileForegroundPortalTarget()
@@ -87,7 +86,7 @@ const PageSearchButton = () => {
       <Button
         variant="ghost"
         size="icon"
-        aria-label={t`Search`}
+        aria-label={label}
         className={cn(
           mutedIconButtonClass,
           mobileHeaderControlFillClass,
@@ -107,7 +106,7 @@ const PageSearchButton = () => {
     <Button
       variant="ghost"
       size="icon"
-      aria-label={t`Search`}
+      aria-label={label}
       className={cn('rounded-lg hover:bg-accent', open && 'bg-accent')}
       onClick={toggle}
     >

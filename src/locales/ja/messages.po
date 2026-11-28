@@ -13,6 +13,10 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#: src/components/modification-indicator.tsx
+msgid ", modified"
+msgstr "、変更済み"
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "\"{filename}\" is too large (max {maxMegabytes}MB)."
 msgstr "「{filename}」はサイズが大きすぎます（最大 {maxMegabytes}MB）。"
@@ -99,9 +103,17 @@ msgstr[1] ""
 msgid "{0} is only available on desktop"
 msgstr ""
 
+#: src/components/sidebar-footer.tsx
+msgid "{accountLabel}, account menu"
+msgstr "{accountLabel}、アカウントメニュー"
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "{agentName} can't take attachments. Remove the attached files to send."
 msgstr "{agentName} は添付ファイルを受け付けません。送信するには添付ファイルを削除してください。"
+
+#: src/components/chat/chat-reply-announcer.tsx
+msgid "{agentName} is responding"
+msgstr "{agentName}が応答しています"
 
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "{agentName} receives this chat and manages its own model connection. This device has not verified the agent's execution environment."
@@ -156,6 +168,14 @@ msgstr[0] "# 件のスキルがこれを参照しています。削除すると�
 msgid "One skill references this. If you disable it, that skill may no longer resolve."
 msgid_plural "# skills reference this. If you disable it, they may no longer resolve."
 msgstr[0] "# 件のスキルがこれを参照しています。無効にすると、それらのスキルが解決できなくなる可能性があります。"
+
+#: src/components/chat/citation-badge.tsx
+msgid "{displayName} {additionalCount}, view all sources"
+msgstr "{displayName} {additionalCount}、すべてのソースを表示"
+
+#: src/components/chat/citation-badge.tsx
+msgid "{displayName}, view source"
+msgstr "{displayName}、ソースを表示"
 
 #. js-lingui:icu=%7BenabledSkills%2C+plural%2C+one+%7B%23+skill%7D+other+%7B%23+skills%7D%7D&pluralize_on=enabledSkills
 #: src/components/settings/agents/agent-detail.tsx
@@ -796,13 +816,17 @@ msgstr "利用できるツール:"
 
 #: src/components/onboarding/onboarding-action-buttons.tsx
 msgid "Back"
-msgstr ""
+msgstr "戻る"
 
 #: src/components/account-deleted.tsx
 #: src/components/device-revoked.tsx
 #: src/components/not-found.tsx
 msgid "Back to App"
 msgstr "アプリに戻る"
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "Back to providers"
+msgstr "プロバイダー一覧に戻る"
 
 #: src/components/xlsx-preview/chart-labels.ts
 msgid "Bar chart"
@@ -943,9 +967,10 @@ msgstr "グラフ"
 msgid "Charts and pictures"
 msgstr "グラフと画像"
 
+#: src/components/chat/chat-ui.tsx
 #: src/mini-apps/mini-app-page.tsx
 msgid "Chat"
-msgstr ""
+msgstr "チャット"
 
 #: src/layout/sidebar/chat-list-item.tsx
 msgid "Chat actions"
@@ -1759,6 +1784,10 @@ msgstr "HTML をコピー"
 #: src/components/chat/copy-message-button.tsx
 msgid "Copy message"
 msgstr "メッセージをコピー"
+
+#: src/components/chat/copy-message-button.tsx
+msgid "Copy message: {excerpt}"
+msgstr "メッセージをコピー: {excerpt}"
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Copy PATH command"
@@ -3189,6 +3218,10 @@ msgstr "進む"
 msgid "Go to"
 msgstr "移動"
 
+#: src/components/chat/go-to-latest-response-button.tsx
+msgid "Go to latest response"
+msgstr "最新の応答へ移動"
+
 #: src/components/chat/chat-ui-greeting.ts
 msgid "Good afternoon"
 msgstr "こんにちは"
@@ -3752,6 +3785,10 @@ msgstr "MCP サーバー"
 msgid "Medium"
 msgstr ""
 
+#: src/components/ui/prompt-input.tsx
+msgid "Message"
+msgstr "メッセージ"
+
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
 msgid "Message Simulator"
@@ -3855,17 +3892,25 @@ msgid "Moderate snow fall"
 msgstr "並の雪"
 
 #: src/components/modification-indicator.tsx
-msgid "Modified item"
-msgstr "変更された項目"
+#~ msgid "Modified item"
+#~ msgstr "変更された項目"
 
 #: src/settings/models/model-detail.tsx
 msgid "Modified model"
 msgstr "変更されたモデル"
 
 #: src/components/settings/detail-actions-menu.tsx
-#: src/layout/sidebar/chat-list-item.tsx
 msgid "More"
 msgstr "その他"
+
+#. placeholder {0}: project.name
+#: src/projects/project-actions.tsx
+msgid "More options for {0}"
+msgstr "{0} のその他のオプション"
+
+#: src/layout/sidebar/chat-list-item.tsx
+msgid "More options for {displayTitle}"
+msgstr "{displayTitle} のその他のオプション"
 
 #: src/layout/sidebar/chat-list-item.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
@@ -4285,8 +4330,8 @@ msgstr "プライベートチャットでのみ利用できます。"
 #. placeholder {0}: connection.name
 #: src/components/settings/agents/agent-row.tsx
 #: src/settings/search/index.tsx
-msgid "Open {0}"
-msgstr ""
+#~ msgid "Open {0}"
+#~ msgstr ""
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Open {appName} on a trusted device and approve this one in Settings → Devices."
@@ -4297,20 +4342,20 @@ msgstr "信頼済みのデバイスで {appName} を開き、設定 → デバ�
 #~ msgstr "信頼済みのデバイスで {appName} を開き、設定 → デバイス からこのデバイスを承認してください。"
 
 #: src/settings/models/models-list.tsx
-msgid "Open {modelName}"
-msgstr "{modelName} を開く"
+#~ msgid "Open {modelName}"
+#~ msgstr "{modelName} を開く"
 
 #: src/settings/search/index.tsx
 #~ msgid "Open {name}"
 #~ msgstr ""
 
 #: src/skills/library-row.tsx
-msgid "Open {skillName}"
-msgstr "{skillName} を開く"
+#~ msgid "Open {skillName}"
+#~ msgstr "{skillName} を開く"
 
 #: src/settings/connections/connections-list.tsx
-msgid "Open {title}"
-msgstr "{title} を開く"
+#~ msgid "Open {title}"
+#~ msgstr "{title} を開く"
 
 #: src/mini-apps/mini-app-chat-banner.tsx
 msgid "Open app"
@@ -4370,12 +4415,12 @@ msgid "Open the store to check for updates."
 msgstr "ストアを開いて更新を確認してください。"
 
 #: src/settings/search/index.tsx
-msgid "Open Thunderbolt"
-msgstr ""
+#~ msgid "Open Thunderbolt"
+#~ msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
-msgid "Open Thunderbolt CLI"
-msgstr "Thunderbolt CLI を開く"
+#~ msgid "Open Thunderbolt CLI"
+#~ msgstr "Thunderbolt CLI を開く"
 
 #: src/settings/connections/new-connection-picker.tsx
 #~ msgid "OpenAI-compatible"
@@ -4981,6 +5026,26 @@ msgstr "既定値に戻す"
 msgid "Resetting…"
 msgstr "リセットしています…"
 
+#: src/components/ui/resizable.tsx
+msgid "Resize panels"
+msgstr "パネルのサイズを変更"
+
+#: src/components/chat/assistant-message.tsx
+msgid "Response"
+msgstr "応答"
+
+#: src/components/chat/chat-reply-announcer.tsx
+msgid "Response failed"
+msgstr "応答に失敗しました"
+
+#: src/components/chat/chat-reply-announcer.tsx
+msgid "Response ready"
+msgstr "応答が完了しました"
+
+#: src/components/chat/chat-reply-announcer.tsx
+msgid "Response stopped"
+msgstr "応答を停止しました"
+
 #: src/components/update-notification.tsx
 msgid "Restart Now"
 msgstr "今すぐ再起動"
@@ -5158,9 +5223,7 @@ msgstr "散布図"
 msgid "Scroll to bottom"
 msgstr "最下部にスクロール"
 
-#: src/components/ui/page-search.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
-#: src/layout/sidebar/sidebar-header-actions.tsx
 #: src/search/commands/navigation.ts
 #: src/search/palette/search-palette.tsx
 #: src/settings/connections/new-connection-picker.tsx
@@ -5219,6 +5282,10 @@ msgstr "通貨を検索…"
 msgid "Search emoji"
 msgstr "絵文字を検索"
 
+#: src/layout/sidebar/sidebar-header-actions.tsx
+msgid "Search everything"
+msgstr "すべてを検索"
+
 #: src/components/ui/command.tsx
 msgid "Search for a command to run…"
 msgstr "実行するコマンドを検索…"
@@ -5265,6 +5332,10 @@ msgstr ""
 #: src/skills/skills-list.tsx
 msgid "Search skills"
 msgstr "スキルを検索"
+
+#: src/tasks/index.tsx
+msgid "Search tasks"
+msgstr "タスクを検索"
 
 #: src/tasks/index.tsx
 msgid "Search tasks…"
@@ -5547,6 +5618,7 @@ msgid "Showing 50 of {totalCount} tasks"
 msgstr "{totalCount} 件のタスクのうち 50 件を表示中"
 
 #: src/components/external-link-toggle-group.tsx
+#: src/layout/sidebar/index.tsx
 msgid "Sidebar"
 msgstr "サイドバー"
 

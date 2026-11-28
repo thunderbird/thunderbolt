@@ -18,7 +18,7 @@ import { SettingsListBody, settingsListBodyRowsClass, SettingsListPane } from '@
 import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { useAuth, useDatabase } from '@/contexts'
-import { deleteAgent, updateAgent, useAllAgents } from '@/dal'
+import { deleteAgent, updateAgent, useAllAgentsState } from '@/dal'
 import { useEntityActionIntent } from '@/search/actions/use-entity-action-intent'
 
 type AgentsSettingsPageProps = {
@@ -42,7 +42,7 @@ type AgentsSettingsPageProps = {
 const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPageProps = {}) => {
   const { t } = useLingui()
   const db = useDatabase()
-  const agents = useAllAgents()
+  const { agents, isLoading } = useAllAgentsState()
   const authClient = useAuth()
   const { data: session } = authClient.useSession()
   const currentUserId = session?.user?.id ?? null
@@ -131,7 +131,7 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
               aria-pressed, so they behave as the toggles they announce.
               The CLI row shares the list's row gap so it reads as one list
               (gap-4, matching the models page). */}
-          <SettingsListBody className={settingsListBodyRowsClass}>
+          <SettingsListBody className={settingsListBodyRowsClass} aria-busy={isLoading || undefined}>
             <AgentList
               agents={agents}
               currentUserId={currentUserId}

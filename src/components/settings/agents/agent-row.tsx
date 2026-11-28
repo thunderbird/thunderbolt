@@ -38,7 +38,6 @@ export const AgentRow = ({ agent, isSelected, onOpen, contextMenu }: AgentRowPro
       testId={`agent-row-${agent.id}`}
       isSelected={isSelected}
       onOpen={() => onOpen(agent)}
-      ariaLabel={t`Open ${agent.name}`}
       isDimmed={disabled}
       icon={
         // The logo reads slightly smaller than the lucide glyphs at equal

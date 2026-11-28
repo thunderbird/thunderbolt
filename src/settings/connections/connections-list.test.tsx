@@ -88,6 +88,21 @@ const renderList = (overrides: Partial<ComponentProps<typeof ConnectionsList>> =
 
 afterEach(cleanup)
 
+describe('ConnectionsList busy state', () => {
+  it.each(['areProvidersReady', 'areIntegrationsReady', 'areServersReady'] as const)(
+    'is aria-busy while %s is false',
+    (ready) => {
+      const { container } = renderList({ [ready]: false })
+      expect(container.querySelector('[aria-busy="true"]')).toBeInTheDocument()
+    },
+  )
+
+  it('drops aria-busy once every source is ready', () => {
+    const { container } = renderList()
+    expect(container.querySelector('[aria-busy]')).toBeNull()
+  })
+})
+
 describe('ConnectionsList empty state', () => {
   it('offers the general add flow only when all connection sources are loaded and empty', () => {
     const { props } = renderList()
@@ -113,7 +128,7 @@ describe('ConnectionsList empty state', () => {
     { isEnabled: false, isConnected: false },
   ])('treats a Thunderbolt-only list as populated (%j)', (state) => {
     renderList({ integrations: [{ ...thunderbolt, ...state }] })
-    expect(screen.getByRole('button', { name: 'Open Thunderbolt' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Thunderbolt' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'No connections yet' })).not.toBeInTheDocument()
     expect(screen.queryByText('Add your first server')).not.toBeInTheDocument()
   })
@@ -124,14 +139,14 @@ describe('ConnectionsList empty state', () => {
     { enabled: 1, connected: false },
   ])('treats a provider-only list as populated (%j)', (state) => {
     renderList({ aiProviders: [{ ...provider, ...state }] })
-    expect(screen.getByRole('button', { name: 'Open Work Otari' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Work Otari/ })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'No connections yet' })).not.toBeInTheDocument()
     expect(screen.queryByText('Add your first server')).not.toBeInTheDocument()
   })
 
   it.each([0, 1])('treats an MCP-only list as populated even when disconnected (enabled: %i)', (enabled) => {
     renderList({ servers: [{ ...server, enabled }] })
-    expect(screen.getByRole('button', { name: 'Open Team tools' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Team tools/ })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'No connections yet' })).not.toBeInTheDocument()
     expect(screen.queryByText('Add your first server')).not.toBeInTheDocument()
   })
@@ -140,7 +155,7 @@ describe('ConnectionsList empty state', () => {
     'keeps the search no-matches state distinct from an empty list (%j)',
     async (rows) => {
       renderList({ integrations: [...rows.integrations] })
-      fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Search connections' }))
       fireEvent.change(screen.getByPlaceholderText('Search connections'), { target: { value: 'no such connection' } })
       await act(async () => {
         await getClock().runAllAsync()

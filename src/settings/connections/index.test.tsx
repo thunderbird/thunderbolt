@@ -73,7 +73,7 @@ const McpProviderWrapper = ({ children }: { children: ReactNode }) => (
 
 /** Opens a server row's detail panel by its display name. */
 const openServerDetail = async (name: string) => {
-  const row = await waitForElement(() => screen.queryByRole('button', { name: `Open ${name}` }))
+  const row = await waitForElement(() => screen.queryByRole('button', { name: new RegExp(`^${name}`) }))
   fireEvent.click(row)
 }
 
@@ -146,7 +146,7 @@ describe('ConnectionsPage list', () => {
     expect(await getModel(getDb(), modelId)).toMatchObject({ enabled: 1, deletedAt: null })
     expect(await getAvailableModels(getDb())).toEqual([])
     triggerChange(['provider_connections'])
-    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Open Work account' })))
+    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: /^Work account/ })))
     fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Disconnect this device' })))
     await act(async () => {
       await getClock().runAllAsync()
@@ -171,12 +171,12 @@ describe('ConnectionsPage list', () => {
         tables: ['provider_connections', 'provider_connection_secrets'],
         wrapper: McpProviderWrapper,
       })
-      await waitForElement(() => screen.queryByRole('button', { name: 'Open Team account' }))
+      await waitForElement(() => screen.queryByRole('button', { name: /^Team account/ }))
       if (entry === 'add') {
         fireEvent.click(screen.getByRole('button', { name: 'New Connection' }))
         fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Otari Models and search' })))
       } else {
-        fireEvent.click(screen.getByRole('button', { name: 'Open Team account' }))
+        fireEvent.click(screen.getByRole('button', { name: /^Team account/ }))
       }
       expect(await waitForElement(() => screen.queryByRole('heading', { name: 'Connected to Otari' }))).toBeVisible()
       expect(screen.getByRole('status')).toHaveTextContent('https://team.example/api/v1')
@@ -235,7 +235,7 @@ describe('ConnectionsPage list', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     })
     expect(Boolean(screen.queryByRole('button', { name: 'Close details' }))).toBe(false)
-    fireEvent.click(screen.getByRole('button', { name: 'Open OpenAI' }))
+    fireEvent.click(screen.getByRole('button', { name: /^OpenAI/ }))
     expect(screen.queryByRole('button', { name: 'Go back' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull()
   })
@@ -258,8 +258,8 @@ describe('ConnectionsPage list', () => {
       tables: ['provider_connections', 'provider_connection_secrets'],
       wrapper: McpProviderWrapper,
     })
-    expect(await waitForElement(() => screen.queryByRole('button', { name: 'Open Team' }))).toBeInTheDocument()
-    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Open Personal' })))
+    expect(await waitForElement(() => screen.queryByRole('button', { name: /^Team/ }))).toBeInTheDocument()
+    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: /^Personal/ })))
     expect(await waitForElement(() => screen.queryByLabelText('Name'))).toHaveValue('Personal')
     expect(screen.getByLabelText('API key')).toHaveValue('')
     expect(screen.getByRole('button', { name: 'Save connection' })).toBeDisabled()
@@ -408,7 +408,7 @@ describe('ConnectionsPage list', () => {
       wrapper: McpProviderWrapper,
       tables: ['provider_connections', 'provider_connection_secrets'],
     })
-    const row = await waitForElement(() => screen.queryByRole('button', { name: 'Open Work Exa' }))
+    const row = await waitForElement(() => screen.queryByRole('button', { name: /^Work Exa/ }))
     fireEvent.click(screen.getByRole('button', { name: 'New Connection' }))
     fireEvent.click(screen.getByRole('button', { name: 'MCP server' }))
     expect(screen.getByRole('heading', { name: 'Add MCP Server' })).toBeVisible()
@@ -438,7 +438,7 @@ describe('ConnectionsPage list', () => {
         wrapper: McpProviderWrapper,
         tables: ['provider_connections', 'provider_connection_secrets'],
       })
-      const row = await waitForElement(() => screen.queryByRole('button', { name: 'Open Saved search' }))
+      const row = await waitForElement(() => screen.queryByRole('button', { name: /^Saved search/ }))
       fireEvent.click(screen.getByRole('button', { name: 'New Connection' }))
       fireEvent.click(screen.getByRole('button', { name: 'Otari Models and search' }))
       fireEvent.click(screen.getByRole('button', { name: 'Connect Otari' }))
@@ -484,7 +484,7 @@ describe('ConnectionsPage list', () => {
       wrapper: McpProviderWrapper,
       tables: ['provider_connections', 'provider_connection_secrets'],
     })
-    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Open ChatGPT' })))
+    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: /^ChatGPT/ })))
     const picker = await waitForElement(() => screen.queryByRole('button', { name: 'Choose ChatGPT account' }))
     await act(async () => {
       fireEvent.pointerDown(picker, { button: 0 })
@@ -522,7 +522,7 @@ describe('ConnectionsPage list', () => {
         wrapper: McpProviderWrapper,
         tables: ['provider_connections', 'provider_connection_secrets'],
       })
-      fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Open My OpenRouter' })))
+      fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: /^My OpenRouter/ })))
       for (const attempt of [1, 2]) {
         fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Connect OpenRouter' })))
         if (flow === 'manual') {
@@ -595,13 +595,13 @@ describe('ConnectionsPage list', () => {
       for (const name of ['Thunderbolt Search', 'Google Productivity', 'Microsoft Productivity']) {
         expect(screen.getByRole('button', { name })).toBeVisible()
       }
-      expect(screen.getByRole('button', { name: 'Open Thunderbolt' })).toBeVisible()
+      expect(screen.getByRole('button', { name: /^Thunderbolt(?! Search)/ })).toBeVisible()
       act(() => clearAuthToken())
       expect(screen.queryByRole('button', { name: 'Thunderbolt Search' })).toBeNull()
       for (const name of ['Google Productivity', 'Microsoft Productivity']) {
         expect(screen.getByRole('button', { name })).toBeVisible()
       }
-      expect(screen.queryByRole('button', { name: 'Open Thunderbolt' })).toBeNull()
+      expect(screen.queryByRole('button', { name: /^Thunderbolt(?! Search)/ })).toBeNull()
     },
   )
 

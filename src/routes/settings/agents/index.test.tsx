@@ -100,6 +100,16 @@ describe('AgentsSettingsPage — availability', () => {
     }
   })
 
+  it('marks the list busy while the agent queries load and drops it once they settle', async () => {
+    const { container } = renderPage(createMockAuthClient({ session: authedSession }))
+    expect(container.querySelector('[aria-busy="true"]')).toBeInTheDocument()
+
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(container.querySelector('[aria-busy]')).toBeNull()
+  })
+
   it('opens the detail panel when a row is clicked and closes it again', () => {
     const authClient = createMockAuthClient({ session: authedSession })
     renderPage(authClient)
@@ -107,7 +117,7 @@ describe('AgentsSettingsPage — availability', () => {
     // Nothing selected — the built-in detail heading only exists in the panel.
     expect(screen.queryByRole('button', { name: 'Close details' })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open Thunderbolt' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Thunderbolt(?! CLI)/ }))
 
     expect(screen.getByRole('heading', { name: 'Thunderbolt' })).toBeInTheDocument()
     expect(screen.getByText(/built into the app — always here/i)).toBeInTheDocument()
@@ -202,7 +212,7 @@ describe('AgentsSettingsPage — transparent same-account enrollment', () => {
       userId: authedSession.user.id,
     })
     renderPage(createMockAuthClient({ session: authedSession }))
-    fireEvent.contextMenu(await waitForElement(() => screen.queryByRole('button', { name: 'Open Menu agent' })))
+    fireEvent.contextMenu(await waitForElement(() => screen.queryByRole('button', { name: /^Menu agent/ })))
     fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: 'Remove' })))
     expect(await waitForElement(() => screen.queryByRole('alertdialog'))).toHaveTextContent('Delete Menu agent?')
     expect((await getAllAgents(getDb())).some((agent) => agent.id === 'menu-agent')).toBe(true)
@@ -226,7 +236,7 @@ describe('AgentsSettingsPage — transparent same-account enrollment', () => {
     const authClient = createMockAuthClient({ session: authedSession })
     renderPage(authClient, { loadAppNodeId: async () => appNodeId, enrollIroh })
 
-    const openButton = await waitForElement(() => screen.queryByRole('button', { name: 'Open Existing Bridge' }))
+    const openButton = await waitForElement(() => screen.queryByRole('button', { name: /^Existing Bridge/ }))
     fireEvent.click(openButton)
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Renamed Bridge' } })
     await act(async () => {

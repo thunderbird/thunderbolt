@@ -70,6 +70,11 @@ describe('Sidebar reactivity', () => {
     restoreViewport()
   })
 
+  it('exposes the sidebar as a named navigation landmark', () => {
+    renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
+    expect(screen.getByRole('navigation', { name: 'Sidebar' })).toBeInTheDocument()
+  })
+
   it('updates when chat_threads table changes', async () => {
     const threadId1 = uuidv7()
     const threadId2 = uuidv7()
@@ -113,7 +118,7 @@ describe('Sidebar reactivity', () => {
     expect(scrollArea).toContainElement(screen.getByRole('button', { name: 'Recents' }))
     expect(scrollArea).toContainElement(document.querySelector('[data-slot="mobile-sidebar-header"]'))
     expect(scrollArea).not.toContainElement(document.querySelector('[data-sidebar="footer"]'))
-    expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Search everything' })).toBeInTheDocument()
   })
 
   describe('section toggle', () => {
@@ -256,7 +261,7 @@ describe('Sidebar reactivity', () => {
       const mobileHeader = document.querySelector<HTMLElement>('[data-slot="mobile-sidebar-header"]')
       expect(mobileHeader).toBeInTheDocument()
       expect(screen.queryByLabelText('Settings')).not.toBeInTheDocument()
-      expect(mobileHeader).toContainElement(screen.getByRole('button', { name: 'Search' }))
+      expect(mobileHeader).toContainElement(screen.getByRole('button', { name: 'Search everything' }))
     })
 
     it('pulls an open Settings section back to chats when minimal mode arrives', () => {

@@ -17,7 +17,6 @@ describe('SettingsSelectableRow', () => {
       <SettingsSelectableRow
         title="Example"
         onSelect={onSelect}
-        ariaLabel="Open Example"
         trailing={<button onClick={onTrailing}>Toggle</button>}
       />,
     )
@@ -26,8 +25,22 @@ describe('SettingsSelectableRow', () => {
     expect(onTrailing).toHaveBeenCalledTimes(1)
     expect(onSelect).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open Example' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Example' }))
     expect(onSelect).toHaveBeenCalledTimes(1)
+  })
+})
+
+it('names the row button from its visible title and subtitle, visible text first', () => {
+  render(<SettingsSelectableRow title="Example" subtitle="Details" onSelect={() => {}} />)
+  expect(screen.getByRole('button', { name: 'Example Details' })).toBeInTheDocument()
+})
+
+describe('SettingsSelectableRow reflow', () => {
+  it('wraps long titles and subtitles below md and truncates from md up', () => {
+    render(<SettingsSelectableRow title="A long title" subtitle="A long subtitle" onSelect={() => {}} />)
+
+    expect(screen.getByText('A long title')).toHaveClass('max-md:break-words', 'md:truncate')
+    expect(screen.getByText('A long subtitle')).toHaveClass('max-md:break-words', 'md:truncate')
   })
 })
 
@@ -60,25 +73,18 @@ it('opens Edit and Remove without selecting the row and respects protected items
   const onEdit = mock(() => {})
   const onRemove = mock(() => {})
   const onSelect = mock(() => {})
-  render(
-    <SettingsSelectableRow
-      title="Account"
-      ariaLabel="Open account"
-      onSelect={onSelect}
-      contextMenu={{ onEdit, onRemove }}
-    />,
-  )
-  fireEvent.contextMenu(screen.getByRole('button', { name: 'Open account' }))
+  render(<SettingsSelectableRow title="Account" onSelect={onSelect} contextMenu={{ onEdit, onRemove }} />)
+  fireEvent.contextMenu(screen.getByRole('button', { name: 'Account' }))
   fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }))
   expect(onEdit).toHaveBeenCalledTimes(1)
   expect(onSelect).not.toHaveBeenCalled()
-  fireEvent.contextMenu(screen.getByRole('button', { name: 'Open account' }))
+  fireEvent.contextMenu(screen.getByRole('button', { name: 'Account' }))
   fireEvent.click(await screen.findByRole('menuitem', { name: 'Remove' }))
   expect(onRemove).toHaveBeenCalledTimes(1)
   expect(onSelect).not.toHaveBeenCalled()
   cleanup()
-  render(<SettingsSelectableRow title="Built in" ariaLabel="Open built in" onSelect={onSelect} contextMenu={{}} />)
-  fireEvent.contextMenu(screen.getByRole('button', { name: 'Open built in' }))
+  render(<SettingsSelectableRow title="Built in" onSelect={onSelect} contextMenu={{}} />)
+  fireEvent.contextMenu(screen.getByRole('button', { name: 'Built in' }))
   expect(await screen.findByRole('menuitem', { name: 'Edit' })).toHaveAttribute('aria-disabled', 'true')
   expect(screen.getByRole('menuitem', { name: 'Remove' })).toHaveAttribute('aria-disabled', 'true')
 })

@@ -17,6 +17,7 @@ import { splitPartType } from '@/lib/utils'
 import type { HaystackReferenceMeta, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import type { TextUIPart } from 'ai'
+import { Trans } from '@lingui/react/macro'
 import { memo, useMemo, type ReactNode } from 'react'
 import { ArtifactMessagePart } from './artifact-message-part'
 import { CopyMessageButton } from './copy-message-button'
@@ -24,6 +25,7 @@ import { CreatedFileVersionGroup } from './created-file-version-group'
 import { ReasoningGroup } from './reasoning-group'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
+import { responseHeadingId } from './latest-response'
 
 type AssistantMessageProps = {
   message: ThunderboltUIMessage
@@ -253,6 +255,15 @@ export const AssistantMessage = memo(
         className={showCopyOnHover ? 'group/assistant-message' : undefined}
         style={isLastMessage && isStreaming && !hasArtifact ? { minHeight: lastMessageMinHeight } : undefined}
       >
+        {/* A heading per response for screen-reader heading navigation, and the
+            target of "Go to latest response". Shown only while it has focus. */}
+        <h2
+          id={responseHeadingId(message.id)}
+          tabIndex={-1}
+          className="sr-only select-none scroll-mt-[calc(var(--header-inset)+1rem)] rounded-md text-[length:var(--font-size-sm)] font-medium text-muted-foreground focus:not-sr-only focus:outline-2 focus:outline-offset-2 focus:outline-ring"
+        >
+          <Trans>Response</Trans>
+        </h2>
         {(groupedParts.length > 0 || !activity) && partElements}
         {activity}
         {!isStreaming && (copyText || lastAssistantAction) && (

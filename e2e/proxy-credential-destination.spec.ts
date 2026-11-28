@@ -105,8 +105,8 @@ const requestCountTo = (requests: ProxiedRequest[], url: string) =>
 
 const openEditPanel = async (page: Page, path: string, name: string) => {
   await page.goto(path)
-  await page.getByRole('button', { name: `Open ${name}`, exact: true }).click()
-  await page.getByRole('button', { name: 'More' }).click()
+  await page.getByRole('button', { name: new RegExp(`^${name}`) }).click()
+  await page.getByRole('button', { name: 'More', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Edit' }).click()
 }
 

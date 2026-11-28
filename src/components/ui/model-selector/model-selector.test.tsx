@@ -81,3 +81,20 @@ it('closes an embedded picker before opening model creation', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Add Model' }))
   expect(createModel).toHaveBeenCalledTimes(1)
 })
+
+it('lets the trigger name wrap on phones so a long model name is not clipped', () => {
+  const model = createMockModel({ id: 'long', name: 'DeepSeek V4.1 Flash' })
+  render(
+    <ModelSelector
+      variant="composer"
+      models={[model]}
+      selectedModel="long"
+      chatThread={null}
+      onModelChange={() => {}}
+    />,
+  )
+
+  const trigger = screen.getByTestId('model-selector-trigger')
+  expect(trigger.querySelector('span')).toHaveClass('max-sm:break-words', 'sm:truncate')
+  expect(trigger).toHaveClass('min-h-[var(--touch-height-control)]')
+})

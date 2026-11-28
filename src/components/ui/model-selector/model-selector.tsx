@@ -148,7 +148,7 @@ export const ModelSelector = ({
         'flex min-w-0 items-center cursor-pointer transition-colors',
         variant === 'composer'
           ? cn(
-              'gap-1.5 px-2 h-[var(--touch-height-control)] rounded-[var(--radius-control)] text-[length:var(--font-size-sm)]',
+              'gap-1.5 px-2 min-h-[var(--touch-height-control)] rounded-[var(--radius-control)] text-[length:var(--font-size-sm)]',
               isOpen ? 'bg-accent' : 'hover:bg-accent/50',
             )
           : cn(
@@ -162,8 +162,10 @@ export const ModelSelector = ({
         <AlertTriangle className="size-3.5 shrink-0 text-warning" />
       )}
       {/* Muted in both variants — trigger labels are chrome, not content.
-          Truncates instead of wrapping when the composer gets narrow. */}
-      <span className="min-w-0 truncate font-medium text-muted-foreground">{selected?.label ?? t`Select model`}</span>
+          Wraps on phones so the full name stays readable at 400% zoom; truncates elsewhere. */}
+      <span className="min-w-0 font-medium max-sm:break-words sm:truncate text-muted-foreground">
+        {selected?.label ?? t`Select model`}
+      </span>
       <ChevronDown
         className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', isOpen && 'rotate-180')}
       />

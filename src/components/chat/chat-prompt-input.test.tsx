@@ -241,6 +241,16 @@ describe('ChatPromptInput', () => {
       expect(screen.getByPlaceholderText('Ask me anything…')).toBeInTheDocument()
     })
 
+    it('exposes the textarea as a textbox named Message', () => {
+      const { mockUseChat } = setupStore()
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      expect(screen.getByRole('textbox', { name: 'Message' })).toBe(screen.getByPlaceholderText('Ask me anything…'))
+    })
+
     it('unmounts the pinned-skills queries once the chat has messages and restores them for an empty chat', () => {
       const { mockUseChat, mockChatInstance } = setupStore()
       const previousConfig = useConfigStore.getState()

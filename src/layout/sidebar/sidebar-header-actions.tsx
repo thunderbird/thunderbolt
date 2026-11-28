@@ -28,8 +28,8 @@ export const SidebarHeaderActions = ({
         {onSearchClick && (
           <SidebarMenuButton
             onClick={onSearchClick}
-            tooltip={t`Search`}
-            aria-label={t`Search`}
+            tooltip={t`Search everything`}
+            aria-label={t`Search everything`}
             className="cursor-pointer"
           >
             <Search />
@@ -53,7 +53,7 @@ export const SidebarHeaderActions = ({
           variant="ghost"
           size="icon"
           className={mutedIconButtonClass}
-          aria-label={t`Search`}
+          aria-label={t`Search everything`}
           onClick={onSearchClick}
         >
           <Search />

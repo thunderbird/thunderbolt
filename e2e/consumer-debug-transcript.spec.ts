@@ -25,7 +25,9 @@ test('debug sharing previews redacted content, requires consent, and cancels wit
   const secret = crypto.randomUUID()
   await page.locator('textarea').fill(`Diagnostic context Client Secret: ${secret} AWS Secret Access Key: ${secret}`)
   await page.getByRole('button', { name: 'Send message' }).click()
-  await expect(page.getByText(fakeProviderReply, { exact: true })).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('[data-quotable-message-id]').getByText(fakeProviderReply, { exact: true })).toBeVisible({
+    timeout: 30_000,
+  })
   await page.getByRole('button', { name: 'Share debug transcript', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Having a problem with this chat?' })
   const preview = dialog.getByRole('textbox', { name: 'Content to send' })

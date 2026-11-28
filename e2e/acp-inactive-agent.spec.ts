@@ -96,7 +96,7 @@ const chatWithNewAgent = async (page: Page) => {
   await expect(page.getByTestId('agent-selector-trigger')).toContainText(agentName)
 
   await sendChatPrompt(page, 'First question')
-  await expect(page.getByText('Reply 1')).toBeVisible()
+  await expect(page.locator('[data-quotable-message-id]').getByText('Reply 1')).toBeVisible()
   await expect(page).toHaveURL(/\/chats\/[^/]+$/)
 }
 
@@ -107,14 +107,14 @@ const openAgentSettings = async (page: Page) => {
   await search.getByRole('combobox').fill('All agents')
   await search.getByRole('option').filter({ hasText: 'All agents' }).first().click()
   await expect(page).toHaveURL(/\/settings\/agents$/)
-  await page.getByRole('button', { name: `Open ${agentName}` }).click()
+  await page.getByRole('button', { name: new RegExp(`^${agentName}`) }).click()
 }
 
 /** Go back to the open chat and try to send again. */
 const sendAgainFromOpenChat = async (page: Page) => {
   await page.goBack()
   await expect(page).toHaveURL(/\/chats\/[^/]+$/)
-  await expect(page.getByText('Reply 1')).toBeVisible()
+  await expect(page.locator('[data-quotable-message-id]').getByText('Reply 1')).toBeVisible()
   await sendChatPrompt(page, 'Second question')
   await expect(page.getByText(refusal)).toBeVisible()
 }
@@ -141,10 +141,10 @@ test.describe('ACP disabled or deleted agent', () => {
     await chatWithNewAgent(page)
 
     await openAgentSettings(page)
-    await page.getByRole('button', { name: 'More' }).click()
+    await page.getByRole('button', { name: 'More', exact: true }).click()
     await page.getByRole('menuitem', { name: 'Delete agent' }).click()
     await page.getByRole('alertdialog').getByRole('button', { name: 'Delete agent' }).click()
-    await expect(page.getByRole('button', { name: `Open ${agentName}` })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: new RegExp(`^${agentName}`) })).toHaveCount(0)
 
     await sendAgainFromOpenChat(page)
     expect(agent.prompts).toBe(1)

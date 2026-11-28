@@ -122,7 +122,7 @@ const connectGoogle = async (page: Page) => {
 const receivedNotes = (page: Page) => page.frameLocator(`iframe[title="${appName}"]`).locator('#received li')
 
 const askForTransfer = async (page: Page) => {
-  await page.getByRole('textbox', { name: 'Ask me anything…' }).fill(miniAppTransferPrompt)
+  await page.getByRole('textbox', { name: 'Message' }).fill(miniAppTransferPrompt)
   await page.getByRole('button', { name: 'Send message', exact: true }).click()
 }
 

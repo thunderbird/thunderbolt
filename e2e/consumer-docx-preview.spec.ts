@@ -172,7 +172,10 @@ test('a DOCX card opens from the keyboard, and Escape on the Close button closes
   // The Copy button on the user's message comes right after the card. If the thumbnail's frame took focus, Shift+Tab
   // from there would land inside the frame instead of on the card.
   const focusCardFromBelow = async () => {
-    await page.getByRole('button', { name: 'Copy message', exact: true }).first().focus()
+    await page
+      .getByRole('button', { name: /^Copy message/ })
+      .first()
+      .focus()
     // macOS WebKit uses Option-Tab to include buttons in keyboard navigation.
     await page.keyboard.press(browserName === 'webkit' && process.platform === 'darwin' ? 'Shift+Alt+Tab' : 'Shift+Tab')
     await expect(card).toBeFocused()

@@ -36,7 +36,7 @@ for (const viewport of [
       await expect(syncSetup).toBeVisible()
       await syncSetup.getByRole('button', { name: 'Close', exact: true }).click()
       await expect(syncSetup).toBeHidden()
-      await expect(page.getByRole('button', { name: 'Account menu', exact: true })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Account menu' })).toBeVisible()
       if (viewport.width < 768) {
         await page.mouse.click(viewport.width * 0.95, viewport.height / 2)
         await expect(page.locator('[data-slot="sidebar"][data-mobile="true"]')).not.toHaveAttribute('data-open')

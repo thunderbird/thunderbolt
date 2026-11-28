@@ -18,12 +18,15 @@ export const DetailActionsMenu = ({
   triggerClassName,
   side,
   align = 'end',
+  label,
 }: {
   children: ReactNode
   onCloseAutoFocus?: ComponentProps<typeof DropdownMenuContent>['onCloseAutoFocus']
   triggerClassName?: string
   side?: ComponentProps<typeof DropdownMenuContent>['side']
   align?: ComponentProps<typeof DropdownMenuContent>['align']
+  /** Accessible name for the trigger; set where several menus share a page, such as sidebar project rows. */
+  label?: string
 }) => {
   const { t } = useLingui()
 
@@ -33,7 +36,7 @@ export const DetailActionsMenu = ({
         <Button
           variant="ghost"
           size="icon"
-          aria-label={t`More`}
+          aria-label={label ?? t`More`}
           className={cn(mutedIconButtonClass, mobileHeaderControlFillClass, triggerClassName)}
         >
           <MoreVertical />

@@ -57,7 +57,7 @@ const derivedSurfaces = (mode: Mode): Partial<Record<BrandingColorToken, string>
     // Dark `input` is a field fill (see darkFieldFill), translucent like the default.
     input: mode === 'light' ? mix(bg, fg, 13) : `color-mix(in oklab, ${fg} 7%, transparent)`,
     'sidebar-border': mix(bg, fg, 13),
-    'border-strong': mix(bg, fg, 30),
+    'border-strong': mix(bg, fg, 50),
     'muted-foreground': mix(fg, bg, 45),
     'card-foreground': fg,
     'popover-foreground': fg,

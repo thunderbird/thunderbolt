@@ -72,8 +72,18 @@ test('a sent message gets a reply that streams in', async ({ page }) => {
   await expect(composer).toHaveValue('')
   await expect(page.getByRole('button', { name: 'Add a skill', exact: true })).toHaveCount(0)
 
-  const reply = page.getByText(/^Hello(?:\s|$)/)
+  const reply = page.locator('[data-quotable-message-id]').getByText(/^Hello(?:\s|$)/)
   await expect(reply).toHaveText(fakeProviderReply, { timeout: 30_000 })
+  // A short reply is read out once it finishes, from the live region rather than token by token.
+  await expect(page.getByRole('status').filter({ hasText: fakeProviderReply })).toHaveText(fakeProviderReply)
+  // The skip link before the composer shows on focus and moves focus to the reply's heading.
+  const goToResponse = page.getByRole('button', { name: 'Go to latest response', exact: true })
+  await goToResponse.focus()
+  await expect(goToResponse).toBeVisible()
+  await goToResponse.press('Enter')
+  await expect(
+    page.locator('[data-quotable-message-id]').getByRole('heading', { name: 'Response', exact: true }),
+  ).toBeFocused()
   const response = await completion
   await response.finished()
   const { startTime, responseEnd } = response.request().timing()
@@ -149,7 +159,9 @@ test('a high-rate markdown stream preserves a focused draft and persists the com
   await expect(page.getByRole('button', { name: 'Stop generating', exact: true })).toHaveCount(0)
   await expect(composer).toHaveValue(`${draft} Still focused.`)
   await expect(composer).toBeFocused()
-  await expect(reply.locator('h2')).toHaveCount(performanceStreamSections)
+  await expect(reply.getByRole('heading', { level: 2, name: /^Streaming section / })).toHaveCount(
+    performanceStreamSections,
+  )
   await expect(reply.locator('pre')).toHaveCount(performanceStreamSections)
   await expect(reply.locator('table')).toHaveCount(performanceStreamSections)
   const completedText = await reply.innerText()

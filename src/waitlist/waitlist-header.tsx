@@ -14,7 +14,7 @@ export const WaitlistHeader = () => {
 
   return (
     <div className="flex w-full items-center justify-center gap-1">
-      <AppLogo size={16} />
+      <AppLogo size={16} alt="" />
       <span className="font-brand text-xl font-medium leading-7 tracking-[-0.4px] text-foreground">{appName}</span>
     </div>
   )

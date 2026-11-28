@@ -19,7 +19,6 @@ type AgentListRowProps = {
   /** Opens the detail panel. The whole row is the tap target; management
    *  lives in the detail. */
   onOpen: () => void
-  ariaLabel: string
   /** Dims the primary line (e.g. a disabled agent). */
   isDimmed?: boolean
   testId?: string
@@ -39,7 +38,6 @@ export const AgentListRow = ({
   subtitle,
   isSelected,
   onOpen,
-  ariaLabel,
   isDimmed = false,
   testId,
   subtitleTestId,
@@ -54,7 +52,6 @@ export const AgentListRow = ({
       isSelected={isSelected}
       isDimmed={isDimmed}
       onSelect={onOpen}
-      ariaLabel={ariaLabel}
       trailingIcon={
         <ChevronRight
           className="size-4 shrink-0 text-muted-foreground"

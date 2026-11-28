@@ -100,7 +100,7 @@ const ModelsPage = () => {
         <SettingsListPane className="gap-6 md:pb-12">
           <PageSearch onSearch={setSearch}>
             <PageHeader title={t`Models`}>
-              <PageSearch.Button />
+              <PageSearch.Button label={t`Search models`} />
               <PageCreateAction label={t`New Model`} onClick={page.openAddPanel} />
             </PageHeader>
             <PageSearch.Input placeholder={t`Search models`} onSearch={setSearch} />
@@ -119,6 +119,7 @@ const ModelsPage = () => {
           ) : (
             <ModelsList
               models={filteredModels}
+              isLoading={page.isLoading}
               activeModelId={page.activeModelId}
               onSelect={page.selectActiveModel}
               onToggle={page.toggleModel}
